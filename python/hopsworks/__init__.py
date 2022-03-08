@@ -14,4 +14,27 @@
 #   limitations under the License.
 #
 
-__version__ = "2.6.0.dev1"
+import warnings
+import logging
+import sys
+import hsml  # noqa: F401
+import hsfs  # noqa: F401
+
+from hopsworks.connection import Connection
+
+connection = Connection.connection
+
+
+def hw_formatwarning(message, category, filename, lineno, line=None):
+    return "{}: {}\n".format(category.__name__, message)
+
+
+warnings.formatwarning = hw_formatwarning
+
+__all__ = ["connection"]
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s: %(message)s",
+    stream=sys.stdout,
+)
