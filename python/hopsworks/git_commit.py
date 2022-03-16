@@ -89,4 +89,4 @@ class GitCommit:
         return self.json()
 
     def __repr__(self):
-        return f"GitCommit({self._name!r}, {self._email!r}, {self._message!r}, {self._hash!r}, {self._time!r})"
+        return f"GitCommit({self._name!r}, {self._message!r}, {self._hash!r})"
