@@ -60,9 +60,5 @@ class ProjectException(Exception):
 class ExternalClientError(TypeError):
     """Raised when external client cannot be initialized due to missing arguments."""
 
-    def __init__(self, missing_argument):
-        message = (
-            "{0} cannot be of type NoneType, {0} is a non-optional "
-            "argument to connect to hopsworks from an external environment."
-        ).format(missing_argument)
+    def __init__(self, message):
         super().__init__(message)

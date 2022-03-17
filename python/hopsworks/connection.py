@@ -22,9 +22,7 @@ from hopsworks.decorators import connected, not_connected
 from hopsworks import client
 from hopsworks.core import project_api
 
-AWS_DEFAULT_REGION = "default"
 HOPSWORKS_PORT_DEFAULT = 443
-SECRETS_STORE_DEFAULT = "parameterstore"
 HOSTNAME_VERIFICATION_DEFAULT = True
 PROJECT_ID = "HOPSWORKS_PROJECT_ID"
 PROJECT_NAME = "HOPSWORKS_PROJECT_NAME"
@@ -47,9 +45,9 @@ class Connection:
         ```
 
     !!! hint "Save API Key as File"
-        To get started quickly, without saving the Hopsworks API in a secret storage,
-        you can simply create a file with the previously created Hopsworks API Key and
-        place it on the environment from which you wish to connect to Hopsworks.
+        To get started quickly, you can simply create a file with the previously
+         created Hopsworks API Key and place it on the environment from which you
+         wish to connect to Hopsworks.
 
         You can then connect by simply passing the path to the key file when
         instantiating a connection:
@@ -74,19 +72,13 @@ class Connection:
         host: The hostname of the Hopsworks instance, defaults to `None`.
         port: The port on which the Hopsworks instance can be reached,
             defaults to `443`.
-        region_name: The name of the AWS region in which the required secrets are
-            stored, defaults to `"default"`.
-        secrets_store: The secrets storage to be used, either `"secretsmanager"`,
-            `"parameterstore"` or `"local"`, defaults to `"parameterstore"`.
         hostname_verification: Whether or not to verify Hopsworks’ certificate, defaults
             to `True`.
         trust_store_path: Path on the file system containing the Hopsworks certificates,
             defaults to `None`.
-        api_key_file: Path to a file containing the API Key, if provided,
-            `secrets_store` will be ignored, defaults to `None`.
-        api_key_value: API Key as string, if provided, `secrets_store` will be ignored`,
-            however, this should be used with care, especially if the used notebook or
-            job script is accessible by multiple parties. Defaults to `None`.
+        api_key_file: Path to a file containing the API Key.
+        api_key_value: API Key as string, if provided, however, this should be used with care,
+        especially if the used notebook or job script is accessible by multiple parties. Defaults to `None`.
 
     # Returns
         `Connection`. Connection handle to perform operations on a
@@ -98,8 +90,6 @@ class Connection:
         host: str = None,
         port: int = HOPSWORKS_PORT_DEFAULT,
         project: str = None,
-        region_name: str = AWS_DEFAULT_REGION,
-        secrets_store: str = SECRETS_STORE_DEFAULT,
         hostname_verification: bool = HOSTNAME_VERIFICATION_DEFAULT,
         trust_store_path: str = None,
         api_key_file: str = None,
@@ -108,8 +98,6 @@ class Connection:
         self._host = host
         self._port = port
         self._project = project
-        self._region_name = region_name
-        self._secrets_store = secrets_store
         self._hostname_verification = hostname_verification
         self._trust_store_path = trust_store_path
         self._api_key_file = api_key_file
@@ -187,8 +175,6 @@ class Connection:
                     self._host,
                     self._port,
                     self._project,
-                    self._region_name,
-                    self._secrets_store,
                     self._hostname_verification,
                     self._trust_store_path,
                     self._api_key_file,
@@ -221,8 +207,6 @@ class Connection:
         host: str = None,
         port: int = HOPSWORKS_PORT_DEFAULT,
         project: str = None,
-        region_name: str = AWS_DEFAULT_REGION,
-        secrets_store: str = SECRETS_STORE_DEFAULT,
         hostname_verification: bool = HOSTNAME_VERIFICATION_DEFAULT,
         trust_store_path: str = None,
         api_key_file: str = None,
@@ -233,8 +217,6 @@ class Connection:
             host,
             port,
             project,
-            region_name,
-            secrets_store,
             hostname_verification,
             trust_store_path,
             api_key_file,
@@ -267,24 +249,6 @@ class Connection:
     @not_connected
     def project(self, project):
         self._project = project
-
-    @property
-    def region_name(self):
-        return self._region_name
-
-    @region_name.setter
-    @not_connected
-    def region_name(self, region_name):
-        self._region_name = region_name
-
-    @property
-    def secrets_store(self):
-        return self._secrets_store
-
-    @secrets_store.setter
-    @not_connected
-    def secrets_store(self, secrets_store):
-        self._secrets_store = secrets_store
 
     @property
     def hostname_verification(self):
