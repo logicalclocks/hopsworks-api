@@ -1,5 +1,5 @@
 #
-#   Copyright 2021 Logical Clocks AB
+#   Copyright 2022 Logical Clocks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -13,3 +13,23 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+
+
+class JOBS:
+    SUCCESS_STATES = ["FINISHED", "SUCCEEDED"]
+    ERROR_STATES = [
+        "FAILED",
+        "KILLED",
+        "FRAMEWORK_FAILURE",
+        "APP_MASTER_START_FAILED",
+        "INITIALIZATION_FAILED",
+    ]
+
+
+class GIT:
+    SUCCESS_STATES = ["SUCCESS"]
+    ERROR_STATES = ["FAILED", "KILLED", "INITIALIZATION_FAILED", "TIMEDOUT"]
+
+
+class SERVICES:
+    LIST = ["JOBS", "KAFKA", "JUPYTER", "HIVE", "SERVING", "FEATURESTORE", "AIRFLOW"]
