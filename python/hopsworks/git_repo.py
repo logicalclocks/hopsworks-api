@@ -20,7 +20,6 @@ from hopsworks import user, git_commit, util
 from hopsworks.core import git_api, git_remote_api, dataset_api
 from typing import List, Union
 from hopsworks.git_file_status import GitFileStatus
-from hopsworks.client.exceptions import GitException
 
 
 class GitRepo:
