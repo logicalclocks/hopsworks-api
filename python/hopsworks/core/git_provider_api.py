@@ -41,6 +41,17 @@ class GitProviderApi:
             self._project_name,
         )
 
+    def _get_default_configured_provider(self):
+        providers = self._get_providers()
+        if providers is None or len(providers) == 0:
+            raise GitException("No git provider is configured")
+        elif len(providers) == 1:
+            return providers[0].git_provider
+        else:
+            raise GitException(
+                "Multiple git providers are configured. Set the provider keyword to specify the provider to use"
+            )
+
     def _get_provider(self, provider: str):
         _client = client.get_instance()
         path_params = ["users", "git", "provider"]

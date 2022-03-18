@@ -18,7 +18,7 @@ import humps
 import json
 
 from hopsworks import util
-from hopsworks.core import job_api, git_repo_api, dataset_api
+from hopsworks.core import job_api, git_api, dataset_api
 
 
 class Project:
@@ -48,7 +48,7 @@ class Project:
         self._created = created
 
         self._jobs_api = job_api.JobsApi(project_id, project_name)
-        self._git_repos_api = git_repo_api.GitReposApi(project_id, project_name)
+        self._git_api = git_api.GitApi(project_id, project_name)
         self._dataset_api = dataset_api.DatasetApi(project_id)
 
     @classmethod
@@ -91,12 +91,12 @@ class Project:
         """
         return self._jobs_api
 
-    def get_git_repos_api(self):
+    def get_git_api(self):
         """Get the git repository api for the project.
         # Returns
-            `GitReposApi`
+            `GitApi`
         """
-        return self._git_repos_api
+        return self._git_api
 
     def get_dataset_api(self):
         """Get the dataset api for the project.

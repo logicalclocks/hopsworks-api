@@ -32,7 +32,7 @@ import json
 import logging
 
 
-class GitReposApi:
+class GitApi:
     def __init__(
         self,
         project_id,
@@ -46,7 +46,7 @@ class GitReposApi:
         )
         self._log = logging.getLogger(__name__)
 
-    def clone(self, url: str, path: str, provider: str, branch: str = None):
+    def clone(self, url: str, path: str, provider: str = None, branch: str = None):
         """Clone a new Git Repo in to Hopsworks Filesystem.
 
         # Arguments
@@ -64,6 +64,9 @@ class GitReposApi:
 
         # Support absolute and relative path to dataset
         path = util.convert_to_abs(path, self._project_name)
+
+        if provider is None:
+            provider = self._git_provider_api._get_default_configured_provider()
 
         path_params = ["project", self._project_id, "git", "clone"]
 
@@ -249,7 +252,9 @@ class GitReposApi:
         )
         _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
 
-    def _checkout(self, repo_id, branch: str = None, commit: str = None, force=False):
+    def _checkout(
+        self, repo_id, branch: str = None, commit: str = None, force: bool = False
+    ):
 
         _client = client.get_instance()
         path_params = [
@@ -351,7 +356,7 @@ class GitReposApi:
         )
         _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
 
-    def _push(self, repo_id, remote: str, branch: str, force=False):
+    def _push(self, repo_id, branch: str, force: bool = False, remote: str = None):
 
         _client = client.get_instance()
         path_params = [
@@ -384,7 +389,7 @@ class GitReposApi:
         )
         _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
 
-    def _pull(self, repo_id, remote: str, branch: str, force=False):
+    def _pull(self, repo_id, branch: str, force: bool = False, remote: str = None):
 
         _client = client.get_instance()
         path_params = [

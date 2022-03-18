@@ -17,9 +17,10 @@
 import humps
 import json
 from hopsworks import user, git_commit, util
-from hopsworks.core import git_repo_api, git_remote_api, dataset_api
+from hopsworks.core import git_api, git_remote_api, dataset_api
 from typing import List, Union
 from hopsworks.git_file_status import GitFileStatus
+from hopsworks.client.exceptions import GitException
 
 
 class GitRepo:
@@ -54,7 +55,7 @@ class GitRepo:
         self._items = items
         self._count = count
 
-        self._git_repo_api = git_repo_api.GitReposApi(project_id, project_name)
+        self._git_api = git_api.GitApi(project_id, project_name)
         self._git_remote_api = git_remote_api.GitRemoteApi(project_id, project_name)
         self._dataset_api = dataset_api.DatasetApi(project_id)
 
@@ -114,7 +115,7 @@ class GitRepo:
         # Raises
             `RestAPIError` in case the backend fails to retrieve the status.
         """
-        return self._git_repo_api._status(self.id)
+        return self._git_api._status(self.id)
 
     def delete(self):
         """Delete the git repo from the filesystem.
@@ -125,17 +126,27 @@ class GitRepo:
         """
         return self._dataset_api.remove(self.path)
 
-    def checkout_branch(self, branch: str, force: bool = False):
+    def checkout_branch(self, branch: str, create: bool = False):
         """Checkout a branch
         # Arguments
             branch: name of the branch
-            force: if true proceed even if the index or the working tree differs from HEAD. This will throw away local changes
-        # Returns
-            `List[GitCommit]`
+            create: if true will create a new branch and check it out
         # Raises
             `RestAPIError` in case the backend fails to retrieve the commits.
         """
-        self._git_repo_api._checkout(self.id, branch=branch, force=force)
+        if create:
+            self._git_api._create(self.id, branch=branch, checkout=True)
+        else:
+            self._git_api._checkout(self.id, branch=branch)
+
+    def checkout_commit(self, commit: str):
+        """Checkout a commit
+        # Arguments
+            commit: hash of the commit
+        # Raises
+            `RestAPIError` in case the backend fails to retrieve the commits.
+        """
+        self._git_api._checkout(self.id, commit=commit)
 
     def checkout_files(self, files: Union[List[str], List[GitFileStatus]]):
         """Checkout a list of files
@@ -144,17 +155,7 @@ class GitRepo:
         # Raises
             `RestAPIError` in case the backend fails to checkout the files.
         """
-        self._git_repo_api._checkout_files(self.id, files)
-
-    def create_branch(self, branch: str, checkout: bool = False):
-        """Create a new branch and optionally check it out
-        # Arguments
-            branch: name of the branch
-            checkout: checkout the created branch
-        # Raises
-            `RestAPIError` in case the backend fails to delete the branch.
-        """
-        self._git_repo_api._create(self.id, branch, checkout=checkout)
+        self._git_api._checkout_files(self.id, files)
 
     def delete_branch(self, branch: str):
         """Delete a branch from local repository
@@ -163,17 +164,7 @@ class GitRepo:
         # Raises
             `RestAPIError` in case the backend fails to delete the branch.
         """
-        self._git_repo_api._delete(self.id, branch)
-
-    def checkout_commit(self, commit: str, force: bool = False):
-        """Checkout specific commit
-        # Arguments
-            commit: hash of the commit
-            force: 	If true when switching branches, proceed even if the index or the working tree differs from HEAD. This will throw away local changes
-        # Raises
-            `RestAPIError` in case the backend fails to checkout the commit.
-        """
-        self._git_repo_api._checkout(self.id, commit=commit, force=force)
+        self._git_api._delete(self.id, branch)
 
     def commit(self, message: str, all: bool = True, files: List[str] = None):
         """Add changes and new files, and then commit them
@@ -184,29 +175,27 @@ class GitRepo:
         # Raises
             `RestAPIError` in case the backend fails to perform the commit.
         """
-        self._git_repo_api._commit(self.id, message, all=all, files=files)
+        self._git_api._commit(self.id, message, all=all, files=files)
 
-    def push(self, remote, branch: str, force: bool = False):
+    def push(self, branch: str, remote: str = "origin"):
         """Push changes to the remote branch
         # Arguments
-            remote: name of the remote
             branch: name of the branch
-            force: update the remote branch even when the local branch does not descend from it
+            remote: name of the remote
         # Raises
             `RestAPIError` in case the backend fails to retrieve the commits.
         """
-        self._git_repo_api._push(self.id, remote, branch, force=force)
+        self._git_api._push(self.id, branch, force=False, remote=remote)
 
-    def pull(self, remote, branch: str, force: bool = False):
+    def pull(self, branch: str, remote: str = "origin"):
         """Pull changes from remote branch
         # Arguments
-            remote: name of the remote
             branch: name of the branch
-            force: update the local branch even when the remote branch does not descend from it
+            remote: name of the remote
         # Raises
             `RestAPIError` in case the backend fails to retrieve the commits.
         """
-        self._git_repo_api._pull(self.id, remote, branch, force=force)
+        self._git_api._pull(self.id, branch, force=False, remote=remote)
 
     def get_commits(self, branch: str):
         """Get the commits for the repo and branch.
@@ -217,7 +206,7 @@ class GitRepo:
         # Raises
             `RestAPIError` in case the backend fails to retrieve the commits.
         """
-        return self._git_repo_api._get_commits(self.id, branch)
+        return self._git_api._get_commits(self.id, branch)
 
     def add_remote(self, name: str, url: str):
         """Add a remote for the repo
