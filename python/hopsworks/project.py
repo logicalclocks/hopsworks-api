@@ -87,21 +87,21 @@ class Project:
     def get_jobs_api(self):
         """Get the jobs api for the project.
         # Returns
-            `JobsApi`
+            `JobsApi`: The Jobs Api handle
         """
         return self._jobs_api
 
     def get_git_api(self):
         """Get the git repository api for the project.
         # Returns
-            `GitApi`
+            `GitApi`: The Git Api handle
         """
         return self._git_api
 
     def get_dataset_api(self):
         """Get the dataset api for the project.
         # Returns
-            `DatasetApi`
+            `DatasetApi`: The Datasets Api handle
         """
         return self._dataset_api
 

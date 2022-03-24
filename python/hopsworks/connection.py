@@ -110,7 +110,7 @@ class Connection:
     def get_secrets_api(self):
         """Get the secrets api.
         # Returns
-            `SecretsApi`
+            `SecretsApi`: The Secrets Api handle
         """
         return self._secret_api
 
