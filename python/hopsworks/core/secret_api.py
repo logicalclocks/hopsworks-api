@@ -92,8 +92,8 @@ class SecretsApi:
         if project is None:
             secret_config["visibility"] = "PRIVATE"
         else:
-            scope_project = self._project_api.get_project_info(project)
-            secret_config["scope"] = scope_project["projectId"]
+            scope_project = self._project_api._get_project(project)
+            secret_config["scope"] = scope_project.id
             secret_config["visibility"] = "PROJECT"
 
         path_params = [
