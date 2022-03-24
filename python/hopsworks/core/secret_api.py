@@ -15,10 +15,17 @@
 #
 
 from hopsworks import client, secret
+from hopsworks.core import project_api
 import json
 
 
 class SecretsApi:
+    def __init__(
+            self,
+    ):
+        self._project_api = project_api.ProjectApi()
+
+
     def get_secrets(self):
         """Get all secrets
 
@@ -45,7 +52,7 @@ class SecretsApi:
         # Returns
             `Secret`: The Secret object
         # Raises
-            `RestAPIError`: If unable to get the project
+            `RestAPIError`: If unable to get the secret
         """
         _client = client.get_instance()
         query_params = None
@@ -68,7 +75,7 @@ class SecretsApi:
         )
 
     def create_secret(self, name: str, secret: str, project: str = None):
-        """Create a new project.
+        """Create a new secret.
 
         # Arguments
             name: Name of the secret.
@@ -86,7 +93,7 @@ class SecretsApi:
         if project is None:
             secret_config["visibility"] = "PRIVATE"
         else:
-            scope_project = project.get_project_info(project)
+            scope_project = self._project_api.get_project_info(project)
             secret_config["scope"] = scope_project["projectId"]
             secret_config["visibility"] = "PROJECT"
 
