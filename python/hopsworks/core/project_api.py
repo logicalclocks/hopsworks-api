@@ -36,6 +36,24 @@ class ProjectApi:
         except RestAPIError:
             return False
 
+    def _get_projects(self):
+        """Get all projects accessible by the user.
+
+        # Returns
+            `List[Project]`: List of Project objects
+        # Raises
+            `RestAPIError`: If unable to get the projects
+        """
+        _client = client.get_instance()
+        path_params = [
+            "project",
+        ]
+        project_team_json = _client._send_request("GET", path_params)
+        projects = []
+        for project_team in project_team_json:
+            projects.append(self._get_project(project_team["project"]["name"]))
+        return projects
+
     def _get_project(self, name: str):
         """Get a project.
 
