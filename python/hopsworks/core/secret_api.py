@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks import client, secret, constants
+from hopsworks import client, secret
 import json
 
 
@@ -32,7 +32,9 @@ class SecretsApi:
             "users",
             "secrets",
         ]
-        return secret.Secret.from_response_json(_client._send_request("GET", path_params))
+        return secret.Secret.from_response_json(
+            _client._send_request("GET", path_params)
+        )
 
     def get_secret(self, name: str, owner: str = None):
         """Get a secret.
@@ -61,7 +63,9 @@ class SecretsApi:
                 "shared",
             ]
 
-        return secret.Secret.from_response_json(_client._send_request("GET", path_params, query_params=query_params))
+        return secret.Secret.from_response_json(
+            _client._send_request("GET", path_params, query_params=query_params)
+        )
 
     def create_secret(self, name: str, secret: str, project: str = None):
         """Create a new project.
@@ -77,15 +81,14 @@ class SecretsApi:
         """
         _client = client.get_instance()
 
-
-        secret_config = {'name': name, 'secret': secret}
+        secret_config = {"name": name, "secret": secret}
 
         if project is None:
-            secret_config['visibility'] = "PRIVATE"
+            secret_config["visibility"] = "PRIVATE"
         else:
             scope_project = project.get_project_info(project)
-            secret_config['scope'] = scope_project['projectId']
-            secret_config['visibility'] = "PROJECT"
+            secret_config["scope"] = scope_project["projectId"]
+            secret_config["visibility"] = "PROJECT"
 
         path_params = [
             "users",
