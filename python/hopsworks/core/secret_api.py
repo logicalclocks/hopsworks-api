@@ -21,10 +21,9 @@ import json
 
 class SecretsApi:
     def __init__(
-            self,
+        self,
     ):
         self._project_api = project_api.ProjectApi()
-
 
     def get_secrets(self):
         """Get all secrets
