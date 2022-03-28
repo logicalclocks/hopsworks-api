@@ -136,6 +136,16 @@ class Connection:
         return self._project_api._get_project(name)
 
     @connected
+    def get_projects(self):
+        """Get all projects.
+
+        # Returns
+            `List[Project]`: List of Project objects
+        """
+
+        return self._project_api._get_projects()
+
+    @connected
     def project_exists(self, name: str):
         """Check if a project exists.
 
