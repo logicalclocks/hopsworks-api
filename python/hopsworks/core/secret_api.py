@@ -73,12 +73,12 @@ class SecretsApi:
             _client._send_request("GET", path_params, query_params=query_params)
         )[0]
 
-    def create_secret(self, name: str, secret: str, project: str = None):
+    def create_secret(self, name: str, value: str, project: str = None):
         """Create a new secret.
 
         # Arguments
             name: Name of the secret.
-            secret: The secret value.
+            value: The secret value.
             project: Name of the project to share the secret with.
         # Returns
             `Secret`: The Secret object
@@ -87,7 +87,7 @@ class SecretsApi:
         """
         _client = client.get_instance()
 
-        secret_config = {"name": name, "secret": secret}
+        secret_config = {"name": name, "secret": value}
 
         if project is None:
             secret_config["visibility"] = "PRIVATE"
