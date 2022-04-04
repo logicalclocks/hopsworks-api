@@ -31,6 +31,10 @@ class Secret:
         scope=None,
         owner=None,
         type=None,
+        href=None,
+        expand=None,
+        items=None,
+        count=None,
     ):
         self._name = name
         self._secret = secret
@@ -42,11 +46,17 @@ class Secret:
 
     @classmethod
     def from_response_json(cls, json_dict):
-        if json_dict:
-            json_decamelized = humps.decamelize(json_dict)
-            return cls(**json_decamelized)
+        json_decamelized = humps.decamelize(json_dict)
+        if "count" in json_decamelized:
+            if json_decamelized["count"] == 0:
+                return []
+            return [
+                cls(**secret) for secret in json_decamelized["items"]
+            ]
         else:
-            return None
+            return cls(
+                **json_decamelized
+            )
 
     @property
     def name(self):
