@@ -71,7 +71,7 @@ class SecretsApi:
 
         return secret.Secret.from_response_json(
             _client._send_request("GET", path_params, query_params=query_params)
-        )
+        )[0]
 
     def create_secret(self, name: str, secret: str, project: str = None):
         """Create a new secret.
