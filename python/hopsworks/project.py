@@ -112,4 +112,7 @@ class Project:
         return self.json()
 
     def __repr__(self):
-        return f"Project({self._name!r}, {self._owner!r}, {self._description!r})"
+        if self._description is not None:
+            return f"Project({self._name!r}, {self._owner!r}, {self._description!r})"
+        else:
+            return f"Project({self._name!r}, {self._owner!r})"

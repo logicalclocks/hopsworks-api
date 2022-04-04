@@ -101,4 +101,7 @@ class Secret:
         return self.json()
 
     def __repr__(self):
-        return f"Secret({self._name!r}, {self._visibility!r}, {self._owner!r})"
+        if self._owner is not None:
+            return f"Secret({self._name!r}, {self._visibility!r}, {self._owner!r})"
+        else:
+            return f"Secret({self._name!r}, {self._visibility!r})"
