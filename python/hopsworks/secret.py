@@ -30,6 +30,7 @@ class Secret:
         visibility=None,
         scope=None,
         owner=None,
+        type=None,
     ):
         self._name = name
         self._secret = secret
