@@ -102,11 +102,12 @@ class SecretsApi:
         ]
 
         headers = {"content-type": "application/json"}
-        return secret.Secret.from_response_json(
-            _client._send_request(
-                "POST", path_params, headers=headers, data=json.dumps(secret_config)
-            ),
+
+        _client._send_request(
+            "POST", path_params, headers=headers, data=json.dumps(secret_config)
         )
+
+        return self.get_secret(name)
 
     def _delete(self, name: str):
         """Delete the secret.
