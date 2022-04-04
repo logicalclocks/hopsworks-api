@@ -104,7 +104,7 @@ class SecretsApi:
         headers = {"content-type": "application/json"}
         return secret.Secret.from_response_json(
             _client._send_request(
-                "PUT", path_params, headers=headers, data=json.dumps(secret_config)
+                "POST", path_params, headers=headers, data=json.dumps(secret_config)
             ),
         )
 
