@@ -14,9 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks import client
-# Import as hw_secret to avoid name clash with 'secret' parameter in create_secret
-from hopsworks import secret as hw_secret
+from hopsworks import client, secret
 from hopsworks.core import project_api
 import json
 
@@ -40,7 +38,7 @@ class SecretsApi:
             "users",
             "secrets",
         ]
-        return hw_secret.Secret.from_response_json(
+        return secret.Secret.from_response_json(
             _client._send_request("GET", path_params)
         )
 
@@ -71,16 +69,16 @@ class SecretsApi:
                 "shared",
             ]
 
-        return hw_secret.Secret.from_response_json(
+        return secret.Secret.from_response_json(
             _client._send_request("GET", path_params, query_params=query_params)
         )[0]
 
-    def create_secret(self, name: str, secret: str, project: str = None):
+    def create_secret(self, name: str, value: str, project: str = None):
         """Create a new secret.
 
         # Arguments
             name: Name of the secret.
-            secret: The secret value.
+            value: The secret value.
             project: Name of the project to share the secret with.
         # Returns
             `Secret`: The Secret object

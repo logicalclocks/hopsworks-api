@@ -59,7 +59,7 @@ class Secret:
         return self._name
 
     @property
-    def secret(self):
+    def value(self):
         """Value of the secret"""
         return self._secret
 
