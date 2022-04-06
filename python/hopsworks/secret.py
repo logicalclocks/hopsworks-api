@@ -46,7 +46,6 @@ class Secret:
 
     @classmethod
     def from_response_json(cls, json_dict):
-        print(json_dict)
         json_decamelized = humps.decamelize(json_dict)
         if len(json_decamelized["items"]) == 0:
             return []
