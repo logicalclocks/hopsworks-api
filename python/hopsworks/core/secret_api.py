@@ -87,7 +87,7 @@ class SecretsApi:
         """
         _client = client.get_instance()
 
-        secret_config = {"name": name, "secret": secret}
+        secret_config = {"name": name, "secret": value}
 
         if project is None:
             secret_config["visibility"] = "PRIVATE"
