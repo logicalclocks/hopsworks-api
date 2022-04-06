@@ -49,9 +49,7 @@ class Secret:
         json_decamelized = humps.decamelize(json_dict)
         if len(json_decamelized["items"]) == 0:
             return []
-        return [
-            cls(**secret) for secret in json_decamelized["items"]
-        ]
+        return [cls(**secret) for secret in json_decamelized["items"]]
 
     @property
     def name(self):
