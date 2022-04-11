@@ -62,7 +62,7 @@ class Secret:
         return self._secret
 
     @property
-    def added_on(self):
+    def created(self):
         """Date when secret was created"""
         return self._added_on
 
@@ -81,7 +81,6 @@ class Secret:
         """Owner of the secret"""
         return self._owner
 
-    @property
     def delete(self):
         """Delete the secret
         !!! danger "Potentially dangerous operation"
