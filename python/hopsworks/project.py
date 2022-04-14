@@ -18,7 +18,7 @@ import humps
 import json
 
 from hopsworks import util
-from hopsworks.core import job_api, git_api, dataset_api
+from hopsworks.core import job_api, git_api, dataset_api, kafka_api
 
 
 class Project:
@@ -47,6 +47,7 @@ class Project:
         self._description = description
         self._created = created
 
+        self._kafka_api = kafka_api.KafkaApi(project_id)
         self._jobs_api = job_api.JobsApi(project_id, project_name)
         self._git_api = git_api.GitApi(project_id, project_name)
         self._dataset_api = dataset_api.DatasetApi(project_id)
@@ -83,6 +84,13 @@ class Project:
     def created(self):
         """Timestamp when the project was created"""
         return self._created
+
+    def get_kafka_api(self):
+        """Get the kafka api for the project.
+        # Returns
+            `KafkaApi`: The Kafka Api handle
+        """
+        return self._kafka_api
 
     def get_jobs_api(self):
         """Get the jobs api for the project.
