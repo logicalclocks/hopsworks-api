@@ -56,7 +56,14 @@ class KafkaApi:
     ):
         self._project_id = project_id
 
-    def create_topic(self, name: str, schema: str, schema_version: int, replicas: int = 1, partitions: int = 1):
+    def create_topic(
+        self,
+        name: str,
+        schema: str,
+        schema_version: int,
+        replicas: int = 1,
+        partitions: int = 1,
+    ):
         """Create a new kafka topic.
 
         # Arguments
@@ -73,7 +80,13 @@ class KafkaApi:
         _client = client.get_instance()
 
         path_params = ["project", self._project_id, "kafka", "topics"]
-        data = {"name": name, "schemaName": schema, "schemaVersion": schema_version, "numOfReplicas": replicas, "numOfPartitions": partitions}
+        data = {
+            "name": name,
+            "schemaName": schema,
+            "schemaVersion": schema_version,
+            "numOfReplicas": replicas,
+            "numOfPartitions": partitions,
+        }
 
         headers = {"content-type": "application/json"}
         return kafka_topic.KafkaTopic.from_response_json(
@@ -96,12 +109,22 @@ class KafkaApi:
         """
         _client = client.get_instance()
 
-        path_params = ["project", self._project_id, "kafka", "subjects", subject, "versions"]
+        path_params = [
+            "project",
+            self._project_id,
+            "kafka",
+            "subjects",
+            subject,
+            "versions",
+        ]
 
         headers = {"content-type": "application/json"}
         return kafka_schema.KafkaSchema.from_response_json(
             _client._send_request(
-                "POST", path_params, headers=headers, data=json.dumps({"schema": json.dumps(schema)})
+                "POST",
+                path_params,
+                headers=headers,
+                data=json.dumps({"schema": json.dumps(schema)}),
             ),
             self._project_id,
         )
@@ -268,8 +291,9 @@ class KafkaApi:
         _client = client.get_instance()
 
         if type(_client) == Client:
-            raise KafkaException("This function is not supported from an external environment.")
-
+            raise KafkaException(
+                "This function is not supported from an external environment."
+            )
 
         default_config = {
             self.BOOTSTRAP_SERVERS_CONFIG: self._get_broker_endpoints(),
