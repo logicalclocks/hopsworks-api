@@ -75,7 +75,7 @@ class KafkaTopic:
         return self._name
 
     @property
-    def replication_factor(self):
+    def replicas(self):
         """Replication factor for the topic"""
         return self._num_of_replicas
 
