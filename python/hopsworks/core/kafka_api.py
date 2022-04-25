@@ -210,7 +210,7 @@ class KafkaApi:
         subjects = set()
 
         for topic in topics:
-            subjects.add(topic.schema_name)
+            subjects.add(topic.schema.subject)
 
         return list(subjects)
 
