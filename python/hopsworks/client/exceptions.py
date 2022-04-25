@@ -49,6 +49,10 @@ class JobException(Exception):
     """Generic job exception"""
 
 
+class KafkaException(Exception):
+    """Generic kafka exception"""
+
+
 class DatasetException(Exception):
     """Generic dataset exception"""
 
