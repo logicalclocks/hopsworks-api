@@ -98,7 +98,7 @@ class KafkaTopic:
         # Raises
             `RestAPIError`.
         """
-        self._kafka_api.delete_topic(self.name)
+        self._kafka_api._delete_topic(self.name)
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
