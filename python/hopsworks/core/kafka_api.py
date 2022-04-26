@@ -24,6 +24,13 @@ import base64
 import textwrap
 from pathlib import Path
 
+try:
+    from io import BytesIO
+    from avro.io import DatumReader, BinaryDecoder
+    import avro.schema
+except:
+    pass
+
 
 class KafkaApi:
 
@@ -521,3 +528,33 @@ class KafkaApi:
              keystore password
         """
         return self._get_cert_pw()
+
+def parse_avro_msg(msg: bytes, avro_schema: avro.schema.RecordSchema):
+    """
+    Parses an avro record using a specified avro schema
+
+    Args:
+        :msg: the avro message to parse
+        :avro_schema: the avro schema
+
+    Returns:
+         The parsed/decoded message
+    """
+    reader = DatumReader(avro_schema)
+    message_bytes = BytesIO(msg)
+    decoder = BinaryDecoder(message_bytes)
+    return reader.read(decoder)
+
+
+def convert_json_schema_to_avro(json_schema):
+    """
+    Parses a JSON kafka topic schema returned by Hopsworks REST API into an avro schema
+
+    Args:
+       :json_schema: the json schema to convert
+
+    Returns:
+         the avro schema
+    """
+
+    return avro.schema.parse(json_schema)
