@@ -67,6 +67,7 @@ class GitProvider:
 
     def delete(self):
         """Remove the git provider configuration.
+
         # Raises
             `RestAPIError`.
         """

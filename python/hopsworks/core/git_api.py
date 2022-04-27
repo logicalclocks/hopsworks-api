@@ -49,6 +49,19 @@ class GitApi:
     def clone(self, url: str, path: str, provider: str = None, branch: str = None):
         """Clone a new Git Repo in to Hopsworks Filesystem.
 
+        ```python
+
+        import hopsworks
+
+        connection = hopsworks.connection()
+
+        project = connection.get_project()
+
+        git_api = project.get_git_api()
+
+        git_repo = git_api.clone("https://github.com/logicalclocks/hops-examples.git", "Resources", "GITHUB")
+
+        ```
         # Arguments
             url: Url to the git repository
             path: Path in Hopsworks Filesystem to clone the repo to
@@ -139,6 +152,19 @@ class GitApi:
     def set_provider(self, provider: str, username: str, token: str):
         """Configure a Git provider
 
+        ```python
+
+        import hopsworks
+
+        connection = hopsworks.connection()
+
+        project = connection.get_project()
+
+        git_api = project.get_git_api()
+
+        git_api.set_provider("GITHUB", "my_user", "my_token")
+
+        ```
         # Arguments
             provider: Name of git provider. Valid values are "GitHub", "GitLab" and "BitBucket".
             username: Username for the git provider service

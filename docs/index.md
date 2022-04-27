@@ -27,7 +27,10 @@
   /></a>
 </p>
 
-*hopsworks* is the python API for interacting with a Hopsworks cluster.
+HOPSWORKS is the library to interact with Hopsworks services.
+
+The library automatically configures itself based on the environment it is run.
+However, to connect from an external environment such as Databricks, AWS Sagemaker or a CI/CD environment additional connection information, such as host and port, is required. For more information about the setup from external environments, see the setup section.
 
 ## Getting Started On Hopsworks
 

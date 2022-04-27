@@ -9,8 +9,27 @@ repo_url: https://github.com/logicalclocks/hopsworks
 edit_uri: ""
 
 nav:
-  - Hopsworks:
-    - Introduction: index.md
+  - Home: https://docs.hopsworks.ai/
+  - Getting Started: https://docs.hopsworks.ai/
+  - Concepts: https://docs.hopsworks.ai/
+  - User Guides: https://docs.hopsworks.ai/
+  - Administration: https://docs.hopsworks.ai/
+  - Setup and Installation: https://docs.hopsworks.ai/
+  - Reference Guides:
+    - API Reference:
+      - Connection: generated/api/connection.md
+      - Projects: generated/api/projects.md
+      - Jobs: generated/api/jobs.md
+      - Executions: generated/api/executions.md
+      - GitRepo: generated/api/git_repo.md
+      - GitProvider: generated/api/git_provider.md
+      - GitRemote: generated/api/git_remote.md
+      - Datasets: generated/api/datasets.md
+      - KafkaTopic: generated/api/kafka_topic.md
+      - KafkaSchema: generated/api/kafka_schema.md
+      - Secrets: generated/api/secrets.md
+    - Contributing: CONTRIBUTING.md
+  - Community: https://docs.hopsworks.ai/
 
 theme:
   name: material
@@ -43,31 +62,31 @@ extra:
       link: https://www.linkedin.com/company/logicalclocks/
 
 extra_css:
-    - css/custom.css
-    - css/version-select.css
+  - css/custom.css
+  - css/version-select.css
 
 extra_javascript:
-    - js/version-select.js
+  - js/version-select.js
 
 plugins:
-    - search
+  - search
 
 markdown_extensions:
-    - admonition
-    - codehilite
-    - footnotes
-    - pymdownx.tabbed:
-        alternate_style: true
-    - pymdownx.arithmatex
-    - pymdownx.superfences
-    - pymdownx.details
-    - pymdownx.caret
-    - pymdownx.mark
-    - pymdownx.tilde
-    - pymdownx.critic
-    - toc:
-        permalink: "#"
-    - pymdownx.tasklist:
-        custom_checkbox: true
-    - markdown_include.include:
-        base_path: docs
+  - admonition
+  - codehilite
+  - footnotes
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.arithmatex
+  - pymdownx.superfences
+  - pymdownx.details
+  - pymdownx.caret
+  - pymdownx.mark
+  - pymdownx.tilde
+  - pymdownx.critic
+  - toc:
+      permalink: "#"
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - markdown_include.include:
+      base_path: docs

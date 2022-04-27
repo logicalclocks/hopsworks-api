@@ -109,6 +109,7 @@ class GitRepo:
 
     def status(self):
         """Get the status of the repo.
+
         # Returns
             `List[GitFileStatus]`
         # Raises
@@ -127,6 +128,7 @@ class GitRepo:
 
     def checkout_branch(self, branch: str, create: bool = False):
         """Checkout a branch
+
         # Arguments
             branch: name of the branch
             create: if true will create a new branch and check it out
@@ -140,6 +142,7 @@ class GitRepo:
 
     def checkout_commit(self, commit: str):
         """Checkout a commit
+
         # Arguments
             commit: hash of the commit
         # Raises
@@ -149,6 +152,7 @@ class GitRepo:
 
     def checkout_files(self, files: Union[List[str], List[GitFileStatus]]):
         """Checkout a list of files
+
         # Arguments
             files: list of files or GitFileStatus objects to checkout
         # Raises
@@ -158,6 +162,7 @@ class GitRepo:
 
     def delete_branch(self, branch: str):
         """Delete a branch from local repository
+
         # Arguments
             branch: name of the branch
         # Raises
@@ -167,6 +172,7 @@ class GitRepo:
 
     def commit(self, message: str, all: bool = True, files: List[str] = None):
         """Add changes and new files, and then commit them
+
         # Arguments
             message: name of the remote
             all: automatically stage files that have been modified and deleted, but new files are not affected
@@ -178,6 +184,7 @@ class GitRepo:
 
     def push(self, branch: str, remote: str = "origin"):
         """Push changes to the remote branch
+
         # Arguments
             branch: name of the branch
             remote: name of the remote
@@ -188,6 +195,7 @@ class GitRepo:
 
     def pull(self, branch: str, remote: str = "origin"):
         """Pull changes from remote branch
+
         # Arguments
             branch: name of the branch
             remote: name of the remote
@@ -198,6 +206,7 @@ class GitRepo:
 
     def get_commits(self, branch: str):
         """Get the commits for the repo and branch.
+
         # Arguments
             branch: name of the branch
         # Returns
@@ -209,6 +218,22 @@ class GitRepo:
 
     def add_remote(self, name: str, url: str):
         """Add a remote for the repo
+
+        ```python
+
+        import hopsworks
+
+        connection = hopsworks.connection()
+
+        project = connection.get_project()
+
+        git_api = project.get_git_api()
+
+        repo = git_api.get_repo("my_repo")
+
+        repo.add_remote("upstream", "https://github.com/organization/repo.git")
+
+        ```
         # Arguments
             name: name of the remote
             url: url of the remote
@@ -221,6 +246,7 @@ class GitRepo:
 
     def get_remote(self, name: str):
         """Get a remote by name for the repo.
+
         # Arguments
             name: name of the remote
         # Returns
@@ -232,6 +258,7 @@ class GitRepo:
 
     def get_remotes(self):
         """Get the configured remotes for the repo.
+
         # Returns
             `List[GitRemote]`
         # Raises
