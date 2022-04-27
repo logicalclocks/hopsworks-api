@@ -28,7 +28,7 @@ try:
     from io import BytesIO
     from avro.io import DatumReader, BinaryDecoder
     import avro.schema
-except:
+except BaseException:
     pass
 
 
@@ -548,7 +548,7 @@ class KafkaApi:
 
     def convert_json_schema_to_avro(self, json_schema):
         """Parses a JSON kafka topic schema into an avro schema
-    
+
         # Arguments
             json_schema: the json schema to convert
         # Returns
