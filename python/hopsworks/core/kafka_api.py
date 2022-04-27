@@ -529,29 +529,29 @@ class KafkaApi:
         """
         return self._get_cert_pw()
 
-def parse_avro_msg(msg: bytes, avro_schema: avro.schema.RecordSchema):
-    """
-    Parses an avro record using a specified avro schema
+    def parse_avro_msg(self, msg: bytes, avro_schema: avro.schema.RecordSchema):
+        """
+        Parses an avro record using a specified avro schema
 
-    # Arguments
-        msg: the avro message to parse
-        avro_schema: the avro schema
+        # Arguments
+            msg: the avro message to parse
+            avro_schema: the avro schema
 
-    # Returns:
-         The parsed/decoded message
-    """
+        # Returns:
+             The parsed/decoded message
+        """
 
-    reader = DatumReader(avro_schema)
-    message_bytes = BytesIO(msg)
-    decoder = BinaryDecoder(message_bytes)
-    return reader.read(decoder)
+        reader = DatumReader(avro_schema)
+        message_bytes = BytesIO(msg)
+        decoder = BinaryDecoder(message_bytes)
+        return reader.read(decoder)
 
-def convert_json_schema_to_avro(json_schema):
-    """Parses a JSON kafka topic schema into an avro schema
-
-    # Arguments
-        json_schema: the json schema to convert
-    # Returns
-        `avro.schema.RecordSchema`: The Avro record schema
-    """
-    return avro.schema.parse(json_schema)
+    def convert_json_schema_to_avro(self, json_schema):
+        """Parses a JSON kafka topic schema into an avro schema
+    
+        # Arguments
+            json_schema: the json schema to convert
+        # Returns
+            `avro.schema.RecordSchema`: The Avro record schema
+        """
+        return avro.schema.parse(json_schema)
