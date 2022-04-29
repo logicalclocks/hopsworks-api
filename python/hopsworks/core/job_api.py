@@ -32,6 +32,23 @@ class JobsApi:
     def create_job(self, name: str, config: dict):
         """Create a new job.
 
+        ```python
+
+        import hopsworks
+
+        connection = hopsworks.connection()
+
+        project = connection.get_project()
+
+        jobs_api = project.get_jobs_api()
+
+        spark_config = jobs_api.get_configuration("PYSPARK")
+
+        spark_config['appPath'] = "/Resources/my_app.py"
+
+        job = jobs_api.create_job("my_spark_job", spark_config)
+
+        ```
         # Arguments
             name: Name of the job.
             config: Configuration of the job.

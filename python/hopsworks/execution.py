@@ -149,7 +149,6 @@ class Execution:
     def success(self):
         """Boolean to indicate if execution ran successfully or failed
 
-        ```
         # Returns
             `bool`. True if execution ran successfully. False if execution failed or was killed.
         """

@@ -67,6 +67,7 @@ class GitRemote:
 
     def delete(self):
         """Remove the git remote from the repo.
+
         # Raises
             `RestAPIError`.
         """

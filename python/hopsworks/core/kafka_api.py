@@ -73,6 +73,19 @@ class KafkaApi:
     ):
         """Create a new kafka topic.
 
+        ```python
+
+        import hopsworks
+
+        connection = hopsworks.connection()
+
+        project = connection.get_project()
+
+        kafka_api = project.get_kafka_api()
+
+        kafka_topic = kafka_api.create_topic("my_topic", "my_schema", 1)
+
+        ```
         # Arguments
             name: name of the topic
             schema: subject name of the schema
@@ -106,9 +119,37 @@ class KafkaApi:
     def create_schema(self, subject: str, schema: dict):
         """Create a new kafka schema.
 
+        ```python
+
+        import hopsworks
+
+        connection = hopsworks.connection()
+
+        project = connection.get_project()
+
+        kafka_api = project.get_kafka_api()
+
+        avro_schema = {
+          "type": "record",
+          "name": "tutorial",
+          "fields": [
+            {
+              "name": "id",
+              "type": "int"
+            },
+            {
+              "name": "data",
+              "type": "string"
+            }
+          ]
+        }
+
+        kafka_topic = kafka_api.create_schema("my_schema", avro_schema)
+
+        ```
         # Arguments
             subject: subject name of the schema
-            schema: schema definition
+            schema: avro schema definition
         # Returns
             `KafkaSchema`: The KafkaSchema object
         # Raises
@@ -248,6 +289,28 @@ class KafkaApi:
             schemas.append(self._get_schema_details(subject, version))
 
         return schemas
+
+    def get_schema(self, subject: str, version: int):
+        """Get schema given subject name and version.
+
+        # Arguments
+            subject: subject name
+            version: version number
+        # Returns
+            `KafkaSchema`: KafkaSchema object
+        # Raises
+            `RestAPIError`: If unable to get the schema
+        """
+        schemas = self.get_schemas(subject)
+        for schema in schemas:
+            if schema.version == version:
+                return schema
+
+        raise KafkaException(
+            "No schema for subject {} and version {} could be found".format(
+                subject, version
+            )
+        )
 
     def _get_schema_details(self, subject: str, version: int):
         """Get the schema details.

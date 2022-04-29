@@ -37,6 +37,20 @@ class DatasetApi:
 
     def download(self, path: str, local_path: str = None, overwrite: bool = False):
         """Download file from Hopsworks Filesystem to the current working directory.
+
+        ```python
+
+        import hopsworks
+
+        connection = hopsworks.connection()
+
+        project = connection.get_project()
+
+        dataset_api = project.get_dataset_api()
+
+        downloaded_file_path = dataset_api.download("Resources/my_local_file.txt")
+
+        ```
         # Arguments
             path: path in Hopsworks filesystem to the file
             local_path: path where to download the file in the local filesystem
@@ -116,6 +130,20 @@ class DatasetApi:
 
     def upload(self, local_path: str, upload_path: str, overwrite: bool = False):
         """Upload a file to the Hopsworks filesystem.
+
+        ```python
+
+        import hopsworks
+
+        connection = hopsworks.connection()
+
+        project = connection.get_project()
+
+        dataset_api = project.get_dataset_api()
+
+        uploaded_file_path = dataset_api.upload("my_local_file.txt", "Resources")
+
+        ```
         # Arguments
             local_path: local path to file to upload
             upload_path: path to directory where to upload the file in Hopsworks Filesystem
@@ -222,6 +250,7 @@ class DatasetApi:
 
     def exists(self, path: str):
         """Check if a file exists in the Hopsworks Filesystem.
+
         # Arguments
             path: path to check
         # Returns
@@ -237,6 +266,7 @@ class DatasetApi:
 
     def remove(self, path: str):
         """Remove a path in the Hopsworks Filesystem.
+
         # Arguments
             path: path to remove
         # Raises

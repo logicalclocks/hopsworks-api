@@ -76,6 +76,17 @@ class SecretsApi:
     def create_secret(self, name: str, value: str, project: str = None):
         """Create a new secret.
 
+        ```python
+
+        import hopsworks
+
+        connection = hopsworks.connection()
+
+        secrets_api = connection.get_secrets_api()
+
+        secret = secrets_api.create_secret("my_secret", "Fk3MoPlQXCQvPo")
+
+        ```
         # Arguments
             name: Name of the secret.
             value: The secret value.

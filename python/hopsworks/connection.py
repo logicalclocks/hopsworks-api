@@ -31,8 +31,6 @@ PROJECT_NAME = "HOPSWORKS_PROJECT_NAME"
 class Connection:
     """A hopsworks connection object.
 
-    The connection is not tied to a specific project. You can access any project that you are a member of.
-
     This class provides convenience classmethods accessible from the `hopsworks`-module:
 
     !!! example "Connection factory"
@@ -72,6 +70,8 @@ class Connection:
         host: The hostname of the Hopsworks instance, defaults to `None`.
         port: The port on which the Hopsworks instance can be reached,
             defaults to `443`.
+        project: The name of the project to connect to. If this is set connection.get_project() will return
+        the set project. If not set connection.get_project("my_project") should be used.
         hostname_verification: Whether or not to verify Hopsworks’ certificate, defaults
             to `True`.
         trust_store_path: Path on the file system containing the Hopsworks certificates,
@@ -118,6 +118,17 @@ class Connection:
     def create_project(self, name: str, description: str = None):
         """Create a new project.
 
+        Example for creating a new project
+
+        ```python
+
+        import hopsworks
+
+        connection = hopsworks.connection()
+
+        connection.create_project("my_hopsworks_project", description="An example Hopsworks project")
+
+        ```
         # Arguments
             name: The name of the project.
             arguments: optional description of the project
@@ -277,15 +288,6 @@ class Connection:
     @not_connected
     def hostname_verification(self, hostname_verification):
         self._hostname_verification = hostname_verification
-
-    @property
-    def trust_store_path(self):
-        return self._trust_store_path
-
-    @trust_store_path.setter
-    @not_connected
-    def trust_store_path(self, trust_store_path):
-        self._trust_store_path = trust_store_path
 
     @property
     def api_key_file(self):

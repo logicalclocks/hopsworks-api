@@ -118,22 +118,18 @@ class Job:
 
     def run(self, args: str = None, await_termination: bool = None):
         """Run the job, with the option of passing runtime arguments.
-        This function will not block until the job is finished running. For a blocking execution see the code snippet below.
 
-        An example to run and wait until a final status is reached.
+        Example of a blocking execution and downloading logs once execution is finished.
 
         ```python
 
         # Run the job
-        execution = job.run()
+        execution = job.run(await_termination=True)
 
-        # Blocks until execution reaches a final state
-        execution.wait_until_finished()
-
-        # True of job executed successfully
+        # True if job executed successfully
         print(execution.success)
 
-        # Download logs,
+        # Download logs
         out_log_path, err_log_path = execution.download_logs()
 
         ```
@@ -151,6 +147,7 @@ class Job:
 
     def get_executions(self):
         """Retrieves all executions for the job.
+
         # Returns
             `List[Execution]`
         # Raises

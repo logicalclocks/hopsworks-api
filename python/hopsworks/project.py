@@ -87,6 +87,7 @@ class Project:
 
     def get_kafka_api(self):
         """Get the kafka api for the project.
+
         # Returns
             `KafkaApi`: The Kafka Api handle
         """
@@ -94,6 +95,7 @@ class Project:
 
     def get_jobs_api(self):
         """Get the jobs api for the project.
+
         # Returns
             `JobsApi`: The Jobs Api handle
         """
@@ -101,6 +103,7 @@ class Project:
 
     def get_git_api(self):
         """Get the git repository api for the project.
+
         # Returns
             `GitApi`: The Git Api handle
         """
@@ -108,6 +111,7 @@ class Project:
 
     def get_dataset_api(self):
         """Get the dataset api for the project.
+
         # Returns
             `DatasetApi`: The Datasets Api handle
         """
