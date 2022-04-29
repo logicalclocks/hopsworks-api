@@ -59,7 +59,7 @@ class GitApi:
 
         git_api = project.get_git_api()
 
-        git_repo = git_api.clone("https://github.com/logicalclocks/hops-examples.git", "Resources", "GITHUB")
+        git_repo = git_api.clone("https://github.com/logicalclocks/hops-examples.git", "Resources", "GitHub")
 
         ```
         # Arguments
@@ -214,8 +214,8 @@ class GitApi:
             return filtered_repos[0]
         elif len(filtered_repos) > 1:
             raise GitException(
-                "Multiple repositories found matching name {}, please specify the repository by setting the path keyword".format(
-                    name
+                "Multiple repositories found matching name {}. Please specify the repository by setting the path keyword, for example path='Resources/{}'.".format(
+                    name, name
                 )
             )
         else:

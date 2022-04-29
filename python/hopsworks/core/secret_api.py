@@ -84,7 +84,7 @@ class SecretsApi:
 
         secrets_api = connection.get_secrets_api()
 
-        secret = secrets_api.create_project("my_secret", "Fk3MoPlQXCQvPo")
+        secret = secrets_api.create_secret("my_secret", "Fk3MoPlQXCQvPo")
 
         ```
         # Arguments

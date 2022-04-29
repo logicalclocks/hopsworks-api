@@ -129,7 +129,20 @@ class KafkaApi:
 
         kafka_api = project.get_kafka_api()
 
-        avro_schema = {...}
+        avro_schema = {
+          "type": "record",
+          "name": "tutorial",
+          "fields": [
+            {
+              "name": "id",
+              "type": "int"
+            },
+            {
+              "name": "data",
+              "type": "string"
+            }
+          ]
+        }
 
         kafka_topic = kafka_api.create_schema("my_schema", avro_schema)
 
