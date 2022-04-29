@@ -162,7 +162,7 @@ class GitApi:
 
         git_api = project.get_git_api()
 
-        git_api.set_provider("GITHUB", "my_user", "my_token")
+        git_api.set_provider("GitHub", "my_user", "my_token")
 
         ```
         # Arguments
