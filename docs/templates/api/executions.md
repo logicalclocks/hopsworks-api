@@ -1,7 +1,5 @@
 # Executions API
 
-{{execution}}
-
 ## Creation
 
 {{execution_create}}

@@ -21,14 +21,13 @@ import keras_autodoc
 
 PAGES = {
     "api/connection.md": {
-        "connection": ["hopsworks.connection.Connection"],
+        "connection_create": ["hopsworks.connection.Connection.connection"],
         "connection_properties": keras_autodoc.get_properties("hopsworks.connection.Connection"),
         "connection_methods": keras_autodoc.get_methods(
             "hopsworks.connection.Connection", exclude=["from_response_json", "json"]
         ),
     },
     "api/projects.md": {
-        "project": ["hopsworks.project.Project"],
         "project_create": ["hopsworks.connection.Connection.create_project"],
         "project_get": ["hopsworks.connection.Connection.get_project"],
         "project_get_all": ["hopsworks.connection.Connection.get_projects"],
@@ -38,7 +37,6 @@ PAGES = {
         ),
     },
     "api/jobs.md": {
-        "job": ["hopsworks.job.Job"],
         "job_api_handle": ["hopsworks.project.Project.get_jobs_api"],
         "job_create": ["hopsworks.core.job_api.JobsApi.create_job"],
         "job_get": ["hopsworks.core.job_api.JobsApi.get_job"],
@@ -50,7 +48,6 @@ PAGES = {
         ),
     },
     "api/executions.md": {
-        "execution": ["hopsworks.execution.Execution"],
         "execution_create": ["hopsworks.job.Job.run"],
         "execution_get": ["hopsworks.job.Job.get_executions"],
         "execution_properties": keras_autodoc.get_properties("hopsworks.execution.Execution"),
@@ -59,7 +56,6 @@ PAGES = {
         ),
     },
     "api/git_repo.md": {
-        "git_repo": ["hopsworks.git_repo.GitRepo"],
         "git_api_handle": ["hopsworks.project.Project.get_git_api"],
         "git_repo_clone": ["hopsworks.core.git_api.GitApi.clone"],
         "git_repo_get": ["hopsworks.core.git_api.GitApi.get_repo"],
@@ -70,7 +66,6 @@ PAGES = {
         ),
     },
     "api/git_provider.md": {
-        "git_provider": ["hopsworks.git_provider.GitProvider"],
         "git_api_handle": ["hopsworks.project.Project.get_git_api"],
         "git_provider_create": ["hopsworks.core.git_api.GitApi.set_provider"],
         "git_provider_get": ["hopsworks.core.git_api.GitApi.get_provider"],
@@ -81,7 +76,6 @@ PAGES = {
         ),
     },
     "api/git_remote.md": {
-        "git_remote": ["hopsworks.git_remote.GitRemote"],
         "git_api_handle": ["hopsworks.project.Project.get_git_api"],
         "git_remote_create": ["hopsworks.git_repo.GitRepo.add_remote"],
         "git_remote_get": ["hopsworks.git_repo.GitRepo.get_remote"],
@@ -98,7 +92,6 @@ PAGES = {
         ),
     },
     "api/kafka_topic.md": {
-        "kafka_topic": ["hopsworks.kafka_topic.KafkaTopic"],
         "kafka_api_handle": ["hopsworks.project.Project.get_kafka_api"],
         "kafka_topic_create": ["hopsworks.core.kafka_api.KafkaApi.create_topic"],
         "kafka_topic_get": ["hopsworks.core.kafka_api.KafkaApi.get_topic"],
@@ -109,7 +102,6 @@ PAGES = {
         ),
     },
     "api/kafka_schema.md": {
-        "kafka_schema": ["hopsworks.kafka_schema.KafkaSchema"],
         "kafka_api_handle": ["hopsworks.project.Project.get_kafka_api"],
         "kafka_schema_create": ["hopsworks.core.kafka_api.KafkaApi.create_schema"],
         "kafka_schema_get": ["hopsworks.core.kafka_api.KafkaApi.get_schema"],
@@ -121,7 +113,6 @@ PAGES = {
         ),
     },
     "api/secrets.md": {
-        "secret": ["hopsworks.secret.Secret"],
         "secret_api_handle": ["hopsworks.connection.Connection.get_secrets_api"],
         "secret_create": ["hopsworks.core.secret_api.SecretsApi.create_secret"],
         "secret_get": ["hopsworks.core.secret_api.SecretsApi.get_secret"],

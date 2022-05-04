@@ -1,7 +1,5 @@
 # KafkaSchema API
 
-{{kafka_schema}}
-
 ## Handle
 
 {{kafka_api_handle}}

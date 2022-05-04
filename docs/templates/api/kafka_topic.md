@@ -1,7 +1,5 @@
 # KafkaTopic API
 
-{{kafka_topic}}
-
 ## Handle
 
 {{kafka_api_handle}}

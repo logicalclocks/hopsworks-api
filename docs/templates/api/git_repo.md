@@ -1,7 +1,5 @@
 # GitRepo API
 
-{{git_repo}}
-
 ## Handle
 
 {{git_api_handle}}

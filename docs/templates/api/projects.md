@@ -1,7 +1,5 @@
 # Projects API
 
-{{project}}
-
 ## Creation
 
 {{project_create}}

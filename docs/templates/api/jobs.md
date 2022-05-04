@@ -1,7 +1,5 @@
 # Jobs API
 
-{{job}}
-
 ## Handle 
 
 {{job_api_handle}}
