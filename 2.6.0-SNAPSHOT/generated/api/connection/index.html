@@ -522,9 +522,22 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#connection" class="md-nav__link">
-    Connection
+  <a href="#creation" class="md-nav__link">
+    Creation
   </a>
+  
+    <nav class="md-nav" aria-label="Creation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#connection" class="md-nav__link">
+    connection
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -870,9 +883,22 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#connection" class="md-nav__link">
-    Connection
+  <a href="#creation" class="md-nav__link">
+    Creation
   </a>
+  
+    <nav class="md-nav" aria-label="Creation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#connection" class="md-nav__link">
+    connection
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1015,9 +1041,10 @@
 
 
 <h1 id="connection-api">Connection API<a class="headerlink" href="#connection-api" title="Permanent link">#</a></h1>
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/connection.py#L31">[source]</a></span></p>
-<h3 id="connection">Connection<a class="headerlink" href="#connection" title="Permanent link">#</a></h3>
-<div class="highlight"><pre><span></span><code><span class="n">hopsworks</span><span class="o">.</span><span class="n">connection</span><span class="o">.</span><span class="n">Connection</span><span class="p">(</span>
+<h2 id="creation">Creation<a class="headerlink" href="#creation" title="Permanent link">#</a></h2>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/connection.py#L234">[source]</a></span></p>
+<h3 id="connection">connection<a class="headerlink" href="#connection" title="Permanent link">#</a></h3>
+<div class="highlight"><pre><span></span><code><span class="n">Connection</span><span class="o">.</span><span class="n">connection</span><span class="p">(</span>
     <span class="n">host</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
     <span class="n">port</span><span class="o">=</span><span class="mi">443</span><span class="p">,</span>
     <span class="n">project</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
@@ -1027,55 +1054,7 @@
     <span class="n">api_key_value</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span>
 </code></pre></div>
-<p>A hopsworks connection object.</p>
-<p>This class provides convenience classmethods accessible from the <code>hopsworks</code>-module:</p>
-<div class="admonition example">
-<p class="admonition-title">Connection factory</p>
-<p>For convenience, <code>hopsworks</code> provides a factory method, accessible from the top level
-module, so you don't have to import the <code>Connection</code> class manually:</p>
-<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">hopsworks</span>
-<span class="n">conn</span> <span class="o">=</span> <span class="n">hopsworks</span><span class="o">.</span><span class="n">connection</span><span class="p">()</span>
-</code></pre></div>
-</div>
-<div class="admonition hint">
-<p class="admonition-title">Save API Key as File</p>
-<p>To get started quickly, you can simply create a file with the previously
- created Hopsworks API Key and place it on the environment from which you
- wish to connect to Hopsworks.</p>
-<p>You can then connect by simply passing the path to the key file when
-instantiating a connection:</p>
-<div class="highlight"><pre><span></span><code>    <span class="kn">import</span> <span class="nn">hopsworks</span>
-    <span class="n">conn</span> <span class="o">=</span> <span class="n">hopsworks</span><span class="o">.</span><span class="n">connection</span><span class="p">(</span>
-        <span class="s1">&#39;my_instance&#39;</span><span class="p">,</span>                      <span class="c1"># DNS of your Hopsworks instance</span>
-        <span class="mi">443</span><span class="p">,</span>                                <span class="c1"># Port to reach your Hopsworks instance, defaults to 443</span>
-        <span class="n">api_key_file</span><span class="o">=</span><span class="s1">&#39;hopsworks.key&#39;</span><span class="p">,</span>       <span class="c1"># The file containing the API key generated above</span>
-<span class="hll">        <span class="n">hostname_verification</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>         <span class="c1"># Disable for self-signed certificates</span>
-</span>    <span class="p">)</span>
-    <span class="n">project</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">get_project</span><span class="p">(</span><span class="s2">&quot;my_project&quot;</span><span class="p">)</span>
-</code></pre></div>
-</div>
-<p>Clients in external clusters need to connect to the Hopsworks using an
-API key. The API key is generated inside the Hopsworks platform, and requires at
-least the "project" scope to be able to access a project.
-For more information, see the <a href="../setup.md">integration guides</a>.</p>
-<p><strong>Arguments</strong></p>
-<ul>
-<li><strong>host</strong> <code>Optional[str]</code>: The hostname of the Hopsworks instance, defaults to <code>None</code>.</li>
-<li><strong>port</strong> <code>int</code>: The port on which the Hopsworks instance can be reached,
-    defaults to <code>443</code>.</li>
-<li><strong>project</strong> <code>Optional[str]</code>: The name of the project to connect to. If this is set connection.get_project() will return
-the set project. If not set connection.get_project("my_project") should be used.</li>
-<li><strong>hostname_verification</strong> <code>bool</code>: Whether or not to verify Hopsworks’ certificate, defaults
-    to <code>True</code>.</li>
-<li><strong>trust_store_path</strong> <code>Optional[str]</code>: Path on the file system containing the Hopsworks certificates,
-    defaults to <code>None</code>.</li>
-<li><strong>api_key_file</strong> <code>Optional[str]</code>: Path to a file containing the API Key.</li>
-<li><strong>api_key_value</strong> <code>Optional[str]</code>: API Key as string, if provided, however, this should be used with care,
-especially if the used notebook or job script is accessible by multiple parties. Defaults to <code>None</code>.</li>
-</ul>
-<p><strong>Returns</strong></p>
-<p><code>Connection</code>. Connection handle to perform operations on a
-    Hopsworks project.</p>
+<p>Connection factory method, accessible through <code>hopsworks.connection()</code>.</p>
 <hr />
 <h2 id="properties">Properties<a class="headerlink" href="#properties" title="Permanent link">#</a></h2>
 <p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/connection.py#L292">[source]</a></span></p>
