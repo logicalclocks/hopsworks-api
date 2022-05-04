@@ -1,7 +1,5 @@
 # GitRemote API
 
-{{git_remote}}
-
 ## Handle
 
 {{git_api_handle}}

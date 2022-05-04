@@ -1,7 +1,5 @@
 # Secrets API
 
-{{secret}}
-
 ## Handle
 
 {{secret_api_handle}}

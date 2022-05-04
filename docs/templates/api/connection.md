@@ -1,6 +1,8 @@
 # Connection API
 
-{{connection}}
+## Creation
+
+{{connection_create}}
 
 ## Properties
 

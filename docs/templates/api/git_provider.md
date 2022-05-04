@@ -1,7 +1,5 @@
 # GitProvider API
 
-{{git_provider}}
-
 ## Handle
 
 {{git_api_handle}}
