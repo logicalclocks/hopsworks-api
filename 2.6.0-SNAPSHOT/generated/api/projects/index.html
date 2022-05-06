@@ -666,6 +666,13 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#get_opensearch_api" class="md-nav__link">
+    get_opensearch_api
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -800,6 +807,20 @@
     <li class="md-nav__item">
       <a href="../secrets/" class="md-nav__link">
         Secrets
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../opensearch/" class="md-nav__link">
+        OpenSearch
       </a>
     </li>
   
@@ -1005,6 +1026,13 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#get_opensearch_api" class="md-nav__link">
+    get_opensearch_api
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1068,28 +1096,28 @@
 <p><code>List[Project]</code>: List of Project objects</p>
 <hr />
 <h2 id="properties">Properties<a class="headerlink" href="#properties" title="Permanent link">#</a></h2>
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L83">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L84">[source]</a></span></p>
 <h3 id="created">created<a class="headerlink" href="#created" title="Permanent link">#</a></h3>
 <p>Timestamp when the project was created</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L78">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L79">[source]</a></span></p>
 <h3 id="description">description<a class="headerlink" href="#description" title="Permanent link">#</a></h3>
 <p>Description of the project</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L63">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L64">[source]</a></span></p>
 <h3 id="id">id<a class="headerlink" href="#id" title="Permanent link">#</a></h3>
 <p>Id of the project</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L68">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L69">[source]</a></span></p>
 <h3 id="name">name<a class="headerlink" href="#name" title="Permanent link">#</a></h3>
 <p>Name of the project</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L73">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L74">[source]</a></span></p>
 <h3 id="owner">owner<a class="headerlink" href="#owner" title="Permanent link">#</a></h3>
 <p>Owner of the project</p>
 <hr />
 <h2 id="methods">Methods<a class="headerlink" href="#methods" title="Permanent link">#</a></h2>
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L112">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L121">[source]</a></span></p>
 <h3 id="get_dataset_api">get_dataset_api<a class="headerlink" href="#get_dataset_api" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">Project</span><span class="o">.</span><span class="n">get_dataset_api</span><span class="p">()</span>
 </code></pre></div>
@@ -1097,7 +1125,7 @@
 <p><strong>Returns</strong></p>
 <p><code>DatasetApi</code>: The Datasets Api handle</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L104">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L113">[source]</a></span></p>
 <h3 id="get_git_api">get_git_api<a class="headerlink" href="#get_git_api" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">Project</span><span class="o">.</span><span class="n">get_git_api</span><span class="p">()</span>
 </code></pre></div>
@@ -1105,7 +1133,7 @@
 <p><strong>Returns</strong></p>
 <p><code>GitApi</code>: The Git Api handle</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L96">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L105">[source]</a></span></p>
 <h3 id="get_jobs_api">get_jobs_api<a class="headerlink" href="#get_jobs_api" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">Project</span><span class="o">.</span><span class="n">get_jobs_api</span><span class="p">()</span>
 </code></pre></div>
@@ -1113,13 +1141,21 @@
 <p><strong>Returns</strong></p>
 <p><code>JobsApi</code>: The Jobs Api handle</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L88">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L89">[source]</a></span></p>
 <h3 id="get_kafka_api">get_kafka_api<a class="headerlink" href="#get_kafka_api" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">Project</span><span class="o">.</span><span class="n">get_kafka_api</span><span class="p">()</span>
 </code></pre></div>
 <p>Get the kafka api for the project.</p>
 <p><strong>Returns</strong></p>
 <p><code>KafkaApi</code>: The Kafka Api handle</p>
+<hr />
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L97">[source]</a></span></p>
+<h3 id="get_opensearch_api">get_opensearch_api<a class="headerlink" href="#get_opensearch_api" title="Permanent link">#</a></h3>
+<div class="highlight"><pre><span></span><code><span class="n">Project</span><span class="o">.</span><span class="n">get_opensearch_api</span><span class="p">()</span>
+</code></pre></div>
+<p>Get the opensearch api for the project.</p>
+<p><strong>Returns</strong></p>
+<p><code>OpenSearchApi</code>: The OpenSearch Api handle</p>
 <hr />
 
               
