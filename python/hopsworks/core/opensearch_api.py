@@ -51,7 +51,7 @@ class OpenSearchApi:
         """
         return (self._project_name + "_" + index).lower()
 
-    def get_default_py_config(self, index):
+    def get_default_py_config(self):
         """
         Get the required elasticsearch configuration to setup a connection using opensearch connector.
 
