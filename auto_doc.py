@@ -123,7 +123,7 @@ PAGES = {
         ),
     },
     "api/opensearch.md": {
-        "dataset_api_handle": ["hopsworks.project.Project.get_opensearch_api"],
+        "opensearch_api_handle": ["hopsworks.project.Project.get_opensearch_api"],
         "opensearch_methods": keras_autodoc.get_methods(
             "hopsworks.core.opensearch_api.OpenSearchApi"
         ),

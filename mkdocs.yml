@@ -28,6 +28,7 @@ nav:
       - KafkaTopic: generated/api/kafka_topic.md
       - KafkaSchema: generated/api/kafka_schema.md
       - Secrets: generated/api/secrets.md
+      - OpenSearch: generated/api/opensearch.md
     - Contributing: CONTRIBUTING.md
   - Community: https://docs.hopsworks.ai/
 
