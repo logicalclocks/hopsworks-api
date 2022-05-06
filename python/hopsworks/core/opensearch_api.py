@@ -73,14 +73,12 @@ class OpenSearchApi:
 
     def _get_authorization_token(self):
 
-        """Get configuration for the specific job type.
+        """Get opensearch jwt token.
 
-        # Arguments
-            type: Type of the job. Currently, supported types include: SPARK, PYSPARK, PYTHON, DOCKER, FLINK.
         # Returns
-            `dict`: Default job configuration
+            `str`: OpenSearch jwt token
         # Raises
-            `RestAPIError`: If unable to get the job configuration
+            `RestAPIError`: If unable to get the token
         """
 
         _client = client.get_instance()
