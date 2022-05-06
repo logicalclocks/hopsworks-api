@@ -338,8 +338,8 @@ class KafkaApi:
             )
 
         default_config = {
-            constants.KAFKA_PRODUCER_CONFIG.BOOTSTRAP_SERVERS_CONFIG: util._get_broker_endpoints(),
-            constants.KAFKA_SSL_CONFIG.SECURITY_PROTOCOL_CONFIG: util._get_security_protocol(),
+            constants.KAFKA_PRODUCER_CONFIG.BOOTSTRAP_SERVERS_CONFIG: self._get_broker_endpoints(),
+            constants.KAFKA_SSL_CONFIG.SECURITY_PROTOCOL_CONFIG: self._get_security_protocol(),
             constants.KAFKA_SSL_CONFIG.SSL_CA_LOCATION_CONFIG: util._get_ca_chain_location(),
             constants.KAFKA_SSL_CONFIG.SSL_CERTIFICATE_LOCATION_CONFIG: util._get_client_certificate_location(),
             constants.KAFKA_SSL_CONFIG.SSL_PRIVATE_KEY_LOCATION_CONFIG: util._get_client_key_location(),
