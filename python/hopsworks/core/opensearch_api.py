@@ -55,6 +55,20 @@ class OpenSearchApi:
         """
         Get the required opensearch configuration to setup a connection using opensearch-py library.
 
+        ```python
+
+        import hopsworks
+        from opensearchpy import OpenSearch
+
+        connection = hopsworks.connection()
+
+        project = connection.get_project()
+
+        opensearch_api = project.get_opensearch_api()
+
+        client = OpenSearch(**opensearch_api.get_default_py_config())
+
+        ```
         Returns:
             A dictionary with required configuration.
         """

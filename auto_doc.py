@@ -122,6 +122,12 @@ PAGES = {
             "hopsworks.secret.Secret", exclude=["from_response_json", "json"]
         ),
     },
+    "api/opensearch.md": {
+        "dataset_api_handle": ["hopsworks.project.Project.get_opensearch_api"],
+        "opensearch_methods": keras_autodoc.get_methods(
+            "hopsworks.core.opensearch_api.OpenSearchApi"
+        ),
+    },
 }
 
 hw_dir = pathlib.Path(__file__).resolve().parents[0]
