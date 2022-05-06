@@ -53,10 +53,7 @@ class OpenSearchApi:
 
     def get_default_py_config(self):
         """
-        Get the required elasticsearch configuration to setup a connection using opensearch connector.
-
-        Args:
-            :index: the elasticsearch index to interact with.
+        Get the required opensearch configuration to setup a connection using opensearch-py library.
 
         Returns:
             A dictionary with required configuration.
@@ -76,10 +73,10 @@ class OpenSearchApi:
 
     def get_default_spark_config(self, index):
         """
-        Get the required elasticsearch configuration to setup a connection using spark connector.
+        Get the required opensearch configuration to setup a connection using spark connector.
 
         Args:
-            :index: the elasticsearch index to interact with.
+            :index: the opensearch index to interact with.
 
         Returns:
             A dictionary with required configuration.
@@ -88,37 +85,15 @@ class OpenSearchApi:
             constants.OPENSEARCH_CONFIG.SSL_CONFIG: "true",
             constants.OPENSEARCH_CONFIG.NODES: self._get_elasticsearch_url(),
             constants.OPENSEARCH_CONFIG.NODES_WAN_ONLY: "true",
-            constants.OPENSEARCH_CONFIG.SSL_KEYSTORE_LOCATION: util.get_key_store(),
-            constants.OPENSEARCH_CONFIG.SSL_KEYSTORE_PASSWORD: util.get_key_store_pwd(),
-            constants.OPENSEARCH_CONFIG.SSL_TRUSTSTORE_LOCATION: util.get_trust_store(),
-            constants.OPENSEARCH_CONFIG.SSL_TRUSTSTORE_PASSWORD: util.get_trust_store_pwd(),
+            constants.OPENSEARCH_CONFIG.SSL_KEYSTORE_LOCATION: util._get_key_store(),
+            constants.OPENSEARCH_CONFIG.SSL_KEYSTORE_PASSWORD: util._get_key_store_pwd(),
+            constants.OPENSEARCH_CONFIG.SSL_TRUSTSTORE_LOCATION: util._get_trust_store(),
+            constants.OPENSEARCH_CONFIG.SSL_TRUSTSTORE_PASSWORD: util._get_trust_store_pwd(),
             constants.OPENSEARCH_CONFIG.HTTP_AUTHORIZATION: self.get_authorization_token(),
-            constants.OPENSEARCH_CONFIG.INDEX: self.get_elasticsearch_index(index),
+            constants.OPENSEARCH_CONFIG.INDEX: self.get_project_index(index),
         }
         return config
 
-    def get_elasticsearch_config(self, index):
-        """
-        Get the required elasticsearch configuration to setup a connection using spark connector.
-
-        Args:
-            :index: the elasticsearch index to interact with.
-
-        Returns:
-            A dictionary with required configuration.
-        """
-        config = {
-            constants.OPENSEARCH_CONFIG.SSL_CONFIG: "true",
-            constants.OPENSEARCH_CONFIG.NODES: self._get_elasticsearch_url(),
-            constants.OPENSEARCH_CONFIG.NODES_WAN_ONLY: "true",
-            constants.OPENSEARCH_CONFIG.SSL_KEYSTORE_LOCATION: util.get_key_store(),
-            constants.OPENSEARCH_CONFIG.SSL_KEYSTORE_PASSWORD: util.get_key_store_pwd(),
-            constants.OPENSEARCH_CONFIG.SSL_TRUSTSTORE_LOCATION: util.get_trust_store(),
-            constants.OPENSEARCH_CONFIG.SSL_TRUSTSTORE_PASSWORD: util.get_trust_store_pwd(),
-            constants.OPENSEARCH_CONFIG.HTTP_AUTHORIZATION: self.get_authorization_token(),
-            constants.OPENSEARCH_CONFIG.INDEX: self.get_elasticsearch_index(index),
-        }
-        return config
 
     def get_authorization_token(self):
 
