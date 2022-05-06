@@ -63,10 +63,28 @@ class OpenSearchApi:
             constants.OPENSEARCH_CONFIG.HOSTS: [{"host": host, "port": 9200}],
             constants.OPENSEARCH_CONFIG.HTTP_COMPRESS: False,
             constants.OPENSEARCH_CONFIG.HEADERS: {
-                "Authorization": self.get_authorization_token()
+                "Authorization": self._get_authorization_token()
             },
             constants.OPENSEARCH_CONFIG.USE_SSL: True,
             constants.OPENSEARCH_CONFIG.VERIFY_CERTS: True,
             constants.OPENSEARCH_CONFIG.SSL_ASSERT_HOSTNAME: False,
             constants.OPENSEARCH_CONFIG.CA_CERTS: util._get_ca_chain_location(),
         }
+
+    def _get_authorization_token(self):
+
+        """Get configuration for the specific job type.
+
+        # Arguments
+            type: Type of the job. Currently, supported types include: SPARK, PYSPARK, PYTHON, DOCKER, FLINK.
+        # Returns
+            `dict`: Default job configuration
+        # Raises
+            `RestAPIError`: If unable to get the job configuration
+        """
+
+        _client = client.get_instance()
+        path_params = ["elastic", "jwt", self._project_id]
+
+        headers = {"content-type": "application/json"}
+        return _client._send_request("GET", path_params, headers=headers)["token"]
