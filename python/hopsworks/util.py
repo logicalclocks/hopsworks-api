@@ -302,4 +302,3 @@ def _get_key_store_pwd():
          keystore password
     """
     return _get_cert_pw()
-
