@@ -39,7 +39,7 @@ class OpenSearchApi:
     def _get_elasticsearch_url(self):
         return os.environ[constants.ENV_VARS.ELASTIC_ENDPOINT_ENV_VAR]
 
-    def get_elasticsearch_index(self, index):
+    def get_project_index(self, index):
         """
         Get the valid elasticsearch index for later use. This helper method prefix the index name with the project name.
 
