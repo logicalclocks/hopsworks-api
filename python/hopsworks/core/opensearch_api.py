@@ -71,7 +71,7 @@ class OpenSearchApi:
             constants.OPENSEARCH_CONFIG.USE_SSL: True,
             constants.OPENSEARCH_CONFIG.VERIFY_CERTS: True,
             constants.OPENSEARCH_CONFIG.SSL_ASSERT_HOSTNAME: False,
-            constants.OPENSEARCH_CONFIG.CA_CERTS: util.get_ca_chain_location(),
+            constants.OPENSEARCH_CONFIG.CA_CERTS: util._get_ca_chain_location(),
         }
 
     def get_default_spark_config(self, index):
