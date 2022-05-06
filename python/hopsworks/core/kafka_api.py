@@ -321,7 +321,7 @@ class KafkaApi:
         Returns:
             the security protocol for communicating with Kafka brokers in a Hopsworks cluster
         """
-        return self.SSL
+        return constants.KAFKA_SSL_CONFIG.SSL
 
     def get_default_config(self):
         """
