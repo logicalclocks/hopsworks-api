@@ -36,24 +36,24 @@ class OpenSearchApi:
                 "This API is not supported from an external environment."
             )
 
-    def _get_elasticsearch_url(self):
+    def _get_opensearch_url(self):
         return os.environ[constants.ENV_VARS.ELASTIC_ENDPOINT_ENV_VAR]
 
     def get_project_index(self, index):
         """
-        Get the valid elasticsearch index for later use. This helper method prefix the index name with the project name.
+        This helper method prefixes the supplied index name with the project name to avoid index name clashes.
 
         Args:
-            :index: the elasticsearch index to interact with.
+            :index: the opensearch index to interact with.
 
         Returns:
-            A valid elasticsearch index name.
+            A valid opensearch index name.
         """
         return (self._project_name + "_" + index).lower()
 
     def get_default_py_config(self):
         """
-        Get the required opensearch configuration to setup a connection using opensearch-py library.
+        Get the required opensearch configuration to setup a connection using the *opensearch-py* library.
 
         ```python
 
@@ -72,7 +72,7 @@ class OpenSearchApi:
         Returns:
             A dictionary with required configuration.
         """
-        host = self._get_elasticsearch_url().split(":")[0]
+        host = self._get_opensearch_url().split(":")[0]
         return {
             constants.OPENSEARCH_CONFIG.HOSTS: [{"host": host, "port": 9200}],
             constants.OPENSEARCH_CONFIG.HTTP_COMPRESS: False,
