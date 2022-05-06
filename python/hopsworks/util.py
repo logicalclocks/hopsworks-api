@@ -22,6 +22,7 @@ from hopsworks import constants
 import jks
 import base64
 import textwrap
+import os
 from pathlib import Path
 
 
@@ -82,6 +83,7 @@ def _get_ca_chain_location():
         _write_pems()
     return str(ca_chain_path)
 
+
 def _get_client_certificate_location():
     """
     Get location of client certificate (PEM format) for the private key signed by trusted CA
@@ -93,6 +95,7 @@ def _get_client_certificate_location():
     if not certificate_path.exists():
         _write_pems()
     return str(certificate_path)
+
 
 def _get_client_key_location():
     """
@@ -106,6 +109,7 @@ def _get_client_key_location():
     if not key_path.exists():
         _write_pems()
     return str(key_path)
+
 
 def _write_pems():
     """
@@ -127,13 +131,14 @@ def _write_pems():
         ca_chain_path,
     )
 
+
 def _write_pem(
-        jks_key_store_path,
-        jks_trust_store_path,
-        keystore_pw,
-        client_key_cert_path,
-        client_key_path,
-        ca_cert_path,
+    jks_key_store_path,
+    jks_trust_store_path,
+    keystore_pw,
+    client_key_cert_path,
+    client_key_path,
+    ca_cert_path,
 ):
     """
     Converts the JKS keystore, JKS truststore, and the root ca.pem
@@ -161,6 +166,7 @@ def _write_pem(
     with ca_cert_path.open("w") as f:
         f.write(keystore_ca_cert + truststore_ca_cert)
 
+
 def _convert_jks_to_pem(jks_path, keystore_pw):
     """
     Converts a keystore JKS that contains client private key,
@@ -181,9 +187,7 @@ def _convert_jks_to_pem(jks_path, keystore_pw):
     # Convert private keys and their certificates into PEM format and append to string
     for alias, pk in ks.private_keys.items():
         if pk.algorithm_oid == jks.util.RSA_ENCRYPTION_OID:
-            private_keys = private_keys + _bytes_to_pem_str(
-                pk.pkey, "RSA PRIVATE KEY"
-            )
+            private_keys = private_keys + _bytes_to_pem_str(pk.pkey, "RSA PRIVATE KEY")
         else:
             private_keys = private_keys + _bytes_to_pem_str(
                 pk.pkey_pkcs8, "PRIVATE KEY"
@@ -199,6 +203,7 @@ def _convert_jks_to_pem(jks_path, keystore_pw):
         ca_certs = ca_certs + _bytes_to_pem_str(c.cert, "CERTIFICATE")
     return private_keys_certs, private_keys, ca_certs
 
+
 def _bytes_to_pem_str(der_bytes, pem_type):
     """
     Utility function for creating PEM files
@@ -211,14 +216,13 @@ def _bytes_to_pem_str(der_bytes, pem_type):
     pem_str = ""
     pem_str = pem_str + "-----BEGIN {}-----".format(pem_type) + "\n"
     pem_str = (
-            pem_str
-            + "\r\n".join(
-        textwrap.wrap(base64.b64encode(der_bytes).decode("ascii"), 64)
-    )
-            + "\n"
+        pem_str
+        + "\r\n".join(textwrap.wrap(base64.b64encode(der_bytes).decode("ascii"), 64))
+        + "\n"
     )
     pem_str = pem_str + "-----END {}-----".format(pem_type) + "\n"
     return pem_str
+
 
 def _get_key_store_path():
     """
@@ -232,10 +236,14 @@ def _get_key_store_path():
     else:
         username = os.environ["HADOOP_USER_NAME"]
         material_directory = Path(os.environ["MATERIAL_DIRECTORY"])
-        return material_directory.joinpath(username + constants.SSL_CONFIG.KEYSTORE_SUFFIX)
+        return material_directory.joinpath(
+            username + constants.SSL_CONFIG.KEYSTORE_SUFFIX
+        )
+
 
 def _get_key_store():
     return str(_get_key_store_path())
+
 
 def _get_trust_store_path():
     """
@@ -249,10 +257,16 @@ def _get_trust_store_path():
     else:
         username = os.environ["HADOOP_USER_NAME"]
         material_directory = Path(os.environ["MATERIAL_DIRECTORY"])
-        return str(material_directory.joinpath(username + constants.SSL_CONFIG.TRUSTSTORE_SUFFIX))
+        return str(
+            material_directory.joinpath(
+                username + constants.SSL_CONFIG.TRUSTSTORE_SUFFIX
+            )
+        )
+
 
 def _get_trust_store():
     return str(_get_trust_store_path())
+
 
 def _get_trust_store_pwd():
     """
@@ -261,6 +275,7 @@ def _get_trust_store_pwd():
          truststore password
     """
     return _get_cert_pw()
+
 
 def _get_cert_pw():
     """
@@ -272,10 +287,13 @@ def _get_cert_pw():
     if not pwd_path.exists():
         username = os.environ["HADOOP_USER_NAME"]
         material_directory = Path(os.environ["MATERIAL_DIRECTORY"])
-        pwd_path = material_directory.joinpath(username + constants.SSL_CONFIG.PASSWORD_SUFFIX)
+        pwd_path = material_directory.joinpath(
+            username + constants.SSL_CONFIG.PASSWORD_SUFFIX
+        )
 
     with pwd_path.open() as f:
         return f.read()
+
 
 def _get_key_store_pwd():
     """
@@ -284,31 +302,4 @@ def _get_key_store_pwd():
          keystore password
     """
     return _get_cert_pw()
-
-def parse_avro_msg(msg: bytes, avro_schema: avro.schema.RecordSchema):
-    """
-    Parses an avro record using a specified avro schema
-
-    # Arguments
-        msg: the avro message to parse
-        avro_schema: the avro schema
-
-    # Returns:
-         The parsed/decoded message
-    """
-
-    reader = DatumReader(avro_schema)
-    message_bytes = BytesIO(msg)
-    decoder = BinaryDecoder(message_bytes)
-    return reader.read(decoder)
-
-def convert_json_schema_to_avro(json_schema):
-    """Parses a JSON kafka topic schema into an avro schema
-
-    # Arguments
-        json_schema: the json schema to convert
-    # Returns
-        `avro.schema.RecordSchema`: The Avro record schema
-    """
-    return avro.schema.parse(json_schema)
 

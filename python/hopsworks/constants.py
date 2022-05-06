@@ -51,6 +51,7 @@ class KAFKA_SSL_CONFIG:
     """
     Kafka SSL constant strings for configuration
     """
+
     SSL = "SSL"
     SSL_TRUSTSTORE_LOCATION_CONFIG = "ssl.truststore.location"
     SSL_TRUSTSTORE_LOCATION_DOC = "The location of the trust store file. "
@@ -63,13 +64,16 @@ class KAFKA_SSL_CONFIG:
     SSL_CERTIFICATE_LOCATION_CONFIG = "ssl.certificate.location"
     SSL_CA_LOCATION_CONFIG = "ssl.ca.location"
     SSL_PRIVATE_KEY_LOCATION_CONFIG = "ssl.key.location"
-    SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG = "ssl.endpoint.identification.algorithm"
+    SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG = (
+        "ssl.endpoint.identification.algorithm"
+    )
 
 
 class KAFKA_PRODUCER_CONFIG:
     """
     Constant strings for Kafka producers
     """
+
     BOOTSTRAP_SERVERS_CONFIG = "bootstrap.servers"
     KEY_SERIALIZER_CLASS_CONFIG = "key.serializer"
     VALUE_SERIALIZER_CLASS_CONFIG = "value.serializer"
@@ -79,6 +83,7 @@ class KAFKA_CONSUMER_CONFIG:
     """
     Constant strings for Kafka consumers
     """
+
     GROUP_ID_CONFIG = "group.id"
     ENABLE_AUTO_COMMIT_CONFIG = "enable.auto.commit"
     AUTO_COMMIT_INTERVAL_MS_CONFIG = "auto.commit.interval.ms"
@@ -95,6 +100,7 @@ class ENV_VARS:
     """
     Constant strings for environment variables
     """
+
     KAFKA_BROKERS = "KAFKA_BROKERS"
     ELASTIC_ENDPOINT_ENV_VAR = "ELASTIC_ENDPOINT"
 
@@ -103,6 +109,7 @@ class SSL_CONFIG:
     """
     General SSL configuration constants for Hops-TLS
     """
+
     KEYSTORE_SUFFIX = "__kstore.jks"
     TRUSTSTORE_SUFFIX = "__tstore.jks"
     PASSWORD_SUFFIX = "__cert.key"

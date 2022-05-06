@@ -21,7 +21,6 @@ from hopsworks.client.exceptions import OpenSearchException
 
 
 class OpenSearchApi:
-
     def __init__(
         self,
         project_id,
@@ -37,10 +36,8 @@ class OpenSearchApi:
                 "This API is not supported from an external environment."
             )
 
-
     def _get_elasticsearch_url(self):
         return os.environ[constants.ENV_VARS.ELASTIC_ENDPOINT_ENV_VAR]
-
 
     def get_elasticsearch_index(self, index):
         """
@@ -53,7 +50,6 @@ class OpenSearchApi:
             A valid elasticsearch index name.
         """
         return (self._project_name + "_" + index).lower()
-
 
     def get_elasticsearch_config(self, index):
         """
@@ -74,10 +70,9 @@ class OpenSearchApi:
             constants.OPENSEARCH_CONFIG.SSL_TRUSTSTORE_LOCATION: util.get_trust_store(),
             constants.OPENSEARCH_CONFIG.SSL_TRUSTSTORE_PASSWORD: util.get_trust_store_pwd(),
             constants.OPENSEARCH_CONFIG.HTTP_AUTHORIZATION: self.get_authorization_token(),
-            constants.OPENSEARCH_CONFIG.INDEX: self.get_elasticsearch_index(index)
+            constants.OPENSEARCH_CONFIG.INDEX: self.get_elasticsearch_index(index),
         }
         return config
-
 
     def get_authorization_token(self):
 
@@ -92,12 +87,7 @@ class OpenSearchApi:
         """
 
         _client = client.get_instance()
-        path_params = [
-            "elastic",
-            "jwt",
-            self._project_id
-        ]
+        path_params = ["elastic", "jwt", self._project_id]
 
         headers = {"content-type": "application/json"}
         return _client._send_request("GET", path_params, headers=headers)
-
