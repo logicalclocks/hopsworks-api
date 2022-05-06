@@ -45,6 +45,13 @@ class OPENSEARCH_CONFIG:
     SSL_TRUSTSTORE_PASSWORD = "es.net.ssl.truststore.pass"
     HTTP_AUTHORIZATION = "es.net.http.header.Authorization"
     INDEX = "es.resource"
+    HOSTS = "hosts"
+    HTTP_COMPRESS = "http_compress"
+    HEADERS = "headers"
+    USE_SSL = "use_ssl"
+    VERIFY_CERTS = "verify_certs"
+    SSL_ASSERT_HOSTNAME = "ssl_assert_hostname"
+    CA_CERTS = "ca_certs"
 
 
 class KAFKA_SSL_CONFIG:
