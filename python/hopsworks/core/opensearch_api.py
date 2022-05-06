@@ -15,7 +15,9 @@
 #
 
 from hopsworks import client, constants, util
+from hopsworks.client.external import Client
 import os
+from hopsworks.client.exceptions import OpenSearchException
 
 
 class OpenSearchApi:
@@ -27,6 +29,13 @@ class OpenSearchApi:
     ):
         self._project_id = project_id
         self._project_name = project_name
+
+        _client = client.get_instance()
+
+        if type(_client) == Client:
+            raise OpenSearchException(
+                "This API is not supported from an external environment."
+            )
 
 
     def _get_elasticsearch_url(self):
@@ -71,27 +80,24 @@ class OpenSearchApi:
 
 
     def get_authorization_token(self):
+
+        """Get configuration for the specific job type.
+
+        # Arguments
+            type: Type of the job. Currently, supported types include: SPARK, PYSPARK, PYTHON, DOCKER, FLINK.
+        # Returns
+            `dict`: Default job configuration
+        # Raises
+            `RestAPIError`: If unable to get the job configuration
         """
-        Get the authorization token to interact with elasticsearch.
 
-        Args:
+        _client = client.get_instance()
+        path_params = [
+            "elastic",
+            "jwt",
+            self._project_id
+        ]
 
-        Returns:
-            The authorization token to be used in http header.
-        """
-        headers = {constants.HTTP_CONFIG.HTTP_CONTENT_TYPE: constants.HTTP_CONFIG.HTTP_APPLICATION_JSON}
-        method = constants.HTTP_CONFIG.HTTP_GET
-        resource_url = constants.DELIMITERS.SLASH_DELIMITER + \
-                       constants.REST_CONFIG.HOPSWORKS_REST_RESOURCE + constants.DELIMITERS.SLASH_DELIMITER + \
-                       constants.REST_CONFIG.HOPSWORKS_ELASTIC_RESOURCE + constants.DELIMITERS.SLASH_DELIMITER + \
-                       constants.REST_CONFIG.HOPSWORKS_ELASTIC_JWT_RESOURCE + constants.DELIMITERS.SLASH_DELIMITER + \
-                       hdfs.project_id()
-        response = util.send_request(method, resource_url, headers=headers)
-        response_object = response.json()
-        if response.status_code >= 400:
-            error_code, error_msg, user_msg = util._parse_rest_error(response_object)
-            raise RestAPIError("Could not get authorization token for elastic (url: {}), server response: \n " \
-                               "HTTP code: {}, HTTP reason: {}, error code: {}, error msg: {}, user msg: {}".format(
-                resource_url, response.status_code, response.reason, error_code, error_msg, user_msg))
+        headers = {"content-type": "application/json"}
+        return _client._send_request("GET", path_params, headers=headers)
 
-        return "Bearer " + response_object["token"]

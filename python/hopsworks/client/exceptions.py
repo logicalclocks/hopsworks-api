@@ -61,6 +61,10 @@ class ProjectException(Exception):
     """Generic project exception"""
 
 
+class OpenSearchException(Exception):
+    """Generic opensearch exception"""
+
+
 class ExternalClientError(TypeError):
     """Raised when external client cannot be initialized due to missing arguments."""
 
