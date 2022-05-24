@@ -109,7 +109,7 @@ class Connection:
     @connected
     def get_secrets_api(self):
         """Get the secrets api.
-        
+
         # Returns
             `SecretsApi`: The Secrets Api handle
         """
