@@ -116,7 +116,7 @@ PAGES = {
         "secret_api_handle": ["hopsworks.connection.Connection.get_secrets_api"],
         "secret_create": ["hopsworks.core.secret_api.SecretsApi.create_secret"],
         "secret_get": ["hopsworks.core.secret_api.SecretsApi.get_secret"],
-        "secret_get_all": ["hopsworks.core.secret_api.SecretsApi.get_secret"],
+        "secret_get_all": ["hopsworks.core.secret_api.SecretsApi.get_secrets"],
         "secret_properties": keras_autodoc.get_properties("hopsworks.secret.Secret"),
         "secret_methods": keras_autodoc.get_methods(
             "hopsworks.secret.Secret", exclude=["from_response_json", "json"]
