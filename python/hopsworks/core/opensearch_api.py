@@ -15,10 +15,7 @@
 #
 
 from hopsworks import client, constants, util
-from hopsworks.client.external import Client
 import os
-from hopsworks.client.exceptions import OpenSearchException
-
 
 class OpenSearchApi:
     def __init__(
@@ -30,11 +27,6 @@ class OpenSearchApi:
         self._project_name = project_name
 
         _client = client.get_instance()
-
-        if type(_client) == Client:
-            raise OpenSearchException(
-                "This API is not supported from an external environment."
-            )
 
     def _get_opensearch_url(self):
         return os.environ[constants.ENV_VARS.ELASTIC_ENDPOINT_ENV_VAR]
