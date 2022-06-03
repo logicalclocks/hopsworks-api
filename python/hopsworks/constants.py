@@ -92,6 +92,7 @@ class KAFKA_CONSUMER_CONFIG:
     """
 
     GROUP_ID_CONFIG = "group.id"
+    CLIENT_ID_CONFIG = "client.id"
     ENABLE_AUTO_COMMIT_CONFIG = "enable.auto.commit"
     AUTO_COMMIT_INTERVAL_MS_CONFIG = "auto.commit.interval.ms"
     SESSION_TIMEOUT_MS_CONFIG = "session.timeout.ms"

@@ -33,6 +33,7 @@ class KafkaTopic:
         shared=None,
         accepted=None,
         project_id=None,
+        project_name=None,
         type=None,
         href=None,
         expand=None,
@@ -49,18 +50,20 @@ class KafkaTopic:
         self._shared = shared
         self._accepted = accepted
 
-        self._kafka_api = kafka_api.KafkaApi(project_id)
+        self._kafka_api = kafka_api.KafkaApi(project_id, project_name)
 
     @classmethod
-    def from_response_json(cls, json_dict, project_id):
+    def from_response_json(cls, json_dict, project_id, project_name):
         json_decamelized = humps.decamelize(json_dict)
         if "count" not in json_decamelized:
-            return cls(**json_decamelized, project_id=project_id)
+            return cls(
+                **json_decamelized, project_id=project_id, project_name=project_name
+            )
         elif json_decamelized["count"] == 0:
             return []
         else:
             return [
-                cls(**kafka_topic, project_id=project_id)
+                cls(**kafka_topic, project_id=project_id, project_name=project_name)
                 for kafka_topic in json_decamelized["items"]
             ]
 

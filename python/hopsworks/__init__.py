@@ -31,6 +31,7 @@ connection = Connection.connection
 
 _saas_connection = Connection.connection
 
+
 def hw_formatwarning(message, category, filename, lineno, line=None):
     return "{}: {}\n".format(category.__name__, message)
 
@@ -62,14 +63,16 @@ def login():
         _saas_connection = Connection.connection
 
     # TODO: Possible to do a lookup instead?
-    host="c.app.hopsworks.ai"
-    port=443
+    host = "c.app.hopsworks.ai"
+    port = 443
 
     if client.base.Client.REST_ENDPOINT not in os.environ:
         api_key_path = os.getcwd() + "/.hw_api_key"
         if os.path.exists(api_key_path):
             try:
-                saas_connection = _saas_connection(host=host, port=port, api_key_file=api_key_path)
+                saas_connection = _saas_connection(
+                    host=host, port=port, api_key_file=api_key_path
+                )
                 saas_project = saas_connection.get_projects()[0]
                 _saas_connection = saas_connection
                 return saas_project
@@ -83,12 +86,15 @@ def login():
         api_key_file.write(api_key_value)
         api_key_file.close()
 
-        saas_connection = _saas_connection(host=host, port=port, api_key_file=api_key_path)
+        saas_connection = _saas_connection(
+            host=host, port=port, api_key_file=api_key_path
+        )
         saas_project = saas_connection.get_projects()[0]
         _saas_connection = saas_connection
         return saas_project
     else:
-        raise Exception('Only supported from external environments')
+        raise Exception("Only supported from external environments")
+
 
 def logout():
     global _saas_connection

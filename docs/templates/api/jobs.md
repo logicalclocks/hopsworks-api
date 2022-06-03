@@ -4,6 +4,10 @@
 
 {{job_api_handle}}
 
+## Configuration
+
+{{job_config}}
+
 ## Creation
 
 {{job_create}}
@@ -21,5 +25,3 @@
 ## Methods
 
 {{job_methods}}
-
-{{job_config}}

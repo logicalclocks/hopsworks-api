@@ -93,6 +93,7 @@ PAGES = {
     },
     "api/kafka_topic.md": {
         "kafka_api_handle": ["hopsworks.project.Project.get_kafka_api"],
+        "kafka_config": ["hopsworks.core.kafka_api.KafkaApi.get_default_config"],
         "kafka_topic_create": ["hopsworks.core.kafka_api.KafkaApi.create_topic"],
         "kafka_topic_get": ["hopsworks.core.kafka_api.KafkaApi.get_topic"],
         "kafka_topic_get_all": ["hopsworks.core.kafka_api.KafkaApi.get_topics"],
