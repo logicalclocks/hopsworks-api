@@ -16,14 +16,20 @@
 
 import warnings
 import logging
+import os
 import sys
 import hsml  # noqa: F401
 import hsfs  # noqa: F401
+
+from hopsworks.client.exceptions import RestAPIError
+
+from hopsworks import client
 
 from hopsworks.connection import Connection
 
 connection = Connection.connection
 
+_saas_connection = Connection.connection
 
 def hw_formatwarning(message, category, filename, lineno, line=None):
     return "{}: {}\n".format(category.__name__, message)
@@ -38,3 +44,53 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s: %(message)s",
     stream=sys.stdout,
 )
+
+
+def login():
+    """Connect to managed Hopsworks.
+
+    # Returns
+        `Project`: The Project object
+    # Raises
+        `RestAPIError`: If unable to connect to Hopsworks
+    """
+
+    global _saas_connection
+
+    # If already logged in, should reset connection and follow login procedure as Connection may no longer be valid
+    if type(_saas_connection) is Connection:
+        _saas_connection = Connection.connection
+
+    # TODO: Possible to do a lookup instead?
+    host="c.app.hopsworks.ai"
+    port=443
+
+    if client.base.Client.REST_ENDPOINT not in os.environ:
+        api_key_path = os.getcwd() + "/.hw_api_key"
+        if os.path.exists(api_key_path):
+            try:
+                saas_connection = _saas_connection(host=host, port=port, api_key_file=api_key_path)
+                saas_project = saas_connection.get_projects()[0]
+                _saas_connection = saas_connection
+                return saas_project
+            except RestAPIError:
+                # API Key may be invalid, have the user supply it again
+                os.remove(api_key_path)
+
+        print("Copy your Api Key: https://c.app.hopsworks.ai/onboarding")
+        api_key_value = input("\nPaste it here: ")
+        api_key_file = open(api_key_path, "w")
+        api_key_file.write(api_key_value)
+        api_key_file.close()
+
+        saas_connection = _saas_connection(host=host, port=port, api_key_file=api_key_path)
+        saas_project = saas_connection.get_projects()[0]
+        _saas_connection = saas_connection
+        return saas_project
+    else:
+        raise Exception('Only supported from external environments')
+
+def logout():
+    global _saas_connection
+    _saas_connection.close()
+    _saas_connection = Connection.connection

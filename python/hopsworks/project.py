@@ -17,9 +17,9 @@
 import humps
 import json
 
-from hopsworks import util
+from hopsworks import util, client
+from hopsworks.client.external import Client
 from hopsworks.core import job_api, git_api, dataset_api, kafka_api, opensearch_api
-
 
 class Project:
     def __init__(
@@ -85,6 +85,30 @@ class Project:
     def created(self):
         """Timestamp when the project was created"""
         return self._created
+
+    def get_feature_store(self):
+        from hsfs import connection
+        _client = client.get_instance()
+        if type(_client) == Client: # If external client
+            return connection(host=_client._host, port=_client._port, project=self.name, api_key_value=_client._auth._token).get_feature_store()
+        else:
+            return connection().get_feature_store() # If internal client
+
+    def get_model_registry(self):
+        from hsml import connection
+        _client = client.get_instance()
+        if type(_client) == Client: # If external client
+            return connection(host=_client._host, port=_client._port, project=self.name, api_key_value=_client._auth._token).get_model_registry()
+        else:
+            return connection().get_model_registry() # If internal client
+
+    def get_model_serving(self):
+        from hsml import connection
+        _client = client.get_instance()
+        if type(_client) == Client: # If external client
+            return connection(host=_client._host, port=_client._port, project=self.name, api_key_value=_client._auth._token).get_model_serving()
+        else:
+            return connection().get_model_serving() # If internal client
 
     def get_kafka_api(self):
         """Get the kafka api for the project.
