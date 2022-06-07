@@ -14,26 +14,21 @@
 #   limitations under the License.
 #
 
-from hopsworks import client, kafka_topic, kafka_schema, util, constants
-from hopsworks.client.external import Client
+from hopsworks import client, kafka_topic, kafka_schema, constants
 from hopsworks.client.exceptions import KafkaException
-import os
 import json
-
-try:
-    from io import BytesIO
-    from avro.io import DatumReader, BinaryDecoder
-    import avro.schema
-except BaseException:
-    pass
+import socket
+from hopsworks.client.external import Client
 
 
 class KafkaApi:
     def __init__(
         self,
         project_id,
+        project_name,
     ):
         self._project_id = project_id
+        self._project_name = project_name
 
     def create_topic(
         self,
@@ -86,6 +81,7 @@ class KafkaApi:
                 "POST", path_params, headers=headers, data=json.dumps(data)
             ),
             self._project_id,
+            self._project_name,
         )
 
     def create_schema(self, subject: str, schema: dict):
@@ -139,7 +135,7 @@ class KafkaApi:
         ]
 
         headers = {"content-type": "application/json"}
-        return kafka_schema.KafkaSchema.from_response_json(
+        schema = kafka_schema.KafkaSchema.from_response_json(
             _client._send_request(
                 "POST",
                 path_params,
@@ -147,7 +143,10 @@ class KafkaApi:
                 data=json.dumps({"schema": json.dumps(schema)}),
             ),
             self._project_id,
+            self._project_name,
         )
+        # TODO: Fix backend, GET request required as POST does not set schema field in the returned payload
+        return self.get_schema(schema.subject, schema.version)
 
     def get_topic(self, name: str):
         """Get kafka topic by name.
@@ -181,6 +180,7 @@ class KafkaApi:
         return kafka_topic.KafkaTopic.from_response_json(
             _client._send_request("GET", path_params),
             self._project_id,
+            self._project_name,
         )
 
     def _delete_topic(self, name: str):
@@ -305,15 +305,22 @@ class KafkaApi:
         return kafka_schema.KafkaSchema.from_response_json(
             _client._send_request("GET", path_params),
             self._project_id,
+            self._project_name,
         )
 
-    def _get_broker_endpoints(self):
-        """
-        Get Kafka broker endpoints as a string with broker-endpoints "," separated
-        Returns:
-            a string with broker endpoints comma-separated
-        """
-        return os.environ[constants.ENV_VARS.KAFKA_BROKERS].replace("INTERNAL://", "")
+    def _get_broker_endpoints(self, externalListeners: bool = False):
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            self._project_id,
+            "kafka",
+            "clusterinfo",
+        ]
+        query_params = {"external": externalListeners}
+        headers = {"content-type": "application/json"}
+        return _client._send_request(
+            "GET", path_params, query_params=query_params, headers=headers
+        )["brokers"]
 
     def _get_security_protocol(self):
         """
@@ -324,52 +331,62 @@ class KafkaApi:
         return constants.KAFKA_SSL_CONFIG.SSL
 
     def get_default_config(self):
-        """
-        Gets a default configuration for running secure Kafka on Hopsworks
-        Returns:
-             dict with config_property --> value
-        """
+        """Get the configuration to set up a Producer or Consumer for a Kafka broker using confluent-kafka.
 
+        ```python
+
+        import hopsworks
+
+        connection = hopsworks.connection()
+
+        project = connection.get_project()
+
+        kafka_api = project.get_kafka_api()
+
+        kafka_conf = kafka_api.get_default_config()
+
+        from confluent_kafka import Producer
+
+        producer = Producer(kafka_conf)
+
+        ```
+        # Returns
+            `dict`: The kafka configuration
+        # Raises
+            `RestAPIError`: If unable to get the kafka configuration.
+        """
         _client = client.get_instance()
-
         if type(_client) == Client:
-            raise KafkaException(
-                "This function is not supported from an external environment."
-            )
+            _client.download_certs(self._project_name)
 
-        default_config = {
-            constants.KAFKA_PRODUCER_CONFIG.BOOTSTRAP_SERVERS_CONFIG: self._get_broker_endpoints(),
+        config = {
             constants.KAFKA_SSL_CONFIG.SECURITY_PROTOCOL_CONFIG: self._get_security_protocol(),
-            constants.KAFKA_SSL_CONFIG.SSL_CA_LOCATION_CONFIG: util._get_ca_chain_location(),
-            constants.KAFKA_SSL_CONFIG.SSL_CERTIFICATE_LOCATION_CONFIG: util._get_client_certificate_location(),
-            constants.KAFKA_SSL_CONFIG.SSL_PRIVATE_KEY_LOCATION_CONFIG: util._get_client_key_location(),
+            constants.KAFKA_SSL_CONFIG.SSL_CA_LOCATION_CONFIG: client.get_instance()._get_ca_chain_path(
+                self._project_name
+            ),
+            constants.KAFKA_SSL_CONFIG.SSL_CERTIFICATE_LOCATION_CONFIG: client.get_instance()._get_client_cert_path(
+                self._project_name
+            ),
+            constants.KAFKA_SSL_CONFIG.SSL_PRIVATE_KEY_LOCATION_CONFIG: client.get_instance()._get_client_key_path(
+                self._project_name
+            ),
+            constants.KAFKA_CONSUMER_CONFIG.CLIENT_ID_CONFIG: socket.gethostname(),
             constants.KAFKA_CONSUMER_CONFIG.GROUP_ID_CONFIG: "my-group-id",
         }
-        return default_config
 
-    def parse_avro_msg(self, msg: bytes, avro_schema: avro.schema.RecordSchema):
-        """
-        Parses an avro record using a specified avro schema
+        if type(_client) == Client:
+            config[constants.KAFKA_PRODUCER_CONFIG.BOOTSTRAP_SERVERS_CONFIG] = ",".join(
+                [
+                    endpoint.replace("EXTERNAL://", "")
+                    for endpoint in self._get_broker_endpoints(externalListeners=True)
+                ]
+            )
+        else:
+            config[constants.KAFKA_PRODUCER_CONFIG.BOOTSTRAP_SERVERS_CONFIG] = ",".join(
+                [
+                    endpoint.replace("INTERNAL://", "")
+                    for endpoint in self._get_broker_endpoints(externalListeners=False)
+                ]
+            )
 
-        # Arguments
-            msg: the avro message to parse
-            avro_schema: the avro schema
-
-        # Returns:
-             The parsed/decoded message
-        """
-
-        reader = DatumReader(avro_schema)
-        message_bytes = BytesIO(msg)
-        decoder = BinaryDecoder(message_bytes)
-        return reader.read(decoder)
-
-    def convert_json_schema_to_avro(self, json_schema):
-        """Parses a JSON kafka topic schema into an avro schema
-
-        # Arguments
-            json_schema: the json schema to convert
-        # Returns
-            `avro.schema.RecordSchema`: The Avro record schema
-        """
-        return avro.schema.parse(json_schema)
+        return config

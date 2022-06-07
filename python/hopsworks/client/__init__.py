@@ -26,6 +26,7 @@ def init(
     project=None,
     hostname_verification=None,
     trust_store_path=None,
+    cert_folder=None,
     api_key_file=None,
     api_key_value=None,
 ):
@@ -40,6 +41,7 @@ def init(
                 project,
                 hostname_verification,
                 trust_store_path,
+                cert_folder,
                 api_key_file,
                 api_key_value,
             )

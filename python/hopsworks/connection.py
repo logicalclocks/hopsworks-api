@@ -24,6 +24,7 @@ from hopsworks.core import project_api, secret_api
 
 HOPSWORKS_PORT_DEFAULT = 443
 HOSTNAME_VERIFICATION_DEFAULT = True
+CERT_FOLDER_DEFAULT = "/tmp"
 PROJECT_ID = "HOPSWORKS_PROJECT_ID"
 PROJECT_NAME = "HOPSWORKS_PROJECT_NAME"
 
@@ -76,6 +77,8 @@ class Connection:
             to `True`.
         trust_store_path: Path on the file system containing the Hopsworks certificates,
             defaults to `None`.
+        cert_folder: The directory to store retrieved HopsFS certificates, defaults to
+            `"/tmp"`. Only required to produce messages to Kafka broker from external environment.
         api_key_file: Path to a file containing the API Key.
         api_key_value: API Key as string, if provided, however, this should be used with care,
         especially if the used notebook or job script is accessible by multiple parties. Defaults to `None`.
@@ -92,6 +95,7 @@ class Connection:
         project: str = None,
         hostname_verification: bool = HOSTNAME_VERIFICATION_DEFAULT,
         trust_store_path: str = None,
+        cert_folder: str = CERT_FOLDER_DEFAULT,
         api_key_file: str = None,
         api_key_value: str = None,
     ):
@@ -100,6 +104,7 @@ class Connection:
         self._project = project
         self._hostname_verification = hostname_verification
         self._trust_store_path = trust_store_path
+        self._cert_folder = cert_folder
         self._api_key_file = api_key_file
         self._api_key_value = api_key_value
         self._connected = False
@@ -207,6 +212,7 @@ class Connection:
                     self._project,
                     self._hostname_verification,
                     self._trust_store_path,
+                    self._cert_folder,
                     self._api_key_file,
                     self._api_key_value,
                 )
@@ -240,6 +246,7 @@ class Connection:
         project: str = None,
         hostname_verification: bool = HOSTNAME_VERIFICATION_DEFAULT,
         trust_store_path: str = None,
+        cert_folder: str = CERT_FOLDER_DEFAULT,
         api_key_file: str = None,
         api_key_value: str = None,
     ):
@@ -250,6 +257,7 @@ class Connection:
             project,
             hostname_verification,
             trust_store_path,
+            cert_folder,
             api_key_file,
             api_key_value,
         )
@@ -307,6 +315,24 @@ class Connection:
     @not_connected
     def api_key_value(self, api_key_value):
         self._api_key_value = api_key_value
+
+    @property
+    def trust_store_path(self):
+        return self._trust_store_path
+
+    @trust_store_path.setter
+    @not_connected
+    def trust_store_path(self, trust_store_path):
+        self._trust_store_path = trust_store_path
+
+    @property
+    def cert_folder(self):
+        return self._cert_folder
+
+    @cert_folder.setter
+    @not_connected
+    def cert_folder(self, cert_folder):
+        self._cert_folder = cert_folder
 
     def __enter__(self):
         self.connect()

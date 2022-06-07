@@ -21,6 +21,7 @@ from hopsworks import util, client
 from hopsworks.client.external import Client
 from hopsworks.core import job_api, git_api, dataset_api, kafka_api, opensearch_api
 
+
 class Project:
     def __init__(
         self,
@@ -48,7 +49,7 @@ class Project:
         self._created = created
 
         self._opensearch_api = opensearch_api.OpenSearchApi(project_id, project_name)
-        self._kafka_api = kafka_api.KafkaApi(project_id)
+        self._kafka_api = kafka_api.KafkaApi(project_id, project_name)
         self._jobs_api = job_api.JobsApi(project_id, project_name)
         self._git_api = git_api.GitApi(project_id, project_name)
         self._dataset_api = dataset_api.DatasetApi(project_id)
@@ -88,27 +89,45 @@ class Project:
 
     def get_feature_store(self):
         from hsfs import connection
+
         _client = client.get_instance()
-        if type(_client) == Client: # If external client
-            return connection(host=_client._host, port=_client._port, project=self.name, api_key_value=_client._auth._token).get_feature_store()
+        if type(_client) == Client:  # If external client
+            return connection(
+                host=_client._host,
+                port=_client._port,
+                project=self.name,
+                api_key_value=_client._auth._token,
+            ).get_feature_store()
         else:
-            return connection().get_feature_store() # If internal client
+            return connection().get_feature_store()  # If internal client
 
     def get_model_registry(self):
         from hsml import connection
+
         _client = client.get_instance()
-        if type(_client) == Client: # If external client
-            return connection(host=_client._host, port=_client._port, project=self.name, api_key_value=_client._auth._token).get_model_registry()
+        if type(_client) == Client:  # If external client
+            return connection(
+                host=_client._host,
+                port=_client._port,
+                project=self.name,
+                api_key_value=_client._auth._token,
+            ).get_model_registry()
         else:
-            return connection().get_model_registry() # If internal client
+            return connection().get_model_registry()  # If internal client
 
     def get_model_serving(self):
         from hsml import connection
+
         _client = client.get_instance()
-        if type(_client) == Client: # If external client
-            return connection(host=_client._host, port=_client._port, project=self.name, api_key_value=_client._auth._token).get_model_serving()
+        if type(_client) == Client:  # If external client
+            return connection(
+                host=_client._host,
+                port=_client._port,
+                project=self.name,
+                api_key_value=_client._auth._token,
+            ).get_model_serving()
         else:
-            return connection().get_model_serving() # If internal client
+            return connection().get_model_serving()  # If internal client
 
     def get_kafka_api(self):
         """Get the kafka api for the project.

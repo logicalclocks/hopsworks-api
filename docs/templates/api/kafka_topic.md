@@ -4,6 +4,10 @@
 
 {{kafka_api_handle}}
 
+## Configuration
+
+{{kafka_config}}
+
 ## Creation
 
 {{kafka_topic_create}}

@@ -14,12 +14,13 @@
 #   limitations under the License.
 #
 
-import os
-import requests
-import textwrap
 import base64
-
+import os
+import textwrap
 from pathlib import Path
+
+import requests
+
 from hopsworks.client import base, auth
 
 try:
@@ -70,6 +71,18 @@ class Client(base.Client):
 
         self._connected = True
 
+        credentials = self._get_credentials(self._project_id)
+
+        self._write_pem_file(
+            credentials["caChain"], self._get_ca_chain_path(self._project_name)
+        )
+        self._write_pem_file(
+            credentials["clientCert"], self._get_client_cert_path(self._project_name)
+        )
+        self._write_pem_file(
+            credentials["clientKey"], self._get_client_key_path(self._project_name)
+        )
+
     def _get_hopsworks_rest_endpoint(self):
         """Get the hopsworks REST endpoint for making requests to the REST API."""
         return os.environ[self.REST_ENDPOINT]
@@ -80,6 +93,15 @@ class Client(base.Client):
         if not ca_chain_path.exists():
             self._write_ca_chain(ca_chain_path)
         return str(ca_chain_path)
+
+    def _get_ca_chain_path(self, project_name) -> str:
+        return os.path.join("/tmp", "ca_chain.pem")
+
+    def _get_client_cert_path(self, project_name) -> str:
+        return os.path.join("/tmp", "client_cert.pem")
+
+    def _get_client_key_path(self, project_name) -> str:
+        return os.path.join("/tmp", "client_key.pem")
 
     def _write_ca_chain(self, ca_chain_path):
         """
@@ -204,6 +226,11 @@ class Client(base.Client):
 
         with pwd_path.open() as f:
             return f.read()
+
+    def replace_public_host(self, url):
+        """replace hostname to public hostname set in HOPSWORKS_PUBLIC_HOST"""
+        ui_url = url._replace(netloc=os.environ[self.HOPSWORKS_PUBLIC_HOST])
+        return ui_url
 
     @property
     def host(self):

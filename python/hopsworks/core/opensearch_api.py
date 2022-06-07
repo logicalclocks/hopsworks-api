@@ -17,6 +17,7 @@
 from hopsworks import client, constants, util
 import os
 
+
 class OpenSearchApi:
     def __init__(
         self,
@@ -25,8 +26,6 @@ class OpenSearchApi:
     ):
         self._project_id = project_id
         self._project_name = project_name
-
-        _client = client.get_instance()
 
     def _get_opensearch_url(self):
         return os.environ[constants.ENV_VARS.ELASTIC_ENDPOINT_ENV_VAR]
