@@ -61,8 +61,8 @@ def login():
     if type(_saas_connection) is Connection:
         _saas_connection = Connection.connection
 
-    # TODO: Should not be static
-    host="app.hopsworks.ai"
+    # TODO: Possible to do a lookup instead?
+    host="c.app.hopsworks.ai"
     port=443
 
     if client.base.Client.REST_ENDPOINT not in os.environ:
@@ -77,7 +77,7 @@ def login():
                 # API Key may be invalid, have the user supply it again
                 os.remove(api_key_path)
 
-        print("Copy your Api Key: https://managed.hopsworks.ai")
+        print("Copy your Api Key: https://c.app.hopsworks.ai/onboarding")
         api_key_value = input("\nPaste it here: ")
         api_key_file = open(api_key_path, "w")
         api_key_file.write(api_key_value)
