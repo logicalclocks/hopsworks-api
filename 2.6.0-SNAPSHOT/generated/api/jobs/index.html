@@ -570,6 +570,26 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    Configuration
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get_configuration" class="md-nav__link">
+    get_configuration
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#creation" class="md-nav__link">
     Creation
   </a>
@@ -703,13 +723,6 @@
           <li class="md-nav__item">
   <a href="#save" class="md-nav__link">
     save
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#get_configuration" class="md-nav__link">
-    get_configuration
   </a>
   
 </li>
@@ -943,6 +956,26 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    Configuration
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get_configuration" class="md-nav__link">
+    get_configuration
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#creation" class="md-nav__link">
     Creation
   </a>
@@ -1080,13 +1113,6 @@
   
 </li>
         
-          <li class="md-nav__item">
-  <a href="#get_configuration" class="md-nav__link">
-    get_configuration
-  </a>
-  
-</li>
-        
       </ul>
     </nav>
   
@@ -1108,13 +1134,30 @@
 
 <h1 id="jobs-api">Jobs API<a class="headerlink" href="#jobs-api" title="Permanent link">#</a></h1>
 <h2 id="handle">Handle<a class="headerlink" href="#handle" title="Permanent link">#</a></h2>
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L105">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L148">[source]</a></span></p>
 <h3 id="get_jobs_api">get_jobs_api<a class="headerlink" href="#get_jobs_api" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">Project</span><span class="o">.</span><span class="n">get_jobs_api</span><span class="p">()</span>
 </code></pre></div>
 <p>Get the jobs api for the project.</p>
 <p><strong>Returns</strong></p>
 <p><code>JobsApi</code>: The Jobs Api handle</p>
+<hr />
+<h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">#</a></h2>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/core/job_api.py#L139">[source]</a></span></p>
+<h3 id="get_configuration">get_configuration<a class="headerlink" href="#get_configuration" title="Permanent link">#</a></h3>
+<div class="highlight"><pre><span></span><code><span class="n">JobsApi</span><span class="o">.</span><span class="n">get_configuration</span><span class="p">(</span><span class="nb">type</span><span class="p">)</span>
+</code></pre></div>
+<p>Get configuration for the specific job type.</p>
+<p><strong>Arguments</strong></p>
+<ul>
+<li><strong>type</strong> <code>str</code>: Type of the job. Currently, supported types include: SPARK, PYSPARK, PYTHON, DOCKER, FLINK.</li>
+</ul>
+<p><strong>Returns</strong></p>
+<p><code>dict</code>: Default job configuration</p>
+<p><strong>Raises</strong></p>
+<ul>
+<li><strong><code>RestAPIError</code></strong>: If unable to get the job configuration</li>
+</ul>
 <hr />
 <h2 id="creation">Creation<a class="headerlink" href="#creation" title="Permanent link">#</a></h2>
 <p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/core/job_api.py#L32">[source]</a></span></p>
@@ -1259,22 +1302,6 @@
 </code></pre></div>
 <strong>Returns</strong></p>
 <p><code>Job</code>. The updated job object.</p>
-<hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/core/job_api.py#L139">[source]</a></span></p>
-<h3 id="get_configuration">get_configuration<a class="headerlink" href="#get_configuration" title="Permanent link">#</a></h3>
-<div class="highlight"><pre><span></span><code><span class="n">JobsApi</span><span class="o">.</span><span class="n">get_configuration</span><span class="p">(</span><span class="nb">type</span><span class="p">)</span>
-</code></pre></div>
-<p>Get configuration for the specific job type.</p>
-<p><strong>Arguments</strong></p>
-<ul>
-<li><strong>type</strong> <code>str</code>: Type of the job. Currently, supported types include: SPARK, PYSPARK, PYTHON, DOCKER, FLINK.</li>
-</ul>
-<p><strong>Returns</strong></p>
-<p><code>dict</code>: Default job configuration</p>
-<p><strong>Raises</strong></p>
-<ul>
-<li><strong><code>RestAPIError</code></strong>: If unable to get the job configuration</li>
-</ul>
 <hr />
 
               

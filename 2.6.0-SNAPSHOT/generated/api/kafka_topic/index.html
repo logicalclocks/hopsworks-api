@@ -654,6 +654,26 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    Configuration
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get_default_config" class="md-nav__link">
+    get_default_config
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#creation" class="md-nav__link">
     Creation
   </a>
@@ -901,6 +921,26 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    Configuration
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get_default_config" class="md-nav__link">
+    get_default_config
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#creation" class="md-nav__link">
     Creation
   </a>
@@ -1024,7 +1064,7 @@
 
 <h1 id="kafkatopic-api">KafkaTopic API<a class="headerlink" href="#kafkatopic-api" title="Permanent link">#</a></h1>
 <h2 id="handle">Handle<a class="headerlink" href="#handle" title="Permanent link">#</a></h2>
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L89">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L132">[source]</a></span></p>
 <h3 id="get_kafka_api">get_kafka_api<a class="headerlink" href="#get_kafka_api" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">Project</span><span class="o">.</span><span class="n">get_kafka_api</span><span class="p">()</span>
 </code></pre></div>
@@ -1032,8 +1072,35 @@
 <p><strong>Returns</strong></p>
 <p><code>KafkaApi</code>: The Kafka Api handle</p>
 <hr />
+<h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">#</a></h2>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/core/kafka_api.py#L333">[source]</a></span></p>
+<h3 id="get_default_config">get_default_config<a class="headerlink" href="#get_default_config" title="Permanent link">#</a></h3>
+<div class="highlight"><pre><span></span><code><span class="n">KafkaApi</span><span class="o">.</span><span class="n">get_default_config</span><span class="p">()</span>
+</code></pre></div>
+<p>Get the configuration to set up a Producer or Consumer for a Kafka broker using confluent-kafka.</p>
+<p><div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">hopsworks</span>
+
+<span class="n">connection</span> <span class="o">=</span> <span class="n">hopsworks</span><span class="o">.</span><span class="n">connection</span><span class="p">()</span>
+
+<span class="n">project</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="n">get_project</span><span class="p">()</span>
+
+<span class="n">kafka_api</span> <span class="o">=</span> <span class="n">project</span><span class="o">.</span><span class="n">get_kafka_api</span><span class="p">()</span>
+
+<span class="n">kafka_conf</span> <span class="o">=</span> <span class="n">kafka_api</span><span class="o">.</span><span class="n">get_default_config</span><span class="p">()</span>
+
+<span class="kn">from</span> <span class="nn">confluent_kafka</span> <span class="kn">import</span> <span class="n">Producer</span>
+
+<span class="n">producer</span> <span class="o">=</span> <span class="n">Producer</span><span class="p">(</span><span class="n">kafka_conf</span><span class="p">)</span>
+</code></pre></div>
+<strong>Returns</strong></p>
+<p><code>dict</code>: The kafka configuration</p>
+<p><strong>Raises</strong></p>
+<ul>
+<li><strong><code>RestAPIError</code></strong>: If unable to get the kafka configuration.</li>
+</ul>
+<hr />
 <h2 id="creation">Creation<a class="headerlink" href="#creation" title="Permanent link">#</a></h2>
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/core/kafka_api.py#L38">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/core/kafka_api.py#L33">[source]</a></span></p>
 <h3 id="create_topic">create_topic<a class="headerlink" href="#create_topic" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">KafkaApi</span><span class="o">.</span><span class="n">create_topic</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">schema</span><span class="p">,</span> <span class="n">schema_version</span><span class="p">,</span> <span class="n">replicas</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">partitions</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
 </code></pre></div>
@@ -1064,7 +1131,7 @@
 </ul>
 <hr />
 <h2 id="retrieval">Retrieval<a class="headerlink" href="#retrieval" title="Permanent link">#</a></h2>
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/core/kafka_api.py#L152">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/core/kafka_api.py#L151">[source]</a></span></p>
 <h3 id="get_topic">get_topic<a class="headerlink" href="#get_topic" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">KafkaApi</span><span class="o">.</span><span class="n">get_topic</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
 </code></pre></div>
@@ -1080,7 +1147,7 @@
 <li><strong><code>RestAPIError</code></strong>: If unable to get the topic</li>
 </ul>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/core/kafka_api.py#L170">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/core/kafka_api.py#L169">[source]</a></span></p>
 <h3 id="get_topics">get_topics<a class="headerlink" href="#get_topics" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">KafkaApi</span><span class="o">.</span><span class="n">get_topics</span><span class="p">()</span>
 </code></pre></div>
@@ -1093,24 +1160,24 @@
 </ul>
 <hr />
 <h2 id="properties">Properties<a class="headerlink" href="#properties" title="Permanent link">#</a></h2>
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/kafka_topic.py#L72">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/kafka_topic.py#L75">[source]</a></span></p>
 <h3 id="name">name<a class="headerlink" href="#name" title="Permanent link">#</a></h3>
 <p>Name of the topic</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/kafka_topic.py#L82">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/kafka_topic.py#L85">[source]</a></span></p>
 <h3 id="partitions">partitions<a class="headerlink" href="#partitions" title="Permanent link">#</a></h3>
 <p>Number of partitions for the topic</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/kafka_topic.py#L77">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/kafka_topic.py#L80">[source]</a></span></p>
 <h3 id="replicas">replicas<a class="headerlink" href="#replicas" title="Permanent link">#</a></h3>
 <p>Replication factor for the topic</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/kafka_topic.py#L87">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/kafka_topic.py#L90">[source]</a></span></p>
 <h3 id="schema">schema<a class="headerlink" href="#schema" title="Permanent link">#</a></h3>
 <p>Schema for the topic</p>
 <hr />
 <h2 id="methods">Methods<a class="headerlink" href="#methods" title="Permanent link">#</a></h2>
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/kafka_topic.py#L94">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/kafka_topic.py#L97">[source]</a></span></p>
 <h3 id="delete">delete<a class="headerlink" href="#delete" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">KafkaTopic</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
 </code></pre></div>
