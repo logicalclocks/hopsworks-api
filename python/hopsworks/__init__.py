@@ -139,7 +139,7 @@ def _prompt_project(valid_connection, project):
             while True:
                 print("\nMultiple projects found. \n")
                 for index in range(len(saas_projects)):
-                    print("\t (" + str(index + 1) + ") "  + saas_projects[index].name)
+                    print("\t (" + str(index + 1) + ") " + saas_projects[index].name)
                 while True:
                     project_index = input("\nEnter project to access: ")
                     # Handle invalid input type
@@ -153,9 +153,13 @@ def _prompt_project(valid_connection, project):
                         try:
                             return saas_projects[project_index - 1]
                         except IndexError:
-                            print("Invalid input, should be an integer from the list of projects.")
+                            print(
+                                "Invalid input, should be an integer from the list of projects."
+                            )
                     except ValueError:
-                        print("Invalid input, should be an integer from the list of projects.")
+                        print(
+                            "Invalid input, should be an integer from the list of projects."
+                        )
 
 
 def logout():
