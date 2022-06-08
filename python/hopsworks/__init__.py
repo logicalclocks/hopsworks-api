@@ -74,8 +74,8 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
         _saas_connection = Connection.connection
 
     # TODO: Possible to do a lookup instead?
-    host = "localhost"
-    port = 8181
+    host = "c.app.hopsworks.ai"
+    port = 443
 
     if client.base.Client.REST_ENDPOINT not in os.environ:
         api_key_val = None
