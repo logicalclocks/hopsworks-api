@@ -73,7 +73,9 @@ class OpenSearchApi:
             constants.OPENSEARCH_CONFIG.USE_SSL: True,
             constants.OPENSEARCH_CONFIG.VERIFY_CERTS: True,
             constants.OPENSEARCH_CONFIG.SSL_ASSERT_HOSTNAME: False,
-            constants.OPENSEARCH_CONFIG.CA_CERTS: util._get_ca_chain_location(),
+            constants.OPENSEARCH_CONFIG.CA_CERTS: client.get_instance()._get_ca_chain_path(
+                self._project_name
+            ),
         }
 
     def _get_authorization_token(self):
