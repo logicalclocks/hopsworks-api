@@ -53,6 +53,7 @@ class GitRepo:
         self._expand = expand
         self._items = items
         self._count = count
+        self._project_id = project_id
 
         self._git_api = git_api.GitApi(project_id, project_name)
         self._git_remote_api = git_remote_api.GitRemoteApi(project_id, project_name)
@@ -274,3 +275,11 @@ class GitRepo:
 
     def __repr__(self):
         return f"GitRepo({self._name!r}, {self._creator.email!r}, {self._provider!r}, {self._path!r})"
+
+    def get_url(self):
+        path = (
+                "/p/"
+                + str(self._project_id)
+                + "settings/git"
+        )
+        return "Git clone operation started, explore it at " + util.get_hostname_replaced_url(path)

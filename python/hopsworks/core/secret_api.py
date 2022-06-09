@@ -118,7 +118,9 @@ class SecretsApi:
             "POST", path_params, headers=headers, data=json.dumps(secret_config)
         )
 
-        return self.get_secret(name)
+        created_secret = self.get_secret(name)
+        print(created_secret.get_url())
+        return created_secret
 
     def _delete(self, name: str):
         """Delete the secret.

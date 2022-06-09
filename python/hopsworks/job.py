@@ -46,6 +46,7 @@ class Job:
         self._job_type = job_type
         self._creator = creator
         self._executions = executions
+        self._project_id = project_id
 
         self._execution_engine = execution_engine.ExecutionEngine(project_id)
         self._execution_api = execution_api.ExecutionsApi(project_id)
@@ -140,6 +141,7 @@ class Job:
             `Execution`. The execution object for the submitted run.
         """
         execution = self._execution_api._start(self, args=args)
+        print(execution.get_url())
         if await_termination:
             return self._execution_engine.wait_until_finished(self, execution)
         else:
@@ -186,3 +188,12 @@ class Job:
 
     def __repr__(self):
         return f"Job({self._name!r}, {self._job_type!r})"
+
+    def get_url(self):
+        path = (
+                "/p/"
+                + str(self._project_id)
+                + "/jobs/named"
+                + self.name
+        )
+        return "Job created successfully, explore it at " + util.get_hostname_replaced_url(path)
