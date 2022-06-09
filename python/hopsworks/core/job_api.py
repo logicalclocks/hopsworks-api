@@ -67,13 +67,15 @@ class JobsApi:
         path_params = ["project", self._project_id, "jobs", name]
 
         headers = {"content-type": "application/json"}
-        return job.Job.from_response_json(
+        created_job = job.Job.from_response_json(
             _client._send_request(
                 "PUT", path_params, headers=headers, data=json.dumps(config)
             ),
             self._project_id,
             self._project_name,
         )
+        print(created_job.get_url())
+        return created_job
 
     def get_job(self, name: str):
         """Get a job.

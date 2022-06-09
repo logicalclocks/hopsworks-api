@@ -58,6 +58,7 @@ class Execution:
         self._app_id = app_id
         self._hdfs_user = hdfs_user
         self._job_name = job_name
+        self._project_id = project_id
 
         self._execution_engine = execution_engine.ExecutionEngine(project_id)
         self._execution_api = execution_api.ExecutionsApi(project_id)
@@ -199,3 +200,15 @@ class Execution:
 
     def __repr__(self):
         return f"Execution({self._final_status!r}, {self._state!r}, {self._submission_time!r}, {self._args!r})"
+
+    def get_url(self):
+        path = (
+            "/p/"
+            + str(self._project_id)
+            + "/jobs/named/"
+            + self.job_name
+            + "/executions"
+        )
+        return "Execution started, explore it at " + util.get_hostname_replaced_url(
+            path
+        )

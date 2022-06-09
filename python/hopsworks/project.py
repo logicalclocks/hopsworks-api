@@ -180,3 +180,10 @@ class Project:
             return f"Project({self._name!r}, {self._owner!r}, {self._description!r})"
         else:
             return f"Project({self._name!r}, {self._owner!r})"
+
+    def get_url(self):
+        path = "/p/" + str(self.id)
+        return (
+            "Project created successfully, explore it at "
+            + util.get_hostname_replaced_url(path)
+        )
