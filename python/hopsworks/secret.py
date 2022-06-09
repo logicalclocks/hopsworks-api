@@ -104,6 +104,6 @@ class Secret:
 
     def get_url(self):
         path = (
-                "/account/secrets"
+            "/account/secrets"
         )
         return "Secret created successfully, explore it at " + util.get_hostname_replaced_url(path)

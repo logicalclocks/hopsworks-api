@@ -203,10 +203,10 @@ class Execution:
 
     def get_url(self):
         path = (
-                "/p/"
-                + str(self._project_id)
-                + "/jobs/named"
-                + self.job_name
-                + "/executions"
+            "/p/"
+            + str(self._project_id)
+            + "/jobs/named"
+            + self.job_name
+            + "/executions"
         )
         return "Execution started, explore it at " + util.get_hostname_replaced_url(path)

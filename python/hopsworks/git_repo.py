@@ -278,8 +278,8 @@ class GitRepo:
 
     def get_url(self):
         path = (
-                "/p/"
-                + str(self._project_id)
-                + "settings/git"
+            "/p/"
+            + str(self._project_id)
+            + "settings/git"
         )
         return "Git clone operation started, explore it at " + util.get_hostname_replaced_url(path)

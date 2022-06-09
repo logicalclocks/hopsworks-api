@@ -191,9 +191,9 @@ class Job:
 
     def get_url(self):
         path = (
-                "/p/"
-                + str(self._project_id)
-                + "/jobs/named"
-                + self.name
+            "/p/"
+            + str(self._project_id)
+            + "/jobs/named"
+            + self.name
         )
         return "Job created successfully, explore it at " + util.get_hostname_replaced_url(path)
