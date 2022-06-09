@@ -64,6 +64,7 @@ def convert_git_status_to_files(files):
 
     return files
 
+
 def get_hostname_replaced_url(sub_path: str):
     """
     construct and return an url with public hopsworks hostname and sub path

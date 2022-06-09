@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks import client, constants, util
+from hopsworks import client, constants
 import os
 
 
