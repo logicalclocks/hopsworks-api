@@ -103,10 +103,11 @@ class GitApi:
             self._project_id,
             self._project_name,
         )
+        print("Git clone operation running, explore it at " + util.get_hostname_replaced_url("/p/" + str(self._project_id) + "/settings/git"))
         git_op = self._git_engine.execute_op_blocking(git_op, "CLONE")
         created_repo = self.get_repo(git_op.repository.name, git_op.repository.path)
-        print(created_repo.get_url())
         return created_repo
+
 
     def get_repos(self):
         """Get the existing Git repositories
