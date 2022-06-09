@@ -111,7 +111,7 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
                     # API Key may be invalid, have the user supply it again
                     os.remove(api_key_path)
             else:
-                print("Copy your Api Key: https://c.app.hopsworks.ai/onboarding")
+                print("Copy your Api Key: https://c.app.hopsworks.ai/account/api/generated")
                 api_key_val = input("\nPaste it here: ")
                 # If api key was provided as input, save the API key locally on disk to avoid users having to enter it again in the same environment
                 api_key_file = open(api_key_path, "w")
