@@ -209,4 +209,6 @@ class Execution:
             + self.job_name
             + "/executions"
         )
-        return "Execution started, explore it at " + util.get_hostname_replaced_url(path)
+        return "Execution started, explore it at " + util.get_hostname_replaced_url(
+            path
+        )

@@ -103,7 +103,8 @@ class Secret:
             return f"Secret({self._name!r}, {self._visibility!r})"
 
     def get_url(self):
-        path = (
-            "/account/secrets"
+        path = "/account/secrets"
+        return (
+            "Secret created successfully, explore it at "
+            + util.get_hostname_replaced_url(path)
         )
-        return "Secret created successfully, explore it at " + util.get_hostname_replaced_url(path)
