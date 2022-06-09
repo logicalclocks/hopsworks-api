@@ -190,7 +190,7 @@ class Job:
         return f"Job({self._name!r}, {self._job_type!r})"
 
     def get_url(self):
-        path = "/p/" + str(self._project_id) + "/jobs/named" + self.name
+        path = "/p/" + str(self._project_id) + "/jobs/named/" + self.name
         return (
             "Job created successfully, explore it at "
             + util.get_hostname_replaced_url(path)

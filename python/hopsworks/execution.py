@@ -205,7 +205,7 @@ class Execution:
         path = (
             "/p/"
             + str(self._project_id)
-            + "/jobs/named"
+            + "/jobs/named/"
             + self.job_name
             + "/executions"
         )

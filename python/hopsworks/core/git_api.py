@@ -104,7 +104,9 @@ class GitApi:
             self._project_name,
         )
         git_op = self._git_engine.execute_op_blocking(git_op, "CLONE")
-        return self.get_repo(git_op.repository.name, git_op.repository.path)
+        created_repo =  self.get_repo(git_op.repository.name, git_op.repository.path)
+        print(created_repo.get_url())
+        return created_repo
 
     def get_repos(self):
         """Get the existing Git repositories
