@@ -14,8 +14,10 @@
 #   limitations under the License.
 #
 
-from hopsworks import client, constants
 import os
+from furl import furl
+
+from hopsworks import client, constants
 
 
 class OpenSearchApi:
@@ -63,9 +65,9 @@ class OpenSearchApi:
         Returns:
             A dictionary with required configuration.
         """
-        host = self._get_opensearch_url().split(":")[0]
+        url = furl(self._get_opensearch_url())
         return {
-            constants.OPENSEARCH_CONFIG.HOSTS: [{"host": host, "port": 9200}],
+            constants.OPENSEARCH_CONFIG.HOSTS: [{"host": url.host, "port": url.port}],
             constants.OPENSEARCH_CONFIG.HTTP_COMPRESS: False,
             constants.OPENSEARCH_CONFIG.HEADERS: {
                 "Authorization": self._get_authorization_token()
