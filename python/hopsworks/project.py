@@ -183,7 +183,4 @@ class Project:
 
     def get_url(self):
         path = "/p/" + str(self.id)
-        return (
-            "Project created successfully, explore it at "
-            + util.get_hostname_replaced_url(path)
-        )
+        return util.get_hostname_replaced_url(path)

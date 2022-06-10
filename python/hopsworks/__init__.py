@@ -111,6 +111,7 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
                     )
                     project_obj = _prompt_project(saas_connection, project)
                     _saas_connection = saas_connection
+                    print("\nLogged in to project, explore it here " + project_obj.get_url())
                     return project_obj
                 except RestAPIError:
                     # API Key may be invalid, have the user supply it again
@@ -130,6 +131,7 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
         )
         project_obj = _prompt_project(saas_connection, project)
         _saas_connection = saas_connection
+        print("\nLogged in to project, explore it here " + project_obj.get_url())
         return project_obj
     else:
         raise Exception("Only supported from external environments")

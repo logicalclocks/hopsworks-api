@@ -105,5 +105,5 @@ class ProjectApi:
 
         # The return of the project creation is not a ProjectDTO, so get the correct object after creation
         project = self._get_project(name)
-        print(project.get_url())
+        print("Project created successfully, explore it at " + project.get_url())
         return project
