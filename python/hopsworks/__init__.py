@@ -15,6 +15,12 @@
 #
 
 import warnings
+
+# Needs to be done first, 
+warnings.filterwarnings(
+    action="ignore", category=UserWarning, module=r".*psycopg2*"
+)
+
 import logging
 import os
 import sys
@@ -37,9 +43,6 @@ def hw_formatwarning(message, category, filename, lineno, line=None):
 
 
 warnings.formatwarning = hw_formatwarning
-warnings.filterwarnings(
-    action="ignore", category=UserWarning, module=r".*psycopg2"
-)
 
 __all__ = ["connection"]
 
