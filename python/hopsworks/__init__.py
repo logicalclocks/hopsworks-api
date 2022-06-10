@@ -81,62 +81,58 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
     host = "c.app.hopsworks.ai"
     port = 443
 
-    if client.base.Client.REST_ENDPOINT not in os.environ:
-        api_key_val = None
-        # If user supplied the api key directly
-        if api_key_value is not None:
-            api_key_val = api_key_value
-        # If user supplied the api key in a file
-        elif api_key_file is not None:
-            file = None
-            if os.path.exists(api_key_file):
-                try:
-                    file = open(api_key_file, mode="r")
-                    api_key_val = file.read()
-                finally:
-                    file.close()
-            else:
-                raise IOError(
-                    "Could not find api key file on path: {}".format(api_key_file)
-                )
-        # Prompt user to login to saas platform, and enter api key. If api key is cached on disk and is valid, then use it without prompting
-        else:
-            api_key_path = os.getcwd() + "/.hw_api_key"
-            # Cached api key exists, check if valid
-            if os.path.exists(api_key_path):
-                try:
-                    saas_connection = _saas_connection(
-                        host=host, port=port, api_key_file=api_key_path
-                    )
-                    project_obj = _prompt_project(saas_connection, project)
-                    _saas_connection = saas_connection
-                    print(
-                        "\nLogged in to project, explore it here "
-                        + project_obj.get_url()
-                    )
-                    return project_obj
-                except RestAPIError:
-                    # API Key may be invalid, have the user supply it again
-                    os.remove(api_key_path)
-            else:
-                print(
-                    "Copy your Api Key: https://c.app.hopsworks.ai/account/api/generated"
-                )
-                api_key_val = input("\nPaste it here: ")
-                # If api key was provided as input, save the API key locally on disk to avoid users having to enter it again in the same environment
-                api_key_file = open(api_key_path, "w")
-                api_key_file.write(api_key_val)
-                api_key_file.close()
+    api_key_path = os.getcwd() + "/.hw_api_key"
+    # Cached api key exists, check if valid
+    if os.path.exists(api_key_path):
+        try:
+            saas_connection = _saas_connection(
+                host=host, port=port, api_key_file=api_key_path
+            )
+            project_obj = _prompt_project(saas_connection, project)
+            _saas_connection = saas_connection
+            print(
+                "\nLogged in to project, explore it here "
+                + project_obj.get_url()
+            )
+            return project_obj
+        except RestAPIError:
+            # API Key may be invalid, have the user supply it again
+            os.remove(api_key_path)
 
-        saas_connection = _saas_connection(
-            host=host, port=port, api_key_value=api_key_val
-        )
-        project_obj = _prompt_project(saas_connection, project)
-        _saas_connection = saas_connection
-        print("\nLogged in to project, explore it here " + project_obj.get_url())
-        return project_obj
-    else:
-        raise Exception("Only supported from external environments")
+    api_key_val = None
+    # If user supplied the api key directly
+    if api_key_value is not None:
+        api_key_val = api_key_value
+    # If user supplied the api key in a file
+    elif api_key_file is not None:
+        file = None
+        if os.path.exists(api_key_file):
+            try:
+                file = open(api_key_file, mode="r")
+                api_key_val = file.read()
+            finally:
+                file.close()
+        else:
+            raise IOError(
+                "Could not find api key file on path: {}".format(api_key_file)
+            )
+
+    print(
+        "Copy your Api Key: https://c.app.hopsworks.ai/account/api/generated"
+    )
+    api_key_val = input("\nPaste it here: ")
+    # If api key was provided as input, save the API key locally on disk to avoid users having to enter it again in the same environment
+    api_key_file = open(api_key_path, "w")
+    api_key_file.write(api_key_val)
+    api_key_file.close()
+
+    saas_connection = _saas_connection(
+        host=host, port=port, api_key_value=api_key_val
+    )
+    project_obj = _prompt_project(saas_connection, project)
+    _saas_connection = saas_connection
+    print("\nLogged in to project, explore it here " + project_obj.get_url())
+    return project_obj
 
 
 def _prompt_project(valid_connection, project):
