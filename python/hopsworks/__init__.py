@@ -15,6 +15,11 @@
 #
 
 import warnings
+
+warnings.filterwarnings(
+    action="ignore", category=UserWarning, module=r".*psycopg2"
+)
+
 import logging
 import os
 import sys
