@@ -16,9 +16,8 @@
 
 import warnings
 
-# Needs to be done first, 
 warnings.filterwarnings(
-    action="ignore", category=UserWarning, module=r".*psycopg2*"
+    action="ignore", category=UserWarning, module=r".*psycopg2"
 )
 
 import logging
