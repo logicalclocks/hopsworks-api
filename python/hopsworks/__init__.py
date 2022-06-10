@@ -15,20 +15,21 @@
 #
 
 import warnings
-
-warnings.filterwarnings(action="ignore", category=UserWarning, module=r".*psycopg2")
-
 import logging
 import os
 import sys
-import hsml  # noqa: F401
-import hsfs  # noqa: F401
 
 from hopsworks.client.exceptions import RestAPIError
 
 from hopsworks import client
 
 from hopsworks.connection import Connection
+
+# Needs to run before import of hsml and hsfs
+warnings.filterwarnings(action="ignore", category=UserWarning, module=r".*psycopg2")
+
+import hsml  # noqa: F401, E402
+import hsfs  # noqa: F401, E402
 
 connection = Connection.connection
 
