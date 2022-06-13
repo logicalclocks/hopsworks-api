@@ -93,6 +93,7 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
             print("\nLogged in to project, explore it here " + project_obj.get_url())
             return project_obj
         except RestAPIError:
+            logout()
             # API Key may be invalid, have the user supply it again
             print("Cached api key is invalid - deleting : " + open('.hw_api_key',mode='r').read())
             os.remove(api_key_path)
@@ -171,5 +172,6 @@ def _prompt_project(valid_connection, project):
 
 def logout():
     global _saas_connection
-    _saas_connection.close()
+    if type(_saas_connection) is Connection:
+        _saas_connection.close()
     _saas_connection = Connection.connection
