@@ -88,16 +88,19 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
             )
             project_obj = _prompt_project(saas_connection, project)
             _saas_connection = saas_connection
+            print("Cached api key is valid : " + open('.hw_api_key',mode='r').read())
             print("\nLogged in to project, explore it here " + project_obj.get_url())
             return project_obj
         except RestAPIError:
             # API Key may be invalid, have the user supply it again
+            print("Cached api key is invalid - deleting : " + open('.hw_api_key',mode='r').read())
             os.remove(api_key_path)
 
     api_key_val = None
     # If user supplied the api key directly
     if api_key_value is not None:
         api_key_val = api_key_value
+        print("Using argument api_key_val " + api_key_value)
     # If user supplied the api key in a file
     elif api_key_file is not None:
         file = None
@@ -107,19 +110,23 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
                 api_key_val = file.read()
             finally:
                 file.close()
+            print("Using argument api_key_file " + api_key_val)
         else:
             raise IOError(
                 "Could not find api key file on path: {}".format(api_key_file)
             )
 
     if api_key_val is None:
+        print("Api key not set by arguments or caching")
         print("Copy your Api Key: https://c.app.hopsworks.ai/account/api/generated")
         api_key_val = input("\nPaste it here: ")
         # If api key was provided as input, save the API key locally on disk to avoid users having to enter it again in the same environment
         api_key_file = open(api_key_path, "w")
         api_key_file.write(api_key_val)
         api_key_file.close()
+        
 
+    print("Using api key for login " + api_key_val)
     saas_connection = _saas_connection(host=host, port=port, api_key_value=api_key_val)
     project_obj = _prompt_project(saas_connection, project)
     _saas_connection = saas_connection
