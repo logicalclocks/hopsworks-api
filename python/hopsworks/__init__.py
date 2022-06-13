@@ -73,6 +73,7 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
 
     # If already logged in, should reset connection and follow login procedure as Connection may no longer be valid
     if type(_saas_connection) is Connection:
+        _saas_connection.close()
         _saas_connection = Connection.connection
 
     # TODO: Possible to do a lookup instead?
@@ -124,7 +125,7 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
         api_key_file = open(api_key_path, "w")
         api_key_file.write(api_key_val)
         api_key_file.close()
-        
+
 
     print("Using api key for login " + api_key_val)
     saas_connection = _saas_connection(host=host, port=port, api_key_value=api_key_val)
