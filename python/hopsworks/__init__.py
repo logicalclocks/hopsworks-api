@@ -85,7 +85,6 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
     # If user supplied the api key directly
     if api_key_value is not None:
         api_key_val = api_key_value
-        print("Using argument api_key_val " + api_key_value)
     # If user supplied the api key in a file
     elif api_key_file is not None:
         file = None
@@ -95,7 +94,6 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
                 api_key_val = file.read()
             finally:
                 file.close()
-            print("Using argument api_key_file " + api_key_val)
         else:
             raise IOError(
                 "Could not find api key file on path: {}".format(api_key_file)
@@ -106,18 +104,14 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
                 host=host, port=port, api_key_file=api_key_path
             )
             project_obj = _prompt_project(_saas_connection, project)
-            print("Cached api key is valid : " + open('.hw_api_key',mode='r').read())
             print("\nLogged in to project, explore it here " + project_obj.get_url())
             return project_obj
         except RestAPIError:
-            print("except clause for logout")
             logout()
             # API Key may be invalid, have the user supply it again
-            print("Cached api key is invalid - deleting : " + open('.hw_api_key',mode='r').read())
             os.remove(api_key_path)
 
     if api_key_val is None:
-        print("Api key not set by arguments or caching")
         print("Copy your Api Key: https://c.app.hopsworks.ai/account/api/generated")
         api_key_val = input("\nPaste it here: ")
         # If api key was provided as input, save the API key locally on disk to avoid users having to enter it again in the same environment
@@ -125,8 +119,6 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
         api_key_file.write(api_key_val)
         api_key_file.close()
 
-
-    print("Using api key for login " + api_key_val)
     saas_connection = _saas_connection(host=host, port=port, api_key_value=api_key_val)
     project_obj = _prompt_project(saas_connection, project)
     _saas_connection = saas_connection
@@ -169,7 +161,6 @@ def _prompt_project(valid_connection, project):
 
 
 def logout():
-    print("Performing logout")
     global _saas_connection
     if type(_saas_connection) is Connection:
         _saas_connection.close()
