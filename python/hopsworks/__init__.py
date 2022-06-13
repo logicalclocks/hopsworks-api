@@ -86,9 +86,7 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
         port = os.environ["HOPSWORKS_PORT"]
 
     # If already logged in, should reset connection and follow login procedure as Connection may no longer be valid
-    if type(_saas_connection) is Connection:
-        _saas_connection.close()
-        _saas_connection = Connection.connection
+    logout()
 
     api_key_path = os.getcwd() + "/.hw_api_key"
     api_key_val = None
@@ -129,9 +127,13 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
         api_key_file.write(api_key_val)
         api_key_file.close()
 
-    saas_connection = _saas_connection(host=host, port=port, api_key_value=api_key_val)
-    project_obj = _prompt_project(saas_connection, project)
-    _saas_connection = saas_connection
+    try:
+        _saas_connection = _saas_connection(host=host, port=port, api_key_value=api_key_val)
+        project_obj = _prompt_project(_saas_connection, project)
+    except RestAPIError as e:
+        logout()
+        raise e
+
     print("\nLogged in to project, explore it here " + project_obj.get_url())
     return project_obj
 
