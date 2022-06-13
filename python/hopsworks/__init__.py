@@ -81,23 +81,6 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
     port = 443
 
     api_key_path = os.getcwd() + "/.hw_api_key"
-    # Cached api key exists, check if valid
-    if os.path.exists(api_key_path):
-        try:
-            saas_connection = _saas_connection(
-                host=host, port=port, api_key_file=api_key_path
-            )
-            project_obj = _prompt_project(saas_connection, project)
-            _saas_connection = saas_connection
-            print("Cached api key is valid : " + open('.hw_api_key',mode='r').read())
-            print("\nLogged in to project, explore it here " + project_obj.get_url())
-            return project_obj
-        except RestAPIError:
-            logout()
-            # API Key may be invalid, have the user supply it again
-            print("Cached api key is invalid - deleting : " + open('.hw_api_key',mode='r').read())
-            os.remove(api_key_path)
-
     api_key_val = None
     # If user supplied the api key directly
     if api_key_value is not None:
@@ -117,6 +100,20 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
             raise IOError(
                 "Could not find api key file on path: {}".format(api_key_file)
             )
+    elif os.path.exists(api_key_path):
+        try:
+            _saas_connection = _saas_connection(
+                host=host, port=port, api_key_file=api_key_path
+            )
+            project_obj = _prompt_project(_saas_connection, project)
+            print("Cached api key is valid : " + open('.hw_api_key',mode='r').read())
+            print("\nLogged in to project, explore it here " + project_obj.get_url())
+            return project_obj
+        except RestAPIError:
+            logout()
+            # API Key may be invalid, have the user supply it again
+            print("Cached api key is invalid - deleting : " + open('.hw_api_key',mode='r').read())
+            os.remove(api_key_path)
 
     if api_key_val is None:
         print("Api key not set by arguments or caching")
