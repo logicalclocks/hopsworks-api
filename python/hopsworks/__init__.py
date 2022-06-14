@@ -71,14 +71,24 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
 
     global _saas_connection
 
+    if "HOPSWORKS_API_KEY" in os.environ:
+        api_key_value = os.environ["HOPSWORKS_API_KEY"]
+
+    if "HOPSWORKS_PROJECT" in os.environ:
+        project = os.environ["HOPSWORKS_PROJECT"]
+
+    host = "c.app.hopsworks.ai"
+    if "HOPSWORKS_HOST" in os.environ:
+        host = os.environ["HOPSWORKS_HOST"]
+
+    port = 443
+    if "HOPSWORKS_PORT" in os.environ:
+        port = os.environ["HOPSWORKS_PORT"]
+
     # If already logged in, should reset connection and follow login procedure as Connection may no longer be valid
     if type(_saas_connection) is Connection:
         _saas_connection.close()
         _saas_connection = Connection.connection
-
-    # TODO: Possible to do a lookup instead?
-    host = "c.app.hopsworks.ai"
-    port = 443
 
     api_key_path = os.getcwd() + "/.hw_api_key"
     api_key_val = None
@@ -158,6 +168,11 @@ def _prompt_project(valid_connection, project):
                         print(
                             "Invalid input, should be an integer from the list of projects."
                         )
+    else:
+        for proj in saas_projects:
+            if proj.name == project:
+                return proj
+        raise Exception("Could not find project {}".format(project))
 
 
 def logout():
