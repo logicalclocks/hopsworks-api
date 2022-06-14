@@ -120,7 +120,9 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
             os.remove(api_key_path)
 
     if api_key_val is None:
-        print("Copy your Api Key (first register/login): https://c.app.hopsworks.ai/account/api/generated")
+        print(
+            "Copy your Api Key (first register/login): https://c.app.hopsworks.ai/account/api/generated"
+        )
         api_key_val = input("\nPaste it here: ")
         # If api key was provided as input, save the API key locally on disk to avoid users having to enter it again in the same environment
         api_key_file = open(api_key_path, "w")
@@ -128,7 +130,9 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
         api_key_file.close()
 
     try:
-        _saas_connection = _saas_connection(host=host, port=port, api_key_value=api_key_val)
+        _saas_connection = _saas_connection(
+            host=host, port=port, api_key_value=api_key_val
+        )
         project_obj = _prompt_project(_saas_connection, project)
     except RestAPIError as e:
         logout()
