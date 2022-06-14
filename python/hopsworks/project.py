@@ -97,7 +97,7 @@ class Project:
                 port=_client._port,
                 project=self.name,
                 api_key_value=_client._auth._token,
-                engine='python',
+                engine="python",
             ).get_feature_store()
         else:
             return connection().get_feature_store()  # If internal client
