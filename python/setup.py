@@ -17,7 +17,7 @@ setup(
     version=__version__,
     install_requires=[
         "hsfs[python]~=3.0.0rc",
-        "hsml @ git+https://git@github.com/logicalclocks/machine-learning-api@main#egg=hsml&subdirectory=python",
+        "hsml~=3.0.0rc",
         "pyhumps==1.6.1",
         "requests",
         "furl",
