@@ -13,9 +13,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: set release version
+      - name: set major/minor/bugfix release version
         working-directory: ./java
         run: echo "RELEASE_VERSION=$(mvn org.apache.maven.plugins:maven-help-plugin:2.1.1:evaluate -Dexpression=project.version | grep -Ev 'Download|INFO|WARNING')" >> $GITHUB_ENV
+
+      - name: set major/minor release version
+        run: echo "MAJOR_VERSION=$(echo $RELEASE_VERSION | sed 's/^\([0-9]*\.[0-9]*\).*$/\1/')" >> $GITHUB_ENV
 
       - uses: actions/setup-python@v2
         with:
@@ -34,5 +37,5 @@ jobs:
           git config --global user.email mike@docs.hopsworks.ai
 
       - name: mike deploy docs
-        run: mike deploy ${{ env.RELEASE_VERSION }} latest -u --push
+        run: mike deploy ${{ env.RELEASE_VERSION }} ${{ env.MAJOR_VERSION }} -u --push
 
