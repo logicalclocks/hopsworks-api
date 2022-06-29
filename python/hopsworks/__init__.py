@@ -49,8 +49,17 @@ logging.basicConfig(
 )
 
 
-def login(project: str = None, api_key_value: str = None, api_key_file: str = None):
-    """Connect to managed Hopsworks.
+def login(
+    host: str = None,
+    port: int = 443,
+    project: str = None,
+    api_key_value: str = None,
+    api_key_file: str = None,
+):
+    """Connect to app.hopsworks.ai, or connect to your own Hopsworks instance by specifying the host and port arguments.
+
+    The function also reads the environment variables: HOPSWORKS_HOST, HOPSWORKS_PORT, HOPSWORKS_PROJECT and
+    HOPSWORKS_API_KEY which can be set instead of the arguments.
 
     ```python
 
@@ -60,7 +69,10 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
 
     ```
     # Arguments
-        project: Name of the project to access.
+        host: The hostname of the Hopsworks instance, defaults to `None`.
+        port: The port on which the Hopsworks instance can be reached,
+            defaults to `443`.
+        project: Name of the project to access. If used inside a Hopsworks environment it always gets the current project.
         api_key_value: Value of the Api Key
         api_key_file: Path to file wih Api Key
     # Returns
@@ -69,24 +81,33 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
         `RestAPIError`: If unable to connect to Hopsworks
     """
 
+    # If already logged in, should reset connection and follow login procedure as Connection may no longer be valid
+    logout()
+
     global _saas_connection
 
+    # If inside hopsworks, just return the current project for now
+    if "REST_ENDPOINT" in os.environ:
+        _saas_connection = _saas_connection()
+        project_obj = _saas_connection.get_project()
+        print("\nLogged in to project, explore it here " + project_obj.get_url())
+        return project_obj
+
+    # This is an external client
     if "HOPSWORKS_API_KEY" in os.environ:
         api_key_value = os.environ["HOPSWORKS_API_KEY"]
 
     if "HOPSWORKS_PROJECT" in os.environ:
         project = os.environ["HOPSWORKS_PROJECT"]
 
-    host = "c.app.hopsworks.ai"
+    if host is None:
+        host = "c.app.hopsworks.ai"
+
     if "HOPSWORKS_HOST" in os.environ:
         host = os.environ["HOPSWORKS_HOST"]
 
-    port = 443
     if "HOPSWORKS_PORT" in os.environ:
         port = os.environ["HOPSWORKS_PORT"]
-
-    # If already logged in, should reset connection and follow login procedure as Connection may no longer be valid
-    logout()
 
     api_key_path = os.getcwd() + "/.hw_api_key"
     api_key_val = None
@@ -119,7 +140,7 @@ def login(project: str = None, api_key_value: str = None, api_key_file: str = No
             # API Key may be invalid, have the user supply it again
             os.remove(api_key_path)
 
-    if api_key_val is None:
+    if api_key_val is None and host == "c.app.hopsworks.ai":
         print(
             "Copy your Api Key (first register/login): https://c.app.hopsworks.ai/account/api/generated"
         )
