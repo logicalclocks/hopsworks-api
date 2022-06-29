@@ -49,7 +49,13 @@ logging.basicConfig(
 )
 
 
-def login(host: str = None, port: int = 443, project: str = None, api_key_value: str = None, api_key_file: str = None):
+def login(
+    host: str = None,
+    port: int = 443,
+    project: str = None,
+    api_key_value: str = None,
+    api_key_file: str = None,
+):
     """Connect to app.hopsworks.ai, or connect to your own Hopsworks instance by specifying the host and port arguments.
 
     The function also reads the environment variables: HOPSWORKS_HOST, HOPSWORKS_PORT, HOPSWORKS_PROJECT and
@@ -134,7 +140,7 @@ def login(host: str = None, port: int = 443, project: str = None, api_key_value:
             # API Key may be invalid, have the user supply it again
             os.remove(api_key_path)
 
-    if api_key_val is None and host=="c.app.hopsworks.ai":
+    if api_key_val is None and host == "c.app.hopsworks.ai":
         print(
             "Copy your Api Key (first register/login): https://c.app.hopsworks.ai/account/api/generated"
         )
