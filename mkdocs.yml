@@ -12,10 +12,10 @@ nav:
   - Home: https://docs.hopsworks.ai/
   - Getting Started: https://docs.hopsworks.ai/
   - Concepts: https://docs.hopsworks.ai/
-  - User Guides: https://docs.hopsworks.ai/
-  - Administration: https://docs.hopsworks.ai/
+  - Guides: https://docs.hopsworks.ai/
   - Setup and Installation: https://docs.hopsworks.ai/
-  - Reference Guides:
+  - Administration: https://docs.hopsworks.ai/
+  - API:
     - API Reference:
       - Connection: generated/api/connection.md
       - Projects: generated/api/projects.md
@@ -46,6 +46,8 @@ theme:
   features:
     - navigation.tabs
     - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.indexes
 
 extra:
   analytics:
@@ -54,20 +56,22 @@ extra:
   generator: false
   social:
     - icon: fontawesome/brands/twitter
-      link: https://twitter.com/logicalclocks
+      link: https://twitter.com/hopsworks
     - icon: fontawesome/brands/github
       link: https://github.com/logicalclocks/hopsworks
     - icon: fontawesome/brands/discourse
       link: https://community.hopsworks.ai/
     - icon: fontawesome/brands/linkedin
-      link: https://www.linkedin.com/company/logicalclocks/
+      link: https://www.linkedin.com/company/hopsworks/
 
 extra_css:
   - css/custom.css
+  - css/marctech.css
   - css/version-select.css
 
 extra_javascript:
   - js/version-select.js
+  - js/inject-api-links.js
 
 plugins:
   - search
@@ -85,6 +89,8 @@ markdown_extensions:
   - pymdownx.mark
   - pymdownx.tilde
   - pymdownx.critic
+  - attr_list
+  - md_in_html
   - toc:
       permalink: "#"
   - pymdownx.tasklist:
