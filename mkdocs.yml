@@ -30,7 +30,7 @@ nav:
       - Secrets: generated/api/secrets.md
       - OpenSearch: generated/api/opensearch.md
     - Contributing: CONTRIBUTING.md
-  - Community: https://docs.hopsworks.ai/
+  - Community: https://community.hopsworks.ai/
 
 theme:
   name: material
