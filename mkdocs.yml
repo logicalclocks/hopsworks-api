@@ -48,6 +48,7 @@ theme:
     - navigation.tabs.sticky
     - navigation.sections
     - navigation.indexes
+  custom_dir: docs/overrides
 
 extra:
   analytics:
@@ -66,8 +67,9 @@ extra:
 
 extra_css:
   - css/custom.css
-  - css/marctech.css
   - css/version-select.css
+  - css/dropdown.css
+  - css/marctech.css
 
 extra_javascript:
   - js/version-select.js
