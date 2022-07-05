@@ -30,12 +30,13 @@
 
 }
 
+/*
 .md-sidebar__scrollwrap{
   background-color: var(--md-quaternary-fg-color);
   padding: 15px 5px 5px 5px;
   border-radius: var(--border-radius-variable);
 }
-
+*/
 .md-nav__link:focus{
 }
 
@@ -102,4 +103,9 @@
 .six {
   grid-column: 3 / 5;
   grid-row: 2;
+}
+
+/* Jupyter Stuff */
+.jupyter-wrapper .jp-CodeCell .jp-Cell-inputWrapper .jp-InputPrompt {
+  display: none !important;
 }
