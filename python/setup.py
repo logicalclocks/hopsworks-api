@@ -17,7 +17,7 @@ setup(
     version=__version__,
     install_requires=[
         "hsfs[python]==3.0.0.rc3",
-        "hsml==3.0.0rc0",
+        "hsml==3.0.0rc1",
         "pyhumps==1.6.1",
         "requests",
         "furl",
