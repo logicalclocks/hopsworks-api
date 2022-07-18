@@ -37,7 +37,10 @@ setup(
             "mike==1.1.2",
             "sphinx==3.5.4",
             "keras_autodoc @ git+https://git@github.com/moritzmeister/keras-autodoc@split-tags-properties",
-            "markdown-include"]
+            "markdown-include",
+            "markdown==3.3.7",
+            "pymdown-extensions",
+        ]
     },
     author="Logical Clocks AB",
     author_email="robin@logicalclocks.com",
