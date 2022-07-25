@@ -112,9 +112,9 @@ We use `mkdocs` together with `mike` ([for versioning](https://github.com/jimpor
 
 On docs.hopsworks.ai we implement the following versioning scheme:
 
-- current master branches (e.g. of hopsworks corresponding to master of Hopsworks): rendered as current Hopsworks snapshot version, e.g. **2.6.0-SNAPSHOT [dev]**, where `dev` is an alias to indicate that this is an unstable version.
-- the latest release: rendered with full current version, e.g. **2.5.1 [latest]** with `latest` alias to indicate that this is the latest stable release.
-- previous stable releases: rendered without alias, e.g. **2.5.0**.
+- current master branches (e.g. of hopsworks corresponding to master of Hopsworks): rendered as current Hopsworks snapshot version, e.g. **3.1.0-SNAPSHOT [dev]**, where `dev` is an alias to indicate that this is an unstable version.
+- the latest release: rendered with full current version, e.g. **3.0.1 [latest]** with `latest` alias to indicate that this is the latest stable release.
+- previous stable releases: rendered without alias, e.g. **3.0.0**.
 
 ###### Build Instructions
 
@@ -139,7 +139,7 @@ On docs.hopsworks.ai we implement the following versioning scheme:
 
     # for example, if you are updating documentation to be merged to master,
     # which will become the new SNAPSHOT version:
-    mike deploy 2.6.0-SNAPSHOT dev --update-alias
+    mike deploy 3.1.0-SNAPSHOT dev --update-alias
 
     # if you are updating docs of the latest stable release branch
     mike deploy [version] latest --update-alias
