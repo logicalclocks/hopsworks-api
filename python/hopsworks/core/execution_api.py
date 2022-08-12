@@ -67,13 +67,13 @@ class ExecutionsApi:
             job.name,
         )
 
-    def _delete(self, job, id):
+    def _delete(self, job_name, id):
         _client = client.get_instance()
         path_params = [
             "project",
             self._project_id,
             "jobs",
-            job.name,
+            job_name,
             "executions",
             id,
         ]
