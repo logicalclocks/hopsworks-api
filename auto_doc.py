@@ -20,6 +20,12 @@ import shutil
 import keras_autodoc
 
 PAGES = {
+    "api/login.md": {
+        "login": ["hopsworks.login"],
+        "fs_api": ["hopsworks.project.Project.get_feature_store"],
+        "mr_api": ["hopsworks.project.Project.get_model_registry"],
+        "ms_api": ["hopsworks.project.Project.get_model_serving"],
+    },
     "api/connection.md": {
         "connection_create": ["hopsworks.connection.Connection.connection"],
         "connection_properties": keras_autodoc.get_properties("hopsworks.connection.Connection"),
