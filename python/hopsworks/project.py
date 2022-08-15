@@ -88,6 +88,13 @@ class Project:
         return self._created
 
     def get_feature_store(self):
+        """Connect to Project's Feature Store API.
+
+        # Returns
+            `hsfs.feature_store.FeatureStore`: The Feature Store API
+        # Raises
+            `RestAPIError`: If unable to connect
+        """
         from hsfs import connection
 
         _client = client.get_instance()
@@ -103,6 +110,13 @@ class Project:
             return connection().get_feature_store()  # If internal client
 
     def get_model_registry(self):
+        """Connect to Project's Model Registry API.
+
+        # Returns
+            `hsml.model_registry.ModelRegistry`: The Feature Store API
+        # Raises
+            `RestAPIError`: If unable to connect
+        """
         from hsml import connection
 
         _client = client.get_instance()
@@ -117,6 +131,13 @@ class Project:
             return connection().get_model_registry()  # If internal client
 
     def get_model_serving(self):
+        """Connect to Project's Model Serving API.
+
+        # Returns
+            `hsml.model_serving.ModelServing`: The Model Serving API
+        # Raises
+            `RestAPIError`: If unable to connect
+        """
         from hsml import connection
 
         _client = client.get_instance()
