@@ -12,14 +12,14 @@
         <meta name="author" content="Logical Clocks">
       
       
-        <link rel="canonical" href="https://docs.hopsworks.ai/hopsworks-api/latest/3.1.0-SNAPSHOT/generated/api/git_provider/">
+        <link rel="canonical" href="https://docs.hopsworks.ai/hopsworks-api/latest/3.1.0-SNAPSHOT/generated/api/login/">
       
       <link rel="icon" href="../../../assets/images/favicon.ico">
       <meta name="generator" content="mkdocs-1.3.0, mkdocs-material-8.2.8">
     
     
       
-        <title>GitProvider - Hopsworks Documentation</title>
+        <title>Login - Hopsworks Documentation</title>
       
     
     
@@ -83,7 +83,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#gitprovider-api" class="md-skip">
+        <a href="#login-api" class="md-skip">
           Skip to content
         </a>
       
@@ -117,7 +117,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              GitProvider
+              Login
             
           </span>
         </div>
@@ -786,11 +786,112 @@
               
   
   
+    
   
-    <li class="md-nav__item">
-      <a href="../login/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" data-md-toggle="toc" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          Login
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         Login
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#login" class="md-nav__link">
+    login
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#feature-store-api" class="md-nav__link">
+    Feature Store API
+  </a>
+  
+    <nav class="md-nav" aria-label="Feature Store API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get_feature_store" class="md-nav__link">
+    get_feature_store
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#model-registry-api" class="md-nav__link">
+    Model Registry API
+  </a>
+  
+    <nav class="md-nav" aria-label="Model Registry API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get_model_registry" class="md-nav__link">
+    get_model_registry
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#model-serving-api" class="md-nav__link">
+    Model Serving API
+  </a>
+  
+    <nav class="md-nav" aria-label="Model Serving API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get_model_serving" class="md-nav__link">
+    get_model_serving
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -870,159 +971,11 @@
               
   
   
-    
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" data-md-toggle="toc" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          GitProvider
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../git_provider/" class="md-nav__link">
         GitProvider
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#handle" class="md-nav__link">
-    Handle
-  </a>
-  
-    <nav class="md-nav" aria-label="Handle">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#get_git_api" class="md-nav__link">
-    get_git_api
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#creation" class="md-nav__link">
-    Creation
-  </a>
-  
-    <nav class="md-nav" aria-label="Creation">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#set_provider" class="md-nav__link">
-    set_provider
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#retrieval" class="md-nav__link">
-    Retrieval
-  </a>
-  
-    <nav class="md-nav" aria-label="Retrieval">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#get_provider" class="md-nav__link">
-    get_provider
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#get_providers" class="md-nav__link">
-    get_providers
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#properties" class="md-nav__link">
-    Properties
-  </a>
-  
-    <nav class="md-nav" aria-label="Properties">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#git_provider" class="md-nav__link">
-    git_provider
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#username" class="md-nav__link">
-    username
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#methods" class="md-nav__link">
-    Methods
-  </a>
-  
-    <nav class="md-nav" aria-label="Methods">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#delete" class="md-nav__link">
-    delete
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1181,16 +1134,23 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#handle" class="md-nav__link">
-    Handle
+  <a href="#login" class="md-nav__link">
+    login
   </a>
   
-    <nav class="md-nav" aria-label="Handle">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#feature-store-api" class="md-nav__link">
+    Feature Store API
+  </a>
+  
+    <nav class="md-nav" aria-label="Feature Store API">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#get_git_api" class="md-nav__link">
-    get_git_api
+  <a href="#get_feature_store" class="md-nav__link">
+    get_feature_store
   </a>
   
 </li>
@@ -1201,16 +1161,16 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#creation" class="md-nav__link">
-    Creation
+  <a href="#model-registry-api" class="md-nav__link">
+    Model Registry API
   </a>
   
-    <nav class="md-nav" aria-label="Creation">
+    <nav class="md-nav" aria-label="Model Registry API">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#set_provider" class="md-nav__link">
-    set_provider
+  <a href="#get_model_registry" class="md-nav__link">
+    get_model_registry
   </a>
   
 </li>
@@ -1221,70 +1181,16 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#retrieval" class="md-nav__link">
-    Retrieval
+  <a href="#model-serving-api" class="md-nav__link">
+    Model Serving API
   </a>
   
-    <nav class="md-nav" aria-label="Retrieval">
+    <nav class="md-nav" aria-label="Model Serving API">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#get_provider" class="md-nav__link">
-    get_provider
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#get_providers" class="md-nav__link">
-    get_providers
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#properties" class="md-nav__link">
-    Properties
-  </a>
-  
-    <nav class="md-nav" aria-label="Properties">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#git_provider" class="md-nav__link">
-    git_provider
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#username" class="md-nav__link">
-    username
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#methods" class="md-nav__link">
-    Methods
-  </a>
-  
-    <nav class="md-nav" aria-label="Methods">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#delete" class="md-nav__link">
-    delete
+  <a href="#get_model_serving" class="md-nav__link">
+    get_model_serving
   </a>
   
 </li>
@@ -1308,89 +1214,76 @@
                 
 
 
-<h1 id="gitprovider-api">GitProvider API<a class="headerlink" href="#gitprovider-api" title="Permanent link">#</a></h1>
-<h2 id="handle">Handle<a class="headerlink" href="#handle" title="Permanent link">#</a></h2>
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L178">[source]</a></span></p>
-<h3 id="get_git_api">get_git_api<a class="headerlink" href="#get_git_api" title="Permanent link">#</a></h3>
-<div class="highlight"><pre><span></span><code><span class="n">Project</span><span class="o">.</span><span class="n">get_git_api</span><span class="p">()</span>
+<h1 id="login-api">Login API<a class="headerlink" href="#login-api" title="Permanent link">#</a></h1>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks.py#L52">[source]</a></span></p>
+<h3 id="login">login<a class="headerlink" href="#login" title="Permanent link">#</a></h3>
+<div class="highlight"><pre><span></span><code><span class="n">hopsworks</span><span class="o">.</span><span class="n">login</span><span class="p">(</span><span class="n">host</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">443</span><span class="p">,</span> <span class="n">project</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">api_key_value</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">api_key_file</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
 </code></pre></div>
-<p>Get the git repository api for the project.</p>
-<p><strong>Returns</strong></p>
-<p><code>GitApi</code>: The Git Api handle</p>
-<hr />
-<h2 id="creation">Creation<a class="headerlink" href="#creation" title="Permanent link">#</a></h2>
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/core/git_api.py#L159">[source]</a></span></p>
-<h3 id="set_provider">set_provider<a class="headerlink" href="#set_provider" title="Permanent link">#</a></h3>
-<div class="highlight"><pre><span></span><code><span class="n">GitApi</span><span class="o">.</span><span class="n">set_provider</span><span class="p">(</span><span class="n">provider</span><span class="p">,</span> <span class="n">username</span><span class="p">,</span> <span class="n">token</span><span class="p">)</span>
+<p>Connect to Serverless Hopsworks (app.hopsworks.ai) by calling the <code>hopsworks.login()</code> function with no arguments.</p>
+<div class="highlight"><pre><span></span><code><span class="n">project</span> <span class="o">=</span> <span class="n">hopsworks</span><span class="o">.</span><span class="n">login</span><span class="p">()</span>
 </code></pre></div>
-<p>Configure a Git provider</p>
-<p><div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">hopsworks</span>
-
-<span class="n">connection</span> <span class="o">=</span> <span class="n">hopsworks</span><span class="o">.</span><span class="n">connection</span><span class="p">()</span>
-
-<span class="n">project</span> <span class="o">=</span> <span class="n">connection</span><span class="o">.</span><span class="n">get_project</span><span class="p">()</span>
-
-<span class="n">git_api</span> <span class="o">=</span> <span class="n">project</span><span class="o">.</span><span class="n">get_git_api</span><span class="p">()</span>
-
-<span class="n">git_api</span><span class="o">.</span><span class="n">set_provider</span><span class="p">(</span><span class="s2">&quot;GitHub&quot;</span><span class="p">,</span> <span class="s2">&quot;my_user&quot;</span><span class="p">,</span> <span class="s2">&quot;my_token&quot;</span><span class="p">)</span>
+<p>Alternatively, connect to your own Hopsworks installation by specifying the host, port and api key.</p>
+<div class="highlight"><pre><span></span><code><span class="n">project</span> <span class="o">=</span> <span class="n">hopsworks</span><span class="o">.</span><span class="n">login</span><span class="p">(</span><span class="n">host</span><span class="o">=</span><span class="s2">&quot;my.hopsworks.server&quot;</span><span class="p">,</span>
+                          <span class="n">port</span><span class="o">=</span><span class="mi">8181</span><span class="p">,</span>
+                          <span class="n">api_key_value</span><span class="o">=</span><span class="s2">&quot;DKN8DndwaAjdf98FFNSxwdVKx&quot;</span><span class="p">)</span>
 </code></pre></div>
-<strong>Arguments</strong></p>
-<ul>
-<li><strong>provider</strong> <code>str</code>: Name of git provider. Valid values are "GitHub", "GitLab" and "BitBucket".</li>
-<li><strong>username</strong> <code>str</code>: Username for the git provider service</li>
-<li><strong>token</strong> <code>str</code>: Token to set for the git provider service</li>
-</ul>
-<p><strong>Raises</strong></p>
-<ul>
-<li><strong><code>RestAPIError</code></strong>: If unable to configure the git provider</li>
-</ul>
-<hr />
-<h2 id="retrieval">Retrieval<a class="headerlink" href="#retrieval" title="Permanent link">#</a></h2>
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/core/git_api.py#L147">[source]</a></span></p>
-<h3 id="get_provider">get_provider<a class="headerlink" href="#get_provider" title="Permanent link">#</a></h3>
-<div class="highlight"><pre><span></span><code><span class="n">GitApi</span><span class="o">.</span><span class="n">get_provider</span><span class="p">(</span><span class="n">provider</span><span class="p">)</span>
-</code></pre></div>
-<p>Get the configured Git provider</p>
+<p>In addition to setting function arguments directly, <code>hopsworks.login()</code> also reads the environment variables:
+HOPSWORKS_HOST, HOPSWORKS_PORT, HOPSWORKS_PROJECT and HOPSWORKS_API_KEY.</p>
+<p>The function arguments do however take precedence over the environment variables in case both are set.</p>
 <p><strong>Arguments</strong></p>
 <ul>
-<li><strong>provider</strong> <code>str</code>: Name of git provider. Valid values are "GitHub", "GitLab" and "BitBucket".</li>
+<li><strong>host</strong> <code>Optional[str]</code>: The hostname of the Hopsworks instance, defaults to <code>None</code>.</li>
+<li><strong>port</strong> <code>int</code>: The port on which the Hopsworks instance can be reached,
+    defaults to <code>443</code>.</li>
+<li><strong>project</strong> <code>Optional[str]</code>: Name of the project to access. If used inside a Hopsworks environment it always gets the current project. If not provided you will be prompted to enter it.</li>
+<li><strong>api_key_value</strong> <code>Optional[str]</code>: Value of the Api Key</li>
+<li><strong>api_key_file</strong> <code>Optional[str]</code>: Path to file wih Api Key</li>
 </ul>
 <p><strong>Returns</strong></p>
-<p><code>GitProvider</code>: The git provider</p>
+<p><code>Project</code>: The Project object</p>
 <p><strong>Raises</strong></p>
 <ul>
-<li><strong><code>RestAPIError</code></strong>: If unable to get the git provider</li>
+<li><strong><code>RestAPIError</code></strong>: If unable to connect to Hopsworks</li>
 </ul>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/core/git_api.py#L137">[source]</a></span></p>
-<h3 id="get_providers">get_providers<a class="headerlink" href="#get_providers" title="Permanent link">#</a></h3>
-<div class="highlight"><pre><span></span><code><span class="n">GitApi</span><span class="o">.</span><span class="n">get_providers</span><span class="p">()</span>
+<h2 id="feature-store-api">Feature Store API<a class="headerlink" href="#feature-store-api" title="Permanent link">#</a></h2>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L90">[source]</a></span></p>
+<h3 id="get_feature_store">get_feature_store<a class="headerlink" href="#get_feature_store" title="Permanent link">#</a></h3>
+<div class="highlight"><pre><span></span><code><span class="n">Project</span><span class="o">.</span><span class="n">get_feature_store</span><span class="p">()</span>
 </code></pre></div>
-<p>Get the configured Git providers</p>
+<p>Connect to Project's Feature Store API.</p>
 <p><strong>Returns</strong></p>
-<p><code>List[GitProvider]</code>: List of git provider objects</p>
+<p><code>hsfs.feature_store.FeatureStore</code>: The Feature Store API</p>
 <p><strong>Raises</strong></p>
 <ul>
-<li><strong><code>RestAPIError</code></strong>: If unable to get the git providers</li>
+<li><strong><code>RestAPIError</code></strong>: If unable to connect</li>
 </ul>
 <hr />
-<h2 id="properties">Properties<a class="headerlink" href="#properties" title="Permanent link">#</a></h2>
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/git_provider.py#L63">[source]</a></span></p>
-<h3 id="git_provider">git_provider<a class="headerlink" href="#git_provider" title="Permanent link">#</a></h3>
-<p>Name of the provider, can be GitHub, GitLab or BitBucket</p>
-<hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/git_provider.py#L58">[source]</a></span></p>
-<h3 id="username">username<a class="headerlink" href="#username" title="Permanent link">#</a></h3>
-<p>Username set for the provider</p>
-<hr />
-<h2 id="methods">Methods<a class="headerlink" href="#methods" title="Permanent link">#</a></h2>
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/git_provider.py#L68">[source]</a></span></p>
-<h3 id="delete">delete<a class="headerlink" href="#delete" title="Permanent link">#</a></h3>
-<div class="highlight"><pre><span></span><code><span class="n">GitProvider</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
+<h2 id="model-registry-api">Model Registry API<a class="headerlink" href="#model-registry-api" title="Permanent link">#</a></h2>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L112">[source]</a></span></p>
+<h3 id="get_model_registry">get_model_registry<a class="headerlink" href="#get_model_registry" title="Permanent link">#</a></h3>
+<div class="highlight"><pre><span></span><code><span class="n">Project</span><span class="o">.</span><span class="n">get_model_registry</span><span class="p">()</span>
 </code></pre></div>
-<p>Remove the git provider configuration.</p>
+<p>Connect to Project's Model Registry API.</p>
+<p><strong>Returns</strong></p>
+<p><code>hsml.model_registry.ModelRegistry</code>: The Feature Store API</p>
 <p><strong>Raises</strong></p>
-<p><code>RestAPIError</code>.</p>
+<ul>
+<li><strong><code>RestAPIError</code></strong>: If unable to connect</li>
+</ul>
+<hr />
+<h2 id="model-serving-api">Model Serving API<a class="headerlink" href="#model-serving-api" title="Permanent link">#</a></h2>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/project.py#L133">[source]</a></span></p>
+<h3 id="get_model_serving">get_model_serving<a class="headerlink" href="#get_model_serving" title="Permanent link">#</a></h3>
+<div class="highlight"><pre><span></span><code><span class="n">Project</span><span class="o">.</span><span class="n">get_model_serving</span><span class="p">()</span>
+</code></pre></div>
+<p>Connect to Project's Model Serving API.</p>
+<p><strong>Returns</strong></p>
+<p><code>hsml.model_serving.ModelServing</code>: The Model Serving API</p>
+<p><strong>Raises</strong></p>
+<ul>
+<li><strong><code>RestAPIError</code></strong>: If unable to connect</li>
+</ul>
 <hr />
 
               
@@ -1404,30 +1297,15 @@
   
     <nav class="md-footer__inner md-grid" aria-label="Footer">
       
-        
-        <a href="../git_repo/" class="md-footer__link md-footer__link--prev" aria-label="Previous: GitRepo" rel="prev">
-          <div class="md-footer__button md-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12z"/></svg>
-          </div>
-          <div class="md-footer__title">
-            <div class="md-ellipsis">
-              <span class="md-footer__direction">
-                Previous
-              </span>
-              GitRepo
-            </div>
-          </div>
-        </a>
-      
       
         
-        <a href="../git_remote/" class="md-footer__link md-footer__link--next" aria-label="Next: GitRemote" rel="next">
+        <a href="../connection/" class="md-footer__link md-footer__link--next" aria-label="Next: Connection" rel="next">
           <div class="md-footer__title">
             <div class="md-ellipsis">
               <span class="md-footer__direction">
                 Next
               </span>
-              GitRemote
+              Connection
             </div>
           </div>
           <div class="md-footer__button md-icon">

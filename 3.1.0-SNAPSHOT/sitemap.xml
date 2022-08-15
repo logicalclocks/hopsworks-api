@@ -56,6 +56,11 @@
          <changefreq>daily</changefreq>
     </url>
     <url>
+         <loc>https://docs.hopsworks.ai/hopsworks-api/latest/3.1.0-SNAPSHOT/generated/api/login/</loc>
+         <lastmod>2022-08-15</lastmod>
+         <changefreq>daily</changefreq>
+    </url>
+    <url>
          <loc>https://docs.hopsworks.ai/hopsworks-api/latest/3.1.0-SNAPSHOT/generated/api/opensearch/</loc>
          <lastmod>2022-08-15</lastmod>
          <changefreq>daily</changefreq>
