@@ -1,1 +1,17 @@
-[{"version": "3.1.0-SNAPSHOT", "title": "3.1.0-SNAPSHOT", "aliases": ["dev"]}, {"version": "3.0.1", "title": "3.0.1", "aliases": ["3.0", "latest"]}]
+[
+  {
+    "version": "3.1.0-SNAPSHOT",
+    "title": "3.1.0-SNAPSHOT",
+    "aliases": [
+      "dev"
+    ]
+  },
+  {
+    "version": "3.0.1",
+    "title": "3.0.1",
+    "aliases": [
+      "latest",
+      "3.0"
+    ]
+  }
+]
