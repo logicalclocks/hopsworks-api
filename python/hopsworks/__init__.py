@@ -19,7 +19,7 @@ import logging
 import os
 import sys
 
-from hopsworks.client.exceptions import RestAPIError
+from hopsworks.client.exceptions import RestAPIError, ProjectException
 
 from hopsworks.connection import Connection
 
@@ -56,23 +56,34 @@ def login(
     api_key_value: str = None,
     api_key_file: str = None,
 ):
-    """Connect to app.hopsworks.ai, or connect to your own Hopsworks instance by specifying the host and port arguments.
-
-    The function also reads the environment variables: HOPSWORKS_HOST, HOPSWORKS_PORT, HOPSWORKS_PROJECT and
-    HOPSWORKS_API_KEY which can be set instead of the arguments.
+    """Connect to Serverless Hopsworks (app.hopsworks.ai) by calling the `hopsworks.login()` function with no arguments.
 
     ```python
 
-    import hopsworks
-
-    hopsworks.login()
+    project = hopsworks.login()
 
     ```
+
+    Alternatively, connect to your own Hopsworks installation by specifying the host, port and api key.
+
+    ```python
+
+    project = hopsworks.login(host="my.hopsworks.server",
+                              port=8181,
+                              api_key_value="DKN8DndwaAjdf98FFNSxwdVKx")
+
+    ```
+
+    In addition to setting function arguments directly, `hopsworks.login()` also reads the environment variables:
+    HOPSWORKS_HOST, HOPSWORKS_PORT, HOPSWORKS_PROJECT and HOPSWORKS_API_KEY.
+
+    The function arguments do however take precedence over the environment variables in case both are set.
+
     # Arguments
         host: The hostname of the Hopsworks instance, defaults to `None`.
         port: The port on which the Hopsworks instance can be reached,
             defaults to `443`.
-        project: Name of the project to access. If used inside a Hopsworks environment it always gets the current project.
+        project: Name of the project to access. If used inside a Hopsworks environment it always gets the current project. If not provided you will be prompted to enter it.
         api_key_value: Value of the Api Key
         api_key_file: Path to file wih Api Key
     # Returns
@@ -93,41 +104,57 @@ def login(
         print("\nLogged in to project, explore it here " + project_obj.get_url())
         return project_obj
 
-    # This is an external client
-    if "HOPSWORKS_API_KEY" in os.environ:
-        api_key_value = os.environ["HOPSWORKS_API_KEY"]
+    # This is run for an external client
 
-    if "HOPSWORKS_PROJECT" in os.environ:
+    # Function arguments takes precedence over environment variable.
+    # Here we check if environment variable exists and function argument is not set, we use the environment variable.
+
+    # If api_key_value/api_key_file not defined, get HOPSWORKS_API_KEY environment variable
+    api_key = None
+    if (
+        api_key_value is None
+        and api_key_file is None
+        and "HOPSWORKS_API_KEY" in os.environ
+    ):
+        api_key = os.environ["HOPSWORKS_API_KEY"]
+
+    # If project argument not defined, get HOPSWORKS_PROJECT environment variable
+    if project is None and "HOPSWORKS_PROJECT" in os.environ:
         project = os.environ["HOPSWORKS_PROJECT"]
 
-    if host is None:
+    # If host argument not defined, get HOPSWORKS_HOST environment variable
+    if host is None and "HOPSWORKS_HOST" in os.environ:
+        host = os.environ["HOPSWORKS_HOST"]
+    elif host is None:  # Always do a fallback to Serverless Hopsworks if not defined
         host = "c.app.hopsworks.ai"
 
-    if "HOPSWORKS_HOST" in os.environ:
-        host = os.environ["HOPSWORKS_HOST"]
-
-    if "HOPSWORKS_PORT" in os.environ:
+    # If port same as default, get HOPSWORKS_HOST environment variable
+    if port == 443 and "HOPSWORKS_PORT" in os.environ:
         port = os.environ["HOPSWORKS_PORT"]
 
+    # This .hw_api_key is created when a user logs into Serverless Hopsworks the first time.
+    # It is then used only for future login calls to Serverless. For other Hopsworks installations it's ignored.
     api_key_path = os.getcwd() + "/.hw_api_key"
-    api_key_val = None
+
+    # Conditions for getting the api_key
     # If user supplied the api key directly
     if api_key_value is not None:
-        api_key_val = api_key_value
+        api_key = api_key_value
     # If user supplied the api key in a file
     elif api_key_file is not None:
         file = None
         if os.path.exists(api_key_file):
             try:
                 file = open(api_key_file, mode="r")
-                api_key_val = file.read()
+                api_key = file.read()
             finally:
                 file.close()
         else:
             raise IOError(
                 "Could not find api key file on path: {}".format(api_key_file)
             )
-    elif os.path.exists(api_key_path):
+    # If user connected to Serverless Hopsworks, and the cached .hw_api_key exists, then use it.
+    elif os.path.exists(api_key_path) and host == "c.app.hopsworks.ai":
         try:
             _saas_connection = _saas_connection(
                 host=host, port=port, api_key_file=api_key_path
@@ -140,20 +167,18 @@ def login(
             # API Key may be invalid, have the user supply it again
             os.remove(api_key_path)
 
-    if api_key_val is None and host == "c.app.hopsworks.ai":
+    if api_key is None and host == "c.app.hopsworks.ai":
         print(
             "Copy your Api Key (first register/login): https://c.app.hopsworks.ai/account/api/generated"
         )
-        api_key_val = input("\nPaste it here: ")
+        api_key = input("\nPaste it here: ")
         # If api key was provided as input, save the API key locally on disk to avoid users having to enter it again in the same environment
         api_key_file = open(api_key_path, "w")
-        api_key_file.write(api_key_val)
+        api_key_file.write(api_key)
         api_key_file.close()
 
     try:
-        _saas_connection = _saas_connection(
-            host=host, port=port, api_key_value=api_key_val
-        )
+        _saas_connection = _saas_connection(host=host, port=port, api_key_value=api_key)
         project_obj = _prompt_project(_saas_connection, project)
     except RestAPIError as e:
         logout()
@@ -167,7 +192,7 @@ def _prompt_project(valid_connection, project):
     saas_projects = valid_connection.get_projects()
     if project is None:
         if len(saas_projects) == 0:
-            raise Exception("Could not find any project")
+            raise ProjectException("Could not find any project")
         elif len(saas_projects) == 1:
             return saas_projects[0]
         else:
@@ -199,7 +224,7 @@ def _prompt_project(valid_connection, project):
         for proj in saas_projects:
             if proj.name == project:
                 return proj
-        raise Exception("Could not find project {}".format(project))
+        raise ProjectException("Could not find project {}".format(project))
 
 
 def logout():

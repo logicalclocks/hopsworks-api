@@ -18,6 +18,7 @@ nav:
   - Administration: https://docs.hopsworks.ai/
   - API:
     - API Reference:
+      - Login: generated/api/login.md
       - Connection: generated/api/connection.md
       - Projects: generated/api/projects.md
       - Jobs: generated/api/jobs.md
