@@ -190,7 +190,7 @@ class Execution:
         # Raises
             `RestAPIError`.
         """
-        self._execution_api.delete(self._job, self.id)
+        self._execution_api._delete(self.job_name, self.id)
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
