@@ -56,7 +56,7 @@ def login(
     api_key_value: str = None,
     api_key_file: str = None,
 ):
-    """Connect to Serverless Hopsworks (app.hopsworks.ai) by calling the `hopsworks.login()` function with no arguments.
+    """Connect to [Serverless Hopsworks](https://app.hopsworks.ai) by calling the `hopsworks.login()` function with no arguments.
 
     ```python
 
