@@ -113,7 +113,7 @@ class Project:
         """Connect to Project's Model Registry API.
 
         # Returns
-            `hsml.model_registry.ModelRegistry`: The Feature Store API
+            `hsml.model_registry.ModelRegistry`: The Model Registry API
         # Raises
             `RestAPIError`: If unable to connect
         """
