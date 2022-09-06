@@ -172,10 +172,15 @@ def login(
             "Copy your Api Key (first register/login): https://c.app.hopsworks.ai/account/api/generated"
         )
         api_key = input("\nPaste it here: ")
+
         # If api key was provided as input, save the API key locally on disk to avoid users having to enter it again in the same environment
-        api_key_file = open(api_key_path, "w")
-        api_key_file.write(api_key)
-        api_key_file.close()
+        descriptor = os.open(
+            path=api_key_path,
+            flags=(os.O_WRONLY | os.O_CREAT | os.O_TRUNC),
+            mode=0o500
+        )
+        with open(descriptor, 'w') as fh:
+            fh.write(api_key.strip())
 
     try:
         _saas_connection = _saas_connection(host=host, port=port, api_key_value=api_key)
