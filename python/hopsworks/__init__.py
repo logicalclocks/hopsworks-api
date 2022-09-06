@@ -175,11 +175,9 @@ def login(
 
         # If api key was provided as input, save the API key locally on disk to avoid users having to enter it again in the same environment
         descriptor = os.open(
-            path=api_key_path,
-            flags=(os.O_WRONLY | os.O_CREAT | os.O_TRUNC),
-            mode=0o500
+            path=api_key_path, flags=(os.O_WRONLY | os.O_CREAT | os.O_TRUNC), mode=0o500
         )
-        with open(descriptor, 'w') as fh:
+        with open(descriptor, "w") as fh:
             fh.write(api_key.strip())
 
     try:
