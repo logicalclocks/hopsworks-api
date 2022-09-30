@@ -18,6 +18,7 @@ import warnings
 import logging
 import os
 import sys
+import getpass
 
 from hopsworks.client.exceptions import RestAPIError, ProjectException
 
@@ -171,7 +172,7 @@ def login(
         print(
             "Copy your Api Key (first register/login): https://c.app.hopsworks.ai/account/api/generated"
         )
-        api_key = input("\nPaste it here: ")
+        api_key = getpass.getpass(prompt="\nPaste it here: ")
 
         # If api key was provided as input, save the API key locally on disk to avoid users having to enter it again in the same environment
         descriptor = os.open(
