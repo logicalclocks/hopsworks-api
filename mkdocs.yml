@@ -10,7 +10,7 @@ edit_uri: ""
 
 nav:
   - Home: https://docs.hopsworks.ai/
-  - Getting Started: https://docs.hopsworks.ai/
+  - Getting Started ↗: https://docs.hopsworks.ai/
   - Tutorials: https://docs.hopsworks.ai/
   - Concepts: https://docs.hopsworks.ai/
   - Guides: https://docs.hopsworks.ai/
@@ -32,7 +32,7 @@ nav:
       - Secrets: generated/api/secrets.md
       - OpenSearch: generated/api/opensearch.md
     - Contributing: CONTRIBUTING.md
-  - Community: https://community.hopsworks.ai/
+  - Community ↗: https://community.hopsworks.ai/
 
 theme:
   name: material
