@@ -336,7 +336,6 @@ class GitApi:
                 path_params,
                 headers=headers,
                 query_params=query_params,
-                data=json.dumps({}),
             ),
             self._project_id,
             self._project_name,
