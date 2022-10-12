@@ -71,7 +71,6 @@ class GitProviderApi:
         path_params = ["users", "git", "provider"]
 
         provider_config = {
-            "type": "gitProviderSecretsDTO",
             "gitProvider": provider,
             "username": username,
             "token": token,
