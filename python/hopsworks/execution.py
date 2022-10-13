@@ -69,12 +69,22 @@ class Execution:
     def from_response_json(cls, json_dict, project_id, job_name, job_type):
         json_decamelized = humps.decamelize(json_dict)
         if "count" not in json_decamelized:
-            return cls(**json_decamelized, project_id=project_id, job_name=job_name, job_type=job_type)
+            return cls(
+                **json_decamelized,
+                project_id=project_id,
+                job_name=job_name,
+                job_type=job_type,
+            )
         elif json_decamelized["count"] == 0:
             return []
         else:
             return [
-                cls(**execution, project_id=project_id, job_name=job_name, job_type=job_type)
+                cls(
+                    **execution,
+                    project_id=project_id,
+                    job_name=job_name,
+                    job_type=job_type,
+                )
                 for execution in json_decamelized["items"]
             ]
 
@@ -162,9 +172,9 @@ class Execution:
         """
 
         is_yarn_job = (
-                self.job_type.lower() == "spark"
-                or self.job_type.lower() == "pyspark"
-                or self.job_type.lower() == "flink"
+            self.job_type.lower() == "spark"
+            or self.job_type.lower() == "pyspark"
+            or self.job_type.lower() == "flink"
         )
 
         if is_yarn_job:
