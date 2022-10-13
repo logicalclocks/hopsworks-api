@@ -32,6 +32,7 @@ class ExecutionsApi:
             _client._send_request("POST", path_params, data=args),
             self._project_id,
             job.name,
+            job.job_type,
         )
 
     def _get(self, job, id):
@@ -50,6 +51,7 @@ class ExecutionsApi:
             _client._send_request("GET", path_params, headers=headers),
             self._project_id,
             job.name,
+            job.job_type,
         )
 
     def _get_all(self, job):
@@ -65,6 +67,7 @@ class ExecutionsApi:
             ),
             self._project_id,
             job.name,
+            job.job_type,
         )
 
     def _delete(self, job_name, id):

@@ -43,6 +43,7 @@ class Execution:
         href=None,
         project_id=None,
         job_name=None,
+        job_type=None,
     ):
         self._id = id
         self._final_status = final_status
@@ -58,21 +59,22 @@ class Execution:
         self._app_id = app_id
         self._hdfs_user = hdfs_user
         self._job_name = job_name
+        self._job_type = job_type
         self._project_id = project_id
 
         self._execution_engine = execution_engine.ExecutionEngine(project_id)
         self._execution_api = execution_api.ExecutionsApi(project_id)
 
     @classmethod
-    def from_response_json(cls, json_dict, project_id, job_name):
+    def from_response_json(cls, json_dict, project_id, job_name, job_type):
         json_decamelized = humps.decamelize(json_dict)
         if "count" not in json_decamelized:
-            return cls(**json_decamelized, project_id=project_id, job_name=job_name)
+            return cls(**json_decamelized, project_id=project_id, job_name=job_name, job_type=job_type)
         elif json_decamelized["count"] == 0:
             return []
         else:
             return [
-                cls(**execution, project_id=project_id, job_name=job_name)
+                cls(**execution, project_id=project_id, job_name=job_name, job_type=job_type)
                 for execution in json_decamelized["items"]
             ]
 
@@ -90,6 +92,11 @@ class Execution:
     def job_name(self):
         """Name of the job the execution belongs to"""
         return self._job_name
+
+    @property
+    def job_type(self):
+        """Type of the job the execution belongs to"""
+        return self._job_type
 
     @property
     def state(self):
@@ -153,12 +160,24 @@ class Execution:
         # Returns
             `bool`. True if execution ran successfully. False if execution failed or was killed.
         """
-        if self.state in constants.JOBS.ERROR_STATES:
-            return False
-        elif self.state in constants.JOBS.SUCCESS_STATES:
-            return True
+
+        is_yarn_job = (
+                self.job_type.lower() == "spark"
+                or self.job_type.lower() == "pyspark"
+                or self.job_type.lower() == "flink"
+        )
+
+        if is_yarn_job:
+            if self.final_status in constants.JOBS.ERROR_STATES:
+                return False
+            elif self.final_status in constants.JOBS.SUCCESS_STATES:
+                return True
         else:
-            return None
+            if self.state in constants.JOBS.ERROR_STATES:
+                return False
+            elif self.state in constants.JOBS.SUCCESS_STATES:
+                return True
+        return None
 
     def download_logs(self):
         """Download stdout and stderr logs for the execution
