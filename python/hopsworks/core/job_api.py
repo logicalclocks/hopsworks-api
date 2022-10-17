@@ -30,7 +30,7 @@ class JobsApi:
         self._project_name = project_name
 
     def create_job(self, name: str, config: dict):
-        """Create a new job.
+        """Create a new job or update an existing one.
 
         ```python
 
@@ -58,9 +58,6 @@ class JobsApi:
             `RestAPIError`: If unable to create the job
         """
         _client = client.get_instance()
-
-        if self.exists(name):
-            raise JobException("A job named {} already exists".format(name))
 
         config = util.validate_job_conf(config, self._project_name)
 
