@@ -16,7 +16,6 @@
 
 from hopsworks import client, job, util
 from hopsworks.client.exceptions import RestAPIError
-from hopsworks.client.exceptions import JobException
 import json
 
 
