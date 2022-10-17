@@ -1471,7 +1471,7 @@
 <p><code>JobsApi</code>: The Jobs Api handle</p>
 <hr />
 <h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">#</a></h2>
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/core/job_api.py#L141">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/core/job_api.py#L137">[source]</a></span></p>
 <h3 id="get_configuration">get_configuration<a class="headerlink" href="#get_configuration" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">JobsApi</span><span class="o">.</span><span class="n">get_configuration</span><span class="p">(</span><span class="nb">type</span><span class="p">)</span>
 </code></pre></div>
@@ -1488,11 +1488,11 @@
 </ul>
 <hr />
 <h2 id="creation">Creation<a class="headerlink" href="#creation" title="Permanent link">#</a></h2>
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/core/job_api.py#L32">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/core/job_api.py#L31">[source]</a></span></p>
 <h3 id="create_job">create_job<a class="headerlink" href="#create_job" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">JobsApi</span><span class="o">.</span><span class="n">create_job</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">config</span><span class="p">)</span>
 </code></pre></div>
-<p>Create a new job.</p>
+<p>Create a new job or update an existing one.</p>
 <p><div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">hopsworks</span>
 
 <span class="n">connection</span> <span class="o">=</span> <span class="n">hopsworks</span><span class="o">.</span><span class="n">connection</span><span class="p">()</span>
@@ -1520,7 +1520,7 @@
 </ul>
 <hr />
 <h2 id="retrieval">Retrieval<a class="headerlink" href="#retrieval" title="Permanent link">#</a></h2>
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/core/job_api.py#L80">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/core/job_api.py#L76">[source]</a></span></p>
 <h3 id="get_job">get_job<a class="headerlink" href="#get_job" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">JobsApi</span><span class="o">.</span><span class="n">get_job</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
 </code></pre></div>
@@ -1536,7 +1536,7 @@
 <li><strong><code>RestAPIError</code></strong>: If unable to get the job</li>
 </ul>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/core/job_api.py#L104">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/hopsworks-api/blob/master/python/hopsworks/core/job_api.py#L100">[source]</a></span></p>
 <h3 id="get_jobs">get_jobs<a class="headerlink" href="#get_jobs" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">JobsApi</span><span class="o">.</span><span class="n">get_jobs</span><span class="p">()</span>
 </code></pre></div>
