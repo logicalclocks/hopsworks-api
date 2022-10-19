@@ -24,13 +24,10 @@ setup(
         "boto3",
         "pyjks",
         "mock",
-        "tqdm"
+        "tqdm",
     ],
     extras_require={
-        "dev": [
-            "pytest",
-            "flake8",
-            "black"],
+        "dev": ["pytest", "flake8", "black"],
         "docs": [
             "mkdocs==1.3.0",
             "mkdocs-material==8.2.8",
@@ -40,7 +37,7 @@ setup(
             "markdown-include",
             "markdown==3.3.7",
             "pymdown-extensions",
-        ]
+        ],
     },
     author="Logical Clocks AB",
     author_email="robin@logicalclocks.com",
