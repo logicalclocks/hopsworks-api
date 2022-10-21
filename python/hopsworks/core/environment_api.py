@@ -14,10 +14,7 @@
 #   limitations under the License.
 #
 
-import os
-
-from hopsworks import client
-from hopsworks.client.exceptions import RestAPIError
+from hopsworks import client, environment
 
 
 class EnvironmentApi:
@@ -44,6 +41,26 @@ class EnvironmentApi:
         headers = {"content-type": "application/json"}
         _client._send_request("POST", path_params, headers=headers),
 
+    def get(self):
+        """Get handle for the Python environment for the project"""
+        _client = client.get_instance()
+
+        path_params = [
+            "project",
+            self._project_id,
+            "python",
+            "environments",
+            EnvironmentApi.PYTHON_VERSION,
+        ]
+        query_params = {"expand": ["libraries", "commands"]}
+        headers = {"content-type": "application/json"}
+        return environment.Environment.from_response_json(
+            _client._send_request(
+                "GET", path_params, query_params=query_params, headers=headers
+            ),
+            self._project_id,
+        )
+
     def delete(self):
         """Delete the project Python environment"""
         _client = client.get_instance()
@@ -57,12 +74,3 @@ class EnvironmentApi:
         ]
         headers = {"content-type": "application/json"}
         _client._send_request("DELETE", path_params, headers=headers),
-
-    def install_wheel(self, path, await_installation=False):
-        """Install Wheel file
-
-        # Arguments
-            path: location of the wheel on Hopsworks
-            await_installation: True to block until there are no commands left to execute. Default False.
-        """
-        install_config = {"packageSource": "WHEEL", "dependencyUrl": path}
