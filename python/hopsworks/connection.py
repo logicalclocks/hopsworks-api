@@ -20,7 +20,7 @@ from requests.exceptions import ConnectionError
 
 from hopsworks.decorators import connected, not_connected
 from hopsworks import client
-from hopsworks.core import project_api, secret_api
+from hopsworks.core import project_api, user_api, secret_api
 
 HOPSWORKS_PORT_DEFAULT = 443
 HOSTNAME_VERIFICATION_DEFAULT = True
@@ -161,6 +161,16 @@ class Connection:
         return self._project_api._get_project(name)
 
     @connected
+    def get_user(self):
+        """Get the current user.
+
+        # Returns
+            `User`. A user object.
+        """
+
+        return self._user_api.get_current_user()
+
+    @connected
     def get_projects(self):
         """Get all projects.
 
@@ -220,6 +230,7 @@ class Connection:
                 client.init("hopsworks")
 
             self._project_api = project_api.ProjectApi()
+            self._user_api = user_api.UserApi()
             self._secret_api = secret_api.SecretsApi()
         except (TypeError, ConnectionError):
             self._connected = False

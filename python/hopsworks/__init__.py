@@ -129,6 +129,9 @@ def login(
     elif host is None:  # Always do a fallback to Serverless Hopsworks if not defined
         host = "c.app.hopsworks.ai"
 
+    # If user is connected to app
+    app = host == "c.app.hopsworks.ai"
+
     # If port same as default, get HOPSWORKS_HOST environment variable
     if port == 443 and "HOPSWORKS_PORT" in os.environ:
         port = os.environ["HOPSWORKS_PORT"]
@@ -155,12 +158,12 @@ def login(
                 "Could not find api key file on path: {}".format(api_key_file)
             )
     # If user connected to Serverless Hopsworks, and the cached .hw_api_key exists, then use it.
-    elif os.path.exists(api_key_path) and host == "c.app.hopsworks.ai":
+    elif os.path.exists(api_key_path) and app is True:
         try:
             _saas_connection = _saas_connection(
                 host=host, port=port, api_key_file=api_key_path
             )
-            project_obj = _prompt_project(_saas_connection, project)
+            project_obj = _prompt_project(_saas_connection, project, app=app)
             print("\nLogged in to project, explore it here " + project_obj.get_url())
             return project_obj
         except RestAPIError:
@@ -168,7 +171,7 @@ def login(
             # API Key may be invalid, have the user supply it again
             os.remove(api_key_path)
 
-    if api_key is None and host == "c.app.hopsworks.ai":
+    if api_key is None and app is True:
         print(
             "Copy your Api Key (first register/login): https://c.app.hopsworks.ai/account/api/generated"
         )
@@ -183,7 +186,7 @@ def login(
 
     try:
         _saas_connection = _saas_connection(host=host, port=port, api_key_value=api_key)
-        project_obj = _prompt_project(_saas_connection, project)
+        project_obj = _prompt_project(_saas_connection, project, app=app)
     except RestAPIError as e:
         logout()
         raise e
@@ -192,20 +195,26 @@ def login(
     return project_obj
 
 
-def _prompt_project(valid_connection, project):
+def _prompt_project(valid_connection, project, app=False):
     saas_projects = valid_connection.get_projects()
     if project is None:
         if len(saas_projects) == 0:
             raise ProjectException("Could not find any project")
-        elif len(saas_projects) == 1:
+        elif app is True: # On app always return the project owned by the user by default
+            current_user = valid_connection.get_user()
+            for proj in saas_projects:
+                if proj.owner == current_user.email:
+                    return proj
+            raise ProjectException("Could not find project for this user")
+        elif len(saas_projects) == 1: # If only 1 project available, return it directly
             return saas_projects[0]
-        else:
+        else: # If multiple projects available, prompt user to select a project
             while True:
                 print("\nMultiple projects found. \n")
                 for index in range(len(saas_projects)):
                     print("\t (" + str(index + 1) + ") " + saas_projects[index].name)
                 while True:
-                    project_index = input("\nEnter project to access: ")
+                    project_index = input("\nEnter the number for the project to connect to: ")
                     # Handle invalid input type
                     try:
                         project_index = int(project_index)
@@ -228,7 +237,7 @@ def _prompt_project(valid_connection, project):
         for proj in saas_projects:
             if proj.name == project:
                 return proj
-        raise ProjectException("Could not find project {}".format(project))
+        raise ProjectException("Could not find project named {}".format(project))
 
 
 def logout():
