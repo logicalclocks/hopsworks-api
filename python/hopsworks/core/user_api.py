@@ -1,4 +1,3 @@
-/hopsworks-api/api/users/profile
 #
 #   Copyright 2022 Hopsworks AB
 #
