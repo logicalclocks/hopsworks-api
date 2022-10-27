@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from .version import __version__ # noqa: F401
+from .version import __version__  # noqa: F401
 
 import warnings
 import logging
