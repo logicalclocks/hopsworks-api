@@ -60,7 +60,7 @@ class Project:
         self._jobs_api = job_api.JobsApi(project_id, project_name)
         self._git_api = git_api.GitApi(project_id, project_name)
         self._dataset_api = dataset_api.DatasetApi(project_id)
-        self._environment_api = environment_api.EnvironmentApi(project_id)
+        self._environment_api = environment_api.EnvironmentApi(project_id, project_name)
 
     @classmethod
     def from_response_json(cls, json_dict):

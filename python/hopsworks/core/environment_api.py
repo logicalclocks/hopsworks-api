@@ -14,21 +14,43 @@
 #   limitations under the License.
 #
 
-from hopsworks import client, environment
+from hopsworks import client, environment, constants
+from hopsworks.engine import environment_engine
 
 
 class EnvironmentApi:
 
-    PYTHON_VERSION = "3.8"
-
     def __init__(
         self,
         project_id,
+        project_name,
     ):
         self._project_id = project_id
+        self._project_name = project_name
 
-    def create(self):
-        """Create Python environment for the project"""
+        self._environment_engine = environment_engine.EnvironmentEngine(project_id)
+
+    def create_environment(self, await_creation=True):
+        """Create Python environment for the project
+
+        ```python
+
+        import hopsworks
+
+        project = hopsworks.login()
+
+        env_api = project.get_environment_api()
+
+        env = env_api.create_environment()
+
+        ```
+        # Arguments
+            await_creation: bool. If True the method returns only when the creation is finished. Default True
+        # Returns
+            `Environment`: The Environment object
+        # Raises
+            `RestAPIError`: If unable to create the environment
+        """
         _client = client.get_instance()
 
         path_params = [
@@ -36,13 +58,41 @@ class EnvironmentApi:
             self._project_id,
             "python",
             "environments",
-            EnvironmentApi.PYTHON_VERSION,
+            constants.PYTHON_CONFIG.PYTHON_VERSION,
         ]
         headers = {"content-type": "application/json"}
-        _client._send_request("POST", path_params, headers=headers),
+        env = environment.Environment.from_response_json(
+            _client._send_request(
+                "POST", path_params, headers=headers
+            ),
+            self._project_id,
+            self._project_name,
+        )
 
-    def get(self):
-        """Get handle for the Python environment for the project"""
+        if await_creation:
+            self._environment_engine.await_environment_command()
+
+        return env
+
+    def get_environment(self):
+        """Get handle for the Python environment for the project
+
+        ```python
+
+        import hopsworks
+
+        project = hopsworks.login()
+
+        env_api = project.get_environment_api()
+
+        env = env_api.get_environment()
+
+        ```
+        # Returns
+            `Environment`: The Environment object
+        # Raises
+            `RestAPIError`: If unable to get the environment
+        """
         _client = client.get_instance()
 
         path_params = [
@@ -50,7 +100,7 @@ class EnvironmentApi:
             self._project_id,
             "python",
             "environments",
-            EnvironmentApi.PYTHON_VERSION,
+            constants.PYTHON_CONFIG.PYTHON_VERSION,
         ]
         query_params = {"expand": ["libraries", "commands"]}
         headers = {"content-type": "application/json"}
@@ -59,9 +109,10 @@ class EnvironmentApi:
                 "GET", path_params, query_params=query_params, headers=headers
             ),
             self._project_id,
+            self._project_name,
         )
 
-    def delete(self):
+    def _delete(self):
         """Delete the project Python environment"""
         _client = client.get_instance()
 
@@ -70,7 +121,7 @@ class EnvironmentApi:
             self._project_id,
             "python",
             "environments",
-            EnvironmentApi.PYTHON_VERSION,
+            constants.PYTHON_CONFIG.PYTHON_VERSION,
         ]
         headers = {"content-type": "application/json"}
         _client._send_request("DELETE", path_params, headers=headers),
