@@ -202,8 +202,14 @@ class DatasetApi:
         path_params = ["project", _client._project_id, "dataset", "v2", "upload", path]
 
         _client._send_request(
-            "POST", path_params, files={"file": (file_name, file), "fileName": file_name, "fileSize": file_size},
-            stream=True
+            "POST",
+            path_params,
+            files={
+                "file": (file_name, file),
+                "fileName": file_name,
+                "fileSize": file_size,
+            },
+            stream=True,
         )
 
     def _get(self, path: str):
