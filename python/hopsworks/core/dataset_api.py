@@ -176,6 +176,8 @@ class DatasetApi:
             try:
                 pbar = tqdm(
                     total=file_size,
+                    unit="B",
+                    unit_scale=True,
                     bar_format="{desc}: {percentage:.3f}%|{bar}| {n_fmt}/{total_fmt} elapsed<{elapsed} remaining<{remaining}",
                     desc="Uploading",
                 )
