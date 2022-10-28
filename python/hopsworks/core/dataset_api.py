@@ -14,9 +14,9 @@
 #   limitations under the License.
 #
 
-import math
 import os
 from tqdm.auto import tqdm
+from tqdm.utils import CallbackIOWrapper
 import shutil
 import logging
 
@@ -171,11 +171,6 @@ class DatasetApi:
                     )
                 )
 
-        num_chunks = math.ceil(file_size / self.DEFAULT_FLOW_CHUNK_SIZE)
-
-        base_params = self._get_flow_base_params(file_name, num_chunks, file_size)
-
-        chunk_number = 1
         with open(local_path, "rb") as f:
             pbar = None
             try:
@@ -188,20 +183,10 @@ class DatasetApi:
                 self._log.exception("Failed to initialize progress bar.")
                 self._log.info("Starting upload")
 
-            while True:
-                chunk = f.read(self.DEFAULT_FLOW_CHUNK_SIZE)
-                if not chunk:
-                    break
+            if pbar is not None:
+                f = CallbackIOWrapper(pbar.update, f, "read")
 
-                query_params = base_params
-                query_params["flowCurrentChunkSize"] = len(chunk)
-                query_params["flowChunkNumber"] = chunk_number
-
-                self._upload_request(query_params, upload_path, file_name, chunk)
-                chunk_number += 1
-
-                if pbar is not None:
-                    pbar.update(query_params["flowCurrentChunkSize"])
+            self._upload_request(upload_path, file_name, f, file_size)
 
             if pbar is not None:
                 pbar.close()
@@ -210,25 +195,13 @@ class DatasetApi:
 
         return upload_path + "/" + os.path.basename(local_path)
 
-    def _get_flow_base_params(self, file_name, num_chunks, size):
-        return {
-            "templateId": -1,
-            "flowChunkSize": self.DEFAULT_FLOW_CHUNK_SIZE,
-            "flowTotalSize": size,
-            "flowIdentifier": str(size) + "_" + file_name,
-            "flowFilename": file_name,
-            "flowRelativePath": file_name,
-            "flowTotalChunks": num_chunks,
-        }
-
-    def _upload_request(self, params, path, file_name, chunk):
-
+    def _upload_request(self, path, file_name, file, file_size):
         _client = client.get_instance()
-        path_params = ["project", self._project_id, "dataset", "upload", path]
+        path_params = ["project", _client._project_id, "dataset", "v2", "upload", path]
 
-        # Flow configuration params are sent as form data
         _client._send_request(
-            "POST", path_params, data=params, files={"file": (file_name, chunk)}
+            "POST", path_params, files={"file": (file_name, file), "fileName": file_name, "fileSize": file_size},
+            stream=True
         )
 
     def _get(self, path: str):
