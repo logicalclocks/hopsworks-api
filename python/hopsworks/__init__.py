@@ -21,7 +21,7 @@ import sys
 import getpass
 
 from hopsworks.client.exceptions import RestAPIError, ProjectException
-
+from hopsworks import version
 from hopsworks.connection import Connection
 
 # Needs to run before import of hsml and hsfs
@@ -29,6 +29,8 @@ warnings.filterwarnings(action="ignore", category=UserWarning, module=r".*psycop
 
 import hsml  # noqa: F401, E402
 import hsfs  # noqa: F401, E402
+
+__version__ = version.__version__
 
 connection = Connection.connection
 
