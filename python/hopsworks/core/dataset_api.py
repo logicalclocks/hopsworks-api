@@ -42,9 +42,7 @@ class DatasetApi:
 
         import hopsworks
 
-        connection = hopsworks.connection()
-
-        project = connection.get_project()
+        project = hopsworks.login()
 
         dataset_api = project.get_dataset_api()
 
@@ -135,9 +133,7 @@ class DatasetApi:
 
         import hopsworks
 
-        connection = hopsworks.connection()
-
-        project = connection.get_project()
+        project = hopsworks.login()
 
         dataset_api = project.get_dataset_api()
 

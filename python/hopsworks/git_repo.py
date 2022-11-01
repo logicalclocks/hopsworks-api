@@ -224,9 +224,7 @@ class GitRepo:
 
         import hopsworks
 
-        connection = hopsworks.connection()
-
-        project = connection.get_project()
+        project = hopsworks.login()
 
         git_api = project.get_git_api()
 

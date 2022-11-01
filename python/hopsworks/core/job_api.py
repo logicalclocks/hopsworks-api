@@ -35,9 +35,7 @@ class JobsApi:
 
         import hopsworks
 
-        connection = hopsworks.connection()
-
-        project = connection.get_project()
+        project = hopsworks.login()
 
         jobs_api = project.get_jobs_api()
 

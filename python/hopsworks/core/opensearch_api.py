@@ -53,9 +53,7 @@ class OpenSearchApi:
         import hopsworks
         from opensearchpy import OpenSearch
 
-        connection = hopsworks.connection()
-
-        project = connection.get_project()
+        project = hopsworks.login()
 
         opensearch_api = project.get_opensearch_api()
 
