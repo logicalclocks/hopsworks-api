@@ -41,6 +41,7 @@ class Project:
         retention_period=None,
         services=None,
         datasets=None,
+        creation_status=None,
     ):
         self._id = project_id
         self._name = project_name
