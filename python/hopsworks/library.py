@@ -53,7 +53,3 @@ class Library:
     def from_response_json(cls, json_dict, environment, project_id):
         json_decamelized = humps.decamelize(json_dict)
         return cls(**json_decamelized, environment=environment, project_id=project_id)
-
-    @property
-    def commands(self):
-        return self._commands

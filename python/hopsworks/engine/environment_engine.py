@@ -16,22 +16,41 @@
 
 import time
 
-from hopsworks import client, library, command
-from hopsworks.core import environment_api
+from hopsworks import client, library, environment, command, constants
+from hopsworks.client.exceptions import RestAPIError
 
 
 class EnvironmentEngine:
     def __init__(self, project_id):
         self._project_id = project_id
 
-    def await_installation(self, library_name=None):
+    def await_library_command(self, library_name=None):
         commands = [command.Command(status="ONGOING")]
-        while len(commands) > 0 and not self._command_final_status(commands[0]):
+        while len(commands) > 0 and not self._is_final_status(commands[0]):
             time.sleep(5)
-            commands = self._poll_commands_library(library_name).commands
+            library = self._poll_commands_library(library_name)
+            if library is None:
+                commands = []
+            else:
+                commands = library._commands
 
-    def _command_final_status(self, command):
-        return command.status == "FAILED" or command.status == "SUCCESS"
+    def await_environment_command(self):
+        commands = [command.Command(status="ONGOING")]
+        while len(commands) > 0 and not self._is_final_status(commands[0]):
+            time.sleep(5)
+            environment = self._poll_commands_environment()
+            if environment is None:
+                commands = []
+            else:
+                commands = environment._commands
+
+    def _is_final_status(self, command):
+        if command.status == "FAILED":
+            raise RestAPIError('Command failed with stacktrace: \n{}'.format(command.error_message))
+        elif command.status == "SUCCESS":
+            return True
+        else:
+            return False
 
     def _poll_commands_library(self, library_name):
         _client = client.get_instance()
@@ -41,7 +60,7 @@ class EnvironmentEngine:
             self._project_id,
             "python",
             "environments",
-            environment_api.EnvironmentApi.PYTHON_VERSION,
+            constants.PYTHON_CONFIG.PYTHON_VERSION,
             "libraries",
             library_name,
         ]
@@ -49,7 +68,37 @@ class EnvironmentEngine:
         query_params = {"expand": "commands"}
         headers = {"content-type": "application/json"}
 
-        return library.Library.from_response_json(
+        try:
+            return library.Library.from_response_json(
+                _client._send_request(
+                    "GET", path_params, headers=headers, query_params=query_params
+                ),
+                None,
+                None,
+            )
+        except RestAPIError as e:
+            if (
+                    e.response.json().get("errorCode", "") == 300003
+                    and e.response.status_code == 404
+            ):
+                return None
+
+    def _poll_commands_environment(self):
+        _client = client.get_instance()
+
+        path_params = [
+            "project",
+            self._project_id,
+            "python",
+            "environments",
+            constants.PYTHON_CONFIG.PYTHON_VERSION,
+        ]
+
+        query_params = {"expand": "commands"}
+        headers = {"content-type": "application/json"}
+
+
+        return environment.Environment.from_response_json(
             _client._send_request(
                 "GET", path_params, headers=headers, query_params=query_params
             ),
