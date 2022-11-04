@@ -61,6 +61,14 @@ PAGES = {
             "hopsworks.execution.Execution", exclude=["from_response_json", "json", "update_from_response_json"]
         ),
     },
+    "api/environment.md": {
+        "env_api_handle": ["hopsworks.project.Project.get_environment_api"],
+        "env_create": ["hopsworks.core.environment_api.EnvironmentApi.create_environment"],
+        "env_get": ["hopsworks.core.environment_api.EnvironmentApi.get_environment"],
+        "env_methods": keras_autodoc.get_methods(
+            "hopsworks.environment.Environment", exclude=["from_response_json", "json"]
+        ),
+    },
     "api/git_repo.md": {
         "git_api_handle": ["hopsworks.project.Project.get_git_api"],
         "git_repo_clone": ["hopsworks.core.git_api.GitApi.clone"],
