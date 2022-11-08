@@ -46,7 +46,9 @@ class EnvironmentEngine:
 
     def _is_final_status(self, command):
         if command.status == "FAILED":
-            raise RestAPIError('Command failed with stacktrace: \n{}'.format(command.error_message))
+            raise RestAPIError(
+                "Command failed with stacktrace: \n{}".format(command.error_message)
+            )
         elif command.status == "SUCCESS":
             return True
         else:
@@ -78,8 +80,8 @@ class EnvironmentEngine:
             )
         except RestAPIError as e:
             if (
-                    e.response.json().get("errorCode", "") == 300003
-                    and e.response.status_code == 404
+                e.response.json().get("errorCode", "") == 300003
+                and e.response.status_code == 404
             ):
                 return None
 
@@ -96,7 +98,6 @@ class EnvironmentEngine:
 
         query_params = {"expand": "commands"}
         headers = {"content-type": "application/json"}
-
 
         return environment.Environment.from_response_json(
             _client._send_request(
