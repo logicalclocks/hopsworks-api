@@ -19,7 +19,6 @@ from hopsworks.engine import environment_engine
 
 
 class EnvironmentApi:
-
     def __init__(
         self,
         project_id,
@@ -62,9 +61,7 @@ class EnvironmentApi:
         ]
         headers = {"content-type": "application/json"}
         env = environment.Environment.from_response_json(
-            _client._send_request(
-                "POST", path_params, headers=headers
-            ),
+            _client._send_request("POST", path_params, headers=headers),
             self._project_id,
             self._project_name,
         )
