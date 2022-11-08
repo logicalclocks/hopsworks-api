@@ -19,7 +19,14 @@ import json
 
 from hopsworks import util, client
 from hopsworks.client.external import Client
-from hopsworks.core import job_api, git_api, dataset_api, kafka_api, opensearch_api
+from hopsworks.core import (
+    job_api,
+    git_api,
+    dataset_api,
+    kafka_api,
+    opensearch_api,
+    environment_api,
+)
 
 
 class Project:
@@ -54,6 +61,7 @@ class Project:
         self._jobs_api = job_api.JobsApi(project_id, project_name)
         self._git_api = git_api.GitApi(project_id, project_name)
         self._dataset_api = dataset_api.DatasetApi(project_id)
+        self._environment_api = environment_api.EnvironmentApi(project_id, project_name)
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -191,6 +199,14 @@ class Project:
             `DatasetApi`: The Datasets Api handle
         """
         return self._dataset_api
+
+    def get_environment_api(self):
+        """Get the Python environment AP
+
+        # Returns
+            `EnvironmentApi`: The Python Environment Api handle
+        """
+        return self._environment_api
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
