@@ -23,6 +23,7 @@ import logging
 from hopsworks import client
 from hopsworks.client.exceptions import RestAPIError
 from hopsworks.client.exceptions import DatasetException
+from requests_toolbelt import MultipartEncoder
 
 
 class DatasetApi:
@@ -171,44 +172,42 @@ class DatasetApi:
                     )
                 )
 
-        with open(local_path, "rb") as f:
-            pbar = None
-            try:
-                pbar = tqdm(
-                    total=file_size,
-                    unit="B",
-                    unit_scale=True,
-                    bar_format="{desc}: {percentage:.3f}%|{bar}| {n_fmt}/{total_fmt} elapsed<{elapsed} remaining<{remaining}",
-                    desc="Uploading",
-                )
-            except Exception:
-                self._log.exception("Failed to initialize progress bar.")
-                self._log.info("Starting upload")
+        pbar = None
+        try:
+            pbar = tqdm(
+                total=file_size,
+                unit="B",
+                unit_scale=True,
+                bar_format="{desc}: {percentage:.3f}%|{bar}| {n_fmt}/{total_fmt} elapsed<{elapsed} remaining<{remaining}",
+                desc="Uploading",
+            )
+        except Exception:
+            self._log.exception("Failed to initialize progress bar.")
+            self._log.info("Starting upload")
 
-            if pbar is not None:
-                f = CallbackIOWrapper(pbar.update, f, "read")
+        if pbar is not None:
+            self._upload_request(upload_path, file_name, CallbackIOWrapper(pbar.update, open(local_path, 'rb'), "read"), file_size)
+        else:
+            self._upload_request(upload_path, file_name, open(local_path, 'rb'), file_size)
 
-            self._upload_request(upload_path, file_name, f, file_size)
+        
 
-            if pbar is not None:
-                pbar.close()
-            else:
-                self._log.info("Upload finished")
+        if pbar is not None:
+            pbar.close()
+        else:
+            self._log.info("Upload finished")
 
         return upload_path + "/" + os.path.basename(local_path)
 
     def _upload_request(self, path, file_name, file, file_size):
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "dataset", "v2", "upload", path]
-
+        m = MultipartEncoder(fields={"file": (file_name, file), "fileName": file_name, "fileSize": str(file_size)})
         _client._send_request(
             "POST",
             path_params,
-            files={
-                "file": (file_name, file),
-                "fileName": file_name,
-                "fileSize": file_size,
-            },
+            data=m, 
+            headers={'Content-Type': m.content_type},
             stream=True,
         )
 
