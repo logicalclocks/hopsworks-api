@@ -186,11 +186,16 @@ class DatasetApi:
             self._log.info("Starting upload")
 
         if pbar is not None:
-            self._upload_request(upload_path, file_name, CallbackIOWrapper(pbar.update, open(local_path, 'rb'), "read"), file_size)
+            self._upload_request(
+                upload_path,
+                file_name,
+                CallbackIOWrapper(pbar.update, open(local_path, "rb"), "read"),
+                file_size,
+            )
         else:
-            self._upload_request(upload_path, file_name, open(local_path, 'rb'), file_size)
-
-        
+            self._upload_request(
+                upload_path, file_name, open(local_path, "rb"), file_size
+            )
 
         if pbar is not None:
             pbar.close()
@@ -202,12 +207,18 @@ class DatasetApi:
     def _upload_request(self, path, file_name, file, file_size):
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "dataset", "v2", "upload", path]
-        m = MultipartEncoder(fields={"file": (file_name, file), "fileName": file_name, "fileSize": str(file_size)})
+        m = MultipartEncoder(
+            fields={
+                "file": (file_name, file),
+                "fileName": file_name,
+                "fileSize": str(file_size),
+            }
+        )
         _client._send_request(
             "POST",
             path_params,
-            data=m, 
-            headers={'Content-Type': m.content_type},
+            data=m,
+            headers={"Content-Type": m.content_type},
             stream=True,
         )
 
