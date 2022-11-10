@@ -25,6 +25,7 @@ setup(
         "pyjks",
         "mock",
         "tqdm",
+        "requests_toolbelt",
     ],
     extras_require={
         "dev": ["pytest", "flake8", "black"],
