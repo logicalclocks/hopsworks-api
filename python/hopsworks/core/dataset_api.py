@@ -206,7 +206,7 @@ class DatasetApi:
 
     def _upload_request(self, path, file_name, file, file_size):
         _client = client.get_instance()
-        path_params = ["project", _client._project_id, "dataset", "v2", "upload", path]
+        path_params = ["project", self._project_id, "dataset", "v2", "upload", path]
         m = MultipartEncoder(
             fields={
                 "file": (file_name, file),
