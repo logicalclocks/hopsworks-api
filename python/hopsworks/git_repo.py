@@ -32,6 +32,7 @@ class GitRepo:
         provider=None,
         current_branch=None,
         current_commit=None,
+        read_only=None,
         ongoing_operation=None,
         type=None,
         href=None,
@@ -106,6 +107,11 @@ class GitRepo:
     @property
     def current_commit(self):
         """The current commit for the git repo"""
+        return self._current_commit
+
+    @property
+    def read_only(self):
+        """If True then the repository functions `commit`, `push` and `checkout_files` are forbidden."""
         return self._current_commit
 
     def status(self):
