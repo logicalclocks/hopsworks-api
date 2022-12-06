@@ -49,6 +49,7 @@ class GitRepo:
         self._provider = provider
         self._current_branch = current_branch
         self._current_commit = git_commit.GitCommit.from_response_json(current_commit)
+        self._read_only = read_only
         self._type = type
         self._href = href
         self._expand = expand
@@ -111,8 +112,8 @@ class GitRepo:
 
     @property
     def read_only(self):
-        """If True then the repository functions `commit`, `push` and `checkout_files` are forbidden."""
-        return self._current_commit
+        """If True then the repository functions `GitRepo.commit`, `GitRepo.push` and `GitRepo.checkout_files` are forbidden."""
+        return self._read_only
 
     def status(self):
         """Get the status of the repo.
