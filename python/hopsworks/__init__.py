@@ -36,6 +36,8 @@ connection = Connection.connection
 
 _saas_connection = Connection.connection
 
+_connected_project = None
+
 
 def hw_formatwarning(message, category, filename, lineno, line=None):
     return "{}: {}\n".format(category.__name__, message)
@@ -95,6 +97,8 @@ def login(
         `RestAPIError`: If unable to connect to Hopsworks
     """
 
+    global _connected_project
+
     # If already logged in, should reset connection and follow login procedure as Connection may no longer be valid
     logout()
 
@@ -103,9 +107,9 @@ def login(
     # If inside hopsworks, just return the current project for now
     if "REST_ENDPOINT" in os.environ:
         _saas_connection = _saas_connection()
-        project_obj = _saas_connection.get_project()
-        print("\nLogged in to project, explore it here " + project_obj.get_url())
-        return project_obj
+        _connected_project = _saas_connection.get_project()
+        print("\nLogged in to project, explore it here " + _connected_project.get_url())
+        return _connected_project
 
     # This is run for an external client
 
@@ -162,9 +166,9 @@ def login(
             _saas_connection = _saas_connection(
                 host=host, port=port, api_key_file=api_key_path
             )
-            project_obj = _prompt_project(_saas_connection, project)
-            print("\nLogged in to project, explore it here " + project_obj.get_url())
-            return project_obj
+            _connected_project = _prompt_project(_saas_connection, project)
+            print("\nLogged in to project, explore it here " + _connected_project.get_url())
+            return _connected_project
         except RestAPIError:
             logout()
             # API Key may be invalid, have the user supply it again
@@ -185,13 +189,13 @@ def login(
 
     try:
         _saas_connection = _saas_connection(host=host, port=port, api_key_value=api_key)
-        project_obj = _prompt_project(_saas_connection, project)
+        _connected_project = _prompt_project(_saas_connection, project)
     except RestAPIError as e:
         logout()
         raise e
 
-    print("\nLogged in to project, explore it here " + project_obj.get_url())
-    return project_obj
+    print("\nLogged in to project, explore it here " + _connected_project.get_url())
+    return _connected_project
 
 
 def _prompt_project(valid_connection, project):
@@ -234,6 +238,11 @@ def _prompt_project(valid_connection, project):
 
 
 def logout():
+    global _connected_project
+    if  _connected_project is not None:
+        if _connected_project._hsfs_connection is not None and _connected_project._hsfs_connection._connected is True:
+            _connected_project._hsfs_connection.close()
+
     global _saas_connection
     if type(_saas_connection) is Connection:
         _saas_connection.close()

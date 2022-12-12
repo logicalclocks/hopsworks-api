@@ -62,6 +62,7 @@ class Project:
         self._git_api = git_api.GitApi(project_id, project_name)
         self._dataset_api = dataset_api.DatasetApi(project_id)
         self._environment_api = environment_api.EnvironmentApi(project_id, project_name)
+        self._hsfs_connection = None
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -108,19 +109,20 @@ class Project:
 
         _client = client.get_instance()
         if type(_client) == Client:  # If external client
-            return connection(
+            self._hsfs_connection = connection(
                 host=_client._host,
                 port=_client._port,
                 project=self.name,
                 api_key_value=_client._auth._token,
                 engine="python",
-            ).get_feature_store()
+            )
+            return self._hsfs_connection.get_feature_store()
         else:
             return connection().get_feature_store()  # If internal client
 
+
     def get_model_registry(self):
         """Connect to Project's Model Registry API.
-
         # Returns
             `hsml.model_registry.ModelRegistry`: The Model Registry API
         # Raises
