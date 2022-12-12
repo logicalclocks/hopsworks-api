@@ -212,6 +212,26 @@ class GitRepo:
         """
         self._git_api._pull(self.id, branch, force=False, remote=remote)
 
+    def reset(self, remote: str = None, branch: str = None):
+        """Reset the current branch to a local branch or to a remote branch or to last clean state
+         # Arguments
+            branch: name of the branch
+            remote: name of the remote
+        # Raises
+            `RestAPIError` in case the backend fails the validation.
+        """
+        self._git_api._reset(self.id, branch=branch, remote=remote)
+
+    def fetch(self, branch: str, remote: str = "origin"):
+        """Fetch a remote branch
+         # Arguments
+            branch: name of the branch
+            remote: name of the remote
+        # Raises
+            `RestAPIError` in case the backend fails the validation.
+        """
+        self._git_api._fetch(self.id, branch=branch, remote=remote)
+
     def get_commits(self, branch: str):
         """Get the commits for the repo and branch.
 

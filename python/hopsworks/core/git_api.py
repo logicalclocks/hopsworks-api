@@ -417,6 +417,68 @@ class GitApi:
         )
         _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
 
+    def _fetch(self, repo_id, branch: str, remote: str = None):
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            self._project_id,
+            "git",
+            "repository",
+            str(repo_id),
+        ]
+
+        query_params = {"action": "FETCH", "expand": ["repository", "user"]}
+        fetch_config = {
+            "type": "fetchCommandConfiguration",
+            "remoteName": remote,
+            "branchName": branch,
+        }
+
+        headers = {"content-type": "application/json"}
+        git_op = git_op_execution.GitOpExecution.from_response_json(
+            _client._send_request(
+                "POST",
+                path_params,
+                headers=headers,
+                query_params=query_params,
+                data=json.dumps(fetch_config),
+            ),
+            self._project_id,
+            self._project_name,
+        )
+        _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
+
+    def _reset(self, repo_id, branch: str = None, remote: str = None):
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            self._project_id,
+            "git",
+            "repository",
+            str(repo_id),
+        ]
+
+        query_params = {"action": "RESET", "expand": ["repository", "user"]}
+        reset_config = {
+            "type": "resetCommandConfiguration",
+            "remoteName": remote,
+            "branchName": branch,
+        }
+
+        headers = {"content-type": "application/json"}
+        git_op = git_op_execution.GitOpExecution.from_response_json(
+            _client._send_request(
+                "POST",
+                path_params,
+                headers=headers,
+                query_params=query_params,
+                data=json.dumps(reset_config),
+            ),
+            self._project_id,
+            self._project_name,
+        )
+        _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
+
     def _pull(self, repo_id, branch: str, force: bool = False, remote: str = None):
 
         _client = client.get_instance()
