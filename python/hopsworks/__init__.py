@@ -167,7 +167,10 @@ def login(
                 host=host, port=port, api_key_file=api_key_path
             )
             _connected_project = _prompt_project(_saas_connection, project)
-            print("\nLogged in to project, explore it here " + _connected_project.get_url())
+            print(
+                "\nLogged in to project, explore it here "
+                + _connected_project.get_url()
+            )
             return _connected_project
         except RestAPIError:
             logout()
@@ -239,8 +242,11 @@ def _prompt_project(valid_connection, project):
 
 def logout():
     global _connected_project
-    if  _connected_project is not None:
-        if _connected_project._hsfs_connection is not None and _connected_project._hsfs_connection._connected is True:
+    if _connected_project is not None:
+        if (
+            _connected_project._hsfs_connection is not None
+            and _connected_project._hsfs_connection._connected is True
+        ):
             _connected_project._hsfs_connection.close()
 
     global _saas_connection

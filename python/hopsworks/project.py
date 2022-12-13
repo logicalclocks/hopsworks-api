@@ -120,7 +120,6 @@ class Project:
         else:
             return connection().get_feature_store()  # If internal client
 
-
     def get_model_registry(self):
         """Connect to Project's Model Registry API.
         # Returns
