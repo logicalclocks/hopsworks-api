@@ -208,17 +208,17 @@ class GitRepo:
             branch: name of the branch
             remote: name of the remote
         # Raises
-            `RestAPIError` in case the backend fails to retrieve the commits.
+            `RestAPIError` in case the backend fails to pull.
         """
         self._git_api._pull(self.id, branch, force=False, remote=remote)
 
     def reset(self, remote: str = None, branch: str = None):
-        """Reset the current branch to a local branch or to a remote branch or to last clean state
+        """Reset the current branch to a local branch or to a remote branch or to last clean state.
          # Arguments
             branch: name of the branch
             remote: name of the remote
         # Raises
-            `RestAPIError` in case the backend fails the validation.
+            `RestAPIError` in case the backend fails to reset
         """
         self._git_api._reset(self.id, branch=branch, remote=remote)
 
@@ -228,7 +228,7 @@ class GitRepo:
             branch: name of the branch
             remote: name of the remote
         # Raises
-            `RestAPIError` in case the backend fails the validation.
+            `RestAPIError` in case the backend fails to fetch
         """
         self._git_api._fetch(self.id, branch=branch, remote=remote)
 
