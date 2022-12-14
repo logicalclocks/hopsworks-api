@@ -203,6 +203,7 @@ class Connection:
         major_minor_backend = regexMatcher.search(backend_version).group(0)
 
         if major_minor_backend != major_minor_client:
+            print("\n", file=sys.stderr)
             warnings.warn(
                 "The installed hopsworks client version {0} may not be compatible with the connected Hopsworks backend version {1}. \nTo ensure compatibility please install the latest bug fix release matching the minor version of your backend ({2}) by running 'pip install hopsworks=={2}.*'".format(
                     client_version, backend_version, major_minor_backend
@@ -254,7 +255,7 @@ class Connection:
             self._connected = False
             raise
         print(
-            "Connected. Call `.close()` to terminate connection gracefully.\n",
+            "Connected. Call `.close()` to terminate connection gracefully.",
             flush=True,
         )
 
