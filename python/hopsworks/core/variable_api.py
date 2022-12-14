@@ -16,8 +16,6 @@
 
 from hopsworks import client
 
-import json
-
 
 class VariableApi:
     def __init__(self):

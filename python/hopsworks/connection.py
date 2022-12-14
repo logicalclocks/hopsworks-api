@@ -14,7 +14,10 @@
 #   limitations under the License.
 #
 
-import os, re, warnings, sys
+import os
+import re
+import warnings
+import sys
 
 from requests.exceptions import ConnectionError
 
