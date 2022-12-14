@@ -15,12 +15,15 @@
 #
 
 import os
+import re
+import warnings
+import sys
 
 from requests.exceptions import ConnectionError
 
 from hopsworks.decorators import connected, not_connected
-from hopsworks import client
-from hopsworks.core import project_api, secret_api
+from hopsworks import client, version
+from hopsworks.core import project_api, secret_api, variable_api
 
 HOPSWORKS_PORT_DEFAULT = 443
 HOSTNAME_VERIFICATION_DEFAULT = True
@@ -182,6 +185,32 @@ class Connection:
         """
         return self._project_api._exists(name)
 
+    @connected
+    def _check_compatibility(self):
+        """Check the compatibility between the client and backend.
+        Assumes versioning (major.minor.patch).
+        A client is considered compatible if the major and minor version matches.
+
+        """
+
+        versionPattern = r"\d+\.\d+"
+        regexMatcher = re.compile(versionPattern)
+
+        client_version = version.__version__
+        backend_version = self._variable_api.get_version("hopsworks")
+
+        major_minor_client = regexMatcher.search(client_version).group(0)
+        major_minor_backend = regexMatcher.search(backend_version).group(0)
+
+        if major_minor_backend != major_minor_client:
+            print("\n", file=sys.stderr)
+            warnings.warn(
+                "The installed hopsworks client version {0} may not be compatible with the connected Hopsworks backend version {1}. \nTo ensure compatibility please install the latest bug fix release matching the minor version of your backend ({2}) by running 'pip install hopsworks=={2}.*'".format(
+                    client_version, backend_version, major_minor_backend
+                )
+            )
+            sys.stderr.flush()
+
     @not_connected
     def connect(self):
         """Instantiate the connection.
@@ -221,10 +250,16 @@ class Connection:
 
             self._project_api = project_api.ProjectApi()
             self._secret_api = secret_api.SecretsApi()
+            self._variable_api = variable_api.VariableApi()
         except (TypeError, ConnectionError):
             self._connected = False
             raise
-        print("Connected. Call `.close()` to terminate connection gracefully.")
+        print(
+            "Connected. Call `.close()` to terminate connection gracefully.",
+            flush=True,
+        )
+
+        self._check_compatibility()
 
     def close(self):
         """Close a connection gracefully.
