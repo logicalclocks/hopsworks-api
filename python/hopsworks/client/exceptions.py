@@ -52,6 +52,9 @@ class GitException(Exception):
 class JobException(Exception):
     """Generic job exception"""
 
+class EnvironmentException(Exception):
+    """Generic python environment exception"""
+
 
 class KafkaException(Exception):
     """Generic kafka exception"""

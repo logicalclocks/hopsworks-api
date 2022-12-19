@@ -17,7 +17,7 @@
 import time
 
 from hopsworks import client, library, environment, command, constants
-from hopsworks.client.exceptions import RestAPIError
+from hopsworks.client.exceptions import RestAPIError, EnvironmentException
 
 
 class EnvironmentEngine:
