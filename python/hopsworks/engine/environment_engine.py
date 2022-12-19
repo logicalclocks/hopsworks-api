@@ -46,7 +46,7 @@ class EnvironmentEngine:
 
     def _is_final_status(self, command):
         if command.status == "FAILED":
-            raise RestAPIError(
+            raise EnvironmentException(
                 "Command failed with stacktrace: \n{}".format(command.error_message)
             )
         elif command.status == "SUCCESS":
