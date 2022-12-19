@@ -52,6 +52,7 @@ class GitException(Exception):
 class JobException(Exception):
     """Generic job exception"""
 
+
 class EnvironmentException(Exception):
     """Generic python environment exception"""
 
