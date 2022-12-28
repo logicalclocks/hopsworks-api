@@ -2,77 +2,77 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://docs.hopsworks.ai/hopsworks-api/latest/3.0.5/</loc>
-         <lastmod>2022-12-16</lastmod>
+         <lastmod>2022-12-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.hopsworks.ai/hopsworks-api/latest/3.0.5/CONTRIBUTING/</loc>
-         <lastmod>2022-12-16</lastmod>
+         <lastmod>2022-12-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.hopsworks.ai/hopsworks-api/latest/3.0.5/generated/api/connection/</loc>
-         <lastmod>2022-12-16</lastmod>
+         <lastmod>2022-12-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.hopsworks.ai/hopsworks-api/latest/3.0.5/generated/api/datasets/</loc>
-         <lastmod>2022-12-16</lastmod>
+         <lastmod>2022-12-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.hopsworks.ai/hopsworks-api/latest/3.0.5/generated/api/executions/</loc>
-         <lastmod>2022-12-16</lastmod>
+         <lastmod>2022-12-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.hopsworks.ai/hopsworks-api/latest/3.0.5/generated/api/git_provider/</loc>
-         <lastmod>2022-12-16</lastmod>
+         <lastmod>2022-12-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.hopsworks.ai/hopsworks-api/latest/3.0.5/generated/api/git_remote/</loc>
-         <lastmod>2022-12-16</lastmod>
+         <lastmod>2022-12-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.hopsworks.ai/hopsworks-api/latest/3.0.5/generated/api/git_repo/</loc>
-         <lastmod>2022-12-16</lastmod>
+         <lastmod>2022-12-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.hopsworks.ai/hopsworks-api/latest/3.0.5/generated/api/jobs/</loc>
-         <lastmod>2022-12-16</lastmod>
+         <lastmod>2022-12-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.hopsworks.ai/hopsworks-api/latest/3.0.5/generated/api/kafka_schema/</loc>
-         <lastmod>2022-12-16</lastmod>
+         <lastmod>2022-12-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.hopsworks.ai/hopsworks-api/latest/3.0.5/generated/api/kafka_topic/</loc>
-         <lastmod>2022-12-16</lastmod>
+         <lastmod>2022-12-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.hopsworks.ai/hopsworks-api/latest/3.0.5/generated/api/login/</loc>
-         <lastmod>2022-12-16</lastmod>
+         <lastmod>2022-12-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.hopsworks.ai/hopsworks-api/latest/3.0.5/generated/api/opensearch/</loc>
-         <lastmod>2022-12-16</lastmod>
+         <lastmod>2022-12-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.hopsworks.ai/hopsworks-api/latest/3.0.5/generated/api/projects/</loc>
-         <lastmod>2022-12-16</lastmod>
+         <lastmod>2022-12-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.hopsworks.ai/hopsworks-api/latest/3.0.5/generated/api/secrets/</loc>
-         <lastmod>2022-12-16</lastmod>
+         <lastmod>2022-12-28</lastmod>
          <changefreq>daily</changefreq>
     </url>
 </urlset>
