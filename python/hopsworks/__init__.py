@@ -241,14 +241,6 @@ def _prompt_project(valid_connection, project):
 
 
 def logout():
-    global _connected_project
-    if _connected_project is not None:
-        if (
-            _connected_project._hsfs_connection is not None
-            and _connected_project._hsfs_connection._connected is True
-        ):
-            _connected_project._hsfs_connection.close()
-
     global _saas_connection
     if type(_saas_connection) is Connection:
         _saas_connection.close()

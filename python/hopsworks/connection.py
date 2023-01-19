@@ -269,8 +269,28 @@ class Connection:
 
         Usage is recommended but optional.
         """
+        from hsfs import client as hsfs_client
+        from hsfs import engine as hsfs_engine
+        from hsml import client as hsml_client
+
+        try:
+            hsfs_client.stop()
+        except:
+            pass
+
+        try:
+            hsfs_engine.stop()
+        except:
+            pass
+
+        try:
+            hsml_client.stop()
+        except:
+            pass
+
         client.stop()
         self._connected = False
+
         print("Connection closed.")
 
     @classmethod
