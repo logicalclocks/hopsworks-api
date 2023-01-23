@@ -275,17 +275,17 @@ class Connection:
 
         try:
             hsfs_client.stop()
-        except:
+        except:  # noqa: E722
             pass
 
         try:
             hsfs_engine.stop()
-        except:
+        except:  # noqa: E722
             pass
 
         try:
             hsml_client.stop()
-        except:
+        except:  # noqa: E722
             pass
 
         client.stop()
