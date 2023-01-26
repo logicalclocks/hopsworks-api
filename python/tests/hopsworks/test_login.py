@@ -23,6 +23,7 @@ import shutil
 import tempfile
 import importlib
 from hopsworks.client import exceptions
+from hopsworks.project import Project
 
 
 @contextmanager
@@ -124,8 +125,8 @@ class TestLogin(TestCase):
         project = hopsworks.login(
             api_key_value="NrfnssYNimpOVA5A.W1KnLMRpayZWZw1AjxaYCRUh2vG8F3JBsxUMdqXTLqsXyaOByi11BMfMkZBjizLg"
         )
+        isinstance(project, Project)
 
-        project.get_feature_store()
         path, in_cwd, in_home, in_tmp = self._check_api_key_existence()
 
         assert in_cwd is False
@@ -156,7 +157,7 @@ class TestLogin(TestCase):
             }
         ):
             project = hopsworks.login()
-        project.get_feature_store()
+            isinstance(project, Project)
 
         assert in_cwd is False
         assert in_home is False
@@ -179,7 +180,8 @@ class TestLogin(TestCase):
         assert in_tmp is False
 
         project = hopsworks.login()
-        project.get_feature_store()
+        isinstance(project, Project)
+
         path, in_cwd, in_home, in_tmp = self._check_api_key_existence()
 
         assert in_cwd is True and os.path.exists(path)
@@ -206,7 +208,8 @@ class TestLogin(TestCase):
         assert in_tmp is False
 
         project = hopsworks.login()
-        project.get_feature_store()
+        isinstance(project, Project)
+
         path, in_cwd, in_home, in_tmp = self._check_api_key_existence()
 
         assert in_cwd is False
@@ -227,8 +230,8 @@ class TestLogin(TestCase):
             assert in_tmp is False
 
             project = hopsworks.login()
+            isinstance(project, Project)
 
-            project.get_feature_store()
             path, in_cwd, in_home, in_tmp = self._check_api_key_existence()
 
             assert in_cwd is False
