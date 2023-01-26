@@ -2,9 +2,6 @@ name: python
 
 on: pull_request
 
-env:
-  APP_API_KEY: ${{ secrets.APP_API_KEY }}
-
 jobs:
   lint_stylecheck:
     name: Lint and Stylecheck
@@ -59,6 +56,8 @@ jobs:
 
       - name: Run Pytest suite
         run: pytest python/tests
+        env:
+          APP_API_KEY: ${{ secrets.NEXUS_USER }}
 
   unit_tests_ubuntu_local:
     name: Unit Testing (Ubuntu) (Local TZ)
@@ -86,6 +85,8 @@ jobs:
 
       - name: Run Pytest suite
         run: pytest python/tests
+        env:
+          APP_API_KEY: ${{ secrets.NEXUS_USER }}
 
   unit_tests_windows_utc:
     name: Unit Testing (Windows)
@@ -113,6 +114,8 @@ jobs:
 
       - name: Run Pytest suite
         run: pytest python/tests
+        env:
+          APP_API_KEY: ${{ secrets.NEXUS_USER }}
 
 
   unit_tests_windows_local:
@@ -141,3 +144,5 @@ jobs:
 
       - name: Run Pytest suite
         run: pytest python/tests
+        env:
+          APP_API_KEY: ${{ secrets.NEXUS_USER }}
