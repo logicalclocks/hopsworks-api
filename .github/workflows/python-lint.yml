@@ -2,6 +2,9 @@ name: python
 
 on: pull_request
 
+env:
+  APP_API_KEY: ${{ secrets.APP_API_KEY }}
+
 jobs:
   lint_stylecheck:
     name: Lint and Stylecheck
