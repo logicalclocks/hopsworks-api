@@ -94,6 +94,8 @@ class TestLogin(TestCase):
     def test_login_api_key_as_input(self):
         # Should accept api key as input from command line
 
+        raise Exception(os.environ["APP_API_KEY"])
+
         path, in_cwd, in_home, in_tmp = self._check_api_key_existence()
 
         assert in_cwd is False
