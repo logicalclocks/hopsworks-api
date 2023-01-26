@@ -100,11 +100,7 @@ class TestLogin(TestCase):
         assert in_home is True and not os.path.exists(path)
         assert in_tmp is False
 
-        with input(
-            {
-                "hidden": os.environ['APP_API_KEY']
-            }
-        ):
+        with input({"hidden": os.environ["APP_API_KEY"]}):
             project = hopsworks.login()
             isinstance(project, Project)
 
@@ -122,9 +118,7 @@ class TestLogin(TestCase):
         assert in_home is True and not os.path.exists(path)
         assert in_tmp is False
         # Should create API key in home by default
-        project = hopsworks.login(
-            api_key_value=os.environ['APP_API_KEY']
-        )
+        project = hopsworks.login(api_key_value=os.environ["APP_API_KEY"])
         isinstance(project, Project)
 
         path, in_cwd, in_home, in_tmp = self._check_api_key_existence()
@@ -151,11 +145,7 @@ class TestLogin(TestCase):
         assert in_tmp is True and not os.path.exists(path)
 
         # Should use API key in tmp folder
-        with input(
-            {
-                "hidden": os.environ['APP_API_KEY']
-            }
-        ):
+        with input({"hidden": os.environ["APP_API_KEY"]}):
             project = hopsworks.login()
             isinstance(project, Project)
 
@@ -168,9 +158,7 @@ class TestLogin(TestCase):
 
         api_key_path = "{}/{}".format(os.getcwd(), ".hw_api_key")
         f = open(api_key_path, "w")
-        f.write(
-            os.environ['APP_API_KEY']
-        )
+        f.write(os.environ["APP_API_KEY"])
         f.close()
 
         path, in_cwd, in_home, in_tmp = self._check_api_key_existence()
@@ -196,9 +184,7 @@ class TestLogin(TestCase):
         )
         os.mkdir(api_key_folder_path)
         f = open(api_key_folder_path + "/.hw_api_key", "w")
-        f.write(
-            os.environ['APP_API_KEY']
-        )
+        f.write(os.environ["APP_API_KEY"])
         f.close()
 
         path, in_cwd, in_home, in_tmp = self._check_api_key_existence()
@@ -219,9 +205,7 @@ class TestLogin(TestCase):
     def test_login_api_key_as_environ(self):
         # Should accept api key as environmet variable
         try:
-            os.environ[
-                "HOPSWORKS_API_KEY"
-            ] = os.environ['APP_API_KEY']
+            os.environ["HOPSWORKS_API_KEY"] = os.environ["APP_API_KEY"]
 
             path, in_cwd, in_home, in_tmp = self._check_api_key_existence()
 
