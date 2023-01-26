@@ -102,7 +102,7 @@ class TestLogin(TestCase):
 
         with input(
             {
-                "hidden": "NrfnssYNimpOVA5A.W1KnLMRpayZWZw1AjxaYCRUh2vG8F3JBsxUMdqXTLqsXyaOByi11BMfMkZBjizLg"
+                "hidden": os.environ['APP_API_KEY']
             }
         ):
             project = hopsworks.login()
@@ -123,7 +123,7 @@ class TestLogin(TestCase):
         assert in_tmp is False
         # Should create API key in home by default
         project = hopsworks.login(
-            api_key_value="NrfnssYNimpOVA5A.W1KnLMRpayZWZw1AjxaYCRUh2vG8F3JBsxUMdqXTLqsXyaOByi11BMfMkZBjizLg"
+            api_key_value=os.environ['APP_API_KEY']
         )
         isinstance(project, Project)
 
@@ -153,7 +153,7 @@ class TestLogin(TestCase):
         # Should use API key in tmp folder
         with input(
             {
-                "hidden": "NrfnssYNimpOVA5A.W1KnLMRpayZWZw1AjxaYCRUh2vG8F3JBsxUMdqXTLqsXyaOByi11BMfMkZBjizLg"
+                "hidden": os.environ['APP_API_KEY']
             }
         ):
             project = hopsworks.login()
@@ -169,7 +169,7 @@ class TestLogin(TestCase):
         api_key_path = "{}/{}".format(os.getcwd(), ".hw_api_key")
         f = open(api_key_path, "w")
         f.write(
-            "NrfnssYNimpOVA5A.W1KnLMRpayZWZw1AjxaYCRUh2vG8F3JBsxUMdqXTLqsXyaOByi11BMfMkZBjizLg"
+            os.environ['APP_API_KEY']
         )
         f.close()
 
@@ -197,7 +197,7 @@ class TestLogin(TestCase):
         os.mkdir(api_key_folder_path)
         f = open(api_key_folder_path + "/.hw_api_key", "w")
         f.write(
-            "NrfnssYNimpOVA5A.W1KnLMRpayZWZw1AjxaYCRUh2vG8F3JBsxUMdqXTLqsXyaOByi11BMfMkZBjizLg"
+            os.environ['APP_API_KEY']
         )
         f.close()
 
@@ -221,7 +221,7 @@ class TestLogin(TestCase):
         try:
             os.environ[
                 "HOPSWORKS_API_KEY"
-            ] = "NrfnssYNimpOVA5A.W1KnLMRpayZWZw1AjxaYCRUh2vG8F3JBsxUMdqXTLqsXyaOByi11BMfMkZBjizLg"
+            ] = os.environ['APP_API_KEY']
 
             path, in_cwd, in_home, in_tmp = self._check_api_key_existence()
 
