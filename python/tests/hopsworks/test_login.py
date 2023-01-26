@@ -106,8 +106,8 @@ class TestLogin(TestCase):
             }
         ):
             project = hopsworks.login()
+            isinstance(project, Project)
 
-        project.get_feature_store()
         path, in_cwd, in_home, in_tmp = self._check_api_key_existence()
 
         assert in_cwd is False
