@@ -271,3 +271,37 @@ class DatasetApi:
         _client = client.get_instance()
         path_params = ["project", self._project_id, "dataset", path]
         _client._send_request("DELETE", path_params)
+
+    def mkdir(self, path: str):
+        """Create a directory in the Hopsworks Filesystem.
+
+        ```python
+
+        import hopsworks
+
+        project = hopsworks.login()
+
+        dataset_api = project.get_dataset_api()
+
+        directory_path = dataset_api.mkdir("Resources/my_dir")
+
+        ```
+        # Arguments
+            path: path to directory
+        # Returns
+            `str`: Path to uploaded file
+        # Raises
+            `RestAPIError`: If unable to create the directory
+        """
+        _client = client.get_instance()
+        path_params = ["project", _client._project_id, "dataset", path]
+        query_params = {
+            "action": "create",
+            "searchable": "true",
+            "generate_readme": "false",
+            "type": "DATASET",
+        }
+        headers = {"content-type": "application/json"}
+        return _client._send_request(
+            "POST", path_params, headers=headers, query_params=query_params
+        )
