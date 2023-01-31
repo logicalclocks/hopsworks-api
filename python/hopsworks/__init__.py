@@ -210,7 +210,7 @@ def _get_cached_api_key_path():
 
     First it will search for .hw_api_key in the current working directory, if it exists it will use it (this is default in 3.0 client)
     Otherwise, falls back to storing the API key in HOME
-    If not sufficient permissions are set in HOME it uses the temp directory
+    If not sufficient permissions are set in HOME to create the API key (writable and executable), it uses the temp directory to store it.
 
     """
 
