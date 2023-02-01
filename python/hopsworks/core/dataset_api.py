@@ -294,7 +294,7 @@ class DatasetApi:
             `RestAPIError`: If unable to create the directory
         """
         _client = client.get_instance()
-        path_params = ["project", _client._project_id, "dataset", path]
+        path_params = ["project", self._project_id, "dataset", path]
         query_params = {
             "action": "create",
             "searchable": "true",
