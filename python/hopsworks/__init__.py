@@ -19,6 +19,8 @@ import logging
 import os
 import sys
 import getpass
+import tempfile
+from pathlib import Path
 
 from hopsworks.client.exceptions import RestAPIError, ProjectException
 from hopsworks import version
@@ -141,7 +143,7 @@ def login(
 
     # This .hw_api_key is created when a user logs into Serverless Hopsworks the first time.
     # It is then used only for future login calls to Serverless. For other Hopsworks installations it's ignored.
-    api_key_path = os.getcwd() + "/.hw_api_key"
+    api_key_path = _get_cached_api_key_path()
 
     # Conditions for getting the api_key
     # If user supplied the api key directly
@@ -184,6 +186,7 @@ def login(
         api_key = getpass.getpass(prompt="\nPaste it here: ")
 
         # If api key was provided as input, save the API key locally on disk to avoid users having to enter it again in the same environment
+        Path(os.path.dirname(api_key_path)).mkdir(parents=True, exist_ok=True)
         descriptor = os.open(
             path=api_key_path, flags=(os.O_WRONLY | os.O_CREAT | os.O_TRUNC), mode=0o600
         )
@@ -199,6 +202,44 @@ def login(
 
     print("\nLogged in to project, explore it here " + _connected_project.get_url())
     return _connected_project
+
+
+def _get_cached_api_key_path():
+    """
+    This function is used to get an appropriate path to store the user supplied API Key for Serverless Hopsworks.
+
+    First it will search for .hw_api_key in the current working directory, if it exists it will use it (this is default in 3.0 client)
+    Otherwise, falls back to storing the API key in HOME
+    If not sufficient permissions are set in HOME to create the API key (writable and executable), it uses the temp directory to store it.
+
+    """
+
+    api_key_name = ".hw_api_key"
+    api_key_folder = ".{}_hopsworks_app".format(getpass.getuser())
+
+    # Path for current working directory api key
+    cwd_api_key_path = os.path.join(os.getcwd(), api_key_name)
+
+    # Path for home api key
+    home_dir_path = os.path.expanduser("~")
+    home_api_key_path = os.path.join(home_dir_path, api_key_folder, api_key_name)
+
+    # Path for tmp api key
+    temp_dir_path = tempfile.gettempdir()
+    temp_api_key_path = os.path.join(temp_dir_path, api_key_folder, api_key_name)
+
+    if os.path.exists(
+        cwd_api_key_path
+    ):  # For backward compatibility, if .hw_api_key exists in current working directory get it from there
+        api_key_path = cwd_api_key_path
+    elif os.access(home_dir_path, os.W_OK) and os.access(
+        home_dir_path, os.X_OK
+    ):  # Otherwise use the home directory of the user
+        api_key_path = home_api_key_path
+    else:  # Finally try to store it in temp
+        api_key_path = temp_api_key_path
+
+    return api_key_path
 
 
 def _prompt_project(valid_connection, project):
