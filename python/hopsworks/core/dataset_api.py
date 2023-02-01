@@ -304,4 +304,4 @@ class DatasetApi:
         headers = {"content-type": "application/json"}
         return _client._send_request(
             "POST", path_params, headers=headers, query_params=query_params
-        )['attributes']['path']
+        )["attributes"]["path"]
