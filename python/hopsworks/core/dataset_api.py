@@ -289,7 +289,7 @@ class DatasetApi:
         # Arguments
             path: path to directory
         # Returns
-            `str`: Path to uploaded file
+            `str`: Path to created directory
         # Raises
             `RestAPIError`: If unable to create the directory
         """
