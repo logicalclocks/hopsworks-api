@@ -82,6 +82,9 @@ class Environment:
             await_installation: bool. If True the method returns only when the installation finishes. Default True
         """
 
+        # Wait for any ongoing environment operations
+        self._environment_engine.await_environment_command()
+
         library_name = os.path.basename(path)
 
         path = util.convert_to_abs(path, self._project_name)
@@ -123,6 +126,9 @@ class Environment:
             path: str. The path on Hopsworks where the requirements.txt file is located
             await_installation: bool. If True the method returns only when the installation is finished. Default True
         """
+
+        # Wait for any ongoing environment operations
+        self._environment_engine.await_environment_command()
 
         library_name = os.path.basename(path)
 
