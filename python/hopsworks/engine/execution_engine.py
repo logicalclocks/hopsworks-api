@@ -111,7 +111,7 @@ class ExecutionEngine:
             await_time -= 1
             time.sleep(3)
 
-        time.sleep(5) # Helps for log aggregation to flush to filesystem
+        time.sleep(5)  # Helps for log aggregation to flush to filesystem
 
         if is_yarn_job and not updated_execution.success:
             self._log.error(
