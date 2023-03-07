@@ -58,6 +58,7 @@ class ExecutionEngine:
             err_path = self._dataset_api.download(
                 execution.stderr_path, download_log_dir
             )
+
         return out_path, err_path
 
     def wait_until_finished(self, job, execution):
@@ -96,17 +97,21 @@ class ExecutionEngine:
             execution_state = updated_execution.state
             time.sleep(3)
 
-        # wait for log files to be aggregated, max 2 minute
-        await_time = 40
+        # wait for log files to be aggregated, max 5 minute
+        await_time = 100
         log_aggregation_files_exist = False
         self._log.info("Waiting for log aggregation to finish.")
         while not log_aggregation_files_exist and await_time >= 0:
             updated_execution = self._execution_api._get(job, execution.id)
+
             log_aggregation_files_exist = self._dataset_api.exists(
                 updated_execution.stdout_path
             ) and self._dataset_api.exists(updated_execution.stderr_path)
+
             await_time -= 1
             time.sleep(3)
+
+        time.sleep(5) # Helps for log aggregation to flush to filesystem
 
         if is_yarn_job and not updated_execution.success:
             self._log.error(
