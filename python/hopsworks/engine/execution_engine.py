@@ -97,8 +97,8 @@ class ExecutionEngine:
             execution_state = updated_execution.state
             time.sleep(3)
 
-        # wait for log files to be aggregated, max 5 minute
-        await_time = 100
+        # wait for log files to be aggregated, max 6 minutes
+        await_time = 120
         log_aggregation_files_exist = False
         self._log.info("Waiting for log aggregation to finish.")
         while not log_aggregation_files_exist and await_time >= 0:
