@@ -39,7 +39,11 @@ def convert_to_abs(path, current_proj_name):
 
 def validate_job_conf(config, project_name):
     # User is required to set the appPath programmatically after getting the configuration
-    if config["type"] != "dockerJobConfiguration" and "appPath" not in config:
+    if (
+        config["type"] != "dockerJobConfiguration"
+        and config["type"] != "flinkJobConfiguration"
+        and "appPath" not in config
+    ):
         raise JobException("'appPath' not set in job configuration")
     elif "appPath" in config and not config["appPath"].startswith("hdfs://"):
         config["appPath"] = "hdfs://" + convert_to_abs(config["appPath"], project_name)
