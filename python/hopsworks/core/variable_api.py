@@ -21,6 +21,16 @@ class VariableApi:
     def __init__(self):
         pass
 
+    def get_variable(self, variable: str):
+        """Get the configured value for a variable"""
+
+        _client = client.get_instance()
+
+        path_params = ["variables", variable]
+        domain = _client._send_request("GET", path_params)
+
+        return domain["successMessage"]
+
     def get_version(self, software: str):
 
         _client = client.get_instance()

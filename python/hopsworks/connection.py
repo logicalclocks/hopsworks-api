@@ -211,6 +211,12 @@ class Connection:
             )
             sys.stderr.flush()
 
+    def _set_client_variables(self):
+        python_version = self._variable_api.get_variable(
+            "docker_base_image_python_version"
+        )
+        client.set_python_version(python_version)
+
     @not_connected
     def connect(self):
         """Instantiate the connection.
@@ -260,6 +266,7 @@ class Connection:
         )
 
         self._check_compatibility()
+        self._set_client_variables()
 
     def close(self):
         """Close a connection gracefully.

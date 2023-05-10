@@ -16,7 +16,7 @@
 
 import time
 
-from hopsworks import client, library, environment, command, constants
+from hopsworks import client, library, environment, command
 from hopsworks.client.exceptions import RestAPIError, EnvironmentException
 
 
@@ -62,7 +62,7 @@ class EnvironmentEngine:
             self._project_id,
             "python",
             "environments",
-            constants.PYTHON_CONFIG.PYTHON_VERSION,
+            client.get_python_version(),
             "libraries",
             library_name,
         ]
@@ -93,7 +93,7 @@ class EnvironmentEngine:
             self._project_id,
             "python",
             "environments",
-            constants.PYTHON_CONFIG.PYTHON_VERSION,
+            client.get_python_version(),
         ]
 
         query_params = {"expand": "commands"}

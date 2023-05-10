@@ -16,7 +16,7 @@
 
 import json
 
-from hopsworks import client, library, constants
+from hopsworks import client, library
 
 
 class LibraryApi:
@@ -37,7 +37,7 @@ class LibraryApi:
             self._project_id,
             "python",
             "environments",
-            constants.PYTHON_CONFIG.PYTHON_VERSION,
+            client.get_python_version(),
             "libraries",
             library_name,
         ]

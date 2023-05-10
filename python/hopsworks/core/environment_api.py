@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks import client, environment, constants
+from hopsworks import client, environment
 from hopsworks.engine import environment_engine
 
 
@@ -57,7 +57,7 @@ class EnvironmentApi:
             self._project_id,
             "python",
             "environments",
-            constants.PYTHON_CONFIG.PYTHON_VERSION,
+            client.get_python_version(),
         ]
         headers = {"content-type": "application/json"}
         env = environment.Environment.from_response_json(
@@ -97,7 +97,7 @@ class EnvironmentApi:
             self._project_id,
             "python",
             "environments",
-            constants.PYTHON_CONFIG.PYTHON_VERSION,
+            client.get_python_version(),
         ]
         query_params = {"expand": ["libraries", "commands"]}
         headers = {"content-type": "application/json"}
@@ -118,7 +118,7 @@ class EnvironmentApi:
             self._project_id,
             "python",
             "environments",
-            constants.PYTHON_CONFIG.PYTHON_VERSION,
+            client.get_python_version(),
         ]
         headers = {"content-type": "application/json"}
         _client._send_request("DELETE", path_params, headers=headers),
