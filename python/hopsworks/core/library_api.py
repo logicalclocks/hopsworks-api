@@ -37,7 +37,7 @@ class LibraryApi:
             self._project_id,
             "python",
             "environments",
-            constants.PYTHON_CONFIG.PYTHON_VERSION,
+            client.get_python_version(),
             "libraries",
             library_name,
         ]
