@@ -16,7 +16,7 @@
 
 import json
 
-from hopsworks import client, library, constants
+from hopsworks import client, library
 
 
 class LibraryApi:

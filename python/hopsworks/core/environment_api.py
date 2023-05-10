@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks import client, environment, constants
+from hopsworks import client, environment
 from hopsworks.engine import environment_engine
 
 
