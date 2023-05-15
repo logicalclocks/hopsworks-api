@@ -55,7 +55,26 @@ class Environment:
     @classmethod
     def from_response_json(cls, json_dict, project_id, project_name):
         json_decamelized = humps.decamelize(json_dict)
-        return cls(**json_decamelized, project_id=project_id, project_name=project_name)
+        if "count" in json_decamelized:
+            return [
+                cls(
+                    **env,
+                    project_id=project_id,
+                    project_name=project_name,
+                )
+                for env in json_decamelized["items"]
+            ]
+        else:
+            return cls(
+                **json_decamelized,
+                project_id=project_id,
+                project_name=project_name,
+            )
+
+    @property
+    def python_version(self):
+        """Python version of the environment"""
+        return self._python_version
 
     def install_wheel(self, path, await_installation=True):
         """Install a python library packaged in a wheel file
@@ -95,7 +114,7 @@ class Environment:
             "packageSource": "WHEEL",
         }
 
-        library_rest = self._library_api.install(library_name, library_spec)
+        library_rest = self._library_api.install(library_name, self.python_version, library_spec)
 
         if await_installation:
             return self._environment_engine.await_library_command(library_name)
@@ -140,7 +159,7 @@ class Environment:
             "packageSource": "REQUIREMENTS_TXT",
         }
 
-        library_rest = self._library_api.install(library_name, library_spec)
+        library_rest = self._library_api.install(library_name, self.python_version, library_spec)
 
         if await_installation:
             return self._environment_engine.await_library_command(library_name)
@@ -154,4 +173,7 @@ class Environment:
         # Raises
             `RestAPIError`.
         """
-        self._environment_api._delete()
+        self._environment_api._delete(self.python_version)
+
+    def __repr__(self):
+        return f"Environment({self._python_version!r})"

@@ -71,6 +71,29 @@ class EnvironmentApi:
 
         return env
 
+
+    def _get_environments(self):
+        """
+        Get all available python environments in the project
+        """
+        _client = client.get_instance()
+
+        path_params = [
+            "project",
+            self._project_id,
+            "python",
+            "environments"
+        ]
+        query_params = {"expand": ["libraries", "commands"]}
+        headers = {"content-type": "application/json"}
+        return environment.Environment.from_response_json(
+            _client._send_request(
+                "GET", path_params, query_params=query_params, headers=headers
+            ),
+            self._project_id,
+            self._project_name,
+        )
+
     def get_environment(self):
         """Get handle for the Python environment for the project
 
@@ -90,26 +113,13 @@ class EnvironmentApi:
         # Raises
             `RestAPIError`: If unable to get the environment
         """
-        _client = client.get_instance()
+        project_envs = self._get_environments()
+        if len(project_envs) == 0:
+            return None
+        elif len(project_envs) > 0:
+            return project_envs[0]
 
-        path_params = [
-            "project",
-            self._project_id,
-            "python",
-            "environments",
-            client.get_python_version(),
-        ]
-        query_params = {"expand": ["libraries", "commands"]}
-        headers = {"content-type": "application/json"}
-        return environment.Environment.from_response_json(
-            _client._send_request(
-                "GET", path_params, query_params=query_params, headers=headers
-            ),
-            self._project_id,
-            self._project_name,
-        )
-
-    def _delete(self):
+    def _delete(self, python_version):
         """Delete the project Python environment"""
         _client = client.get_instance()
 
@@ -118,7 +128,7 @@ class EnvironmentApi:
             self._project_id,
             "python",
             "environments",
-            client.get_python_version(),
+            python_version,
         ]
         headers = {"content-type": "application/json"}
         _client._send_request("DELETE", path_params, headers=headers),
