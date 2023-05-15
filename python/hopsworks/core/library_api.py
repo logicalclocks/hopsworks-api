@@ -28,7 +28,7 @@ class LibraryApi:
         self._project_id = project_id
         self._project_name = project_name
 
-    def install(self, library_name: str, library_spec: dict):
+    def install(self, library_name: str, python_version: str, library_spec: dict):
         """Create Python environment for the project"""
         _client = client.get_instance()
 
@@ -37,7 +37,7 @@ class LibraryApi:
             self._project_id,
             "python",
             "environments",
-            client.get_python_version(),
+            python_version,
             "libraries",
             library_name,
         ]
