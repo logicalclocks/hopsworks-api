@@ -114,7 +114,9 @@ class Environment:
             "packageSource": "WHEEL",
         }
 
-        library_rest = self._library_api.install(library_name, self.python_version, library_spec)
+        library_rest = self._library_api.install(
+            library_name, self.python_version, library_spec
+        )
 
         if await_installation:
             return self._environment_engine.await_library_command(library_name)
@@ -159,7 +161,9 @@ class Environment:
             "packageSource": "REQUIREMENTS_TXT",
         }
 
-        library_rest = self._library_api.install(library_name, self.python_version, library_spec)
+        library_rest = self._library_api.install(
+            library_name, self.python_version, library_spec
+        )
 
         if await_installation:
             return self._environment_engine.await_library_command(library_name)

@@ -71,19 +71,13 @@ class EnvironmentApi:
 
         return env
 
-
     def _get_environments(self):
         """
         Get all available python environments in the project
         """
         _client = client.get_instance()
 
-        path_params = [
-            "project",
-            self._project_id,
-            "python",
-            "environments"
-        ]
+        path_params = ["project", self._project_id, "python", "environments"]
         query_params = {"expand": ["libraries", "commands"]}
         headers = {"content-type": "application/json"}
         return environment.Environment.from_response_json(
