@@ -17,7 +17,7 @@
 import humps
 import json
 
-from hopsworks import util, client
+from hopsworks import util, client, constants
 from hopsworks.client.external import Client
 from hopsworks.core import (
     job_api,
@@ -108,12 +108,15 @@ class Project:
 
         _client = client.get_instance()
         if type(_client) == Client:  # If external client
+            engine = None
+            if _client._host == constants.HOSTS.APP_HOST:
+                engine = "python"
             return connection(
                 host=_client._host,
                 port=_client._port,
                 project=self.name,
                 api_key_value=_client._auth._token,
-                engine="python",
+                engine=engine,
             ).get_feature_store()
         else:
             return connection().get_feature_store()  # If internal client

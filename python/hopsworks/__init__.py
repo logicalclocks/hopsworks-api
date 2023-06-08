@@ -23,7 +23,7 @@ import tempfile
 from pathlib import Path
 
 from hopsworks.client.exceptions import RestAPIError, ProjectException
-from hopsworks import version
+from hopsworks import version, constants
 from hopsworks.connection import Connection
 
 # Needs to run before import of hsml and hsfs
@@ -135,7 +135,7 @@ def login(
     if host is None and "HOPSWORKS_HOST" in os.environ:
         host = os.environ["HOPSWORKS_HOST"]
     elif host is None:  # Always do a fallback to Serverless Hopsworks if not defined
-        host = "c.app.hopsworks.ai"
+        host = constants.HOSTS.APP_HOST
 
     # If port same as default, get HOPSWORKS_HOST environment variable
     if port == 443 and "HOPSWORKS_PORT" in os.environ:
@@ -163,7 +163,7 @@ def login(
                 "Could not find api key file on path: {}".format(api_key_file)
             )
     # If user connected to Serverless Hopsworks, and the cached .hw_api_key exists, then use it.
-    elif os.path.exists(api_key_path) and host == "c.app.hopsworks.ai":
+    elif os.path.exists(api_key_path) and host == constants.HOSTS.APP_HOST:
         try:
             _hw_connection = _hw_connection(
                 host=host, port=port, api_key_file=api_key_path
@@ -179,7 +179,7 @@ def login(
             # API Key may be invalid, have the user supply it again
             os.remove(api_key_path)
 
-    if api_key is None and host == "c.app.hopsworks.ai":
+    if api_key is None and host == constants.HOSTS.APP_HOST:
         print(
             "Copy your Api Key (first register/login): https://c.app.hopsworks.ai/account/api/generated"
         )
