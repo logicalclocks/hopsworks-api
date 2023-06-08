@@ -132,5 +132,6 @@ class SSL_CONFIG:
     PEM_CA_ROOT_CERT = "/srv/hops/kagent/host-certs/hops_root_ca.pem"
     SSL_ENABLED = "ipc.server.ssl.enabled"
 
+
 class HOSTS:
     APP_HOST = "c.app.hopsworks.ai"

@@ -55,6 +55,7 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 
+
 def login(
     host: str = None,
     port: int = 443,

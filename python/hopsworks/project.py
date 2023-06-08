@@ -29,7 +29,6 @@ from hopsworks.core import (
 )
 
 
-
 class Project:
     def __init__(
         self,
@@ -109,9 +108,9 @@ class Project:
 
         _client = client.get_instance()
         if type(_client) == Client:  # If external client
-            engine=None
+            engine = None
             if _client._host == constants.HOSTS.APP_HOST:
-                engine="python"
+                engine = "python"
             return connection(
                 host=_client._host,
                 port=_client._port,
