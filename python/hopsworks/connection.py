@@ -266,7 +266,7 @@ class Connection:
         )
 
         self._check_compatibility()
-        # self._set_client_variables()
+        self._set_client_variables()
 
     def close(self):
         """Close a connection gracefully.
