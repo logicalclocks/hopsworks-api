@@ -37,12 +37,10 @@ class Command:
     @classmethod
     def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
-        if "count" not in json_decamelized:
-            return cls(**json_decamelized)
-        elif json_decamelized["count"] == 0:
-            return []
-        else:
+        if "items" in json_decamelized:
             return [cls(**command) for command in json_decamelized["items"]]
+        else:
+            return []
 
     @property
     def status(self):
