@@ -20,21 +20,25 @@ import humps
 class Command:
     def __init__(
         self,
+        id=None,
         status=None,
         op=None,
         install_type=None,
         error_message=None,
         custom_commands_file=None,
+        args=None,
         type=None,
         href=None,
         count=None,
     ):
+        self._id = id
         self._op = op
         self._install_type = install_type
         self._status = status
         self._error_message = error_message
         self._count = count
         self._custom_commands_file = custom_commands_file
+        self._args = args
 
     @classmethod
     def from_response_json(cls, json_dict):
