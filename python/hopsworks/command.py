@@ -24,6 +24,7 @@ class Command:
         op=None,
         install_type=None,
         error_message=None,
+        custom_commands_file=None,
         type=None,
         href=None,
         count=None,
@@ -33,6 +34,7 @@ class Command:
         self._status = status
         self._error_message = error_message
         self._count = count
+        self._custom_commands_file = custom_commands_file
 
     @classmethod
     def from_response_json(cls, json_dict):
