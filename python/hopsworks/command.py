@@ -25,6 +25,7 @@ class Command:
         op=None,
         install_type=None,
         error_message=None,
+        # path to the custom commands file in the case the op=custom_command
         custom_commands_file=None,
         args=None,
         type=None,
