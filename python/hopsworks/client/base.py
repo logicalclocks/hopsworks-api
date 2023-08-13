@@ -115,6 +115,7 @@ class Client(ABC):
         data=None,
         stream=False,
         files=None,
+        with_base_path_params=True,
     ):
         """Send REST request to Hopsworks.
 
@@ -140,9 +141,12 @@ class Client(ABC):
         :return: Response json
         :rtype: dict
         """
-        base_path_params = ["hopsworks-api", "api"]
         f_url = furl.furl(self._base_url)
-        f_url.path.segments = base_path_params + path_params
+        if with_base_path_params:
+            base_path_params = ["hopsworks-api", "api"]
+            f_url.path.segments = base_path_params + path_params
+        else:
+            f_url.path.segments = path_params
         url = str(f_url)
 
         request = requests.Request(

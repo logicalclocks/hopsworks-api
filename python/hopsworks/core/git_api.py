@@ -225,7 +225,6 @@ class GitApi:
             raise GitException("No git repository found matching name {}".format(name))
 
     def _create(self, repo_id, branch: str, checkout=False):
-
         _client = client.get_instance()
         path_params = [
             "project",
@@ -254,7 +253,6 @@ class GitApi:
         _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
 
     def _delete(self, repo_id, branch: str):
-
         _client = client.get_instance()
         path_params = [
             "project",
@@ -284,7 +282,6 @@ class GitApi:
     def _checkout(
         self, repo_id, branch: str = None, commit: str = None, force: bool = False
     ):
-
         _client = client.get_instance()
         path_params = [
             "project",
@@ -313,7 +310,6 @@ class GitApi:
         _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
 
     def _status(self, repo_id):
-
         _client = client.get_instance()
         path_params = [
             "project",
@@ -352,7 +348,6 @@ class GitApi:
         return file_status
 
     def _commit(self, repo_id, message: str, all=False, files=None):
-
         _client = client.get_instance()
         path_params = [
             "project",
@@ -385,7 +380,6 @@ class GitApi:
         _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
 
     def _push(self, repo_id, branch: str, force: bool = False, remote: str = None):
-
         _client = client.get_instance()
         path_params = [
             "project",
@@ -418,7 +412,6 @@ class GitApi:
         _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
 
     def _pull(self, repo_id, branch: str, force: bool = False, remote: str = None):
-
         _client = client.get_instance()
         path_params = [
             "project",
@@ -451,7 +444,6 @@ class GitApi:
         _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
 
     def _checkout_files(self, repo_id, files: Union[List[str], List[GitFileStatus]]):
-
         files = util.convert_git_status_to_files(files)
 
         _client = client.get_instance()
@@ -481,7 +473,6 @@ class GitApi:
         _ = self._git_engine.execute_op_blocking(git_op, "CHECKOUT_FILES")
 
     def _get_commits(self, repo_id, branch: str):
-
         _client = client.get_instance()
         path_params = [
             "project",

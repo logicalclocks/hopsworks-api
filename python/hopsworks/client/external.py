@@ -71,7 +71,6 @@ class Client(base.Client):
         self._cert_folder_base = os.path.join(cert_folder, host)
 
     def download_certs(self, project_name):
-
         project_info = self._get_project_info(project_name)
         project_id = str(project_info["projectId"])
 

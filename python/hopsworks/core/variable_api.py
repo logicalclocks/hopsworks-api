@@ -32,7 +32,6 @@ class VariableApi:
         return domain["successMessage"]
 
     def get_version(self, software: str):
-
         _client = client.get_instance()
         path_params = [
             "variables",
