@@ -25,7 +25,6 @@ class GitRemoteApi:
         self._project_name = project_name
 
     def _get(self, repo_id, name: str):
-
         _client = client.get_instance()
         path_params = [
             "project",
@@ -46,7 +45,6 @@ class GitRemoteApi:
         return remote
 
     def _get_remotes(self, repo_id):
-
         _client = client.get_instance()
         path_params = [
             "project",
@@ -67,7 +65,6 @@ class GitRemoteApi:
         return remotes
 
     def _add(self, repo_id, name: str, url: str):
-
         _client = client.get_instance()
         path_params = [
             "project",
@@ -97,7 +94,6 @@ class GitRemoteApi:
         return self._get(repo_id, name)
 
     def _delete(self, repo_id, name: str):
-
         _client = client.get_instance()
         path_params = [
             "project",

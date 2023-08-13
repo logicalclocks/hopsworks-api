@@ -79,7 +79,6 @@ class OpenSearchApi:
         }
 
     def _get_authorization_token(self):
-
         """Get opensearch jwt token.
 
         # Returns
