@@ -22,9 +22,9 @@ from hopsworks.core import job_api
 
 class FlinkClusterApi:
     def __init__(
-            self,
-            project_id,
-            project_name,
+        self,
+        project_id,
+        project_name,
     ):
         self._project_id = project_id
         self._project_name = project_name
@@ -171,9 +171,7 @@ class FlinkClusterApi:
         )
         print("Flink Jar uploaded.")
 
-    def submit_job(
-            self, execution, jar_id, main_class_name, job_arguments=None
-    ):
+    def submit_job(self, execution, jar_id, main_class_name, job_arguments=None):
         _client = client.get_instance()
         # Submit execution
         if job_arguments:

@@ -60,7 +60,9 @@ class Project:
         self._opensearch_api = opensearch_api.OpenSearchApi(project_id, project_name)
         self._kafka_api = kafka_api.KafkaApi(project_id, project_name)
         self._jobs_api = job_api.JobsApi(project_id, project_name)
-        self._flink_cluster_api = flink_cluster_api.FlinkClusterApi(project_id, project_name)
+        self._flink_cluster_api = flink_cluster_api.FlinkClusterApi(
+            project_id, project_name
+        )
         self._git_api = git_api.GitApi(project_id, project_name)
         self._dataset_api = dataset_api.DatasetApi(project_id)
         self._environment_api = environment_api.EnvironmentApi(project_id, project_name)
