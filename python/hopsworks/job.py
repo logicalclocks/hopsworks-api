@@ -16,7 +16,6 @@
 
 import humps
 import json
-import time
 from hopsworks.engine import execution_engine
 from hopsworks.core import job_api, execution_api
 from hopsworks import util
@@ -180,29 +179,6 @@ class Job:
             `RestAPIError`.
         """
         self._job_api._delete(self)
-
-    def start_flink_cluster(self, start_time_out=600):
-        execution = self.run()
-
-        polling_time = 0
-        while polling_time < start_time_out:
-            execution = self._execution_api._get(self, execution.id)
-            if execution.state == "RUNNING":
-                print("Cluster is running")
-                return execution
-
-            print(
-                "Waiting for cluster to be running. Current state: {}".format(
-                    execution.state
-                )
-            )
-
-            polling_time += 5
-            time.sleep(5)
-
-        raise "Execution {} did not start within the allocated time".format(
-            execution.id
-        )
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
