@@ -45,7 +45,7 @@ class FlinkClusterApi:
             return self.create_cluster(name, config)
 
     def create_cluster(self, name: str, config: dict):
-        """Create a new job or update an existing one.
+        """Create a new flink job representing a flink cluster, or update an existing one.
 
         ```python
 
