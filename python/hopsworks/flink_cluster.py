@@ -21,7 +21,29 @@ from hopsworks import job
 class FlinkCluster(job.Job):
     pass
 
-    def start(self, start_time_out=600):
+    def start(self, start_time_out=120):
+        """Start flink job representing a flink cluster.
+
+        ```python
+
+        import hopsworks
+
+        project = hopsworks.login()
+
+        flink_cluster_api = project.get_flink_cluster_api()
+
+        flink_cluster = flink_cluster_api.get_cluster(name="myFlinkCluster")
+
+        flink_cluster.start()
+        ```
+        # Arguments
+            start_time_out: defaults to 120 seconds.
+        # Returns
+            `Execution`: The Execution object.
+        # Raises
+            `RestAPIError`: If unable to create the job
+        """
+
         execution = super().run()
 
         polling_time = 0
@@ -37,9 +59,10 @@ class FlinkCluster(job.Job):
                 )
             )
 
-            polling_time += 5
-            time.sleep(5)
+            polling_time += 1
+            time.sleep(1)
 
-        raise "Execution {} did not start within the allocated time".format(
-            execution.id
-        )
+        if execution.state != "RUNNING":
+            raise "Execution {} did not start within the allocated time and exited with state {}".format(
+                execution.id, execution.state
+            )
