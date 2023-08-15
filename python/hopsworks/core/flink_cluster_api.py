@@ -88,7 +88,7 @@ class FlinkClusterApi:
         return created_cluster
 
     def get_cluster(self, name: str):
-        """Get a flink cluster.
+        """Get the job corresponding to the flink cluster.
 
         # Arguments
             name: Name of the cluster.
