@@ -21,7 +21,7 @@ from hopsworks import job
 class FlinkCluster(job.Job):
     pass
 
-    def start(self, start_time_out=120):
+    def start(self, await_time=120):
         """Start flink job representing a flink cluster.
 
         ```python
@@ -37,7 +37,7 @@ class FlinkCluster(job.Job):
         flink_cluster.start()
         ```
         # Arguments
-            start_time_out: defaults to 120 seconds.
+            await_time: defaults to 120 seconds.
         # Returns
             `Execution`: The Execution object.
         # Raises
@@ -46,20 +46,21 @@ class FlinkCluster(job.Job):
 
         execution = super().run()
 
+        updated_execution = self._execution_api._get(self, execution.id)
         polling_time = 0
-        while polling_time < start_time_out:
-            execution = self._execution_api._get(self, execution.id)
-            if execution.state == "RUNNING":
+        while execution.state == "INITIALIZING":
+            updated_execution = self._execution_api._get(self, execution.id)
+            if updated_execution.state == "RUNNING":
                 print("Cluster is running")
                 return execution
 
-            print(
-                "Waiting for cluster to be running. Current state: {}".format(
-                    execution.state
+            self._execution_engine._log.info(
+                "Waiting for cluster to start. Current state: {}.".format(
+                    updated_execution.state
                 )
             )
 
-            polling_time += 1
+            await_time -= 1
             time.sleep(1)
 
         if execution.state != "RUNNING":
