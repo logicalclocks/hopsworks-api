@@ -130,6 +130,45 @@ class FlinkClusterApi:
             self._project_name,
         )
 
+    def get_job(self, execution, job_id):
+        """Get specific job from the specific execution of the flink cluster.
+        ```python
+
+        # log in to hopsworks
+        import hopsworks
+        project = hopsworks.login()
+
+        # fetch flink cluster handle
+        flink_cluster_api = project.get_flink_cluster_api()
+        flink_cluster = flink_cluster_api.get_cluster(name="myFlinkCluster")
+
+        # get all executions(This will return empty list of no execution is running on this Flink cluster)
+        executions = flink_job.get_executions()
+
+        # select 1st execution
+        execution = executions[0]
+
+        # get jobs from this execution
+        job_id = '113a2af5b724a9b92085dc2d9245e1d6'
+        flink_cluster_api.get_job(execution, job_id)
+        ```
+
+        # Arguments
+            execution: Execution object.
+            job_id: id of the job within this execution
+        # Returns
+            `Dict`: Dict with flink job id and and status of the job.
+        # Raises
+            `RestAPIError`: If unable to get the jobs from the execution
+        """
+
+        _client = client.get_instance()
+        path_params = ["hopsworks-api", "flinkmaster", execution.app_id, "jobs", job_id]
+        headers = {"content-type": "application/json"}
+        return _client._send_request(
+            "GET", path_params, headers=headers, with_base_path_params=False
+        )
+
     def get_jobs(self, execution):
         """Get jobs from the specific execution of the flink cluster.
         ```python
@@ -226,7 +265,7 @@ class FlinkClusterApi:
 
         # Arguments
             execution: Execution object.
-            job_id: id if the job within this execution
+            job_id: id of the job within this execution
         # Raises
             `RestAPIError`: If unable to stop the job
         """
@@ -329,7 +368,7 @@ class FlinkClusterApi:
         )
         print("Flink Jar uploaded.")
 
-    def submit_job(self, execution, jar_id, main_class, job_arguments=None):
+    def submit_job(self, execution, jar_id, main_class, job_arguments):
         """Submit job using the specific jar file, already uploaded to this execution of the flink cluster.
         ```python
         # log in to hopsworks

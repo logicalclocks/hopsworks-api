@@ -16,6 +16,7 @@
 
 import time
 from hopsworks import job
+from hopsworks import flink_execution
 
 
 class FlinkCluster(job.Job):
@@ -44,15 +45,13 @@ class FlinkCluster(job.Job):
             `RestAPIError`: If unable to create the job
         """
 
-        execution = super().run()
-
+        execution = self._execution_api._start(self)
         updated_execution = self._execution_api._get(self, execution.id)
-        polling_time = 0
-        while execution.state == "INITIALIZING":
+        while updated_execution.state == "INITIALIZING":
             updated_execution = self._execution_api._get(self, execution.id)
             if updated_execution.state == "RUNNING":
                 print("Cluster is running")
-                return execution
+                return self._map_to_exection(updated_execution)
 
             self._execution_engine._log.info(
                 "Waiting for cluster to start. Current state: {}.".format(
@@ -67,3 +66,50 @@ class FlinkCluster(job.Job):
             raise "Execution {} did not start within the allocated time and exited with state {}".format(
                 execution.id, execution.state
             )
+
+    def get_executions(self):
+        """Retrieves all executions for the flink cluster.
+
+        # Returns
+            `List[FlinkExecution]`
+        # Raises
+            `RestAPIError` in case the backend fails to retrieve executions.
+        """
+        execution_objects = self._execution_api._get_all(self)
+        return [
+            self._map_to_exection(execution_object)
+            for execution_object in execution_objects
+        ]
+
+    def get_execution(self, id: str):
+        """Retrieves execution for the flink cluster.
+
+        # Arguments
+            id: id if the execution
+        # Returns
+            `FlinkExecution`
+        # Raises
+            `RestAPIError` in case the backend fails to retrieve executions.
+        """
+        return self._map_to_exection(self._execution_api._get(self, id))
+
+    def _map_to_exection(self, execution_object):
+        return flink_execution.FlinkExecution(
+            id=execution_object._id,
+            state=execution_object._state,
+            final_status=execution_object._final_status,
+            submission_time=execution_object._submission_time,
+            stdout_path=execution_object._submission_time,
+            stderr_path=execution_object._stderr_path,
+            app_id=execution_object._app_id,
+            hdfs_user=execution_object._hdfs_user,
+            args=execution_object._args,
+            progress=execution_object._progress,
+            user=execution_object._user,
+            duration=execution_object._duration,
+            monitoring=execution_object._monitoring,
+            project_id=execution_object._project_id,
+            project_name=self._job_api._project_name,
+            job_name=execution_object._job_name,
+            job_type=execution_object._job_type,
+        )
