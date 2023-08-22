@@ -319,7 +319,7 @@ class FlinkClusterApi:
         )
         return response["files"]
 
-    def upload_jar(self, execution, jar_file):
+    def _upload_jar(self, execution, jar_file):
         """Uploaded jar file to the specific execution of the flink cluster.
         ```python
         # log in to hopsworks
