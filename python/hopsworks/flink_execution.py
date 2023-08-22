@@ -93,7 +93,7 @@ class FlinkExecution(execution.Execution):
             `RestAPIError`: If unable to get the jobs from the execution
         """
 
-        return self._flink_cluster_api.get_jobs(self)
+        return self._flink_cluster_api._get_jobs(self)
 
     def get_job(self, job_id):
         """Get specific job from the specific execution of the flink cluster.
@@ -126,7 +126,7 @@ class FlinkExecution(execution.Execution):
             `RestAPIError`: If unable to get the jobs from the execution
         """
 
-        return self._flink_cluster_api.get_job(self, job_id)
+        return self._flink_cluster_api._get_job(self, job_id)
 
     def stop_execution(self):
         """Stop specific execution of the flink cluster.
@@ -153,7 +153,7 @@ class FlinkExecution(execution.Execution):
         # Raises
             `RestAPIError`: If unable to stop the execution
         """
-        self._flink_cluster_api.stop_execution(self)
+        self._flink_cluster_api._stop_execution(self)
 
     def stop_job(self, job_id):
         """Stop specific job of the specific execution of the flink cluster.
@@ -183,7 +183,7 @@ class FlinkExecution(execution.Execution):
         # Raises
             `RestAPIError`: If unable to stop the job
         """
-        self._flink_cluster_api.stop_job(self, job_id)
+        self._flink_cluster_api._stop_job(self, job_id)
 
     def get_jars(self):
         """Get already uploaded jars from the specific execution of the flink cluster.
@@ -211,7 +211,7 @@ class FlinkExecution(execution.Execution):
         # Raises
             `RestAPIError`: If unable to get jars from the execution
         """
-        return self._flink_cluster_api.get_jars(self)
+        return self._flink_cluster_api._get_jars(self)
 
     def upload_jar(self, jar_file):
         """Uploaded jar file to the specific execution of the flink cluster.
@@ -241,7 +241,7 @@ class FlinkExecution(execution.Execution):
             `RestAPIError`: If unable to upload jar file
         """
 
-        self._flink_cluster_api.upload_jar(self, jar_file)
+        self._flink_cluster_api._upload_jar(self, jar_file)
 
     def submit_job(self, jar_id, main_class, job_arguments=None):
         """Submit job using the specific jar file, already uploaded to this execution of the flink cluster.
@@ -280,7 +280,7 @@ class FlinkExecution(execution.Execution):
             `RestAPIError`: If unable to submit the job.
         """
 
-        return self._flink_cluster_api.submit_job(
+        return self._flink_cluster_api._submit_job(
             self, jar_id, main_class, job_arguments
         )
 
@@ -316,7 +316,7 @@ class FlinkExecution(execution.Execution):
             `RestAPIError`: If unable to get the jobs from the execution
         """
 
-        return self._flink_cluster_api.job_state(self, job_id)
+        return self._flink_cluster_api._job_state(self, job_id)
 
     def stop(self):
         """Stop this execution.
@@ -345,4 +345,4 @@ class FlinkExecution(execution.Execution):
         # Raises
             `RestAPIError`: If unable to stop the execution
         """
-        self._flink_cluster_api.stop_execution(self)
+        self._flink_cluster_api._stop_execution(self)

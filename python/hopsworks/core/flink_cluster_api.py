@@ -96,7 +96,7 @@ class FlinkClusterApi:
         print(created_cluster.get_url())
         return created_cluster
 
-    def get_cluster(self, name: str):
+    def _get_cluster(self, name: str):
         """Get the job corresponding to the flink cluster.
         ```python
 
@@ -130,7 +130,7 @@ class FlinkClusterApi:
             self._project_name,
         )
 
-    def get_job(self, execution, job_id):
+    def _get_job(self, execution, job_id):
         """Get specific job from the specific execution of the flink cluster.
         ```python
 
@@ -169,7 +169,7 @@ class FlinkClusterApi:
             "GET", path_params, headers=headers, with_base_path_params=False
         )
 
-    def get_jobs(self, execution):
+    def _get_jobs(self, execution):
         """Get jobs from the specific execution of the flink cluster.
         ```python
 
@@ -206,7 +206,7 @@ class FlinkClusterApi:
             "GET", path_params, headers=headers, with_base_path_params=False
         )["jobs"]
 
-    def stop_execution(self, execution):
+    def _stop_execution(self, execution):
         """Stop specific execution of the flink cluster.
         ```python
 
@@ -240,7 +240,7 @@ class FlinkClusterApi:
             "DELETE", path_params, headers=headers, with_base_path_params=False
         )
 
-    def stop_job(self, execution, job_id):
+    def _stop_job(self, execution, job_id):
         """Stop specific job of the specific execution of the flink cluster.
         ```python
 
@@ -282,7 +282,7 @@ class FlinkClusterApi:
             "PATCH", path_params, headers=headers, with_base_path_params=False
         )
 
-    def get_jars(self, execution):
+    def _get_jars(self, execution):
         """Get already uploaded jars from the specific execution of the flink cluster.
         ```python
         # log in to hopsworks
@@ -368,7 +368,7 @@ class FlinkClusterApi:
         )
         print("Flink Jar uploaded.")
 
-    def submit_job(self, execution, jar_id, main_class, job_arguments):
+    def _submit_job(self, execution, jar_id, main_class, job_arguments):
         """Submit job using the specific jar file, already uploaded to this execution of the flink cluster.
         ```python
         # log in to hopsworks
@@ -437,7 +437,7 @@ class FlinkClusterApi:
 
         return job_id
 
-    def job_state(self, execution, job_id):
+    def _job_state(self, execution, job_id):
         """Gets state of the job from the specific execution of the flink cluster.
         ```python
 
