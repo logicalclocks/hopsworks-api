@@ -96,7 +96,7 @@ class FlinkClusterApi:
         print(created_cluster.get_url())
         return created_cluster
 
-    def _get_cluster(self, name: str):
+    def get_cluster(self, name: str):
         """Get the job corresponding to the flink cluster.
         ```python
 
