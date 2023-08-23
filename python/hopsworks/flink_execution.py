@@ -78,7 +78,7 @@ class FlinkExecution(execution.Execution):
         flink_cluster = flink_cluster_api.get_cluster(name="myFlinkCluster")
 
         # get all executions(This will return empty list of no execution is running on this Flink cluster)
-        executions = flink_job.get_executions()
+        executions = flink_cluster.get_executions()
 
         # select 1st execution
         execution = executions[0]
@@ -108,7 +108,7 @@ class FlinkExecution(execution.Execution):
         flink_cluster = flink_cluster_api.get_cluster(name="myFlinkCluster")
 
         # get all executions(This will return empty list of no execution is running on this Flink cluster)
-        executions = flink_job.get_executions()
+        executions = flink_cluster.get_executions()
 
         # select 1st execution
         execution = executions[0]
@@ -128,33 +128,6 @@ class FlinkExecution(execution.Execution):
 
         return self._flink_cluster_api._get_job(self, job_id)
 
-    def stop_execution(self):
-        """Stop specific execution of the flink cluster.
-        ```python
-
-        # log in to hopsworks
-        import hopsworks
-        project = hopsworks.login()
-
-        # fetch flink cluster handle
-        flink_cluster_api = project.get_flink_cluster_api()
-        flink_cluster = flink_cluster_api.get_cluster(name="myFlinkCluster")
-
-        # get all executions(This will return empty list of no execution is running on this Flink cluster)
-        executions = flink_job.get_executions()
-
-        # select 1st execution
-        execution = executions[0]
-
-        # stop this execution
-        execution.stop_execution()
-        ```
-
-        # Raises
-            `RestAPIError`: If unable to stop the execution
-        """
-        self._flink_cluster_api._stop_execution(self)
-
     def stop_job(self, job_id):
         """Stop specific job of the specific execution of the flink cluster.
         ```python
@@ -168,7 +141,7 @@ class FlinkExecution(execution.Execution):
         flink_cluster = flink_cluster_api.get_cluster(name="myFlinkCluster")
 
         # get all executions(This will return empty list of no execution is running on this Flink cluster)
-        executions = flink_job.get_executions()
+        executions = flink_cluster.get_executions()
 
         # select 1st execution
         execution = executions[0]
@@ -197,7 +170,7 @@ class FlinkExecution(execution.Execution):
         flink_cluster = flink_cluster_api.get_cluster(name="myFlinkCluster")
 
         # get all executions(This will return empty list of no execution is running on this Flink cluster)
-        executions = flink_job.get_executions()
+        executions = flink_cluster.get_executions()
 
         # select 1st execution
         execution = executions[0]
@@ -225,7 +198,7 @@ class FlinkExecution(execution.Execution):
         flink_cluster = flink_cluster_api.get_cluster(name="myFlinkCluster")
 
         # get all executions(This will return empty list of no execution is running on this Flink cluster)
-        executions = flink_job.get_executions()
+        executions = flink_cluster.get_executions()
 
         # select 1st execution
         execution = executions[0]
@@ -255,7 +228,7 @@ class FlinkExecution(execution.Execution):
         flink_cluster = flink_cluster_api.get_cluster(name="myFlinkCluster")
 
         # get all executions(This will return empty list of no execution is running on this Flink cluster)
-        executions = flink_job.get_executions()
+        executions = flink_cluster.get_executions()
 
         # select 1st execution
         execution = executions[0]
@@ -297,7 +270,7 @@ class FlinkExecution(execution.Execution):
         flink_cluster = flink_cluster_api.get_cluster(name="myFlinkCluster")
 
         # get all executions(This will return empty list of no execution is running on this Flink cluster)
-        executions = flink_job.get_executions()
+        executions = flink_cluster.get_executions()
 
         # select 1st execution
         execution = executions[0]
@@ -331,7 +304,7 @@ class FlinkExecution(execution.Execution):
         flink_cluster = flink_cluster_api.get_cluster(name="myFlinkCluster")
 
         # get all executions(This will return empty list of no execution is running on this Flink cluster)
-        executions = flink_job.get_executions()
+        executions = flink_cluster.get_executions()
 
         # select 1st execution
         execution = executions[0]
