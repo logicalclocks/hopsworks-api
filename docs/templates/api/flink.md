@@ -4,6 +4,10 @@
 
 {{setup_cluster}}
 
+## Get flink cluster
+
+{{get_cluster}}
+
 ## Start flink cluster
 
 {{start}}
