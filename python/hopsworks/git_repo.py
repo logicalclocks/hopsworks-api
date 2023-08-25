@@ -125,14 +125,16 @@ class GitRepo:
         """
         return self._git_api._status(self.id)
 
-    def delete(self):
+    def delete(self, verify_delete=True, timeout=30):
         """Delete the git repo from the filesystem.
         !!! danger "Potentially dangerous operation"
             This operation deletes the cloned git repository from the filesystem.
         # Raises
             `RestAPIError`.
         """
-        return self._dataset_api.remove(self.path)
+        self._git_api._delete_repo(
+            self.id, self.name, verify_delete=verify_delete, timeout=timeout
+        )
 
     def checkout_branch(self, branch: str, create: bool = False):
         """Checkout a branch

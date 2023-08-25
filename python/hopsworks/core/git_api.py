@@ -22,7 +22,7 @@ from hopsworks import (
     git_commit,
     git_file_status,
 )
-from hopsworks.client.exceptions import GitException
+from hopsworks.client.exceptions import GitException, RestAPIError
 from hopsworks.engine import git_engine
 from hopsworks.core import git_provider_api
 from typing import List, Union
@@ -30,6 +30,7 @@ from hopsworks.git_file_status import GitFileStatus
 
 import json
 import logging
+import time
 
 
 class GitApi:
@@ -68,7 +69,7 @@ class GitApi:
         # Returns
             `GitRepo`: Git repository object
         # Raises
-            `RestAPIError`: If unable to clone the git repository.
+            `RestAPIError`: If unable2 to clone the git repository.
         """
 
         _client = client.get_instance()
@@ -223,6 +224,34 @@ class GitApi:
             )
         else:
             raise GitException("No git repository found matching name {}".format(name))
+
+    def _delete_repo(self, repo_id, name, verify_delete=True, timeout=30):
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            self._project_id,
+            "git",
+            "repository",
+            str(repo_id),
+        ]
+        _client._send_request("DELETE", path_params)
+        if verify_delete is True:
+            count = 0
+            deleted = False
+            while count <= timeout and not deleted:
+                print("Waiting for deletion...")
+                self._log.info("Waiting for deletion...")
+                try:
+                    _client._send_request("GET", path_params)
+                except RestAPIError as e:
+                    if e.response.status_code == 404:
+                        deleted = True
+                count += 1
+                time.sleep(1)
+            if not deleted:
+                raise GitException("Timed out to delete repository: " + name)
+            else:
+                print("Successfully deleted git repository " + name)
 
     def _create(self, repo_id, branch: str, checkout=False):
 
