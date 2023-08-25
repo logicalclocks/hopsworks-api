@@ -132,7 +132,7 @@ class GitRepo:
         # Raises
             `RestAPIError`.
         """
-        return self._dataset_api.remove(self.path)
+        self._git_api._delete_repo(self.id)
 
     def checkout_branch(self, branch: str, create: bool = False):
         """Checkout a branch
