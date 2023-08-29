@@ -136,8 +136,11 @@ class GitRepo:
         # Raises
             `RestAPIError`.
         """
-        _client = client.get_instance()
         self._dataset_api.remove(self.path)
+        self._wait_git_repo_delete()
+
+    def _wait_git_repo_delete(self):
+        _client = client.get_instance()
         count = 0
         deleted = False
         timeout = 30
