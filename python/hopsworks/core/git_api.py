@@ -68,7 +68,7 @@ class GitApi:
         # Returns
             `GitRepo`: Git repository object
         # Raises
-            `RestAPIError`: If unable2 to clone the git repository.
+            `RestAPIError`: If unable to clone the git repository.
         """
 
         _client = client.get_instance()
