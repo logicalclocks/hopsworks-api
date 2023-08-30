@@ -16,10 +16,13 @@
 
 import humps
 import json
-from hopsworks import user, git_commit, util
+from hopsworks import user, git_commit, util, client
 from hopsworks.core import git_api, git_remote_api, dataset_api
 from typing import List, Union
 from hopsworks.git_file_status import GitFileStatus
+from hopsworks.client.exceptions import GitException, RestAPIError
+import time
+import logging
 
 
 class GitRepo:
@@ -58,6 +61,7 @@ class GitRepo:
         self._git_api = git_api.GitApi(project_id, project_name)
         self._git_remote_api = git_remote_api.GitRemoteApi(project_id, project_name)
         self._dataset_api = dataset_api.DatasetApi(project_id)
+        self._log = logging.getLogger(__name__)
 
     @classmethod
     def from_response_json(cls, json_dict, project_id, project_name):
@@ -125,7 +129,34 @@ class GitRepo:
         # Raises
             `RestAPIError`.
         """
-        return self._dataset_api.remove(self.path)
+        self._dataset_api.remove(self.path)
+        self._wait_git_repo_delete()
+
+    def _wait_git_repo_delete(self):
+        _client = client.get_instance()
+        count = 0
+        deleted = False
+        timeout = 30
+        path_params = [
+            "project",
+            self._project_id,
+            "git",
+            "repository",
+            str(self.id),
+        ]
+        while count <= timeout and not deleted:
+            self._log.info("Waiting for deletion...")
+            try:
+                _client._send_request("GET", path_params)
+            except RestAPIError as e:
+                if e.response.status_code == 404:
+                    deleted = True
+            count += 1
+            time.sleep(1)
+        if not deleted:
+            raise GitException("Timed out to delete repository: " + self.name)
+        else:
+            self._log.info("Successfully deleted git repository " + self.name)
 
     def checkout_branch(self, branch: str, create: bool = False):
         """Checkout a branch
