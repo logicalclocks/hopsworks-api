@@ -224,6 +224,17 @@ class GitApi:
         else:
             raise GitException("No git repository found matching name {}".format(name))
 
+    def _delete_repo(self, repo_id):
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            self._project_id,
+            "git",
+            "repository",
+            str(repo_id),
+        ]
+        _client._send_request("DELETE", path_params)
+
     def _create(self, repo_id, branch: str, checkout=False):
 
         _client = client.get_instance()
