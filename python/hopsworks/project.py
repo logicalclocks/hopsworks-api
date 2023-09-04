@@ -100,7 +100,7 @@ class Project:
         """Connect to Project's Feature Store.
 
         Defaulting to the project name of default feature store. To get a
-        Shared feature stores, the project name of the feature store is required.
+        shared feature store, the project name of the feature store is required.
 
         # Returns
             `hsfs.feature_store.FeatureStore`: The Feature Store API
