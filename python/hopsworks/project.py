@@ -96,8 +96,11 @@ class Project:
         """Timestamp when the project was created"""
         return self._created
 
-    def get_feature_store(self):
-        """Connect to Project's Feature Store API.
+    def get_feature_store(self, name: str = None):
+        """Connect to Project's Feature Store.
+
+        Defaulting to the project name of default feature store. To get a
+        Shared feature stores, the project name of the feature store is required.
 
         # Returns
             `hsfs.feature_store.FeatureStore`: The Feature Store API
@@ -117,9 +120,9 @@ class Project:
                 project=self.name,
                 api_key_value=_client._auth._token,
                 engine=engine,
-            ).get_feature_store()
+            ).get_feature_store(name)
         else:
-            return connection().get_feature_store()  # If internal client
+            return connection().get_feature_store(name)  # If internal client
 
     def get_model_registry(self):
         """Connect to Project's Model Registry API.
