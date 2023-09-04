@@ -23,22 +23,20 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import com.logicalclocks.hsfs.Feature;
+import com.logicalclocks.hsfs.FeatureGroupBase;
+import com.logicalclocks.hsfs.FeatureStoreException;
+import com.logicalclocks.hsfs.OnlineConfig;
+import com.logicalclocks.hsfs.StatisticsConfig;
+import com.logicalclocks.hsfs.StorageConnector;
+import com.logicalclocks.hsfs.TimeTravelFormat;
+import com.logicalclocks.hsfs.flink.engine.FeatureGroupEngine;
+
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSink;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.logicalclocks.hsfs.Feature;
-import com.logicalclocks.hsfs.FeatureGroupBase;
-import com.logicalclocks.hsfs.FeatureStoreException;
-import com.logicalclocks.hsfs.HudiOperationType;
-import com.logicalclocks.hsfs.JobConfiguration;
-import com.logicalclocks.hsfs.OnlineConfig;
-import com.logicalclocks.hsfs.StatisticsConfig;
-import com.logicalclocks.hsfs.Storage;
-import com.logicalclocks.hsfs.StorageConnector;
-import com.logicalclocks.hsfs.TimeTravelFormat;
-import com.logicalclocks.hsfs.constructor.QueryBase;
-import com.logicalclocks.hsfs.flink.engine.FeatureGroupEngine;
+
 import com.logicalclocks.hsfs.metadata.Statistics;
 
 import lombok.AllArgsConstructor;
@@ -53,10 +51,10 @@ public class StreamFeatureGroup extends FeatureGroupBase<DataStream<?>> {
 
   @Builder
   public StreamFeatureGroup(FeatureStore featureStore, @NonNull String name, Integer version, String description,
-      List<String> primaryKeys, List<String> partitionKeys, String hudiPrecombineKey,
-      boolean onlineEnabled, TimeTravelFormat timeTravelFormat, List<Feature> features,
-      StatisticsConfig statisticsConfig, String onlineTopicName, String topicName, String notificationTopicName,
-      String eventTime, OnlineConfig onlineConfig, StorageConnector storageConnector, String path) {
+                            List<String> primaryKeys, List<String> partitionKeys, String hudiPrecombineKey,
+                            boolean onlineEnabled, TimeTravelFormat timeTravelFormat, List<Feature> features,
+                            StatisticsConfig statisticsConfig, String onlineTopicName, String topicName, String notificationTopicName,
+                            String eventTime, OnlineConfig onlineConfig, StorageConnector storageConnector, String path) {
     this();
     this.featureStore = featureStore;
     this.name = name;
@@ -99,128 +97,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<DataStream<?>> {
   }
 
   @Override
-  public DataStream<?> read() throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public DataStream<?> read(boolean online) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public DataStream<?> read(Map<String, String> readOptions) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public DataStream<?> read(boolean online, Map<String, String> readOptions) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public DataStream<?> read(String wallclockTime) throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public DataStream<?> read(String wallclockTime, Map<String, String> readOptions)
-      throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public QueryBase asOf(String wallclockTime) throws FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public QueryBase asOf(String wallclockTime, String excludeUntil) throws FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void show(int numRows) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void show(int numRows, boolean online) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void insert(DataStream<?> featureData) throws IOException, FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void insert(DataStream<?> featureData, Map<String, String> writeOptions)
-      throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void insert(DataStream<?> featureData, Storage storage)
-      throws IOException, FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void insert(DataStream<?> featureData, boolean overwrite)
-      throws IOException, FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void insert(DataStream<?> featureData, Storage storage, boolean overwrite)
-      throws IOException, FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void insert(DataStream<?> featureData, boolean online, Map<String, String> writeOptions)
-      throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void insert(DataStream<?> featureData, HudiOperationType hudiOperationType)
-      throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void insert(DataStream<?> featureData, Storage storage, boolean online, HudiOperationType hudiOperationType,
-      Map<String, String> writeOptions) throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void insert(DataStream<?> featureData, JobConfiguration jobConfiguration)
-      throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void insert(DataStream<?> featureData, boolean online, Map<String, String> writeOptions,
-      JobConfiguration jobConfiguration)
-      throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void commitDeleteRecord(DataStream<?> featureData) throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void commitDeleteRecord(DataStream<?> featureData, Map<String, String> writeOptions)
-      throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
   public Map<Long, Map<String, String>> commitDetails() throws IOException, FeatureStoreException, ParseException {
     throw new UnsupportedOperationException("Not supported for Flink");
   }
@@ -240,31 +116,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<DataStream<?>> {
   @Override
   public Map<Long, Map<String, String>> commitDetails(String wallclockTime, Integer limit)
       throws IOException, FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public QueryBase selectFeatures(List<Feature> features) {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public QueryBase select(List<String> features) {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public QueryBase selectAll() {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public QueryBase selectExceptFeatures(List<Feature> features) {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public QueryBase selectExcept(List<String> features) {
     throw new UnsupportedOperationException("Not supported for Flink");
   }
 
@@ -306,61 +157,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<DataStream<?>> {
   }
 
   @Override
-  public Object insertStream(DataStream<?> featureData, String queryName) throws Exception {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public Object insertStream(DataStream<?> featureData, String queryName, Map<String, String> writeOptions)
-      throws Exception {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public Object insertStream(DataStream<?> featureData, String queryName, String outputMode) throws Exception {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public Object insertStream(DataStream<?> featureData, String queryName, String outputMode,
-      String checkpointLocation) throws Exception {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public Object insertStream(DataStream<?> featureData,String queryName, String outputMode,
-      boolean awaitTermination, Long timeout) throws Exception {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public Object insertStream(DataStream<?> featureData, String queryName, String outputMode,
-      boolean awaitTermination, Long timeout, String checkpointLocation)
-      throws Exception {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public Object insertStream(DataStream<?> featureData, String queryName, String outputMode,
-      boolean awaitTermination, Long timeout, String checkpointLocation,
-      Map<String, String> writeOptions) throws Exception {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public Object insertStream(DataStream<?> featureData, String queryName, String outputMode, boolean awaitTermination,
-      String checkpointLocation) throws Exception {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public Object insertStream(DataStream<?> featureData, String queryName, String outputMode, boolean awaitTermination,
-      Long timeout, String checkpointLocation, Map<String, String> writeOptions,
-      JobConfiguration jobConfiguration) throws Exception {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
   public void updateFeatures(Feature feature) throws FeatureStoreException, IOException, ParseException {
     throw new UnsupportedOperationException("Not supported for Flink");
   }
@@ -377,16 +173,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<DataStream<?>> {
 
   @Override
   public void appendFeatures(Feature feature) throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public Statistics computeStatistics() throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public Statistics computeStatistics(String wallclockTime) throws FeatureStoreException, IOException, ParseException {
     throw new UnsupportedOperationException("Not supported for Flink");
   }
 

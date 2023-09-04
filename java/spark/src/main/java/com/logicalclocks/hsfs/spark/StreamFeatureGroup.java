@@ -125,7 +125,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    *                               for this feature group;
    * @throws IOException Generic IO exception.
    */
-  @Override
   public Dataset<Row> read() throws FeatureStoreException, IOException {
     return read(false, null);
   }
@@ -152,7 +151,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    *                               for this feature group;
    * @throws IOException Generic IO exception.
    */
-  @Override
   public Dataset<Row> read(boolean online) throws FeatureStoreException, IOException {
     return read(online, null);
   }
@@ -181,7 +179,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    *         for this feature group.
    * @throws IOException Generic IO exception.
    */
-  @Override
   public Dataset<Row> read(Map<String, String> readOptions) throws FeatureStoreException, IOException {
     return read(false, readOptions);
   }
@@ -211,7 +208,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    *                               for this feature group;
    * @throws IOException Generic IO exception.
    */
-  @Override
   public Dataset<Row> read(boolean online, Map<String, String> readOptions) throws FeatureStoreException, IOException {
     return selectAll().read(online, readOptions);
   }
@@ -237,7 +233,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * @throws IOException  Generic IO exception.
    * @throws ParseException In case it's unable to parse provided wallclockTime to date type.
    */
-  @Override
   public Dataset<Row> read(String wallclockTime) throws FeatureStoreException, IOException, ParseException {
     return selectAll().asOf(wallclockTime).read(false, null);
   }
@@ -268,7 +263,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * @throws IOException  Generic IO exception.
    * @throws ParseException In case it's unable to parse provided wallclockTime to date type.
    */
-  @Override
   public Dataset<Row> read(String wallclockTime, Map<String, String> readOptions)
       throws FeatureStoreException, IOException, ParseException {
     return selectAll().asOf(wallclockTime).read(false, readOptions);
@@ -293,7 +287,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    *                               for this feature group;
    * @throws IOException Generic IO exception.
    */
-  @Override
   public void show(int numRows) throws FeatureStoreException, IOException {
     read(false).show(numRows);
   }
@@ -318,7 +311,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    *                               for this feature group;
    * @throws IOException Generic IO exception.
    */
-  @Override
   public void show(int numRows, boolean online) throws FeatureStoreException, IOException {
     read(online).show(numRows);
   }
@@ -373,7 +365,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * @throws FeatureStoreException In case it's unable to identify format of the provided wallclockTime date format
    * @throws ParseException In case it's unable to parse provided wallclockTime to date type.
    */
-  @Override
   public Query asOf(String wallclockTime) throws FeatureStoreException, ParseException {
     return selectAll().asOf(wallclockTime);
   }
@@ -404,7 +395,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * @throws FeatureStoreException In case it's unable to identify format of the provided wallclockTime date format
    * @throws ParseException In case it's unable to parse provided wallclockTime to date type.
    */
-  @Override
   public Query asOf(String wallclockTime, String excludeUntil) throws FeatureStoreException, ParseException {
     return selectAll().asOf(wallclockTime, excludeUntil);
   }
@@ -445,7 +435,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    *                               can't reconcile HUDI schema.
    * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
    */
-  @Override
   public void insert(Dataset<Row> featureData) throws FeatureStoreException, IOException, ParseException {
     insert(featureData, false, null, null);
   }
@@ -480,13 +469,11 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    *                               can't reconcile HUDI schema.
    * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
    */
-  @Override
   public void insert(Dataset<Row> featureData, Map<String, String> writeOptions) throws FeatureStoreException,
       IOException, ParseException {
     insert(featureData, false, writeOptions, null);
   }
 
-  @Override
   public void insert(Dataset<Row> featureData, Storage storage)
       throws IOException, FeatureStoreException, ParseException {
     new FeatureStoreException("This method is not implemented in StreamFeatureGroup");
@@ -516,13 +503,11 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    *                               can't reconcile HUDI schema.
    * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
    */
-  @Override
   public void insert(Dataset<Row> featureData, boolean overwrite)
       throws IOException, FeatureStoreException, ParseException {
     insert(featureData, overwrite, null, null);
   }
 
-  @Override
   public void insert(Dataset<Row> featureData, Storage storage, boolean overwrite)
       throws IOException, FeatureStoreException, ParseException {
     new FeatureStoreException("This method is not implemented in StreamFeatureGroup");
@@ -559,19 +544,16 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    *                               can't reconcile HUDI schema.
    * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
    */
-  @Override
   public void insert(Dataset<Row> featureData, boolean overwrite, Map<String, String> writeOptions)
       throws FeatureStoreException, IOException, ParseException {
     insert(featureData, overwrite, writeOptions, null);
   }
 
-  @Override
   public void insert(Dataset<Row> featureData, HudiOperationType operation)
       throws FeatureStoreException, IOException, ParseException {
     new FeatureStoreException("This method is not implemented in StreamFeatureGroup");
   }
 
-  @Override
   public void insert(Dataset<Row> featureData, Storage storage, boolean overwrite, HudiOperationType operation,
                      Map<String, String> writeOptions) throws FeatureStoreException, IOException, ParseException {
     new FeatureStoreException("This method is not implemented in StreamFeatureGroup");
@@ -605,7 +587,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    *                               can't reconcile HUDI schema.
    * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
    */
-  @Override
   public void insert(Dataset<Row>  featureData, JobConfiguration jobConfiguration) throws FeatureStoreException,
       IOException, ParseException {
     insert(featureData, false, null, jobConfiguration);
@@ -648,7 +629,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    *                               can't reconcile HUDI schema.
    * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
    */
-  @Override
   public void insert(Dataset<Row> featureData, boolean overwrite, Map<String, String> writeOptions,
                      JobConfiguration jobConfiguration) throws FeatureStoreException, IOException, ParseException {
     featureGroupEngine.insert(this, featureData,  overwrite ? SaveMode.Overwrite : SaveMode.Append,
@@ -700,7 +680,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * @param queryName Specify a name for the query to make it easier to recognise in the Spark UI
    * @return Streaming Query object.
    */
-  @Override
   public StreamingQuery insertStream(Dataset<Row> featureData, String queryName) {
     return insertStream(featureData, queryName, null, false, null, null, null,
         null);
@@ -765,7 +744,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * @param writeOptions Additional write options as key-value pairs.
    * @return Streaming Query object.
    */
-  @Override
   public StreamingQuery insertStream(Dataset<Row> featureData, String queryName, Map<String, String> writeOptions) {
     return insertStream(featureData, queryName, null, false, null, null, writeOptions,
         null);
@@ -802,7 +780,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    *                 append mode. Default  behaviour is `"append"`.
    * @return Streaming Query object.
    */
-  @Override
   public StreamingQuery insertStream(Dataset<Row> featureData, String queryName, String outputMode) {
     return insertStream(featureData, queryName, outputMode, false, null, null, null,
         null);
@@ -842,7 +819,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    *                 from where to resume the streaming job.
    * @return Streaming Query object.
    */
-  @Override
   public StreamingQuery insertStream(Dataset<Row> featureData, String queryName, String outputMode,
                                      String checkpointLocation) {
     return insertStream(featureData, queryName, outputMode, false, null, checkpointLocation, null,
@@ -886,7 +862,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * @param timeout Only relevant in combination with `awaitTermination=true`.
    * @return Streaming Query object.
    */
-  @Override
   public StreamingQuery insertStream(Dataset<Row> featureData, String queryName, String outputMode,
                                      boolean awaitTermination, Long timeout) {
     return insertStream(featureData, queryName, outputMode, awaitTermination, timeout, null, null,
@@ -933,7 +908,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    *                 from where to resume the streaming job.
    * @return Streaming Query object.
    */
-  @Override
   public StreamingQuery insertStream(Dataset<Row> featureData, String queryName, String outputMode,
                                      boolean awaitTermination, Long timeout, String checkpointLocation) {
     return insertStream(featureData, queryName, outputMode, awaitTermination, timeout, checkpointLocation, null,
@@ -988,7 +962,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * @param writeOptions Additional write options as key-value pairs.
    * @return Streaming Query object.
    */
-  @Override
   public StreamingQuery insertStream(Dataset<Row> featureData, String queryName, String outputMode,
                                      boolean awaitTermination, Long timeout,  String checkpointLocation,
                                      Map<String, String> writeOptions) {
@@ -996,7 +969,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
         null);
   }
 
-  @Override
   public StreamingQuery insertStream(Dataset<Row> featureData, String queryName, String outputMode,
                                      boolean awaitTermination, String checkpointLocation) {
     return insertStream(featureData, queryName, outputMode, awaitTermination, null, checkpointLocation, null,
@@ -1057,7 +1029,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * @param jobConfiguration configure the Hopsworks Job used to write data into the stream feature group.
    * @return Streaming Query object.
    */
-  @Override
   public StreamingQuery insertStream(Dataset<Row> featureData, String queryName, String outputMode,
                                      boolean awaitTermination, Long timeout,  String checkpointLocation,
                                      Map<String, String> writeOptions, JobConfiguration jobConfiguration) {
@@ -1072,7 +1043,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * @param features List of Feature meta data objects.
    * @return Query object.
    */
-  @Override
   public Query selectFeatures(List<Feature> features) {
     return new Query(this, features);
   }
@@ -1083,7 +1053,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * @param features List of Feature names.
    * @return Query object.
    */
-  @Override
   public Query select(List<String> features) {
     // Create a feature object for each string feature given by the user.
     // For the query building each feature need only the name set.
@@ -1096,7 +1065,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * joins of feature groups or create a feature view with a subset of features of the feature group.
    * @return Query object.
    */
-  @Override
   public Query selectAll() {
     return new Query(this, getFeatures());
   }
@@ -1109,7 +1077,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * @param features List of Feature meta data objects.
    * @return Query object.
    */
-  @Override
   public Query selectExceptFeatures(List<Feature> features) {
     List<String> exceptFeatures = features.stream().map(Feature::getName).collect(Collectors.toList());
     return selectExcept(exceptFeatures);
@@ -1123,7 +1090,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * @param features List of Feature names.
    * @return Query object.
    */
-  @Override
   public Query selectExcept(List<String> features) {
     return new Query(this,
         getFeatures().stream().filter(f -> !features.contains(f.getName())).collect(Collectors.toList()));
@@ -1149,7 +1115,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * @throws IOException Generic IO exception.
    * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
    */
-  @Override
   public void commitDeleteRecord(Dataset<Row>  featureData)
       throws FeatureStoreException, IOException, ParseException {
     featureGroupEngine.commitDelete(this, featureData, null);
@@ -1182,7 +1147,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * @throws IOException Generic IO exception.
    * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
    */
-  @Override
   public void commitDeleteRecord(Dataset<Row>  featureData, Map<String, String> writeOptions)
       throws FeatureStoreException, IOException, ParseException {
     featureGroupEngine.commitDelete(this, featureData, writeOptions);
@@ -1367,7 +1331,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * @throws FeatureStoreException If Client is not connected to Hopsworks,
    * @throws IOException Generic IO exception.
    */
-  @Override
   public Statistics computeStatistics() throws FeatureStoreException, IOException {
     if (statisticsConfig.getEnabled()) {
       return statisticsEngine.computeStatistics(this, read(), null);
@@ -1386,7 +1349,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * @throws FeatureStoreException
    * @throws IOException
    */
-  @Override
   public Statistics computeStatistics(String wallclockTime) throws FeatureStoreException, IOException, ParseException {
     if (statisticsConfig.getEnabled()) {
       Map<Long, Map<String, String>> latestCommitMetaData =
