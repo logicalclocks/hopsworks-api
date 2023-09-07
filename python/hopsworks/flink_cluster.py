@@ -146,7 +146,9 @@ class FlinkCluster:
             `RestAPIError`: If unable to get the jobs from the cluster
         """
 
-        return self._flink_cluster_api._get_jobs(self._get_execution(assert_running=True))
+        return self._flink_cluster_api._get_jobs(
+            self._get_execution(assert_running=True)
+        )
 
     def get_job(self, job_id):
         """Get specific job from the flink cluster.
@@ -173,7 +175,9 @@ class FlinkCluster:
             `RestAPIError`: If unable to get the job from the cluster
         """
 
-        return self._flink_cluster_api._get_job(self._get_execution(assert_running=True), job_id)
+        return self._flink_cluster_api._get_job(
+            self._get_execution(assert_running=True), job_id
+        )
 
     def stop_job(self, job_id):
         """Stop specific job in the flink cluster.
@@ -197,7 +201,9 @@ class FlinkCluster:
         # Raises
             `RestAPIError`: If unable to stop the job
         """
-        self._flink_cluster_api._stop_job(self._get_execution(assert_running=True), job_id)
+        self._flink_cluster_api._stop_job(
+            self._get_execution(assert_running=True), job_id
+        )
 
     def get_jars(self):
         """Get already uploaded jars from the flink cluster.
@@ -219,7 +225,9 @@ class FlinkCluster:
         # Raises
             `RestAPIError`: If unable to get jars from the flink cluster.
         """
-        return self._flink_cluster_api._get_jars(self._get_execution(assert_running=True))
+        return self._flink_cluster_api._get_jars(
+            self._get_execution(assert_running=True)
+        )
 
     def upload_jar(self, jar_file):
         """Upload jar file to the flink cluster.
@@ -243,7 +251,9 @@ class FlinkCluster:
             `RestAPIError`: If unable to upload jar file
         """
 
-        self._flink_cluster_api._upload_jar(self._get_execution(assert_running=True), jar_file)
+        self._flink_cluster_api._upload_jar(
+            self._get_execution(assert_running=True), jar_file
+        )
 
     def submit_job(self, jar_id, main_class, job_arguments=None):
         """Submit job using the specific jar file uploaded to the flink cluster.
@@ -308,7 +318,9 @@ class FlinkCluster:
             `RestAPIError`: If unable to get the job state from the flink cluster.
         """
 
-        return self._flink_cluster_api._job_state(self._get_execution(assert_running=True), job_id)
+        return self._flink_cluster_api._job_state(
+            self._get_execution(assert_running=True), job_id
+        )
 
     def stop(self):
         """Stop this cluster.
@@ -333,7 +345,9 @@ class FlinkCluster:
         if exec is None or exec.success is not None:
             return
         else:
-            self._flink_cluster_api._stop_execution(self._get_execution(assert_running=False))
+            self._flink_cluster_api._stop_execution(
+                self._get_execution(assert_running=False)
+            )
 
     @property
     def id(self):
