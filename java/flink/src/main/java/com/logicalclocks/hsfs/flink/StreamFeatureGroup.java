@@ -17,15 +17,12 @@
 
 package com.logicalclocks.hsfs.flink;
 
-import java.io.IOException;
-import java.text.ParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.FeatureGroupBase;
-import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.OnlineConfig;
 import com.logicalclocks.hsfs.StatisticsConfig;
 import com.logicalclocks.hsfs.StorageConnector;
@@ -36,8 +33,6 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSink;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-
-import com.logicalclocks.hsfs.metadata.Statistics;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -96,29 +91,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<DataStream<?>> {
     this.id = id;
   }
 
-  @Override
-  public Map<Long, Map<String, String>> commitDetails() throws IOException, FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public Map<Long, Map<String, String>> commitDetails(Integer integer)
-      throws IOException, FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public Map<Long, Map<String, String>> commitDetails(String limit)
-      throws IOException, FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public Map<Long, Map<String, String>> commitDetails(String wallclockTime, Integer limit)
-      throws IOException, FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
   /**
    * Ingest a feature data to the online feature store using Flink DataStream API. Currently, only POJO
    * types as feature data type are supported.
@@ -154,30 +126,5 @@ public class StreamFeatureGroup extends FeatureGroupBase<DataStream<?>> {
   @Override
   public DataStreamSink<?>  insertStream(DataStream<?> featureData, Map<String, String> writeOptions) throws Exception {
     return featureGroupEngine.insertStream(this, featureData, writeOptions);
-  }
-
-  @Override
-  public void updateFeatures(Feature feature) throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void updateFeatures(List<Feature> feature) throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void appendFeatures(List<Feature> feature) throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void appendFeatures(Feature feature) throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public Statistics getStatistics() throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
   }
 }
