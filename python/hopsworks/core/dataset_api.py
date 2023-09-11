@@ -222,7 +222,6 @@ class DatasetApi:
         }
 
     def _upload_request(self, params, path, file_name, chunk):
-
         _client = client.get_instance()
         path_params = ["project", self._project_id, "dataset", "upload", path]
 

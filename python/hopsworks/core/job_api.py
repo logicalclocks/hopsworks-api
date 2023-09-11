@@ -14,9 +14,10 @@
 #   limitations under the License.
 #
 
+import json
+
 from hopsworks import client, job, util
 from hopsworks.client.exceptions import RestAPIError
-import json
 
 
 class JobsApi:

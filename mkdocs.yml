@@ -23,6 +23,7 @@ nav:
       - Projects: generated/api/projects.md
       - Jobs: generated/api/jobs.md
       - Executions: generated/api/executions.md
+      - FlinkCluster: generated/api/flink_cluster.md
       - Environment: generated/api/environment.md
       - GitRepo: generated/api/git_repo.md
       - GitProvider: generated/api/git_provider.md
