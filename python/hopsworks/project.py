@@ -50,6 +50,7 @@ class Project:
         services=None,
         datasets=None,
         creation_status=None,
+        **kwargs,
     ):
         self._id = project_id
         self._name = project_name
