@@ -124,7 +124,9 @@ class Connection:
         return self._secret_api
 
     @connected
-    def create_project(self, name: str, description: str = None):
+    def create_project(
+        self, name: str, description: str = None, feature_store_topic: str = None
+    ):
         """Create a new project.
 
         Example for creating a new project
@@ -140,12 +142,13 @@ class Connection:
         ```
         # Arguments
             name: The name of the project.
-            arguments: optional description of the project
+            description: optional description of the project
+            feature_store_topic: optional feature store topic name
 
         # Returns
             `Project`. A project handle object to perform operations on.
         """
-        return self._project_api._create_project(name, description)
+        return self._project_api._create_project(name, description, feature_store_topic)
 
     @connected
     def get_project(self, name: str = None):

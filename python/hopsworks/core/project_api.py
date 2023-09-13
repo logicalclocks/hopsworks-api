@@ -73,12 +73,15 @@ class ProjectApi:
         project_json = _client._send_request("GET", path_params)
         return project.Project.from_response_json(project_json)
 
-    def _create_project(self, name: str, description: str = None):
+    def _create_project(
+        self, name: str, description: str = None, feature_store_topic: str = None
+    ):
         """Create a new project.
 
         # Arguments
             name: Name of the project.
             description: Description of the project.
+            feature_store_topic: Feature store topic name.
         # Returns
             `Project`: The Project object
         # Raises
@@ -94,6 +97,7 @@ class ProjectApi:
             "projectName": name,
             "services": constants.SERVICES.LIST,
             "description": description,
+            "featureStoreTopic": feature_store_topic,
         }
         _client._send_request(
             "POST",
