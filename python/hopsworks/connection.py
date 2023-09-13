@@ -124,7 +124,9 @@ class Connection:
         return self._secret_api
 
     @connected
-    def create_project(self, name: str, description: str = None, feature_store_topic: str = None):
+    def create_project(
+        self, name: str, description: str = None, feature_store_topic: str = None
+    ):
         """Create a new project.
 
         Example for creating a new project

@@ -73,7 +73,9 @@ class ProjectApi:
         project_json = _client._send_request("GET", path_params)
         return project.Project.from_response_json(project_json)
 
-    def _create_project(self, name: str, description: str = None, feature_store_topic: str = None):
+    def _create_project(
+        self, name: str, description: str = None, feature_store_topic: str = None
+    ):
         """Create a new project.
 
         # Arguments
