@@ -44,7 +44,6 @@ class DatasetApi:
         self._log = logging.getLogger(__name__)
 
     FLOW_PERMANENT_ERRORS = [404, 413, 415, 500, 501]
-    FLOW_SUCCESS_STATUSES = [200, 201, 202]
 
     def download(self, path: str, local_path: str = None, overwrite: bool = False):
         """Download file from Hopsworks Filesystem to the current working directory.
