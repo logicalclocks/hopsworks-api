@@ -44,6 +44,7 @@ class DatasetApi:
         self._project_id = project_id
         self._log = logging.getLogger(__name__)
 
+    DEFAULT_FLOW_CHUNK_SIZE = 1048576
     FLOW_PERMANENT_ERRORS = [404, 413, 415, 500, 501]
 
     def download(self, path: str, local_path: str = None, overwrite: bool = False):
