@@ -16,7 +16,7 @@
 
 import json
 
-from hopsworks import client, job, util
+from hopsworks import client, job, util, job_schedule
 from hopsworks.client.exceptions import RestAPIError
 
 
@@ -191,4 +191,24 @@ class JobsApi:
             ),
             self._project_id,
             self._project_name,
+        )
+
+    def _schedule_job(self, name, schedule_config):
+        _client = client.get_instance()
+        path_params = ["project", self._project_id, "jobs", name, "schedule", "v2"]
+
+        headers = {"content-type": "application/json"}
+        return job_schedule.JobSchedule.from_response_json(
+            _client._send_request(
+                "POST", path_params, headers=headers, data=json.dumps(schedule_config)
+            )
+        )
+
+    def _delete_schedule_job(self, name):
+        _client = client.get_instance()
+        path_params = ["project", self._project_id, "jobs", name, "schedule", "v2"]
+
+        return _client._send_request(
+            "DELETE",
+            path_params,
         )
