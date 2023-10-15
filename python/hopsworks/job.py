@@ -194,7 +194,33 @@ class Job:
         self._job_api._delete(self)
 
     def schedule(self, cron_expression, start_time=None, end_time=None):
+        """Schedule the execution of the job.
+
+        If a schedule for this job already exists, the method updates it.
+
+        ```python
+        # Schedule the job
+        job.schedule(
+            cron_expression="0 */5 * ? * * *",
+            start_time=datetime.datetime.now(tz=timezone.utc)
+        )
+
+        # Retrieve the next execution time
+        print(job.job_schedule.next_execution_date_time)
+        ```
+
+        # Arguments
+            cron_expression: str. The quartz cron expression
+            start_time: datetime, optional. The schedule start time in UTC.
+                If None, the current time is used. The start_time can be a value in the past.
+            end_time: datetime, optional. The schedule end time in UTC.
+                If None, the schedule will continue running indefinitely.
+                The end_time can be a value in the past.
+        # Returns
+            `JobSchedule`. The schedule of the job
+        """
         job_schedule = js.JobSchedule(
+            id=self._job_schedule.id if self._job_schedule else None,
             start_date_time=start_time if start_time else datetime.now(tz=timezone.utc),
             cron_expression=cron_expression,
             end_time=end_time,
@@ -206,9 +232,9 @@ class Job:
         return self._job_schedule
 
     def unschedule(self):
+        """Unschedule the exceution of a Job"""
         self._job_api._delete_schedule_job(self._name)
         self._job_schedule = None
-        return self._job_schedule
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)

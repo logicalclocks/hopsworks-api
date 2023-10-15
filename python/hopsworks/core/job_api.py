@@ -196,11 +196,12 @@ class JobsApi:
     def _schedule_job(self, name, schedule_config):
         _client = client.get_instance()
         path_params = ["project", self._project_id, "jobs", name, "schedule", "v2"]
-
         headers = {"content-type": "application/json"}
+        method = "PUT" if schedule_config["id"] else "POST"
+
         return job_schedule.JobSchedule.from_response_json(
             _client._send_request(
-                "POST", path_params, headers=headers, data=json.dumps(schedule_config)
+                method, path_params, headers=headers, data=json.dumps(schedule_config)
             )
         )
 
