@@ -193,7 +193,12 @@ class Job:
         """
         self._job_api._delete(self)
 
-    def schedule(self, cron_expression: str, start_time: datetime = None, end_time: datetime = None):
+    def schedule(
+        self,
+        cron_expression: str,
+        start_time: datetime = None,
+        end_time: datetime = None,
+    ):
         """Schedule the execution of the job.
 
         If a schedule for this job already exists, the method updates it.
