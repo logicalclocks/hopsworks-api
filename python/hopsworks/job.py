@@ -18,7 +18,9 @@ import humps
 import json
 from hopsworks.engine import execution_engine
 from hopsworks.core import job_api, execution_api
-from hopsworks import util
+from hopsworks import util, job_schedule as js
+
+from datetime import datetime, timezone
 
 
 class Job:
@@ -38,6 +40,7 @@ class Job:
         count=None,
         project_id=None,
         project_name=None,
+        job_schedule=None,
     ):
         self._id = id
         self._name = name
@@ -47,6 +50,11 @@ class Job:
         self._creator = creator
         self._executions = executions
         self._project_id = project_id
+        self._job_schedule = (
+            js.JobSchedule.from_response_json(job_schedule)
+            if job_schedule
+            else job_schedule
+        )
 
         self._execution_engine = execution_engine.ExecutionEngine(project_id)
         self._execution_api = execution_api.ExecutionsApi(project_id)
@@ -117,6 +125,11 @@ class Job:
         """Creator of the job"""
         return self._creator
 
+    @property
+    def job_schedule(self):
+        """Return the Job schedule"""
+        return self._job_schedule
+
     def run(self, args: str = None, await_termination: bool = None):
         """Run the job, with the option of passing runtime arguments.
 
@@ -179,6 +192,51 @@ class Job:
             `RestAPIError`.
         """
         self._job_api._delete(self)
+
+    def schedule(
+        self,
+        cron_expression: str,
+        start_time: datetime = None,
+        end_time: datetime = None,
+    ):
+        """Schedule the execution of the job.
+
+        If a schedule for this job already exists, the method updates it.
+
+        ```python
+        # Schedule the job
+        job.schedule(
+            cron_expression="0 */5 * ? * * *",
+            start_time=datetime.datetime.now(tz=timezone.utc)
+        )
+
+        # Retrieve the next execution time
+        print(job.job_schedule.next_execution_date_time)
+        ```
+
+        # Arguments
+            cron_expression: The quartz cron expression
+            start_time: The schedule start time in UTC. If None, the current time is used. The start_time can be a value in the past.
+            end_time: The schedule end time in UTC. If None, the schedule will continue running indefinitely. The end_time can be a value in the past.
+        # Returns
+            `JobSchedule`. The schedule of the job
+        """
+        job_schedule = js.JobSchedule(
+            id=self._job_schedule.id if self._job_schedule else None,
+            start_date_time=start_time if start_time else datetime.now(tz=timezone.utc),
+            cron_expression=cron_expression,
+            end_time=end_time,
+            enabled=True,
+        )
+        self._job_schedule = self._job_api._schedule_job(
+            self._name, job_schedule.to_dict()
+        )
+        return self._job_schedule
+
+    def unschedule(self):
+        """Unschedule the exceution of a Job"""
+        self._job_api._delete_schedule_job(self._name)
+        self._job_schedule = None
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
