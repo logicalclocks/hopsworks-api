@@ -41,6 +41,7 @@ class Job:
         project_id=None,
         project_name=None,
         job_schedule=None,
+        **kwargs,
     ):
         self._id = id
         self._name = name

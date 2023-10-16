@@ -43,6 +43,7 @@ class User:
         num_active_projects=None,
         num_remaining_projects=None,
         href=None,
+        **kwargs,
     ):
         self._username = username
         self._email = email

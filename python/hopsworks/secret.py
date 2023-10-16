@@ -35,6 +35,7 @@ class Secret:
         expand=None,
         items=None,
         count=None,
+        **kwargs,
     ):
         self._name = name
         self._secret = secret

@@ -31,6 +31,7 @@ class Command:
         type=None,
         href=None,
         count=None,
+        **kwargs,
     ):
         self._id = id
         self._op = op

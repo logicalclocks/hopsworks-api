@@ -39,6 +39,7 @@ class KafkaTopic:
         expand=None,
         items=None,
         count=None,
+        **kwargs,
     ):
         self._name = name
         self._num_of_replicas = num_of_replicas

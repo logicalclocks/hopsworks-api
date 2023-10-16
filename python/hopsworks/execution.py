@@ -44,6 +44,7 @@ class Execution:
         project_id=None,
         job_name=None,
         job_type=None,
+        **kwargs,
     ):
         self._id = id
         self._final_status = final_status

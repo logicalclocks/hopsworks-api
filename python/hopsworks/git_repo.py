@@ -41,6 +41,7 @@ class GitRepo:
         count=None,
         project_id=None,
         project_name=None,
+        **kwargs,
     ):
         self._id = id
         self._name = name
