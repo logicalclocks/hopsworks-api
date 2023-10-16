@@ -193,7 +193,7 @@ class Job:
         """
         self._job_api._delete(self)
 
-    def schedule(self, cron_expression, start_time=None, end_time=None):
+    def schedule(self, cron_expression: str, start_time: datetime = None, end_time: datetime = None):
         """Schedule the execution of the job.
 
         If a schedule for this job already exists, the method updates it.
@@ -210,12 +210,9 @@ class Job:
         ```
 
         # Arguments
-            cron_expression: str. The quartz cron expression
-            start_time: datetime, optional. The schedule start time in UTC.
-                If None, the current time is used. The start_time can be a value in the past.
-            end_time: datetime, optional. The schedule end time in UTC.
-                If None, the schedule will continue running indefinitely.
-                The end_time can be a value in the past.
+            cron_expression: The quartz cron expression
+            start_time: The schedule start time in UTC. If None, the current time is used. The start_time can be a value in the past.
+            end_time: The schedule end time in UTC. If None, the schedule will continue running indefinitely. The end_time can be a value in the past.
         # Returns
             `JobSchedule`. The schedule of the job
         """
