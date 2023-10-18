@@ -417,7 +417,7 @@ class DatasetApi:
         }
         _client._send_request(
             "POST", path_params, query_params=query_params
-        )["attributes"]["path"]
+        )
 
     def move(self, source_path: str, destination_path: str):
         """Move a file or directory in the Hopsworks Filesystem.
@@ -447,4 +447,4 @@ class DatasetApi:
         }
         _client._send_request(
             "POST", path_params, query_params=query_params
-        )["attributes"]["path"]
+        )
