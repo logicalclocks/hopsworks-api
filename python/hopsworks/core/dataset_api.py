@@ -304,3 +304,82 @@ class DatasetApi:
         return _client._send_request(
             "POST", path_params, headers=headers, query_params=query_params
         )["attributes"]["path"]
+
+    def copy(self, source_path: str, destination_path: str, overwrite: bool = False):
+        """Copy a file or directory in the Hopsworks Filesystem.
+
+        ```python
+
+        import hopsworks
+
+        project = hopsworks.login()
+
+        dataset_api = project.get_dataset_api()
+
+        directory_path = dataset_api.copy("Resources/myfile.txt", "Logs/myfile.txt")
+
+        ```
+        # Arguments
+            source_path: the source path to copy
+            destination_path: the destination path
+            overwrite: overwrite destination if exists
+        # Raises
+            `RestAPIError`: If unable to perform the copy
+        """
+        if self.exists(destination_path):
+            if overwrite:
+                self.remove(destination_path)
+            else:
+                raise DatasetException(
+                    "{} already exists, set overwrite=True to overwrite it".format(
+                        destination_path
+                    )
+                )
+
+        _client = client.get_instance()
+        path_params = ["project", self._project_id, "dataset", source_path]
+        query_params = {
+            "action": "copy",
+            "destination_path": destination_path,
+        }
+        _client._send_request("POST", path_params, query_params=query_params)
+
+    def move(self, source_path: str, destination_path: str, overwrite: bool = False):
+        """Move a file or directory in the Hopsworks Filesystem.
+
+        ```python
+
+        import hopsworks
+
+        project = hopsworks.login()
+
+        dataset_api = project.get_dataset_api()
+
+        directory_path = dataset_api.move("Resources/myfile.txt", "Logs/myfile.txt")
+
+        ```
+        # Arguments
+            source_path: the source path to move
+            destination_path: the destination path
+            overwrite: overwrite destination if exists
+        # Raises
+            `RestAPIError`: If unable to perform the move
+        """
+
+        if self.exists(destination_path):
+            if overwrite:
+                self.remove(destination_path)
+            else:
+                raise DatasetException(
+                    "{} already exists, set overwrite=True to overwrite it".format(
+                        destination_path
+                    )
+                )
+
+        _client = client.get_instance()
+        path_params = ["project", self._project_id, "dataset", source_path]
+        query_params = {
+            "action": "move",
+            "destination_path": destination_path,
+        }
+        _client._send_request("POST", path_params, query_params=query_params)
