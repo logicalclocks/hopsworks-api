@@ -34,6 +34,7 @@ class GitRemote:
         count=None,
         project_id=None,
         project_name=None,
+        **kwargs,
     ):
         self._name = remote_name
         self._url = remote_url

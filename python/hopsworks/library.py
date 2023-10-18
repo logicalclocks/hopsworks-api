@@ -34,6 +34,7 @@ class Library:
         href=None,
         environment=None,
         project_id=None,
+        **kwargs,
     ):
         self._channel = channel
         self._package_source = package_source

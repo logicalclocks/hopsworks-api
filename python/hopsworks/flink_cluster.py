@@ -27,6 +27,7 @@ class FlinkCluster:
         job,
         project_id=None,
         project_name=None,
+        **kwargs,
     ):
         self._job = job
         self._project_id = project_id

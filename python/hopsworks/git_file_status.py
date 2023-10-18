@@ -26,6 +26,7 @@ class GitFileStatus:
         file=None,
         status=None,
         extra=None,
+        **kwargs,
     ):
         self._file = file
         self._status = status

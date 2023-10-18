@@ -30,6 +30,7 @@ class KafkaSchema:
         project_id=None,
         project_name=None,
         type=None,
+        **kwargs,
     ):
         self._id = id
         self._subject = subject

@@ -36,6 +36,7 @@ class Environment:
         type=None,
         project_id=None,
         project_name=None,
+        **kwargs,
     ):
         self._python_version = python_version
         self._python_conflicts = python_conflicts

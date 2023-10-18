@@ -35,6 +35,7 @@ class GitProvider:
         count=None,
         project_id=None,
         project_name=None,
+        **kwargs,
     ):
         self._username = username
         self._git_provider = git_provider
