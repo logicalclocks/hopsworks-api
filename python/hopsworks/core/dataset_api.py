@@ -400,7 +400,7 @@ class DatasetApi:
 
         dataset_api = project.get_dataset_api()
 
-        directory_path = dataset_api.copy("Resources/myfile.txt", "Logs")
+        directory_path = dataset_api.copy("Resources/myfile.txt", "Logs/myfile.txt")
 
         ```
         # Arguments
@@ -430,7 +430,7 @@ class DatasetApi:
 
         dataset_api = project.get_dataset_api()
 
-        directory_path = dataset_api.move("Resources/myfile.txt", "Logs")
+        directory_path = dataset_api.move("Resources/myfile.txt", "Logs/myfile.txt")
 
         ```
         # Arguments
