@@ -16,8 +16,8 @@ setup(
     name="hopsworks",
     version=__version__,
     install_requires=[
-        "hsfs[python]~=3.4.2rc0",
-        "hsml~=3.4.2rc0",
+        "hsfs[python]>=3.4.0,<3.5.0",
+        "hsml>=3.4.0,<3.5.0",
         "pyhumps==1.6.1",
         "requests",
         "furl",
