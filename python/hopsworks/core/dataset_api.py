@@ -400,7 +400,7 @@ class DatasetApi:
 
         dataset_api = project.get_dataset_api()
 
-        directory_path = dataset_api.copy("Resources/myfile.txt", "Logs/myfile.txt")
+        directory_path = dataset_api.copy("Resources/myfile.txt", "Logs")
 
         ```
         # Arguments
@@ -410,7 +410,7 @@ class DatasetApi:
             `RestAPIError`: If unable to perform the copy
         """
         _client = client.get_instance()
-        path_params = ["project", self._project_id, "dataset", path]
+        path_params = ["project", self._project_id, "dataset", source_path]
         query_params = {
             "action": "copy",
             "destination_path": destination_path,
@@ -430,7 +430,7 @@ class DatasetApi:
 
         dataset_api = project.get_dataset_api()
 
-        directory_path = dataset_api.move("Resources/myfile.txt", "Logs/myfile.txt")
+        directory_path = dataset_api.move("Resources/myfile.txt", "Logs")
 
         ```
         # Arguments
@@ -440,7 +440,7 @@ class DatasetApi:
             `RestAPIError`: If unable to perform the move
         """
         _client = client.get_instance()
-        path_params = ["project", self._project_id, "dataset", path]
+        path_params = ["project", self._project_id, "dataset", source_path]
         query_params = {
             "action": "move",
             "destination_path": destination_path,
