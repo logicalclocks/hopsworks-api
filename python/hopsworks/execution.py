@@ -222,6 +222,13 @@ class Execution:
         """
         self._execution_api._delete(self.job_name, self.id)
 
+    def await_termination(self):
+        """Wait until execution reaches terminal state
+        # Raises
+            `RestAPIError`.
+        """
+        self._execution_engine.wait_until_finished(self.job_name, self)
+
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
