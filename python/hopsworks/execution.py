@@ -42,8 +42,7 @@ class Execution:
         type=None,
         href=None,
         project_id=None,
-        job_name=None,
-        job_type=None,
+        job=None,
         **kwargs,
     ):
         self._id = id
@@ -59,33 +58,22 @@ class Execution:
         self._monitoring = monitoring
         self._app_id = app_id
         self._hdfs_user = hdfs_user
-        self._job_name = job_name
-        self._job_type = job_type
+        self._job = job
         self._project_id = project_id
 
         self._execution_engine = execution_engine.ExecutionEngine(project_id)
         self._execution_api = execution_api.ExecutionsApi(project_id)
 
     @classmethod
-    def from_response_json(cls, json_dict, project_id, job_name, job_type):
+    def from_response_json(cls, json_dict, project_id, job):
         json_decamelized = humps.decamelize(json_dict)
         if "count" not in json_decamelized:
-            return cls(
-                **json_decamelized,
-                project_id=project_id,
-                job_name=job_name,
-                job_type=job_type,
-            )
+            return cls(**json_decamelized, project_id=project_id, job=job)
         elif json_decamelized["count"] == 0:
             return []
         else:
             return [
-                cls(
-                    **execution,
-                    project_id=project_id,
-                    job_name=job_name,
-                    job_type=job_type,
-                )
+                cls(**execution, project_id=project_id, job=job)
                 for execution in json_decamelized["items"]
             ]
 
@@ -102,12 +90,12 @@ class Execution:
     @property
     def job_name(self):
         """Name of the job the execution belongs to"""
-        return self._job_name
+        return self._job.name
 
     @property
     def job_type(self):
         """Type of the job the execution belongs to"""
-        return self._job_type
+        return self._job.job_type
 
     @property
     def state(self):
@@ -220,14 +208,14 @@ class Execution:
         # Raises
             `RestAPIError`.
         """
-        self._execution_api._delete(self.job_name, self.id)
+        self._execution_api._delete(self._job.name, self.id)
 
     def await_termination(self):
         """Wait until execution reaches terminal state
         # Raises
             `RestAPIError`.
         """
-        self._execution_engine.wait_until_finished(self.job_name, self)
+        self._execution_engine.wait_until_finished(self._job, self)
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
