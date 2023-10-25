@@ -131,7 +131,7 @@ class Job:
         """Return the Job schedule"""
         return self._job_schedule
 
-    def run(self, args: str = None, await_termination: bool = None):
+    def run(self, args: str = None, await_termination: bool = False):
         """Run the job, with the option of passing runtime arguments.
 
         Example of a blocking execution and downloading logs once execution is finished.
@@ -162,7 +162,7 @@ class Job:
             return execution
 
     def get_executions(self):
-        """Retrieves all executions for the job.
+        """Retrieves all executions for the job ordered by submission time.
 
         # Returns
             `List[Execution]`
