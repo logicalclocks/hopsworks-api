@@ -20,6 +20,8 @@ import logging
 import time
 import uuid
 
+from python.hopsworks.client.exceptions import JobExecutionException
+
 
 class ExecutionEngine:
     def __init__(self, project_id=None):
@@ -27,18 +29,24 @@ class ExecutionEngine:
         self._execution_api = execution_api.ExecutionsApi(project_id)
         self._log = logging.getLogger(__name__)
 
-    def download_logs(self, execution):
+    def download_logs(self, execution, path=None):
         """Download execution logs to current directory
+        :param path: path to download the logs
         :param execution: execution to download logs for
         :type execution: Execution
         :return: downloaded stdout and stderr log path
         :rtype: str, str
+        :raises: JobExecutionException if path is provided but does not exist
         """
+        if path is not None and not os.path.exists(path):
+            raise JobExecutionException("Path {} does not exist".format(path))
+        elif path is None:
+            path = os.getcwd()
 
         job_logs_dir = "logs-job-{}-exec-{}_{}".format(
             execution.job_name, str(execution.id), str(uuid.uuid4())[:16]
         )
-        download_log_dir = os.path.join(os.getcwd(), job_logs_dir)
+        download_log_dir = os.path.join(path, job_logs_dir)
 
         if not os.path.exists(download_log_dir):
             os.mkdir(download_log_dir)

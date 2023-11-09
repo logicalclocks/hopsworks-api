@@ -73,6 +73,10 @@ class OpenSearchException(Exception):
     """Generic opensearch exception"""
 
 
+class JobExecutionException(Exception):
+    """Generic job executions exception"""
+
+
 class ExternalClientError(TypeError):
     """Raised when external client cannot be initialized due to missing arguments."""
 

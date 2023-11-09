@@ -178,7 +178,7 @@ class Execution:
                 return True
         return None
 
-    def download_logs(self):
+    def download_logs(self, path=None):
         """Download stdout and stderr logs for the execution
 
         Example for downloading and printing the logs
@@ -199,7 +199,7 @@ class Execution:
             `str`. Path to downloaded log for stdout.
             `str`. Path to downloaded log for stderr.
         """
-        return self._execution_engine.download_logs(self)
+        return self._execution_engine.download_logs(self, path)
 
     def delete(self):
         """Delete the execution
