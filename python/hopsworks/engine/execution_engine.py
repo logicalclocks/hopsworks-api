@@ -31,9 +31,10 @@ class ExecutionEngine:
 
     def download_logs(self, execution, path=None):
         """Download execution logs to current directory
-        :param path: path to download the logs
         :param execution: execution to download logs for
         :type execution: Execution
+        :param path: path to download the logs
+        :type path: str
         :return: downloaded stdout and stderr log path
         :rtype: str, str
         :raises: JobExecutionException if path is provided but does not exist

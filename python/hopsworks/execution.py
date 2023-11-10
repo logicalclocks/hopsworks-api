@@ -180,7 +180,6 @@ class Execution:
 
     def download_logs(self, path=None):
         """Download stdout and stderr logs for the execution
-
         Example for downloading and printing the logs
 
         ```python
@@ -195,6 +194,9 @@ class Execution:
         print(err_fd.read())
 
         ```
+
+        # Arguments
+            path: path to download the logs. must be `str`
         # Returns
             `str`. Path to downloaded log for stdout.
             `str`. Path to downloaded log for stderr.
