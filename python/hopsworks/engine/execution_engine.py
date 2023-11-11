@@ -20,7 +20,7 @@ import logging
 import time
 import uuid
 
-from python.hopsworks.client.exceptions import JobExecutionException
+from hopsworks.client.exceptions import JobExecutionException
 
 
 class ExecutionEngine:
