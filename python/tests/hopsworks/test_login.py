@@ -229,6 +229,6 @@ class TestLogin(TestCase):
     def test_login_newline_in_api_key(self):
         try:
             imaginaryApiKey = "ImaginaryApiKey\n"
-            project = hopsworks.login(api_key_value=imaginaryApiKey)
+            hopsworks.login(api_key_value=imaginaryApiKey)
         except Exception as e:
             self.assertNotIn(imaginaryApiKey.strip(), str(e))
