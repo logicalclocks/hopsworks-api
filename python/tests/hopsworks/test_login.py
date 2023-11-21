@@ -225,3 +225,10 @@ class TestLogin(TestCase):
             raise e
         finally:
             del os.environ["HOPSWORKS_API_KEY"]
+
+    def test_login_newline_in_api_key(self):
+        try:
+            imaginaryApiKey = "ImaginaryApiKey\n"
+            project = hopsworks.login(api_key_value=imaginaryApiKey)
+        except Exception as e:
+            self.assertNotIn(imaginaryApiKey.strip(), str(e))

@@ -24,7 +24,7 @@ class BearerAuth(requests.auth.AuthBase):
         self._token = token
 
     def __call__(self, r):
-        r.headers["Authorization"] = "Bearer " + self._token
+        r.headers["Authorization"] = "Bearer " + self._token.strip()
         return r
 
 
@@ -35,5 +35,5 @@ class ApiKeyAuth(requests.auth.AuthBase):
         self._token = token
 
     def __call__(self, r):
-        r.headers["Authorization"] = "ApiKey " + self._token
+        r.headers["Authorization"] = "ApiKey " + self._token.strip()
         return r
