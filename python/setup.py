@@ -1,11 +1,13 @@
 import os
-import imp
+from importlib.machinery import SourceFileLoader
 from setuptools import setup, find_packages
 
 
-__version__ = imp.load_source(
-    "hopsworks.version", os.path.join("hopsworks", "version.py")
-).__version__
+__version__ = (
+    SourceFileLoader("hopsworks.version", os.path.join("hopsworks", "version.py"))
+    .load_module()
+    .__version__
+)
 
 
 def read(fname):
