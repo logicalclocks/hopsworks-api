@@ -72,7 +72,7 @@ class KAFKA_SSL_CONFIG:
     SSL_CA_LOCATION_CONFIG = "ssl.ca.location"
     SSL_PRIVATE_KEY_LOCATION_CONFIG = "ssl.key.location"
     SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG = (
-        "ssl.endpoint.identification.algorithm"
+        "none"
     )
 
 
