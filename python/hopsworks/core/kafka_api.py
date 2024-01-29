@@ -364,7 +364,7 @@ class KafkaApi:
             constants.KAFKA_CONSUMER_CONFIG.GROUP_ID_CONFIG: "my-group-id",
             constants.KAFKA_SSL_CONFIG.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG: "none",
         }
-
+        _client = client.get_instance()
         if type(_client) == Client:
             config[constants.KAFKA_PRODUCER_CONFIG.BOOTSTRAP_SERVERS_CONFIG] = ",".join(
                 [
