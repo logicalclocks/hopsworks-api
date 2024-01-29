@@ -20,7 +20,6 @@ import json
 import socket
 from hopsworks.client.external import Client
 
-
 class KafkaApi:
     def __init__(
         self,
@@ -349,9 +348,6 @@ class KafkaApi:
         # Raises
             `RestAPIError`: If unable to get the kafka configuration.
         """
-        _client = client.get_instance()
-        if type(_client) == Client:
-            _client.download_certs(self._project_name)
 
         config = {
             constants.KAFKA_SSL_CONFIG.SECURITY_PROTOCOL_CONFIG: self._get_security_protocol(),

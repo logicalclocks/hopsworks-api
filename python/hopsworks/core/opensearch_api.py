@@ -83,10 +83,6 @@ class OpenSearchApi:
         Returns:
             A dictionary with required configuration.
         """
-        _client = client.get_instance()
-        if type(_client) == Client:
-            _client.download_certs(self._project_name)
-
         url = furl(self._get_opensearch_url())
         return {
             constants.OPENSEARCH_CONFIG.HOSTS: [{"host": url.host, "port": url.port}],

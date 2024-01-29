@@ -176,6 +176,9 @@ class Project:
         # Returns
             `KafkaApi`: The Kafka Api handle
         """
+        _client = client.get_instance()
+        if type(_client) == Client:
+            _client.download_certs(self.name)
         return self._kafka_api
 
     def get_opensearch_api(self):
@@ -184,6 +187,9 @@ class Project:
         # Returns
             `OpenSearchApi`: The OpenSearch Api handle
         """
+        _client = client.get_instance()
+        if type(_client) == Client:
+            _client.download_certs(self.name)
         return self._opensearch_api
 
     def get_jobs_api(self):
