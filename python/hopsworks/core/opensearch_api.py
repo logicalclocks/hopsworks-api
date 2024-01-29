@@ -33,13 +33,13 @@ class OpenSearchApi:
 
     def _get_opensearch_url(self):
         if isinstance(client.get_instance(), client.external.Client):
-            external_domain = self._variable_api.get_loadbalancer_external_domain()
+            external_domain = self._variable_api.get_variable("loadbalancer_external_domain")
             if external_domain == "":
                 # fallback to use hostname of head node
                 external_domain = client.get_instance().host
             return f"https://{external_domain}:9200"
         else:
-            service_discovery_domain = self._variable_api.get_service_discovery_domain()
+            service_discovery_domain = self._variable_api.get_variable("service_discovery_domain")
             if service_discovery_domain == "":
                 raise OpenSearchException(
                     "Client could not locate service_discovery_domain "
