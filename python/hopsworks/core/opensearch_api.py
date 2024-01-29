@@ -18,6 +18,7 @@ from furl import furl
 
 from hopsworks import client, constants
 from hopsworks.core import variable_api
+from hopsworks.client.exceptions import OpenSearchException
 
 
 class OpenSearchApi:
