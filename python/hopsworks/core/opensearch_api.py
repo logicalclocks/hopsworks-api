@@ -19,6 +19,7 @@ from furl import furl
 from hopsworks import client, constants
 from hopsworks.core import variable_api
 from hopsworks.client.exceptions import OpenSearchException
+from hopsworks.client.external import Client
 
 
 class OpenSearchApi:
@@ -82,6 +83,10 @@ class OpenSearchApi:
         Returns:
             A dictionary with required configuration.
         """
+        _client = client.get_instance()
+        if type(_client) == Client:
+            _client.download_certs(self._project_name)
+
         url = furl(self._get_opensearch_url())
         return {
             constants.OPENSEARCH_CONFIG.HOSTS: [{"host": url.host, "port": url.port}],
