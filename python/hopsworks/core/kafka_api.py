@@ -20,6 +20,7 @@ import json
 import socket
 from hopsworks.client.external import Client
 
+
 class KafkaApi:
     def __init__(
         self,
