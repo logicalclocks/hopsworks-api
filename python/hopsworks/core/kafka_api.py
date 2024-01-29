@@ -349,9 +349,6 @@ class KafkaApi:
         # Raises
             `RestAPIError`: If unable to get the kafka configuration.
         """
-        _client = client.get_instance()
-        if type(_client) == Client:
-            _client.download_certs(self._project_name)
 
         config = {
             constants.KAFKA_SSL_CONFIG.SECURITY_PROTOCOL_CONFIG: self._get_security_protocol(),
@@ -368,7 +365,7 @@ class KafkaApi:
             constants.KAFKA_CONSUMER_CONFIG.GROUP_ID_CONFIG: "my-group-id",
             constants.KAFKA_SSL_CONFIG.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG: "none",
         }
-
+        _client = client.get_instance()
         if type(_client) == Client:
             config[constants.KAFKA_PRODUCER_CONFIG.BOOTSTRAP_SERVERS_CONFIG] = ",".join(
                 [

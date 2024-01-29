@@ -14,10 +14,11 @@
 #   limitations under the License.
 #
 
-import os
 from furl import furl
 
 from hopsworks import client, constants
+from hopsworks.core import variable_api
+from hopsworks.client.exceptions import OpenSearchException
 
 
 class OpenSearchApi:
@@ -28,9 +29,27 @@ class OpenSearchApi:
     ):
         self._project_id = project_id
         self._project_name = project_name
+        self._variable_api = variable_api.VariableApi()
 
     def _get_opensearch_url(self):
-        return os.environ[constants.ENV_VARS.ELASTIC_ENDPOINT_ENV_VAR]
+        if isinstance(client.get_instance(), client.external.Client):
+            external_domain = self._variable_api.get_variable(
+                "loadbalancer_external_domain"
+            )
+            if external_domain == "":
+                # fallback to use hostname of head node
+                external_domain = client.get_instance().host
+            return f"https://{external_domain}:9200"
+        else:
+            service_discovery_domain = self._variable_api.get_variable(
+                "service_discovery_domain"
+            )
+            if service_discovery_domain == "":
+                raise OpenSearchException(
+                    "Client could not locate service_discovery_domain "
+                    "in cluster configuration or variable is empty."
+                )
+            return f"https://rest.elastic.service.{service_discovery_domain}:9200"
 
     def get_project_index(self, index):
         """
