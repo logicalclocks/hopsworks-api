@@ -67,9 +67,8 @@ class ExecutionEngine:
                     break
                 except RestAPIError as e:
                     if (
-                            # statistics not found
                             e.response.json().get("errorCode", "") == 110021
-                            and e.response.status_code == 404
+                            and e.response.status_code == 400
                     ):
                         retries += 1
                         time.sleep(5)
@@ -89,9 +88,8 @@ class ExecutionEngine:
                     break
                 except RestAPIError as e:
                     if (
-                            # statistics not found
                             e.response.json().get("errorCode", "") == 110021
-                            and e.response.status_code == 404
+                            and e.response.status_code == 400
                     ):
                         retries += 1
                         time.sleep(5)
