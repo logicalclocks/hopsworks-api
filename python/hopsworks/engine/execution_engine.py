@@ -69,6 +69,7 @@ class ExecutionEngine:
                     if (
                             e.response.json().get("errorCode", "") == 110021
                             and e.response.status_code == 400
+                            and retries < max_num_retries
                     ):
                         retries += 1
                         time.sleep(5)
@@ -90,6 +91,7 @@ class ExecutionEngine:
                     if (
                             e.response.json().get("errorCode", "") == 110021
                             and e.response.status_code == 400
+                            and retries < max_num_retries
                     ):
                         retries += 1
                         time.sleep(5)
