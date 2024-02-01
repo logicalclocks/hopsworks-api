@@ -20,7 +20,7 @@ import logging
 import time
 import uuid
 
-from hopsworks.client.exceptions import JobExecutionException
+from hopsworks.client.exceptions import JobExecutionException, RestAPIError
 
 
 class ExecutionEngine:
@@ -52,21 +52,51 @@ class ExecutionEngine:
         if not os.path.exists(download_log_dir):
             os.mkdir(download_log_dir)
 
+        max_num_retries=5
+        retries = 0
+
         out_path = None
         if execution.stdout_path is not None and self._dataset_api.exists(
             execution.stdout_path
         ):
-            out_path = self._dataset_api.download(
-                execution.stdout_path, download_log_dir
-            )
+            while retries < max_num_retries:
+                try:
+                    out_path = self._dataset_api.download(
+                        execution.stdout_path, download_log_dir, overwrite=True
+                    )
+                    break
+                except RestAPIError as e:
+                    if (
+                            # statistics not found
+                            e.response.json().get("errorCode", "") == 110021
+                            and e.response.status_code == 404
+                    ):
+                        retries += 1
+                        time.sleep(5)
+                    else:
+                        raise e
 
+        retries = 0
         err_path = None
         if execution.stderr_path is not None and self._dataset_api.exists(
             execution.stderr_path
         ):
-            err_path = self._dataset_api.download(
-                execution.stderr_path, download_log_dir
-            )
+            while retries < max_num_retries:
+                try:
+                    err_path = self._dataset_api.download(
+                        execution.stderr_path, download_log_dir, overwrite=True
+                    )
+                    break
+                except RestAPIError as e:
+                    if (
+                            # statistics not found
+                            e.response.json().get("errorCode", "") == 110021
+                            and e.response.status_code == 404
+                    ):
+                        retries += 1
+                        time.sleep(5)
+                    else:
+                        raise e
 
         return out_path, err_path
 
