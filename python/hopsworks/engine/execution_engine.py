@@ -52,53 +52,41 @@ class ExecutionEngine:
         if not os.path.exists(download_log_dir):
             os.mkdir(download_log_dir)
 
-        max_num_retries = 12
-        retries = 0
-
         out_path = None
         if execution.stdout_path is not None and self._dataset_api.exists(
             execution.stdout_path
         ):
-            while retries < max_num_retries:
-                try:
-                    out_path = self._dataset_api.download(
-                        execution.stdout_path, download_log_dir, overwrite=True
-                    )
-                    break
-                except RestAPIError as e:
-                    if (
-                        e.response.json().get("errorCode", "") == 110021
-                        and e.response.status_code == 400
-                        and retries < max_num_retries
-                    ):
-                        retries += 1
-                        time.sleep(5)
-                    else:
-                        raise e
+            out_path = download_log(execution.stdout_path)
 
-        retries = 0
         err_path = None
         if execution.stderr_path is not None and self._dataset_api.exists(
             execution.stderr_path
         ):
-            while retries < max_num_retries:
-                try:
-                    err_path = self._dataset_api.download(
-                        execution.stderr_path, download_log_dir, overwrite=True
-                    )
-                    break
-                except RestAPIError as e:
-                    if (
-                        e.response.json().get("errorCode", "") == 110021
-                        and e.response.status_code == 400
-                        and retries < max_num_retries
-                    ):
-                        retries += 1
-                        time.sleep(5)
-                    else:
-                        raise e
+            err_path = download_log(execution.stderr_path)
 
         return out_path, err_path
+
+    def download_log(self, path):
+        max_num_retries = 12
+        retries = 0
+        download_path = None
+        while retries < max_num_retries:
+            try:
+                download_path = self._dataset_api.download(
+                    path, download_log_dir, overwrite=True
+                )
+                break
+            except RestAPIError as e:
+                if (
+                    e.response.json().get("errorCode", "") == 110021
+                    and e.response.status_code == 400
+                    and retries < max_num_retries
+                ):
+                    retries += 1
+                    time.sleep(5)
+                else:
+                    raise e
+        return download_path
 
     def wait_until_finished(self, job, execution):
         """Wait until execution reaches terminal state
