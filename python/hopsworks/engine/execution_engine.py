@@ -52,7 +52,7 @@ class ExecutionEngine:
         if not os.path.exists(download_log_dir):
             os.mkdir(download_log_dir)
 
-        max_num_retries=6
+        max_num_retries=12
         retries = 0
 
         out_path = None
