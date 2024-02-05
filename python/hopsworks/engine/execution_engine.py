@@ -52,7 +52,7 @@ class ExecutionEngine:
         if not os.path.exists(download_log_dir):
             os.mkdir(download_log_dir)
 
-        max_num_retries=12
+        max_num_retries = 12
         retries = 0
 
         out_path = None
@@ -67,9 +67,9 @@ class ExecutionEngine:
                     break
                 except RestAPIError as e:
                     if (
-                            e.response.json().get("errorCode", "") == 110021
-                            and e.response.status_code == 400
-                            and retries < max_num_retries
+                        e.response.json().get("errorCode", "") == 110021
+                        and e.response.status_code == 400
+                        and retries < max_num_retries
                     ):
                         retries += 1
                         time.sleep(5)
@@ -89,9 +89,9 @@ class ExecutionEngine:
                     break
                 except RestAPIError as e:
                     if (
-                            e.response.json().get("errorCode", "") == 110021
-                            and e.response.status_code == 400
-                            and retries < max_num_retries
+                        e.response.json().get("errorCode", "") == 110021
+                        and e.response.status_code == 400
+                        and retries < max_num_retries
                     ):
                         retries += 1
                         time.sleep(5)
