@@ -56,17 +56,17 @@ class ExecutionEngine:
         if execution.stdout_path is not None and self._dataset_api.exists(
             execution.stdout_path
         ):
-            out_path = download_log(execution.stdout_path)
+            out_path = self._download_log(execution.stdout_path, download_log_dir)
 
         err_path = None
         if execution.stderr_path is not None and self._dataset_api.exists(
             execution.stderr_path
         ):
-            err_path = download_log(execution.stderr_path)
+            err_path = self._download_log(execution.stderr_path, download_log_dir)
 
         return out_path, err_path
 
-    def download_log(self, path):
+    def _download_log(self, path, download_log_dir):
         max_num_retries = 12
         retries = 0
         download_path = None
