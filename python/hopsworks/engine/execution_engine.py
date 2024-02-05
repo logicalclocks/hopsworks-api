@@ -20,7 +20,7 @@ import logging
 import time
 import uuid
 
-from hopsworks.client.exceptions import JobExecutionException
+from hopsworks.client.exceptions import JobExecutionException, RestAPIError
 
 
 class ExecutionEngine:
@@ -56,19 +56,37 @@ class ExecutionEngine:
         if execution.stdout_path is not None and self._dataset_api.exists(
             execution.stdout_path
         ):
-            out_path = self._dataset_api.download(
-                execution.stdout_path, download_log_dir
-            )
+            out_path = self._download_log(execution.stdout_path, download_log_dir)
 
         err_path = None
         if execution.stderr_path is not None and self._dataset_api.exists(
             execution.stderr_path
         ):
-            err_path = self._dataset_api.download(
-                execution.stderr_path, download_log_dir
-            )
+            err_path = self._download_log(execution.stderr_path, download_log_dir)
 
         return out_path, err_path
+
+    def _download_log(self, path, download_log_dir):
+        max_num_retries = 12
+        retries = 0
+        download_path = None
+        while retries < max_num_retries:
+            try:
+                download_path = self._dataset_api.download(
+                    path, download_log_dir, overwrite=True
+                )
+                break
+            except RestAPIError as e:
+                if (
+                    e.response.json().get("errorCode", "") == 110021
+                    and e.response.status_code == 400
+                    and retries < max_num_retries
+                ):
+                    retries += 1
+                    time.sleep(5)
+                else:
+                    raise e
+        return download_path
 
     def wait_until_finished(self, job, execution):
         """Wait until execution reaches terminal state
