@@ -239,6 +239,7 @@ class Connection:
             conn.connect()
             ```
         """
+        client.stop()
         self._connected = True
         try:
             # init client
