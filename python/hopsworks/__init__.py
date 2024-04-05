@@ -23,7 +23,7 @@ import tempfile
 from pathlib import Path
 
 from hopsworks.client.exceptions import RestAPIError, ProjectException
-from hopsworks import version, constants
+from hopsworks import version, constants, client
 from hopsworks.connection import Connection
 
 # Needs to run before import of hsml and hsfs
@@ -283,6 +283,7 @@ def _prompt_project(valid_connection, project):
 
 def logout():
     global _hw_connection
-    if type(_hw_connection) is Connection:
+    if isinstance(_hw_connection, Connection):
         _hw_connection.close()
+    client.stop()
     _hw_connection = Connection.connection

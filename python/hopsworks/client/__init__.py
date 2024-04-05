@@ -67,5 +67,6 @@ def set_python_version(python_version):
 
 def stop():
     global _client
-    _client._close()
+    if _client:
+        _client._close()
     _client = None
