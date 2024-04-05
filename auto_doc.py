@@ -13,7 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-
+import os
 import pathlib
 import shutil
 
@@ -28,7 +28,9 @@ PAGES = {
     },
     "api/connection.md": {
         "connection_create": ["hopsworks.connection.Connection.connection"],
-        "connection_properties": keras_autodoc.get_properties("hopsworks.connection.Connection"),
+        "connection_properties": keras_autodoc.get_properties(
+            "hopsworks.connection.Connection"
+        ),
         "connection_methods": keras_autodoc.get_methods(
             "hopsworks.connection.Connection", exclude=["from_response_json", "json"]
         ),
@@ -56,25 +58,35 @@ PAGES = {
     "api/executions.md": {
         "execution_create": ["hopsworks.job.Job.run"],
         "execution_get": ["hopsworks.job.Job.get_executions"],
-        "execution_properties": keras_autodoc.get_properties("hopsworks.execution.Execution"),
+        "execution_properties": keras_autodoc.get_properties(
+            "hopsworks.execution.Execution"
+        ),
         "execution_methods": keras_autodoc.get_methods(
-            "hopsworks.execution.Execution", exclude=["from_response_json", "json", "update_from_response_json"]
+            "hopsworks.execution.Execution",
+            exclude=["from_response_json", "json", "update_from_response_json"],
         ),
     },
     "api/flink_cluster.md": {
         "flink_api_handle": ["hopsworks.project.Project.get_flink_cluster_api"],
-        "setup_cluster": ["hopsworks.core.flink_cluster_api.FlinkClusterApi.setup_cluster"],
+        "setup_cluster": [
+            "hopsworks.core.flink_cluster_api.FlinkClusterApi.setup_cluster"
+        ],
         "get_cluster": ["hopsworks.core.flink_cluster_api.FlinkClusterApi.get_cluster"],
         "start_cluster": ["hopsworks.flink_cluster.FlinkCluster.start"],
         "submit_job_to_cluster": ["hopsworks.flink_cluster.FlinkCluster.submit_job"],
-        "flink_cluster_properties": keras_autodoc.get_properties("hopsworks.flink_cluster.FlinkCluster"),
+        "flink_cluster_properties": keras_autodoc.get_properties(
+            "hopsworks.flink_cluster.FlinkCluster"
+        ),
         "flink_cluster_methods": keras_autodoc.get_methods(
-            "hopsworks.flink_cluster.FlinkCluster", exclude=["from_response_json", "json"]
+            "hopsworks.flink_cluster.FlinkCluster",
+            exclude=["from_response_json", "json"],
         ),
     },
     "api/environment.md": {
         "env_api_handle": ["hopsworks.project.Project.get_environment_api"],
-        "env_create": ["hopsworks.core.environment_api.EnvironmentApi.create_environment"],
+        "env_create": [
+            "hopsworks.core.environment_api.EnvironmentApi.create_environment"
+        ],
         "env_get": ["hopsworks.core.environment_api.EnvironmentApi.get_environment"],
         "env_methods": keras_autodoc.get_methods(
             "hopsworks.environment.Environment", exclude=["from_response_json", "json"]
@@ -85,7 +97,9 @@ PAGES = {
         "git_repo_clone": ["hopsworks.core.git_api.GitApi.clone"],
         "git_repo_get": ["hopsworks.core.git_api.GitApi.get_repo"],
         "git_repo_get_all": ["hopsworks.core.git_api.GitApi.get_repos"],
-        "git_repo_properties": keras_autodoc.get_properties("hopsworks.git_repo.GitRepo"),
+        "git_repo_properties": keras_autodoc.get_properties(
+            "hopsworks.git_repo.GitRepo"
+        ),
         "git_repo_methods": keras_autodoc.get_methods(
             "hopsworks.git_repo.GitRepo", exclude=["from_response_json", "json"]
         ),
@@ -95,7 +109,9 @@ PAGES = {
         "git_provider_create": ["hopsworks.core.git_api.GitApi.set_provider"],
         "git_provider_get": ["hopsworks.core.git_api.GitApi.get_provider"],
         "git_provider_get_all": ["hopsworks.core.git_api.GitApi.get_providers"],
-        "git_provider_properties": keras_autodoc.get_properties("hopsworks.git_provider.GitProvider"),
+        "git_provider_properties": keras_autodoc.get_properties(
+            "hopsworks.git_provider.GitProvider"
+        ),
         "git_provider_methods": keras_autodoc.get_methods(
             "hopsworks.git_provider.GitProvider", exclude=["from_response_json", "json"]
         ),
@@ -105,7 +121,9 @@ PAGES = {
         "git_remote_create": ["hopsworks.git_repo.GitRepo.add_remote"],
         "git_remote_get": ["hopsworks.git_repo.GitRepo.get_remote"],
         "git_remote_get_all": ["hopsworks.git_repo.GitRepo.get_remotes"],
-        "git_remote_properties": keras_autodoc.get_properties("hopsworks.git_remote.GitRemote"),
+        "git_remote_properties": keras_autodoc.get_properties(
+            "hopsworks.git_remote.GitRemote"
+        ),
         "git_remote_methods": keras_autodoc.get_methods(
             "hopsworks.git_remote.GitRemote", exclude=["from_response_json", "json"]
         ),
@@ -122,9 +140,12 @@ PAGES = {
         "kafka_topic_create": ["hopsworks.core.kafka_api.KafkaApi.create_topic"],
         "kafka_topic_get": ["hopsworks.core.kafka_api.KafkaApi.get_topic"],
         "kafka_topic_get_all": ["hopsworks.core.kafka_api.KafkaApi.get_topics"],
-        "kafka_topic_properties": keras_autodoc.get_properties("hopsworks.kafka_topic.KafkaTopic"),
+        "kafka_topic_properties": keras_autodoc.get_properties(
+            "hopsworks.kafka_topic.KafkaTopic"
+        ),
         "kafka_topic_methods": keras_autodoc.get_methods(
-            "hopsworks.kafka_topic.KafkaTopic", exclude=["from_response_json", "json", "update_from_response_json"]
+            "hopsworks.kafka_topic.KafkaTopic",
+            exclude=["from_response_json", "json", "update_from_response_json"],
         ),
     },
     "api/kafka_schema.md": {
@@ -133,9 +154,12 @@ PAGES = {
         "kafka_schema_get": ["hopsworks.core.kafka_api.KafkaApi.get_schema"],
         "kafka_schema_get_all": ["hopsworks.core.kafka_api.KafkaApi.get_schemas"],
         "kafka_schema_get_subjects": ["hopsworks.core.kafka_api.KafkaApi.get_subjects"],
-        "kafka_schema_properties": keras_autodoc.get_properties("hopsworks.kafka_schema.KafkaSchema"),
+        "kafka_schema_properties": keras_autodoc.get_properties(
+            "hopsworks.kafka_schema.KafkaSchema"
+        ),
         "kafka_schema_methods": keras_autodoc.get_methods(
-            "hopsworks.kafka_schema.KafkaSchema", exclude=["from_response_json", "json", "update_from_response_json"]
+            "hopsworks.kafka_schema.KafkaSchema",
+            exclude=["from_response_json", "json", "update_from_response_json"],
         ),
     },
     "api/secrets.md": {
@@ -157,12 +181,16 @@ PAGES = {
 }
 
 hw_dir = pathlib.Path(__file__).resolve().parents[0]
+if "GITHUB_BASE_REF" in os.environ:
+    branch_name = os.environ["GITHUB_BASE_REF"]
+else:
+    branch_name = "master"
 
 
 def generate(dest_dir):
     doc_generator = keras_autodoc.DocumentationGenerator(
         PAGES,
-        project_url="https://github.com/logicalclocks/hopsworks-api/blob/master/python",
+        project_url=f"https://github.com/logicalclocks/hopsworks-api/blob/{branch_name}/python",
         template_dir="./docs/templates",
         titles_size="###",
         extra_aliases={},
