@@ -2,14 +2,14 @@ name: mkdocs-release
 
 on:
   push:
-    branches: [ branch-* ]
+    branches: [branch-*]
 
 jobs:
   publish-release:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -20,16 +20,13 @@ jobs:
       - name: set major/minor release version
         run: echo "MAJOR_VERSION=$(echo $RELEASE_VERSION | sed 's/^\([0-9]*\.[0-9]*\).*$/\1/')" >> $GITHUB_ENV
 
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.8'
+          python-version: "3.10"
 
       - name: install deps
         working-directory: ./python
-        run: cp ../README.md . && pip3 install pip==22.0.3 && pip3 install -e .[dev,docs]
-        
-      - name: use dev mike
-        run: pip3 uninstall -y mike && pip3 install git+'https://github.com/jimporter/mike.git'
+        run: cp ../README.md . && pip3 install -e .[dev,docs]
 
       - name: generate autodoc
         run: python3 auto_doc.py
@@ -43,4 +40,3 @@ jobs:
         run: |
           mike deploy ${{ env.RELEASE_VERSION }} ${{ env.MAJOR_VERSION }} -u --push
           mike alias ${{ env.RELEASE_VERSION }} latest -u --push
-
