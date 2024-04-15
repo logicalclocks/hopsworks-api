@@ -483,10 +483,10 @@
 
 <li class="md-tabs__item dropdown-api"><button class="dropbtn-api  md-tabs__link md-tabs__link--active"> API </button>
     <div id="myDropdown" class="dropdown-content-api">
-        <a id="hopsworks_api_link" href="https://docs.hopsworks.ai/hopsworks-api/dev">Hopsworks API</a>
-        <a id="hsfs_api_link" href="https://docs.hopsworks.ai/feature-store-api/dev">Feature Store API</a>
-        <a id="hsfs_javadoc_link" href="https://docs.hopsworks.ai/feature-store-api/dev/javadoc">Feature Store JavaDoc</a>
-        <a id="hsml_api_link" href="https://docs.hopsworks.ai/machine-learning-api/dev">MLOps API</a>
+        <a id="hopsworks_api_link" href="https://docs.hopsworks.ai/hopsworks-api/latest">Hopsworks API</a>
+        <a id="hsfs_api_link" href="https://docs.hopsworks.ai/feature-store-api/latest">Feature Store API</a>
+        <a id="hsfs_javadoc_link" href="https://docs.hopsworks.ai/feature-store-api/latest/javadoc">Feature Store JavaDoc</a>
+        <a id="hsml_api_link" href="https://docs.hopsworks.ai/machine-learning-api/latest">MLOps API</a>
     </div>
 </li>
 
@@ -1513,7 +1513,7 @@
 
 <h1 id="executions-api">Executions API<a class="headerlink" href="#executions-api" title="Permanent link">#</a></h1>
 <h2 id="creation">Creation<a class="headerlink" href="#creation" title="Permanent link">#</a></h2>
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/job.py#L134">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/job.py#L134">[source]</a></span></p>
 <h3 id="run">run<a class="headerlink" href="#run" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">Job</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">args</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">await_termination</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 </code></pre></div>
@@ -1537,7 +1537,7 @@
 <p><code>Execution</code>. The execution object for the submitted run.</p>
 <hr />
 <h2 id="retrieval">Retrieval<a class="headerlink" href="#retrieval" title="Permanent link">#</a></h2>
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/job.py#L164">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/job.py#L164">[source]</a></span></p>
 <h3 id="get_executions">get_executions<a class="headerlink" href="#get_executions" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">Job</span><span class="o">.</span><span class="n">get_executions</span><span class="p">()</span>
 </code></pre></div>
@@ -1548,70 +1548,70 @@
 <p><code>RestAPIError</code> in case the backend fails to retrieve executions.</p>
 <hr />
 <h2 id="properties">Properties<a class="headerlink" href="#properties" title="Permanent link">#</a></h2>
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/execution.py#L125">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/execution.py#L125">[source]</a></span></p>
 <h3 id="app_id">app_id<a class="headerlink" href="#app_id" title="Permanent link">#</a></h3>
 <p>Application id for the execution</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/execution.py#L135">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/execution.py#L135">[source]</a></span></p>
 <h3 id="args">args<a class="headerlink" href="#args" title="Permanent link">#</a></h3>
 <p>Arguments set for the execution.</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/execution.py#L150">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/execution.py#L150">[source]</a></span></p>
 <h3 id="duration">duration<a class="headerlink" href="#duration" title="Permanent link">#</a></h3>
 <p>Duration in milliseconds the execution ran.</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/execution.py#L105">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/execution.py#L105">[source]</a></span></p>
 <h3 id="final_status">final_status<a class="headerlink" href="#final_status" title="Permanent link">#</a></h3>
 <p>Final status of the execution. Can be UNDEFINED, SUCCEEDED, FAILED or KILLED.</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/execution.py#L130">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/execution.py#L130">[source]</a></span></p>
 <h3 id="hdfs_user">hdfs_user<a class="headerlink" href="#hdfs_user" title="Permanent link">#</a></h3>
 <p>Filesystem user for the execution.</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/execution.py#L85">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/execution.py#L85">[source]</a></span></p>
 <h3 id="id">id<a class="headerlink" href="#id" title="Permanent link">#</a></h3>
 <p>Id of the execution</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/execution.py#L90">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/execution.py#L90">[source]</a></span></p>
 <h3 id="job_name">job_name<a class="headerlink" href="#job_name" title="Permanent link">#</a></h3>
 <p>Name of the job the execution belongs to</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/execution.py#L95">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/execution.py#L95">[source]</a></span></p>
 <h3 id="job_type">job_type<a class="headerlink" href="#job_type" title="Permanent link">#</a></h3>
 <p>Type of the job the execution belongs to</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/execution.py#L140">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/execution.py#L140">[source]</a></span></p>
 <h3 id="progress">progress<a class="headerlink" href="#progress" title="Permanent link">#</a></h3>
 <p>Progress of the execution.</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/execution.py#L100">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/execution.py#L100">[source]</a></span></p>
 <h3 id="state">state<a class="headerlink" href="#state" title="Permanent link">#</a></h3>
 <p>Current state of the execution.</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/execution.py#L120">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/execution.py#L120">[source]</a></span></p>
 <h3 id="stderr_path">stderr_path<a class="headerlink" href="#stderr_path" title="Permanent link">#</a></h3>
 <p>Path in Hopsworks Filesystem to stderr log file</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/execution.py#L115">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/execution.py#L115">[source]</a></span></p>
 <h3 id="stdout_path">stdout_path<a class="headerlink" href="#stdout_path" title="Permanent link">#</a></h3>
 <p>Path in Hopsworks Filesystem to stdout log file</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/execution.py#L110">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/execution.py#L110">[source]</a></span></p>
 <h3 id="submission_time">submission_time<a class="headerlink" href="#submission_time" title="Permanent link">#</a></h3>
 <p>Timestamp when the execution was submitted</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/execution.py#L155">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/execution.py#L155">[source]</a></span></p>
 <h3 id="success">success<a class="headerlink" href="#success" title="Permanent link">#</a></h3>
 <p>Boolean to indicate if execution ran successfully or failed</p>
 <p><strong>Returns</strong></p>
 <p><code>bool</code>. True if execution ran successfully. False if execution failed or was killed.</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/execution.py#L145">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/execution.py#L145">[source]</a></span></p>
 <h3 id="user">user<a class="headerlink" href="#user" title="Permanent link">#</a></h3>
 <p>User that submitted the execution.</p>
 <hr />
 <h2 id="methods">Methods<a class="headerlink" href="#methods" title="Permanent link">#</a></h2>
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/execution.py#L215">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/execution.py#L215">[source]</a></span></p>
 <h3 id="await_termination">await_termination<a class="headerlink" href="#await_termination" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">Execution</span><span class="o">.</span><span class="n">await_termination</span><span class="p">()</span>
 </code></pre></div>
@@ -1619,7 +1619,7 @@
 <strong>Raises</strong></p>
 <p><code>RestAPIError</code>.</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/execution.py#L206">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/execution.py#L206">[source]</a></span></p>
 <h3 id="delete">delete<a class="headerlink" href="#delete" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">Execution</span><span class="o">.</span><span class="n">delete</span><span class="p">()</span>
 </code></pre></div>
@@ -1631,7 +1631,7 @@
 <p><strong>Raises</strong></p>
 <p><code>RestAPIError</code>.</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/execution.py#L181">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/execution.py#L181">[source]</a></span></p>
 <h3 id="download_logs">download_logs<a class="headerlink" href="#download_logs" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">Execution</span><span class="o">.</span><span class="n">download_logs</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
 </code></pre></div>
@@ -1654,7 +1654,7 @@ Example for downloading and printing the logs</p>
 <p><code>str</code>. Path to downloaded log for stdout.
 <code>str</code>. Path to downloaded log for stderr.</p>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/execution.py#L231">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/execution.py#L231">[source]</a></span></p>
 <h3 id="get_url">get_url<a class="headerlink" href="#get_url" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">Execution</span><span class="o">.</span><span class="n">get_url</span><span class="p">()</span>
 </code></pre></div>

@@ -483,10 +483,10 @@
 
 <li class="md-tabs__item dropdown-api"><button class="dropbtn-api  md-tabs__link md-tabs__link--active"> API </button>
     <div id="myDropdown" class="dropdown-content-api">
-        <a id="hopsworks_api_link" href="https://docs.hopsworks.ai/hopsworks-api/dev">Hopsworks API</a>
-        <a id="hsfs_api_link" href="https://docs.hopsworks.ai/feature-store-api/dev">Feature Store API</a>
-        <a id="hsfs_javadoc_link" href="https://docs.hopsworks.ai/feature-store-api/dev/javadoc">Feature Store JavaDoc</a>
-        <a id="hsml_api_link" href="https://docs.hopsworks.ai/machine-learning-api/dev">MLOps API</a>
+        <a id="hopsworks_api_link" href="https://docs.hopsworks.ai/hopsworks-api/latest">Hopsworks API</a>
+        <a id="hsfs_api_link" href="https://docs.hopsworks.ai/feature-store-api/latest">Feature Store API</a>
+        <a id="hsfs_javadoc_link" href="https://docs.hopsworks.ai/feature-store-api/latest/javadoc">Feature Store JavaDoc</a>
+        <a id="hsml_api_link" href="https://docs.hopsworks.ai/machine-learning-api/latest">MLOps API</a>
     </div>
 </li>
 
@@ -1279,7 +1279,7 @@
 
 <h1 id="datasets-api">Datasets API<a class="headerlink" href="#datasets-api" title="Permanent link">#</a></h1>
 <h2 id="handle">Handle<a class="headerlink" href="#handle" title="Permanent link">#</a></h2>
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/project.py#L219">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/project.py#L219">[source]</a></span></p>
 <h3 id="get_dataset_api">get_dataset_api<a class="headerlink" href="#get_dataset_api" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">Project</span><span class="o">.</span><span class="n">get_dataset_api</span><span class="p">()</span>
 </code></pre></div>
@@ -1288,7 +1288,7 @@
 <p><code>DatasetApi</code>: The Datasets Api handle</p>
 <hr />
 <h2 id="methods">Methods<a class="headerlink" href="#methods" title="Permanent link">#</a></h2>
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/core/dataset_api.py#L392">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/core/dataset_api.py#L392">[source]</a></span></p>
 <h3 id="copy">copy<a class="headerlink" href="#copy" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">DatasetApi</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">source_path</span><span class="p">,</span> <span class="n">destination_path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 </code></pre></div>
@@ -1312,7 +1312,7 @@
 <li><strong><code>RestAPIError</code></strong>: If unable to perform the copy</li>
 </ul>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/core/dataset_api.py#L50">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/core/dataset_api.py#L50">[source]</a></span></p>
 <h3 id="download">download<a class="headerlink" href="#download" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">DatasetApi</span><span class="o">.</span><span class="n">download</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">local_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 </code></pre></div>
@@ -1338,7 +1338,7 @@
 <li><strong><code>RestAPIError</code></strong>: If unable to download the file</li>
 </ul>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/core/dataset_api.py#L330">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/core/dataset_api.py#L330">[source]</a></span></p>
 <h3 id="exists">exists<a class="headerlink" href="#exists" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">DatasetApi</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
 </code></pre></div>
@@ -1354,7 +1354,7 @@
 <li><strong><code>RestAPIError</code></strong>: If unable to check existence for the path</li>
 </ul>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/core/dataset_api.py#L358">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/core/dataset_api.py#L358">[source]</a></span></p>
 <h3 id="mkdir">mkdir<a class="headerlink" href="#mkdir" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">DatasetApi</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
 </code></pre></div>
@@ -1378,7 +1378,7 @@
 <li><strong><code>RestAPIError</code></strong>: If unable to create the directory</li>
 </ul>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/core/dataset_api.py#L431">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/core/dataset_api.py#L431">[source]</a></span></p>
 <h3 id="move">move<a class="headerlink" href="#move" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">DatasetApi</span><span class="o">.</span><span class="n">move</span><span class="p">(</span><span class="n">source_path</span><span class="p">,</span> <span class="n">destination_path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 </code></pre></div>
@@ -1402,7 +1402,7 @@
 <li><strong><code>RestAPIError</code></strong>: If unable to perform the move</li>
 </ul>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/core/dataset_api.py#L346">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/core/dataset_api.py#L346">[source]</a></span></p>
 <h3 id="remove">remove<a class="headerlink" href="#remove" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">DatasetApi</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
 </code></pre></div>
@@ -1416,7 +1416,7 @@
 <li><strong><code>RestAPIError</code></strong>: If unable to remove the path</li>
 </ul>
 <hr />
-<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/c385dbaa85f5a91f34c9a78fe21c791a7cacc64d/python/hopsworks/core/dataset_api.py#L141">[source]</a></span></p>
+<p><span style="float:right;"><a href="https://github.com/logicalclocks/feature-store-api/tree/03db2abce7181fcc1521c00fdeb32d9b72814cb8/python/hopsworks/core/dataset_api.py#L141">[source]</a></span></p>
 <h3 id="upload">upload<a class="headerlink" href="#upload" title="Permanent link">#</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">DatasetApi</span><span class="o">.</span><span class="n">upload</span><span class="p">(</span>
     <span class="n">local_path</span><span class="p">,</span>
