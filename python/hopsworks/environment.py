@@ -14,9 +14,10 @@
 #   limitations under the License.
 #
 
-import humps
 import os
+from typing import Optional
 
+import humps
 from hopsworks import command, util
 from hopsworks.core import environment_api, library_api
 from hopsworks.engine import environment_engine
@@ -25,9 +26,11 @@ from hopsworks.engine import environment_engine
 class Environment:
     def __init__(
         self,
-        python_version,
-        python_conflicts,
-        pip_search_enabled,
+        name=None,
+        description=None,
+        python_version=None,
+        python_conflicts=None,
+        pip_search_enabled=None,
         conflicts=None,
         conda_channel=None,
         libraries=None,
@@ -38,6 +41,8 @@ class Environment:
         project_name=None,
         **kwargs,
     ):
+        self._name = name
+        self._description = description
         self._python_version = python_version
         self._python_conflicts = python_conflicts
         self._pip_search_enabled = pip_search_enabled
@@ -77,7 +82,17 @@ class Environment:
         """Python version of the environment"""
         return self._python_version
 
-    def install_wheel(self, path, await_installation=True):
+    @property
+    def name(self):
+        """Name of the environment"""
+        return self._name
+
+    @property
+    def description(self):
+        """Description of the environment"""
+        return self._description
+
+    def install_wheel(self, path, await_installation: Optional[bool] = True):
         """Install a python library packaged in a wheel file
 
         ```python
@@ -92,7 +107,8 @@ class Environment:
 
         # Install
         env_api = project.get_environment_api()
-        env = env_api.get_environment()
+        env = env_api.get_environment("my_custom_environment")
+
         env.install_wheel(whl_path)
 
         ```
@@ -103,7 +119,7 @@ class Environment:
         """
 
         # Wait for any ongoing environment operations
-        self._environment_engine.await_environment_command()
+        self._environment_engine.await_environment_command(self.name)
 
         library_name = os.path.basename(path)
 
@@ -116,15 +132,15 @@ class Environment:
         }
 
         library_rest = self._library_api.install(
-            library_name, self.python_version, library_spec
+            library_name, self.name, library_spec
         )
 
         if await_installation:
-            return self._environment_engine.await_library_command(library_name)
+            return self._environment_engine.await_library_command(self.name, library_name)
 
         return library_rest
 
-    def install_requirements(self, path, await_installation=True):
+    def install_requirements(self, path, await_installation: Optional[bool] = True):
         """Install libraries specified in a requirements.txt file
 
         ```python
@@ -139,7 +155,9 @@ class Environment:
 
         # Install
         env_api = project.get_environment_api()
-        env = env_api.get_environment()
+        env = env_api.get_environment("my_custom_environment")
+
+
         env.install_requirements(requirements_path)
 
         ```
@@ -150,7 +168,7 @@ class Environment:
         """
 
         # Wait for any ongoing environment operations
-        self._environment_engine.await_environment_command()
+        self._environment_engine.await_environment_command(self.name)
 
         library_name = os.path.basename(path)
 
@@ -163,11 +181,11 @@ class Environment:
         }
 
         library_rest = self._library_api.install(
-            library_name, self.python_version, library_spec
+            library_name, self.name, library_spec
         )
 
         if await_installation:
-            return self._environment_engine.await_library_command(library_name)
+            return self._environment_engine.await_library_command(self.name, library_name)
 
         return library_rest
 
@@ -178,7 +196,7 @@ class Environment:
         # Raises
             `RestAPIError`.
         """
-        self._environment_api._delete(self.python_version)
+        self._environment_api._delete(self.name)
 
     def __repr__(self):
-        return f"Environment({self._python_version!r})"
+        return f"Environment({self.name!r})"
