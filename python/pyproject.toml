@@ -1,3 +1,53 @@
+[project]
+name = "hopsworks"
+dynamic = ["version"]
+requires-python = ">=3.8"
+readme = "README.md"
+description = "Hopsworks Python SDK to interact with Hopsworks Platform, Feature Store, Model Registry and Model Serving"
+keywords = ["Hopsworks", "Feature Store", "Spark", "Machine Learning", "MLOps", "DataOps"]
+
+authors = [{ name = "Hopsworks AB", email = "robin@hopsworks.ai" }]
+license = { text = "Apache-2.0" }
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Topic :: Utilities",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Intended Audience :: Developers",
+]
+
+dependencies = [
+    "hsfs @ git+https://git@github.com/logicalclocks/feature-store-api@master#egg=hsfs[python]&subdirectory=python",
+    "hsml @ git+https://git@github.com/logicalclocks/machine-learning-api@main#egg=hsml&subdirectory=python",
+    "pyhumps==1.6.1",
+    "requests",
+    "furl",
+    "boto3",
+    "pyjks",
+    "mock",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+dev = [ "ruff", "pytest"]
+docs = [
+    "mkdocs==1.5.3",
+    "mkdocs-material==9.5.17",
+    "mike==2.0.0",
+    "sphinx==7.2.6",
+    "keras_autodoc @ git+https://git@github.com/logicalclocks/keras-autodoc",
+    "markdown-include==0.8.1",
+    "markdown==3.6",
+    "pymdown-extensions==10.7.1",
+    "mkdocs-macros-plugin==1.0.4",
+    "mkdocs-minify-plugin>=0.2.0",
+]
+
 [build-system]
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
@@ -7,7 +57,14 @@ exclude = ["tests*"]
 include = ["../Readme.md", "../LICENSE"]
 
 [tool.setuptools.dynamic]
-version = { attr = "hsfs.version.__version__" }
+version = { attr = "hopsworks.version.__version__" }
+
+
+[project.urls]
+Documentation = "https://docs.hopsworks.ai/latest"
+Repository = "https://github.com/logicalclocks/hopsworks-api"
+Homepage = "https://www.hopsworks.ai"
+Community = "https://community.hopsworks.ai"
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
