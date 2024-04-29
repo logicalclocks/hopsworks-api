@@ -22,8 +22,8 @@ classifiers = [
 ]
 
 dependencies = [
-    "hsfs @ git+https://git@github.com/logicalclocks/feature-store-api@master#egg=hsfs[python]&subdirectory=python",
-    "hsml @ git+https://git@github.com/logicalclocks/machine-learning-api@main#egg=hsml&subdirectory=python",
+    "hsfs[python] @ git+https://git@github.com/logicalclocks/feature-store-api@master#subdirectory=python",
+    "hsml @ git+https://git@github.com/logicalclocks/machine-learning-api@main#subdirectory=python",
     "pyhumps==1.6.1",
     "requests",
     "furl",
@@ -54,7 +54,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 exclude = ["tests*"]
-include = ["../Readme.md", "../LICENSE"]
+include = ["../Readme.md", "../LICENSE", "hopsworks"]
 
 [tool.setuptools.dynamic]
 version = { attr = "hopsworks.version.__version__" }
