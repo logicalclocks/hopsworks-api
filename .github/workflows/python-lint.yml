@@ -11,21 +11,39 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.8'
+          python-version: "3.11"
+
+      - name: Get all changed files
+        id: get-changed-files
+        uses: tj-actions/changed-files@v44
+        with:
+          files_yaml: |
+            src:
+              - 'python/**/*.py'
+              - '!python/tests/**/*.py'
+            test:
+              - 'python/tests/**/*.py'
+
       - name: install deps
-        run: pip install flake8==3.9.0 black==22.3.0 pre-commit-hooks==2.4.0
+        run: pip install ruff==0.4.2
 
-      - name: black
-        run: black --check python
+      - name: ruff on python files
+        if: steps.get-changed-files.outputs.src_any_changed == 'true'
+        env:
+          SRC_ALL_CHANGED_FILES: ${{ steps.get-changed-files.outputs.src_all_changed_files }}
+        run: ruff check --output-format=github $SRC_ALL_CHANGED_FILES
 
-      - name: flake8
-        run: flake8 --config python/.flake8 python
+      - name: ruff on test files
+        if: steps.get-changed-files.outputs.test_any_changed == 'true'
+        env:
+          TEST_ALL_CHANGED_FILES: ${{ steps.get-changed-files.outputs.test_all_changed_files }}
+        run: ruff check --output-format=github $TEST_ALL_CHANGED_FILES
 
-      - name: trailing-whitespace-fixer
-        run: trailing-whitespace-fixer $(find python -name "*.py" -type f) || exit 1
-
-      - name: end-of-file-fixer
-        run: end-of-file-fixer $(find python -name "*.py" -type f) || exit 1
+      - name: ruff format --check $ALL_CHANGED_FILES
+        env:
+          ALL_CHANGED_FILES: ${{ steps.get-changed-files.outputs.all_changed_files }}
+        run: ruff format $ALL_CHANGED_FILES
