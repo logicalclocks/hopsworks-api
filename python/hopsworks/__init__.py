@@ -26,6 +26,8 @@ from pathlib import Path
 from hopsworks import client, constants, project, version
 from hopsworks.client.exceptions import ProjectException, RestAPIError
 from hopsworks.connection import Connection
+from hopsworks.core import project_api, secret_api
+from hopsworks.decorators import NoHopsworksConnectionError
 
 
 # Needs to run before import of hsml and hsfs
@@ -42,6 +44,8 @@ connection = Connection.connection
 _hw_connection = Connection.connection
 
 _connected_project = None
+_secrets_api = None
+_project_api = None
 
 
 def hw_formatwarning(message, category, filename, lineno, line=None):
@@ -97,7 +101,7 @@ def login(
         api_key_value: Value of the Api Key
         api_key_file: Path to file wih Api Key
     # Returns
-        `Project`: The Project object
+        `Project`: The Project object to perform operations on
     # Raises
         `RestAPIError`: If unable to connect to Hopsworks
     """
@@ -113,6 +117,7 @@ def login(
     if "REST_ENDPOINT" in os.environ:
         _hw_connection = _hw_connection()
         _connected_project = _hw_connection.get_project()
+        _initialize_module_apis()
         print("\nLogged in to project, explore it here " + _connected_project.get_url())
         return _connected_project
 
@@ -140,6 +145,8 @@ def login(
     elif host is None:  # Always do a fallback to Serverless Hopsworks if not defined
         host = constants.HOSTS.APP_HOST
 
+    is_app = host == constants.HOSTS.APP_HOST
+
     # If port same as default, get HOPSWORKS_HOST environment variable
     if port == 443 and "HOPSWORKS_PORT" in os.environ:
         port = os.environ["HOPSWORKS_PORT"]
@@ -166,23 +173,24 @@ def login(
                 "Could not find api key file on path: {}".format(api_key_file)
             )
     # If user connected to Serverless Hopsworks, and the cached .hw_api_key exists, then use it.
-    elif os.path.exists(api_key_path) and host == constants.HOSTS.APP_HOST:
+    elif os.path.exists(api_key_path) and is_app:
         try:
             _hw_connection = _hw_connection(
                 host=host, port=port, api_key_file=api_key_path
             )
-            _connected_project = _prompt_project(_hw_connection, project)
+            _connected_project = _prompt_project(_hw_connection, project, is_app)
             print(
                 "\nLogged in to project, explore it here "
                 + _connected_project.get_url()
             )
+            _initialize_module_apis()
             return _connected_project
         except RestAPIError:
             logout()
             # API Key may be invalid, have the user supply it again
             os.remove(api_key_path)
 
-    if api_key is None and host == constants.HOSTS.APP_HOST:
+    if api_key is None and is_app:
         print(
             "Copy your Api Key (first register/login): https://c.app.hopsworks.ai/account/api/generated"
         )
@@ -198,12 +206,19 @@ def login(
 
     try:
         _hw_connection = _hw_connection(host=host, port=port, api_key_value=api_key)
-        _connected_project = _prompt_project(_hw_connection, project)
+        _connected_project = _prompt_project(_hw_connection, project, is_app)
     except RestAPIError as e:
         logout()
         raise e
 
-    print("\nLogged in to project, explore it here " + _connected_project.get_url())
+    if _connected_project is None:
+        print(
+            "Could not find any project, use hopsworks.create_project('my_project') to create one"
+        )
+    else:
+        print("\nLogged in to project, explore it here " + _connected_project.get_url())
+
+    _initialize_module_apis()
     return _connected_project
 
 
@@ -245,11 +260,14 @@ def _get_cached_api_key_path():
     return api_key_path
 
 
-def _prompt_project(valid_connection, project):
+def _prompt_project(valid_connection, project, is_app):
     saas_projects = valid_connection.get_projects()
     if project is None:
         if len(saas_projects) == 0:
-            raise ProjectException("Could not find any project")
+            if is_app:
+                raise ProjectException("Could not find any project")
+            else:
+                return None
         elif len(saas_projects) == 1:
             return saas_projects[0]
         else:
@@ -258,7 +276,9 @@ def _prompt_project(valid_connection, project):
                 for index in range(len(saas_projects)):
                     print("\t (" + str(index + 1) + ") " + saas_projects[index].name)
                 while True:
-                    project_index = input("\nEnter project to access: ")
+                    project_index = input(
+                        "\nEnter number corresponding to the project to use: "
+                    )
                     # Handle invalid input type
                     try:
                         project_index = int(project_index)
@@ -285,8 +305,110 @@ def _prompt_project(valid_connection, project):
 
 
 def logout():
+    """Cleans up and closes the connection for the hopsworks, hsfs and hsml libraries."""
     global _hw_connection
-    if isinstance(_hw_connection, Connection):
+    global _project_api
+    global _secrets_api
+
+    if _is_connection_active():
         _hw_connection.close()
+
     client.stop()
+    _project_api = None
+    _secrets_api = None
     _hw_connection = Connection.connection
+
+
+def _is_connection_active():
+    global _hw_connection
+    return isinstance(_hw_connection, Connection)
+
+
+def get_current_project() -> project.Project:
+    """Get a reference to the current logged in project.
+
+    Example for creating a new project
+
+    ```python
+
+    import hopsworks
+
+    hopsworks.login()
+
+    project = hopsworks.get_current_project()
+
+    ```
+
+    # Returns
+        `Project`. The Project object to perform operations on
+    """
+    global _connected_project
+    if _connected_project is None:
+        raise ProjectException("No project is set for this session")
+    return _connected_project
+
+
+def _initialize_module_apis():
+    global _project_api
+    global _secrets_api
+    _project_api = project_api.ProjectApi()
+    _secrets_api = secret_api.SecretsApi()
+
+
+def create_project(name: str, description: str = None, feature_store_topic: str = None):
+    """Create a new project.
+
+    Example for creating a new project
+
+    ```python
+
+    import hopsworks
+
+    hopsworks.login()
+
+    hopsworks.create_project("my_hopsworks_project", description="An example Hopsworks project")
+
+    ```
+    # Arguments
+        name: The name of the project.
+        description: optional description of the project
+        feature_store_topic: optional feature store topic name
+
+    # Returns
+        `Project`. The Project object to perform operations on
+    """
+    global _hw_connection
+    global _connected_project
+
+    if not _is_connection_active():
+        raise NoHopsworksConnectionError()
+
+    new_project = _hw_connection._project_api._create_project(
+        name, description, feature_store_topic
+    )
+    if _connected_project is None:
+        _connected_project = new_project
+        print(
+            "Setting {} as the current project, a reference can be retrieved by calling hopsworks.get_current_project()".format(
+                _connected_project.name
+            )
+        )
+        return _connected_project
+    else:
+        print(
+            "You are already using the project {}, to access the new project use hopsworks.login(..., project='{}')".format(
+                _connected_project.name, new_project.name
+            )
+        )
+
+
+def get_secrets_api():
+    """Get the secrets api.
+
+    # Returns
+        `SecretsApi`: The Secrets Api handle
+    """
+    global _secrets_api
+    if not _is_connection_active():
+        raise NoHopsworksConnectionError()
+    return _secrets_api

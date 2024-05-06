@@ -109,6 +109,8 @@ class Project:
         Defaulting to the project name of default feature store. To get a
         shared feature store, the project name of the feature store is required.
 
+        # Arguments
+            name: Project name of the feature store.
         # Returns
             `hsfs.feature_store.FeatureStore`: The Feature Store API
         # Raises
@@ -133,6 +135,7 @@ class Project:
 
     def get_model_registry(self):
         """Connect to Project's Model Registry API.
+
         # Returns
             `hsml.model_registry.ModelRegistry`: The Model Registry API
         # Raises

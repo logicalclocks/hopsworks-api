@@ -2,6 +2,8 @@
 
 {{login}}
 
+{{get_current_project}}
+
 ## Feature Store API
 
 {{fs_api}}

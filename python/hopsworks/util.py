@@ -15,10 +15,11 @@
 #
 
 from json import JSONEncoder
+from urllib.parse import urljoin, urlparse
+
+from hopsworks import client
 from hopsworks.client.exceptions import JobException
 from hopsworks.git_file_status import GitFileStatus
-from hopsworks import client
-from urllib.parse import urljoin, urlparse
 
 
 class Encoder(JSONEncoder):
@@ -79,3 +80,7 @@ def get_hostname_replaced_url(sub_path: str):
     href = urljoin(client.get_instance()._base_url, sub_path)
     url_parsed = client.get_instance().replace_public_host(urlparse(href))
     return url_parsed.geturl()
+
+def is_interactive():
+    import __main__ as main
+    return not hasattr(main, '__file__')

@@ -15,8 +15,8 @@
 #
 
 import json
-import humps
 
+import humps
 from hopsworks import util
 from hopsworks.core import secret_api
 
@@ -48,7 +48,7 @@ class Secret:
     @classmethod
     def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
-        if len(json_decamelized["items"]) == 0:
+        if "items" not in json_decamelized or len(json_decamelized["items"]) == 0:
             return []
         return [cls(**secret) for secret in json_decamelized["items"]]
 

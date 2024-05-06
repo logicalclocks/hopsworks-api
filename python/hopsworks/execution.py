@@ -224,6 +224,7 @@ class Execution:
 
     def await_termination(self):
         """Wait until execution reaches terminal state
+
         # Raises
             `RestAPIError`.
         """

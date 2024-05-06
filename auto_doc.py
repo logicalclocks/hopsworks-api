@@ -22,6 +22,7 @@ import keras_autodoc
 PAGES = {
     "api/login.md": {
         "login": ["hopsworks.login"],
+        "get_current_project": ["hopsworks.get_current_project"],
         "fs_api": ["hopsworks.project.Project.get_feature_store"],
         "mr_api": ["hopsworks.project.Project.get_model_registry"],
         "ms_api": ["hopsworks.project.Project.get_model_serving"],
@@ -36,9 +37,7 @@ PAGES = {
         ),
     },
     "api/projects.md": {
-        "project_create": ["hopsworks.connection.Connection.create_project"],
-        "project_get": ["hopsworks.connection.Connection.get_project"],
-        "project_get_all": ["hopsworks.connection.Connection.get_projects"],
+        "project_create": ["hopsworks.create_project"],
         "project_properties": keras_autodoc.get_properties("hopsworks.project.Project"),
         "project_methods": keras_autodoc.get_methods(
             "hopsworks.project.Project", exclude=["from_response_json", "json"]
@@ -163,9 +162,10 @@ PAGES = {
         ),
     },
     "api/secrets.md": {
-        "secret_api_handle": ["hopsworks.connection.Connection.get_secrets_api"],
+        "secret_api_handle": ["hopsworks.get_secrets_api"],
         "secret_create": ["hopsworks.core.secret_api.SecretsApi.create_secret"],
         "secret_get": ["hopsworks.core.secret_api.SecretsApi.get_secret"],
+        "secret_get_simplified": ["hopsworks.core.secret_api.SecretsApi.get"],
         "secret_get_all": ["hopsworks.core.secret_api.SecretsApi.get_secrets"],
         "secret_properties": keras_autodoc.get_properties("hopsworks.secret.Secret"),
         "secret_methods": keras_autodoc.get_methods(
