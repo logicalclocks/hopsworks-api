@@ -1,7 +1,7 @@
 [project]
 name = "hopsworks"
 dynamic = ["version"]
-requires-python = ">=3.8,<=3.12"
+requires-python = ">=3.8,<3.12"
 readme = "README.md"
 description = "Hopsworks Python SDK to interact with Hopsworks Platform, Feature Store, Model Registry and Model Serving"
 keywords = ["Hopsworks", "Feature Store", "Spark", "Machine Learning", "MLOps", "DataOps"]
@@ -54,7 +54,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 exclude = ["tests*"]
-include = ["../Readme.md", "../LICENSE", "hopsworks"]
+include = ["../Readme.md", "../LICENSE", "hopsworks", "hopsworks.*"]
 
 [tool.setuptools.dynamic]
 version = { attr = "hopsworks.version.__version__" }
