@@ -14,11 +14,12 @@
 #   limitations under the License.
 #
 
-import humps
 import json
-from hopsworks.engine import execution_engine
-from hopsworks.core import execution_api
+
+import humps
 from hopsworks import constants, util
+from hopsworks.core import execution_api
+from hopsworks.engine import execution_engine
 
 
 class Execution:

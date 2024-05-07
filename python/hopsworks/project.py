@@ -15,21 +15,22 @@
 #
 from __future__ import annotations
 
-import humps
 import json
 
-from hopsworks import util, client, constants
+import humps
+from hopsworks import client, constants, util
 from hopsworks.client.external import Client
 from hopsworks.core import (
-    job_api,
-    git_api,
     dataset_api,
-    kafka_api,
-    opensearch_api,
     environment_api,
     flink_cluster_api,
+    git_api,
+    job_api,
+    kafka_api,
+    opensearch_api,
 )
 from hsfs import feature_store
+
 
 class Project:
     def __init__(

@@ -15,24 +15,25 @@
 #
 from __future__ import annotations
 
-import warnings
+import getpass
 import logging
 import os
 import sys
-import getpass
 import tempfile
+import warnings
 from pathlib import Path
 
-from hopsworks.client.exceptions import RestAPIError, ProjectException
-from hopsworks import version, constants, client
+from hopsworks import client, constants, project, version
+from hopsworks.client.exceptions import ProjectException, RestAPIError
 from hopsworks.connection import Connection
-from hopsworks import project
+
 
 # Needs to run before import of hsml and hsfs
 warnings.filterwarnings(action="ignore", category=UserWarning, module=r".*psycopg2")
 
-import hsml  # noqa: F401, E402
 import hsfs  # noqa: F401, E402
+import hsml  # noqa: F401, E402
+
 
 __version__ = version.__version__
 
