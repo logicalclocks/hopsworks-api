@@ -212,6 +212,15 @@ class Execution:
         """
         self._execution_api._delete(self._job.name, self.id)
 
+    def stop(self):
+        """Stop the execution
+        !!! danger "Potentially dangerous operation"
+            This operation stops the execution.
+        # Raises
+            `RestAPIError`.
+        """
+        self._execution_api._stop(self.job_name, self.id)
+
     def await_termination(self):
         """Wait until execution reaches terminal state
         # Raises

@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import humps
 import json
@@ -28,7 +29,7 @@ from hopsworks.core import (
     environment_api,
     flink_cluster_api,
 )
-
+from hsfs import feature_store
 
 class Project:
     def __init__(
@@ -101,7 +102,7 @@ class Project:
         """Timestamp when the project was created"""
         return self._created
 
-    def get_feature_store(self, name: str = None):
+    def get_feature_store(self, name: str = None) -> feature_store.FeatureStore:
         """Connect to Project's Feature Store.
 
         Defaulting to the project name of default feature store. To get a

@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import warnings
 import logging
@@ -25,6 +26,7 @@ from pathlib import Path
 from hopsworks.client.exceptions import RestAPIError, ProjectException
 from hopsworks import version, constants, client
 from hopsworks.connection import Connection
+from hopsworks import project
 
 # Needs to run before import of hsml and hsfs
 warnings.filterwarnings(action="ignore", category=UserWarning, module=r".*psycopg2")
@@ -62,7 +64,7 @@ def login(
     project: str = None,
     api_key_value: str = None,
     api_key_file: str = None,
-):
+) -> project.Project:
     """Connect to [Serverless Hopsworks](https://app.hopsworks.ai) by calling the `hopsworks.login()` function with no arguments.
 
     ```python
