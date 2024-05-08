@@ -13,21 +13,23 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
-import humps
 import json
 
-from hopsworks import util, client, constants
+import humps
+from hopsworks import client, constants, util
 from hopsworks.client.external import Client
 from hopsworks.core import (
-    job_api,
-    git_api,
     dataset_api,
-    kafka_api,
-    opensearch_api,
     environment_api,
     flink_cluster_api,
+    git_api,
+    job_api,
+    kafka_api,
+    opensearch_api,
 )
+from hsfs import feature_store
 
 
 class Project:
@@ -101,7 +103,7 @@ class Project:
         """Timestamp when the project was created"""
         return self._created
 
-    def get_feature_store(self, name: str = None):
+    def get_feature_store(self, name: str = None) -> feature_store.FeatureStore:
         """Connect to Project's Feature Store.
 
         Defaulting to the project name of default feature store. To get a

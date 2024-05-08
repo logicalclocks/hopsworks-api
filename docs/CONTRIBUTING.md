@@ -12,23 +12,24 @@
     pip install -e ".[dev]"
     ```
 
-- Install [pre-commit](https://pre-commit.com/) and then activate its hooks. pre-commit is a framework for managing and maintaining multi-language pre-commit hooks. The library uses pre-commit to ensure code-style and code formatting through [black](https://github.com/psf/black) and [flake8](https://gitlab.com/pycqa/flake8). Run the following commands from the `python` directory:
+- Install [pre-commit](https://pre-commit.com/) and then activate its hooks. pre-commit is a framework for managing and maintaining multi-language pre-commit hooks. The Feature Store uses pre-commit to ensure code-style and code formatting through [ruff](https://docs.astral.sh/ruff/). Run the following commands from the `python` directory:
 
-    ```bash
-    cd python
-    pip install --user pre-commit
-    pre-commit install
-    ```
+  ```bash
+  cd python
+  pip install --user pre-commit
+  pre-commit install
+  ```
 
   Afterwards, pre-commit will run whenever you commit.
 
-- To run formatting and code-style separately, you can configure your IDE, such as VSCode, to use black and flake8, or run them via the command line:
+- To run formatting and code-style separately, you can configure your IDE, such as VSCode, to use `ruff`, or run it via the command line:
 
-    ```bash
-    cd python
-    flake8 hopsworks
-    black hopsworks
-    ```
+  ```bash
+  # linting
+  ruff check python --fix
+  # formatting
+  ruff format python
+  ```
 
 ### Python documentation
 
