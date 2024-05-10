@@ -358,6 +358,9 @@ def _initialize_module_apis():
 def create_project(name: str, description: str = None, feature_store_topic: str = None):
     """Create a new project.
 
+    !!! warn
+        This is not supported if you are connected to [Serverless Hopsworks](https://app.hopsworks.ai)
+
     Example for creating a new project
 
     ```python
