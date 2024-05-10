@@ -72,21 +72,27 @@ def login(
 ) -> project.Project:
     """Connect to [Serverless Hopsworks](https://app.hopsworks.ai) by calling the `hopsworks.login()` function with no arguments.
 
-    ```python
+    !!! example "Connect to Serverless"
+        ```python
 
-    project = hopsworks.login()
+        import hopsworks
 
-    ```
+        project = hopsworks.login()
+
+        ```
 
     Alternatively, connect to your own Hopsworks installation by specifying the host, port and api key.
 
-    ```python
+    !!! example "Connect to your Hopsworks cluster"
+        ```python
 
-    project = hopsworks.login(host="my.hopsworks.server",
-                              port=8181,
-                              api_key_value="DKN8DndwaAjdf98FFNSxwdVKx")
+        import hopsworks
 
-    ```
+        project = hopsworks.login(host="my.hopsworks.server",
+                                  port=8181,
+                                  api_key_value="DKN8DndwaAjdf98FFNSxwdVKx")
+
+        ```
 
     In addition to setting function arguments directly, `hopsworks.login()` also reads the environment variables:
     HOPSWORKS_HOST, HOPSWORKS_PORT, HOPSWORKS_PROJECT and HOPSWORKS_API_KEY.
@@ -327,17 +333,16 @@ def _is_connection_active():
 def get_current_project() -> project.Project:
     """Get a reference to the current logged in project.
 
-    Example for creating a new project
+    !!! example "Example for getting the project reference"
+        ```python
 
-    ```python
+        import hopsworks
 
-    import hopsworks
+        hopsworks.login()
 
-    hopsworks.login()
+        project = hopsworks.get_current_project()
 
-    project = hopsworks.get_current_project()
-
-    ```
+        ```
 
     # Returns
         `Project`. The Project object to perform operations on
@@ -358,20 +363,19 @@ def _initialize_module_apis():
 def create_project(name: str, description: str = None, feature_store_topic: str = None):
     """Create a new project.
 
-    !!! warn
+    !!! warning "Not supported"
         This is not supported if you are connected to [Serverless Hopsworks](https://app.hopsworks.ai)
 
-    Example for creating a new project
+    !!! example "Example for creating a new project"
+        ```python
 
-    ```python
+        import hopsworks
 
-    import hopsworks
+        hopsworks.login(...)
 
-    hopsworks.login()
+        hopsworks.create_project("my_project", description="An example Hopsworks project")
 
-    hopsworks.create_project("my_hopsworks_project", description="An example Hopsworks project")
-
-    ```
+        ```
     # Arguments
         name: The name of the project.
         description: optional description of the project
