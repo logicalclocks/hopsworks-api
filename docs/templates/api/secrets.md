@@ -10,6 +10,8 @@
 
 ## Retrieval
 
+{{secret_get_simplified}}
+
 {{secret_get}}
 
 {{secret_get_all}}

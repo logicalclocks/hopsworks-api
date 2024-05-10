@@ -103,12 +103,26 @@ class Project:
         """Timestamp when the project was created"""
         return self._created
 
-    def get_feature_store(self, name: str = None) -> feature_store.FeatureStore:
+    def get_feature_store(self, name: str = None, engine: str = None) -> feature_store.FeatureStore:
         """Connect to Project's Feature Store.
 
         Defaulting to the project name of default feature store. To get a
         shared feature store, the project name of the feature store is required.
 
+        !!! example "Example for getting the Feature Store API of a project"
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            fs = project.get_feature_store()
+            ```
+
+        # Arguments
+            name: Project name of the feature store.
+            engine: Which engine to use, `"spark"`, `"python"` or `"training"`.
+                Defaults to `"python"` when connected to [Serverless Hopsworks](https://app.hopsworks.ai).
+                See hsfs.Connection.connection documentation for more information.
         # Returns
             `hsfs.feature_store.FeatureStore`: The Feature Store API
         # Raises
@@ -118,8 +132,7 @@ class Project:
 
         _client = client.get_instance()
         if type(_client) == Client:  # If external client
-            engine = None
-            if _client._host == constants.HOSTS.APP_HOST:
+            if _client._host == constants.HOSTS.APP_HOST and engine is None:
                 engine = "python"
             return connection(
                 host=_client._host,
@@ -129,10 +142,20 @@ class Project:
                 engine=engine,
             ).get_feature_store(name)
         else:
-            return connection().get_feature_store(name)  # If internal client
+            return connection().get_feature_store(name, engine=engine)  # If internal client
 
     def get_model_registry(self):
         """Connect to Project's Model Registry API.
+
+        !!! example "Example for getting the Model Registry API of a project"
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            mr = project.get_model_registry()
+            ```
+
         # Returns
             `hsml.model_registry.ModelRegistry`: The Model Registry API
         # Raises
@@ -153,6 +176,15 @@ class Project:
 
     def get_model_serving(self):
         """Connect to Project's Model Serving API.
+
+        !!! example "Example for getting the Model Serving API of a project"
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            ms = project.get_model_serving()
+            ```
 
         # Returns
             `hsml.model_serving.ModelServing`: The Model Serving API

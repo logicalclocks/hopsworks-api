@@ -14,9 +14,12 @@
 #   limitations under the License.
 #
 
-from hopsworks import client, secret
-from hopsworks.core import project_api
+import getpass
 import json
+
+from hopsworks import client, secret, util
+from hopsworks.client.exceptions import RestAPIError
+from hopsworks.core import project_api
 
 
 class SecretsApi:
@@ -42,11 +45,11 @@ class SecretsApi:
             _client._send_request("GET", path_params)
         )
 
-    def get_secret(self, name: str, owner: str = None):
+    def get_secret(self, name: str, owner: str = None) -> secret.Secret:
         """Get a secret.
 
         # Arguments
-            name: Name of the project.
+            name: Name of the secret.
             owner: email of the owner for a secret shared with the current project.
         # Returns
             `Secret`: The Secret object
@@ -69,11 +72,34 @@ class SecretsApi:
                 "shared",
             ]
 
-        return secret.Secret.from_response_json(
-            _client._send_request("GET", path_params, query_params=query_params)
-        )[0]
+        return secret.Secret.from_response_json(_client._send_request("GET", path_params, query_params=query_params))[0]
 
-    def create_secret(self, name: str, value: str, project: str = None):
+    def get(self, name: str, owner: str = None) -> str:
+        """Get the secret's value.
+        If the secret does not exist, it prompts the user to create the secret if the application is running interactively
+
+        # Arguments
+            name: Name of the secret.
+            owner: email of the owner for a secret shared with the current project.
+        # Returns
+            `str`: The secret value
+        # Raises
+            `RestAPIError`: If unable to get the secret
+        """
+        try:
+            return self.get_secret(name=name, owner=owner).value
+        except RestAPIError as e:
+            if (
+                    e.response.json().get("errorCode", "") == 160048
+                    and e.response.status_code == 404
+                    and util.is_interactive()
+            ):
+                secret_input = getpass.getpass(prompt="\nCould not find secret, enter value here to create it: ")
+                return self.create_secret(name, secret_input).value
+            else:
+                raise e
+
+    def create_secret(self, name: str, value: str, project: str = None) -> secret.Secret:
         """Create a new secret.
 
         ```python
