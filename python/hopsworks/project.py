@@ -112,7 +112,7 @@ class Project:
         # Arguments
             name: Project name of the feature store.
             engine: Which engine to use, `"spark"`, `"python"` or `"training"`.
-                Defaults to `"python"` when connected to https://c.app.hopsworks.ai/
+                Defaults to `"python"` when connected to https://c.app.hopsworks.ai/.
                 See hsfs.Connection.connection documentation for more information.
         # Returns
             `hsfs.feature_store.FeatureStore`: The Feature Store API
