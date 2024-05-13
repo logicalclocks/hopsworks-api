@@ -142,7 +142,7 @@ class Project:
                 engine=engine,
             ).get_feature_store(name)
         else:
-            return connection().get_feature_store(name, engine=engine)  # If internal client
+            return connection(engine=engine).get_feature_store(name)  # If internal client
 
     def get_model_registry(self):
         """Connect to Project's Model Registry API.
