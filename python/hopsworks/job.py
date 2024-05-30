@@ -14,13 +14,14 @@
 #   limitations under the License.
 #
 
-import humps
 import json
-from hopsworks.engine import execution_engine
-from hopsworks.core import job_api, execution_api
-from hopsworks import util, job_schedule as js
-
 from datetime import datetime, timezone
+
+import humps
+from hopsworks import job_schedule as js
+from hopsworks import util
+from hopsworks.core import execution_api, job_api
+from hopsworks.engine import execution_engine
 
 
 class Job:
@@ -64,7 +65,7 @@ class Job:
 
     @classmethod
     def from_response_json(cls, json_dict, project_id, project_name):
-        if "count" in json_dict:
+        if "items" in json_dict:
             jobs = []
             for job in json_dict["items"]:
                 # Job config should not be decamelized when updated
@@ -79,7 +80,6 @@ class Job:
                     )
                 )
             return jobs
-        # TODO: fix backend to set count to 0 when no jobs exists
         elif "id" not in json_dict:
             return []
         else:
