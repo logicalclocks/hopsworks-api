@@ -47,6 +47,8 @@ _connected_project = None
 _secrets_api = None
 _project_api = None
 
+udf = hsfs.hopsworks_udf.udf
+
 
 def hw_formatwarning(message, category, filename, lineno, line=None):
     return "{}: {}\n".format(category.__name__, message)
@@ -54,7 +56,7 @@ def hw_formatwarning(message, category, filename, lineno, line=None):
 
 warnings.formatwarning = hw_formatwarning
 
-__all__ = ["connection"]
+__all__ = ["connection", "udf"]
 
 logging.basicConfig(
     level=logging.INFO,
