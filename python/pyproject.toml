@@ -22,7 +22,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "hsfs[python] @ git+https://git@github.com/logicalclocks/feature-store-api@main#subdirectory=python",
+    "hsfs[python] @ git+https://git@github.com/logicalclocks/feature-store-api@master#subdirectory=python",
     "hsml @ git+https://git@github.com/logicalclocks/machine-learning-api@main#subdirectory=python",
     "pyhumps==1.6.1",
     "requests",
