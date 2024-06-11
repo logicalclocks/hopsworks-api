@@ -46,8 +46,8 @@ class SecretsApi:
         """Get a secret.
 
         # Arguments
-            name: Name of the project.
-            owner: email of the owner for a secret shared with the current project.
+            name: Name of the secret.
+            owner: username of the owner for a secret shared with the current project. Users can find their username in the Account Settings > Profile section.
         # Returns
             `Secret`: The Secret object
         # Raises
