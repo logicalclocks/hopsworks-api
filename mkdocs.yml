@@ -21,6 +21,7 @@ nav:
       - Login: generated/api/login.md
       - Connection: generated/api/connection.md
       - Projects: generated/api/projects.md
+      - UDF: generated/api/udf.md
       - Jobs: generated/api/jobs.md
       - Executions: generated/api/executions.md
       - FlinkCluster: generated/api/flink_cluster.md
