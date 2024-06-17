@@ -27,6 +27,9 @@ PAGES = {
         "mr_api": ["hopsworks.project.Project.get_model_registry"],
         "ms_api": ["hopsworks.project.Project.get_model_serving"],
     },
+    "api/udf.md": {
+        "udf": ["hopsworks.udf"],
+    },
     "api/connection.md": {
         "connection_create": ["hopsworks.connection.Connection.connection"],
         "connection_properties": keras_autodoc.get_properties(
