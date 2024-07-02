@@ -2,6 +2,10 @@ name: optional-dependency
 
 on: pull_request
 
+env:
+  APP_API_KEY: ${{ secrets.APP_API_KEY }}
+  ENABLE_HOPSWORKS_USAGE: "false"
+
 jobs:
   unit_tests_no_great_expectations:
     name: Unit Testing (No Great Expectations)
