@@ -1,0 +1,30 @@
+{
+  "get": {
+    "response": {
+      "featurestore_id": 11,
+      "featurestore_name": "test_featurestore_name",
+      "created": "test_created",
+      "project_name": "test_project_name",
+      "project_id": 67,
+      "offline_featurestore_name": "test_offline_featurestore_name",
+      "online_enabled": true,
+      "num_feature_groups": 2,
+      "num_training_datasets": 3,
+      "num_storage_connectors": 4,
+      "num_feature_views": 5,
+      "online_featurestore_name": "test_online_featurestore_name",
+      "online_featurestore_size": 31
+    }
+  },
+  "get_basic_info": {
+    "response": {
+      "featurestore_id": 11,
+      "featurestore_name": "test_featurestore_name",
+      "created": "test_created",
+      "project_name": "test_project_name",
+      "project_id": 67,
+      "offline_featurestore_name": "test_offline_featurestore_name",
+      "online_enabled": true
+    }
+  }
+}

@@ -1,0 +1,136 @@
+[project]
+name="hsml"
+dynamic = ["version"]
+requires-python = ">=3.8,<3.13"
+readme = "README.md"
+description = "HSML Python SDK to interact with Hopsworks Model Registry"
+keywords = ["Hopsworks", "Model Registry", "hsml", "Models", "ML",  "Machine Learning Models", "TensorFlow", "PyTorch", "Machine Learning", "MLOps", "DataOps"]
+authors = [{name = "Hopsworks AB", email = "robin@hopswors.ai"}]
+license = { text = "Apache-2.0" }
+
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Topic :: Utilities",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Intended Audience :: Developers",
+]
+
+dependencies = [
+    "pyhumps==1.6.1",
+    "requests",
+    "furl",
+    "boto3",
+    "pandas",
+    "numpy",
+    "pyjks",
+    "mock",
+    "tqdm",
+    "grpcio>=1.49.1,<2.0.0",  # ^1.49.1
+    "protobuf>=3.19.0,<4.0.0",  # ^3.19.0
+]
+
+[project.optional-dependencies]
+dev = ["pytest==7.4.4", "pytest-mock==3.12.0", "ruff"]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+
+[tool.setuptools.packages.find]
+exclude = ["tests*"]
+include = ["../Readme.md", "../LICENSE", "hsml", "hsml.*"]
+
+
+[tool.setuptools.dynamic]
+version = {attr = "hsml.version.__version__"}
+
+[project.urls]
+Documentation = "https://docs.hopsworks.ai/latest"
+Repository = "https://github.com/logicalclocks/machine-learning-api"
+Homepage = "https://www.hopsworks.ai"
+Community = "https://community.hopsworks.ai"
+
+
+[tool.ruff]
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pyenv",
+    ".pytest_cache",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    ".vscode",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "site-packages",
+    "venv",
+    "java",
+]
+
+# Same as Black.
+line-length = 88
+indent-width = 4
+
+# Assume Python 3.8+ syntax.
+target-version = "py38"
+
+[tool.ruff.lint]
+# 1. Enable flake8-bugbear (`B`) rules, in addition to the defaults.
+select = ["E4", "E7", "E9", "F", "B", "I", "W"]#, "ANN"]
+ignore = [
+    "B905",   # zip has no strict kwarg until Python 3.10
+    "ANN101", # Missing type annotation for self in method
+    "ANN102", # Missing type annotation for cls in classmethod
+    "ANN003", # Missing type annotation for **kwarg in function
+    "ANN002", # Missing type annotation for *args in function
+    "ANN401", # Allow Any in type annotations
+    "W505",   # Doc line too long
+]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.lint.isort]
+lines-after-imports = 2
+known-third-party = ["hopsworks", "hsfs", "hsml"]
+
+
+[tool.ruff.format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"
