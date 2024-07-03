@@ -111,3 +111,12 @@ class ProjectApi:
         project = self._get_project(name)
         print("Project created successfully, explore it at " + project.get_url())
         return project
+
+    def get_client(self):
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "client",
+        ]
+        return _client._send_request("GET", path_params, stream=True)
