@@ -28,8 +28,6 @@ class ProjectApi:
             name: Name of the project.
         # Returns
             `bool`: True if project exists, otherwise False
-        # Raises
-            `RestAPIError`: If unable to check the existence of the project
         """
         try:
             self._get_project(name)
