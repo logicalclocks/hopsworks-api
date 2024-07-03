@@ -7,14 +7,15 @@ description = "Hopsworks Python SDK to interact with Hopsworks Platform, Feature
 keywords = [
     "Hopsworks",
     "Feature Store",
+    "hsfs",
     "Spark",
     "Machine Learning",
     "MLOps",
     "DataOps",
 ]
-
 authors = [{ name = "Hopsworks AB", email = "robin@hopsworks.ai" }]
 license = { text = "Apache-2.0" }
+
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Topic :: Utilities",
@@ -29,19 +30,58 @@ classifiers = [
 ]
 
 dependencies = [
-    "hsfs[python] @ git+https://git@github.com/logicalclocks/feature-store-api@master#subdirectory=python",
-    "hsml @ git+https://git@github.com/logicalclocks/machine-learning-api@main#subdirectory=python",
     "pyhumps==1.6.1",
     "requests",
     "furl",
     "boto3",
+    "pandas<2.2.0",
+    "numpy<2",
     "pyjks",
     "mock",
-    "tqdm",
+    "avro==1.11.3",
+    "sqlalchemy",
+    "PyMySQL[rsa]",
+    "tzlocal",
+    "fsspec",
+    "retrying",
+    "hopsworks_aiomysql[sa]==0.2.1",
+    "polars>=0.20.18,<=0.21.0",
+    "opensearch-py>=1.1.0,<=2.4.2",
 ]
 
 [project.optional-dependencies]
-dev = ["ruff", "pytest", "great_expectations"]
+hive = [
+    "pyhopshive[thrift]",
+    "pyarrow>=10.0",
+    "confluent-kafka<=2.3.0",
+    "fastavro>=1.4.11,<=1.8.4",
+]
+python = [
+    "pyhopshive[thrift]",
+    "pyarrow>=10.0",
+    "confluent-kafka<=2.3.0",
+    "fastavro>=1.4.11,<=1.8.4",
+    "tqdm",
+]
+great-expectations = ["great_expectations==0.18.12"]
+dev-no-opt = [
+    "pytest==7.4.4",
+    "pytest-mock==3.12.0",
+    "ruff",
+    "pyspark==3.1.1",
+    "moto[s3]==5.0.0",
+    "typeguard==4.2.1",
+]
+dev-pandas1 = [
+    "pytest==7.4.4",
+    "pytest-mock==3.12.0",
+    "ruff",
+    "pyspark==3.1.1",
+    "moto[s3]==5.0.0",
+    "pandas<=1.5.3",
+    "sqlalchemy<=1.4.48",
+]
+dev = ["hsfs[dev-no-opt]", "hsfs[great-expectations]"]
 
 [build-system]
 requires = ["setuptools", "wheel"]
@@ -49,11 +89,10 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 exclude = ["tests*"]
-include = ["../Readme.md", "../LICENSE", "hopsworks", "hopsworks.*"]
+include = ["../README.md", "../LICENSE", "hopsworks", "hopsworks.*", "hsfs", "hsfs.*"]
 
 [tool.setuptools.dynamic]
 version = { attr = "hopsworks.version.__version__" }
-
 
 [project.urls]
 Documentation = "https://docs.hopsworks.ai/latest"
