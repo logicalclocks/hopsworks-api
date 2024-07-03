@@ -12,6 +12,13 @@ keywords = [
     "Machine Learning",
     "MLOps",
     "DataOps",
+    "Model Registry",
+    "hsml",
+    "Models",
+    "ML",
+    "Machine Learning Models",
+    "TensorFlow",
+    "PyTorch",
 ]
 authors = [{ name = "Hopsworks AB", email = "robin@hopsworks.ai" }]
 license = { text = "Apache-2.0" }
@@ -47,6 +54,9 @@ dependencies = [
     "hopsworks_aiomysql[sa]==0.2.1",
     "polars>=0.20.18,<=0.21.0",
     "opensearch-py>=1.1.0,<=2.4.2",
+    "tqdm",
+    "grpcio>=1.49.1,<2.0.0",         # ^1.49.1
+    "protobuf>=3.19.0,<4.0.0",       # ^3.19.0
 ]
 
 [project.optional-dependencies]
@@ -89,7 +99,16 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 exclude = ["tests*"]
-include = ["../README.md", "../LICENSE", "hopsworks", "hopsworks.*", "hsfs", "hsfs.*"]
+include = [
+    "../README.md",
+    "../LICENSE",
+    "hopsworks",
+    "hopsworks.*",
+    "hsfs",
+    "hsfs.*",
+    "hsml",
+    "hsml.*",
+]
 
 [tool.setuptools.dynamic]
 version = { attr = "hopsworks.version.__version__" }
