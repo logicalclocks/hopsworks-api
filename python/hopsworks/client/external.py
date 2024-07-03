@@ -14,11 +14,11 @@
 #   limitations under the License.
 #
 
-import os
 import base64
-import requests
+import os
 
-from hopsworks.client import base, auth, exceptions
+import requests
+from hopsworks.client import auth, base, exceptions
 
 
 class Client(base.Client):
