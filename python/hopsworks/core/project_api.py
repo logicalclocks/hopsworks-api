@@ -14,8 +14,9 @@
 #   limitations under the License.
 #
 
-from hopsworks import client, project, constants
 import json
+
+from hopsworks import client, constants, project
 from hopsworks.client.exceptions import RestAPIError
 
 
