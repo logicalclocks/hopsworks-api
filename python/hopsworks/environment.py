@@ -92,7 +92,7 @@ class Environment:
         """Description of the environment"""
         return self._description
 
-    def install_wheel(self, path, await_installation: Optional[bool] = True):
+    def install_wheel(self, path: str, await_installation: Optional[bool] = True):
         """Install a python library packaged in a wheel file
 
         ```python
@@ -116,6 +116,8 @@ class Environment:
         # Arguments
             path: str. The path on Hopsworks where the wheel file is located
             await_installation: bool. If True the method returns only when the installation finishes. Default True
+        # Returns
+            `Library`: The library object
         """
 
         # Wait for any ongoing environment operations
@@ -131,7 +133,7 @@ class Environment:
             "packageSource": "WHEEL",
         }
 
-        library_rest = self._library_api.install(
+        library_rest = self._library_api._install(
             library_name, self.name, library_spec
         )
 
@@ -140,7 +142,7 @@ class Environment:
 
         return library_rest
 
-    def install_requirements(self, path, await_installation: Optional[bool] = True):
+    def install_requirements(self, path: str, await_installation: Optional[bool] = True):
         """Install libraries specified in a requirements.txt file
 
         ```python
@@ -165,6 +167,8 @@ class Environment:
         # Arguments
             path: str. The path on Hopsworks where the requirements.txt file is located
             await_installation: bool. If True the method returns only when the installation is finished. Default True
+        # Returns
+            `Library`: The library object
         """
 
         # Wait for any ongoing environment operations
@@ -180,7 +184,7 @@ class Environment:
             "packageSource": "REQUIREMENTS_TXT",
         }
 
-        library_rest = self._library_api.install(
+        library_rest = self._library_api._install(
             library_name, self.name, library_spec
         )
 

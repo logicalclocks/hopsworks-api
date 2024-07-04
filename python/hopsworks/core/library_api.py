@@ -28,8 +28,19 @@ class LibraryApi:
         self._project_id = project_id
         self._project_name = project_name
 
-    def install(self, library_name: str, name: str, library_spec: dict):
-        """Create Python environment for the project"""
+    def _install(self, library_name: str, name: str, library_spec: dict):
+        """Install a library in the environment
+
+        # Arguments
+            library_name: Name of the library.
+            name: Name of the environment.
+            library_spec: installation payload
+        # Returns
+            `Library`: The library object
+        # Raises
+            `RestAPIError`: If unable to install library
+        """
+
         _client = client.get_instance()
 
         path_params = [

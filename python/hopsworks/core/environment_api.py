@@ -134,7 +134,10 @@ class EnvironmentApi:
         )
 
     def _delete(self, name):
-        """Delete the Python environment"""
+        """Delete the Python environment.
+        :param name: name of environment to delete
+        :type environment: Environment
+        """
         _client = client.get_instance()
 
         path_params = [
