@@ -49,7 +49,7 @@ class EnvironmentApi:
         ```
         # Arguments
             name: name of the environment
-            base_environment_name: the name of the environment to copy from
+            base_environment_name: the name of the environment to clone from
             await_creation: bool. If True the method returns only when the creation is finished. Default True
         # Returns
             `Environment`: The Environment object
@@ -113,6 +113,8 @@ class EnvironmentApi:
         env = env_api.get_environment("my_custom_environment")
 
         ```
+        # Arguments
+            name: name of the environment
         # Returns
             `Environment`: The Environment object
         # Raises
