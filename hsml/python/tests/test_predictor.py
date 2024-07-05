@@ -78,6 +78,7 @@ class TestPredictor:
         assert p.serving_tool == p_json["serving_tool"]
         assert p.api_protocol == p_json["api_protocol"]
         assert p.artifact_version == p_json["artifact_version"]
+        assert p.environment == p_json["environment_dto"]["name"]
         assert p.script_file == p_json["predictor"]
         assert isinstance(p.resources, resources.PredictorResources)
         assert isinstance(p.transformer, transformer.Transformer)
@@ -119,6 +120,7 @@ class TestPredictor:
             assert p.model_server == p_json["model_server"]
             assert p.serving_tool == p_json["serving_tool"]
             assert p.api_protocol == p_json["api_protocol"]
+            assert p.environment == p_json["environment_dto"]["name"]
             assert p.artifact_version == p_json["artifact_version"]
             assert p.script_file == p_json["predictor"]
             assert isinstance(p.resources, resources.PredictorResources)
@@ -156,6 +158,7 @@ class TestPredictor:
         assert p.model_server == p_json["model_server"]
         assert p.serving_tool == p_json["serving_tool"]
         assert p.api_protocol == p_json["api_protocol"]
+        assert p.environment == p_json["environment_dto"]["name"]
         assert p.artifact_version == p_json["artifact_version"]
         assert p.script_file == p_json["predictor"]
         assert isinstance(p.resources, resources.PredictorResources)
@@ -207,6 +210,7 @@ class TestPredictor:
             model_server=p_json["model_server"],
             serving_tool=p_json["serving_tool"],
             api_protocol=p_json["api_protocol"],
+            environment=p_json["environment_dto"]["name"],
             artifact_version=p_json["artifact_version"],
             script_file=p_json["predictor"],
             resources=p_json["predictor_resources"],
@@ -234,6 +238,7 @@ class TestPredictor:
         assert p.model_server == p_json["model_server"]
         assert p.serving_tool == p_json["serving_tool"]
         assert p.api_protocol == p_json["api_protocol"]
+        assert p.environment == p_json["environment_dto"]["name"]
         assert p.artifact_version == p_json["artifact_version"]
         assert p.script_file == p_json["predictor"]
         assert isinstance(p.resources, resources.PredictorResources)
@@ -645,6 +650,7 @@ class TestPredictor:
             p_json["batching_configuration"]["batching_enabled"]
         )
         assert kwargs["api_protocol"] == p_json["api_protocol"]
+        assert kwargs["environment"] == p_json["environment_dto"]["name"]
         assert isinstance(kwargs["transformer"], transformer.Transformer)
         assert kwargs["transformer"].script_file == p_json["transformer"]
         assert isinstance(

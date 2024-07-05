@@ -461,6 +461,15 @@ class Deployment:
     def api_protocol(self, api_protocol: str):
         self._predictor.api_protocol = api_protocol
 
+    @property
+    def environment(self):
+        """Name of inference environment"""
+        return self._predictor.environment
+
+    @environment.setter
+    def environment(self, environment: str):
+        self._predictor.environment = environment
+
     def __repr__(self):
         desc = (
             f", description: {self._description!r}"

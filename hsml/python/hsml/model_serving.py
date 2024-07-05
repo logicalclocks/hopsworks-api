@@ -285,7 +285,7 @@ class ModelServing:
 
         return Transformer(script_file=script_file, resources=resources)
 
-    def create_deployment(self, predictor: Predictor, name: Optional[str] = None):
+    def create_deployment(self, predictor: Predictor, name: Optional[str] = None, environment: Optional[str] = None):
         """Create a Deployment metadata object.
 
         !!! example
@@ -348,12 +348,13 @@ class ModelServing:
         # Arguments
             predictor: predictor to be used in the deployment
             name: name of the deployment
+            environment: The inference environment to use
 
         # Returns
             `Deployment`. The model metadata object.
         """
 
-        return Deployment(predictor=predictor, name=name)
+        return Deployment(predictor=predictor, name=name, environment=environment)
 
     @property
     def project_name(self):

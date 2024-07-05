@@ -40,6 +40,9 @@
           "inference_logging": "ALL",
           "kafka_topic_dto": {
             "name": "topic"
+          },
+          "environment_dto": {
+            "name": "misc-inference-pipeline"
           }
         }
       ]
@@ -92,6 +95,9 @@
           "inference_logging": "ALL",
           "kafka_topic_dto": {
             "name": "topic"
+          },
+          "environment_dto": {
+            "name": "misc-inference-pipeline"
           }
         },
         {
@@ -131,6 +137,9 @@
           "inference_logging": "ALL",
           "kafka_topic_dto": {
             "name": "topic"
+          },
+          "environment_dto": {
+            "name": "misc-inference-pipeline"
           }
         }
       ]
@@ -160,6 +169,9 @@
       "inference_logging": "ALL",
       "kafka_topic_dto": {
         "name": "topic"
+      },
+      "environment_dto": {
+        "name": "tensorflow-inference-pipeline"
       }
     }
   },
@@ -200,6 +212,9 @@
       "inference_logging": "ALL",
       "kafka_topic_dto": {
         "name": "topic"
+      },
+      "environment_dto": {
+        "name": "tensorflow-inference-pipeline"
       }
     }
   },
@@ -235,6 +250,9 @@
       "inference_logging": "ALL",
       "kafka_topic_dto": {
         "name": "topic"
+      },
+      "environment_dto": {
+        "name": "misc-inference-pipeline"
       }
     }
   },
@@ -277,6 +295,9 @@
       },
       "kafka_topic_dto": {
         "name": "topic"
+      },
+      "environment_dto": {
+        "name": "misc-inference-pipeline"
       }
     }
   },
@@ -312,6 +333,9 @@
       },
       "kafka_topic_dto": {
         "name": "topic"
+      },
+      "environment_dto": {
+        "name": "misc-inference-pipeline"
       }
     }
   },
@@ -354,6 +378,9 @@
       },
       "kafka_topic_dto": {
         "name": "topic"
+      },
+      "environment_dto": {
+        "name": "misc-inference-pipeline"
       }
     }
   },

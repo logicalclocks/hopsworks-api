@@ -26,7 +26,7 @@ class MODEL:
 
 
 class MODEL_REGISTRY:
-    HOPSFS_MOUNT_PREFIX = "/home/yarnapp/hopsfs/"
+    HOPSFS_MOUNT_PREFIX = "/hopsfs/"
 
 
 class MODEL_SERVING:

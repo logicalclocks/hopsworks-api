@@ -56,6 +56,7 @@ class Predictor(DeployableComponent):
         created_at: Optional[str] = None,
         creator: Optional[str] = None,
         api_protocol: Optional[str] = INFERENCE_ENDPOINTS.API_PROTOCOL_REST,
+        environment: Optional[str] = None,
         **kwargs,
     ):
         serving_tool = (
@@ -91,6 +92,7 @@ class Predictor(DeployableComponent):
         self._transformer = util.get_obj_from_json(transformer, Transformer)
         self._validate_script_file(self._model_framework, self._script_file)
         self._api_protocol = api_protocol
+        self._environment = environment
 
     def deploy(self):
         """Create a deployment for this predictor and persists it in the Model Serving.
@@ -268,6 +270,9 @@ class Predictor(DeployableComponent):
         kwargs["created_at"] = json_decamelized.pop("created")
         kwargs["creator"] = json_decamelized.pop("creator")
         kwargs["api_protocol"] = json_decamelized.pop("api_protocol")
+        if "environment_dto" in json_decamelized:
+            environment = json_decamelized.pop("environment_dto")
+            kwargs["environment"] = environment["name"]
         return kwargs
 
     def update_from_response_json(self, json_dict):
@@ -296,6 +301,8 @@ class Predictor(DeployableComponent):
             "predictor": self._script_file,
             "apiProtocol": self._api_protocol,
         }
+        if self.environment is not None:
+            json = {**json, **{"environmentDTO": {"name": self._environment}}}
         if self._resources is not None:
             json = {**json, **self._resources.to_dict()}
         if self._inference_logger is not None:
@@ -456,6 +463,15 @@ class Predictor(DeployableComponent):
     @api_protocol.setter
     def api_protocol(self, api_protocol):
         self._api_protocol = api_protocol
+
+    @property
+    def environment(self):
+        """Name of the inference environment"""
+        return self._environment
+
+    @environment.setter
+    def environment(self, environment):
+        self._environment = environment
 
     def __repr__(self):
         desc = (

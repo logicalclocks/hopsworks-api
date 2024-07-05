@@ -14,7 +14,6 @@
 #   limitations under the License.
 #
 
-import importlib
 import json
 import os
 import tempfile
@@ -24,7 +23,7 @@ import uuid
 from hsml import client, constants, util
 from hsml.client.exceptions import ModelRegistryException, RestAPIError
 from hsml.core import dataset_api, model_api
-from hsml.engine import hopsworks_engine, local_engine
+from hsml.engine import local_engine
 from tqdm.auto import tqdm
 
 
@@ -33,11 +32,7 @@ class ModelEngine:
         self._model_api = model_api.ModelApi()
         self._dataset_api = dataset_api.DatasetApi()
 
-        pydoop_spec = importlib.util.find_spec("pydoop")
-        if pydoop_spec is None:
-            self._engine = local_engine.LocalEngine()
-        else:
-            self._engine = hopsworks_engine.HopsworksEngine()
+        self._engine = local_engine.LocalEngine()
 
     def _poll_model_available(self, model_instance, await_registration):
         if await_registration > 0:

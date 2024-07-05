@@ -52,7 +52,7 @@ class TestConstants:
 
     def test_model_registry_constants(self):
         # Arrange
-        hopsfs_mount_prefix = {"HOPSFS_MOUNT_PREFIX": "/home/yarnapp/hopsfs/"}
+        hopsfs_mount_prefix = {"HOPSFS_MOUNT_PREFIX": "/hopsfs/"}
 
         # Assert
         self._check_added_modified_or_removed_values(

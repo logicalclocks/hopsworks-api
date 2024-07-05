@@ -173,6 +173,7 @@ class Model:
         inference_batcher: Optional[Union[InferenceBatcher, dict]] = None,
         transformer: Optional[Union[Transformer, dict]] = None,
         api_protocol: Optional[str] = IE.API_PROTOCOL_REST,
+        environment: Optional[str] = None,
     ):
         """Deploy the model.
 
@@ -203,6 +204,7 @@ class Model:
             inference_batcher: Inference batcher configuration.
             transformer: Transformer to be deployed together with the predictor.
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC'). Defaults to 'REST'.
+            environment: The inference environment to use.
 
         # Returns
             `Deployment`: The deployment metadata object of a new or existing deployment.
@@ -223,6 +225,7 @@ class Model:
             inference_batcher=inference_batcher,
             transformer=transformer,
             api_protocol=api_protocol,
+            environment=environment,
         )
 
         return predictor.deploy()
