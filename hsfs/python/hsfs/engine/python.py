@@ -18,7 +18,6 @@ from __future__ import annotations
 import ast
 import decimal
 import json
-import logging
 import math
 import numbers
 import os
@@ -81,23 +80,18 @@ from hsfs.core import (
     training_dataset_api,
     training_dataset_job_conf,
     transformation_function_engine,
-    variable_api,
 )
-from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
+from hsfs.core.constants import HAS_AIOMYSQL, HAS_GREAT_EXPECTATIONS, HAS_SQLALCHEMY
+from hsfs.core.feature_view_engine import FeatureViewEngine
 from hsfs.core.vector_db_client import VectorDbClient
 from hsfs.decorators import uses_great_expectations
 from hsfs.feature_group import ExternalFeatureGroup, FeatureGroup
 from hsfs.training_dataset import TrainingDataset
+from hsfs.training_dataset_feature import TrainingDatasetFeature
 from hsfs.training_dataset_split import TrainingDatasetSplit
-from pyhive import hive
-from pyhive.exc import OperationalError
 from sqlalchemy import sql
-from thrift.transport.TTransport import TTransportException
 from tqdm.auto import tqdm
 
-
-# Disable pyhive INFO logging
-logging.getLogger("pyhive").setLevel(logging.WARNING)
 
 HAS_FAST = False
 try:
@@ -110,6 +104,12 @@ except ImportError:
 
 if HAS_GREAT_EXPECTATIONS:
     import great_expectations
+
+if HAS_AIOMYSQL and HAS_SQLALCHEMY:
+    from hsfs.core import util_sql
+
+if HAS_SQLALCHEMY:
+    from sqlalchemy import sql
 
 # Decimal types are currently not supported
 _INT_TYPES = [pa.uint8(), pa.uint16(), pa.int8(), pa.int16(), pa.int32()]
@@ -177,7 +177,7 @@ class Engine:
         self,
         sql_query: str,
         feature_store: feature_store.FeatureStore,
-        online_conn: Optional["sc.OnlineStorageConnector"],
+        online_conn: Optional["sc.JdbcConnector"],
         dataframe_type: str,
         read_options: Optional[Dict[str, Any]],
         schema: Optional[List["feature.Feature"]] = None,
@@ -185,10 +185,8 @@ class Engine:
         if not online_conn:
             return self._sql_offline(
                 sql_query,
-                feature_store,
                 dataframe_type,
                 schema,
-                hive_config=read_options.get("hive_config") if read_options else None,
                 arrow_flight_config=read_options.get("arrow_flight_config", {})
                 if read_options
                 else {},
@@ -218,10 +216,8 @@ class Engine:
     def _sql_offline(
         self,
         sql_query: str,
-        feature_store: feature_store.FeatureStore,
         dataframe_type: str,
         schema: Optional[List["feature.Feature"]] = None,
-        hive_config: Optional[Dict[str, Any]] = None,
         arrow_flight_config: Optional[Dict[str, Any]] = None,
     ) -> Union[pd.DataFrame, pl.DataFrame]:
         self._validate_dataframe_type(dataframe_type)
@@ -234,26 +230,9 @@ class Engine:
                 dataframe_type,
             )
         else:
-            with self._create_hive_connection(
-                feature_store, hive_config=hive_config
-            ) as hive_conn:
-                # Suppress SQLAlchemy pandas warning
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore", UserWarning)
-                    if dataframe_type.lower() == "polars":
-                        result_df = util.run_with_loading_animation(
-                            "Reading data from Hopsworks, using Hive",
-                            pl.read_database,
-                            sql_query,
-                            hive_conn,
-                        )
-                    else:
-                        result_df = util.run_with_loading_animation(
-                            "Reading data from Hopsworks, using Hive",
-                            pd.read_sql,
-                            sql_query,
-                            hive_conn,
-                        )
+            raise ValueError(
+                "Reading data with Hive is not supported when using hopsworks client version >= 4.0"
+            )
         if schema:
             result_df = Engine.cast_columns(result_df, schema)
         return self._return_dataframe_type(result_df, dataframe_type)
@@ -261,15 +240,14 @@ class Engine:
     def _jdbc(
         self,
         sql_query: str,
-        connector: "sc.OnlineStorageConnector",
+        connector: sc.JdbcConnector,
         dataframe_type: str,
         read_options: Optional[Dict[str, Any]],
-        schema: Optional[List["feature.Feature"]] = None,
+        schema: Optional[List[feature.Feature]] = None,
     ) -> Union[pd.DataFrame, pl.DataFrame]:
         self._validate_dataframe_type(dataframe_type)
-
         if self._mysql_online_fs_engine is None:
-            self._mysql_online_fs_engine = util.create_mysql_engine(
+            self._mysql_online_fs_engine = util_sql.create_mysql_engine(
                 connector,
                 (
                     isinstance(client.get_instance(), client.external.Client)
@@ -290,11 +268,11 @@ class Engine:
 
     def read(
         self,
-        storage_connector: "sc.StorageConnector",
+        storage_connector: sc.StorageConnector,
         data_format: str,
         read_options: Optional[Dict[str, Any]],
         location: Optional[str],
-        dataframe_type: str,
+        dataframe_type: Literal["polars", "pandas", "default"],
     ) -> Union[pd.DataFrame, pl.DataFrame]:
         if not data_format:
             raise FeatureStoreException("data_format is not specified")
@@ -345,7 +323,9 @@ class Engine:
                 )
             )
 
-    def _read_polars(self, data_format: str, obj: Any) -> pl.DataFrame:
+    def _read_polars(
+        self, data_format: Literal["csv", "tsv", "parquet"], obj: Any
+    ) -> pl.DataFrame:
         if data_format.lower() == "csv":
             return pl.read_csv(obj)
         elif data_format.lower() == "tsv":
@@ -520,7 +500,7 @@ class Engine:
         sql_query: str,
         feature_store: feature_store.FeatureStore,
         n: int,
-        online_conn: "sc.OnlineStorageConnector",
+        online_conn: "sc.JdbcConnector",
         read_options: Optional[Dict[str, Any]] = None,
     ) -> Union[pd.DataFrame, pl.DataFrame]:
         return self.sql(
@@ -562,8 +542,8 @@ class Engine:
             or hudi_fg_alias.left_feature_group_start_timestamp is not None
         ):
             raise FeatureStoreException(
-                "Hive engine on Python environments does not support incremental queries. "
-                + "Read feature group without timestamp to retrieve latest snapshot or switch to "
+                "Incremental queries are not supported in the python client."
+                + " Read feature group without timestamp to retrieve latest snapshot or switch to "
                 + "environment with Spark Engine."
             )
 
@@ -1134,41 +1114,6 @@ class Engine:
         )
         return td_job
 
-    def _create_hive_connection(
-        self,
-        feature_store: feature_store.FeatureStore,
-        hive_config: Optional[Dict[str, Any]] = None,
-    ) -> hive.Connection:
-        host = variable_api.VariableApi().get_loadbalancer_external_domain()
-        if host == "":
-            # If the load balancer is not configured, then fall back to use
-            # the hive server on the head node
-            host = client.get_instance().host
-
-        try:
-            return hive.Connection(
-                host=host,
-                port=9085,
-                # database needs to be set every time, 'default' doesn't work in pyhive
-                database=feature_store,
-                configuration=hive_config,
-                auth="CERTIFICATES",
-                truststore=client.get_instance()._get_jks_trust_store_path(),
-                keystore=client.get_instance()._get_jks_key_store_path(),
-                keystore_password=client.get_instance()._cert_key,
-            )
-        except (TTransportException, AttributeError) as err:
-            raise ValueError(
-                f"Cannot connect to hive server. Please check the host name '{client.get_instance()._host}' "
-                "is correct and make sure port '9085' is open on host server."
-            ) from err
-        except OperationalError as err:
-            if err.args[0].status.statusCode == 3:
-                raise RuntimeError(
-                    f"Cannot access feature store '{feature_store}'. Please check if your project has the access right."
-                    f" It is possible to request access from data owners of '{feature_store}'."
-                ) from err
-
     def _return_dataframe_type(
         self, dataframe: Union[pd.DataFrame, pl.DataFrame], dataframe_type: str
     ) -> Union[pd.DataFrame, pl.DataFrame, np.ndarray, List[List[Any]]]:
@@ -1255,6 +1200,7 @@ class Engine:
             str, transformation_function_attached.TransformationFunctionAttached
         ],
         dataset: Union[pd.DataFrame, pl.DataFrame],
+        inplace=True,
     ) -> Union[pd.DataFrame, pl.DataFrame]:
         for (
             feature_name,
@@ -1269,6 +1215,7 @@ class Engine:
                     )
                 )
             else:
+                dataset = pd.DataFrame.copy(dataset)
                 dataset[feature_name] = dataset[feature_name].map(
                     transformation_fn.transformation_fn
                 )
@@ -1811,3 +1758,54 @@ class Engine:
                 return True
         else:
             return True
+
+    @staticmethod
+    def _convert_feature_log_to_df(feature_log, cols):
+        if feature_log is None and cols:
+            return pd.DataFrame(columns=cols)
+        if not (isinstance(feature_log, (list, np.ndarray, pd.DataFrame, pl.DataFrame))):
+            raise ValueError(f"Type '{type(feature_log)}' not accepted")
+        if isinstance(feature_log, list) or isinstance(feature_log, np.ndarray):
+            if isinstance(feature_log[0], list) or isinstance(feature_log[0],
+                                                           np.ndarray):
+                provided_len = len(feature_log[0])
+            else:
+                provided_len = 1
+            assert  provided_len == len(cols), f"Expecting {len(cols)} features/labels but {provided_len} provided."
+
+            return pd.DataFrame(feature_log, columns=cols)
+        else:
+            return feature_log.copy(deep=False)
+
+    @staticmethod
+    def get_feature_logging_df(fg,
+                               features,
+                               fg_features: List[TrainingDatasetFeature],
+                               td_predictions: List[TrainingDatasetFeature],
+                               td_col_name,
+                               time_col_name,
+                               model_col_name,
+                               prediction=None,
+                               training_dataset_version=None,
+                               hsml_model=None,
+                               ) -> pd.DataFrame:
+        import uuid
+        features = Engine._convert_feature_log_to_df(features, [f.name for f in fg_features])
+        if td_predictions:
+            prediction = Engine._convert_feature_log_to_df(prediction, [f.name for f in td_predictions])
+            for f in td_predictions:
+                prediction[f.name] = Engine._cast_column_to_offline_type(prediction[f.name], f.type)
+            if not set(prediction.columns).intersection(set(features.columns)):
+                features = pd.concat([features, prediction], axis=1)
+        # need to case the column type as if it is None, type cannot be inferred.
+        features[td_col_name] = Engine._cast_column_to_offline_type(
+            pd.Series([training_dataset_version for _ in range(len(features))]), fg.get_feature(td_col_name).type
+        )
+        # _cast_column_to_offline_type cannot cast string type
+        features[model_col_name] = pd.Series([FeatureViewEngine.get_hsml_model_value(hsml_model) if hsml_model else None for _ in range(len(features))], dtype=pd.StringDtype())
+        now = datetime.now()
+        features[time_col_name] = Engine._cast_column_to_offline_type(
+            pd.Series([now for _ in range(len(features))]), fg.get_feature(time_col_name).type
+        )
+        features["log_id"] = [str(uuid.uuid4()) for _ in range(len(features))]
+        return features[[feat.name for feat in fg.features]]
