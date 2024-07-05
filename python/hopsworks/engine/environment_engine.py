@@ -16,29 +16,29 @@
 
 import time
 
-from hopsworks import client, library, environment, command
-from hopsworks.client.exceptions import RestAPIError, EnvironmentException
+from hopsworks import client, command, environment, library
+from hopsworks.client.exceptions import EnvironmentException, RestAPIError
 
 
 class EnvironmentEngine:
     def __init__(self, project_id):
         self._project_id = project_id
 
-    def await_library_command(self, library_name=None):
+    def await_library_command(self, environment_name, library_name):
         commands = [command.Command(status="ONGOING")]
         while len(commands) > 0 and not self._is_final_status(commands[0]):
             time.sleep(5)
-            library = self._poll_commands_library(library_name)
+            library = self._poll_commands_library(environment_name, library_name)
             if library is None:
                 commands = []
             else:
                 commands = library._commands
 
-    def await_environment_command(self):
+    def await_environment_command(self, environment_name):
         commands = [command.Command(status="ONGOING")]
         while len(commands) > 0 and not self._is_final_status(commands[0]):
             time.sleep(5)
-            environment = self._poll_commands_environment()
+            environment = self._poll_commands_environment(environment_name)
             if environment is None:
                 commands = []
             else:
@@ -54,7 +54,7 @@ class EnvironmentEngine:
         else:
             return False
 
-    def _poll_commands_library(self, library_name):
+    def _poll_commands_library(self, environment_name, library_name):
         _client = client.get_instance()
 
         path_params = [
@@ -62,7 +62,7 @@ class EnvironmentEngine:
             self._project_id,
             "python",
             "environments",
-            client.get_python_version(),
+            environment_name,
             "libraries",
             library_name,
         ]
@@ -85,7 +85,7 @@ class EnvironmentEngine:
             ):
                 return None
 
-    def _poll_commands_environment(self):
+    def _poll_commands_environment(self, environment_name):
         _client = client.get_instance()
 
         path_params = [
@@ -93,7 +93,7 @@ class EnvironmentEngine:
             self._project_id,
             "python",
             "environments",
-            client.get_python_version(),
+            environment_name,
         ]
 
         query_params = {"expand": "commands"}
