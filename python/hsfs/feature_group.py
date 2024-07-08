@@ -39,6 +39,7 @@ if TYPE_CHECKING:
 
 import avro.schema
 import confluent_kafka
+import hsfs.expectation_suite
 import humps
 import numpy as np
 import pandas as pd
@@ -89,7 +90,6 @@ from hsfs.core.vector_db_client import VectorDbClient
 # if great_expectations is not installed, we will default to using native Hopsworks class as return values
 from hsfs.decorators import typechecked, uses_great_expectations
 from hsfs.embedding import EmbeddingIndex
-from hsfs.expectation_suite import ExpectationSuite
 from hsfs.ge_validation_result import ValidationResult
 from hsfs.statistics import Statistics
 from hsfs.statistics_config import StatisticsConfig
@@ -117,7 +117,7 @@ class FeatureGroupBase:
         embedding_index: Optional[EmbeddingIndex] = None,
         expectation_suite: Optional[
             Union[
-                ExpectationSuite,
+                hsfs.expectation_suite.ExpectationSuite,
                 great_expectations.core.ExpectationSuite,
                 Dict[str, Any],
             ]
@@ -911,7 +911,11 @@ class FeatureGroupBase:
 
     def get_expectation_suite(
         self, ge_type: bool = HAS_GREAT_EXPECTATIONS
-    ) -> Union[ExpectationSuite, great_expectations.core.ExpectationSuite, None]:
+    ) -> Union[
+        hsfs.expectation_suite.ExpectationSuite,
+        great_expectations.core.ExpectationSuite,
+        None,
+    ]:
         """Return the expectation suite attached to the feature group if it exists.
 
         !!! example
@@ -949,12 +953,16 @@ class FeatureGroupBase:
     def save_expectation_suite(
         self,
         expectation_suite: Union[
-            ExpectationSuite, great_expectations.core.ExpectationSuite
+            hsfs.expectation_suite.ExpectationSuite,
+            great_expectations.core.ExpectationSuite,
         ],
         run_validation: bool = True,
         validation_ingestion_policy: Literal["always", "strict"] = "always",
         overwrite: bool = False,
-    ) -> Union[ExpectationSuite, great_expectations.core.ExpectationSuite]:
+    ) -> Union[
+        hsfs.expectation_suite.ExpectationSuite,
+        great_expectations.core.ExpectationSuite,
+    ]:
         """Attach an expectation suite to a feature group and saves it for future use. If an expectation
         suite is already attached, it is replaced. Note that the provided expectation suite is modified
         inplace to include expectationId fields.
@@ -985,18 +993,22 @@ class FeatureGroupBase:
         if HAS_GREAT_EXPECTATIONS and isinstance(
             expectation_suite, great_expectations.core.ExpectationSuite
         ):
-            tmp_expectation_suite = ExpectationSuite.from_ge_type(
-                ge_expectation_suite=expectation_suite,
-                run_validation=run_validation,
-                validation_ingestion_policy=validation_ingestion_policy,
-                feature_store_id=self._feature_store_id,
-                feature_group_id=self._id,
+            tmp_expectation_suite = (
+                hsfs.expectation_suite.ExpectationSuite.from_ge_type(
+                    ge_expectation_suite=expectation_suite,
+                    run_validation=run_validation,
+                    validation_ingestion_policy=validation_ingestion_policy,
+                    feature_store_id=self._feature_store_id,
+                    feature_group_id=self._id,
+                )
             )
-        elif isinstance(expectation_suite, ExpectationSuite):
+        elif isinstance(expectation_suite, hsfs.expectation_suite.ExpectationSuite):
             tmp_expectation_suite = expectation_suite.to_json_dict(decamelize=True)
             tmp_expectation_suite["feature_group_id"] = self._id
             tmp_expectation_suite["feature_store_id"] = self._feature_store_id
-            tmp_expectation_suite = ExpectationSuite(**tmp_expectation_suite)
+            tmp_expectation_suite = hsfs.expectation_suite.ExpectationSuite(
+                **tmp_expectation_suite
+            )
         else:
             raise TypeError(
                 "The provided expectation suite type `{}` is not supported. Use Great Expectation `ExpectationSuite` or HSFS' own `ExpectationSuite` object.".format(
@@ -1243,7 +1255,7 @@ class FeatureGroupBase:
         dataframe: Optional[
             Union[pd.DataFrame, TypeVar("pyspark.sql.DataFrame")]  # noqa: F821
         ] = None,
-        expectation_suite: Optional[ExpectationSuite] = None,
+        expectation_suite: Optional[hsfs.expectation_suite.ExpectationSuite] = None,
         save_report: Optional[bool] = False,
         validation_options: Optional[Dict[str, Any]] = None,
         ingestion_result: Literal[
@@ -1859,7 +1871,7 @@ class FeatureGroupBase:
     @property
     def expectation_suite(
         self,
-    ) -> Optional[ExpectationSuite]:
+    ) -> Optional[hsfs.expectation_suite.ExpectationSuite]:
         """Expectation Suite configuration object defining the settings for
         data validation of the feature group."""
         return self._expectation_suite
@@ -1868,22 +1880,24 @@ class FeatureGroupBase:
     def expectation_suite(
         self,
         expectation_suite: Union[
-            ExpectationSuite,
+            hsfs.expectation_suite.ExpectationSuite,
             great_expectations.core.ExpectationSuite,
             Dict[str, Any],
             None,
         ],
     ) -> None:
-        if isinstance(expectation_suite, ExpectationSuite):
+        if isinstance(expectation_suite, hsfs.expectation_suite.ExpectationSuite):
             tmp_expectation_suite = expectation_suite.to_json_dict(decamelize=True)
             tmp_expectation_suite["feature_group_id"] = self._id
             tmp_expectation_suite["feature_store_id"] = self._feature_store_id
-            self._expectation_suite = ExpectationSuite(**tmp_expectation_suite)
+            self._expectation_suite = hsfs.expectation_suite.ExpectationSuite(
+                **tmp_expectation_suite
+            )
         elif HAS_GREAT_EXPECTATIONS and isinstance(
             expectation_suite,
             great_expectations.core.expectation_suite.ExpectationSuite,
         ):
-            self._expectation_suite = ExpectationSuite(
+            self._expectation_suite = hsfs.expectation_suite.ExpectationSuite(
                 **expectation_suite.to_json_dict(),
                 feature_store_id=self._feature_store_id,
                 feature_group_id=self._id,
@@ -1892,7 +1906,9 @@ class FeatureGroupBase:
             tmp_expectation_suite = expectation_suite.copy()
             tmp_expectation_suite["feature_store_id"] = self._feature_store_id
             tmp_expectation_suite["feature_group_id"] = self._id
-            self._expectation_suite = ExpectationSuite(**tmp_expectation_suite)
+            self._expectation_suite = hsfs.expectation_suite.ExpectationSuite(
+                **tmp_expectation_suite
+            )
         elif expectation_suite is None:
             self._expectation_suite = None
         else:
@@ -2077,7 +2093,7 @@ class FeatureGroup(FeatureGroupBase):
         expectation_suite: Optional[
             Union[
                 great_expectations.core.ExpectationSuite,
-                ExpectationSuite,
+                hsfs.expectation_suite.ExpectationSuite,
                 Dict[str, Any],
             ]
         ] = None,
@@ -3493,7 +3509,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         event_time: Optional[str] = None,
         expectation_suite: Optional[
             Union[
-                ExpectationSuite,
+                hsfs.expectation_suite.ExpectationSuite,
                 great_expectations.core.ExpectationSuite,
                 Dict[str, Any],
             ]
@@ -4033,7 +4049,10 @@ class SpineGroup(FeatureGroupBase):
         statistics_config: Optional[StatisticsConfig] = None,
         event_time: Optional[str] = None,
         expectation_suite: Optional[
-            Union[ExpectationSuite, great_expectations.core.ExpectationSuite]
+            Union[
+                hsfs.expectation_suite.ExpectationSuite,
+                great_expectations.core.ExpectationSuite,
+            ]
         ] = None,
         online_enabled: bool = False,
         href: Optional[str] = None,
