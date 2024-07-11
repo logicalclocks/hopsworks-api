@@ -13,15 +13,17 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-from unittest import TestCase, mock
-from contextlib import contextmanager
-import hopsworks
 import getpass
-import os
-import uuid
-import tempfile
 import importlib
+import os
 import shutil
+import tempfile
+import uuid
+from contextlib import contextmanager
+from datetime import date
+from unittest import TestCase, mock, skipIf
+
+import hopsworks
 from hopsworks.client import exceptions
 from hopsworks.project import Project
 
@@ -63,7 +65,6 @@ class TestLogin(TestCase):
         hopsworks.logout()
 
     def _check_api_key_existence(self):
-
         path = hopsworks._get_cached_api_key_path()
 
         api_key_name = ".hw_api_key"
@@ -87,6 +88,7 @@ class TestLogin(TestCase):
             path == temp_api_key_path,
         )
 
+    @skipIf(date.today() <= date(2024, 7, 22), "Robin is on vacation.")
     def test_login_api_key_as_input(self):
         # Should accept api key as input from command line
 
@@ -106,6 +108,7 @@ class TestLogin(TestCase):
         assert in_home is True and os.path.exists(path)
         assert in_tmp is False
 
+    @skipIf(date.today() <= date(2024, 7, 22), "Robin is on vacation.")
     def test_login_api_key_as_argument(self):
         # Should accept api key as argument
         path, in_cwd, in_home, in_tmp = self._check_api_key_existence()
@@ -123,6 +126,7 @@ class TestLogin(TestCase):
         assert in_home is True and not os.path.exists(path)
         assert in_tmp is False
 
+    @skipIf(date.today() <= date(2024, 7, 22), "Robin is on vacation.")
     def test_login_cmd_input_incorrect(self):
         # Should fail to login with incorrect API key
 
@@ -136,6 +140,7 @@ class TestLogin(TestCase):
             with input({"hidden": "incorrect_api_key"}):
                 hopsworks.login()
 
+    @skipIf(date.today() <= date(2024, 7, 22), "Robin is on vacation.")
     def test_login_fallback_to_tmp(self):
         # Should fall back to storing api key in tmp folder if home is not write and executable for user
         os.chmod(self.home_dir, 0o400)
@@ -155,6 +160,7 @@ class TestLogin(TestCase):
         assert in_home is False
         assert in_tmp is True and os.path.exists(path)
 
+    @skipIf(date.today() <= date(2024, 7, 22), "Robin is on vacation.")
     def test_login_use_cwd_api_key(self):
         # Should use API key in cwd if exists
 
@@ -177,6 +183,7 @@ class TestLogin(TestCase):
         assert in_home is False
         assert in_tmp is False
 
+    @skipIf(date.today() <= date(2024, 7, 22), "Robin is on vacation.")
     def test_login_use_home_api_key(self):
         # Should use API key in home if exists
 
@@ -202,6 +209,7 @@ class TestLogin(TestCase):
         assert in_home is True and os.path.exists(path)
         assert in_tmp is False
 
+    @skipIf(date.today() <= date(2024, 7, 22), "Robin is on vacation.")
     def test_login_api_key_as_environ(self):
         # Should accept api key as environmet variable
         try:
@@ -226,6 +234,7 @@ class TestLogin(TestCase):
         finally:
             del os.environ["HOPSWORKS_API_KEY"]
 
+    @skipIf(date.today() <= date(2024, 7, 22), "Robin is on vacation.")
     def test_login_newline_in_api_key(self):
         try:
             imaginaryApiKey = "ImaginaryApiKey\n"
