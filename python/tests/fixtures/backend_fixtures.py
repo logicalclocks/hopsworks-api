@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 
+import copy
 import json
 import os
 
@@ -80,4 +81,4 @@ for fixture in FIXTURES:
 
 @pytest.fixture
 def backend_fixtures():
-    return backend_fixtures_json
+    return copy.deepcopy(backend_fixtures_json)
