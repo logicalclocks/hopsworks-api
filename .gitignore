@@ -51,6 +51,8 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 .ruff_cache/
+bigquery.json
+metastore_db/
 
 # Translations
 *.mo
@@ -70,6 +72,9 @@ instance/
 
 # Sphinx documentation
 docs/_build/
+
+# Mike Javadoc
+docs/javadoc
 
 # PyBuilder
 target/
@@ -128,3 +133,9 @@ target/
 
 # mkdocs intemediate files
 docs/generated
+
+docs/CONTRIBUTING.md
+docs/index.md
+
+# Test artifacts
+keyFile.json
