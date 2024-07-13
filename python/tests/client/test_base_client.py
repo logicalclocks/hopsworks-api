@@ -20,6 +20,7 @@ import pytest
 import requests
 from hsfs.client.base import Client
 from hsfs.client.exceptions import RestAPIError
+
 from tests.util import changes_environ
 
 
