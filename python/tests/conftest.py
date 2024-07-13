@@ -14,7 +14,20 @@
 #   limitations under the License.
 #
 
+import os
+import sys
+
+
 pytest_plugins = [
     "tests.fixtures.backend_fixtures",
     "tests.fixtures.model_fixtures",
+    "tests.fixtures.dataframe_fixtures",
 ]
+
+os.environ["PYSPARK_PYTHON"] = sys.executable
+os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
+
+# set hadoop home if on windows
+if os.name == "nt":
+    current_path = os.path.dirname(os.path.realpath(__file__))
+    os.environ["HADOOP_HOME"] = current_path + "/data/hadoop/"
