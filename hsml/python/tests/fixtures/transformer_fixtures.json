@@ -1,0 +1,63 @@
+{
+  "get_deployment_with_transformer": {
+    "response": {
+      "name": "test",
+      "transformer": "transformer_file_name",
+      "transformer_resources": {
+        "requested_transformer_instances": 1,
+        "requests": {
+          "cores": 0.2,
+          "memory": 16,
+          "gpus": 1
+        },
+        "limits": {
+          "cores": 0.3,
+          "memory": 17,
+          "gpus": 2
+        }
+      }
+    }
+  },
+  "get_deployment_without_transformer": {
+    "response": {
+      "name": "test",
+      "predictor": "predictor_file_name",
+      "predictor_resources": {
+        "num_instances": 1,
+        "requests": {
+          "cores": 0.2,
+          "memory": 16,
+          "gpus": 1
+        },
+        "limits": {
+          "cores": 0.3,
+          "memory": 17,
+          "gpus": 2
+        }
+      }
+    }
+  },
+  "get_transformer_with_resources": {
+    "response": {
+      "script_file": "transformer_file_name",
+      "resources": {
+        "num_instances": 1,
+        "requests": {
+          "cores": 0.2,
+          "memory": 16,
+          "gpus": 1
+        },
+        "limits": {
+          "cores": 0.3,
+          "memory": 17,
+          "gpus": 2
+        }
+      }
+    }
+  },
+  "get_transformer_without_resources": {
+    "response": {
+      "script_file": "transformer_file_name"
+    }
+  }
+}
