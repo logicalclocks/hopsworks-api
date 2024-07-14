@@ -94,16 +94,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 exclude = ["tests*"]
-include = [
-    "../README.md",
-    "../LICENSE",
-    "hopsworks",
-    "hopsworks.*",
-    "hsfs",
-    "hsfs.*",
-    "hsml",
-    "hsml.*",
-]
+include = ["../README.md", "../LICENSE", "hopsworks*", "hsfs*", "hsml*"]
 
 [tool.setuptools.dynamic]
 version = { attr = "hopsworks.version.__version__" }
