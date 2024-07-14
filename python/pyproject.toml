@@ -4,7 +4,14 @@ dynamic = ["version"]
 requires-python = ">=3.8,<3.13"
 readme = "README.md"
 description = "Hopsworks Python SDK to interact with Hopsworks Platform, Feature Store, Model Registry and Model Serving"
-keywords = ["Hopsworks", "Feature Store", "Spark", "Machine Learning", "MLOps", "DataOps"]
+keywords = [
+    "Hopsworks",
+    "Feature Store",
+    "Spark",
+    "Machine Learning",
+    "MLOps",
+    "DataOps",
+]
 
 authors = [{ name = "Hopsworks AB", email = "robin@hopsworks.ai" }]
 license = { text = "Apache-2.0" }
@@ -34,7 +41,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = [ "ruff", "pytest"]
+dev = ["ruff", "pytest", "great_expectations"]
 
 [build-system]
 requires = ["setuptools", "wheel"]
