@@ -18,6 +18,10 @@
 DEFAULT = dict()  # used as default parameter for a class object
 
 
+class CONNECTION:
+    SAAS_HOSTNAME = "c.app.hopsworks.ai"
+
+
 class MODEL:
     FRAMEWORK_TENSORFLOW = "TENSORFLOW"
     FRAMEWORK_TORCH = "TORCH"

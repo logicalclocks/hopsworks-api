@@ -22,8 +22,6 @@ from hsml.decorators import connected, not_connected
 from requests.exceptions import ConnectionError
 
 
-CONNECTION_SAAS_HOSTNAME = "c.app.hopsworks.ai"
-
 HOPSWORKS_PORT_DEFAULT = 443
 HOSTNAME_VERIFICATION_DEFAULT = True
 
