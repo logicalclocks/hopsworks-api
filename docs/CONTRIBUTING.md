@@ -12,7 +12,7 @@
     pip install -e ".[dev]"
     ```
 
-- Install [pre-commit](https://pre-commit.com/) and then activate its hooks. pre-commit is a framework for managing and maintaining multi-language pre-commit hooks. The Feature Store uses pre-commit to ensure code-style and code formatting through [ruff](https://docs.astral.sh/ruff/). Run the following commands from the `python` directory:
+- Install [pre-commit](https://pre-commit.com/) and then activate its hooks. pre-commit is a framework for managing and maintaining multi-language pre-commit hooks. The library uses pre-commit to ensure code-style and code formatting through [ruff](https://docs.astral.sh/ruff/). Run the following commands from the `python` directory:
 
   ```bash
   cd python
