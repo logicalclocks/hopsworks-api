@@ -68,6 +68,7 @@ python = [
 ]
 great-expectations = ["great_expectations==0.18.12"]
 dev-no-opt = [
+    "hopsworks[python]",
     "pytest==7.4.4",
     "pytest-mock==3.12.0",
     "ruff",
@@ -76,6 +77,7 @@ dev-no-opt = [
     "typeguard==4.2.1",
 ]
 dev-pandas1 = [
+    "hopsworks[python]",
     "pytest==7.4.4",
     "pytest-mock==3.12.0",
     "ruff",
@@ -84,7 +86,7 @@ dev-pandas1 = [
     "pandas<=1.5.3",
     "sqlalchemy<=1.4.48",
 ]
-dev = ["hsfs[dev-no-opt]", "hsfs[great-expectations]"]
+dev = ["hopsworks[dev-no-opt,great-expectations]"]
 
 [build-system]
 requires = ["setuptools", "wheel"]
