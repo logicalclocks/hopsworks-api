@@ -34,9 +34,36 @@ nav:
       - KafkaSchema: generated/api/kafka_schema.md
       - Secrets: generated/api/secrets.md
       - OpenSearch: generated/api/opensearch.md
+    - Feature Store API Reference:
+      - Connection: generated/api/connection_api.md
+      - ExpectationSuite: generated/api/expectation_suite_api.md
+      - FeatureStore: generated/api/feature_store_api.md
+      - FeatureGroup: generated/api/feature_group_api.md
+      - ExternalFeatureGroup: generated/api/external_feature_group_api.md
+      - SpineGroup: generated/api/spine_group_api.md
+      - FeatureView: generated/api/feature_view_api.md
+      - TrainingDataset: generated/api/training_dataset_api.md
+      - Storage Connector: generated/api/storage_connector_api.md
+      - Feature: generated/api/feature_api.md
+      - Query: generated/api/query_api.md
+      - Transformation Functions: generated/api/transformation_functions_api.md
+      - ValidationReport: generated/api/validation_report_api.md
+      - Job: generated/api/job.md
+      - Provenance Links: generated/api/links.md
+      - Statistics:
+          - Statistics: generated/api/statistics_api.md
+          - Split Statistics: generated/api/split_statistics_api.md
+          - Feature descriptive statistics: generated/api/feature_descriptive_statistics_api.md
+      - Feature Monitoring:
+          - Configuration: generated/api/feature_monitoring_config_api.md
+          - Result: generated/api/feature_monitoring_result_api.md
+          - Window: generated/api/feature_monitoring_window_config_api.md
+      - Embedding:
+          - EmbeddingIndex: generated/api/embedding_index_api.md
+          - EmbeddingFeature: generated/api/embedding_feature_api.md
+          - SimilarityFunctionType: generated/api/similarity_function_type_api.md
     # Added to allow navigation using the side drawer
     - Hopsworks API: https://docs.hopsworks.ai/hopsworks-api/latest/
-    - MLOps API: https://docs.hopsworks.ai/machine-learning-api/latest/
     - Feature Store JavaDoc: https://docs.hopsworks.ai/feature-store-javadoc/latest/
     - Contributing: CONTRIBUTING.md
   - Community ↗: https://community.hopsworks.ai/
