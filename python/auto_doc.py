@@ -19,6 +19,7 @@ import shutil
 
 import keras_autodoc
 
+
 JSON_METHODS = [
     "extract_fields_from_json",
     "from_json",
