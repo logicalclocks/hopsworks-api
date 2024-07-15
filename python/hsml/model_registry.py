@@ -19,10 +19,10 @@ import warnings
 import humps
 from hsml import util
 from hsml.core import model_api
-from hsml.python import signature as python_signature  # noqa: F401
 from hsml.sklearn import signature as sklearn_signature  # noqa: F401
 from hsml.tensorflow import signature as tensorflow_signature  # noqa: F401
 from hsml.torch import signature as torch_signature  # noqa: F401
+from python.hsml.python import signature as python_signature  # noqa: F401
 
 
 class ModelRegistry:
