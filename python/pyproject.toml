@@ -86,7 +86,9 @@ dev-pandas1 = [
     "pandas<=1.5.3",
     "sqlalchemy<=1.4.48",
 ]
+dev = ["hopsworks[dev-no-opt,great-expectations]"]
 dev-docs = [
+    "hopsworks[dev]",
     "mkdocs==1.5.3",
     "mkdocs-material==9.5.17",
     "mike==2.0.0",
@@ -99,7 +101,6 @@ dev-docs = [
     "mkdocs-macros-plugin==1.0.4",
     "mkdocs-minify-plugin>=0.2.0",
 ]
-dev = ["hopsworks[dev-no-opt,great-expectations,dev-docs]"]
 
 [build-system]
 requires = ["setuptools", "wheel"]
