@@ -682,7 +682,7 @@ PAGES = {
     },
 }
 
-hw_dir = pathlib.Path(__file__).resolve().parents[0]
+hw_dir = pathlib.Path(__file__).resolve().parents[1]
 if "GITHUB_SHA" in os.environ:
     commit_sha = os.environ["GITHUB_SHA"]
     project_url = (
