@@ -99,7 +99,7 @@ class TestHopsworksUdf:
         ]
 
     def test_extract_source_code(self):
-        from test_helpers.transformation_test_helper import test_function
+        from .test_helpers.transformation_test_helper import test_function
 
         assert """import pandas as pd
 from hsfs.transformation_statistics import TransformationStatistics
@@ -107,7 +107,7 @@ def test_function():
     return True""" == HopsworksUdf._extract_source_code(test_function).strip()
 
     def test_extract_function_arguments_no_arguments(self):
-        from test_helpers.transformation_test_helper import test_function
+        from .test_helpers.transformation_test_helper import test_function
 
         with pytest.raises(FeatureStoreException) as exception:
             HopsworksUdf._extract_function_arguments(test_function)
@@ -118,7 +118,7 @@ def test_function():
         )
 
     def test_extract_function_arguments_one_argument(self):
-        from test_helpers.transformation_test_helper import test_function_one_argument
+        from .test_helpers.transformation_test_helper import test_function_one_argument
 
         function_argument = HopsworksUdf._extract_function_arguments(
             test_function_one_argument
@@ -129,7 +129,7 @@ def test_function():
         ]
 
     def test_extract_function_arguments_one_argument_with_statistics(self):
-        from test_helpers.transformation_test_helper import (
+        from .test_helpers.transformation_test_helper import (
             test_function_one_argument_with_statistics,
         )
 
@@ -142,7 +142,7 @@ def test_function():
         ]
 
     def test_extract_function_arguments_one_argument_with_typehint(self):
-        from test_helpers.transformation_test_helper import (
+        from .test_helpers.transformation_test_helper import (
             test_function_one_argument_with_typehints,
         )
 
@@ -157,7 +157,7 @@ def test_function():
     def test_extract_function_arguments_one_argument_with_statistics_and_typehints(
         self,
     ):
-        from test_helpers.transformation_test_helper import (
+        from .test_helpers.transformation_test_helper import (
             test_function_one_argument_with_statistics_and_typehints,
         )
 
@@ -170,7 +170,7 @@ def test_function():
         ]
 
     def test_extract_function_arguments_multiple_argument(self):
-        from test_helpers.transformation_test_helper import (
+        from .test_helpers.transformation_test_helper import (
             test_function_multiple_argument,
         )
 
@@ -184,7 +184,7 @@ def test_function():
         ]
 
     def test_extract_function_arguments_multiple_argument_with_statistics(self):
-        from test_helpers.transformation_test_helper import (
+        from .test_helpers.transformation_test_helper import (
             test_function_multiple_argument_with_statistics,
         )
 
@@ -199,7 +199,7 @@ def test_function():
         ]
 
     def test_extract_function_arguments_multiple_argument_with_typehints(self):
-        from test_helpers.transformation_test_helper import (
+        from .test_helpers.transformation_test_helper import (
             test_function_multiple_argument_with_typehints,
         )
 
@@ -215,7 +215,7 @@ def test_function():
     def test_extract_function_arguments_multiple_argument_with_statistics_and_typehints(
         self,
     ):
-        from test_helpers.transformation_test_helper import (
+        from .test_helpers.transformation_test_helper import (
             test_function_multiple_argument_with_statistics_and_typehints,
         )
 
@@ -231,7 +231,7 @@ def test_function():
     def test_extract_function_arguments_multiple_argument_with_mixed_statistics_and_typehints(
         self,
     ):
-        from test_helpers.transformation_test_helper import (
+        from .test_helpers.transformation_test_helper import (
             test_function_multiple_argument_with_mixed_statistics_and_typehints,
         )
 
@@ -248,7 +248,7 @@ def test_function():
     def test_extract_function_arguments_multiple_argument_all_parameter_with_spaces(
         self,
     ):
-        from test_helpers.transformation_test_helper import (
+        from .test_helpers.transformation_test_helper import (
             test_function_multiple_argument_all_parameter_with_spaces,
         )
 
@@ -262,7 +262,7 @@ def test_function():
         ]
 
     def test_extract_function_arguments_multiple_argument_all_parameter_multiline(self):
-        from test_helpers.transformation_test_helper import (
+        from .test_helpers.transformation_test_helper import (
             test_function_multiple_argument_all_parameter_multiline,
         )
 
@@ -279,7 +279,7 @@ def test_function():
     def test_extract_function_arguments_multiple_argumen_all_parameter_multiline_with_comments(
         self,
     ):
-        from test_helpers.transformation_test_helper import (
+        from .test_helpers.transformation_test_helper import (
             test_function_multiple_argument_all_parameter_multiline_with_comments,
         )
 
@@ -294,7 +294,7 @@ def test_function():
         ]
 
     def test_extract_function_arguments_statistics_invalid(self):
-        from test_helpers.transformation_test_helper import (
+        from .test_helpers.transformation_test_helper import (
             test_function_statistics_invalid,
         )
 
@@ -307,7 +307,7 @@ def test_function():
         )
 
     def test_format_source_code(self):
-        from test_helpers.transformation_test_helper import (
+        from .test_helpers.transformation_test_helper import (
             test_function_multiple_argument_all_parameter_multiline_with_comments,
         )
 
