@@ -14,7 +14,8 @@
 #   limitations under the License.
 #
 
-from hopsworks.client import external, hopsworks
+from hopsworks_common.client import external, hopsworks
+
 
 
 _client = None

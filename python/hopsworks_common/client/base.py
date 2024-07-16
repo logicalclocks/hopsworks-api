@@ -20,8 +20,8 @@ from abc import ABC, abstractmethod
 import furl
 import requests
 import urllib3
-from hopsworks.client import auth, exceptions
-from hopsworks.decorators import connected
+from hopsworks_common.client import auth, exceptions
+from hopsworks_common.decorators import connected
 
 
 urllib3.disable_warnings(urllib3.exceptions.SecurityWarning)

@@ -18,7 +18,7 @@ import base64
 import os
 
 import requests
-from hopsworks.client import auth, base, exceptions
+from hopsworks_common.client import auth, base, exceptions
 
 
 class Client(base.Client):
