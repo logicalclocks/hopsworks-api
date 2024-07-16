@@ -128,3 +128,6 @@ target/
 
 # mkdocs intemediate files
 docs/generated
+
+docs/CONTRIBUTING.md
+docs/index.md
