@@ -106,7 +106,7 @@ jobs:
       - name: Run Pytest suite
         run: pytest python/tests
 
-  unit_tests_pandas:
+  unit_tests_pandas1:
     name: Unit Tests (Pandas 1.x)
     needs: lint_stylecheck
     runs-on: ubuntu-latest
