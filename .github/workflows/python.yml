@@ -161,7 +161,7 @@ jobs:
         run: pytest python/tests
 
   unit_tests_typechecked:
-    name: Typechecked Unit Tests (Ubuntu)
+    name: Unit Tests (Typechecked)
     needs: lint_stylecheck
     runs-on: ubuntu-latest
 
