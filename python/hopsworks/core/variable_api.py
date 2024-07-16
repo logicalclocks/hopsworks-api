@@ -56,18 +56,18 @@ class VariableApi:
         """
 
         _client = client.get_instance()
-        path_params = [
-            "variables",
-            "versions",
-        ]
 
+        path_params = ["variables", "versions"]
         resp = _client._send_request("GET", path_params)
+
         for entry in resp:
             if entry["software"] == software:
                 return entry["version"]
         return None
 
-    def parse_major_and_minor(self, backend_version: str) -> Tuple[Optional[str], Optional[str]]:
+    def parse_major_and_minor(
+        self, backend_version: str
+    ) -> Tuple[Optional[str], Optional[str]]:
         """Extract major and minor version from full version.
 
         # Arguments
@@ -91,15 +91,7 @@ class VariableApi:
         # Raises
             `RestAPIError`: If unable to obtain the flag's value.
         """
-
-        _client = client.get_instance()
-        path_params = [
-            "variables",
-            "enable_flyingduck",
-        ]
-
-        resp = _client._send_request("GET", path_params)
-        return resp["successMessage"] == "true"
+        return self.get_variable("enable_flyingduck") == "true"
 
     def get_loadbalancer_external_domain(self) -> str:
         """Get domain of external loadbalancer.
@@ -107,16 +99,8 @@ class VariableApi:
         # Returns
             `str`: The domain of external loadbalancer, if it is set up, otherwise empty string `""`.
         """
-
-        _client = client.get_instance()
-        path_params = [
-            "variables",
-            "loadbalancer_external_domain",
-        ]
-
         try:
-            resp = _client._send_request("GET", path_params)
-            return resp["successMessage"]
+            return self.get_variable("loadbalancer_external_domain")
         except RestAPIError:
             return ""
 
@@ -126,15 +110,7 @@ class VariableApi:
         # Returns
             `str`: The domain of service discovery server, if it is set up, otherwise empty string `""`.
         """
-
-        _client = client.get_instance()
-        path_params = [
-            "variables",
-            "service_discovery_domain",
-        ]
-
         try:
-            resp = _client._send_request("GET", path_params)
-            return resp["successMessage"]
+            return self.get_variable("service_discovery_domain")
         except RestAPIError:
             return ""
