@@ -17,10 +17,12 @@
 from hopsworks_common.client.auth import (
     ApiKeyAuth,
     BearerAuth,
+    OnlineStoreKeyAuth,
 )
 
 
 __all__ = [
     ApiKeyAuth,
     BearerAuth,
+    OnlineStoreKeyAuth,
 ]

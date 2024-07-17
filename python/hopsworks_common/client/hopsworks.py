@@ -73,15 +73,9 @@ class Client(base.Client):
 
         credentials = self._get_credentials(self._project_id)
 
-        self._write_pem_file(
-            credentials["caChain"], self._get_ca_chain_path(self._project_name)
-        )
-        self._write_pem_file(
-            credentials["clientCert"], self._get_client_cert_path(self._project_name)
-        )
-        self._write_pem_file(
-            credentials["clientKey"], self._get_client_key_path(self._project_name)
-        )
+        self._write_pem_file(credentials["caChain"], self._get_ca_chain_path())
+        self._write_pem_file(credentials["clientCert"], self._get_client_cert_path())
+        self._write_pem_file(credentials["clientKey"], self._get_client_key_path())
 
     def _get_hopsworks_rest_endpoint(self):
         """Get the hopsworks REST endpoint for making requests to the REST API."""
@@ -91,16 +85,22 @@ class Client(base.Client):
         """Convert truststore from jks to pem and return the location"""
         ca_chain_path = Path(self.PEM_CA_CHAIN)
         if not ca_chain_path.exists():
-            self._write_ca_chain(ca_chain_path)
+            ks = jks.KeyStore.load(
+                self._get_jks_key_store_path(), self._cert_key, try_decrypt_keys=True
+            )
+            ts = jks.KeyStore.load(
+                self._get_jks_trust_store_path(), self._cert_key, try_decrypt_keys=True
+            )
+            self._write_ca_chain(ks, ts, ca_chain_path)
         return str(ca_chain_path)
 
-    def _get_ca_chain_path(self, project_name) -> str:
+    def _get_ca_chain_path(self, project_name=None) -> str:
         return os.path.join("/tmp", "ca_chain.pem")
 
-    def _get_client_cert_path(self, project_name) -> str:
+    def _get_client_cert_path(self, project_name=None) -> str:
         return os.path.join("/tmp", "client_cert.pem")
 
-    def _get_client_key_path(self, project_name) -> str:
+    def _get_client_key_path(self, project_name=None) -> str:
         return os.path.join("/tmp", "client_key.pem")
 
     def _write_ca_chain(self, ca_chain_path):
@@ -198,9 +198,8 @@ class Client(base.Client):
             pass
 
         hops_user = self._project_user()
-        hops_user_split = hops_user.split(
-            "__"
-        )  # project users have username project__user
+        # project users have username project__user:
+        hops_user_split = hops_user.split("__")
         project = hops_user_split[0]
         return project
 

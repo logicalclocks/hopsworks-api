@@ -16,8 +16,10 @@
 
 from hopsworks_common.client.exceptions import (
     DatasetException,
+    DataValidationException,
     EnvironmentException,
     ExternalClientError,
+    FeatureStoreException,
     GitException,
     JobException,
     JobExecutionException,
@@ -26,13 +28,16 @@ from hopsworks_common.client.exceptions import (
     ProjectException,
     RestAPIError,
     UnknownSecretStorageError,
+    VectorDatabaseException,
 )
 
 
 __all__ = [
     DatasetException,
+    DataValidationException,
     EnvironmentException,
     ExternalClientError,
+    FeatureStoreException,
     GitException,
     JobException,
     JobExecutionException,
@@ -41,4 +46,5 @@ __all__ = [
     ProjectException,
     RestAPIError,
     UnknownSecretStorageError,
+    VectorDatabaseException,
 ]

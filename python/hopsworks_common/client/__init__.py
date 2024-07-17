@@ -14,24 +14,30 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.client import external, hopsworks
+from __future__ import annotations
+
+from typing import Literal, Optional, Union
+
+from hsfs.client import external, hopsworks
 
 
-
-_client = None
+_client: Union[hopsworks.Client, external.Client, None] = None
 
 
 def init(
-    client_type,
-    host=None,
-    port=None,
-    project=None,
-    hostname_verification=None,
-    trust_store_path=None,
-    cert_folder=None,
-    api_key_file=None,
-    api_key_value=None,
-):
+    client_type: Union[Literal["hopsworks"], Literal["external"]],
+    host: Optional[str] = None,
+    port: Optional[int] = None,
+    project: Optional[str] = None,
+    engine: Optional[str] = None,
+    region_name: Optional[str] = None,
+    secrets_store=None,
+    hostname_verification: Optional[bool] = None,
+    trust_store_path: Optional[str] = None,
+    cert_folder: Optional[str] = None,
+    api_key_file: Optional[str] = None,
+    api_key_value: Optional[str] = None,
+) -> None:
     global _client
     if not _client:
         if client_type == "hopsworks":
@@ -41,6 +47,9 @@ def init(
                 host,
                 port,
                 project,
+                engine,
+                region_name,
+                secrets_store,
                 hostname_verification,
                 trust_store_path,
                 cert_folder,
@@ -49,14 +58,14 @@ def init(
             )
 
 
-def get_instance():
+def get_instance() -> Union[hopsworks.Client, external.Client]:
     global _client
     if _client:
         return _client
     raise Exception("Couldn't find client. Try reconnecting to Hopsworks.")
 
 
-def stop():
+def stop() -> None:
     global _client
     if _client:
         _client._close()

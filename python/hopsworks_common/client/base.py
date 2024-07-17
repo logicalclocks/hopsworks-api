@@ -14,8 +14,13 @@
 #   limitations under the License.
 #
 
+from __future__ import annotations
+
+import base64
 import os
-from abc import ABC, abstractmethod
+import textwrap
+import time
+from pathlib import Path
 
 import furl
 import requests
@@ -24,20 +29,25 @@ from hopsworks_common.client import auth, exceptions
 from hopsworks_common.decorators import connected
 
 
+try:
+    import jks
+except ImportError:
+    pass
+
+
 urllib3.disable_warnings(urllib3.exceptions.SecurityWarning)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
-class Client(ABC):
+class Client:
     TOKEN_FILE = "token.jwt"
+    TOKEN_EXPIRED_RETRY_INTERVAL = 0.6
+    TOKEN_EXPIRED_MAX_RETRIES = 10
+
     APIKEY_FILE = "api.key"
     REST_ENDPOINT = "REST_ENDPOINT"
+    DEFAULT_DATABRICKS_ROOT_VIRTUALENV_ENV = "DEFAULT_DATABRICKS_ROOT_VIRTUALENV_ENV"
     HOPSWORKS_PUBLIC_HOST = "HOPSWORKS_PUBLIC_HOST"
-
-    @abstractmethod
-    def __init__(self):
-        """To be implemented by clients."""
-        pass
 
     def _get_verify(self, verify, trust_store_path):
         """Get verification method for sending HTTP requests to Hopsworks.
@@ -163,11 +173,9 @@ class Client(ABC):
 
         if response.status_code == 401 and self.REST_ENDPOINT in os.environ:
             # refresh token and retry request - only on hopsworks
-            self._auth = auth.BearerAuth(self._read_jwt())
-            # Update request with the new token
-            request.auth = self._auth
-            prepped = self._session.prepare_request(request)
-            response = self._session.send(prepped, verify=self._verify, stream=stream)
+            response = self._retry_token_expired(
+                request, stream, self.TOKEN_EXPIRED_RETRY_INTERVAL, 1
+            )
 
         if response.status_code // 100 != 2:
             raise exceptions.RestAPIError(url, response)
@@ -180,6 +188,106 @@ class Client(ABC):
                 return None
             return response.json()
 
+    def _retry_token_expired(self, request, stream, wait, retries):
+        """Refresh the JWT token and retry the request. Only on Hopsworks.
+        As the token might take a while to get refreshed. Keep trying
+        """
+        # Sleep the waited time before re-issuing the request
+        time.sleep(wait)
+
+        self._auth = auth.BearerAuth(self._read_jwt())
+        # Update request with the new token
+        request.auth = self._auth
+        prepped = self._session.prepare_request(request)
+        response = self._session.send(prepped, verify=self._verify, stream=stream)
+
+        if response.status_code == 401 and retries < self.TOKEN_EXPIRED_MAX_RETRIES:
+            # Try again.
+            return self._retry_token_expired(request, stream, wait * 2, retries + 1)
+        else:
+            # If the number of retries have expired, the _send_request method
+            # will throw an exception to the user as part of the status_code validation.
+            return response
+
     def _close(self):
         """Closes a client. Can be implemented for clean up purposes, not mandatory."""
         self._connected = False
+
+    def _write_pem(
+        self, keystore_path, keystore_pw, truststore_path, truststore_pw, prefix
+    ):
+        ks = jks.KeyStore.load(Path(keystore_path), keystore_pw, try_decrypt_keys=True)
+        ts = jks.KeyStore.load(
+            Path(truststore_path), truststore_pw, try_decrypt_keys=True
+        )
+
+        ca_chain_path = os.path.join("/tmp", f"{prefix}_ca_chain.pem")
+        self._write_ca_chain(ks, ts, ca_chain_path)
+
+        client_cert_path = os.path.join("/tmp", f"{prefix}_client_cert.pem")
+        self._write_client_cert(ks, client_cert_path)
+
+        client_key_path = os.path.join("/tmp", f"{prefix}_client_key.pem")
+        self._write_client_key(ks, client_key_path)
+
+        return ca_chain_path, client_cert_path, client_key_path
+
+    def _write_ca_chain(self, ks, ts, ca_chain_path):
+        """
+        Converts JKS keystore and truststore file into ca chain PEM to be compatible with Python libraries
+        """
+        ca_chain = ""
+        for store in [ks, ts]:
+            for _, c in store.certs.items():
+                ca_chain = ca_chain + self._bytes_to_pem_str(c.cert, "CERTIFICATE")
+
+        with Path(ca_chain_path).open("w") as f:
+            f.write(ca_chain)
+
+    def _write_client_cert(self, ks, client_cert_path):
+        """
+        Converts JKS keystore file into client cert PEM to be compatible with Python libraries
+        """
+        client_cert = ""
+        for _, pk in ks.private_keys.items():
+            for c in pk.cert_chain:
+                client_cert = client_cert + self._bytes_to_pem_str(c[1], "CERTIFICATE")
+
+        with Path(client_cert_path).open("w") as f:
+            f.write(client_cert)
+
+    def _write_client_key(self, ks, client_key_path):
+        """
+        Converts JKS keystore file into client key PEM to be compatible with Python libraries
+        """
+        client_key = ""
+        for _, pk in ks.private_keys.items():
+            client_key = client_key + self._bytes_to_pem_str(
+                pk.pkey_pkcs8, "PRIVATE KEY"
+            )
+
+        with Path(client_key_path).open("w") as f:
+            f.write(client_key)
+
+    def _bytes_to_pem_str(self, der_bytes, pem_type):
+        """
+        Utility function for creating PEM files
+
+        Args:
+            der_bytes: DER encoded bytes
+            pem_type: type of PEM, e.g Certificate, Private key, or RSA private key
+
+        Returns:
+            PEM String for a DER-encoded certificate or private key
+        """
+        pem_str = ""
+        pem_str = pem_str + "-----BEGIN {}-----".format(pem_type) + "\n"
+        pem_str = (
+            pem_str
+            + "\r\n".join(
+                textwrap.wrap(base64.b64encode(der_bytes).decode("ascii"), 64)
+            )
+            + "\n"
+        )
+        pem_str = pem_str + "-----END {}-----".format(pem_type) + "\n"
+        return pem_str
