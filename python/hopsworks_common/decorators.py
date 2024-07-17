@@ -19,7 +19,7 @@ from __future__ import annotations
 import functools
 import os
 
-from hopsworks.constants import (
+from hopsworks_common.constants import (
     HAS_GREAT_EXPECTATIONS,
     great_expectations_not_installed_message,
 )
