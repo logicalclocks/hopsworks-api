@@ -16,7 +16,7 @@
 
 import json
 
-from hopsworks import client, job, util, job_schedule
+from hopsworks import client, job, job_schedule, util
 from hopsworks.client.exceptions import RestAPIError
 
 

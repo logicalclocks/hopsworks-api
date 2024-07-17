@@ -822,8 +822,8 @@ class FeatureViewEngine:
 
     def transform_batch_data(self, features, transformation_functions):
         return engine.get_instance()._apply_transformation_function(
-                transformation_functions, dataset=features, inplace=False
-            )
+            transformation_functions, dataset=features, inplace=False
+        )
 
     def add_tag(
         self, feature_view_obj, name: str, value, training_dataset_version=None
@@ -996,7 +996,16 @@ class FeatureViewEngine:
         else:
             return feature_logging.untransformed_features
 
-    def log_features(self, fv, features, prediction=None, transformed=False, write_options=None, training_dataset_version=None, hsml_model=None):
+    def log_features(
+        self,
+        fv,
+        features,
+        prediction=None,
+        transformed=False,
+        write_options=None,
+        training_dataset_version=None,
+        hsml_model=None,
+    ):
         default_write_options = {
             "start_offline_materialization": False,
         }
@@ -1017,29 +1026,41 @@ class FeatureViewEngine:
         )
         return fg.insert(df, write_options=default_write_options)
 
-    def read_feature_logs(self, fv,
-                          start_time: Optional[
-                     Union[str, int, datetime, datetime.date]] = None,
-                          end_time: Optional[
-                     Union[str, int, datetime, datetime.date]] = None,
-                          filter: Optional[Union[Filter, Logic]]=None,
-                          transformed: Optional[bool]=False,
-                          training_dataset_version=None,
-                          hsml_model=None,
-                          ):
+    def read_feature_logs(
+        self,
+        fv,
+        start_time: Optional[Union[str, int, datetime, datetime.date]] = None,
+        end_time: Optional[Union[str, int, datetime, datetime.date]] = None,
+        filter: Optional[Union[Filter, Logic]] = None,
+        transformed: Optional[bool] = False,
+        training_dataset_version=None,
+        hsml_model=None,
+    ):
         fg = self._get_logging_fg(fv, transformed)
         fv_feat_name_map = self._get_fv_feature_name_map(fv)
         query = fg.select_all()
         if start_time:
-            query = query.filter(fg.get_feature(FeatureViewEngine._LOG_TIME) >= start_time)
+            query = query.filter(
+                fg.get_feature(FeatureViewEngine._LOG_TIME) >= start_time
+            )
         if end_time:
-            query = query.filter(fg.get_feature(FeatureViewEngine._LOG_TIME) <= end_time)
+            query = query.filter(
+                fg.get_feature(FeatureViewEngine._LOG_TIME) <= end_time
+            )
         if training_dataset_version:
-            query = query.filter(fg.get_feature(FeatureViewEngine._LOG_TD_VERSION) == training_dataset_version)
+            query = query.filter(
+                fg.get_feature(FeatureViewEngine._LOG_TD_VERSION)
+                == training_dataset_version
+            )
         if hsml_model:
-            query = query.filter(fg.get_feature(FeatureViewEngine._HSML_MODEL) == self.get_hsml_model_value(hsml_model))
+            query = query.filter(
+                fg.get_feature(FeatureViewEngine._HSML_MODEL)
+                == self.get_hsml_model_value(hsml_model)
+            )
         if filter:
-            query = query.filter(self._convert_to_log_fg_filter(fg, fv, filter, fv_feat_name_map))
+            query = query.filter(
+                self._convert_to_log_fg_filter(fg, fv, filter, fv_feat_name_map)
+            )
         df = query.read()
         df = df.drop(["log_id", FeatureViewEngine._LOG_TIME], axis=1)
         return df
@@ -1062,9 +1083,12 @@ class FeatureViewEngine:
             )
         elif isinstance(filter, Filter):
             fv_feature_name = fv_feat_name_map.get(
-                    f"{filter.feature.feature_group_id}_{filter.feature.name}")
+                f"{filter.feature.feature_group_id}_{filter.feature.name}"
+            )
             if fv_feature_name is None:
-                raise FeatureStoreException("Filter feature {filter.feature.name} does not exist in feature view feature.")
+                raise FeatureStoreException(
+                    "Filter feature {filter.feature.name} does not exist in feature view feature."
+                )
             return Filter(
                 fg.get_feature(filter.feature.name),
                 filter.condition,
@@ -1076,32 +1100,30 @@ class FeatureViewEngine:
     def _get_fv_feature_name_map(self, fv) -> Dict[str, str]:
         result_dict = {}
         for td_feature in fv.features:
-            fg_feature_key = f"{td_feature.feature_group.id}_{td_feature.feature_group_feature_name}"
+            fg_feature_key = (
+                f"{td_feature.feature_group.id}_{td_feature.feature_group_feature_name}"
+            )
             result_dict[fg_feature_key] = td_feature.name
         return result_dict
 
-    def get_log_timeline(self, fv,
-                         wallclock_time: Optional[
-                               Union[str, int, datetime, datetime.date]] = None,
-                         limit: Optional[int] = None,
-                         transformed: Optional[bool]=False,
-                         ) -> Dict[str, Dict[str, str]]:
+    def get_log_timeline(
+        self,
+        fv,
+        wallclock_time: Optional[Union[str, int, datetime, datetime.date]] = None,
+        limit: Optional[int] = None,
+        transformed: Optional[bool] = False,
+    ) -> Dict[str, Dict[str, str]]:
         fg = self._get_logging_fg(fv, transformed)
         return fg.commit_details(wallclock_time=wallclock_time, limit=limit)
 
     def pause_logging(self, fv):
-        self._feature_view_api.pause_feature_logging(
-            fv.name, fv.version
-        )
+        self._feature_view_api.pause_feature_logging(fv.name, fv.version)
+
     def resume_logging(self, fv):
-        self._feature_view_api.resume_feature_logging(
-            fv.name, fv.version
-        )
+        self._feature_view_api.resume_feature_logging(fv.name, fv.version)
 
     def materialize_feature_logs(self, fv, wait):
-        jobs = self._feature_view_api.materialize_feature_logging(
-            fv.name, fv.version
-        )
+        jobs = self._feature_view_api.materialize_feature_logging(fv.name, fv.version)
         if wait:
             for job in jobs:
                 try:
@@ -1111,6 +1133,4 @@ class FeatureViewEngine:
         return jobs
 
     def delete_feature_logs(self, fv, transformed):
-        self._feature_view_api.delete_feature_logs(
-            fv.name, fv.version, transformed
-        )
+        self._feature_view_api.delete_feature_logs(fv.name, fv.version, transformed)

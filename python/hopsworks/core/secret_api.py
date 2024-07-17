@@ -72,7 +72,9 @@ class SecretsApi:
                 "shared",
             ]
 
-        return secret.Secret.from_response_json(_client._send_request("GET", path_params, query_params=query_params))[0]
+        return secret.Secret.from_response_json(
+            _client._send_request("GET", path_params, query_params=query_params)
+        )[0]
 
     def get(self, name: str, owner: str = None) -> str:
         """Get the secret's value.
@@ -90,16 +92,20 @@ class SecretsApi:
             return self.get_secret(name=name, owner=owner).value
         except RestAPIError as e:
             if (
-                    e.response.json().get("errorCode", "") == 160048
-                    and e.response.status_code == 404
-                    and util.is_interactive()
+                e.response.json().get("errorCode", "") == 160048
+                and e.response.status_code == 404
+                and util.is_interactive()
             ):
-                secret_input = getpass.getpass(prompt="\nCould not find secret, enter value here to create it: ")
+                secret_input = getpass.getpass(
+                    prompt="\nCould not find secret, enter value here to create it: "
+                )
                 return self.create_secret(name, secret_input).value
             else:
                 raise e
 
-    def create_secret(self, name: str, value: str, project: str = None) -> secret.Secret:
+    def create_secret(
+        self, name: str, value: str, project: str = None
+    ) -> secret.Secret:
         """Create a new secret.
 
         ```python

@@ -14,10 +14,11 @@
 #   limitations under the License.
 #
 
-import humps
 import json
-from hopsworks.core import git_remote_api
+
+import humps
 from hopsworks import util
+from hopsworks.core import git_remote_api
 
 
 class GitRemote:

@@ -69,7 +69,6 @@ class TestOpenSearchClientSingleton:
 
 
 class TestOpensearchRequestOption:
-
     def test_version_1_no_options(self):
         OpensearchRequestOption.get_version = lambda: (1, 1)
         options = OpensearchRequestOption.get_options({})

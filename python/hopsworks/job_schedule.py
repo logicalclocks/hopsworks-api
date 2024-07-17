@@ -14,10 +14,10 @@
 #   limitations under the License.
 #
 
-import humps
 import json
 from datetime import datetime, timezone
 
+import humps
 from hopsworks import util
 
 
@@ -30,7 +30,7 @@ class JobSchedule:
         next_execution_date_time=None,
         id=None,
         end_date_time=None,
-        **kwargs
+        **kwargs,
     ):
         self._id = id
         self._start_date_time = (
