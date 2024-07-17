@@ -14,7 +14,15 @@
 #   limitations under the License.
 #
 
+from __future__ import annotations
+
 import functools
+import os
+
+from hopsworks.constants import (
+    HAS_GREAT_EXPECTATIONS,
+    great_expectations_not_installed_message,
+)
 
 
 def not_connected(fn):
@@ -53,3 +61,26 @@ class NoHopsworksConnectionError(Exception):
         super().__init__(
             "Connection is not active. Needs to be connected for hopsworks operations."
         )
+
+
+if os.environ.get("HOPSWORKS_RUN_WITH_TYPECHECK", False):
+    from typeguard import typechecked
+else:
+    from typing import TypeVar
+
+    _T = TypeVar("_T")
+
+    def typechecked(
+        target: _T,
+    ) -> _T:
+        return target if target else typechecked
+
+
+def uses_great_expectations(f):
+    @functools.wraps(f)
+    def g(*args, **kwds):
+        if not HAS_GREAT_EXPECTATIONS:
+            raise ModuleNotFoundError(great_expectations_not_installed_message)
+        return f(*args, **kwds)
+
+    return g
