@@ -13,10 +13,10 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-import hsfs
+import hopsworks_common
 import pytest
 from furl import furl
-from hsfs.client import auth, exceptions, online_store_rest_client
+from hopsworks_common.client import auth, exceptions, online_store_rest_client
 
 
 class MockExternalClient:
@@ -50,13 +50,15 @@ class TestOnlineStoreRestClient:
         def client_get_instance():
             return MockExternalClient()
 
-        monkeypatch.setattr(hsfs.client, "get_instance", client_get_instance)
+        monkeypatch.setattr(
+            hopsworks_common.client, "get_instance", client_get_instance
+        )
         variable_api_mock = mocker.patch(
-            "hsfs.core.variable_api.VariableApi.get_loadbalancer_external_domain",
+            "hopsworks_common.core.variable_api.VariableApi.get_loadbalancer_external_domain",
             return_value="app.hopsworks.ai",
         )
         ping_rdrs_mock = mocker.patch(
-            "hsfs.client.online_store_rest_client.OnlineStoreRestClientSingleton.is_connected",
+            "hopsworks_common.client.online_store_rest_client.OnlineStoreRestClientSingleton.is_connected",
         )
 
         # Act
@@ -86,14 +88,16 @@ class TestOnlineStoreRestClient:
         def client_get_instance():
             return MockInternalClient()
 
-        monkeypatch.setattr(hsfs.client, "get_instance", client_get_instance)
+        monkeypatch.setattr(
+            hopsworks_common.client, "get_instance", client_get_instance
+        )
         variable_api_mock = mocker.patch(
-            "hsfs.core.variable_api.VariableApi.get_service_discovery_domain",
+            "hopsworks_common.core.variable_api.VariableApi.get_service_discovery_domain",
             return_value="consul",
         )
         optional_config = {"api_key": "provided_api_key"}
         ping_rdrs_mock = mocker.patch(
-            "hsfs.client.online_store_rest_client.OnlineStoreRestClientSingleton.is_connected",
+            "hopsworks_common.client.online_store_rest_client.OnlineStoreRestClientSingleton.is_connected",
         )
 
         # Act
