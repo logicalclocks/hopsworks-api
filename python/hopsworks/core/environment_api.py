@@ -32,7 +32,13 @@ class EnvironmentApi:
 
         self._environment_engine = environment_engine.EnvironmentEngine(project_id)
 
-    def create_environment(self, name: str, description: Optional[str] = None, base_environment_name: Optional[str] = "python-feature-pipeline", await_creation: Optional[bool] = True) -> environment.Environment:
+    def create_environment(
+        self,
+        name: str,
+        description: Optional[str] = None,
+        base_environment_name: Optional[str] = "python-feature-pipeline",
+        await_creation: Optional[bool] = True,
+    ) -> environment.Environment:
         """Create Python environment for the project
 
         ```python
@@ -66,13 +72,14 @@ class EnvironmentApi:
             name,
         ]
         headers = {"content-type": "application/json"}
-        data = {"name": name,
-                "baseImage": {
-                    "name": base_environment_name,
-                    "description": description
-                }}
+        data = {
+            "name": name,
+            "baseImage": {"name": base_environment_name, "description": description},
+        }
         env = environment.Environment.from_response_json(
-            _client._send_request("POST", path_params, headers=headers, data=json.dumps(data)),
+            _client._send_request(
+                "POST", path_params, headers=headers, data=json.dumps(data)
+            ),
             self._project_id,
             self._project_name,
         )
@@ -148,4 +155,4 @@ class EnvironmentApi:
             name,
         ]
         headers = {"content-type": "application/json"}
-        _client._send_request("DELETE", path_params, headers=headers),
+        (_client._send_request("DELETE", path_params, headers=headers),)

@@ -54,9 +54,7 @@ class TestFeatureGroupApi:
     def test_check_features(self, mocker, backend_fixtures):
         # Arrange
         fg_api = feature_group_api.FeatureGroupApi()
-        json = backend_fixtures["feature_group"]["get_basic_info"][
-            "response"
-        ]
+        json = backend_fixtures["feature_group"]["get_basic_info"]["response"]
         fg = fg_mod.FeatureGroup.from_response_json(json)
 
         # Act

@@ -211,7 +211,9 @@ class StorageConnector(ABC):
         feature_groups_provenance = self.get_feature_groups_provenance()
 
         if feature_groups_provenance.inaccessible or feature_groups_provenance.deleted:
-            _logger.info("There are deleted or inaccessible feature groups. For more details access `get_feature_groups_provenance`")
+            _logger.info(
+                "There are deleted or inaccessible feature groups. For more details access `get_feature_groups_provenance`"
+            )
 
         if feature_groups_provenance.accessible:
             return feature_groups_provenance.accessible

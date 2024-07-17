@@ -81,6 +81,8 @@ def get_hostname_replaced_url(sub_path: str):
     url_parsed = client.get_instance().replace_public_host(urlparse(href))
     return url_parsed.geturl()
 
+
 def is_interactive():
     import __main__ as main
-    return not hasattr(main, '__file__')
+
+    return not hasattr(main, "__file__")

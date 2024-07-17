@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import itertools
 import logging
-import warnings
 from base64 import b64decode
 from datetime import datetime, timezone
 from io import BytesIO
@@ -553,161 +552,11 @@ class VectorServer:
                 for fname in self._untransformed_feature_vector_col_name
             ]
 
-    def _check_feature_vectors_type_and_convert_to_dict(
-        self,
-        feature_vectors: Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame],
-    ) -> Tuple[Dict[str, Any], Literal["pandas", "polars", "list"]]:
-        """
-        Function that converts an input feature vector into a list of dictionaries.
-
-        # Arguments
-            feature_vectors: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vectors to be converted.
-
-        # Returns
-            `Tuple[Dict[str, Any], Literal["pandas", "polars", "list"]]`: A tuple that contains the feature vector as a dictionary and a string denoting the data type of the input feature vector.
-
-        """
-        if isinstance(feature_vectors, pd.DataFrame):
-            return_type = "pandas"
-            feature_vectors = feature_vectors.to_dict(orient="records")
-
-        elif isinstance(feature_vectors, pl.DataFrame):
-            return_type = "polars"
-            feature_vectors = feature_vectors.to_pandas()
-            feature_vectors = feature_vectors.to_dict(orient="records")
-
-        elif isinstance(feature_vectors, list) and feature_vectors:
-            if all(
-                isinstance(feature_vector, list) for feature_vector in feature_vectors
-            ):
-                return_type = "list"
-                feature_vectors = [
-                    self.get_untransformed_features_map(feature_vector)
-                    for feature_vector in feature_vectors
-                ]
-
-            else:
-                return_type = "list"
-                feature_vectors = [self.get_untransformed_features_map(feature_vectors)]
-
-        else:
-            raise exceptions.FeatureStoreException(
-                "Unsupported input type for feature vector. Supported types are `List`, `pandas.DataFrame`, `polars.DataFrame`"
-            )
-        return feature_vectors, return_type
-
-    def transform(
-        self,
-        feature_vectors: Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame],
-    ) -> Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]:
-        """
-        Applies model dependent transformation on the provided feature vector.
-
-        # Arguments
-            feature_vectors: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vectors to be transformed using attached model-dependent transformations.
-
-        # Returns
-            `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The transformed feature vector.
-        """
-        if not self._model_dependent_transformation_functions:
-            warnings.warn(
-                "Feature view does not have any attached model-dependent transformations. Returning input feature vectors.",
-                stacklevel=0,
-            )
-            return feature_vectors
-
-        feature_vectors, return_type = (
-            self._check_feature_vectors_type_and_convert_to_dict(feature_vectors)
-        )
-        transformed_feature_vectors = []
-        for feature_vector in feature_vectors:
-            transformed_feature_vector = self.apply_model_dependent_transformations(
-                feature_vector
-            )
-            transformed_feature_vectors.append(
-                [
-                    transformed_feature_vector.get(fname, None)
-                    for fname in self.transformed_feature_vector_col_name
-                ]
-            )
-
-        if len(transformed_feature_vectors) == 1:
-            batch = False
-            transformed_feature_vectors = transformed_feature_vectors[0]
-        else:
-            batch = True
-
-        return self.handle_feature_vector_return_type(
-            transformed_feature_vectors,
-            batch=batch,
-            inference_helper=False,
-            return_type=return_type,
-            transformed=True,
-        )
-
-    def compute_on_demand_features(
-        self,
-        feature_vectors: Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame],
-        request_parameters: Union[List[Dict[str, Any]], Dict[str, Any]],
-    ):
-        """
-        Function computes on-demand features present in the feature view.
-
-        # Arguments
-            feature_vector: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vector to be transformed.
-            request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
-        # Returns
-            `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The feature vector that contains all on-demand features in the feature view.
-        """
-        if not self._on_demand_transformation_functions:
-            warnings.warn(
-                "Feature view does not have any on-demand features. Returning input feature vectors.",
-                stacklevel=1,
-            )
-            return feature_vectors
-
-        request_parameters = {} if not request_parameters else request_parameters
-        # Convert feature vectors to dictionary
-        feature_vectors, return_type = (
-            self._check_feature_vectors_type_and_convert_to_dict(feature_vectors)
-        )
-        # Check if all request parameters are provided
-        # If request parameter is a dictionary then copy it to list with the same length as that of entires
-        request_parameters = (
-            [request_parameters] * len(feature_vectors)
-            if isinstance(request_parameters, dict)
-            else request_parameters
-        )
-        self.check_missing_request_parameters(
-            features=feature_vectors[0], request_parameters=request_parameters[0]
-        )
-        on_demand_feature_vectors = []
-        for feature_vector, request_parameter in zip(
-            feature_vectors, request_parameters
-        ):
-            on_demand_feature_vector = self.apply_on_demand_transformations(
-                feature_vector, request_parameter
-            )
-            on_demand_feature_vectors.append(
-                [
-                    on_demand_feature_vector.get(fname, None)
-                    for fname in self._untransformed_feature_vector_col_name
-                ]
-            )
-
-        if len(on_demand_feature_vectors) == 1:
-            batch = False
-            on_demand_feature_vectors = on_demand_feature_vectors[0]
-        else:
-            batch = True
-
-        return self.handle_feature_vector_return_type(
-            on_demand_feature_vectors,
-            batch=batch,
-            inference_helper=False,
-            return_type=return_type,
-            transformed=False,
-        )
+    def transform_feature_vectors(self, batch_features):
+        return [
+            self.apply_transformation(self.get_untransformed_features_map(features))
+            for features in batch_features
+        ]
 
     def get_untransformed_features_map(self, features) -> Dict[str, Any]:
         return dict(

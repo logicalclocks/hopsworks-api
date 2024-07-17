@@ -85,16 +85,18 @@ class EnvironmentAttribute:
         return self._timezone
 
     def json(self):
-        return json.dumps({
-            "platform": self.get_platform(),
-            "hsml_version": self.get_hsml_version(),
-            "hsfs_version": self.get_hsfs_version(),
-            "hopsworks_version": self.get_hopsworks_version(),
-            "user_id": self.get_user_id(),
-            "backend_version": self.get_backend_version(),
-            "timezone": str(self.get_timezone()),
-            "python_version": self.get_python_version(),
-        })
+        return json.dumps(
+            {
+                "platform": self.get_platform(),
+                "hsml_version": self.get_hsml_version(),
+                "hsfs_version": self.get_hsfs_version(),
+                "hopsworks_version": self.get_hopsworks_version(),
+                "user_id": self.get_user_id(),
+                "backend_version": self.get_backend_version(),
+                "timezone": str(self.get_timezone()),
+                "python_version": self.get_python_version(),
+            }
+        )
 
 
 class MethodCounter:

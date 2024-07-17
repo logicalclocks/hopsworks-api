@@ -736,7 +736,9 @@ class TestUtil:
         assert db_type == "HIVEDB"
 
     def test_get_dataset_type_DATASET(self):
-        db_type = hsfs.util.get_dataset_type("/Projects/temp/Resources/kafka__tstore.jks")
+        db_type = hsfs.util.get_dataset_type(
+            "/Projects/temp/Resources/kafka__tstore.jks"
+        )
         assert db_type == "DATASET"
 
     def test_get_dataset_type_DATASET_with_dfs(self):
