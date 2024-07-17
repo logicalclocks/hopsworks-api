@@ -15,7 +15,6 @@
 #
 
 import humps
-
 from hopsworks import command
 
 

@@ -14,22 +14,22 @@
 #   limitations under the License.
 #
 
-from hopsworks import (
-    client,
-    git_repo,
-    git_op_execution,
-    util,
-    git_commit,
-    git_file_status,
-)
-from hopsworks.client.exceptions import GitException
-from hopsworks.engine import git_engine
-from hopsworks.core import git_provider_api
-from typing import List, Union
-from hopsworks.git_file_status import GitFileStatus
-
 import json
 import logging
+from typing import List, Union
+
+from hopsworks import (
+    client,
+    git_commit,
+    git_file_status,
+    git_op_execution,
+    git_repo,
+    util,
+)
+from hopsworks.client.exceptions import GitException
+from hopsworks.core import git_provider_api
+from hopsworks.engine import git_engine
+from hopsworks.git_file_status import GitFileStatus
 
 
 class GitApi:

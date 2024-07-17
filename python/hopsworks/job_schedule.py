@@ -14,10 +14,10 @@
 #   limitations under the License.
 #
 
-import humps
 import json
 from datetime import datetime, timezone
 
+import humps
 from hopsworks import util
 
 

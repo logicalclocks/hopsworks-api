@@ -14,11 +14,12 @@
 #   limitations under the License.
 #
 
-import humps
 import json
-from hopsworks import user, git_commit, util
-from hopsworks.core import git_api, git_remote_api, dataset_api
 from typing import List, Union
+
+import humps
+from hopsworks import git_commit, user, util
+from hopsworks.core import dataset_api, git_api, git_remote_api
 from hopsworks.git_file_status import GitFileStatus
 
 

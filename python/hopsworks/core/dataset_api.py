@@ -14,18 +14,17 @@
 #   limitations under the License.
 #
 
+import copy
+import logging
 import math
 import os
-import time
-from tqdm.auto import tqdm
 import shutil
-import logging
-import copy
+import time
+from concurrent.futures import ThreadPoolExecutor, wait
 
 from hopsworks import client
-from hopsworks.client.exceptions import RestAPIError
-from hopsworks.client.exceptions import DatasetException
-from concurrent.futures import ThreadPoolExecutor, wait
+from hopsworks.client.exceptions import DatasetException, RestAPIError
+from tqdm.auto import tqdm
 
 
 class Chunk:

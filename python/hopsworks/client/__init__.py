@@ -16,6 +16,7 @@
 
 from hopsworks.client import external, hopsworks
 
+
 _client = None
 _python_version = None
 
