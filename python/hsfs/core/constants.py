@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.constants import (
+from hopsworks_common.core.constants import (
     HAS_AIOMYSQL,
     HAS_AVRO,
     HAS_CONFLUENT_KAFKA,
