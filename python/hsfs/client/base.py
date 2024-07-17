@@ -19,7 +19,6 @@ import base64
 import os
 import textwrap
 import time
-from abc import ABC, abstractmethod
 from pathlib import Path
 
 import furl
@@ -39,7 +38,7 @@ urllib3.disable_warnings(urllib3.exceptions.SecurityWarning)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
-class Client(ABC):
+class Client:
     TOKEN_FILE = "token.jwt"
     TOKEN_EXPIRED_RETRY_INTERVAL = 0.6
     TOKEN_EXPIRED_MAX_RETRIES = 10
@@ -48,11 +47,6 @@ class Client(ABC):
     REST_ENDPOINT = "REST_ENDPOINT"
     DEFAULT_DATABRICKS_ROOT_VIRTUALENV_ENV = "DEFAULT_DATABRICKS_ROOT_VIRTUALENV_ENV"
     HOPSWORKS_PUBLIC_HOST = "HOPSWORKS_PUBLIC_HOST"
-
-    @abstractmethod
-    def __init__(self):
-        """To be implemented by clients."""
-        pass
 
     def _get_verify(self, verify, trust_store_path):
         """Get verification method for sending HTTP requests to Hopsworks.
