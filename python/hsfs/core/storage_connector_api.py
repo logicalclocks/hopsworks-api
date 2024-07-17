@@ -101,9 +101,7 @@ class StorageConnectorApi:
             _client._send_request("GET", path_params, query_params=query_params)
         )
 
-    def get_feature_groups_provenance(
-        self, storage_connector_instance
-    ):
+    def get_feature_groups_provenance(self, storage_connector_instance):
         """Get the generated feature groups using this storage connector, based on explicit
         provenance. These feature groups can be accessible or inaccessible. Explicit
         provenance does not track deleted generated feature group links, so deleted
@@ -135,6 +133,7 @@ class StorageConnectorApi:
         }
         links_json = _client._send_request("GET", path_params, query_params)
         from hsfs.core import explicit_provenance
+
         return explicit_provenance.Links.from_response_json(
             links_json,
             explicit_provenance.Links.Direction.DOWNSTREAM,

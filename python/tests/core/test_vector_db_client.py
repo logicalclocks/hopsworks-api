@@ -220,7 +220,9 @@ class TestVectorDbClient:
             self.target._check_filter("f1 > 20", self.fg2)
 
     def test_read_with_keys(self):
-        actual = self.target.read(self.fg.id, self.fg.features, keys={"f1": 10, "f2": 20})
+        actual = self.target.read(
+            self.fg.id, self.fg.features, keys={"f1": 10, "f2": 20}
+        )
 
         expected_query = {
             "query": {"bool": {"must": [{"match": {"f1": 10}}, {"match": {"f2": 20}}]}},

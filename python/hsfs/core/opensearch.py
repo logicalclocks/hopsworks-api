@@ -54,7 +54,8 @@ def _handle_opensearch_exception(func):
             caused_by = e.info.get("error") and e.info["error"].get("caused_by")
             if caused_by and caused_by["type"] == "illegal_argument_exception":
                 raise OpenSearchClientSingleton()._create_vector_database_exception(
-                    caused_by["reason"]) from e
+                    caused_by["reason"]
+                ) from e
             raise VectorDatabaseException(
                 VectorDatabaseException.OTHERS,
                 f"Error in Opensearch request: {e}",
@@ -100,16 +101,19 @@ class OpensearchRequestOption:
             attribute values of the OpensearchRequestOption class, and values are obtained
             either from the provided options or default values if not available.
         """
-        default_option = (cls.DEFAULT_OPTION_MAP
-                          if cls.get_version() < (2, 3)
-                          else cls.DEFAULT_OPTION_MAP_V2_3)
+        default_option = (
+            cls.DEFAULT_OPTION_MAP
+            if cls.get_version() < (2, 3)
+            else cls.DEFAULT_OPTION_MAP_V2_3
+        )
         if options:
             # make lower case to avoid issues with cases
             options = {k.lower(): v for k, v in options.items()}
             new_options = {}
             for option, value in default_option.items():
                 if option in options:
-                    if (option == "timeout"
+                    if (
+                        option == "timeout"
                         and cls.get_version() < (2, 3)
                         and isinstance(options[option], int)
                     ):
@@ -161,7 +165,9 @@ class OpenSearchClientSingleton:
     )
     @_handle_opensearch_exception
     def search(self, index=None, body=None, options=None):
-        return self._opensearch_client.search(body=body, index=index, params=OpensearchRequestOption.get_options(options))
+        return self._opensearch_client.search(
+            body=body, index=index, params=OpensearchRequestOption.get_options(options)
+        )
 
     @retry(
         wait_exponential_multiplier=1000,
