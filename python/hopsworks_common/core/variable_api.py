@@ -13,13 +13,14 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+
 from __future__ import annotations
 
 import re
 from typing import Optional, Tuple
 
-from hopsworks import client
-from hopsworks.client.exceptions import RestAPIError
+from hopsworks_common import client
+from hopsworks_common.client.exceptions import RestAPIError
 
 
 class VariableApi:

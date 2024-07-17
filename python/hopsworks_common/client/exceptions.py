@@ -14,7 +14,6 @@
 #   limitations under the License.
 #
 
-
 from __future__ import annotations
 
 from enum import Enum
