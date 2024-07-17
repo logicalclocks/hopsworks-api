@@ -347,7 +347,7 @@ class GitApi:
 
         status_dict = json.loads(git_op.command_result_message)
         file_status = None
-        if status_dict is not None and type(status_dict["status"]) is list:
+        if status_dict is not None and isinstance(status_dict["status"], list):
             file_status = []
             for status in status_dict["status"]:
                 file_status.append(
