@@ -14,27 +14,15 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.client import (
-    auth,
-    base,
-    exceptions,
-    external,
+from hopsworks_common.client.online_store_rest_client import (
+    OnlineStoreRestClientSingleton,
     get_instance,
-    hopsworks,
-    init,
-    online_store_rest_client,
-    stop,
+    init_or_reset_online_store_rest_client,
 )
 
 
 __all__ = [
-    auth,
-    base,
-    exceptions,
-    external,
+    OnlineStoreRestClientSingleton,
     get_instance,
-    hopsworks,
-    init,
-    online_store_rest_client,
-    stop,
+    init_or_reset_online_store_rest_client,
 ]
