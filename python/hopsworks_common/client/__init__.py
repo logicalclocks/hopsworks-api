@@ -19,7 +19,6 @@ from hopsworks_common.client import external, hopsworks
 
 
 _client = None
-_python_version = None
 
 
 def init(
@@ -55,16 +54,6 @@ def get_instance():
     if _client:
         return _client
     raise Exception("Couldn't find client. Try reconnecting to Hopsworks.")
-
-
-def get_python_version():
-    global _python_version
-    return _python_version
-
-
-def set_python_version(python_version):
-    global _python_version
-    _python_version = python_version
 
 
 def stop():

@@ -16,17 +16,13 @@
 
 from hopsworks_common.client import (
     get_instance,
-    get_python_version,
     init,
-    set_python_version,
     stop,
 )
 
 
 __all__ = [
     get_instance,
-    get_python_version,
     init,
-    set_python_version,
     stop,
 ]
