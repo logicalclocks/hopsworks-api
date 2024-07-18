@@ -734,7 +734,12 @@ class Engine:
         self,
         dataframe: Union[pd.DataFrame, pl.DataFrame],
         time_travel_format: Optional[str] = None,
+        features: Optional[List[feature.Feature]] = None,
     ) -> List[feature.Feature]:
+        feature_type_map = {}
+        if features:
+            for _feature in features:
+                feature_type_map[_feature.name] = _feature.type
         if isinstance(dataframe, pd.DataFrame):
             arrow_schema = pa.Schema.from_pandas(dataframe, preserve_index=False)
         elif isinstance(dataframe, pl.DataFrame) or isinstance(
@@ -742,12 +747,15 @@ class Engine:
         ):
             arrow_schema = dataframe.to_arrow().schema
         features = []
-        for feat_name in arrow_schema.names:
+        for i in range(len(arrow_schema.names)):
+            feat_name = arrow_schema.names[i]
             name = util.autofix_feature_name(feat_name)
             try:
-                converted_type = convert_pandas_dtype_to_offline_type(
-                    arrow_schema.field(feat_name).type
-                )
+                pd_type = arrow_schema.field(feat_name).type
+                if pd_type == "null" and feature_type_map.get(name):
+                    converted_type = feature_type_map.get(name)
+                else:
+                    converted_type = convert_pandas_dtype_to_offline_type(pd_type)
             except ValueError as e:
                 raise FeatureStoreException(f"Feature '{name}': {str(e)}") from e
             features.append(feature.Feature(name, converted_type))
@@ -1444,36 +1452,33 @@ class Engine:
 
     @staticmethod
     def get_feature_logging_df(
-        fg,
-        features,
-        fg_features: List[TrainingDatasetFeature],
-        td_predictions: List[TrainingDatasetFeature],
-        td_col_name,
-        time_col_name,
-        model_col_name,
-        prediction=None,
-        training_dataset_version=None,
+        features: Union[pd.DataFrame, list[list], np.ndarray],
+        fg: FeatureGroup = None,
+        td_features: List[str] = None,
+        td_predictions: List[TrainingDatasetFeature] = None,
+        td_col_name: Optional[str] = None,
+        time_col_name: Optional[str] = None,
+        model_col_name: Optional[str] = None,
+        predictions: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
+        training_dataset_version: Optional[int] = None,
         hsml_model=None,
     ) -> pd.DataFrame:
-        import uuid
-
         features = Engine._convert_feature_log_to_df(
-            features, [f.name for f in fg_features]
+            features, td_features
         )
         if td_predictions:
-            prediction = Engine._convert_feature_log_to_df(
-                prediction, [f.name for f in td_predictions]
+            predictions = Engine._convert_feature_log_to_df(
+                predictions, [f.name for f in td_predictions]
             )
             for f in td_predictions:
-                prediction[f.name] = Engine._cast_column_to_offline_type(
-                    prediction[f.name], f.type
+                predictions[f.name] = cast_column_to_offline_type(
+                    predictions[f.name], f.type
                 )
-            if not set(prediction.columns).intersection(set(features.columns)):
-                features = pd.concat([features, prediction], axis=1)
-        # need to case the column type as if it is None, type cannot be inferred.
-        features[td_col_name] = Engine._cast_column_to_offline_type(
-            pd.Series([training_dataset_version for _ in range(len(features))]),
-            fg.get_feature(td_col_name).type,
+            if not set(predictions.columns).intersection(set(features.columns)):
+                features = pd.concat([features, predictions], axis=1)
+
+        features[td_col_name] = pd.Series(
+            [training_dataset_version for _ in range(len(features))]
         )
         # _cast_column_to_offline_type cannot cast string type
         features[model_col_name] = pd.Series(
@@ -1486,9 +1491,12 @@ class Engine:
             dtype=pd.StringDtype(),
         )
         now = datetime.now()
-        features[time_col_name] = Engine._cast_column_to_offline_type(
-            pd.Series([now for _ in range(len(features))]),
-            fg.get_feature(time_col_name).type,
-        )
+
+        features[time_col_name] = pd.Series([now for _ in range(len(features))])
         features["log_id"] = [str(uuid.uuid4()) for _ in range(len(features))]
         return features[[feat.name for feat in fg.features]]
+
+    @staticmethod
+    def read_feature_log(query):
+        df = query.read()
+        return df.drop(["log_id", FeatureViewEngine._LOG_TIME], axis=1)

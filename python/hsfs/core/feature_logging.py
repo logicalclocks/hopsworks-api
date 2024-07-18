@@ -21,8 +21,8 @@ class FeatureLogging:
         from hsfs.feature_group import FeatureGroup  # avoid circular import
 
         json_decamelized = humps.decamelize(json_dict)
-        transformed_features = json_decamelized.get("transformed_log")
-        untransformed_features = json_decamelized.get("untransformed_log")
+        transformed_features = json_decamelized.get("transformed_log_fg")
+        untransformed_features = json_decamelized.get("untransformed_log_fg")
         if transformed_features:
             transformed_features = FeatureGroup.from_response_json(transformed_features)
         if untransformed_features:
@@ -33,6 +33,11 @@ class FeatureLogging:
             json_decamelized.get("id"), transformed_features, untransformed_features
         )
 
+    def update(self, others):
+        self._transformed_features = others.transformed_features
+        self._untransformed_features = others.untransformed_features
+        return self
+
     @property
     def transformed_features(self) -> "feature_group.FeatureGroup":
         return self._transformed_features
@@ -41,6 +46,12 @@ class FeatureLogging:
     def untransformed_features(self) -> "feature_group.FeatureGroup":
         return self._untransformed_features
 
+    def get_feature_group(self, transformed):
+        if transformed:
+            return self._transformed_features
+        else:
+            return self._untransformed_features
+
     @property
     def id(self) -> str:
         return self._id
@@ -48,8 +59,8 @@ class FeatureLogging:
     def to_dict(self):
         return {
             "id": self._id,
-            "transformed_log": self._transformed_features,
-            "untransformed_log": self._untransformed_features,
+            "transformed_log_fg": self._transformed_features,
+            "untransformed_log_fg": self._untransformed_features,
         }
 
     def json(self) -> Dict[str, Any]:

@@ -17,7 +17,10 @@ from __future__ import annotations
 
 import datetime
 import warnings
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, TypeVar, Any
+
+import numpy as np
+import pandas as pd
 
 from hsfs import (
     client,
@@ -40,6 +43,7 @@ from hsfs.core import (
     training_dataset_engine,
 )
 from hsfs.core.feature_logging import FeatureLogging
+from hsfs.feature_view import FeatureView
 from hsfs.training_dataset_split import TrainingDatasetSplit
 
 
@@ -967,20 +971,19 @@ class FeatureViewEngine:
         )
 
     def _get_logging_fg(self, fv, transformed):
-        feature_logging = self.get_feature_logging(fv)
-        if transformed:
-            return feature_logging.transformed_features
-        else:
-            return feature_logging.untransformed_features
+        return self.get_feature_logging(fv).get_feature_group(transformed)
 
     def log_features(
         self,
-        fv,
-        features,
-        prediction=None,
-        transformed=False,
-        write_options=None,
-        training_dataset_version=None,
+        fv: FeatureView,
+        feature_logging: FeatureLogging,
+        features_rows: Union[
+            pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
+        ],
+        predictions: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
+        transformed: Optional[bool] = False,
+        write_options: Optional[Dict[str, Any]] = None,
+        training_dataset_version: Optional[int] = None,
         hsml_model=None,
     ):
         default_write_options = {
@@ -988,18 +991,26 @@ class FeatureViewEngine:
         }
         if write_options:
             default_write_options.update(write_options)
-        fg = self._get_logging_fg(fv, transformed)
+        fg = feature_logging.get_feature_group(transformed)
+        td_predictions = [feature for feature in fv.features if feature.label]
+        td_predictions_names = set([feature.name for feature in td_predictions])
+        if transformed:
+            td_features = [feature_name for feature_name in fv.transformed_features if feature_name not in td_predictions_names]
+        else:
+            td_features = [feature.name for feature in
+                           fv.features if
+                           feature.name not in td_predictions_names]
         df = engine.get_instance().get_feature_logging_df(
-            fg,
-            features,
-            [feature for feature in fv.features if not feature.label],
-            [feature for feature in fv.features if feature.label],
-            FeatureViewEngine._LOG_TD_VERSION,
-            FeatureViewEngine._LOG_TIME,
-            FeatureViewEngine._HSML_MODEL,
-            prediction,
-            training_dataset_version,
-            hsml_model,
+            features_rows,
+            fg=fg,
+            td_features=td_features,
+            td_predictions=td_predictions,
+            td_col_name=FeatureViewEngine._LOG_TD_VERSION,
+            time_col_name=FeatureViewEngine._LOG_TIME,
+            model_col_name=FeatureViewEngine._HSML_MODEL,
+            predictions=predictions,
+            training_dataset_version=training_dataset_version,
+            hsml_model=hsml_model,
         )
         return fg.insert(df, write_options=default_write_options)
 
@@ -1038,9 +1049,7 @@ class FeatureViewEngine:
             query = query.filter(
                 self._convert_to_log_fg_filter(fg, fv, filter, fv_feat_name_map)
             )
-        df = query.read()
-        df = df.drop(["log_id", FeatureViewEngine._LOG_TIME], axis=1)
-        return df
+        return engine.get_instance().read_feature_log(query)
 
     @staticmethod
     def get_hsml_model_value(hsml_model):
@@ -1099,15 +1108,18 @@ class FeatureViewEngine:
     def resume_logging(self, fv):
         self._feature_view_api.resume_feature_logging(fv.name, fv.version)
 
-    def materialize_feature_logs(self, fv, wait):
-        jobs = self._feature_view_api.materialize_feature_logging(fv.name, fv.version)
+    def materialize_feature_logs(self, fv, wait, transform):
+        if transform is None:
+            jobs = [self._get_logging_fg(fv, True).materialization_job, self._get_logging_fg(fv, False).materialization_job]
+        else:
+            jobs = [self._get_logging_fg(fv, transform).materialization_job]
+        for job in jobs:
+            job.run(await_termination=False)
         if wait:
             for job in jobs:
-                try:
-                    job._wait_for_job(wait)
-                except Exception:
-                    pass
+                job._wait_for_job(wait)
         return jobs
 
-    def delete_feature_logs(self, fv, transformed):
+    def delete_feature_logs(self, fv, feature_logging, transformed):
         self._feature_view_api.delete_feature_logs(fv.name, fv.version, transformed)
+        feature_logging.update(self.get_feature_logging(fv))
