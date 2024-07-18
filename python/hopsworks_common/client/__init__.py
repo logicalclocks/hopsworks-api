@@ -13,14 +13,15 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+
 from __future__ import annotations
 
 from typing import Literal, Optional, Union
 
-from hsfs.client import external, hopsworks
+from hopsworks_common.client import external, hopsworks
 
 
-_client = None
+_client: Union[hopsworks.Client, external.Client, None] = None
 
 
 def init(
@@ -66,5 +67,6 @@ def get_instance() -> Union[hopsworks.Client, external.Client]:
 
 def stop() -> None:
     global _client
-    _client._close()
+    if _client:
+        _client._close()
     _client = None

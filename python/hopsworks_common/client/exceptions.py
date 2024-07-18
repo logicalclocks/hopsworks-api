@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+
 from __future__ import annotations
 
 from enum import Enum
@@ -108,3 +109,35 @@ class ExternalClientError(TypeError):
             "argument to connect to hopsworks from an external environment."
         ).format(missing_argument)
         super().__init__(message)
+
+
+class GitException(Exception):
+    """Generic git exception"""
+
+
+class JobException(Exception):
+    """Generic job exception"""
+
+
+class EnvironmentException(Exception):
+    """Generic python environment exception"""
+
+
+class KafkaException(Exception):
+    """Generic kafka exception"""
+
+
+class DatasetException(Exception):
+    """Generic dataset exception"""
+
+
+class ProjectException(Exception):
+    """Generic project exception"""
+
+
+class OpenSearchException(Exception):
+    """Generic opensearch exception"""
+
+
+class JobExecutionException(Exception):
+    """Generic job executions exception"""

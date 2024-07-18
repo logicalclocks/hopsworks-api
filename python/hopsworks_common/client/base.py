@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+
 from __future__ import annotations
 
 import base64
@@ -24,8 +25,8 @@ from pathlib import Path
 import furl
 import requests
 import urllib3
-from hsfs.client import auth, exceptions
-from hsfs.decorators import connected
+from hopsworks_common.client import auth, exceptions
+from hopsworks_common.decorators import connected
 
 
 try:
@@ -123,6 +124,7 @@ class Client:
         data=None,
         stream=False,
         files=None,
+        with_base_path_params=True,
     ):
         """Send REST request to Hopsworks.
 
@@ -144,13 +146,16 @@ class Client:
         :type stream: boolean, optional
         :param files: dictionary for multipart encoding upload
         :type files: dict, optional
-        :raises hsfs.client.exceptions.RestAPIError: Raised when request wasn't correctly received, understood or accepted
+        :raises RestAPIError: Raised when request wasn't correctly received, understood or accepted
         :return: Response json
         :rtype: dict
         """
-        base_path_params = ["hopsworks-api", "api"]
         f_url = furl.furl(self._base_url)
-        f_url.path.segments = base_path_params + path_params
+        if with_base_path_params:
+            base_path_params = ["hopsworks-api", "api"]
+            f_url.path.segments = base_path_params + path_params
+        else:
+            f_url.path.segments = path_params
         url = str(f_url)
 
         request = requests.Request(

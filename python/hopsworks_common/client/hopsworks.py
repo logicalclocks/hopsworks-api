@@ -13,13 +13,14 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-from __future__ import annotations
 
+import base64
 import os
+import textwrap
 from pathlib import Path
 
 import requests
-from hsfs.client import auth, base
+from hopsworks_common.client import auth, base
 
 
 try:
@@ -84,27 +85,75 @@ class Client(base.Client):
         """Convert truststore from jks to pem and return the location"""
         ca_chain_path = Path(self.PEM_CA_CHAIN)
         if not ca_chain_path.exists():
-            ks = jks.KeyStore.load(
-                self._get_jks_key_store_path(), self._cert_key, try_decrypt_keys=True
-            )
-            ts = jks.KeyStore.load(
-                self._get_jks_trust_store_path(), self._cert_key, try_decrypt_keys=True
-            )
-            self._write_ca_chain(
-                ks,
-                ts,
-                ca_chain_path,
-            )
+            self._write_ca_chain(ca_chain_path)
         return str(ca_chain_path)
 
-    def _get_ca_chain_path(self) -> str:
+    def _get_ca_chain_path(self, project_name=None) -> str:
         return os.path.join("/tmp", "ca_chain.pem")
 
-    def _get_client_cert_path(self) -> str:
+    def _get_client_cert_path(self, project_name=None) -> str:
         return os.path.join("/tmp", "client_cert.pem")
 
-    def _get_client_key_path(self) -> str:
+    def _get_client_key_path(self, project_name=None) -> str:
         return os.path.join("/tmp", "client_key.pem")
+
+    def _write_ca_chain(self, ca_chain_path):
+        """
+        Converts JKS trustore file into PEM to be compatible with Python libraries
+        """
+        keystore_pw = self._cert_key
+        keystore_ca_cert = self._convert_jks_to_pem(
+            self._get_jks_key_store_path(), keystore_pw
+        )
+        truststore_ca_cert = self._convert_jks_to_pem(
+            self._get_jks_trust_store_path(), keystore_pw
+        )
+
+        with ca_chain_path.open("w") as f:
+            f.write(keystore_ca_cert + truststore_ca_cert)
+
+    def _convert_jks_to_pem(self, jks_path, keystore_pw):
+        """
+        Converts a keystore JKS that contains client private key,
+         client certificate and CA certificate that was used to
+         sign the certificate to PEM format and returns the CA certificate.
+        Args:
+        :jks_path: path to the JKS file
+        :pw: password for decrypting the JKS file
+        Returns:
+             strings: (ca_cert)
+        """
+        # load the keystore and decrypt it with password
+        ks = jks.KeyStore.load(jks_path, keystore_pw, try_decrypt_keys=True)
+        ca_certs = ""
+
+        # Convert CA Certificates into PEM format and append to string
+        for _alias, c in ks.certs.items():
+            ca_certs = ca_certs + self._bytes_to_pem_str(c.cert, "CERTIFICATE")
+        return ca_certs
+
+    def _bytes_to_pem_str(self, der_bytes, pem_type):
+        """
+        Utility function for creating PEM files
+
+        Args:
+            der_bytes: DER encoded bytes
+            pem_type: type of PEM, e.g Certificate, Private key, or RSA private key
+
+        Returns:
+            PEM String for a DER-encoded certificate or private key
+        """
+        pem_str = ""
+        pem_str = pem_str + "-----BEGIN {}-----".format(pem_type) + "\n"
+        pem_str = (
+            pem_str
+            + "\r\n".join(
+                textwrap.wrap(base64.b64encode(der_bytes).decode("ascii"), 64)
+            )
+            + "\n"
+        )
+        pem_str = pem_str + "-----END {}-----".format(pem_type) + "\n"
+        return pem_str
 
     def _get_jks_trust_store_path(self):
         """
@@ -143,9 +192,8 @@ class Client(base.Client):
             pass
 
         hops_user = self._project_user()
-        hops_user_split = hops_user.split(
-            "__"
-        )  # project users have username project__user
+        # project users have username project__user:
+        hops_user_split = hops_user.split("__")
         project = hops_user_split[0]
         return project
 
@@ -176,9 +224,6 @@ class Client(base.Client):
         """replace hostname to public hostname set in HOPSWORKS_PUBLIC_HOST"""
         ui_url = url._replace(netloc=os.environ[self.HOPSWORKS_PUBLIC_HOST])
         return ui_url
-
-    def _is_external(self):
-        return False
 
     @property
     def host(self):

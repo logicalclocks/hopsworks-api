@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+
 from __future__ import annotations
 
 import base64
@@ -22,15 +23,14 @@ import os
 
 import boto3
 import requests
+from hopsworks_common.client import auth, base, exceptions
+from hopsworks_common.client.exceptions import FeatureStoreException
 
 
 try:
     from pyspark.sql import SparkSession
 except ImportError:
     pass
-
-from hsfs.client import auth, base, exceptions
-from hsfs.client.exceptions import FeatureStoreException
 
 
 _logger = logging.getLogger(__name__)
@@ -60,14 +60,18 @@ class Client(base.Client):
         _logger.info("Initializing external client")
         if not host:
             raise exceptions.ExternalClientError("host")
-        if not project:
-            raise exceptions.ExternalClientError("project")
 
         self._host = host
         self._port = port
         self._base_url = "https://" + self._host + ":" + str(self._port)
         _logger.info("Base URL: %s", self._base_url)
         self._project_name = project
+        if project is not None:
+            project_info = self._get_project_info(project)
+            self._project_id = str(project_info["projectId"])
+            _logger.debug("Setting Project ID: %s", self._project_id)
+        else:
+            self._project_id = None
         _logger.debug("Project name: %s", self._project_name)
         self._region_name = region_name or self.DEFAULT_REGION
         _logger.debug("Region name: %s", self._region_name)
@@ -77,6 +81,8 @@ class Client(base.Client):
             api_key = api_key_value
         else:
             _logger.debug("Querying secrets store for API key")
+            if secrets_store is None:
+                secrets_store = self.LOCAL_STORE
             api_key = self._get_secret(secrets_store, "api-key", api_key_file)
 
         _logger.debug("Using api key to setup header authentification")
@@ -89,22 +95,15 @@ class Client(base.Client):
         self._verify = self._get_verify(self._host, trust_store_path)
         _logger.debug("Verify: %s", self._verify)
 
-        project_info = self._get_project_info(self._project_name)
-
-        self._project_id = str(project_info["projectId"])
-        _logger.debug("Setting Project ID: %s", self._project_id)
-
         self._cert_key = None
-        self._cert_folder_base = None
+        self._cert_folder_base = cert_folder
+        self._cert_folder = None
+
+        if project is None:
+            return
 
         if engine == "python":
-            credentials = self._materialize_certs(cert_folder, host, project)
-
-            self._write_pem_file(credentials["caChain"], self._get_ca_chain_path())
-            self._write_pem_file(
-                credentials["clientCert"], self._get_client_cert_path()
-            )
-            self._write_pem_file(credentials["clientKey"], self._get_client_key_path())
+            self.download_certs(project)
 
         elif engine == "spark":
             # When using the Spark engine with metastore connection, the certificates
@@ -126,12 +125,13 @@ class Client(base.Client):
             self._key_store_path = _spark_session.conf.get(
                 "spark.hadoop.hops.ssl.keystore.name"
             )
+
         elif engine == "spark-no-metastore":
             _logger.debug(
                 "Running in Spark environment with no metastore, initializing Spark session"
             )
             _spark_session = SparkSession.builder.getOrCreate()
-            self._materialize_certs(cert_folder, host, project)
+            self.download_certs(project)
 
             # Set credentials location in the Spark configuration
             # Set other options in the Spark configuration
@@ -150,20 +150,33 @@ class Client(base.Client):
             for conf_key, conf_value in configuration_dict.items():
                 _spark_session._jsc.hadoopConfiguration().set(conf_key, conf_value)
 
-    def _materialize_certs(self, cert_folder, host, project):
-        self._cert_folder_base = cert_folder
-        self._cert_folder = os.path.join(cert_folder, host, project)
+    def download_certs(self, project):
+        res = self._materialize_certs(self, project)
+        self._write_pem_file(res["caChain"], self._get_ca_chain_path())
+        self._write_pem_file(res["clientCert"], self._get_client_cert_path())
+        self._write_pem_file(res["clientKey"], self._get_client_key_path())
+        return res
+
+    def _materialize_certs(self, project):
+        if project != self._project_name:
+            self._project_name = project
+            _logger.debug("Project name: %s", self._project_name)
+            project_info = self._get_project_info(project)
+            self._project_id = str(project_info["projectId"])
+            _logger.debug("Setting Project ID: %s", self._project_id)
+
+        self._cert_folder = os.path.join(self._cert_folder_base, self._host, project)
         self._trust_store_path = os.path.join(self._cert_folder, "trustStore.jks")
         self._key_store_path = os.path.join(self._cert_folder, "keyStore.jks")
 
         if os.path.exists(self._cert_folder):
             _logger.debug(
-                f"Running in Python environment, reading certificates from certificates folder {cert_folder}"
+                f"Running in Python environment, reading certificates from certificates folder {self._cert_folder_base}"
             )
-            _logger.debug("Found certificates: %s", os.listdir(cert_folder))
+            _logger.debug("Found certificates: %s", os.listdir(self._cert_folder_base))
         else:
             _logger.debug(
-                f"Running in Python environment, creating certificates folder {cert_folder}"
+                f"Running in Python environment, creating certificates folder {self._cert_folder_base}"
             )
             os.makedirs(self._cert_folder, exist_ok=True)
 
@@ -176,6 +189,7 @@ class Client(base.Client):
             str(credentials["tStore"]),
             path=self._get_jks_trust_store_path(),
         )
+
         self._cert_key = str(credentials["password"])
         self._cert_key_path = os.path.join(self._cert_folder, "material_passwd")
         with open(self._cert_key_path, "w") as f:
@@ -213,7 +227,8 @@ class Client(base.Client):
     def _close(self):
         """Closes a client and deletes certificates."""
         _logger.info("Closing external client and cleaning up certificates.")
-        if self._cert_folder_base is None:
+        self._connected = False
+        if self._cert_folder is None:
             _logger.debug("No certificates to clean up.")
             # On external Spark clients (Databricks, Spark Cluster),
             # certificates need to be provided before the Spark application starts.
@@ -237,7 +252,8 @@ class Client(base.Client):
             os.rmdir(self._cert_folder_base)
         except OSError:
             pass
-        self._connected = False
+
+        self._cert_folder = None
 
     def _get_jks_trust_store_path(self):
         _logger.debug("Getting trust store path: %s", self._trust_store_path)
@@ -247,18 +263,30 @@ class Client(base.Client):
         _logger.debug("Getting key store path: %s", self._key_store_path)
         return self._key_store_path
 
-    def _get_ca_chain_path(self) -> str:
-        path = os.path.join(self._cert_folder, "ca_chain.pem")
+    def _get_ca_chain_path(self, project_name=None) -> str:
+        if project_name is None:
+            project_name = self._project_name
+        path = os.path.join(
+            self._cert_folder_base, self._host, project_name, "ca_chain.pem"
+        )
         _logger.debug(f"Getting ca chain path {path}")
         return path
 
-    def _get_client_cert_path(self) -> str:
-        path = os.path.join(self._cert_folder, "client_cert.pem")
+    def _get_client_cert_path(self, project_name=None) -> str:
+        if project_name is None:
+            project_name = self._project_name
+        path = os.path.join(
+            self._cert_folder_base, self._host, project_name, "client_cert.pem"
+        )
         _logger.debug(f"Getting client cert path {path}")
         return path
 
-    def _get_client_key_path(self) -> str:
-        path = os.path.join(self._cert_folder, "client_key.pem")
+    def _get_client_key_path(self, project_name=None) -> str:
+        if project_name is None:
+            project_name = self._project_name
+        path = os.path.join(
+            self._cert_folder_base, self._host, project_name, "client_key.pem"
+        )
         _logger.debug(f"Getting client key path {path}")
         return path
 
@@ -374,9 +402,6 @@ class Client(base.Client):
         """no need to replace as we are already in external client"""
         return url
 
-    def _is_external(self) -> bool:
-        return True
-
     @property
-    def host(self) -> str:
+    def host(self):
         return self._host
