@@ -1,0 +1,427 @@
+{
+  "get_deployments_singleton": {
+    "response": {
+      "count": 1,
+      "items": [
+        {
+          "id": 1,
+          "name": "test",
+          "description": "test_desc",
+          "created": "",
+          "creator": "",
+          "model_path": "test_model_path",
+          "model_name": "test_model_name",
+          "model_version": 1,
+          "model_framework": "PYTHON",
+          "model_server": "PYTHON",
+          "serving_tool": "KSERVE",
+          "api_protocol": "REST",
+          "artifact_version": 2,
+          "predictor": "predictor_file",
+          "transformer": "transformer_file",
+          "requested_instances": 1,
+          "requested_transformer_instances": 1,
+          "predictor_resources": {
+            "requested_instances": 1,
+            "requests": { "cores": 0.2, "memory": 16, "gpus": 1 },
+            "limits": { "cores": 0.3, "memory": 17, "gpus": 2 }
+          },
+          "transformer_resources": {
+            "requested_instances": 1,
+            "requests": { "cores": 0.2, "memory": 16, "gpus": 1 },
+            "limits": { "cores": 0.3, "memory": 17, "gpus": 2 }
+          },
+          "batching_configuration": {
+            "batching_enabled": true,
+            "max_batch_size": 1000,
+            "max_latency": 1000,
+            "timeout": 1000
+          },
+          "inference_logging": "ALL",
+          "kafka_topic_dto": {
+            "name": "topic"
+          },
+          "environment_dto": {
+            "name": "misc-inference-pipeline"
+          }
+        }
+      ]
+    }
+  },
+  "get_deployments_empty": {
+    "response": {
+      "count": 0,
+      "items": []
+    }
+  },
+  "get_deployments_list": {
+    "response": {
+      "count": 2,
+      "items": [
+        {
+          "id": 1,
+          "name": "test",
+          "description": "test_desc",
+          "created": "",
+          "creator": "",
+          "model_path": "test_model_path",
+          "model_name": "test_model_name",
+          "model_version": 1,
+          "model_framework": "PYTHON",
+          "model_server": "PYTHON",
+          "serving_tool": "KSERVE",
+          "api_protocol": "REST",
+          "artifact_version": 2,
+          "predictor": "predictor_file",
+          "transformer": "transformer_file",
+          "requested_instances": 1,
+          "requested_transformer_instances": 1,
+          "predictor_resources": {
+            "requested_instances": 1,
+            "requests": { "cores": 0.2, "memory": 16, "gpus": 1 },
+            "limits": { "cores": 0.3, "memory": 17, "gpus": 2 }
+          },
+          "transformer_resources": {
+            "requested_instances": 1,
+            "requests": { "cores": 0.2, "memory": 16, "gpus": 1 },
+            "limits": { "cores": 0.3, "memory": 17, "gpus": 2 }
+          },
+          "batching_configuration": {
+            "batching_enabled": true,
+            "max_batch_size": 1000,
+            "max_latency": 1000,
+            "timeout": 1000
+          },
+          "inference_logging": "ALL",
+          "kafka_topic_dto": {
+            "name": "topic"
+          },
+          "environment_dto": {
+            "name": "misc-inference-pipeline"
+          }
+        },
+        {
+          "id": 2,
+          "name": "test_2",
+          "description": "test_desc_2",
+          "created": "",
+          "creator": "",
+          "model_path": "test_model_path",
+          "model_name": "test_model_name",
+          "model_version": 2,
+          "model_framework": "PYTHON",
+          "model_server": "PYTHON",
+          "serving_tool": "KSERVE",
+          "api_protocol": "REST",
+          "artifact_version": 3,
+          "predictor": "predictor_file",
+          "transformer": "transformer_file",
+          "requested_instances": 1,
+          "requested_transformer_instances": 1,
+          "predictor_resources": {
+            "requested_instances": 1,
+            "requests": { "cores": 0.2, "memory": 16, "gpus": 1 },
+            "limits": { "cores": 0.3, "memory": 17, "gpus": 2 }
+          },
+          "transformer_resources": {
+            "requested_instances": 1,
+            "requests": { "cores": 0.2, "memory": 16, "gpus": 1 },
+            "limits": { "cores": 0.3, "memory": 17, "gpus": 2 }
+          },
+          "batching_configuration": {
+            "batching_enabled": true,
+            "max_batch_size": 1000,
+            "max_latency": 1000,
+            "timeout": 1000
+          },
+          "inference_logging": "ALL",
+          "kafka_topic_dto": {
+            "name": "topic"
+          },
+          "environment_dto": {
+            "name": "misc-inference-pipeline"
+          }
+        }
+      ]
+    }
+  },
+  "get_deployment_tf_kserve_rest": {
+    "response": {
+      "id": 1,
+      "name": "test",
+      "description": "test_desc",
+      "created": "",
+      "creator": "",
+      "model_path": "test_model_path",
+      "model_name": "test_model_name",
+      "model_version": 1,
+      "model_framework": "TENSORFLOW",
+      "model_server": "TENSORFLOW_SERVING",
+      "serving_tool": "KSERVE",
+      "api_protocol": "REST",
+      "artifact_version": 2,
+      "requested_instances": 1,
+      "predictor_resources": {
+        "requested_instances": 1,
+        "requests": { "cores": 0.2, "memory": 16, "gpus": 1 },
+        "limits": { "cores": 0.3, "memory": 17, "gpus": 2 }
+      },
+      "inference_logging": "ALL",
+      "kafka_topic_dto": {
+        "name": "topic"
+      },
+      "environment_dto": {
+        "name": "tensorflow-inference-pipeline"
+      }
+    }
+  },
+  "get_deployment_tf_kserve_rest_trans": {
+    "response": {
+      "id": 1,
+      "name": "test",
+      "description": "test_desc",
+      "created": "",
+      "creator": "",
+      "model_path": "test_model_path",
+      "model_name": "test_model_name",
+      "model_version": 1,
+      "model_framework": "TENSORFLOW",
+      "model_server": "TENSORFLOW_SERVING",
+      "serving_tool": "KSERVE",
+      "api_protocol": "REST",
+      "artifact_version": 2,
+      "transformer": "transformer_file",
+      "requested_instances": 1,
+      "requested_transformer_instances": 1,
+      "predictor_resources": {
+        "requested_instances": 1,
+        "requests": { "cores": 0.2, "memory": 16, "gpus": 1 },
+        "limits": { "cores": 0.3, "memory": 17, "gpus": 2 }
+      },
+      "transformer_resources": {
+        "requested_instances": 1,
+        "requests": { "cores": 0.2, "memory": 16, "gpus": 1 },
+        "limits": { "cores": 0.3, "memory": 17, "gpus": 2 }
+      },
+      "batching_configuration": {
+        "batching_enabled": true,
+        "max_batch_size": 1000,
+        "max_latency": 1000,
+        "timeout": 1000
+      },
+      "inference_logging": "ALL",
+      "kafka_topic_dto": {
+        "name": "topic"
+      },
+      "environment_dto": {
+        "name": "tensorflow-inference-pipeline"
+      }
+    }
+  },
+
+  "get_deployment_py_kserve_rest_pred": {
+    "response": {
+      "id": 1,
+      "name": "test",
+      "description": "test_desc",
+      "created": "",
+      "creator": "",
+      "model_path": "test_model_path",
+      "model_name": "test_model_name",
+      "model_version": 1,
+      "model_framework": "PYTHON",
+      "model_server": "PYTHON",
+      "serving_tool": "KSERVE",
+      "api_protocol": "REST",
+      "artifact_version": 2,
+      "predictor": "predictor_file",
+      "requested_instances": 1,
+      "predictor_resources": {
+        "requested_instances": 1,
+        "requests": { "cores": 0.2, "memory": 16, "gpus": 1 },
+        "limits": { "cores": 0.3, "memory": 17, "gpus": 2 }
+      },
+      "batching_configuration": {
+        "batching_enabled": true,
+        "max_batch_size": 1000,
+        "max_latency": 1000,
+        "timeout": 1000
+      },
+      "inference_logging": "ALL",
+      "kafka_topic_dto": {
+        "name": "topic"
+      },
+      "environment_dto": {
+        "name": "misc-inference-pipeline"
+      }
+    }
+  },
+
+  "get_deployment_py_kserve_rest_pred_trans": {
+    "response": {
+      "id": 1,
+      "name": "test",
+      "description": "test_desc",
+      "created": "",
+      "creator": "",
+      "model_path": "test_model_path",
+      "model_name": "test_model_name",
+      "model_version": 1,
+      "model_framework": "PYTHON",
+      "model_server": "PYTHON",
+      "serving_tool": "KSERVE",
+      "api_protocol": "REST",
+      "artifact_version": 2,
+      "predictor": "predictor_file",
+      "transformer": "transformer_file",
+      "requested_instances": 1,
+      "requested_transformer_instances": 1,
+      "predictor_resources": {
+        "requested_instances": 1,
+        "requests": { "cores": 0.2, "memory": 16, "gpus": 1 },
+        "limits": { "cores": 0.3, "memory": 17, "gpus": 2 }
+      },
+      "transformer_resources": {
+        "requested_instances": 1,
+        "requests": { "cores": 0.2, "memory": 16, "gpus": 1 },
+        "limits": { "cores": 0.3, "memory": 17, "gpus": 2 }
+      },
+      "inference_logging": "ALL",
+      "batching_configuration": {
+        "batching_enabled": true,
+        "max_batch_size": 1000,
+        "max_latency": 1000,
+        "timeout": 1000
+      },
+      "kafka_topic_dto": {
+        "name": "topic"
+      },
+      "environment_dto": {
+        "name": "misc-inference-pipeline"
+      }
+    }
+  },
+
+  "get_deployment_py_kserve_grpc_pred": {
+    "response": {
+      "id": 1,
+      "name": "test",
+      "description": "test_desc",
+      "created": "",
+      "creator": "",
+      "model_path": "test_model_path",
+      "model_name": "test_model_name",
+      "model_version": 1,
+      "model_framework": "PYTHON",
+      "model_server": "PYTHON",
+      "serving_tool": "KSERVE",
+      "api_protocol": "GRPC",
+      "artifact_version": 2,
+      "predictor": "predictor_file",
+      "requested_instances": 1,
+      "predictor_resources": {
+        "requested_instances": 1,
+        "requests": { "cores": 0.2, "memory": 16, "gpus": 1 },
+        "limits": { "cores": 0.3, "memory": 17, "gpus": 2 }
+      },
+      "inference_logging": "ALL",
+      "batching_configuration": {
+        "batching_enabled": true,
+        "max_batch_size": 1000,
+        "max_latency": 1000,
+        "timeout": 1000
+      },
+      "kafka_topic_dto": {
+        "name": "topic"
+      },
+      "environment_dto": {
+        "name": "misc-inference-pipeline"
+      }
+    }
+  },
+
+  "get_deployment_py_kserve_grpc_pred_trans": {
+    "response": {
+      "id": 1,
+      "name": "test",
+      "description": "test_desc",
+      "created": "",
+      "creator": "",
+      "model_path": "test_model_path",
+      "model_name": "test_model_name",
+      "model_version": 1,
+      "model_framework": "PYTHON",
+      "model_server": "PYTHON",
+      "serving_tool": "KSERVE",
+      "api_protocol": "GRPC",
+      "artifact_version": 2,
+      "predictor": "predictor_file",
+      "transformer": "transformer_file",
+      "requested_instances": 1,
+      "requested_transformer_instances": 1,
+      "predictor_resources": {
+        "requested_instances": 1,
+        "requests": { "cores": 0.2, "memory": 16, "gpus": 1 },
+        "limits": { "cores": 0.3, "memory": 17, "gpus": 2 }
+      },
+      "transformer_resources": {
+        "requested_instances": 1,
+        "requests": { "cores": 0.2, "memory": 16, "gpus": 1 },
+        "limits": { "cores": 0.3, "memory": 17, "gpus": 2 }
+      },
+      "inference_logging": "ALL",
+      "batching_configuration": {
+        "batching_enabled": true,
+        "max_batch_size": 1000,
+        "max_latency": 1000,
+        "timeout": 1000
+      },
+      "kafka_topic_dto": {
+        "name": "topic"
+      },
+      "environment_dto": {
+        "name": "misc-inference-pipeline"
+      }
+    }
+  },
+  "get_deployment_predictor_state": {
+    "response": {
+      "available_instances": 1,
+      "available_transformer_instances": 1,
+      "hopsworks_inference_path": "hopsworks/api/path",
+      "model_server_inference_path": "model-server/path",
+      "internal_port": 1234,
+      "revision": 1234,
+      "deployed": "1234",
+      "condition": {
+        "type": "TYPE",
+        "status": true,
+        "reason": "REASON"
+      },
+      "status": "RUNNING"
+    }
+  },
+  "get_deployment_component_logs_empty": {
+    "response": []
+  },
+  "get_deployment_component_logs_single": {
+    "response": [
+      {
+        "instance_name": "instance_name",
+        "content": "content"
+      }
+    ]
+  },
+  "get_deployment_component_logs_list": {
+    "response": [
+      {
+        "instance_name": "instance_name_2",
+        "content": "content_2"
+      },
+      {
+        "instance_name": "instance_name_2",
+        "content": "content_2"
+      }
+    ]
+  }
+}

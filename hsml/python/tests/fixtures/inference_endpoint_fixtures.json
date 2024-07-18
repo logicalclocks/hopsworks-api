@@ -1,0 +1,66 @@
+{
+  "get_port": {
+    "response": {
+      "name": "port_name",
+      "number": 12345
+    }
+  },
+  "get_empty": {
+    "response": {
+      "count": 0,
+      "items": []
+    }
+  },
+  "get_singleton": {
+    "response": {
+      "count": 1,
+      "items": [
+        {
+          "type": "LOAD_BALANCER",
+          "hosts": ["host1", "host2", "host3"],
+          "ports": [
+            {
+              "name": "port_name",
+              "number": 12345
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "get_list": {
+    "response": {
+      "count": 2,
+      "items": [
+        {
+          "type": "LOAD_BALANCER",
+          "hosts": ["host1", "host2"],
+          "ports": [
+            {
+              "name": "port_name",
+              "number": 12345
+            }
+          ]
+        },
+        {
+          "type": "NODE",
+          "hosts": 54321,
+          "ports": [
+            {
+              "name": "port_name",
+              "number": 12345
+            },
+            {
+              "name": "port_name_2",
+              "number": 54321
+            },
+            {
+              "name": "port_name_3",
+              "number": 15243
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
