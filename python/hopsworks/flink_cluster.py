@@ -15,10 +15,10 @@
 #
 
 import time
-
-from hopsworks import util
-from hopsworks.core import execution_api, flink_cluster_api
 from hopsworks.engine import execution_engine
+from hopsworks.core import execution_api
+from hopsworks.core import flink_cluster_api
+from hopsworks import util
 
 
 class FlinkCluster:

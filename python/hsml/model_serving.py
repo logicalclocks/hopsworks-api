@@ -285,12 +285,7 @@ class ModelServing:
 
         return Transformer(script_file=script_file, resources=resources)
 
-    def create_deployment(
-        self,
-        predictor: Predictor,
-        name: Optional[str] = None,
-        environment: Optional[str] = None,
-    ):
+    def create_deployment(self, predictor: Predictor, name: Optional[str] = None, environment: Optional[str] = None):
         """Create a Deployment metadata object.
 
         !!! example

@@ -100,7 +100,6 @@ def set_model_class(model):
     from hsml.sklearn.model import Model as SkLearnModel
     from hsml.tensorflow.model import Model as TFModel
     from hsml.torch.model import Model as TorchModel
-
     if "href" in model:
         _ = model.pop("href")
     if "type" in model:  # backwards compatibility
@@ -242,7 +241,6 @@ def get_predictor_for_model(model, **kwargs):
     from hsml.tensorflow.predictor import Predictor as TFPredictor
     from hsml.torch.model import Model as TorchModel
     from hsml.torch.predictor import Predictor as TorchPredictor
-
     if not isinstance(model, BaseModel):
         raise ValueError(
             "model is of type {}, but an instance of {} class is expected".format(

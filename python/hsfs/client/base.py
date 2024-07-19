@@ -19,6 +19,7 @@ import base64
 import os
 import textwrap
 import time
+from abc import ABC
 from pathlib import Path
 
 import furl
@@ -38,7 +39,7 @@ urllib3.disable_warnings(urllib3.exceptions.SecurityWarning)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
-class Client:
+class Client(ABC):
     TOKEN_FILE = "token.jwt"
     TOKEN_EXPIRED_RETRY_INTERVAL = 0.6
     TOKEN_EXPIRED_MAX_RETRIES = 10

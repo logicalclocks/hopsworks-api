@@ -14,10 +14,9 @@
 #   limitations under the License.
 #
 
-import json
-
-import humps
 from hopsworks import util
+import humps
+import json
 
 
 class GitCommit:

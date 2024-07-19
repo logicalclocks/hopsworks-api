@@ -97,7 +97,6 @@ class Connection:
         api_key_value: str = None,
     ):
         from hsml.core import model_api, model_registry_api, model_serving_api
-
         self._host = host
         self._port = port
         self._project = project
@@ -164,7 +163,6 @@ class Connection:
         """
         from hsml import client
         from hsml.core import model_api
-
         self._connected = True
         try:
             # init client
@@ -198,7 +196,6 @@ class Connection:
         Usage is recommended but optional.
         """
         from hsml import client
-
         client.stop()
         self._model_api = None
         self._connected = False

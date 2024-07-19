@@ -14,11 +14,10 @@
 #   limitations under the License.
 #
 
-import logging
-import time
-
-from hopsworks.client.exceptions import GitException
 from hopsworks.core import git_op_execution_api
+from hopsworks.client.exceptions import GitException
+import time
+import logging
 
 
 class GitEngine:

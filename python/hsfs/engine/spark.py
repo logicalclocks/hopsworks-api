@@ -1389,9 +1389,9 @@ class Engine:
 
         if not using_hudi:
             return spark_type.simpleString()
-        elif type(spark_type) is ByteType:
+        elif type(spark_type) == ByteType:
             return "int"
-        elif type(spark_type) is ShortType:
+        elif type(spark_type) == ShortType:
             return "int"
         elif type(spark_type) in [
             BooleanType,

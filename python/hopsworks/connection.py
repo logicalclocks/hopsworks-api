@@ -16,14 +16,14 @@
 
 import os
 import re
-import sys
 import warnings
+import sys
 
-from hopsworks import client, version
-from hopsworks.core import project_api, secret_api, variable_api
-from hopsworks.decorators import connected, not_connected
 from requests.exceptions import ConnectionError
 
+from hopsworks.decorators import connected, not_connected
+from hopsworks import client, version
+from hopsworks.core import project_api, secret_api, variable_api
 
 HOPSWORKS_PORT_DEFAULT = 443
 HOSTNAME_VERIFICATION_DEFAULT = True
@@ -210,8 +210,7 @@ class Connection:
             warnings.warn(
                 "The installed hopsworks client version {0} may not be compatible with the connected Hopsworks backend version {1}. \nTo ensure compatibility please install the latest bug fix release matching the minor version of your backend ({2}) by running 'pip install hopsworks=={2}.*'".format(
                     client_version, backend_version, major_minor_backend
-                ),
-                stacklevel=1,
+                )
             )
             sys.stderr.flush()
 

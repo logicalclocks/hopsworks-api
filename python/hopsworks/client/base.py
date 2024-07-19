@@ -15,12 +15,13 @@
 #
 
 import os
+import furl
 from abc import ABC, abstractmethod
 
-import furl
 import requests
 import urllib3
-from hopsworks.client import auth, exceptions
+
+from hopsworks.client import exceptions, auth
 from hopsworks.decorators import connected
 
 

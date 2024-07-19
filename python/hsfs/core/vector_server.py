@@ -99,7 +99,10 @@ class VectorServer:
         self._untransformed_feature_vector_col_name = [
             feat.name
             for feat in features
-            if not (feat.label or feat.training_helper_column)
+            if not (
+                feat.label
+                or feat.training_helper_column
+            )
         ]
         self._inference_helper_col_name = [
             feat.name for feat in features if feat.inference_helper_column
@@ -448,26 +451,17 @@ class VectorServer:
                 for fname in self.transformed_feature_vector_col_name
             ]
         else:
-            return [
-                result_dict.get(fname, None)
-                for fname in self._untransformed_feature_vector_col_name
-            ]
+            return [result_dict.get(fname, None) for fname in self._untransformed_feature_vector_col_name]
 
     def transform_feature_vectors(self, batch_features):
-        return [
-            self.apply_transformation(self.get_untransformed_features_map(features))
+        return [self.apply_transformation(self.get_untransformed_features_map(features))
             for features in batch_features
         ]
 
     def get_untransformed_features_map(self, features) -> Dict[str, Any]:
         return dict(
-            [
-                (fname, fvalue)
-                for fname, fvalue in zip(
-                    self._untransformed_feature_vector_col_name, features
-                )
-            ]
-        )
+            [(fname, fvalue) for fname, fvalue
+             in zip(self._untransformed_feature_vector_col_name, features)])
 
     def handle_feature_vector_return_type(
         self,

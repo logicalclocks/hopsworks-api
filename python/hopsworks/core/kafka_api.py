@@ -14,11 +14,10 @@
 #   limitations under the License.
 #
 
+from hopsworks import client, kafka_topic, kafka_schema, constants
+from hopsworks.client.exceptions import KafkaException
 import json
 import socket
-
-from hopsworks import client, constants, kafka_schema, kafka_topic
-from hopsworks.client.exceptions import KafkaException
 from hopsworks.client.external import Client
 
 
@@ -367,7 +366,7 @@ class KafkaApi:
             constants.KAFKA_SSL_CONFIG.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG: "none",
         }
         _client = client.get_instance()
-        if type(_client) is Client:
+        if type(_client) == Client:
             config[constants.KAFKA_PRODUCER_CONFIG.BOOTSTRAP_SERVERS_CONFIG] = ",".join(
                 [
                     endpoint.replace("EXTERNAL://", "")

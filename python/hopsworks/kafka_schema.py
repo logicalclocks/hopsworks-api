@@ -14,11 +14,10 @@
 #   limitations under the License.
 #
 
-import json
-
 import humps
-from hopsworks import util
+import json
 from hopsworks.core import kafka_api
+from hopsworks import util
 
 
 class KafkaSchema:

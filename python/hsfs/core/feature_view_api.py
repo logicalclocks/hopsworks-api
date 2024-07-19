@@ -46,6 +46,7 @@ class FeatureViewApi:
     _TRANSFORMED_lOG = "transformed"
     _UNTRANSFORMED_LOG = "untransformed"
 
+
     def __init__(self, feature_store_id: int) -> None:
         self._feature_store_id = feature_store_id
         self._client = client.get_instance()
@@ -406,8 +407,7 @@ class FeatureViewApi:
     def enable_feature_logging(
         self,
         feature_view_name: str,
-        feature_view_version: int,
-    ):
+        feature_view_version: int,):
         _client = client.get_instance()
         path_params = self._base_path + [
             feature_view_name,
@@ -420,8 +420,7 @@ class FeatureViewApi:
     def pause_feature_logging(
         self,
         feature_view_name: str,
-        feature_view_version: int,
-    ):
+        feature_view_version: int,):
         _client = client.get_instance()
         path_params = self._base_path + [
             feature_view_name,
@@ -435,8 +434,7 @@ class FeatureViewApi:
     def resume_feature_logging(
         self,
         feature_view_name: str,
-        feature_view_version: int,
-    ):
+        feature_view_version: int,):
         _client = client.get_instance()
         path_params = self._base_path + [
             feature_view_name,
@@ -450,8 +448,7 @@ class FeatureViewApi:
     def materialize_feature_logging(
         self,
         feature_view_name: str,
-        feature_view_version: int,
-    ):
+        feature_view_version: int,):
         _client = client.get_instance()
         path_params = self._base_path + [
             feature_view_name,
@@ -472,8 +469,7 @@ class FeatureViewApi:
     def get_feature_logging(
         self,
         feature_view_name: str,
-        feature_view_version: int,
-    ):
+        feature_view_version: int,):
         _client = client.get_instance()
         path_params = self._base_path + [
             feature_view_name,

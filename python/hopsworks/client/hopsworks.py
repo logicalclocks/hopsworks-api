@@ -20,8 +20,8 @@ import textwrap
 from pathlib import Path
 
 import requests
-from hopsworks.client import auth, base
 
+from hopsworks.client import base, auth
 
 try:
     import jks
@@ -134,7 +134,7 @@ class Client(base.Client):
         ca_certs = ""
 
         # Convert CA Certificates into PEM format and append to string
-        for _alias, c in ks.certs.items():
+        for alias, c in ks.certs.items():
             ca_certs = ca_certs + self._bytes_to_pem_str(c.cert, "CERTIFICATE")
         return ca_certs
 

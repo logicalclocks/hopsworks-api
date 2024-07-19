@@ -209,29 +209,36 @@ class Feature:
 
     def _get_filter_value(self, value: Any) -> Any:
         if self.type == "timestamp":
-            return datetime.fromtimestamp(
-                util.convert_event_time_to_timestamp(value) / 1000
-            ).strftime("%Y-%m-%d %H:%M:%S")
+            return (datetime.fromtimestamp(
+                util.convert_event_time_to_timestamp(value)/1000)
+                    .strftime("%Y-%m-%d %H:%M:%S")
+                    )
         else:
             return value
 
     def __lt__(self, other: Any) -> "filter.Filter":
-        return filter.Filter(self, filter.Filter.LT, self._get_filter_value(other))
+        return filter.Filter(self, filter.Filter.LT,
+                             self._get_filter_value(other))
 
     def __le__(self, other: Any) -> "filter.Filter":
-        return filter.Filter(self, filter.Filter.LE, self._get_filter_value(other))
+        return filter.Filter(self, filter.Filter.LE,
+                             self._get_filter_value(other))
 
     def __eq__(self, other: Any) -> "filter.Filter":
-        return filter.Filter(self, filter.Filter.EQ, self._get_filter_value(other))
+        return filter.Filter(self, filter.Filter.EQ,
+                             self._get_filter_value(other))
 
     def __ne__(self, other: Any) -> "filter.Filter":
-        return filter.Filter(self, filter.Filter.NE, self._get_filter_value(other))
+        return filter.Filter(self, filter.Filter.NE,
+                             self._get_filter_value(other))
 
     def __ge__(self, other: Any) -> "filter.Filter":
-        return filter.Filter(self, filter.Filter.GE, self._get_filter_value(other))
+        return filter.Filter(self, filter.Filter.GE,
+                             self._get_filter_value(other))
 
     def __gt__(self, other: Any) -> "filter.Filter":
-        return filter.Filter(self, filter.Filter.GT, self._get_filter_value(other))
+        return filter.Filter(self, filter.Filter.GT,
+                             self._get_filter_value(other))
 
     def contains(self, other: Union[str, List[Any]]) -> "filter.Filter":
         """

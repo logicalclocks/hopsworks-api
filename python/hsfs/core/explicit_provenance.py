@@ -415,7 +415,9 @@ class ProvenanceEncoder(json.JSONEncoder):
             }
         elif isinstance(
             obj,
-            (storage_connector.StorageConnector),
+            (
+                storage_connector.StorageConnector
+            ),
         ):
             return {
                 "name": obj.name,

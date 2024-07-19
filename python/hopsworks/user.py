@@ -15,8 +15,8 @@
 #
 
 import json
-
 import humps
+
 from hopsworks import util
 
 
