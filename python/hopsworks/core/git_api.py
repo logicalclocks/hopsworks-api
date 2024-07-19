@@ -14,22 +14,22 @@
 #   limitations under the License.
 #
 
-import json
-import logging
-from typing import List, Union
-
 from hopsworks import (
     client,
+    git_repo,
+    git_op_execution,
+    util,
     git_commit,
     git_file_status,
-    git_op_execution,
-    git_repo,
-    util,
 )
 from hopsworks.client.exceptions import GitException
-from hopsworks.core import git_provider_api
 from hopsworks.engine import git_engine
+from hopsworks.core import git_provider_api
+from typing import List, Union
 from hopsworks.git_file_status import GitFileStatus
+
+import json
+import logging
 
 
 class GitApi:
@@ -347,7 +347,7 @@ class GitApi:
 
         status_dict = json.loads(git_op.command_result_message)
         file_status = None
-        if status_dict is not None and isinstance(status_dict["status"], list):
+        if status_dict is not None and type(status_dict["status"]) is list:
             file_status = []
             for status in status_dict["status"]:
                 file_status.append(

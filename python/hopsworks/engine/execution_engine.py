@@ -14,13 +14,13 @@
 #   limitations under the License.
 #
 
-import logging
+from hopsworks.core import dataset_api, execution_api
 import os
+import logging
 import time
 import uuid
 
 from hopsworks.client.exceptions import JobExecutionException, RestAPIError
-from hopsworks.core import dataset_api, execution_api
 
 
 class ExecutionEngine:

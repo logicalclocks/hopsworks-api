@@ -14,11 +14,10 @@
 #   limitations under the License.
 #
 
-import json
-
 import humps
-from hopsworks import util
+import json
 from hopsworks.core import git_provider_api
+from hopsworks import util
 
 
 class GitProvider:

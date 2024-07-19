@@ -1,5 +1,5 @@
 #
-#   Copyright 2024 Hopsworks AB
+#   Copyright 2022 Logical Clocks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -14,11 +14,32 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.core.variable_api import (
-    VariableApi,
-)
+from hopsworks import client
 
 
-__all__ = [
-    VariableApi,
-]
+class VariableApi:
+    def __init__(self):
+        pass
+
+    def get_variable(self, variable: str):
+        """Get the configured value for a variable"""
+
+        _client = client.get_instance()
+
+        path_params = ["variables", variable]
+        domain = _client._send_request("GET", path_params)
+
+        return domain["successMessage"]
+
+    def get_version(self, software: str):
+        _client = client.get_instance()
+        path_params = [
+            "variables",
+            "versions",
+        ]
+
+        resp = _client._send_request("GET", path_params)
+        for entry in resp:
+            if entry["software"] == software:
+                return entry["version"]
+        return None

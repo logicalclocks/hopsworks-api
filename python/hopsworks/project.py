@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 
-import hsfs.feature_store
 import humps
 from hopsworks import client, constants, util
 from hopsworks.client.external import Client
@@ -30,6 +29,7 @@ from hopsworks.core import (
     kafka_api,
     opensearch_api,
 )
+from hsfs import feature_store
 
 
 class Project:
@@ -103,9 +103,7 @@ class Project:
         """Timestamp when the project was created"""
         return self._created
 
-    def get_feature_store(
-        self, name: str = None, engine: str = None
-    ) -> hsfs.feature_store.FeatureStore:
+    def get_feature_store(self, name: str = None, engine: str = None) -> feature_store.FeatureStore:
         """Connect to Project's Feature Store.
 
         Defaulting to the project name of default feature store. To get a
@@ -133,7 +131,7 @@ class Project:
         from hsfs import connection
 
         _client = client.get_instance()
-        if type(_client) is Client:  # If external client
+        if type(_client) == Client:  # If external client
             if _client._host == constants.HOSTS.APP_HOST and engine is None:
                 engine = "python"
             return connection(
@@ -144,9 +142,7 @@ class Project:
                 engine=engine,
             ).get_feature_store(name)
         else:
-            return connection(engine=engine).get_feature_store(
-                name
-            )  # If internal client
+            return connection(engine=engine).get_feature_store(name)  # If internal client
 
     def get_model_registry(self):
         """Connect to Project's Model Registry API.
@@ -168,7 +164,7 @@ class Project:
         from hsml import connection
 
         _client = client.get_instance()
-        if type(_client) is Client:  # If external client
+        if type(_client) == Client:  # If external client
             return connection(
                 host=_client._host,
                 port=_client._port,
@@ -198,7 +194,7 @@ class Project:
         from hsml import connection
 
         _client = client.get_instance()
-        if type(_client) is Client:  # If external client
+        if type(_client) == Client:  # If external client
             return connection(
                 host=_client._host,
                 port=_client._port,
@@ -215,7 +211,7 @@ class Project:
             `KafkaApi`: The Kafka Api handle
         """
         _client = client.get_instance()
-        if type(_client) is Client:
+        if type(_client) == Client:
             _client.download_certs(self.name)
         return self._kafka_api
 
@@ -226,7 +222,7 @@ class Project:
             `OpenSearchApi`: The OpenSearch Api handle
         """
         _client = client.get_instance()
-        if type(_client) is Client:
+        if type(_client) == Client:
             _client.download_certs(self.name)
         return self._opensearch_api
 

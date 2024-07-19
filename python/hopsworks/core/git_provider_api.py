@@ -14,11 +14,11 @@
 #   limitations under the License.
 #
 
-import json
-
 from hopsworks import client, git_provider
-from hopsworks.client.exceptions import GitException
 from hopsworks.engine import git_engine
+from hopsworks.client.exceptions import GitException
+
+import json
 
 
 class GitProviderApi:

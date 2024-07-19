@@ -14,9 +14,8 @@
 #   limitations under the License.
 #
 
+from hopsworks import client, project, constants
 import json
-
-from hopsworks import client, constants, project
 from hopsworks.client.exceptions import RestAPIError
 
 
@@ -28,6 +27,8 @@ class ProjectApi:
             name: Name of the project.
         # Returns
             `bool`: True if project exists, otherwise False
+        # Raises
+            `RestAPIError`: If unable to check the existence of the project
         """
         try:
             self._get_project(name)
@@ -110,12 +111,3 @@ class ProjectApi:
         project = self._get_project(name)
         print("Project created successfully, explore it at " + project.get_url())
         return project
-
-    def get_client(self):
-        _client = client.get_instance()
-        path_params = [
-            "project",
-            _client._project_id,
-            "client",
-        ]
-        return _client._send_request("GET", path_params, stream=True)

@@ -14,11 +14,9 @@
 #   limitations under the License.
 #
 
-import json
 import os
-
-from hopsworks import client, flink_cluster, job, util
-from hopsworks.client.exceptions import RestAPIError
+import json
+from hopsworks import client, flink_cluster, util, job
 from hopsworks.core import job_api
 
 
@@ -71,9 +69,7 @@ class FlinkClusterApi:
             # If the job already exists, retrieve it
             _flink_cluster = self.get_cluster(name)
             if _flink_cluster._job.job_type != "FLINK":
-                raise RestAPIError(
-                    "This is not a Flink cluster. Please use different name to create new Flink cluster"
-                )
+                raise "This is not a Flink cluster. Please use different name to create new Flink cluster"
             return _flink_cluster
         else:
             # If the job doesn't exists, create a new job
