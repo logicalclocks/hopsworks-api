@@ -14,11 +14,11 @@
 #   limitations under the License.
 #
 
-import base64
 import os
-
+import base64
 import requests
-from hopsworks.client import auth, base, exceptions
+
+from hopsworks.client import base, auth, exceptions
 
 
 class Client(base.Client):
@@ -41,11 +41,6 @@ class Client(base.Client):
         self._port = port
         self._base_url = "https://" + self._host + ":" + str(self._port)
         self._project_name = project
-        if project is not None:
-            project_info = self._get_project_info(project)
-            self._project_id = str(project_info["projectId"])
-        else:
-            self._project_id = None
 
         if api_key_value is not None:
             api_key = api_key_value
