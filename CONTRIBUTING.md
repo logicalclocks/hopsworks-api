@@ -1,17 +1,16 @@
 ## Python development setup
-
 ---
 
 - Fork and clone the repository
 
-- Create a new Python environment with your favourite environment manager (e.g. virtualenv or conda) and Python 3.9 (newer versions will return a library conflict in `auto_doc.py`)
+- Create a new Python environment with your favourite environment manager, e.g. virtualenv or conda
 
 - Install repository in editable mode with development dependencies:
 
-  ```bash
-  cd python
-  pip install -e ".[dev]"
-  ```
+    ```bash
+    cd python
+    pip install -e ".[dev]"
+    ```
 
 - Install [pre-commit](https://pre-commit.com/) and then activate its hooks. pre-commit is a framework for managing and maintaining multi-language pre-commit hooks. The library uses pre-commit to ensure code-style and code formatting through [ruff](https://docs.astral.sh/ruff/). Run the following commands from the `python` directory:
 
@@ -38,67 +37,75 @@ We follow a few best practices for writing the Python documentation:
 
 1. Use the google docstring style:
 
-   ```python
-   """[One Line Summary]
+    ```python
+    """[One Line Summary]
 
-   [Extended Summary]
+    [Extended Summary]
 
-   [!!! example
-       import xyz
-   ]
+    [!!! example
+        import xyz
+    ]
 
-   # Arguments
-       arg1: Type[, optional]. Description[, defaults to `default`]
-       arg2: Type[, optional]. Description[, defaults to `default`]
+    # Arguments
+        arg1: Type[, optional]. Description[, defaults to `default`]
+        arg2: Type[, optional]. Description[, defaults to `default`]
 
-   # Returns
-       Type. Description.
+    # Returns
+        Type. Description.
 
-   # Raises
-       Exception. Description.
-   """
-   ```
+    # Raises
+        Exception. Description.
+    """
+    ```
 
-   If Python 3 type annotations are used, they are inserted automatically.
+    If Python 3 type annotations are used, they are inserted automatically.
+
 
 2. Hopsworks entity engine methods (e.g. ExecutionEngine etc.) only require a single line docstring.
-3. Private REST API implementations (e.g. FeatureGroupApi etc.) should be fully documented with docstrings without defaults.
-4. Public API such as metadata objects and public REST API implementations should be fully documented with defaults.
+3. Private REST Api implementations (e.g. GitRemoteApi etc.) should be fully documented with docstrings without defaults.
+4. Public Api such as metadata objects and public REST Api implementations should be fully documented with defaults.
 
 #### Setup and Build Documentation
 
 We use `mkdocs` together with `mike` ([for versioning](https://github.com/jimporter/mike/)) to build the documentation and a plugin called `keras-autodoc` to auto generate Python API documentation from docstrings.
 
 **Background about `mike`:**
-`mike` builds the documentation and commits it as a new directory to the gh-pages branch. Each directory corresponds to one version of the documentation. Additionally, `mike` maintains a json in the root of gh-pages with the mappings of versions/aliases for each of the directories available. With aliases you can define extra names like `dev` or `latest`, to indicate stable and unstable releases.
+    `mike` builds the documentation and commits it as a new directory to the gh-pages branch. Each directory corresponds to one version of the documentation. Additionally, `mike` maintains a json in the root of gh-pages with the mappings of versions/aliases for each of the directories available. With aliases you can define extra names like `dev` or `latest`, to indicate stable and unstable releases.
 
-1. Install Hopsworks with `dev-docs` extras:
+1. Currently we are using our own version of `keras-autodoc`
 
-   ```bash
-   pip install -e ".[dev-docs]"
-   ```
+    ```bash
+    pip install git+https://github.com/logicalclocks/keras-autodoc
+    ```
 
-2. To build the docs, first run the auto doc script:
+2. Install HOPSWORKS with `docs` extras:
 
-   ```bash
-   python auto_doc.py
-   ```
+    ```bash
+    pip install -e .[dev,docs]
+    ```
+
+3. To build the docs, first run the auto doc script:
+
+    ```bash
+    cd ..
+    python auto_doc.py
+    ```
 
 ##### Option 1: Build only current version of docs
 
-3. Either build the docs, or serve them dynamically:
+4. Either build the docs, or serve them dynamically:
 
-   Note: Links and pictures might not resolve properly later on when checking with this build.
-   The reason for that is that the docs are deployed with versioning on docs.hopsworks.ai and
-   therefore another level is added to all paths, e.g. `docs.hopsworks.ai/[version-or-alias]`.
-   Using relative links should not be affected by this, however, building the docs with version
-   (Option 2) is recommended.
+    Note: Links and pictures might not resolve properly later on when checking with this build.
+    The reason for that is that the docs are deployed with versioning on docs.hopsworks.ai and
+    therefore another level is added to all paths, e.g. `docs.hopsworks.ai/[version-or-alias]`.
+    Using relative links should not be affected by this, however, building the docs with version
+    (Option 2) is recommended.
 
-   ```bash
-   mkdocs build
-   # or
-   mkdocs serve
-   ```
+    ```bash
+    mkdocs build
+    # or
+    mkdocs serve
+    ```
 
 ##### Option 2 (Preferred): Build multi-version doc with `mike`
 
@@ -106,36 +113,34 @@ We use `mkdocs` together with `mike` ([for versioning](https://github.com/jimpor
 
 On docs.hopsworks.ai we implement the following versioning scheme:
 
-- current master branches (e.g. of hopsworks corresponding to master of Hopsworks): rendered as current Hopsworks snapshot version, e.g. **4.0.0-SNAPSHOT [dev]**, where `dev` is an alias to indicate that this is an unstable version.
-- the latest release: rendered with full current version, e.g. **3.8.0 [latest]** with `latest` alias to indicate that this is the latest stable release.
-- previous stable releases: rendered without alias, e.g. **3.4.4**.
+- current master branches (e.g. of hopsworks corresponding to master of Hopsworks): rendered as current Hopsworks snapshot version, e.g. **3.1.0-SNAPSHOT [dev]**, where `dev` is an alias to indicate that this is an unstable version.
+- the latest release: rendered with full current version, e.g. **3.0.1 [latest]** with `latest` alias to indicate that this is the latest stable release.
+- previous stable releases: rendered without alias, e.g. **3.0.0**.
 
 ###### Build Instructions
 
-4.  For this you can either checkout and make a local copy of the `upstream/gh-pages` branch, where `mike` maintains the current state of docs.hopsworks.ai, or just build documentation for the branch you are updating:
+4. For this you can either checkout and make a local copy of the `upstream/gh-pages` branch, where
+`mike` maintains the current state of docs.hopsworks.ai, or just build documentation for the branch you are updating:
 
     Building *one* branch:
 
     Checkout your dev branch with modified docs:
-
     ```bash
     git checkout [dev-branch]
     ```
 
     Generate API docs if necessary:
-
     ```bash
     python auto_doc.py
     ```
 
     Build docs with a version and alias
-
     ```bash
     mike deploy [version] [alias] --update-alias
 
     # for example, if you are updating documentation to be merged to master,
     # which will become the new SNAPSHOT version:
-    mike deploy 4.0.0-SNAPSHOT dev --update-alias
+    mike deploy 3.1.0-SNAPSHOT dev --update-alias
 
     # if you are updating docs of the latest stable release branch
     mike deploy [version] latest --update-alias
@@ -153,20 +158,17 @@ On docs.hopsworks.ai we implement the following versioning scheme:
     ```
 
     You can now checkout the gh-pages branch and serve:
-
     ```bash
     git checkout gh-pages
     mike serve
     ```
 
     You can also list all available versions/aliases:
-
     ```bash
     mike list
     ```
 
     Delete and reset your local gh-pages branch:
-
     ```bash
     mike delete --all
 
@@ -192,7 +194,7 @@ PAGES = {
 
 Now you can add a template markdown file to the `docs/templates` directory with the name you specified in the auto-doc script. The `new_template.md` file should contain a tag to identify the place at which the API documentation should be inserted:
 
-````
+```
 ## The XYZ package
 
 {{module}}
@@ -205,7 +207,7 @@ Some extra content here.
     ```
 
 {{xyz.asd}}
-````
+```
 
 Finally, run the `auto_doc.py` script, as decribed above, to update the documentation.
 
