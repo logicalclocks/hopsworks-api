@@ -1,5 +1,5 @@
 #
-#   Copyright 2024 Hopsworks AB
+#   Copyright 2022 Logical Clocks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -14,27 +14,60 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.client import (
-    auth,
-    base,
-    exceptions,
-    external,
-    get_instance,
-    hopsworks,
-    init,
-    online_store_rest_client,
-    stop,
-)
+from hopsworks.client import external, hopsworks
 
 
-__all__ = [
-    auth,
-    base,
-    exceptions,
-    external,
-    get_instance,
-    hopsworks,
-    init,
-    online_store_rest_client,
-    stop,
-]
+_client = None
+_python_version = None
+
+
+def init(
+    client_type,
+    host=None,
+    port=None,
+    project=None,
+    hostname_verification=None,
+    trust_store_path=None,
+    cert_folder=None,
+    api_key_file=None,
+    api_key_value=None,
+):
+    global _client
+    if not _client:
+        if client_type == "hopsworks":
+            _client = hopsworks.Client()
+        elif client_type == "external":
+            _client = external.Client(
+                host,
+                port,
+                project,
+                hostname_verification,
+                trust_store_path,
+                cert_folder,
+                api_key_file,
+                api_key_value,
+            )
+
+
+def get_instance():
+    global _client
+    if _client:
+        return _client
+    raise Exception("Couldn't find client. Try reconnecting to Hopsworks.")
+
+
+def get_python_version():
+    global _python_version
+    return _python_version
+
+
+def set_python_version(python_version):
+    global _python_version
+    _python_version = python_version
+
+
+def stop():
+    global _client
+    if _client:
+        _client._close()
+    _client = None

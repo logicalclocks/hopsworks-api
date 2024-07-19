@@ -1,5 +1,5 @@
 #
-#   Copyright 2024 Hopsworks AB
+#   Copyright 2022 Logical Clocks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -14,15 +14,26 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.client.auth import (
-    ApiKeyAuth,
-    BearerAuth,
-    OnlineStoreKeyAuth,
-)
+import requests
 
 
-__all__ = [
-    ApiKeyAuth,
-    BearerAuth,
-    OnlineStoreKeyAuth,
-]
+class BearerAuth(requests.auth.AuthBase):
+    """Class to encapsulate a Bearer token."""
+
+    def __init__(self, token):
+        self._token = token
+
+    def __call__(self, r):
+        r.headers["Authorization"] = "Bearer " + self._token.strip()
+        return r
+
+
+class ApiKeyAuth(requests.auth.AuthBase):
+    """Class to encapsulate an API key."""
+
+    def __init__(self, token):
+        self._token = token
+
+    def __call__(self, r):
+        r.headers["Authorization"] = "ApiKey " + self._token.strip()
+        return r

@@ -1,5 +1,5 @@
 #
-#   Copyright 2024 Hopsworks AB
+#   Copyright 2022 Logical Clocks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -14,37 +14,71 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.client.exceptions import (
-    DatasetException,
-    DataValidationException,
-    EnvironmentException,
-    ExternalClientError,
-    FeatureStoreException,
-    GitException,
-    JobException,
-    JobExecutionException,
-    KafkaException,
-    OpenSearchException,
-    ProjectException,
-    RestAPIError,
-    UnknownSecretStorageError,
-    VectorDatabaseException,
-)
+
+class RestAPIError(Exception):
+    """REST Exception encapsulating the response object and url."""
+
+    def __init__(self, url, response):
+        try:
+            error_object = response.json()
+        except Exception:
+            error_object = {}
+        message = (
+            "Metadata operation error: (url: {}). Server response: \n"
+            "HTTP code: {}, HTTP reason: {}, body: {}, error code: {}, error msg: {}, user "
+            "msg: {}".format(
+                url,
+                response.status_code,
+                response.reason,
+                response.content,
+                error_object.get("errorCode", ""),
+                error_object.get("errorMsg", ""),
+                error_object.get("usrMsg", ""),
+            )
+        )
+        super().__init__(message)
+        self.url = url
+        self.response = response
 
 
-__all__ = [
-    DatasetException,
-    DataValidationException,
-    EnvironmentException,
-    ExternalClientError,
-    FeatureStoreException,
-    GitException,
-    JobException,
-    JobExecutionException,
-    KafkaException,
-    OpenSearchException,
-    ProjectException,
-    RestAPIError,
-    UnknownSecretStorageError,
-    VectorDatabaseException,
-]
+class UnknownSecretStorageError(Exception):
+    """This exception will be raised if an unused secrets storage is passed as a parameter."""
+
+
+class GitException(Exception):
+    """Generic git exception"""
+
+
+class JobException(Exception):
+    """Generic job exception"""
+
+
+class EnvironmentException(Exception):
+    """Generic python environment exception"""
+
+
+class KafkaException(Exception):
+    """Generic kafka exception"""
+
+
+class DatasetException(Exception):
+    """Generic dataset exception"""
+
+
+class ProjectException(Exception):
+    """Generic project exception"""
+
+
+class OpenSearchException(Exception):
+    """Generic opensearch exception"""
+
+
+class JobExecutionException(Exception):
+    """Generic job executions exception"""
+
+
+class ExternalClientError(TypeError):
+    """Raised when external client cannot be initialized due to missing arguments."""
+
+    def __init__(self, message):
+        super().__init__(message)
