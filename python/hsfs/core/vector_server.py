@@ -100,7 +100,11 @@ class VectorServer:
         self._untransformed_feature_vector_col_name = [
             feat.name
             for feat in features
-            if not (feat.label or feat.training_helper_column or feat.on_demand_transformation_function)
+            if not (
+                feat.label
+                or feat.training_helper_column
+                or feat.on_demand_transformation_function
+            )
         ]
         self._on_demand_feature_vector_col_name = [
             feat.name
@@ -316,7 +320,7 @@ class VectorServer:
         allow_missing: bool = False,
         force_rest_client: bool = False,
         force_sql_client: bool = False,
-        transform: bool=True,
+        transform: bool = True,
         request_parameters: Optional[Dict[str, Any]] = None,
     ) -> Union[pd.DataFrame, pl.DataFrame, np.ndarray, List[Any], Dict[str, Any]]:
         """Assembles serving vector from online feature store."""
@@ -359,7 +363,7 @@ class VectorServer:
             inference_helper=False,
             return_type=return_type,
             transform=transform,
-            on_demand_feature=transform
+            on_demand_feature=transform,
         )
 
     def get_feature_vectors(
@@ -374,7 +378,7 @@ class VectorServer:
         allow_missing: bool = False,
         force_rest_client: bool = False,
         force_sql_client: bool = False,
-        transform: bool=True,
+        transform: bool = True,
     ) -> Union[pd.DataFrame, pl.DataFrame, np.ndarray, List[Any], List[Dict[str, Any]]]:
         """Assembles serving vector from online feature store."""
         if passed_features is None:
@@ -487,7 +491,7 @@ class VectorServer:
             inference_helper=False,
             return_type=return_type,
             transform=transform,
-            on_demand_feature=transform
+            on_demand_feature=transform,
         )
 
     def assemble_feature_vector(
@@ -563,7 +567,7 @@ class VectorServer:
     def _check_feature_vectors_type_and_convert_to_dict(
         self,
         feature_vectors: Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame],
-        on_demand_features : bool = False,
+        on_demand_features: bool = False,
     ) -> Tuple[Dict[str, Any], Literal["pandas", "polars", "list"]]:
         """
         Function that converts an input feature vector into a list of dictionaries.
@@ -591,13 +595,19 @@ class VectorServer:
             ):
                 return_type = "list"
                 feature_vectors = [
-                    self.get_untransformed_features_map(feature_vector, on_demand_features=on_demand_features)
+                    self.get_untransformed_features_map(
+                        feature_vector, on_demand_features=on_demand_features
+                    )
                     for feature_vector in feature_vectors
                 ]
 
             else:
                 return_type = "list"
-                feature_vectors = [self.get_untransformed_features_map(feature_vectors, on_demand_features=on_demand_features)]
+                feature_vectors = [
+                    self.get_untransformed_features_map(
+                        feature_vectors, on_demand_features=on_demand_features
+                    )
+                ]
 
         else:
             raise exceptions.FeatureStoreException(
@@ -626,7 +636,9 @@ class VectorServer:
             return feature_vectors
 
         feature_vectors, return_type = (
-            self._check_feature_vectors_type_and_convert_to_dict(feature_vectors, on_demand_features=True)
+            self._check_feature_vectors_type_and_convert_to_dict(
+                feature_vectors, on_demand_features=True
+            )
         )
         transformed_feature_vectors = []
         for feature_vector in feature_vectors:
@@ -716,10 +728,12 @@ class VectorServer:
             inference_helper=False,
             return_type=return_type,
             transform=False,
-            on_demand_feature=True
+            on_demand_feature=True,
         )
 
-    def get_untransformed_features_map(self, features : List[Any], on_demand_features : bool = False) -> Dict[str, Any]:
+    def get_untransformed_features_map(
+        self, features: List[Any], on_demand_features: bool = False
+    ) -> Dict[str, Any]:
         """
         Function that accepts a feature vectors as a list and returns the untransformed features as a dict that maps
         feature names to their values
@@ -759,7 +773,7 @@ class VectorServer:
         inference_helper: bool,
         return_type: Union[Literal["list", "dict", "numpy", "pandas", "polars"]],
         transform: bool = False,
-        on_demand_feature: bool=False
+        on_demand_feature: bool = False,
     ) -> Union[
         pd.DataFrame,
         pl.DataFrame,
@@ -839,7 +853,7 @@ class VectorServer:
                 inference_helper=True,
                 return_type=return_type,
                 transform=False,
-                on_demand_feature=False
+                on_demand_feature=False,
             )
         return self.handle_feature_vector_return_type(
             self.sql_client.get_inference_helper_vector(entry),
@@ -847,7 +861,7 @@ class VectorServer:
             inference_helper=True,
             return_type=return_type,
             transform=False,
-            on_demand_feature=False
+            on_demand_feature=False,
         )
 
     def get_inference_helpers(
@@ -897,7 +911,7 @@ class VectorServer:
             inference_helper=True,
             return_type=return_type,
             transform=False,
-            on_demand_feature=False
+            on_demand_feature=False,
         )
 
     def which_client_and_ensure_initialised(
