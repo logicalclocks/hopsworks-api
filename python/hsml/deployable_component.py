@@ -19,6 +19,7 @@ from typing import Optional, Union
 
 import humps
 from hsml import util
+from hsml.constants import Default
 from hsml.inference_batcher import InferenceBatcher
 from hsml.resources import Resources
 
@@ -30,7 +31,7 @@ class DeployableComponent(ABC):
         self,
         script_file: Optional[str] = None,
         resources: Optional[Resources] = None,
-        inference_batcher: Optional[Union[InferenceBatcher, dict]] = None,
+        inference_batcher: Optional[Union[InferenceBatcher, dict, Default]] = None,
         **kwargs,
     ):
         self._script_file = script_file

@@ -27,7 +27,7 @@ import humps
 import numpy as np
 import pandas as pd
 from hsml import client
-from hsml.constants import DEFAULT, MODEL, PREDICTOR
+from hsml.constants import MODEL, PREDICTOR, Default
 from six import string_types
 
 
@@ -328,9 +328,9 @@ def get_obj_from_json(obj, cls):
         if isinstance(obj, cls):
             return obj
         if isinstance(obj, dict):
-            if obj is DEFAULT:
-                return cls()
             return cls.from_json(obj)
+        if isinstance(obj, Default):
+            return cls()
         raise ValueError(
             "Object of type {} cannot be converted to class {}".format(type(obj), cls)
         )

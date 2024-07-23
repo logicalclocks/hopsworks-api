@@ -18,7 +18,7 @@ from typing import Optional, Union
 
 import humps
 from hsml import util
-from hsml.constants import DEFAULT, INFERENCE_LOGGER
+from hsml.constants import DEFAULT, INFERENCE_LOGGER, Default
 from hsml.kafka_topic import KafkaTopic
 
 
@@ -34,7 +34,7 @@ class InferenceLogger:
 
     def __init__(
         self,
-        kafka_topic: Optional[Union[KafkaTopic, dict]] = DEFAULT,
+        kafka_topic: Optional[Union[KafkaTopic, dict, Default]] = DEFAULT,
         mode: Optional[str] = INFERENCE_LOGGER.MODE_ALL,
         **kwargs,
     ):
