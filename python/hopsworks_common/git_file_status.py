@@ -17,7 +17,7 @@
 import json
 
 import humps
-from hopsworks import util
+from hopsworks_common import util
 
 
 class GitFileStatus:
