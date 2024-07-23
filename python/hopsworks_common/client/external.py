@@ -65,14 +65,6 @@ class Client(base.Client):
         self._port = port
         self._base_url = "https://" + self._host + ":" + str(self._port)
         _logger.info("Base URL: %s", self._base_url)
-        self._project_name = project
-        if project is not None:
-            project_info = self._get_project_info(project)
-            self._project_id = str(project_info["projectId"])
-            _logger.debug("Setting Project ID: %s", self._project_id)
-        else:
-            self._project_id = None
-        _logger.debug("Project name: %s", self._project_name)
         self._region_name = region_name or self.DEFAULT_REGION
         _logger.debug("Region name: %s", self._region_name)
 
@@ -94,6 +86,15 @@ class Client(base.Client):
 
         self._verify = self._get_verify(self._host, trust_store_path)
         _logger.debug("Verify: %s", self._verify)
+
+        self._project_name = project
+        if project is not None:
+            project_info = self._get_project_info(project)
+            self._project_id = str(project_info["projectId"])
+            _logger.debug("Setting Project ID: %s", self._project_id)
+        else:
+            self._project_id = None
+        _logger.debug("Project name: %s", self._project_name)
 
         self._cert_key = None
         self._cert_folder_base = cert_folder
@@ -151,7 +152,7 @@ class Client(base.Client):
                 _spark_session._jsc.hadoopConfiguration().set(conf_key, conf_value)
 
     def download_certs(self, project):
-        res = self._materialize_certs(self, project)
+        res = self._materialize_certs(project)
         self._write_pem_file(res["caChain"], self._get_ca_chain_path())
         self._write_pem_file(res["clientCert"], self._get_client_cert_path())
         self._write_pem_file(res["clientKey"], self._get_client_key_path())
