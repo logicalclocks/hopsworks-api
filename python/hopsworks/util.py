@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common import (
+from hopsworks_common.util import (
     FEATURE_STORE_NAME_SUFFIX,
     VALID_EMBEDDING_TYPE,
     Encoder,

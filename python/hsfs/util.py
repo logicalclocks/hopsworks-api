@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict, List, Set, Union
 
-from hopsworks_common import (
+from hopsworks_common.util import (
     FEATURE_STORE_NAME_SUFFIX,
     VALID_EMBEDDING_TYPE,
     Encoder,
