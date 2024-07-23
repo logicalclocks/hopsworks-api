@@ -21,7 +21,8 @@ class Default:
     Overwritting None with a default value is undesirable in some cases,
     and this class solves the problem."""
 
-    pass
+    def __repr__(self):
+        return "DEFAULT"
 
 
 DEFAULT = Default()
