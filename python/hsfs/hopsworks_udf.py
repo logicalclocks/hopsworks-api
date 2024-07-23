@@ -669,7 +669,7 @@ def renaming_wrapper(*args):
             "statisticsArgumentNames": self._statistics_argument_names
             if self.statistics_required
             else None,
-            "name": self._function_name,
+            "name": self.function_name,
             "featureNamePrefix": self._feature_name_prefix,
         }
 
