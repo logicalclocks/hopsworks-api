@@ -36,8 +36,9 @@ from typing import (
 from urllib.parse import urljoin, urlparse
 
 from hopsworks_common import client
-from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.client.exceptions import FeatureStoreException, JobException
 from hopsworks_common.core import variable_api
+from hopsworks_common.git_file_status import GitFileStatus
 
 
 if TYPE_CHECKING:
@@ -397,3 +398,49 @@ class ValidationWarning(Warning):
 
 class FeatureGroupWarning(Warning):
     pass
+
+
+def convert_to_abs(path, current_proj_name):
+    abs_project_prefix = "/Projects/{}".format(current_proj_name)
+    if not path.startswith(abs_project_prefix):
+        return abs_project_prefix + "/" + path
+    else:
+        return path
+
+
+def validate_job_conf(config, project_name):
+    # User is required to set the appPath programmatically after getting the configuration
+    if (
+        config["type"] != "dockerJobConfiguration"
+        and config["type"] != "flinkJobConfiguration"
+        and "appPath" not in config
+    ):
+        raise JobException("'appPath' not set in job configuration")
+    elif "appPath" in config and not config["appPath"].startswith("hdfs://"):
+        config["appPath"] = "hdfs://" + convert_to_abs(config["appPath"], project_name)
+
+    # If PYSPARK application set the mainClass, if SPARK validate there is a mainClass set
+    if config["type"] == "sparkJobConfiguration":
+        if config["appPath"].endswith(".py"):
+            config["mainClass"] = "org.apache.spark.deploy.PythonRunner"
+        elif "mainClass" not in config:
+            raise JobException("'mainClass' not set in job configuration")
+
+    return config
+
+
+def convert_git_status_to_files(files):
+    # Convert GitFileStatus to list of file paths
+    if isinstance(files[0], GitFileStatus):
+        tmp_files = []
+        for file_status in files:
+            tmp_files.append(file_status.file)
+        files = tmp_files
+
+    return files
+
+
+def is_interactive():
+    import __main__ as main
+
+    return not hasattr(main, "__file__")
