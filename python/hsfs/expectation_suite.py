@@ -209,7 +209,7 @@ class ExpectationSuite:
             return the_dict
 
     def json(self) -> str:
-        return json.dumps(self, cls=util.FeatureStoreEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     @uses_great_expectations
     def to_ge_type(self) -> great_expectations.core.ExpectationSuite:

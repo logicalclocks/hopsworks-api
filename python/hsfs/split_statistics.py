@@ -59,7 +59,7 @@ class SplitStatistics:
         }
 
     def json(self):
-        return json.dumps(self, cls=util.FeatureStoreEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     @property
     def name(self):

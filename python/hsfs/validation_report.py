@@ -90,7 +90,7 @@ class ValidationReport:
             return cls(**json_decamelized)
 
     def json(self) -> str:
-        return json.dumps(self, cls=util.FeatureStoreEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self) -> Dict[str, Union[int, str, bool]]:
         return {

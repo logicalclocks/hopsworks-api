@@ -63,7 +63,7 @@ class ServingPreparedStatement:
         return self
 
     def json(self) -> str:
-        return json.dumps(self, cls=util.FeatureStoreEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self) -> Dict[str, Any]:
         return {

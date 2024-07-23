@@ -84,7 +84,7 @@ class ServingKey:
         }
 
     def __repr__(self) -> str:
-        return json.dumps(self, cls=util.FeatureStoreEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     @property
     def required_serving_key(self) -> str:
