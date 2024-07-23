@@ -14,9 +14,7 @@
 #   limitations under the License.
 #
 
-import base64
 import os
-import textwrap
 from pathlib import Path
 
 import requests
