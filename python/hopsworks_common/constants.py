@@ -24,6 +24,9 @@ class Default:
     def __repr__(self):
         return "DEFAULT"
 
+    def __eq__(self, other):
+        return isinstance(other, Default)
+
 
 DEFAULT = Default()
 
