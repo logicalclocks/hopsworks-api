@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+
 from __future__ import annotations
 
 import itertools
@@ -27,46 +28,31 @@ from typing import (
     Any,
     Callable,
     Dict,
-    List,
     Literal,
     Optional,
-    Set,
     Tuple,
     Union,
 )
 from urllib.parse import urljoin, urlparse
 
-import pandas as pd
-from hsfs import client, feature, serving_key
-from hsfs.client.exceptions import FeatureStoreException
-from hsfs.core import feature_group_api, variable_api
+from hopsworks_common import client
+from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.core import variable_api
 
 
 if TYPE_CHECKING:
-    import feature_group
-    from hsfs.constructor import serving_prepared_statement
+    import pandas as pd
 
 
 FEATURE_STORE_NAME_SUFFIX = "_featurestore"
 
 
-class FeatureStoreEncoder(json.JSONEncoder):
+class Encoder(json.JSONEncoder):
     def default(self, o: Any) -> Dict[str, Any]:
         try:
             return o.to_dict()
         except AttributeError:
             return super().default(o)
-
-
-def validate_feature(
-    ft: Union[str, feature.Feature, Dict[str, Any]],
-) -> feature.Feature:
-    if isinstance(ft, feature.Feature):
-        return ft
-    elif isinstance(ft, str):
-        return feature.Feature(ft)
-    elif isinstance(ft, dict):
-        return feature.Feature(**ft)
 
 
 VALID_EMBEDDING_TYPE = {
@@ -90,30 +76,13 @@ def validate_embedding_feature_type(embedding_index, schema):
             )
 
 
-def parse_features(
-    feature_names: Union[
-        str, feature.Feature, List[Union[Dict[str, Any], str, feature.Feature]]
-    ],
-) -> List[feature.Feature]:
-    if isinstance(feature_names, (str, feature.Feature)):
-        return [validate_feature(feature_names)]
-    elif isinstance(feature_names, list) and len(feature_names) > 0:
-        return [validate_feature(feat) for feat in feature_names]
-    else:
-        return []
-
-
 def autofix_feature_name(name: str) -> str:
     # replace spaces with underscores and enforce lower case
     return name.lower().replace(" ", "_")
 
 
 def feature_group_name(
-    feature_group: Union[
-        feature_group.FeatureGroup,
-        feature_group.ExternalFeatureGroup,
-        feature_group.SpineGroup,
-    ],
+    feature_group,  #  FeatureGroup | ExternalFeatureGroup | SpineGroup
 ) -> str:
     return feature_group.name + "_" + str(feature_group.version)
 
@@ -222,7 +191,8 @@ def convert_event_time_to_timestamp(
         return None
     if isinstance(event_time, str):
         return get_timestamp_from_date_string(event_time)
-    elif isinstance(event_time, pd._libs.tslibs.timestamps.Timestamp):
+    elif hasattr(event_time, "to_pydatetime"):
+        # only pandas Timestamp has to_pydatetime method out of the accepted event_time types
         # convert to unix epoch time in milliseconds.
         event_time = event_time.to_pydatetime()
         # convert to unix epoch time in milliseconds.
@@ -300,11 +270,7 @@ def get_hostname_replaced_url(sub_path: str) -> str:
 
 
 def verify_attribute_key_names(
-    feature_group_obj: Union[
-        feature_group.FeatureGroup,
-        feature_group.ExternalFeatureGroup,
-        feature_group.SpineGroup,
-    ],
+    feature_group_obj,  #  FeatureGroup | ExternalFeatureGroup | SpineGroup
     external_feature_group: bool = False,
 ) -> None:
     feature_names = set(feat.name for feat in feature_group_obj.features)
@@ -400,28 +366,6 @@ def get_feature_group_url(feature_store_id: int, feature_group_id: int) -> str:
         + str(feature_group_id)
     )
     return get_hostname_replaced_url(sub_path)
-
-
-def build_serving_keys_from_prepared_statements(
-    prepared_statements: List[serving_prepared_statement.ServingPreparedStatement],
-    feature_store_id: int,
-    ignore_prefix: bool = False,
-) -> Set[serving_key.ServingKey]:
-    serving_keys = set()
-    fg_api = feature_group_api.FeatureGroupApi()
-    for statement in prepared_statements:
-        fg = fg_api.get_by_id(feature_store_id, statement.feature_group_id)
-        for param in statement.prepared_statement_parameters:
-            serving_keys.add(
-                serving_key.ServingKey(
-                    feature_name=param.name,
-                    join_index=statement.prepared_statement_index,
-                    prefix=statement.prefix,
-                    ignore_prefix=ignore_prefix,
-                    feature_group=fg,
-                )
-            )
-    return serving_keys
 
 
 def is_runtime_notebook():
