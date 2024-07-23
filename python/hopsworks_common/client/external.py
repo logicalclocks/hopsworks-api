@@ -87,6 +87,14 @@ class Client(base.Client):
         self._verify = self._get_verify(self._host, trust_store_path)
         _logger.debug("Verify: %s", self._verify)
 
+        self._cert_key = None
+        self._cert_folder_base = cert_folder
+        self._cert_folder = None
+
+        self._hsfs_post_init(project, engine, region_name)
+
+    def _hsfs_post_init(self, project, engine, region_name):
+        self._region_name = region_name or self._region_name or self.DEFAULT_REGION
         self._project_name = project
         if project is not None:
             project_info = self._get_project_info(project)
@@ -95,10 +103,6 @@ class Client(base.Client):
         else:
             self._project_id = None
         _logger.debug("Project name: %s", self._project_name)
-
-        self._cert_key = None
-        self._cert_folder_base = cert_folder
-        self._cert_folder = None
 
         if project is None:
             return

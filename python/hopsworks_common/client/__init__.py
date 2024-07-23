@@ -56,6 +56,8 @@ def init(
                 api_key_file,
                 api_key_value,
             )
+    elif isinstance(_client, external.Client) and not _client._project_name:
+        _client._hsfs_post_init(project, engine, region_name)
 
 
 def get_instance() -> Union[hopsworks.Client, external.Client]:
