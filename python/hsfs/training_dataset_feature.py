@@ -66,7 +66,7 @@ class TrainingDatasetFeature:
             "trainingHelperColumn": self._training_helper_column,
             "featureGroupFeatureName": self._feature_group_feature_name,
             "featuregroup": self._feature_group,
-            "transformation_function": self._on_demand_transformation_function,
+            "transformation_function": self.on_demand_transformation_function,
         }
 
     @classmethod
