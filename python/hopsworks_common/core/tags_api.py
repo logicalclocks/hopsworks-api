@@ -13,11 +13,12 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+
 from __future__ import annotations
 
 import json
 
-from hsfs import client, feature_view, tag
+from hopsworks_common import client, tag
 
 
 class TagsApi:
@@ -100,7 +101,8 @@ class TagsApi:
 
     def get_path(self, metadata_instance, training_dataset_version=None):
         _client = client.get_instance()
-        if isinstance(metadata_instance, feature_view.FeatureView):
+        if hasattr(metadata_instance, "training_data"):
+            # Only FeatureView has training_data method
             path = [
                 "project",
                 _client._project_id,

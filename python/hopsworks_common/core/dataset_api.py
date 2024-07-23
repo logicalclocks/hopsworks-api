@@ -13,12 +13,13 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+
 from __future__ import annotations
 
 import math
 
-from hsfs import client, util
-from hsfs.core import inode
+from hopsworks_common import client, util
+from hopsworks_common.core import inode
 
 
 class DatasetApi:

@@ -13,12 +13,13 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+
 from __future__ import annotations
 
 import json
 
 import humps
-from hsfs import util
+from hopsworks_common import util
 
 
 class Tag:
