@@ -4021,16 +4021,18 @@ class FeatureView:
     def logging_enabled(self, logging_enabled) -> None:
         self._logging_enabled = logging_enabled
 
+    @property
     def transformed_features(self) -> List[str]:
         """Name of features of a feature view after transformation functions have been applied"""
-        transformation_features = set()
+        dropped_features = set()
         transformed_column_names = []
         for tf in self.transformation_functions:
             transformed_column_names.extend(tf.output_column_names)
-            transformation_features.update(tf.hopsworks_udf.transformation_features)
+            if tf.hopsworks_udf.dropped_features:
+                dropped_features.update(tf.hopsworks_udf.dropped_features)
 
         return [
             feature.name
             for feature in self.features
-            if feature.name not in transformation_features
+            if feature.name not in dropped_features
         ] + transformed_column_names
