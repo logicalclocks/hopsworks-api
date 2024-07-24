@@ -20,7 +20,7 @@ from hsml.client.hopsworks import internal as hw_internal
 from hsml.client.istio import base as ist_base
 from hsml.client.istio import external as ist_external
 from hsml.client.istio import internal as ist_internal
-from hsml.constants import CONNECTION
+from hsml.constants import HOSTS
 
 
 _client_type = None
@@ -49,7 +49,7 @@ def init(
     _client_type = client_type
 
     global _saas_connection
-    _saas_connection = host == CONNECTION.SAAS_HOSTNAME
+    _saas_connection = host == HOSTS.APP_HOST
 
     global _hopsworks_client
     if not _hopsworks_client:
