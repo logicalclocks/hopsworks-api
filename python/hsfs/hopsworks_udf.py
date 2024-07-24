@@ -669,7 +669,7 @@ def renaming_wrapper(*args):
             "statisticsArgumentNames": self._statistics_argument_names
             if self.statistics_required
             else None,
-            "name": self._function_name,
+            "name": self.function_name,
             "featureNamePrefix": self._feature_name_prefix,
         }
 
@@ -916,7 +916,7 @@ def renaming_wrapper(*args):
     def output_column_names(self, output_col_names: Union[str, List[str]]) -> None:
         if not isinstance(output_col_names, List):
             output_col_names = [output_col_names]
-        if len(output_col_names) != len(self.return_types):
+        if not output_col_names and len(output_col_names) != len(self.return_types):
             raise FeatureStoreException(
                 f"Provided names for output columns does not match the number of columns returned from the UDF. Please provide {len(self.return_types)} names."
             )
