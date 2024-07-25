@@ -511,7 +511,7 @@ class FeatureView:
         allow_missing: bool = False,
         force_rest_client: bool = False,
         force_sql_client: bool = False,
-        transformed: Optional[bool] = True,
+        transform: Optional[bool] = True,
         request_parameters: Optional[Dict[str, Any]] = None,
     ) -> Union[List[Any], pd.DataFrame, np.ndarray, pl.DataFrame]:
         """Returns assembled feature vector from online feature store.
@@ -613,7 +613,7 @@ class FeatureView:
             vector_db_features=vector_db_features,
             force_rest_client=force_rest_client,
             force_sql_client=force_sql_client,
-            transformed=transformed,
+            transform=transform,
             request_parameters=request_parameters,
         )
 
@@ -626,7 +626,7 @@ class FeatureView:
         allow_missing: bool = False,
         force_rest_client: bool = False,
         force_sql_client: bool = False,
-        transformed: Optional[bool] = True,
+        transform: Optional[bool] = True,
         request_parameters: Optional[List[Dict[str, Any]]] = None,
     ) -> Union[List[List[Any]], pd.DataFrame, np.ndarray, pl.DataFrame]:
         """Returns assembled feature vectors in batches from online feature store.
@@ -728,7 +728,7 @@ class FeatureView:
             vector_db_features=vector_db_features,
             force_rest_client=force_rest_client,
             force_sql_client=force_sql_client,
-            transformed=transformed,
+            transform=transform,
             request_parameters=request_parameters,
         )
 
@@ -3941,7 +3941,7 @@ class FeatureView:
         self._transformation_functions = transformation_functions
 
     @property
-    def model_dependent_tranformation_functions(self) -> Dict["str", Callable]:
+    def model_dependent_transformations(self) -> Dict["str", Callable]:
         """Get Model-Dependent transformations as a dictionary mapping transformed feature names to transformation function"""
         return {
             transformation_function.hopsworks_udf.output_column_names[
@@ -3951,7 +3951,7 @@ class FeatureView:
         }
 
     @property
-    def on_demand_tranformation_functions(self) -> Dict["str", Callable]:
+    def on_demand_transformations(self) -> Dict["str", Callable]:
         """Get On-Demand transformations as a dictionary mapping on-demand feature names to transformation function"""
         return {
             feature.on_demand_transformation_function.hopsworks_udf.function_name: feature.on_demand_transformation_function.hopsworks_udf.get_udf()
@@ -4021,16 +4021,18 @@ class FeatureView:
     def logging_enabled(self, logging_enabled) -> None:
         self._logging_enabled = logging_enabled
 
+    @property
     def transformed_features(self) -> List[str]:
         """Name of features of a feature view after transformation functions have been applied"""
-        transformation_features = set()
+        dropped_features = set()
         transformed_column_names = []
         for tf in self.transformation_functions:
             transformed_column_names.extend(tf.output_column_names)
-            transformation_features.update(tf.hopsworks_udf.transformation_features)
+            if tf.hopsworks_udf.dropped_features:
+                dropped_features.update(tf.hopsworks_udf.dropped_features)
 
         return [
             feature.name
             for feature in self.features
-            if feature.name not in transformation_features
+            if feature.name not in dropped_features
         ] + transformed_column_names

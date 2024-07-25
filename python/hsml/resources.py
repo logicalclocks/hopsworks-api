@@ -19,7 +19,7 @@ from typing import Optional, Union
 
 import humps
 from hsml import client, util
-from hsml.constants import RESOURCES
+from hsml.constants import RESOURCES, Default
 
 
 class Resources:
@@ -116,8 +116,8 @@ class ComponentResources(ABC):
     def __init__(
         self,
         num_instances: int,
-        requests: Optional[Union[Resources, dict]] = None,
-        limits: Optional[Union[Resources, dict]] = None,
+        requests: Optional[Union[Resources, dict, Default]] = None,
+        limits: Optional[Union[Resources, dict, Default]] = None,
     ):
         self._num_instances = num_instances
         self._requests = util.get_obj_from_json(requests, Resources) or Resources(

@@ -19,7 +19,7 @@ from hsml.connection import (
     HOSTNAME_VERIFICATION_DEFAULT,
     Connection,
 )
-from hsml.constants import CONNECTION
+from hsml.constants import HOSTS
 from hsml.core import model_api, model_registry_api, model_serving_api
 
 
@@ -30,7 +30,7 @@ class TestConnection:
         # The purpose of this test is to ensure that (1) we don't make undesired changes to contant values
         # that might break things somewhere else, and (2) we remember to update the pytests accordingly by
         # adding / removing / updating tests, if necessary.
-        assert CONNECTION.SAAS_HOSTNAME == "c.app.hopsworks.ai"
+        assert HOSTS.APP_HOST == "c.app.hopsworks.ai"
         assert HOPSWORKS_PORT_DEFAULT == 443
         assert HOSTNAME_VERIFICATION_DEFAULT
 

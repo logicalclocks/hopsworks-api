@@ -24,6 +24,7 @@ from hsml.constants import (
     MODEL,
     PREDICTOR,
     RESOURCES,
+    Default,
 )
 from hsml.deployable_component import DeployableComponent
 from hsml.inference_batcher import InferenceBatcher
@@ -47,10 +48,14 @@ class Predictor(DeployableComponent):
         model_server: str,
         serving_tool: Optional[str] = None,
         script_file: Optional[str] = None,
-        resources: Optional[Union[PredictorResources, dict]] = None,  # base
-        inference_logger: Optional[Union[InferenceLogger, dict]] = None,  # base
-        inference_batcher: Optional[Union[InferenceBatcher, dict]] = None,  # base
-        transformer: Optional[Union[Transformer, dict]] = None,
+        resources: Optional[Union[PredictorResources, dict, Default]] = None,  # base
+        inference_logger: Optional[
+            Union[InferenceLogger, dict, Default]
+        ] = None,  # base
+        inference_batcher: Optional[
+            Union[InferenceBatcher, dict, Default]
+        ] = None,  # base
+        transformer: Optional[Union[Transformer, dict, Default]] = None,
         id: Optional[int] = None,
         description: Optional[str] = None,
         created_at: Optional[str] = None,

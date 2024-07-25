@@ -17,7 +17,7 @@ from typing import Optional, Union
 
 import humps
 from hsml import client, util
-from hsml.constants import RESOURCES
+from hsml.constants import RESOURCES, Default
 from hsml.deployable_component import DeployableComponent
 from hsml.resources import TransformerResources
 
@@ -28,7 +28,7 @@ class Transformer(DeployableComponent):
     def __init__(
         self,
         script_file: str,
-        resources: Optional[Union[TransformerResources, dict]] = None,  # base
+        resources: Optional[Union[TransformerResources, dict, Default]] = None,  # base
         **kwargs,
     ):
         resources = (
