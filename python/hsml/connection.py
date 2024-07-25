@@ -179,6 +179,7 @@ class Connection:
                     None,
                     self._hostname_verification,
                     self._trust_store_path,
+                    None,
                     self._api_key_file,
                     self._api_key_value,
                 )
