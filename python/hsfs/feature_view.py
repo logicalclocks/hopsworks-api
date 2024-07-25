@@ -3806,9 +3806,10 @@ class FeatureView:
          # Raises
              `hsfs.client.exceptions.RestAPIError` in case the backend fails to delete the log.
         """
-        self._feature_view_engine.delete_feature_logs(
-            self, self.feature_logging, transformed
-        )
+        if self.feature_logging is not None:
+            self._feature_view_engine.delete_feature_logs(
+                self, self.feature_logging, transformed
+            )
 
     @staticmethod
     def _update_attribute_if_present(this: "FeatureView", new: Any, key: str) -> None:
@@ -4071,7 +4072,6 @@ class FeatureView:
 
     @property
     def feature_logging(self) -> Optional[FeatureLogging]:
-        if not self.logging_enabled:
-            return None
-        if self._feature_logging is None:
+        if self.logging_enabled and self._feature_logging is None:
             self._feature_logging = self._feature_view_engine.get_feature_logging(self)
+        return self._feature_logging
