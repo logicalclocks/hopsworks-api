@@ -3769,7 +3769,7 @@ class FeatureView:
         """
         self._feature_view_engine.resume_logging(self)
 
-    def materialize_log(self, wait: Optional[bool] = False, transform: Optional[bool] = None) -> Tuple[Job, Job]:
+    def materialize_log(self, wait: Optional[bool] = False, transformed: Optional[bool] = None) -> Tuple[Job, Job]:
         """Materialize the log for the current feature view.
 
         # Arguments
@@ -3788,7 +3788,7 @@ class FeatureView:
         # Raises
             `hsfs.client.exceptions.RestAPIError` in case the backend fails to materialize the log.
         """
-        return self._feature_view_engine.materialize_feature_logs(self, wait, transform)
+        return self._feature_view_engine.materialize_feature_logs(self, wait, transformed)
 
     def delete_log(self, transformed: Optional[bool] = None) -> None:
         """Delete the logged feature data for the current feature view.
@@ -3805,7 +3805,7 @@ class FeatureView:
          # Raises
              `hsfs.client.exceptions.RestAPIError` in case the backend fails to delete the log.
         """
-        if not self.enable_logging():
+        if not self.logging_enabled:
             return
         if self._feature_logging is None:
             self._feature_logging = self._feature_view_engine.get_feature_logging(self)
