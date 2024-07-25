@@ -36,7 +36,7 @@ class TestCodeEngine:
         os.environ.setdefault("HOPSWORKS_KERNEL_ID", "1")
 
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
-        mock_code_api = mocker.patch("hsfs.core.code_api.CodeApi")
+        mock_code_api = mocker.patch("hopsworks_common.core.code_api.CodeApi")
 
         td = training_dataset.TrainingDataset(
             name="test",
@@ -65,7 +65,7 @@ class TestCodeEngine:
         os.environ.setdefault("HOPSWORKS_JOB_NAME", "1")
 
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
-        mock_code_api = mocker.patch("hsfs.core.code_api.CodeApi")
+        mock_code_api = mocker.patch("hopsworks_common.core.code_api.CodeApi")
 
         td = training_dataset.TrainingDataset(
             name="test",
@@ -94,7 +94,7 @@ class TestCodeEngine:
         os.environ.setdefault("HOPSWORKS_KERNEL_ID", "1")
 
         mocker.patch("hsfs.engine.get_type")
-        mock_code_api = mocker.patch("hsfs.core.code_api.CodeApi")
+        mock_code_api = mocker.patch("hopsworks_common.core.code_api.CodeApi")
 
         fg = feature_group.FeatureGroup(
             name="test",
@@ -123,7 +123,7 @@ class TestCodeEngine:
         os.environ.setdefault("HOPSWORKS_JOB_NAME", "1")
 
         mocker.patch("hsfs.engine.get_type")
-        mock_code_api = mocker.patch("hsfs.core.code_api.CodeApi")
+        mock_code_api = mocker.patch("hopsworks_common.core.code_api.CodeApi")
 
         fg = feature_group.FeatureGroup(
             name="test",
