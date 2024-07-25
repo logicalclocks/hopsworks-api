@@ -27,7 +27,6 @@ from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar, Union
 
 from hsfs.core.feature_view_engine import FeatureViewEngine
-from hsfs.feature_group import FeatureGroup
 from hsfs.training_dataset_feature import TrainingDatasetFeature
 
 
@@ -1488,7 +1487,7 @@ class Engine:
         features: Union[
             pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
         ],
-        fg: FeatureGroup = None,
+        fg: fg_mod.FeatureGroup = None,
         td_features: List[str] = None,
         td_predictions: List[TrainingDatasetFeature] = None,
         td_col_name: Optional[str] = None,
