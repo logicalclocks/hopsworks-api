@@ -48,6 +48,7 @@ from hsfs import (
 from hsfs import serving_key as skm
 from hsfs.client.exceptions import FeatureStoreException
 from hsfs.constructor import filter, query
+from hsfs.core.feature_logging import FeatureLogging
 from hsfs.core.job import Job
 from hsfs.constructor.filter import Filter, Logic
 from hsfs.core import (
@@ -3642,7 +3643,7 @@ class FeatureView:
             self.enable_logging()
         return self._feature_view_engine.log_features(
             self,
-            self._feature_logging,
+            self.feature_logging,
             features,
             predictions,
             transformed,
@@ -3805,12 +3806,8 @@ class FeatureView:
          # Raises
              `hsfs.client.exceptions.RestAPIError` in case the backend fails to delete the log.
         """
-        if not self.logging_enabled:
-            return
-        if self._feature_logging is None:
-            self._feature_logging = self._feature_view_engine.get_feature_logging(self)
         self._feature_view_engine.delete_feature_logs(
-            self, self._feature_logging, transformed
+            self, self.feature_logging, transformed
         )
 
     @staticmethod
@@ -4071,3 +4068,10 @@ class FeatureView:
             for feature in self.features
             if feature.name not in dropped_features
         ] + transformed_column_names
+
+    @property
+    def feature_logging(self) -> Optional[FeatureLogging]:
+        if not self.logging_enabled:
+            return None
+        if self._feature_logging is None:
+            self._feature_logging = self._feature_view_engine.get_feature_logging(self)
