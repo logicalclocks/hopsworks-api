@@ -48,8 +48,6 @@ from hsfs import (
 from hsfs import serving_key as skm
 from hsfs.client.exceptions import FeatureStoreException
 from hsfs.constructor import filter, query
-from hsfs.core.feature_logging import FeatureLogging
-from hsfs.core.job import Job
 from hsfs.constructor.filter import Filter, Logic
 from hsfs.core import (
     explicit_provenance,
@@ -63,7 +61,9 @@ from hsfs.core import (
 )
 from hsfs.core import feature_monitoring_config as fmc
 from hsfs.core import feature_monitoring_result as fmr
+from hsfs.core.feature_logging import FeatureLogging
 from hsfs.core.feature_view_api import FeatureViewApi
+from hsfs.core.job import Job
 from hsfs.core.vector_db_client import VectorDbClient
 from hsfs.decorators import typechecked
 from hsfs.feature import Feature

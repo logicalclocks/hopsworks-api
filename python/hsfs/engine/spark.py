@@ -20,14 +20,16 @@ import importlib.util
 import json
 import os
 import re
-import uuid
 import shutil
+import uuid
 import warnings
 from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar, Union
 
 from hsfs.core.feature_view_engine import FeatureViewEngine
+from hsfs.feature_group import FeatureGroup
 from hsfs.training_dataset_feature import TrainingDatasetFeature
+
 
 if TYPE_CHECKING:
     import great_expectations
