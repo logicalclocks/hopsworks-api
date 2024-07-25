@@ -3643,7 +3643,7 @@ class FeatureView:
             self.enable_logging()
         return self._feature_view_engine.log_features(
             self,
-            self._feature_logging,  # should not use getter as feature logging may not have been created
+            self.feature_logging,
             features,
             predictions,
             transformed,
