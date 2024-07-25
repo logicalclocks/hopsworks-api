@@ -13,12 +13,13 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+
 from __future__ import annotations
 
 import json
 
 import humps
-from hsfs import util
+from hopsworks_common import util
 
 
 class User:
@@ -40,12 +41,14 @@ class User:
         user_account_type=None,
         num_active_projects=None,
         num_remaining_projects=None,
+        firstname=None,
+        lastname=None,
         **kwargs,
     ):
         self._username = username
         self._email = email
-        self._first_name = first_name
-        self._last_name = last_name
+        self._first_name = first_name or firstname
+        self._last_name = last_name or last_name
         self._status = status
         self._secret = secret
         self._chosen_password = chosen_password
