@@ -14,12 +14,15 @@
 #   limitations under the License.
 #
 
+from __future__ import annotations
+
 import json
 import socket
+from typing import Any, Dict, Union
 
-from hopsworks import client, constants, kafka_schema, kafka_topic
-from hopsworks.client.exceptions import KafkaException
-from hopsworks.client.external import Client
+from hopsworks_common import client, constants, kafka_schema, kafka_topic
+from hopsworks_common.client.exceptions import KafkaException
+from hopsworks_common.client.external import Client
 
 
 class KafkaApi:
@@ -383,3 +386,24 @@ class KafkaApi:
             )
 
         return config
+
+    def get_subject(
+        self,
+        feature_store_id: int,
+        subject: str,
+        version: Union[str, int] = "latest",
+    ) -> Dict[str, Any]:
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            feature_store_id,
+            "kafka",
+            "subjects",
+            subject,
+            "versions",
+            version,
+        ]
+        headers = {"content-type": "application/json"}
+        return _client._send_request("GET", path_params, headers=headers)
