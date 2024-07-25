@@ -18,8 +18,7 @@ from __future__ import annotations
 
 from typing import Literal, Optional, Union
 
-from hopsworks_common.client import external, hopsworks
-from hopsworks_common.client.istio import _client as _istio_client
+from hopsworks_common.client import external, hopsworks, istio
 from hopsworks_common.constants import HOSTS
 
 
@@ -74,10 +73,9 @@ def stop() -> None:
     if _client:
         _client._close()
     _client = None
-    global _istio_client
-    if _istio_client:
-        _istio_client._close()
-    _istio_client = None
+    if istio._client:
+        istio._client._close()
+    istio._client = None
 
 
 def is_saas_connection() -> bool:
