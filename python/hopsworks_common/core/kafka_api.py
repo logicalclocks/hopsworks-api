@@ -28,8 +28,8 @@ from hopsworks_common.client.external import Client
 class KafkaApi:
     def __init__(
         self,
-        project_id,
-        project_name,
+        project_id=None,
+        project_name=None,
     ):
         self._project_id = project_id
         self._project_name = project_name
