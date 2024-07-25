@@ -148,7 +148,7 @@ class DatasetApi:
         local_path: str,
         upload_path: str,
         overwrite: bool = False,
-        chunk_size=1048576,
+        chunk_size=DEFAULT_FLOW_CHUNK_SIZE,
         simultaneous_uploads=3,
         max_chunk_retries=1,
         chunk_retry_interval=1,
@@ -473,8 +473,6 @@ class DatasetApi:
         }
         _client._send_request("POST", path_params, query_params=query_params)
 
-    DEFAULT_FLOW_CHUNK_SIZE = 1048576
-
     def upload_feature_group(self, feature_group, path, dataframe):
         # Convert the dataframe into PARQUET for upload
         df_parquet = dataframe.to_parquet(index=False)
@@ -482,7 +480,7 @@ class DatasetApi:
         num_chunks = math.ceil(parquet_length / self.DEFAULT_FLOW_CHUNK_SIZE)
 
         base_params = self._get_flow_base_params(
-            feature_group, num_chunks, parquet_length
+            feature_group, num_chunks, parquet_length, self.DEFAULT_FLOW_CHUNK_SIZE
         )
 
         chunk_number = 1
@@ -502,32 +500,11 @@ class DatasetApi:
 
             chunk_number += 1
 
-    def _get_flow_base_params(self, feature_group, num_chunks, size):
-        # TODO(fabio): flow identifier is not unique
-        return {
-            "templateId": -1,
-            "flowChunkSize": self.DEFAULT_FLOW_CHUNK_SIZE,
-            "flowTotalSize": size,
-            "flowIdentifier": util.feature_group_name(feature_group),
-            "flowFilename": util.feature_group_name(feature_group),
-            "flowRelativePath": util.feature_group_name(feature_group),
-            "flowTotalChunks": num_chunks,
-        }
-
-    def _upload_request(self, params, path, file_name, chunk):
-        _client = client.get_instance()
-        path_params = ["project", _client._project_id, "dataset", "upload", path]
-
-        # Flow configuration params are sent as form data
-        _client._send_request(
-            "POST", path_params, data=params, files={"file": (file_name, chunk)}
-        )
-
     def list_files(self, path, offset, limit):
         _client = client.get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._project_id,
             "dataset",
             path[(path.index("/", 10) + 1) :],
         ]
@@ -547,7 +524,7 @@ class DatasetApi:
 
         path_params = [
             "project",
-            _client._project_id,
+            self._project_id,
             "dataset",
             "download",
             "with_auth",
