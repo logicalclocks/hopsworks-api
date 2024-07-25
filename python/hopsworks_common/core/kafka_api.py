@@ -13,11 +13,12 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+
 from __future__ import annotations
 
 from typing import Any, Dict, Union
 
-from hsfs import client
+from hopsworks_common import client
 
 
 class KafkaApi:

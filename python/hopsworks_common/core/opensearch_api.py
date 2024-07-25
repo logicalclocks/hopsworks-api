@@ -13,14 +13,15 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+
 from __future__ import annotations
 
 from typing import Any, Dict
 
 from furl import furl
-from hsfs import client
-from hsfs.client.exceptions import FeatureStoreException
-from hsfs.core.variable_api import VariableApi
+from hopsworks_common import client
+from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.core.variable_api import VariableApi
 
 
 class OPENSEARCH_CONFIG:

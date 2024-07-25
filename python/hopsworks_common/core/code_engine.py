@@ -13,13 +13,14 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+
 from __future__ import annotations
 
 import datetime
 import os
 
-from hsfs import code
-from hsfs.core import code_api
+from hopsworks_common import code
+from hopsworks_common.core import code_api
 
 
 class CodeEngine:

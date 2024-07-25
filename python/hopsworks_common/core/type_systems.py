@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+
 from __future__ import annotations
 
 import ast
@@ -21,7 +22,7 @@ import decimal
 from typing import TYPE_CHECKING, Literal, Union
 
 import pytz
-from hsfs.core.constants import HAS_ARROW, HAS_PANDAS, HAS_POLARS
+from hopsworks_common.core.constants import HAS_ARROW, HAS_PANDAS, HAS_POLARS
 
 
 if TYPE_CHECKING:

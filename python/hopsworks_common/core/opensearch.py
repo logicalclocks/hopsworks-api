@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+
 from __future__ import annotations
 
 import logging
@@ -21,9 +22,12 @@ from functools import wraps
 
 import opensearchpy
 import urllib3
-from hsfs import client
-from hsfs.client.exceptions import FeatureStoreException, VectorDatabaseException
-from hsfs.core.opensearch_api import OpenSearchApi
+from hopsworks_common import client
+from hopsworks_common.client.exceptions import (
+    FeatureStoreException,
+    VectorDatabaseException,
+)
+from hopsworks_common.core.opensearch_api import OpenSearchApi
 from opensearchpy import OpenSearch
 from opensearchpy.exceptions import (
     AuthenticationException,
