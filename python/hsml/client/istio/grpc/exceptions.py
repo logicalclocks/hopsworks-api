@@ -14,17 +14,21 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.client.auth import (
-    ApiKeyAuth,
-    BearerAuth,
-    OnlineStoreKeyAuth,
-    get_api_key,
+from hopsworks_common.client.istio.grpc.exceptions import (
+    ApiException,
+    ApiKeyError,
+    ApiTypeError,
+    ApiValueError,
+    OpenApiException,
+    render_path,
 )
 
 
 __all__ = [
-    ApiKeyAuth,
-    BearerAuth,
-    OnlineStoreKeyAuth,
-    get_api_key,
+    ApiException,
+    ApiKeyError,
+    ApiTypeError,
+    ApiValueError,
+    OpenApiException,
+    render_path,
 ]

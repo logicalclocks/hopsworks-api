@@ -13,3 +13,29 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+
+from __future__ import annotations
+
+from typing import Union
+
+import hopsworks_common.client as _main
+from hopsworks_common.client.istio import external, hopsworks
+
+
+_client: Union[hopsworks.Client, external.Client, None] = None
+
+
+def init(host, port, project=None, api_key_value=None):
+    global _istio_client
+
+    if _istio_client:
+        return
+    if isinstance(_main._client, _main.hopsworks.Client):
+        _istio_client = hopsworks.Client(host, port)
+    elif isinstance(_main, _main.external.Client):
+        _istio_client = external.Client(host, port, project, api_key_value)
+
+
+def get_instance() -> Union[hopsworks.Client, external.Client, None]:
+    global _istio_client
+    return _istio_client

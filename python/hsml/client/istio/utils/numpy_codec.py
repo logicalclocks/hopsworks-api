@@ -14,17 +14,13 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.client.auth import (
-    ApiKeyAuth,
-    BearerAuth,
-    OnlineStoreKeyAuth,
-    get_api_key,
+from hopsworks_common.client.istio.utils.numpy_codec import (
+    from_np_dtype,
+    to_np_dtype,
 )
 
 
 __all__ = [
-    ApiKeyAuth,
-    BearerAuth,
-    OnlineStoreKeyAuth,
-    get_api_key,
+    from_np_dtype,
+    to_np_dtype,
 ]

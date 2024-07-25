@@ -21,13 +21,13 @@ from typing import Dict, List, Optional
 import numpy
 import numpy as np
 import pandas as pd
-from hsml.client.istio.grpc.errors import InvalidInput
-from hsml.client.istio.grpc.proto.grpc_predict_v2_pb2 import (
+from hopsworks_common.client.istio.grpc.errors import InvalidInput
+from hopsworks_common.client.istio.grpc.proto.grpc_predict_v2_pb2 import (
     InferTensorContents,
     ModelInferRequest,
     ModelInferResponse,
 )
-from hsml.client.istio.utils.numpy_codec import from_np_dtype, to_np_dtype
+from hopsworks_common.client.istio.utils.numpy_codec import from_np_dtype, to_np_dtype
 
 
 GRPC_CONTENT_DATATYPE_MAPPINGS = {

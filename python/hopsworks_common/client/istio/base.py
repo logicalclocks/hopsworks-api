@@ -17,13 +17,16 @@
 import os
 from abc import abstractmethod
 
-from hsml.client import base
-from hsml.client.istio.grpc.inference_client import GRPCInferenceServerClient
+from hopsworks_common.client import base
+from hopsworks_common.client.istio.grpc.inference_client import (
+    GRPCInferenceServerClient,
+)
 
 
 class Client(base.Client):
     SERVING_API_KEY = "SERVING_API_KEY"
     HOPSWORKS_PUBLIC_HOST = "HOPSWORKS_PUBLIC_HOST"
+    TOKEN_EXPIRED_MAX_RETRIES = 0
 
     BASE_PATH_PARAMS = []
 
@@ -53,16 +56,6 @@ class Client(base.Client):
             else:
                 return True
 
-        return False
-
-    def _get_retry(self, request, response):
-        """Get retry method for resending HTTP requests to Istio
-
-        :param request: original HTTP request already sent
-        :type request: requests.Request
-        :param response: response of the original HTTP request
-        :type response: requests.Response
-        """
         return False
 
     def _get_host_port_pair(self):

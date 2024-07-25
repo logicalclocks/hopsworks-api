@@ -25,6 +25,12 @@ import requests
 class RestAPIError(Exception):
     """REST Exception encapsulating the response object and url."""
 
+    STATUS_CODE_BAD_REQUEST = 400
+    STATUS_CODE_UNAUTHORIZED = 401
+    STATUS_CODE_FORBIDDEN = 403
+    STATUS_CODE_NOT_FOUND = 404
+    STATUS_CODE_INTERNAL_SERVER_ERROR = 500
+
     class FeatureStoreErrorCode(int, Enum):
         FEATURE_GROUP_COMMIT_NOT_FOUND = 270227
         STATISTICS_NOT_FOUND = 270228
@@ -111,6 +117,17 @@ class ExternalClientError(TypeError):
         super().__init__(message)
 
 
+class HopsworksClientError(TypeError):
+    """Raised when hopsworks internal client cannot be initialized due to missing arguments."""
+
+    def __init__(self, missing_argument):
+        message = (
+            "{0} cannot be of type NoneType, {0} is a non-optional "
+            "argument to connect to hopsworks from an internal environment."
+        ).format(missing_argument)
+        super().__init__(message)
+
+
 class GitException(Exception):
     """Generic git exception"""
 
@@ -141,3 +158,17 @@ class OpenSearchException(Exception):
 
 class JobExecutionException(Exception):
     """Generic job executions exception"""
+
+
+class ModelRegistryException(Exception):
+    """Generic model registry exception"""
+
+
+class ModelServingException(Exception):
+    """Generic model serving exception"""
+
+    ERROR_CODE_SERVING_NOT_FOUND = 240000
+    ERROR_CODE_ILLEGAL_ARGUMENT = 240001
+    ERROR_CODE_DUPLICATED_ENTRY = 240011
+
+    ERROR_CODE_DEPLOYMENT_NOT_RUNNING = 250001

@@ -14,17 +14,27 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.client.auth import (
-    ApiKeyAuth,
-    BearerAuth,
-    OnlineStoreKeyAuth,
-    get_api_key,
+from hopsworks_common.client.istio.utils.infer_type import (
+    GRPC_CONTENT_DATATYPE_MAPPINGS,
+    InferenceServerException,
+    InferInput,
+    InferOutput,
+    InferRequest,
+    InferResponse,
+    get_content,
+    raise_error,
+    serialize_byte_tensor,
 )
 
 
 __all__ = [
-    ApiKeyAuth,
-    BearerAuth,
-    OnlineStoreKeyAuth,
-    get_api_key,
+    GRPC_CONTENT_DATATYPE_MAPPINGS,
+    InferenceServerException,
+    InferInput,
+    InferOutput,
+    InferRequest,
+    InferResponse,
+    get_content,
+    raise_error,
+    serialize_byte_tensor,
 ]

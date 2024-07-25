@@ -13,18 +13,3 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-
-from hopsworks_common.client.auth import (
-    ApiKeyAuth,
-    BearerAuth,
-    OnlineStoreKeyAuth,
-    get_api_key,
-)
-
-
-__all__ = [
-    ApiKeyAuth,
-    BearerAuth,
-    OnlineStoreKeyAuth,
-    get_api_key,
-]

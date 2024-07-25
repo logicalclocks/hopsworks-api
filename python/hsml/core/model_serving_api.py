@@ -57,7 +57,7 @@ class ModelServingApi:
         client.set_kserve_installed(is_kserve_installed)
 
         # istio client
-        self._set_istio_client_if_available()
+        self._isito_init_if_available()
 
         # resource limits
         max_resources = self._serving_api.get_resource_limits()
@@ -71,26 +71,26 @@ class ModelServingApi:
         knative_domain = self._serving_api.get_knative_domain()
         client.set_knative_domain(knative_domain)
 
-    def _set_istio_client_if_available(self):
-        """Set istio client if available"""
+    def _istio_init_if_available(self):
+        """Initialize istio client if available"""
 
         if client.is_kserve_installed():
             # check existing istio client
             try:
-                if client.get_istio_instance() is not None:
+                if client.istio_get_instance() is not None:
                     return  # istio client already set
             except Exception:
                 pass
 
             # setup istio client
             inference_endpoints = self._serving_api.get_inference_endpoints()
-            if client.get_client_type() == "internal":
+            if isinstance(client.get_instance(), client.hopsworks.Client):
                 # if internal, get node port
                 endpoint = get_endpoint_by_type(
                     inference_endpoints, INFERENCE_ENDPOINTS.ENDPOINT_TYPE_NODE
                 )
                 if endpoint is not None:
-                    client.set_istio_client(
+                    client.istio_init(
                         endpoint.get_any_host(),
                         endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTP).number,
                     )
@@ -107,7 +107,7 @@ class ModelServingApi:
                 if endpoint is not None:
                     # if load balancer (external ip) available
                     _client = client.get_instance()
-                    client.set_istio_client(
+                    client.istio_init(
                         endpoint.get_any_host(),
                         endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTP).number,
                         _client._project_name,
@@ -125,7 +125,7 @@ class ModelServingApi:
                     port = endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTP).number
                     if self._is_host_port_open(host, port):
                         # and it is open
-                        client.set_istio_client(
+                        client.istio_init(
                             host,
                             port,
                             _client._project_name,

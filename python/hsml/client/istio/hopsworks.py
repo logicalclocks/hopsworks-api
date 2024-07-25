@@ -14,17 +14,11 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.client.auth import (
-    ApiKeyAuth,
-    BearerAuth,
-    OnlineStoreKeyAuth,
-    get_api_key,
+from hopsworks_common.client.istio.hopsworks import (
+    Client,
 )
 
 
 __all__ = [
-    ApiKeyAuth,
-    BearerAuth,
-    OnlineStoreKeyAuth,
-    get_api_key,
+    Client,
 ]

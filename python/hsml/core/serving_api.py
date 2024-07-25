@@ -253,7 +253,7 @@ class ServingApi:
                 _client._project_id, deployment_instance
             )
         else:
-            _client = client.get_istio_instance()
+            _client = client.istio_get_instance()
             if _client is not None:
                 # use istio client
                 path_params = self._get_istio_inference_path(deployment_instance)
@@ -302,7 +302,7 @@ class ServingApi:
         return infer_response.outputs
 
     def _create_grpc_channel(self, deployment_name: str):
-        _client = client.get_istio_instance()
+        _client = client.istio_get_instance()
         service_hostname = self._get_inference_request_host_header(
             _client._project_name,
             deployment_name,
