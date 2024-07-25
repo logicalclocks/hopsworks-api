@@ -3855,7 +3855,7 @@ class FeatureView:
             "description": self._description,
             "query": self._query,
             "features": self._features,
-            "enabledLogging": self._logging_enabled,
+            "loggingEnabled": self._logging_enabled,
             "transformationFunctions": self._transformation_functions,
             "type": "featureViewDTO",
         }
