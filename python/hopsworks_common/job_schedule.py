@@ -18,7 +18,7 @@ import json
 from datetime import datetime, timezone
 
 import humps
-from hopsworks import util
+from hopsworks_common import util
 
 
 class JobSchedule:

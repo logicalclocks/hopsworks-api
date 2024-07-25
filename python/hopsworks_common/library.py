@@ -15,7 +15,7 @@
 #
 
 import humps
-from hopsworks import command
+from hopsworks_common import command
 
 
 class Library:
