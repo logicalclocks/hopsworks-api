@@ -13,3 +13,24 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+
+from hopsworks_common.client.istio import (
+    base,
+    external,
+    get_instance,
+    grpc,
+    hopsworks,
+    init,
+    utils,
+)
+
+
+__all__ = [
+    base,
+    external,
+    get_instance,
+    grpc,
+    hopsworks,
+    init,
+    utils,
+]

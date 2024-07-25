@@ -57,7 +57,7 @@ class ModelServingApi:
         client.set_kserve_installed(is_kserve_installed)
 
         # istio client
-        self._isito_init_if_available()
+        self._istio_init_if_available()
 
         # resource limits
         max_resources = self._serving_api.get_resource_limits()
@@ -77,7 +77,7 @@ class ModelServingApi:
         if client.is_kserve_installed():
             # check existing istio client
             try:
-                if client.istio_get_instance() is not None:
+                if client.istio.get_instance() is not None:
                     return  # istio client already set
             except Exception:
                 pass
@@ -90,7 +90,7 @@ class ModelServingApi:
                     inference_endpoints, INFERENCE_ENDPOINTS.ENDPOINT_TYPE_NODE
                 )
                 if endpoint is not None:
-                    client.istio_init(
+                    client.istio.init(
                         endpoint.get_any_host(),
                         endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTP).number,
                     )
@@ -107,7 +107,7 @@ class ModelServingApi:
                 if endpoint is not None:
                     # if load balancer (external ip) available
                     _client = client.get_instance()
-                    client.istio_init(
+                    client.istio.init(
                         endpoint.get_any_host(),
                         endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTP).number,
                         _client._project_name,
@@ -125,7 +125,7 @@ class ModelServingApi:
                     port = endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTP).number
                     if self._is_host_port_open(host, port):
                         # and it is open
-                        client.istio_init(
+                        client.istio.init(
                             host,
                             port,
                             _client._project_name,
