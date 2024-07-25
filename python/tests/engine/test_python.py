@@ -1617,7 +1617,7 @@ class TestPython:
 
         # Assert
         assert mock_fg_api.return_value.ingestion.call_count == 1
-        assert mock_dataset_api.return_value.upload.call_count == 1
+        assert mock_dataset_api.return_value.upload_feature_group.call_count == 1
         assert mock_job_api.return_value.launch.call_count == 1
         assert mock_util_get_job_url.call_count == 1
 
