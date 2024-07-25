@@ -15,7 +15,7 @@
 #
 
 import humps
-from hopsworks import constants, git_repo
+from hopsworks_common import constants, git_repo
 
 
 class GitOpExecution:

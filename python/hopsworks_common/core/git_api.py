@@ -18,7 +18,7 @@ import json
 import logging
 from typing import List, Union
 
-from hopsworks import (
+from hopsworks_common import (
     client,
     git_commit,
     git_file_status,
@@ -26,10 +26,10 @@ from hopsworks import (
     git_repo,
     util,
 )
-from hopsworks.client.exceptions import GitException
-from hopsworks.core import git_provider_api
-from hopsworks.engine import git_engine
-from hopsworks.git_file_status import GitFileStatus
+from hopsworks_common.client.exceptions import GitException
+from hopsworks_common.core import git_provider_api
+from hopsworks_common.engine import git_engine
+from hopsworks_common.git_file_status import GitFileStatus
 
 
 class GitApi:

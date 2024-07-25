@@ -17,8 +17,8 @@
 import logging
 import time
 
-from hopsworks.client.exceptions import GitException
-from hopsworks.core import git_op_execution_api
+from hopsworks_common.client.exceptions import GitException
+from hopsworks_common.core import git_op_execution_api
 
 
 class GitEngine:
