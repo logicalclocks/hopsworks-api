@@ -1110,7 +1110,8 @@ class FeatureViewEngine:
 
     def materialize_feature_logs(self, fv, wait, transform):
         if transform is None:
-            jobs = [self._get_logging_fg(fv, True).materialization_job, self._get_logging_fg(fv, False).materialization_job]
+            jobs = [self._get_logging_fg(fv, True).materialization_job,
+                    self._get_logging_fg(fv, False).materialization_job]
         else:
             jobs = [self._get_logging_fg(fv, transform).materialization_job]
         for job in jobs:
