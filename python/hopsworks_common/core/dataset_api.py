@@ -14,6 +14,8 @@
 #   limitations under the License.
 #
 
+from __future__ import annotations
+
 import copy
 import logging
 import math
@@ -22,8 +24,9 @@ import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
 
-from hopsworks import client
-from hopsworks.client.exceptions import DatasetException, RestAPIError
+from hopsworks_common import client, util
+from hopsworks_common.client.exceptions import DatasetException, RestAPIError
+from hopsworks_common.core import inode
 from tqdm.auto import tqdm
 
 
@@ -38,9 +41,12 @@ class Chunk:
 class DatasetApi:
     def __init__(
         self,
-        project_id,
+        project_id=None,
     ):
         self._project_id = project_id
+        if not project_id:
+            _client = client.get_instance()
+            self._project_id = _client._project_id
         self._log = logging.getLogger(__name__)
 
     DEFAULT_FLOW_CHUNK_SIZE = 1048576
@@ -466,3 +472,90 @@ class DatasetApi:
             "destination_path": destination_path,
         }
         _client._send_request("POST", path_params, query_params=query_params)
+
+    DEFAULT_FLOW_CHUNK_SIZE = 1048576
+
+    def upload_feature_group(self, feature_group, path, dataframe):
+        # Convert the dataframe into PARQUET for upload
+        df_parquet = dataframe.to_parquet(index=False)
+        parquet_length = len(df_parquet)
+        num_chunks = math.ceil(parquet_length / self.DEFAULT_FLOW_CHUNK_SIZE)
+
+        base_params = self._get_flow_base_params(
+            feature_group, num_chunks, parquet_length
+        )
+
+        chunk_number = 1
+        for i in range(0, parquet_length, self.DEFAULT_FLOW_CHUNK_SIZE):
+            query_params = base_params
+            query_params["flowCurrentChunkSize"] = len(
+                df_parquet[i : i + self.DEFAULT_FLOW_CHUNK_SIZE]
+            )
+            query_params["flowChunkNumber"] = chunk_number
+
+            self._upload_request(
+                query_params,
+                path,
+                util.feature_group_name(feature_group),
+                df_parquet[i : i + self.DEFAULT_FLOW_CHUNK_SIZE],
+            )
+
+            chunk_number += 1
+
+    def _get_flow_base_params(self, feature_group, num_chunks, size):
+        # TODO(fabio): flow identifier is not unique
+        return {
+            "templateId": -1,
+            "flowChunkSize": self.DEFAULT_FLOW_CHUNK_SIZE,
+            "flowTotalSize": size,
+            "flowIdentifier": util.feature_group_name(feature_group),
+            "flowFilename": util.feature_group_name(feature_group),
+            "flowRelativePath": util.feature_group_name(feature_group),
+            "flowTotalChunks": num_chunks,
+        }
+
+    def _upload_request(self, params, path, file_name, chunk):
+        _client = client.get_instance()
+        path_params = ["project", _client._project_id, "dataset", "upload", path]
+
+        # Flow configuration params are sent as form data
+        _client._send_request(
+            "POST", path_params, data=params, files={"file": (file_name, chunk)}
+        )
+
+    def list_files(self, path, offset, limit):
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "dataset",
+            path[(path.index("/", 10) + 1) :],
+        ]
+        query_params = {
+            "action": "listing",
+            "offset": offset,
+            "limit": limit,
+            "sort_by": "ID:asc",
+        }
+
+        inode_lst = _client._send_request("GET", path_params, query_params)
+
+        return inode_lst["count"], inode.Inode.from_response_json(inode_lst)
+
+    def read_content(self, path: str, dataset_type: str = "DATASET"):
+        _client = client.get_instance()
+
+        path_params = [
+            "project",
+            _client._project_id,
+            "dataset",
+            "download",
+            "with_auth",
+            path[1:],
+        ]
+
+        query_params = {
+            "type": dataset_type,
+        }
+
+        return _client._send_request("GET", path_params, query_params, stream=True)
