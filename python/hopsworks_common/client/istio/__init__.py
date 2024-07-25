@@ -26,16 +26,16 @@ _client: Union[hopsworks.Client, external.Client, None] = None
 
 
 def init(host, port, project=None, api_key_value=None):
-    global _istio_client
+    global _client
 
-    if _istio_client:
+    if _client:
         return
     if isinstance(_main._client, _main.hopsworks.Client):
-        _istio_client = hopsworks.Client(host, port)
+        _client = hopsworks.Client(host, port)
     elif isinstance(_main, _main.external.Client):
-        _istio_client = external.Client(host, port, project, api_key_value)
+        _client = external.Client(host, port, project, api_key_value)
 
 
 def get_instance() -> Union[hopsworks.Client, external.Client, None]:
-    global _istio_client
-    return _istio_client
+    global _client
+    return _client
