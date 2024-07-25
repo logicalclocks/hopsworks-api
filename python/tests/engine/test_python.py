@@ -2303,7 +2303,7 @@ class TestPython:
     def test_convert_to_unix_timestamp_str(self, mocker):
         # Arrange
         mock_util_get_timestamp_from_date_string = mocker.patch(
-            "hsfs.util.get_timestamp_from_date_string"
+            "hopsworks_common.util.get_timestamp_from_date_string"
         )
 
         mock_util_get_timestamp_from_date_string.return_value = 1483225200000
