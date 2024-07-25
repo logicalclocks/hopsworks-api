@@ -44,9 +44,6 @@ class DatasetApi:
         project_id=None,
     ):
         self._project_id = project_id
-        if not project_id:
-            _client = client.get_instance()
-            self._project_id = _client._project_id
         self._log = logging.getLogger(__name__)
 
     DEFAULT_FLOW_CHUNK_SIZE = 1048576
