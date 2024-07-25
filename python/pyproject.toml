@@ -94,10 +94,17 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 exclude = ["tests*"]
-include = ["../README.md", "../LICENSE", "hopsworks*", "hsfs*", "hsml*", "hopsworks_common*"]
+include = [
+    "../README.md",
+    "../LICENSE",
+    "hopsworks*",
+    "hsfs*",
+    "hsml*",
+    "hopsworks_common*",
+]
 
 [tool.setuptools.dynamic]
-version = { attr = "hopsworks.version.__version__" }
+version = { attr = "hopsworks_common.version.__version__" }
 
 [project.urls]
 Documentation = "https://docs.hopsworks.ai/latest"
