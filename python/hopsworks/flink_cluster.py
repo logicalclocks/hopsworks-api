@@ -14,11 +14,11 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.job_schedule import (
-    JobSchedule,
+from hopsworks_common.flink_cluster import (
+    FlinkCluster,
 )
 
 
 __all__ = [
-    JobSchedule,
+    FlinkCluster,
 ]

@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks import client, execution
+from hopsworks_common import client, execution
 
 
 class ExecutionsApi:

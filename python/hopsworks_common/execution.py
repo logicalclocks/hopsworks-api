@@ -17,9 +17,9 @@
 import json
 
 import humps
-from hopsworks import client, constants, util
-from hopsworks.core import execution_api
-from hopsworks.engine import execution_engine
+from hopsworks_common import client, constants, util
+from hopsworks_common.core import execution_api
+from hopsworks_common.engine import execution_engine
 
 
 class Execution:

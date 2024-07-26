@@ -18,10 +18,10 @@ import json
 from datetime import datetime, timezone
 
 import humps
-from hopsworks import client, util
-from hopsworks import job_schedule as js
-from hopsworks.core import execution_api, job_api
-from hopsworks.engine import execution_engine
+from hopsworks_common import client, util
+from hopsworks_common.core import execution_api, job_api
+from hopsworks_common.engine import execution_engine
+from hopsworks_common.job_schedule import JobSchedule
 
 
 class Job:
@@ -50,7 +50,7 @@ class Job:
         self._creator = creator
         self._executions = executions
         self._job_schedule = (
-            js.JobSchedule.from_response_json(job_schedule)
+            JobSchedule.from_response_json(job_schedule)
             if job_schedule
             else job_schedule
         )
@@ -211,7 +211,7 @@ class Job:
         # Returns
             `JobSchedule`. The schedule of the job
         """
-        job_schedule = js.JobSchedule(
+        job_schedule = JobSchedule(
             id=self._job_schedule.id if self._job_schedule else None,
             start_date_time=start_time if start_time else datetime.now(tz=timezone.utc),
             cron_expression=cron_expression,

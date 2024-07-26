@@ -16,8 +16,8 @@
 
 import json
 
-from hopsworks import client, job, job_schedule, util
-from hopsworks.client.exceptions import RestAPIError
+from hopsworks_common import client, job, job_schedule, util
+from hopsworks_common.client.exceptions import RestAPIError
 
 
 class JobsApi:

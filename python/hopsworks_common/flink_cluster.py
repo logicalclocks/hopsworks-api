@@ -16,9 +16,9 @@
 
 import time
 
-from hopsworks import client, util
-from hopsworks.core import execution_api, flink_cluster_api
-from hopsworks.engine import execution_engine
+from hopsworks_common import client, util
+from hopsworks_common.core import execution_api, flink_cluster_api
+from hopsworks_common.engine import execution_engine
 
 
 class FlinkCluster:

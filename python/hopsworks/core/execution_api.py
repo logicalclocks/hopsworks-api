@@ -14,11 +14,11 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.job_schedule import (
-    JobSchedule,
+from hopsworks_common.core.execution_api import (
+    ExecutionsApi,
 )
 
 
 __all__ = [
-    JobSchedule,
+    ExecutionsApi,
 ]
