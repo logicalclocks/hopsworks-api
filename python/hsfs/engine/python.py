@@ -1448,7 +1448,10 @@ class Engine:
 
             return pd.DataFrame(feature_log, columns=cols)
         else:
-            return feature_log.copy(deep=False)
+            if isinstance(feature_log, pl.DataFrame):
+                return feature_log.clone()
+            elif isinstance(feature_log, pd.DataFrame):
+                return feature_log.copy(deep=False)
 
     @staticmethod
     def get_feature_logging_df(
