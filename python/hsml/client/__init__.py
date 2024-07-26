@@ -1,5 +1,5 @@
 #
-#   Copyright 2022 Logical Clocks AB
+#   Copyright 2024 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -14,139 +14,49 @@
 #   limitations under the License.
 #
 
-from hsml.client.hopsworks import base as hw_base
-from hsml.client.hopsworks import external as hw_external
-from hsml.client.hopsworks import internal as hw_internal
-from hsml.client.istio import base as ist_base
-from hsml.client.istio import external as ist_external
-from hsml.client.istio import internal as ist_internal
-from hsml.constants import HOSTS
+from hopsworks_common.client import (
+    auth,
+    base,
+    exceptions,
+    external,
+    get_instance,
+    get_knative_domain,
+    get_serving_num_instances_limits,
+    get_serving_resource_limits,
+    hopsworks,
+    init,
+    is_kserve_installed,
+    is_saas_connection,
+    is_scale_to_zero_required,
+    istio,
+    online_store_rest_client,
+    set_knative_domain,
+    set_kserve_installed,
+    set_serving_num_instances_limits,
+    set_serving_resource_limits,
+    stop,
+)
 
 
-_client_type = None
-_saas_connection = None
-
-_hopsworks_client = None
-_istio_client = None
-
-_kserve_installed = None
-_serving_resource_limits = None
-_serving_num_instances_limits = None
-_knative_domain = None
-
-
-def init(
-    client_type,
-    host=None,
-    port=None,
-    project=None,
-    hostname_verification=None,
-    trust_store_path=None,
-    api_key_file=None,
-    api_key_value=None,
-):
-    global _client_type
-    _client_type = client_type
-
-    global _saas_connection
-    _saas_connection = host == HOSTS.APP_HOST
-
-    global _hopsworks_client
-    if not _hopsworks_client:
-        if client_type == "internal":
-            _hopsworks_client = hw_internal.Client()
-        elif client_type == "external":
-            _hopsworks_client = hw_external.Client(
-                host,
-                port,
-                project,
-                hostname_verification,
-                trust_store_path,
-                api_key_file,
-                api_key_value,
-            )
-
-
-def get_instance() -> hw_base.Client:
-    global _hopsworks_client
-    if _hopsworks_client:
-        return _hopsworks_client
-    raise Exception("Couldn't find client. Try reconnecting to Hopsworks.")
-
-
-def set_istio_client(host, port, project=None, api_key_value=None):
-    global _client_type, _istio_client
-
-    if not _istio_client:
-        if _client_type == "internal":
-            _istio_client = ist_internal.Client(host, port)
-        elif _client_type == "external":
-            _istio_client = ist_external.Client(host, port, project, api_key_value)
-
-
-def get_istio_instance() -> ist_base.Client:
-    global _istio_client
-    return _istio_client
-
-
-def get_client_type() -> str:
-    global _client_type
-    return _client_type
-
-
-def is_saas_connection() -> bool:
-    global _saas_connection
-    return _saas_connection
-
-
-def set_kserve_installed(kserve_installed):
-    global _kserve_installed
-    _kserve_installed = kserve_installed
-
-
-def is_kserve_installed() -> bool:
-    global _kserve_installed
-    return _kserve_installed
-
-
-def set_serving_resource_limits(max_resources):
-    global _serving_resource_limits
-    _serving_resource_limits = max_resources
-
-
-def get_serving_resource_limits():
-    global _serving_resource_limits
-    return _serving_resource_limits
-
-
-def set_serving_num_instances_limits(num_instances_range):
-    global _serving_num_instances_limits
-    _serving_num_instances_limits = num_instances_range
-
-
-def get_serving_num_instances_limits():
-    global _serving_num_instances_limits
-    return _serving_num_instances_limits
-
-
-def is_scale_to_zero_required():
-    # scale-to-zero is required for KServe deployments if the Hopsworks variable `kube_serving_min_num_instances`
-    # is set to 0. Other possible values are -1 (unlimited num instances) or >1 num instances.
-    return get_serving_num_instances_limits()[0] == 0
-
-
-def get_knative_domain():
-    global _knative_domain
-    return _knative_domain
-
-
-def set_knative_domain(knative_domain):
-    global _knative_domain
-    _knative_domain = knative_domain
-
-
-def stop():
-    global _hopsworks_client, _istio_client
-    _hopsworks_client._close()
-    _istio_client._close()
-    _hopsworks_client = _istio_client = None
+__all__ = [
+    auth,
+    base,
+    exceptions,
+    external,
+    get_instance,
+    get_knative_domain,
+    get_serving_num_instances_limits,
+    get_serving_resource_limits,
+    hopsworks,
+    init,
+    is_kserve_installed,
+    is_saas_connection,
+    is_scale_to_zero_required,
+    istio,
+    online_store_rest_client,
+    set_knative_domain,
+    set_kserve_installed,
+    set_serving_num_instances_limits,
+    set_serving_resource_limits,
+    stop,
+]

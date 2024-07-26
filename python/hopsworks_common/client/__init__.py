@@ -18,7 +18,8 @@ from __future__ import annotations
 
 from typing import Literal, Optional, Union
 
-from hopsworks_common.client import external, hopsworks
+from hopsworks_common.client import external, hopsworks, istio
+from hopsworks_common.constants import HOSTS
 
 
 _client: Union[hopsworks.Client, external.Client, None] = None
@@ -62,9 +63,9 @@ def init(
 
 def get_instance() -> Union[hopsworks.Client, external.Client]:
     global _client
-    if _client:
-        return _client
-    raise Exception("Couldn't find client. Try reconnecting to Hopsworks.")
+    if not _client:
+        raise Exception("Couldn't find client. Try reconnecting to Hopsworks.")
+    return _client
 
 
 def stop() -> None:
@@ -72,3 +73,68 @@ def stop() -> None:
     if _client:
         _client._close()
     _client = None
+    if istio._client:
+        istio._client._close()
+    istio._client = None
+
+
+def is_saas_connection() -> bool:
+    return get_instance()._host == HOSTS.APP_HOST
+
+
+_kserve_installed = None
+
+
+def set_kserve_installed(kserve_installed):
+    global _kserve_installed
+    _kserve_installed = kserve_installed
+
+
+def is_kserve_installed() -> bool:
+    global _kserve_installed
+    return _kserve_installed
+
+
+_serving_resource_limits = None
+
+
+def set_serving_resource_limits(max_resources):
+    global _serving_resource_limits
+    _serving_resource_limits = max_resources
+
+
+def get_serving_resource_limits():
+    global _serving_resource_limits
+    return _serving_resource_limits
+
+
+_serving_num_instances_limits = None
+
+
+def set_serving_num_instances_limits(num_instances_range):
+    global _serving_num_instances_limits
+    _serving_num_instances_limits = num_instances_range
+
+
+def get_serving_num_instances_limits():
+    global _serving_num_instances_limits
+    return _serving_num_instances_limits
+
+
+def is_scale_to_zero_required():
+    # scale-to-zero is required for KServe deployments if the Hopsworks variable `kube_serving_min_num_instances`
+    # is set to 0. Other possible values are -1 (unlimited num instances) or >1 num instances.
+    return get_serving_num_instances_limits()[0] == 0
+
+
+_knative_domain = None
+
+
+def get_knative_domain():
+    global _knative_domain
+    return _knative_domain
+
+
+def set_knative_domain(knative_domain):
+    global _knative_domain
+    _knative_domain = knative_domain

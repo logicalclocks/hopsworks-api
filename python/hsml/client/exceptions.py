@@ -1,5 +1,5 @@
 #
-#   Copyright 2021 Logical Clocks AB
+#   Copyright 2024 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -14,72 +14,43 @@
 #   limitations under the License.
 #
 
-
-class RestAPIError(Exception):
-    """REST Exception encapsulating the response object and url."""
-
-    def __init__(self, url, response):
-        try:
-            error_object = response.json()
-        except Exception:
-            self.error_code = error_object = None
-
-        message = (
-            "Metadata operation error: (url: {}). Server response: \n"
-            "HTTP code: {}, HTTP reason: {}, body: {}".format(
-                url,
-                response.status_code,
-                response.reason,
-                response.content,
-            )
-        )
-
-        if error_object is not None:
-            self.error_code = error_object.get("errorCode", "")
-            message += ", error code: {}, error msg: {}, user msg: {}".format(
-                self.error_code,
-                error_object.get("errorMsg", ""),
-                error_object.get("usrMsg", ""),
-            )
-
-        super().__init__(message)
-        self.url = url
-        self.response = response
-
-    STATUS_CODE_BAD_REQUEST = 400
-    STATUS_CODE_UNAUTHORIZED = 401
-    STATUS_CODE_FORBIDDEN = 403
-    STATUS_CODE_NOT_FOUND = 404
-    STATUS_CODE_INTERNAL_SERVER_ERROR = 500
+from hopsworks_common.client.exceptions import (
+    DatasetException,
+    DataValidationException,
+    EnvironmentException,
+    ExternalClientError,
+    FeatureStoreException,
+    GitException,
+    HopsworksClientError,
+    JobException,
+    JobExecutionException,
+    KafkaException,
+    ModelRegistryException,
+    ModelServingException,
+    OpenSearchException,
+    ProjectException,
+    RestAPIError,
+    UnknownSecretStorageError,
+    VectorDatabaseException,
+)
 
 
-class UnknownSecretStorageError(Exception):
-    """This exception will be raised if an unused secrets storage is passed as a parameter."""
-
-
-class ModelRegistryException(Exception):
-    """Generic model registry exception"""
-
-
-class ModelServingException(Exception):
-    """Generic model serving exception"""
-
-    ERROR_CODE_SERVING_NOT_FOUND = 240000
-    ERROR_CODE_ILLEGAL_ARGUMENT = 240001
-    ERROR_CODE_DUPLICATED_ENTRY = 240011
-
-    ERROR_CODE_DEPLOYMENT_NOT_RUNNING = 250001
-
-
-class InternalClientError(TypeError):
-    """Raised when internal client cannot be initialized due to missing arguments."""
-
-    def __init__(self, message):
-        super().__init__(message)
-
-
-class ExternalClientError(TypeError):
-    """Raised when external client cannot be initialized due to missing arguments."""
-
-    def __init__(self, message):
-        super().__init__(message)
+__all__ = [
+    DatasetException,
+    DataValidationException,
+    EnvironmentException,
+    ExternalClientError,
+    FeatureStoreException,
+    GitException,
+    HopsworksClientError,
+    JobException,
+    JobExecutionException,
+    KafkaException,
+    ModelRegistryException,
+    ModelServingException,
+    OpenSearchException,
+    ProjectException,
+    RestAPIError,
+    UnknownSecretStorageError,
+    VectorDatabaseException,
+]

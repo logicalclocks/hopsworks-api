@@ -1,5 +1,5 @@
 #
-#   Copyright 2021 Logical Clocks AB
+#   Copyright 2022 Logical Clocks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@ import textwrap
 from pathlib import Path
 
 import requests
-from hsml.client import auth
-from hsml.client.hopsworks import base as hopsworks
+from hopsworks_common.client import auth, exceptions
+from hopsworks_common.client.istio import base as istio
 
 
 try:
@@ -30,14 +30,15 @@ except ImportError:
     pass
 
 
-class Client(hopsworks.Client):
+class Client(istio.Client):
     REQUESTS_VERIFY = "REQUESTS_VERIFY"
-    DOMAIN_CA_TRUSTSTORE_PEM = "DOMAIN_CA_TRUSTSTORE_PEM"
     PROJECT_ID = "HOPSWORKS_PROJECT_ID"
     PROJECT_NAME = "HOPSWORKS_PROJECT_NAME"
     HADOOP_USER_NAME = "HADOOP_USER_NAME"
-    MATERIAL_DIRECTORY = "MATERIAL_DIRECTORY"
     HDFS_USER = "HDFS_USER"
+
+    DOMAIN_CA_TRUSTSTORE_PEM = "DOMAIN_CA_TRUSTSTORE_PEM"
+    MATERIAL_DIRECTORY = "MATERIAL_DIRECTORY"
     T_CERTIFICATE = "t_certificate"
     K_CERTIFICATE = "k_certificate"
     TRUSTSTORE_SUFFIX = "__tstore.jks"
@@ -47,14 +48,12 @@ class Client(hopsworks.Client):
     MATERIAL_PWD = "material_passwd"
     SECRETS_DIR = "SECRETS_DIR"
 
-    def __init__(self):
+    def __init__(self, host, port):
         """Initializes a client being run from a job/notebook directly on Hopsworks."""
-        self._base_url = self._get_hopsworks_rest_endpoint()
-        self._host, self._port = self._get_host_port_pair()
-        self._secrets_dir = (
-            os.environ[self.SECRETS_DIR] if self.SECRETS_DIR in os.environ else ""
-        )
-        self._cert_key = self._get_cert_pw()
+        self._host = host
+        self._port = port
+        self._base_url = "http://" + self._host + ":" + str(self._port)
+
         trust_store_path = self._get_trust_store_path()
         hostname_verification = (
             os.environ[self.REQUESTS_VERIFY]
@@ -63,18 +62,31 @@ class Client(hopsworks.Client):
         )
         self._project_id = os.environ[self.PROJECT_ID]
         self._project_name = self._project_name()
-        try:
-            self._auth = auth.BearerAuth(self._read_jwt())
-        except FileNotFoundError:
-            self._auth = auth.ApiKeyAuth(self._read_apikey())
+        self._auth = auth.ApiKeyAuth(self._get_serving_api_key())
         self._verify = self._get_verify(hostname_verification, trust_store_path)
         self._session = requests.session()
 
         self._connected = True
 
-    def _get_hopsworks_rest_endpoint(self):
-        """Get the hopsworks REST endpoint for making requests to the REST API."""
-        return os.environ[self.REST_ENDPOINT]
+    def _project_name(self):
+        try:
+            return os.environ[self.PROJECT_NAME]
+        except KeyError:
+            pass
+
+        hops_user = self._project_user()
+        hops_user_split = hops_user.split(
+            "__"
+        )  # project users have username project__user
+        project = hops_user_split[0]
+        return project
+
+    def _project_user(self):
+        try:
+            hops_user = os.environ[self.HADOOP_USER_NAME]
+        except KeyError:
+            hops_user = os.environ[self.HDFS_USER]
+        return hops_user
 
     def _get_trust_store_path(self):
         """Convert truststore from jks to pem and return the location"""
@@ -171,26 +183,6 @@ class Client(hopsworks.Client):
             material_directory = Path(os.environ[self.MATERIAL_DIRECTORY])
             return str(material_directory.joinpath(username + self.KEYSTORE_SUFFIX))
 
-    def _project_name(self):
-        try:
-            return os.environ[self.PROJECT_NAME]
-        except KeyError:
-            pass
-
-        hops_user = self._project_user()
-        hops_user_split = hops_user.split(
-            "__"
-        )  # project users have username project__user
-        project = hops_user_split[0]
-        return project
-
-    def _project_user(self):
-        try:
-            hops_user = os.environ[self.HADOOP_USER_NAME]
-        except KeyError:
-            hops_user = os.environ[self.HDFS_USER]
-        return hops_user
-
     def _get_cert_pw(self):
         """
         Get keystore password from local container
@@ -206,3 +198,9 @@ class Client(hopsworks.Client):
 
         with pwd_path.open() as f:
             return f.read()
+
+    def _get_serving_api_key(self):
+        """Retrieve serving API key from environment variable."""
+        if self.SERVING_API_KEY not in os.environ:
+            raise exceptions.InternalClientError("Serving API key not found")
+        return os.environ[self.SERVING_API_KEY]

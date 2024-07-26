@@ -17,31 +17,33 @@
 import os
 from abc import abstractmethod
 
-from hsml.client import auth, base
+from hopsworks_common.client import base
+from hopsworks_common.client.istio.grpc.inference_client import (
+    GRPCInferenceServerClient,
+)
 
 
 class Client(base.Client):
-    TOKEN_FILE = "token.jwt"
-    APIKEY_FILE = "api.key"
-    REST_ENDPOINT = "REST_ENDPOINT"
+    SERVING_API_KEY = "SERVING_API_KEY"
     HOPSWORKS_PUBLIC_HOST = "HOPSWORKS_PUBLIC_HOST"
+    TOKEN_EXPIRED_MAX_RETRIES = 0
 
-    BASE_PATH_PARAMS = ["hopsworks-api", "api"]
+    BASE_PATH_PARAMS = []
 
     @abstractmethod
     def __init__(self):
-        """To be extended by clients."""
+        """To be implemented by clients."""
         pass
 
     def _get_verify(self, verify, trust_store_path):
-        """Get verification method for sending HTTP requests to Hopsworks.
+        """Get verification method for sending inference requests to Istio.
 
         Credit to https://gist.github.com/gdamjan/55a8b9eec6cf7b771f92021d93b87b2c
 
         :param verify: perform hostname verification, 'true' or 'false'
         :type verify: str
         :param trust_store_path: path of the truststore locally if it was uploaded manually to
-            the external environment
+            the external environment such as EKS or AKS
         :type trust_store_path: str
         :return: if verify is true and the truststore is provided, then return the trust store location
                  if verify is true but the truststore wasn't provided, then return true
@@ -54,23 +56,6 @@ class Client(base.Client):
             else:
                 return True
 
-        return False
-
-    def _get_retry(self, request, response):
-        """Get retry method for resending HTTP requests to Hopsworks
-
-        :param request: original HTTP request already sent
-        :type request: requests.Request
-        :param response: response of the original HTTP request
-        :type response: requests.Response
-        """
-        if response.status_code == 401 and self.REST_ENDPOINT in os.environ:
-            # refresh token and retry request - only on hopsworks
-            self._auth = auth.BearerAuth(self._read_jwt())
-            # Update request with the new token
-            request.auth = self._auth
-            # retry request
-            return True
         return False
 
     def _get_host_port_pair(self):
@@ -88,19 +73,6 @@ class Client(base.Client):
         host, port = endpoint.split(":")
         return host, port
 
-    def _read_jwt(self):
-        """Retrieve jwt from local container."""
-        return self._read_file(self.TOKEN_FILE)
-
-    def _read_apikey(self):
-        """Retrieve apikey from local container."""
-        return self._read_file(self.APIKEY_FILE)
-
-    def _read_file(self, secret_file):
-        """Retrieve secret from local container."""
-        with open(os.path.join(self._secrets_dir, secret_file), "r") as secret:
-            return secret.read()
-
     def _close(self):
         """Closes a client. Can be implemented for clean up purposes, not mandatory."""
         self._connected = False
@@ -109,3 +81,10 @@ class Client(base.Client):
         """replace hostname to public hostname set in HOPSWORKS_PUBLIC_HOST"""
         ui_url = url._replace(netloc=os.environ[self.HOPSWORKS_PUBLIC_HOST])
         return ui_url
+
+    def _create_grpc_channel(self, service_hostname: str) -> GRPCInferenceServerClient:
+        return GRPCInferenceServerClient(
+            url=self._host + ":" + str(self._port),
+            channel_args=(("grpc.ssl_target_name_override", service_hostname),),
+            serving_api_key=self._auth._token,
+        )
