@@ -50,7 +50,7 @@ class Filter:
         )
 
     def json(self) -> str:
-        return json.dumps(self, cls=util.FeatureStoreEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -123,7 +123,7 @@ class Logic:
         self._right_l = right_l
 
     def json(self) -> str:
-        return json.dumps(self, cls=util.FeatureStoreEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self) -> Dict[str, Any]:
         return {

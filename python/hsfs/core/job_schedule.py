@@ -74,7 +74,7 @@ class JobSchedule:
         }
 
     def json(self) -> str:
-        return json.dumps(self, cls=util.FeatureStoreEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     @property
     def id(self) -> Optional[int]:

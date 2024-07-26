@@ -680,7 +680,7 @@ def renaming_wrapper(*args):
         # Returns
             `str`: Json serialized object.
         """
-        return json.dumps(self, cls=util.FeatureStoreEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     @classmethod
     def from_response_json(

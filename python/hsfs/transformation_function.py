@@ -192,7 +192,7 @@ class TransformationFunction:
         # Returns
             `str`: Json serialized object.
         """
-        return json.dumps(self, cls=util.FeatureStoreEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self) -> Dict[str, Any]:
         """

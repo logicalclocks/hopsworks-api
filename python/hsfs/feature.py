@@ -100,7 +100,7 @@ class Feature:
         }
 
     def json(self) -> str:
-        return json.dumps(self, cls=util.FeatureStoreEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     @classmethod
     def from_response_json(cls, json_dict: Dict[str, Any]) -> "Feature":

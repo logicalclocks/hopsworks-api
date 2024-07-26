@@ -53,7 +53,7 @@ class FeatureLogging:
         }
 
     def json(self) -> Dict[str, Any]:
-        return json.dumps(self, cls=util.FeatureStoreEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     def __repr__(self):
         return self.json()

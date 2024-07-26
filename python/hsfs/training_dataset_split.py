@@ -84,7 +84,7 @@ class TrainingDatasetSplit:
         self._end_time = end_time
 
     def json(self):
-        return json.dumps(self, cls=util.FeatureStoreEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
         return {

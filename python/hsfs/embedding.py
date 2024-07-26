@@ -101,7 +101,7 @@ class HsmlModel:
         return Model.from_response_json(model_json)
 
     def json(self):
-        return json.dumps(self, cls=util.FeatureStoreEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
         return {
@@ -209,7 +209,7 @@ class EmbeddingFeature:
 
     def json(self):
         """Serialize the EmbeddingFeature object to a JSON string."""
-        return json.dumps(self, cls=util.FeatureStoreEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
         """
@@ -379,7 +379,7 @@ class EmbeddingIndex:
 
     def json(self):
         """Serialize the EmbeddingIndex object to a JSON string."""
-        return json.dumps(self, cls=util.FeatureStoreEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
         """

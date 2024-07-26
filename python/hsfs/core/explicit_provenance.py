@@ -31,7 +31,7 @@ class Artifact:
         NOT_SUPPORTED = 4
 
         def json(self):
-            return json.dumps(self, cls=util.FeatureStoreEncoder)
+            return json.dumps(self, cls=util.Encoder)
 
         def to_dict(self):
             return self.name
@@ -77,7 +77,7 @@ class Artifact:
         return self._version
 
     def json(self):
-        return json.dumps(self, cls=util.FeatureStoreEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
         return {

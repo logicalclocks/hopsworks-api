@@ -1,5 +1,5 @@
 #
-#   Copyright 2022 Logical Clocks AB
+#   Copyright 2024 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -14,75 +14,75 @@
 #   limitations under the License.
 #
 
-from json import JSONEncoder
-from urllib.parse import urljoin, urlparse
-
-from hopsworks import client
-from hopsworks.client.exceptions import JobException
-from hopsworks.git_file_status import GitFileStatus
-
-
-class Encoder(JSONEncoder):
-    def default(self, obj):
-        try:
-            return obj.to_dict()
-        except AttributeError:
-            return super().default(obj)
-
-
-def convert_to_abs(path, current_proj_name):
-    abs_project_prefix = "/Projects/{}".format(current_proj_name)
-    if not path.startswith(abs_project_prefix):
-        return abs_project_prefix + "/" + path
-    else:
-        return path
-
-
-def validate_job_conf(config, project_name):
-    # User is required to set the appPath programmatically after getting the configuration
-    if (
-        config["type"] != "dockerJobConfiguration"
-        and config["type"] != "flinkJobConfiguration"
-        and "appPath" not in config
-    ):
-        raise JobException("'appPath' not set in job configuration")
-    elif "appPath" in config and not config["appPath"].startswith("hdfs://"):
-        config["appPath"] = "hdfs://" + convert_to_abs(config["appPath"], project_name)
-
-    # If PYSPARK application set the mainClass, if SPARK validate there is a mainClass set
-    if config["type"] == "sparkJobConfiguration":
-        if config["appPath"].endswith(".py"):
-            config["mainClass"] = "org.apache.spark.deploy.PythonRunner"
-        elif "mainClass" not in config:
-            raise JobException("'mainClass' not set in job configuration")
-
-    return config
+from hopsworks_common.util import (
+    FEATURE_STORE_NAME_SUFFIX,
+    VALID_EMBEDDING_TYPE,
+    Encoder,
+    FeatureGroupWarning,
+    JobWarning,
+    StatisticsWarning,
+    StorageWarning,
+    ValidationWarning,
+    VersionWarning,
+    _loading_animation,
+    append_feature_store_suffix,
+    autofix_feature_name,
+    check_timestamp_format_from_date_string,
+    convert_event_time_to_timestamp,
+    convert_git_status_to_files,
+    convert_to_abs,
+    feature_group_name,
+    get_dataset_type,
+    get_delta_datestr_from_timestamp,
+    get_feature_group_url,
+    get_host_name,
+    get_hostname_replaced_url,
+    get_hudi_datestr_from_timestamp,
+    get_job_url,
+    get_timestamp_from_date_string,
+    is_interactive,
+    is_runtime_notebook,
+    run_with_loading_animation,
+    setup_pydoop,
+    strip_feature_store_suffix,
+    validate_embedding_feature_type,
+    validate_job_conf,
+    verify_attribute_key_names,
+)
 
 
-def convert_git_status_to_files(files):
-    # Convert GitFileStatus to list of file paths
-    if isinstance(files[0], GitFileStatus):
-        tmp_files = []
-        for file_status in files:
-            tmp_files.append(file_status.file)
-        files = tmp_files
-
-    return files
-
-
-def get_hostname_replaced_url(sub_path: str):
-    """
-    construct and return an url with public hopsworks hostname and sub path
-    :param self:
-    :param sub_path: url sub-path after base url
-    :return: href url
-    """
-    href = urljoin(client.get_instance()._base_url, sub_path)
-    url_parsed = client.get_instance().replace_public_host(urlparse(href))
-    return url_parsed.geturl()
-
-
-def is_interactive():
-    import __main__ as main
-
-    return not hasattr(main, "__file__")
+__all__ = [
+    FEATURE_STORE_NAME_SUFFIX,
+    VALID_EMBEDDING_TYPE,
+    Encoder,
+    FeatureGroupWarning,
+    JobWarning,
+    StatisticsWarning,
+    StorageWarning,
+    ValidationWarning,
+    VersionWarning,
+    _loading_animation,
+    append_feature_store_suffix,
+    autofix_feature_name,
+    check_timestamp_format_from_date_string,
+    convert_event_time_to_timestamp,
+    convert_git_status_to_files,
+    convert_to_abs,
+    feature_group_name,
+    get_dataset_type,
+    get_delta_datestr_from_timestamp,
+    get_feature_group_url,
+    get_host_name,
+    get_hostname_replaced_url,
+    get_hudi_datestr_from_timestamp,
+    get_job_url,
+    get_timestamp_from_date_string,
+    is_interactive,
+    is_runtime_notebook,
+    run_with_loading_animation,
+    setup_pydoop,
+    strip_feature_store_suffix,
+    validate_embedding_feature_type,
+    validate_job_conf,
+    verify_attribute_key_names,
+]

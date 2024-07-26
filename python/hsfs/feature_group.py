@@ -3398,7 +3398,7 @@ class FeatureGroup(FeatureGroupBase):
             fg.json()
             ```
         """
-        return json.dumps(self, cls=util.FeatureStoreEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self) -> Dict[str, Any]:
         """Get structured info about specific Feature Group in python dictionary format.
@@ -4043,7 +4043,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         return self
 
     def json(self) -> str:
-        return json.dumps(self, cls=util.FeatureStoreEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self) -> Dict[str, Any]:
         fg_meta_dict = {
@@ -4312,7 +4312,7 @@ class SpineGroup(FeatureGroupBase):
         return self
 
     def json(self) -> str:
-        return json.dumps(self, cls=util.FeatureStoreEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self) -> Dict[str, Any]:
         return {

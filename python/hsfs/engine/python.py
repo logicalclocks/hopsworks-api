@@ -819,7 +819,9 @@ class Engine:
 
         # Upload dataframe into Hopsworks
         print("Uploading Pandas dataframe...")
-        self._dataset_api.upload(feature_group, ingestion_job.data_path, dataframe)
+        self._dataset_api.upload_feature_group(
+            feature_group, ingestion_job.data_path, dataframe
+        )
 
         # run job
         ingestion_job.job.run(

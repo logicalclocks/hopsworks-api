@@ -155,7 +155,7 @@ class Statistics:
         return _dict
 
     def json(self) -> str:
-        return json.dumps(self, cls=util.FeatureStoreEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     def __str__(self) -> str:
         return self.json()

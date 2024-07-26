@@ -1617,7 +1617,7 @@ class TestPython:
 
         # Assert
         assert mock_fg_api.return_value.ingestion.call_count == 1
-        assert mock_dataset_api.return_value.upload.call_count == 1
+        assert mock_dataset_api.return_value.upload_feature_group.call_count == 1
         assert mock_job_api.return_value.launch.call_count == 1
         assert mock_util_get_job_url.call_count == 1
 
@@ -2303,7 +2303,7 @@ class TestPython:
     def test_convert_to_unix_timestamp_str(self, mocker):
         # Arrange
         mock_util_get_timestamp_from_date_string = mocker.patch(
-            "hsfs.util.get_timestamp_from_date_string"
+            "hopsworks_common.util.get_timestamp_from_date_string"
         )
 
         mock_util_get_timestamp_from_date_string.return_value = 1483225200000

@@ -749,7 +749,7 @@ class TestUtil:
 
     def test_get_job_url(self, mocker):
         # Arrange
-        mock_client_get_instance = mocker.patch("hsfs.client.get_instance")
+        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
 
         # Act
         hsfs.util.get_job_url(href="1/2/3/4/5/6/7/8")
@@ -766,9 +766,9 @@ class TestUtil:
         # Arrange
         feature_store_id = 99
         feature_group_id = 10
-        mock_client_get_instance = mocker.patch("hsfs.client.get_instance")
+        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
         mock_util_get_hostname_replaced_url = mocker.patch(
-            "hsfs.util.get_hostname_replaced_url"
+            "hopsworks_common.util.get_hostname_replaced_url"
         )
         mock_client_get_instance.return_value._project_id = 50
 
