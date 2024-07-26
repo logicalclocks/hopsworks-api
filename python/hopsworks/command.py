@@ -1,5 +1,5 @@
 #
-#   Copyright 2022 Hopsworks AB
+#   Copyright 2024 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -14,46 +14,11 @@
 #   limitations under the License.
 #
 
-import humps
+from hopsworks_common.command import (
+    Command,
+)
 
 
-class Command:
-    def __init__(
-        self,
-        id=None,
-        status=None,
-        op=None,
-        install_type=None,
-        error_message=None,
-        # path to the custom commands file in the case the op=custom_command
-        custom_commands_file=None,
-        args=None,
-        type=None,
-        href=None,
-        count=None,
-        **kwargs,
-    ):
-        self._id = id
-        self._op = op
-        self._install_type = install_type
-        self._status = status
-        self._error_message = error_message
-        self._count = count
-        self._custom_commands_file = custom_commands_file
-        self._args = args
-
-    @classmethod
-    def from_response_json(cls, json_dict):
-        json_decamelized = humps.decamelize(json_dict)
-        if "items" in json_decamelized:
-            return [cls(**command) for command in json_decamelized["items"]]
-        else:
-            return []
-
-    @property
-    def status(self):
-        return self._status
-
-    @property
-    def error_message(self):
-        return self._error_message
+__all__ = [
+    Command,
+]

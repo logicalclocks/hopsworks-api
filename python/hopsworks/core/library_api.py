@@ -1,5 +1,5 @@
 #
-#   Copyright 2022 Hopsworks AB
+#   Copyright 2024 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -14,51 +14,11 @@
 #   limitations under the License.
 #
 
-import json
+from hopsworks_common.core.library_api import (
+    LibraryApi,
+)
 
-from hopsworks import client, library
 
-
-class LibraryApi:
-    def __init__(
-        self,
-        project_id,
-        project_name,
-    ):
-        self._project_id = project_id
-        self._project_name = project_name
-
-    def _install(self, library_name: str, name: str, library_spec: dict):
-        """Install a library in the environment
-
-        # Arguments
-            library_name: Name of the library.
-            name: Name of the environment.
-            library_spec: installation payload
-        # Returns
-            `Library`: The library object
-        # Raises
-            `RestAPIError`: If unable to install library
-        """
-
-        _client = client.get_instance()
-
-        path_params = [
-            "project",
-            self._project_id,
-            "python",
-            "environments",
-            name,
-            "libraries",
-            library_name,
-        ]
-
-        headers = {"content-type": "application/json"}
-        library_rest = library.Library.from_response_json(
-            _client._send_request(
-                "POST", path_params, headers=headers, data=json.dumps(library_spec)
-            ),
-            environment=self,
-            project_id=self._project_id,
-        )
-        return library_rest
+__all__ = [
+    LibraryApi,
+]
