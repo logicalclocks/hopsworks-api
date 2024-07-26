@@ -1428,7 +1428,7 @@ class Engine:
             return True
 
     @staticmethod
-    def _convert_feature_log_to_df(feature_log, cols):
+    def _convert_feature_log_to_df(feature_log, cols) -> pd.DataFrame:
         if feature_log is None and cols:
             return pd.DataFrame(columns=cols)
         if not (
@@ -1449,7 +1449,7 @@ class Engine:
             return pd.DataFrame(feature_log, columns=cols)
         else:
             if isinstance(feature_log, pl.DataFrame):
-                return feature_log.clone()
+                return feature_log.clone().to_pandas()
             elif isinstance(feature_log, pd.DataFrame):
                 return feature_log.copy(deep=False)
 
