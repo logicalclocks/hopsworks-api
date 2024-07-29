@@ -1,5 +1,5 @@
 #
-#   Copyright 2021 Logical Clocks AB
+#   Copyright 2024 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -13,31 +13,12 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-from __future__ import annotations
 
-from typing import Any, Dict, Union
+from hopsworks_common.core.kafka_api import (
+    KafkaApi,
+)
 
-from hsfs import client
 
-
-class KafkaApi:
-    def get_subject(
-        self,
-        feature_store_id: int,
-        subject: str,
-        version: Union[str, int] = "latest",
-    ) -> Dict[str, Any]:
-        _client = client.get_instance()
-        path_params = [
-            "project",
-            _client._project_id,
-            "featurestores",
-            feature_store_id,
-            "kafka",
-            "subjects",
-            subject,
-            "versions",
-            version,
-        ]
-        headers = {"content-type": "application/json"}
-        return _client._send_request("GET", path_params, headers=headers)
+__all__ = [
+    KafkaApi,
+]

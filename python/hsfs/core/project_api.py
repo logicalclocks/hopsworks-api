@@ -1,5 +1,5 @@
 #
-#   Copyright 2020 Logical Clocks AB
+#   Copyright 2024 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -13,17 +13,12 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-from __future__ import annotations
 
-from hsfs import client
+from hopsworks_common.core.project_api import (
+    ProjectApi,
+)
 
 
-class ProjectApi:
-    def get_client(self):
-        _client = client.get_instance()
-        path_params = [
-            "project",
-            _client._project_id,
-            "client",
-        ]
-        return _client._send_request("GET", path_params, stream=True)
+__all__ = [
+    ProjectApi,
+]

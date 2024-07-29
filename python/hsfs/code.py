@@ -1,5 +1,5 @@
 #
-#   Copyright 2021 Logical Clocks AB
+#   Copyright 2024 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -13,51 +13,12 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-from __future__ import annotations
 
-import json
+from hopsworks_common.code import (
+    Code,
+)
 
-from hsfs import util
 
-
-class Code:
-    def __init__(
-        self,
-        commit_time,
-        application_id,
-        content=None,
-        feature_group_commit_id=None,
-        href=None,
-        expand=None,
-        items=None,
-        count=None,
-        type=None,
-        **kwargs,
-    ):
-        self._commit_time = commit_time
-        self._application_id = application_id
-
-    def to_dict(self):
-        return {
-            "commitTime": self._commit_time,
-            "applicationId": self._application_id,
-        }
-
-    def json(self):
-        return json.dumps(self, cls=util.Encoder)
-
-    @property
-    def commit_time(self):
-        return self._commit_time
-
-    @property
-    def application_id(self):
-        return self._application_id
-
-    @property
-    def feature_group_commit_id(self):
-        return self._feature_group_commit_id
-
-    @property
-    def content(self):
-        return self._content
+__all__ = [
+    Code,
+]

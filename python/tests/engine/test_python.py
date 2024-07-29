@@ -2946,6 +2946,7 @@ class TestPython:
         )
 
         mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         python_engine = python.Engine()
 
@@ -3003,6 +3004,7 @@ class TestPython:
         )
 
         mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         python_engine = python.Engine()
 
@@ -3056,6 +3058,7 @@ class TestPython:
         )
 
         mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         python_engine = python.Engine()
 
@@ -3112,6 +3115,7 @@ class TestPython:
         )
 
         mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         python_engine = python.Engine()
 

@@ -1,5 +1,5 @@
 #
-#   Copyright 2024 Hopsworks AB
+#   Copyright 2022 Logical Clocks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -14,13 +14,4 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.core.code_engine import (
-    CodeEngine,
-    RunType,
-)
-
-
-__all__ = [
-    CodeEngine,
-    RunType,
-]
+__version__ = "4.0.0.dev1"

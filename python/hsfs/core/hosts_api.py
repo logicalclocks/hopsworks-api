@@ -1,5 +1,5 @@
 #
-#   Copyright 2020 Logical Clocks AB
+#   Copyright 2024 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -13,17 +13,12 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-from __future__ import annotations
 
-from typing import Any, List
+from hopsworks_common.core.hosts_api import (
+    HostsApi,
+)
 
-from hsfs import client
 
-
-class HostsApi:
-    def get(self) -> List[Any]:
-        _client = client.get_instance()
-        path_params = [
-            "hosts",
-        ]
-        return _client._send_request("GET", path_params)["items"]
+__all__ = [
+    HostsApi,
+]

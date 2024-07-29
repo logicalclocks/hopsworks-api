@@ -28,6 +28,7 @@ class TestPythonWriter:
     def test_write_dataframe_kafka(self, mocker, dataframe_fixture_times):
         # Arrange
         mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.core.kafka_engine.get_kafka_config", return_value={})
         avro_schema_mock = mocker.patch(
             "hsfs.feature_group.FeatureGroup._get_encoded_avro_schema"

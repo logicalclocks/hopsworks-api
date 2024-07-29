@@ -1,5 +1,5 @@
 #
-#   Copyright 2020 Logical Clocks AB
+#   Copyright 2024 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -13,18 +13,12 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-from __future__ import annotations
 
-from typing import Any, Dict
+from hopsworks_common.core.services_api import (
+    ServicesApi,
+)
 
-from hsfs import client
 
-
-class ServicesApi:
-    def get_service(self, service: str) -> Dict[str, Any]:
-        _client = client.get_instance()
-        path_params = [
-            "services",
-            service,
-        ]
-        return _client._send_request("GET", path_params)["items"][0]
+__all__ = [
+    ServicesApi,
+]
