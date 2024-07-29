@@ -1,5 +1,5 @@
 #
-#   Copyright 2022 Logical Clocks AB
+#   Copyright 2024 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -14,33 +14,11 @@
 #   limitations under the License.
 #
 
-from hopsworks import client, git_op_execution
+from hopsworks_common.core.git_op_execution_api import (
+    GitOpExecutionApi,
+)
 
 
-class GitOpExecutionApi:
-    def __init__(
-        self,
-        project_id,
-        project_name,
-    ):
-        self._project_id = project_id
-        self._project_name = project_name
-
-    def _get_execution(self, repo_id, execution_id):
-        _client = client.get_instance()
-        path_params = [
-            "project",
-            self._project_id,
-            "git",
-            "repository",
-            str(repo_id),
-            "execution",
-            str(execution_id),
-        ]
-        query_params = {"expand": "repository"}
-
-        return git_op_execution.GitOpExecution.from_response_json(
-            _client._send_request("GET", path_params, query_params=query_params),
-            self._project_id,
-            self._project_name,
-        )
+__all__ = [
+    GitOpExecutionApi,
+]
