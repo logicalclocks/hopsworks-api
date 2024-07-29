@@ -1,17 +1,21 @@
 from __future__ import annotations
 
+import os
 import argparse
 import json
 from datetime import datetime
 from typing import Any, Dict
 
-import hsfs
-from hsfs.constructor import query
-from hsfs.core import feature_monitoring_config_engine, feature_view_engine
-from hsfs.statistics_config import StatisticsConfig
-from pydoop import hdfs
+import fsspec.implementations.arrow as pfs
+
+hopsfs = pfs.HadoopFileSystem("default", user=os.environ["HADOOP_USER_NAME"])
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructField, StructType, _parse_datatype_string
+
+import hsfs
+from hsfs.constructor import query
+from hsfs.statistics_config import StatisticsConfig
+from hsfs.core import feature_monitoring_config_engine, feature_view_engine
 
 
 def read_job_conf(path: str) -> Dict[Any, Any]:
@@ -19,8 +23,10 @@ def read_job_conf(path: str) -> Dict[Any, Any]:
     The configuration file is passed as path on HopsFS
     The path is a JSON containing different values depending on the op type
     """
-    file_content = hdfs.load(path)
-    return json.loads(file_content)
+    file_name = os.path.basename(path)
+    hopsfs.download(path, ".")
+    with open(file_name, "r") as f:
+        return json.loads(f.read())
 
 
 def setup_spark() -> SparkSession:
