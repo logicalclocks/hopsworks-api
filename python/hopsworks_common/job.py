@@ -14,11 +14,14 @@
 #   limitations under the License.
 #
 
+from __future__ import annotations
+
 import json
 from datetime import datetime, timezone
 
 import humps
 from hopsworks_common import client, util
+from hopsworks_common.client.exceptions import JobExecutionException
 from hopsworks_common.core import execution_api, job_api
 from hopsworks_common.engine import execution_engine
 from hopsworks_common.job_schedule import JobSchedule
@@ -49,6 +52,7 @@ class Job:
         self._job_type = job_type
         self._creator = creator
         self._executions = executions
+        self._href = href
         self._job_schedule = (
             JobSchedule.from_response_json(job_schedule)
             if job_schedule
@@ -120,35 +124,91 @@ class Job:
         """Return the Job schedule"""
         return self._job_schedule
 
-    def run(self, args: str = None, await_termination: bool = False):
-        """Run the job, with the option of passing runtime arguments.
+    @property
+    def executions(self):
+        return self._executions
 
-        Example of a blocking execution and downloading logs once execution is finished.
+    @property
+    def href(self):
+        return self._href
 
-        ```python
+    @property
+    def config(self):
+        """Configuration for the job"""
+        return self._config
 
-        # Run the job
-        execution = job.run(await_termination=True)
+    def run(self, args: str = None, await_termination: bool = True):
+        """Run the job.
 
-        # True if job executed successfully
-        print(execution.success)
+        Run the job, by default awaiting its completion, with the option of passing runtime arguments.
 
-        # Download logs
-        out_log_path, err_log_path = execution.download_logs()
+        !!! example
+            ```python
+            # connect to the Feature Store
+            fs = ...
 
-        ```
+            # get the Feature Group instances
+            fg = fs.get_or_create_feature_group(...)
+
+            # insert in to feature group
+            job, _ = fg.insert(df, write_options={"start_offline_materialization": False})
+
+            # run job
+            execution = job.run()
+
+            # True if job executed successfully
+            print(execution.success)
+
+            # Download logs
+            out_log_path, err_log_path = execution.download_logs()
+            ```
+
         # Arguments
-            args: optional runtime arguments for the job
-            await_termination: if True wait until termination is complete
+            args: Optional runtime arguments for the job.
+            await_termination: Identifies if the client should wait for the job to complete, defaults to True.
         # Returns
             `Execution`. The execution object for the submitted run.
         """
+        print(f"Launching job: {self.name}")
         execution = self._execution_api._start(self, args=args)
-        print(execution.get_url())
+        print(
+            f"Job started successfully, you can follow the progress at \n{execution.get_url()}"
+        )
         if await_termination:
             return self._execution_engine.wait_until_finished(self, execution)
         else:
             return execution
+
+    def get_state(self):
+        """Get the state of the job.
+
+        # Returns
+            `state`. Current state of the job, which can be one of the following:
+            `INITIALIZING`, `INITIALIZATION_FAILED`, `FINISHED`, `RUNNING`, `ACCEPTED`,
+            `FAILED`, `KILLED`, `NEW`, `NEW_SAVING`, `SUBMITTED`, `AGGREGATING_LOGS`,
+            `FRAMEWORK_FAILURE`, `STARTING_APP_MASTER`, `APP_MASTER_START_FAILED`,
+            `GENERATING_SECURITY_MATERIAL`, `CONVERTING_NOTEBOOK`
+        """
+        last_execution = self._job_api.last_execution(self)
+        if len(last_execution) != 1:
+            raise JobExecutionException("No executions found for job")
+
+        return last_execution[0].state
+
+    def get_final_state(self):
+        """Get the final state of the job.
+
+        # Returns
+            `final_state`. Final state of the job, which can be one of the following:
+            `UNDEFINED`, `FINISHED`, `FAILED`, `KILLED`, `FRAMEWORK_FAILURE`,
+            `APP_MASTER_START_FAILED`, `INITIALIZATION_FAILED`. `UNDEFINED` indicates
+             that the job is still running.
+        """
+        last_execution = self._job_api.last_execution(self)
+        if len(last_execution) != 1:
+            raise JobExecutionException("No executions found for job")
+
+        return last_execution[0].final_status
 
     def get_executions(self):
         """Retrieves all executions for the job ordered by submission time.
@@ -227,6 +287,40 @@ class Job:
         """Unschedule the exceution of a Job"""
         self._job_api._delete_schedule_job(self._name)
         self._job_schedule = None
+
+    def resume_schedule(self):
+        """Resumes the schedule of a Job execution"""
+        if self._job_schedule is None:
+            raise JobExecutionException("No schedule found for job")
+
+        job_schedule = JobSchedule(
+            id=self._job_schedule.id,
+            start_date_time=self._job_schedule.start_date_time,
+            cron_expression=self._job_schedule.cron_expression,
+            end_time=self._job_schedule.end_date_time,
+            enabled=False,
+        )
+        return self._update_schedule(job_schedule)
+
+    def pause_schedule(self):
+        """Pauses the schedule of a Job execution"""
+        if self._job_schedule is None:
+            raise JobExecutionException("No schedule found for job")
+
+        job_schedule = JobSchedule(
+            id=self._job_schedule.id,
+            start_date_time=self._job_schedule.start_date_time,
+            cron_expression=self._job_schedule.cron_expression,
+            end_time=self._job_schedule.end_date_time,
+            enabled=True,
+        )
+        return self._update_schedule(job_schedule)
+
+    def _update_schedule(self, job_schedule):
+        self._job_schedule = self._job_api.create_or_update_schedule_job(
+            self._name, job_schedule.to_dict()
+        )
+        return self._job_schedule
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)

@@ -11,7 +11,6 @@
       "type": "inodeDTO",
       "href": "test_href",
       "expand": "test_expand",
-      "items": "test_items",
       "count": "test_count"
     }
   },
