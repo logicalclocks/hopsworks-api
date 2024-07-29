@@ -72,7 +72,7 @@ from hsfs.statistics import Statistics
 from hsfs.statistics_config import StatisticsConfig
 from hsfs.training_dataset_split import TrainingDatasetSplit
 from hsfs.transformation_function import TransformationFunction
-
+from hsml.model import Model
 
 _logger = logging.getLogger(__name__)
 
@@ -3606,7 +3606,7 @@ class FeatureView:
         transformed: Optional[bool] = False,
         write_options: Optional[Dict[str, Any]] = None,
         training_dataset_version: Optional[int] = None,
-        hopsworks_model=None,
+        model: Model = None,
     ) -> Optional[Job]:
         """Log features and optionally predictions for the current feature view. The logged features are written periodically to the offline store. If you need it to be available immediately, call `materialize_log`.
 
@@ -3619,7 +3619,7 @@ class FeatureView:
             transformed: Whether the features are transformed. Defaults to False.
             write_options: Options for writing the log. Defaults to None.
             training_dataset_version: Version of the training dataset. Defaults to None.
-            hopsworks_model: `hsml.model.Model` Hopsworks model associated with the log. Defaults to None.
+            model: `hsml.model.Model` Hopsworks model associated with the log. Defaults to None.
 
         # Returns
             `Job` job information if python engine is used
@@ -3649,9 +3649,9 @@ class FeatureView:
             transformed,
             write_options,
             training_dataset_version=(
-                training_dataset_version or self.get_last_accessed_training_dataset()
+                training_dataset_version or (model.training_dataset_version if model else None) or self.get_last_accessed_training_dataset()
             ),
-            hsml_model=hopsworks_model,
+            hsml_model=model,
         )
 
     def get_log_timeline(
@@ -3691,7 +3691,7 @@ class FeatureView:
         filter: Optional[Union[Filter, Logic]] = None,
         transformed: Optional[bool] = False,
         training_dataset_version: Optional[int] = None,
-        hopsworks_model=None,
+        model: Model = None,
     ) -> Union[
         TypeVar("pyspark.sql.DataFrame"),
         pd.DataFrame,
@@ -3707,7 +3707,7 @@ class FeatureView:
             filter: Filter to apply on the log entries. Can be a Filter or Logic object. Defaults to None.
             transformed: Whether to include transformed logs. Defaults to False.
             training_dataset_version: Version of the training dataset. Defaults to None.
-            hopsworks_model: HSML model associated with the log. Defaults to None.
+            model: HSML model associated with the log. Defaults to None.
 
         # Example
             ```python
@@ -3718,7 +3718,7 @@ class FeatureView:
             # read log entries of a specific training dataset version
             log_entries = feature_view.read_log(training_dataset_version=1)
             # read log entries of a specific hopsworks model
-            log_entries = feature_view.read_log(hopsworks_model=Model(1, "dummy", version=1))
+            log_entries = feature_view.read_log(model=Model(1, "dummy", version=1))
             # read log entries by applying filter on features of feature group `fg` in the feature view
             log_entries = feature_view.read_log(filter=fg.feature1 > 10)
             ```
@@ -3739,7 +3739,7 @@ class FeatureView:
             filter,
             transformed,
             training_dataset_version,
-            hopsworks_model,
+            model,
         )
 
     def pause_logging(self) -> None:

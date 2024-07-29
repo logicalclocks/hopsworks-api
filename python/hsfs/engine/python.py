@@ -752,7 +752,7 @@ class Engine:
             name = util.autofix_feature_name(feat_name)
             try:
                 pd_type = arrow_schema.field(feat_name).type
-                if pd_type == "null" and feature_type_map.get(name):
+                if pa.types.is_null(pd_type) and feature_type_map.get(name):
                     converted_type = feature_type_map.get(name)
                 else:
                     converted_type = convert_pandas_dtype_to_offline_type(pd_type)
