@@ -282,24 +282,6 @@ class Client(base.Client):
         _logger.debug(f"Getting client key path {path}")
         return path
 
-    def _get_secret(self, secret_key=None, api_key_file=None):
-        """Returns secret value from the AWS Secrets Manager or Parameter Store.
-
-        :param secrets_store: the underlying secrets storage to be used, e.g. `secretsmanager` or `parameterstore`
-        :type secrets_store: str
-        :param secret_key: key for the secret value, e.g. `api-key`, `cert-key`, `trust-store`, `key-store`, defaults to None
-        :type secret_key: str, optional
-        :param api_key_file: path to a file containing an api key, defaults to None
-        :type api_key_file: str optional
-        :raises hsfs.client.exceptions.ExternalClientError: `api_key_file` needs to be set for local mode
-        :raises hsfs.client.exceptions.UnknownSecretStorageError: Provided secrets storage not supported
-        :return: secret
-        :rtype: str
-        """
-        _logger.debug(f"Reading api key from {api_key_file}")
-        with open(api_key_file) as f:
-            return f.readline().strip()
-
     def _get_project_info(self, project_name):
         """Makes a REST call to hopsworks to get all metadata of a project for the provided project.
 
