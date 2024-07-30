@@ -54,9 +54,9 @@ class Client(base.Client):
         self._cert_key = self._get_cert_pw()
         trust_store_path = self._get_trust_store_path()
         hostname_verification = (
-            os.environ[self.REQUESTS_VERIFY]
+            os.environ[self.REQUESTS_VERIFY] == "true"
             if self.REQUESTS_VERIFY in os.environ
-            else "true"
+            else True
         )
         self._project_id = os.environ[self.PROJECT_ID]
         self._project_name = self._project_name()

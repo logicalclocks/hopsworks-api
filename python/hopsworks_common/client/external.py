@@ -17,11 +17,9 @@
 from __future__ import annotations
 
 import base64
-import json
 import logging
 import os
 
-import boto3
 import requests
 from hopsworks_common.client import auth, base, exceptions
 from hopsworks_common.client.exceptions import FeatureStoreException
@@ -37,7 +35,6 @@ _logger = logging.getLogger(__name__)
 
 
 class Client(base.Client):
-    DEFAULT_REGION = "default"
     SECRETS_MANAGER = "secretsmanager"
     PARAMETER_STORE = "parameterstore"
     LOCAL_STORE = "local"
@@ -48,8 +45,6 @@ class Client(base.Client):
         port,
         project,
         engine,
-        region_name,
-        secrets_store,
         hostname_verification,
         trust_store_path,
         cert_folder,
@@ -65,17 +60,14 @@ class Client(base.Client):
         self._port = port
         self._base_url = "https://" + self._host + ":" + str(self._port)
         _logger.info("Base URL: %s", self._base_url)
-        self._region_name = region_name or self.DEFAULT_REGION
-        _logger.debug("Region name: %s", self._region_name)
 
         if api_key_value is not None:
             _logger.debug("Using provided API key value")
             api_key = api_key_value
         else:
-            _logger.debug("Querying secrets store for API key")
-            if secrets_store is None:
-                secrets_store = self.LOCAL_STORE
-            api_key = self._get_secret(secrets_store, "api-key", api_key_file)
+            _logger.debug(f"Reading api key from {api_key_file}")
+            with open(api_key_file) as f:
+                api_key = f.readline().strip()
 
         _logger.debug("Using api key to setup header authentification")
         self._auth = auth.ApiKeyAuth(api_key)
@@ -84,17 +76,16 @@ class Client(base.Client):
         self._session = requests.session()
         self._connected = True
 
-        self._verify = self._get_verify(self._host, trust_store_path)
+        self._verify = self._get_verify(hostname_verification, trust_store_path)
         _logger.debug("Verify: %s", self._verify)
 
         self._cert_key = None
         self._cert_folder_base = cert_folder
         self._cert_folder = None
 
-        self._hsfs_post_init(project, engine, region_name)
+        self._hsfs_post_init(project, engine)
 
-    def _hsfs_post_init(self, project, engine, region_name):
-        self._region_name = region_name or self._region_name or self.DEFAULT_REGION
+    def _hsfs_post_init(self, project, engine):
         self._project_name = project
         if project is not None:
             project_info = self._get_project_info(project)
@@ -295,7 +286,7 @@ class Client(base.Client):
         _logger.debug(f"Getting client key path {path}")
         return path
 
-    def _get_secret(self, secrets_store, secret_key=None, api_key_file=None):
+    def _get_secret(self, secret_key=None, api_key_file=None):
         """Returns secret value from the AWS Secrets Manager or Parameter Store.
 
         :param secrets_store: the underlying secrets storage to be used, e.g. `secretsmanager` or `parameterstore`
@@ -309,67 +300,9 @@ class Client(base.Client):
         :return: secret
         :rtype: str
         """
-        _logger.debug(f"Querying secrets store {secrets_store} for secret {secret_key}")
-        if secrets_store == self.SECRETS_MANAGER:
-            return self._query_secrets_manager(secret_key)
-        elif secrets_store == self.PARAMETER_STORE:
-            return self._query_parameter_store(secret_key)
-        elif secrets_store == self.LOCAL_STORE:
-            if not api_key_file:
-                raise exceptions.ExternalClientError(
-                    "api_key_file needs to be set for local mode"
-                )
-            _logger.debug(f"Reading api key from {api_key_file}")
-            with open(api_key_file) as f:
-                return f.readline().strip()
-        else:
-            raise exceptions.UnknownSecretStorageError(
-                "Secrets storage " + secrets_store + " is not supported."
-            )
-
-    def _query_secrets_manager(self, secret_key):
-        _logger.debug("Querying secrets manager for secret key: %s", secret_key)
-        secret_name = "hopsworks/role/" + self._assumed_role()
-        args = {"service_name": "secretsmanager"}
-        region_name = self._get_region()
-        if region_name:
-            args["region_name"] = region_name
-        client = boto3.client(**args)
-        get_secret_value_response = client.get_secret_value(SecretId=secret_name)
-        return json.loads(get_secret_value_response["SecretString"])[secret_key]
-
-    def _assumed_role(self):
-        _logger.debug("Getting assumed role")
-        client = boto3.client("sts")
-        response = client.get_caller_identity()
-        # arns for assumed roles in SageMaker follow the following schema
-        # arn:aws:sts::123456789012:assumed-role/my-role-name/my-role-session-name
-        local_identifier = response["Arn"].split(":")[-1].split("/")
-        if len(local_identifier) != 3 or local_identifier[0] != "assumed-role":
-            raise Exception(
-                "Failed to extract assumed role from arn: " + response["Arn"]
-            )
-        return local_identifier[1]
-
-    def _get_region(self):
-        if self._region_name != self.DEFAULT_REGION:
-            _logger.debug(f"Region name is not default, returning {self._region_name}")
-            return self._region_name
-        else:
-            _logger.debug("Region name is default, returning None")
-            return None
-
-    def _query_parameter_store(self, secret_key):
-        _logger.debug("Querying parameter store for secret key: %s", secret_key)
-        args = {"service_name": "ssm"}
-        region_name = self._get_region()
-        if region_name:
-            args["region_name"] = region_name
-        client = boto3.client(**args)
-        name = "/hopsworks/role/" + self._assumed_role() + "/type/" + secret_key
-        return client.get_parameter(Name=name, WithDecryption=True)["Parameter"][
-            "Value"
-        ]
+        _logger.debug(f"Reading api key from {api_key_file}")
+        with open(api_key_file) as f:
+            return f.readline().strip()
 
     def _get_project_info(self, project_name):
         """Makes a REST call to hopsworks to get all metadata of a project for the provided project.

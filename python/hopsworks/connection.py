@@ -245,8 +245,6 @@ class Connection:
                     self._port,
                     self._project,
                     None,
-                    None,
-                    None,
                     self._hostname_verification,
                     self._trust_store_path,
                     self._cert_folder,
