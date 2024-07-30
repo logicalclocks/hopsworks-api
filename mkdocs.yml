@@ -21,7 +21,6 @@ nav:
       - Login: generated/api/login.md
       - Connection: generated/api/connection.md
       - Projects: generated/api/projects.md
-      - UDF: generated/api/udf.md
       - Jobs: generated/api/jobs.md
       - Executions: generated/api/executions.md
       - FlinkCluster: generated/api/flink_cluster.md
@@ -45,7 +44,13 @@ nav:
       - Storage Connector: generated/api/storage_connector_api.md
       - Feature: generated/api/feature_api.md
       - Query: generated/api/query_api.md
-      - Transformation Functions: generated/api/transformation_functions_api.md
+      - Transformation Functions:
+        - UDF: generated/api/udf.md
+        - HopsworksUDF: generated/api/hopsworks_udf.md
+        - TransformationFunction: generated/api/transformation_functions_api.md
+        - Transformation Statistics: 
+          - TransformationStatistics: generated/api/transformation_statistics.md
+          - FeatureTransformationStatistics: generated/api/feature_transformation_statistics.md
       - ValidationReport: generated/api/validation_report_api.md
       - Job: generated/api/job.md
       - Provenance Links: generated/api/links.md
