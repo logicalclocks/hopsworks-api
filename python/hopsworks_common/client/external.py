@@ -35,10 +35,6 @@ _logger = logging.getLogger(__name__)
 
 
 class Client(base.Client):
-    SECRETS_MANAGER = "secretsmanager"
-    PARAMETER_STORE = "parameterstore"
-    LOCAL_STORE = "local"
-
     def __init__(
         self,
         host,
