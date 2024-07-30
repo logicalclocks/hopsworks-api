@@ -12,7 +12,8 @@ hopsfs = pfs.HadoopFileSystem("default", user=os.environ["HADOOP_USER_NAME"])
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructField, StructType, _parse_datatype_string
 
-import hsfs
+import hopsworks
+
 from hsfs.constructor import query
 from hsfs.statistics_config import StatisticsConfig
 from hsfs.core import feature_monitoring_config_engine, feature_view_engine
@@ -34,8 +35,8 @@ def setup_spark() -> SparkSession:
 
 
 def get_feature_store_handle(feature_store: str = "") -> hsfs.feature_store:
-    connection = hsfs.connection()
-    return connection.get_feature_store(feature_store)
+    project = hopsworks.login()
+    return project.get_feature_store(feature_store)
 
 
 def sort_schema(fg_schema: StructType, csv_df_schema: StructType) -> StructType:
