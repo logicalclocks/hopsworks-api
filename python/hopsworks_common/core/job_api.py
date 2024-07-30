@@ -20,7 +20,7 @@ from hopsworks_common import client, job, job_schedule, util
 from hopsworks_common.client.exceptions import RestAPIError
 
 
-class JobsApi:
+class JobApi:
     def create_job(self, name: str, config: dict):
         """Create a new job or update an existing one.
 

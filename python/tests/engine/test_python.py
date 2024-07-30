@@ -2257,7 +2257,7 @@ class TestPython:
         mock_td_api = mocker.patch("hsfs.core.training_dataset_api.TrainingDatasetApi")
         mocker.patch("hsfs.util.get_job_url")
         mock_python_engine_wait_for_job = mocker.patch(
-            "hsfs.core.job.Job._wait_for_job"
+            "hopsworks_common.engine.execution_engine.ExecutionEngine.wait_until_finished"
         )
 
         python_engine = python.Engine()

@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 
 import humps
 from hopsworks_common import client, util
-from hopsworks_common.client.exceptions import JobExecutionException
+from hopsworks_common.client.exceptions import JobException
 from hopsworks_common.core import execution_api, job_api
 from hopsworks_common.engine import execution_engine
 from hopsworks_common.job_schedule import JobSchedule
@@ -191,7 +191,7 @@ class Job:
         """
         last_execution = self._job_api.last_execution(self)
         if len(last_execution) != 1:
-            raise JobExecutionException("No executions found for job")
+            raise JobException("No executions found for job")
 
         return last_execution[0].state
 
@@ -206,7 +206,7 @@ class Job:
         """
         last_execution = self._job_api.last_execution(self)
         if len(last_execution) != 1:
-            raise JobExecutionException("No executions found for job")
+            raise JobException("No executions found for job")
 
         return last_execution[0].final_status
 
@@ -291,7 +291,7 @@ class Job:
     def resume_schedule(self):
         """Resumes the schedule of a Job execution"""
         if self._job_schedule is None:
-            raise JobExecutionException("No schedule found for job")
+            raise JobException("No schedule found for job")
 
         job_schedule = JobSchedule(
             id=self._job_schedule.id,
@@ -305,7 +305,7 @@ class Job:
     def pause_schedule(self):
         """Pauses the schedule of a Job execution"""
         if self._job_schedule is None:
-            raise JobExecutionException("No schedule found for job")
+            raise JobException("No schedule found for job")
 
         job_schedule = JobSchedule(
             id=self._job_schedule.id,

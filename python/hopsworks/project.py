@@ -227,16 +227,16 @@ class Project:
             _client.download_certs(self.name)
         return self._opensearch_api
 
-    def get_jobs_api(self):
-        """Get the jobs api for the project.
+    def get_job_api(self):
+        """Get the job API for the project.
 
         # Returns
-            `JobsApi`: The Jobs Api handle
+            `JobApi`: The Job Api handle
         """
         return self._jobs_api
 
     def get_flink_cluster_api(self):
-        """Get the flink cluster api for the project.
+        """Get the flink cluster API for the project.
 
         # Returns
             `FlinkClusterApi`: The Flink Cluster Api handle

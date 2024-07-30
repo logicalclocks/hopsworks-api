@@ -15,10 +15,10 @@
 #
 
 from hopsworks_common.core.execution_api import (
-    ExecutionsApi,
+    ExecutionApi,
 )
 
 
 __all__ = [
-    ExecutionsApi,
+    ExecutionApi,
 ]

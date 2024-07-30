@@ -17,7 +17,7 @@
 from hopsworks_common import client, execution
 
 
-class ExecutionsApi:
+class ExecutionApi:
     def _start(self, job, args: str = None):
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "jobs", job.name, "executions"]
