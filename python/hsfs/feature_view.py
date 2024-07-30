@@ -61,7 +61,9 @@ from hsfs.core import (
 )
 from hsfs.core import feature_monitoring_config as fmc
 from hsfs.core import feature_monitoring_result as fmr
+from hsfs.core.feature_logging import FeatureLogging
 from hsfs.core.feature_view_api import FeatureViewApi
+from hsfs.core.job import Job
 from hsfs.core.vector_db_client import VectorDbClient
 from hsfs.decorators import typechecked
 from hsfs.feature import Feature
@@ -70,6 +72,7 @@ from hsfs.statistics import Statistics
 from hsfs.statistics_config import StatisticsConfig
 from hsfs.training_dataset_split import TrainingDatasetSplit
 from hsfs.transformation_function import TransformationFunction
+from hsml.model import Model
 
 
 _logger = logging.getLogger(__name__)
@@ -175,6 +178,7 @@ class FeatureView:
             featurestore_id, self.ENTITY_TYPE
         )
         self._logging_enabled = logging_enabled
+        self._feature_logging = None
 
         if self._id:
             self._init_feature_monitoring_engine()
@@ -3452,7 +3456,7 @@ class FeatureView:
             description=json_decamelized.get("description", None),
             featurestore_name=json_decamelized.get("featurestore_name", None),
             serving_keys=serving_keys,
-            logging_enabled=json_decamelized.get("enabled_logging", False),
+            logging_enabled=json_decamelized.get("logging_enabled", False),
             transformation_functions=[
                 TransformationFunction.from_response_json(
                     {
@@ -3590,20 +3594,25 @@ class FeatureView:
         # Raises
             `hsfs.client.exceptions.RestAPIError` in case the backend fails to enable feature logging.
         """
-        return self._feature_view_engine.enable_feature_logging(self)
+        fv = self._feature_view_engine.enable_feature_logging(self)
+        self._feature_logging = self._feature_view_engine.get_feature_logging(fv)
+        return fv
 
     def log(
         self,
-        features: Union[pd.DataFrame, list[list], np.ndarray],
+        features: Union[
+            pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
+        ],
         predictions: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
         transformed: Optional[bool] = False,
         write_options: Optional[Dict[str, Any]] = None,
         training_dataset_version: Optional[int] = None,
-        hsml_model=None,
-    ):
-        """Log features and optionally predictions for the current feature view.
+        model: Model = None,
+    ) -> Optional[Job]:
+        """Log features and optionally predictions for the current feature view. The logged features are written periodically to the offline store. If you need it to be available immediately, call `materialize_log`.
 
-        Note: If features is a `pd.Dataframe`, prediction can be provided as columns in the dataframe.
+        Note: If features is a `pyspark.Dataframe`, prediction needs to be provided as columns in the dataframe,
+            values in `predictions` will be ignored.
 
         # Arguments
             features: The features to be logged. Can be a pandas DataFrame, a list of lists, or a numpy ndarray.
@@ -3611,7 +3620,10 @@ class FeatureView:
             transformed: Whether the features are transformed. Defaults to False.
             write_options: Options for writing the log. Defaults to None.
             training_dataset_version: Version of the training dataset. Defaults to None.
-            hsml_model: `hsml.model.Model` HSML model associated with the log. Defaults to None.
+            model: `hsml.model.Model` Hopsworks model associated with the log. Defaults to None.
+
+        # Returns
+            `Job` job information if python engine is used
 
         # Example
             ```python
@@ -3632,14 +3644,15 @@ class FeatureView:
             self.enable_logging()
         return self._feature_view_engine.log_features(
             self,
+            self.feature_logging,
             features,
             predictions,
             transformed,
             write_options,
             training_dataset_version=(
-                training_dataset_version or self.get_last_accessed_training_dataset()
+                training_dataset_version or (model.training_dataset_version if model else None) or self.get_last_accessed_training_dataset()
             ),
-            hsml_model=hsml_model,
+            hsml_model=model,
         )
 
     def get_log_timeline(
@@ -3647,7 +3660,7 @@ class FeatureView:
         wallclock_time: Optional[Union[str, int, datetime, datetime.date]] = None,
         limit: Optional[int] = None,
         transformed: Optional[bool] = False,
-    ):
+    ) -> Dict[str, Dict[str, str]]:
         """Retrieve the log timeline for the current feature view.
 
         # Arguments
@@ -3660,6 +3673,10 @@ class FeatureView:
             # get log timeline
             log_timeline = feature_view.get_log_timeline(limit=10)
             ```
+
+        # Returns
+            `Dict[str, Dict[str, str]]`. Dictionary object of commit metadata timeline, where Key is commit id and value
+            is `Dict[str, str]` with key value pairs of date committed on, number of rows updated, inserted and deleted.
 
         # Raises
             `hsfs.client.exceptions.RestAPIError` in case the backend fails to retrieve the log timeline.
@@ -3675,8 +3692,12 @@ class FeatureView:
         filter: Optional[Union[Filter, Logic]] = None,
         transformed: Optional[bool] = False,
         training_dataset_version: Optional[int] = None,
-        hsml_model=None,
-    ):
+        model: Model = None,
+    ) -> Union[
+        TypeVar("pyspark.sql.DataFrame"),
+        pd.DataFrame,
+        pl.DataFrame,
+    ]:
         """Read the log entries for the current feature view.
             Optionally, filter can be applied to start/end time, training dataset version, hsml model,
             and custom fitler.
@@ -3687,7 +3708,7 @@ class FeatureView:
             filter: Filter to apply on the log entries. Can be a Filter or Logic object. Defaults to None.
             transformed: Whether to include transformed logs. Defaults to False.
             training_dataset_version: Version of the training dataset. Defaults to None.
-            hsml_model: HSML model associated with the log. Defaults to None.
+            model: HSML model associated with the log. Defaults to None.
 
         # Example
             ```python
@@ -3697,11 +3718,17 @@ class FeatureView:
             log_entries = feature_view.read_log(start_time="2022-01-01", end_time="2022-01-31")
             # read log entries of a specific training dataset version
             log_entries = feature_view.read_log(training_dataset_version=1)
-            # read log entries of a specific hsml model
-            log_entries = feature_view.read_log(hsml_model=Model(1, "dummy", version=1))
+            # read log entries of a specific hopsworks model
+            log_entries = feature_view.read_log(model=Model(1, "dummy", version=1))
             # read log entries by applying filter on features of feature group `fg` in the feature view
             log_entries = feature_view.read_log(filter=fg.feature1 > 10)
             ```
+
+        # Returns
+            `DataFrame`: The spark dataframe containing the feature data.
+            `pyspark.DataFrame`. A Spark DataFrame.
+            `pandas.DataFrame`. A Pandas DataFrame.
+            `polars.DataFrame`. A Polars DataFrame.
 
         # Raises
             `hsfs.client.exceptions.RestAPIError` in case the backend fails to read the log entries.
@@ -3713,10 +3740,10 @@ class FeatureView:
             filter,
             transformed,
             training_dataset_version,
-            hsml_model,
+            model,
         )
 
-    def pause_logging(self):
+    def pause_logging(self) -> None:
         """Pause scheduled materialization job for the current feature view.
 
         # Example
@@ -3730,7 +3757,7 @@ class FeatureView:
         """
         self._feature_view_engine.pause_logging(self)
 
-    def resume_logging(self):
+    def resume_logging(self) -> None:
         """Resume scheduled materialization job for the current feature view.
 
         # Example
@@ -3744,7 +3771,7 @@ class FeatureView:
         """
         self._feature_view_engine.resume_logging(self)
 
-    def materialize_log(self, wait: Optional[bool] = False):
+    def materialize_log(self, wait: Optional[bool] = False, transformed: Optional[bool] = None) -> Tuple[Job, Job]:
         """Materialize the log for the current feature view.
 
         # Arguments
@@ -3756,12 +3783,16 @@ class FeatureView:
             materialization_result = feature_view.materialize_log(wait=True)
             ```
 
+        # Returns
+            Tuple(`Job`, `Job`) Job information for the materialization jobs of transformed/untransformed features
+
+
         # Raises
             `hsfs.client.exceptions.RestAPIError` in case the backend fails to materialize the log.
         """
-        return self._feature_view_engine.materialize_feature_logs(self, wait)
+        return self._feature_view_engine.materialize_feature_logs(self, wait, transformed)
 
-    def delete_log(self, transformed: Optional[bool] = None):
+    def delete_log(self, transformed: Optional[bool] = None) -> None:
         """Delete the logged feature data for the current feature view.
 
         # Arguments
@@ -3773,10 +3804,13 @@ class FeatureView:
             feature_view.delete_log()
             ```
 
-        # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to delete the log.
+         # Raises
+             `hsfs.client.exceptions.RestAPIError` in case the backend fails to delete the log.
         """
-        return self._feature_view_engine.delete_feature_logs(self, transformed)
+        if self.feature_logging is not None:
+            self._feature_view_engine.delete_feature_logs(
+                self, self.feature_logging, transformed
+            )
 
     @staticmethod
     def _update_attribute_if_present(this: "FeatureView", new: Any, key: str) -> None:
@@ -3822,7 +3856,7 @@ class FeatureView:
             "description": self._description,
             "query": self._query,
             "features": self._features,
-            "enabledLogging": self._logging_enabled,
+            "loggingEnabled": self._logging_enabled,
             "transformationFunctions": self._transformation_functions,
             "type": "featureViewDTO",
         }
@@ -4036,3 +4070,9 @@ class FeatureView:
             for feature in self.features
             if feature.name not in dropped_features
         ] + transformed_column_names
+
+    @property
+    def feature_logging(self) -> Optional[FeatureLogging]:
+        if self.logging_enabled and self._feature_logging is None:
+            self._feature_logging = self._feature_view_engine.get_feature_logging(self)
+        return self._feature_logging

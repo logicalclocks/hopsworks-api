@@ -571,5 +571,9 @@ class Model:
     def shared_registry_project_name(self, shared_registry_project_name):
         self._shared_registry_project_name = shared_registry_project_name
 
+    @property
+    def training_dataset_version(self) -> int:
+        return self._training_dataset_version
+
     def __repr__(self):
         return f"Model(name: {self._name!r}, version: {self._version!r})"
