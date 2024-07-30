@@ -45,7 +45,7 @@ def udf(
     return_type: Union[List[type], type], drop: Optional[Union[str, List[str]]] = None
 ) -> "HopsworksUdf":
     """
-    Create an User Defined Function that can be and used within the Hopsworks Feature Store.
+    Create an User Defined Function that can be and used within the Hopsworks Feature Store to create transformation functions.
 
     Hopsworks UDF's are user defined functions that executes as 'pandas_udf' when executing
     in spark engine and as pandas functions in the python engine. The pandas udf/pandas functions
@@ -58,14 +58,14 @@ def udf(
         ```python
         from hopsworks import udf
 
-       @udf(float)
-        def add_one(data1 : pd.Series):
+        @udf(float)
+        def add_one(data1):
             return data1 + 1
         ```
 
     # Arguments
-        return_type: `list`. The output types of the defined UDF
-        drop: `List[str]`. The features to be dropped after application of transformation functions
+        return_type: The output types of the defined UDF
+        drop: The features to be dropped after application of transformation functions
 
     # Returns
         `HopsworksUdf`: The metadata object for hopsworks UDF's.
@@ -90,10 +90,9 @@ class TransformationFeature:
 
     The statistic_argument_name for a feature name would be None if the feature does not need statistics.
 
-    Attributes
-    ----------
-        feature_name (str) : Name of the feature.
-        statistic_argument_name (str) : Name of the statistics argument in the code for the feature specified in the feature name.
+    # Arguments
+        feature_name : `str`. Name of the feature.
+        statistic_argument_name : `str`. Name of the statistics argument in the code for the feature specified in the feature name.
     """
 
     feature_name: str
@@ -115,8 +114,7 @@ class HopsworksUdf:
     The class generates uses the metadata to dynamically generate user defined functions based on the
     engine it is executed in.
 
-    Arguments
-    ---------
+    # Arguments
         func : `Union[Callable, str]`. The transformation function object or the source code of the transformation function.
         return_types : `Union[List[type], type, List[str], str]`. A python type or a list of python types that denotes the data types of the columns output from the transformation functions.
         name : `Optional[str]`. Name of the transformation function.
@@ -125,18 +123,6 @@ class HopsworksUdf:
         dropped_argument_names : `Optional[List[str]]`. The arguments to be dropped from the finial DataFrame after the transformation functions are applied.
         dropped_feature_names : `Optional[List[str]]`. The feature name corresponding to the arguments names that are dropped
         feature_name_prefix: `Optional[str]` = None. Prefixes if any used in the feature view.
-
-    Attributes
-    ----------
-        function_name `str` : Name of the UDF
-        udf_type `UDFType`: Type of the UDF can be either \"model dependent\" or \"on-demand\".
-        return_types `List[str]`: The data types of the columns returned from the UDF.
-        transformation_features `List[str]` : List of feature names to which the transformation function would be applied.
-        output_column_names `List[str]`: Column names of the DataFrame returned after application of the transformation function.
-        dropped_features `List[str]`: List of features that will be dropped after the UDF is applied.
-        transformation_statistics `Dict[str, FeatureDescriptiveStatistics]`: Dictionary that maps the statistics_argument name in the function to the actual statistics variable.
-        statistics_required `bool` : True if statistics is required for any of the parameters of the UDF.
-        statistics_features `List[str]` : List of feature names that requires statistics.
     """
 
     # Mapping for converting python types to spark types - required for creating pandas UDF's.
