@@ -126,7 +126,10 @@ class ExecutionEngine:
 
         # wait for log files to be aggregated, max 6 minutes
         await_time = 120
-        log_aggregation_files_exist = False
+        log_aggregation_files_exist = self._dataset_api.exists(
+            updated_execution.stdout_path
+        ) and self._dataset_api.exists(updated_execution.stderr_path)
+        log_aggregation_files_exist_already = log_aggregation_files_exist
         self._log.info("Waiting for log aggregation to finish.")
         while not log_aggregation_files_exist and await_time >= 0:
             updated_execution = self._execution_api._get(job, execution.id)
@@ -138,7 +141,8 @@ class ExecutionEngine:
             await_time -= 1
             time.sleep(3)
 
-        time.sleep(5)  # Helps for log aggregation to flush to filesystem
+        if not log_aggregation_files_exist_already:
+            time.sleep(5)  # Helps for log aggregation to flush to filesystem
 
         if is_yarn_job and not updated_execution.success:
             self._log.error(

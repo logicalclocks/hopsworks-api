@@ -21,11 +21,12 @@ from hsfs.core import execution, job
 
 
 class TestJob:
-    def test_from_response_json(self, backend_fixtures):
+    def test_from_response_json(self, mocker, backend_fixtures):
         # Arrange
         json = backend_fixtures["job"]["get"]["response"]
 
         # Act
+        mocker.patch("hopsworks_common.client.get_instance")
         j = job.Job.from_response_json(json)
 
         # Assert
@@ -34,11 +35,12 @@ class TestJob:
         assert j.executions == "test_executions"
         assert j.href == "test_href"
 
-    def test_from_response_json_empty(self, backend_fixtures):
+    def test_from_response_json_empty(self, mocker, backend_fixtures):
         # Arrange
         json = backend_fixtures["job"]["get_empty"]["response"]
 
         # Act
+        mocker.patch("hopsworks_common.client.get_instance")
         j = job.Job.from_response_json(json)
 
         # Assert
@@ -50,8 +52,12 @@ class TestJob:
     def test_wait_for_job(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.execution.Execution.get_url")
         mock_execution_api = mocker.patch(
             "hopsworks_common.core.execution_api.ExecutionApi",
+        )
+        mock_execution_api.return_value._start.return_value = execution.Execution(
+            job=mocker.Mock()
         )
 
         json = backend_fixtures["job"]["get"]["response"]
@@ -68,6 +74,7 @@ class TestJob:
         mock_job_api = mocker.patch("hopsworks_common.core.execution_api.ExecutionApi")
 
         json = backend_fixtures["job"]["get"]["response"]
+        mocker.patch("hopsworks_common.client.get_instance")
         job.Job.from_response_json(json).run(await_termination=False)
 
         # Assert
@@ -75,38 +82,53 @@ class TestJob:
 
     def test_wait_for_job_final_status_succeeded(self, mocker, backend_fixtures):
         # Arrange
-        mock_job_api = mocker.patch("hopsworks_common.core.execution_api.ExecutionApi")
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.execution.Execution.get_url")
+        mock_execution_api = mocker.patch(
+            "hopsworks_common.core.execution_api.ExecutionApi",
+        )
+        mock_execution_api.return_value._start.return_value = execution.Execution(
+            job=mocker.Mock()
+        )
 
         json = backend_fixtures["job"]["get"]["response"]
         x = job.Job.from_response_json(json).run(await_termination=False)
 
-        mock_job_api.return_value._get.return_value = [
-            execution.Execution(id=1, state=None, final_status="succeeded")
-        ]
+        mock_execution_api.return_value._get.return_value = execution.Execution(
+            id=1, state=None, final_status="SUCCEEDED", job=mocker.Mock()
+        )
 
         # Act
         x.await_termination()
 
         # Assert
-        assert mock_job_api.return_value._get.call_count == 1
+        assert mock_execution_api.return_value._get.call_count == 1
 
     def test_wait_for_job_final_status_failed(self, mocker, backend_fixtures):
         # Arrange
-        mock_job_api = mocker.patch("hopsworks_common.core.execution_api.ExecutionApi")
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.execution.Execution.get_url")
+        mock_execution_api = mocker.patch(
+            "hopsworks_common.core.execution_api.ExecutionApi",
+        )
+        mock_execution_api.return_value._start.return_value = execution.Execution(
+            job=mocker.Mock()
+        )
 
         json = backend_fixtures["job"]["get"]["response"]
+        mocker.patch("hopsworks_common.client.get_instance")
         x = job.Job.from_response_json(json).run(await_termination=False)
 
-        mock_job_api.return_value._get.return_value = [
-            execution.Execution(id=1, state=None, final_status="failed")
-        ]
+        mock_execution_api.return_value._get.return_value = execution.Execution(
+            id=1, state=None, final_status="FAILED", job=mocker.Mock()
+        )
 
         # Act
-        with pytest.raises(exceptions.JobException) as e_info:
+        with pytest.raises(exceptions.JobExecutionException) as e_info:
             x.await_termination()
 
         # Assert
-        assert mock_job_api.return_value._get.call_count == 1
+        assert mock_execution_api.return_value._get.call_count == 1
         assert (
             str(e_info.value)
             == "The Hopsworks Job failed, use the Hopsworks UI to access the job logs"
@@ -114,19 +136,27 @@ class TestJob:
 
     def test_wait_for_job_final_status_killed(self, mocker, backend_fixtures):
         # Arrange
-        mock_job_api = mocker.patch("hopsworks_common.core.execution_api.ExecutionApi")
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.execution.Execution.get_url")
+        mock_execution_api = mocker.patch(
+            "hopsworks_common.core.execution_api.ExecutionApi",
+        )
+        mock_execution_api.return_value._start.return_value = execution.Execution(
+            job=mocker.Mock()
+        )
 
         json = backend_fixtures["job"]["get"]["response"]
+        mocker.patch("hopsworks_common.client.get_instance")
         x = job.Job.from_response_json(json).run(await_termination=False)
 
-        mock_job_api.return_value._get.return_value = [
-            execution.Execution(id=1, state=None, final_status="killed")
-        ]
+        mock_execution_api.return_value._get.return_value = execution.Execution(
+            id=1, state=None, final_status="KILLED", job=mocker.Mock()
+        )
 
         # Act
-        with pytest.raises(exceptions.JobException) as e_info:
+        with pytest.raises(exceptions.JobExecutionException) as e_info:
             x.await_termination()
 
         # Assert
-        assert mock_job_api.return_value._get.call_count == 1
+        assert mock_execution_api.return_value._get.call_count == 1
         assert str(e_info.value) == "The Hopsworks Job was stopped"

@@ -18,6 +18,7 @@ import json
 
 import humps
 from hopsworks_common import client, constants, util
+from hopsworks_common.client.exceptions import JobExecutionException
 from hopsworks_common.core import execution_api
 from hopsworks_common.engine import execution_engine
 
@@ -164,16 +165,15 @@ class Execution:
             or self.job_type.lower() == "flink"
         )
 
-        if is_yarn_job:
-            if self.final_status in constants.JOBS.ERROR_STATES:
-                return False
-            elif self.final_status in constants.JOBS.SUCCESS_STATES:
-                return True
-        else:
+        if not is_yarn_job:
             if self.state in constants.JOBS.ERROR_STATES:
                 return False
             elif self.state in constants.JOBS.SUCCESS_STATES:
                 return True
+        if self.final_status in constants.JOBS.ERROR_STATES:
+            return False
+        elif self.final_status in constants.JOBS.SUCCESS_STATES:
+            return True
         return None
 
     def download_logs(self, path=None):
@@ -225,7 +225,17 @@ class Execution:
         # Raises
             `RestAPIError`.
         """
-        self._execution_engine.wait_until_finished(self._job, self)
+        x = self._execution_engine.wait_until_finished(self._job, self)
+        if x.final_status == "KILLED":
+            raise JobExecutionException("The Hopsworks Job was stopped")
+        elif x.final_status == "FAILED":
+            raise JobExecutionException(
+                "The Hopsworks Job failed, use the Hopsworks UI to access the job logs"
+            )
+        elif x.final_status == "FRAMEWORK_FAILURE":
+            raise JobExecutionException(
+                "The Hopsworks Job monitoring failed, could not determine the final status"
+            )
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
