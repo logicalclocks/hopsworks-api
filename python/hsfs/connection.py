@@ -32,9 +32,7 @@ from hsfs.decorators import connected, not_connected
 from requests.exceptions import ConnectionError
 
 
-AWS_DEFAULT_REGION = "default"
 HOPSWORKS_PORT_DEFAULT = 443
-SECRETS_STORE_DEFAULT = "parameterstore"
 HOSTNAME_VERIFICATION_DEFAULT = True
 CERT_FOLDER_DEFAULT = "/tmp"
 
@@ -58,7 +56,7 @@ class Connection:
         ```
 
     !!! hint "Save API Key as File"
-        To get started quickly, without saving the Hopsworks API in a secret storage,
+        To get started quickly,
         you can simply create a file with the previously created Hopsworks API Key and
         place it on the environment from which you wish to connect to the Hopsworks
         Feature Store.
@@ -105,19 +103,14 @@ class Connection:
             allows you to override this behaviour. `"training"` engine is useful when only
             feature store metadata is needed, for example training dataset location and label
             information when Hopsworks training experiment is conducted.
-        region_name: The name of the AWS region in which the required secrets are
-            stored, defaults to `"default"`.
-        secrets_store: The secrets storage to be used, either `"secretsmanager"`,
-            `"parameterstore"` or `"local"`, defaults to `"parameterstore"`.
-        hostname_verification: Whether or not to verify Hopsworks’ certificate, defaults
+        hostname_verification: Whether or not to verify Hopsworks' certificate, defaults
             to `True`.
         trust_store_path: Path on the file system containing the Hopsworks certificates,
             defaults to `None`.
         cert_folder: The directory to store retrieved HopsFS certificates, defaults to
             `"/tmp"`. Only required when running without a Spark environment.
-        api_key_file: Path to a file containing the API Key, if provided,
-            `secrets_store` will be ignored, defaults to `None`.
-        api_key_value: API Key as string, if provided, `secrets_store` will be ignored`,
+        api_key_file: Path to a file containing the API Key, defaults to `None`.
+        api_key_value: API Key as string, if provided, `api_key_file` will be ignored,
             however, this should be used with care, especially if the used notebook or
             job script is accessible by multiple parties. Defaults to `None`.
 
@@ -132,8 +125,6 @@ class Connection:
         port: int = HOPSWORKS_PORT_DEFAULT,
         project: Optional[str] = None,
         engine: Optional[str] = None,
-        region_name: str = AWS_DEFAULT_REGION,
-        secrets_store: str = SECRETS_STORE_DEFAULT,
         hostname_verification: bool = HOSTNAME_VERIFICATION_DEFAULT,
         trust_store_path: Optional[str] = None,
         cert_folder: str = CERT_FOLDER_DEFAULT,
@@ -144,8 +135,6 @@ class Connection:
         self._port = port
         self._project = project
         self._engine = engine
-        self._region_name = region_name
-        self._secrets_store = secrets_store
         self._hostname_verification = hostname_verification
         self._trust_store_path = trust_store_path
         self._cert_folder = cert_folder
@@ -240,8 +229,6 @@ class Connection:
                     self._port,
                     self._project,
                     self._engine,
-                    self._region_name,
-                    self._secrets_store,
                     self._hostname_verification,
                     self._trust_store_path,
                     self._cert_folder,
@@ -295,8 +282,6 @@ class Connection:
         port: int = HOPSWORKS_PORT_DEFAULT,
         project: Optional[str] = None,
         engine: Optional[str] = None,
-        region_name: str = AWS_DEFAULT_REGION,
-        secrets_store: str = SECRETS_STORE_DEFAULT,
         hostname_verification: bool = HOSTNAME_VERIFICATION_DEFAULT,
         trust_store_path: Optional[str] = None,
         cert_folder: str = CERT_FOLDER_DEFAULT,
@@ -309,8 +294,6 @@ class Connection:
             port,
             project,
             engine,
-            region_name,
-            secrets_store,
             hostname_verification,
             trust_store_path,
             cert_folder,
@@ -344,24 +327,6 @@ class Connection:
     @not_connected
     def project(self, project: Optional[str]) -> str:
         self._project = project
-
-    @property
-    def region_name(self) -> str:
-        return self._region_name
-
-    @region_name.setter
-    @not_connected
-    def region_name(self, region_name: str) -> None:
-        self._region_name = region_name
-
-    @property
-    def secrets_store(self) -> str:
-        return self._secrets_store
-
-    @secrets_store.setter
-    @not_connected
-    def secrets_store(self, secrets_store):
-        self._secrets_store = secrets_store
 
     @property
     def hostname_verification(self):

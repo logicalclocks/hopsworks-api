@@ -54,8 +54,8 @@ class Client:
 
         Credit to https://gist.github.com/gdamjan/55a8b9eec6cf7b771f92021d93b87b2c
 
-        :param verify: perform hostname verification, 'true' or 'false'
-        :type verify: str
+        :param verify: perform hostname verification
+        :type verify: bool
         :param trust_store_path: path of the truststore locally if it was uploaded manually to
             the external environment such as AWS Sagemaker
         :type trust_store_path: str
@@ -64,7 +64,7 @@ class Client:
                  if verify is false, then return false
         :rtype: str or boolean
         """
-        if verify == "true":
+        if verify:
             if trust_store_path is not None:
                 return trust_store_path
             else:
