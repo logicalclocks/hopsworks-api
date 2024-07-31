@@ -21,8 +21,7 @@ import humps
 from hsfs import feature as feature_mod
 from hsfs import feature_group as feature_group_mod
 from hsfs import util
-from hsfs.hopsworks_udf import UDFType
-from hsfs.transformation_function import TransformationFunction
+from hsfs.transformation_function import TransformationFunction, TransformationType
 
 
 class TrainingDatasetFeature:
@@ -74,7 +73,7 @@ class TrainingDatasetFeature:
         json_decamelized = humps.decamelize(json_dict)
         if json_decamelized.get("transformation_function", False):
             json_decamelized["transformation_function"]["transformation_type"] = (
-                UDFType.ON_DEMAND
+                TransformationType.ON_DEMAND
             )
             json_decamelized["transformation_function"] = (
                 TransformationFunction.from_response_json(

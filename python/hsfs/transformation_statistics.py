@@ -71,97 +71,92 @@ class FeatureTransformationStatistics:
         extended_statistics: Optional[Union[dict, str]] = None,
         **kwargs,
     ):
-        self.feature_name = feature_name
-        self.count = count
-        self.completeness = completeness
-        self.num_non_null_values = num_non_null_values
-        self.num_null_values = num_null_values
-        self.approx_num_distinct_values = approx_num_distinct_values
-        self.min = min
-        self.max = max
-        self.sum = sum
-        self.mean = mean
-        self.stddev = stddev
-        self.percentiles = percentiles
-        self.distinctness = distinctness
-        self.entropy = entropy
-        self.uniqueness = uniqueness
-        self.exact_num_distinct_values = exact_num_distinct_values
+        self._feature_name = feature_name
+        self._count = count
+        self._completeness = completeness
+        self._num_non_null_values = num_non_null_values
+        self._num_null_values = num_null_values
+        self._approx_num_distinct_values = approx_num_distinct_values
+        self._min = min
+        self._max = max
+        self._sum = sum
+        self._mean = mean
+        self._stddev = stddev
+        self._percentiles = percentiles
+        self._distinctness = distinctness
+        self._entropy = entropy
+        self._uniqueness = uniqueness
+        self._exact_num_distinct_values = exact_num_distinct_values
         extended_statistics = (
             extended_statistics
             if not isinstance(extended_statistics, str)
             else json.loads(extended_statistics)
         )
-        sekf,
-
-    @property
-    def id(self) -> Optional[int]:
-        return self.id
-
-    @property
-    def feature_type(self) -> str:
-        """Data type of the feature. It can be one of Boolean, Fractional, Integral, or String."""
-        return self.feature_type
+        if extended_statistics:
+            self._correlations = extended_statistics.get("correlations", None)
+            self._histogram = extended_statistics.get("histogram", None)
+            self._kll = extended_statistics.get("kll", None)
+            self._unique_values = extended_statistics.get("unique_values", None)
 
     @property
     def feature_name(self) -> str:
         """Name of the feature."""
-        return self.feature_name
+        return self._feature_name
 
     @property
     def count(self) -> int:
         """Number of values."""
-        return self.count
+        return self._count
 
     @property
     def completeness(self) -> Optional[float]:
         """Fraction of non-null values in a column."""
-        return self.completeness
+        return self._completeness
 
     @property
     def num_non_null_values(self) -> Optional[int]:
         """Number of non-null values."""
-        return self.num_non_null_values
+        return self._num_non_null_values
 
     @property
     def num_null_values(self) -> Optional[int]:
         """Number of null values."""
-        return self.num_null_values
+        return self._num_null_values
 
     @property
     def approx_num_distinct_values(self) -> Optional[int]:
         """Approximate number of distinct values."""
-        return self.approx_num_distinct_values
+        return self._approx_num_distinct_values
 
     @property
     def min(self) -> Optional[float]:
         """Minimum value."""
-        return self.min
+        return self._min
 
     @property
     def max(self) -> Optional[float]:
         """Maximum value."""
-        return self.max
+        return self._max
 
     @property
     def sum(self) -> Optional[float]:
         """Sum of all feature values."""
-        return self.sum
+        return self._sum
 
     @property
     def mean(self) -> Optional[float]:
         """Mean value."""
-        return self.mean
+        return self._mean
 
     @property
     def stddev(self) -> Optional[float]:
         """Standard deviation of the feature values."""
-        return self.stddev
+        return self._stddev
 
     @property
     def percentiles(self) -> Optional[Mapping[str, float]]:
         """Percentiles."""
-        return self.percentiles
+        return self._percentiles
 
     @property
     def distinctness(self) -> Optional[float]:
@@ -170,7 +165,7 @@ class FeatureTransformationStatistics:
         !!! note "Example"
             $[a, a, b]$ contains two distinct values $a$ and $b$, so distinctness is $2/3$.
         """
-        return self.distinctness
+        return self._distinctness
 
     @property
     def entropy(self) -> Optional[float]:
@@ -182,7 +177,7 @@ class FeatureTransformationStatistics:
 
             Entropy is then $(-1/5*log(1/5)-2/5*log(2/5)-2/5*log(2/5)) = 1.055$.
         """
-        return self.entropy
+        return self._entropy
 
     @property
     def uniqueness(self) -> Optional[float]:
@@ -191,17 +186,33 @@ class FeatureTransformationStatistics:
         !!! note "Example"
             $[a, a, b]$ contains one unique value $b$, so uniqueness is $1/3$.
         """
-        return self.uniqueness
+        return self._uniqueness
 
     @property
     def exact_num_distinct_values(self) -> Optional[int]:
         """Exact number of distinct values."""
-        return self.exact_num_distinct_values
+        return self._exact_num_distinct_values
 
     @property
-    def extended_statistics(self) -> Optional[dict]:
-        """Additional statistics computed on the feature values such as histograms and correlations."""
-        return self.extended_statistics
+    def correlations(self) -> Optional[dict]:
+        """ """
+        return self._correlations
+
+    @property
+    def histogram(self) -> Optional[dict]:
+        """ """
+        return self._histogram
+
+    @property
+    def kll(self) -> Optional[dict]:
+        """ """
+        return self._kll
+
+    @property
+    def unique_values(self) -> Optional[dict]:
+        """Number of Unique Values"""
+        return self._unique_values
+
 
 
     @classmethod

@@ -83,7 +83,7 @@ class TestArrowFlightClient:
         batch_scoring_server = mocker.MagicMock()
         batch_scoring_server.training_dataset_version = 1
         batch_scoring_server._transformation_functions = None
-        fv._batch_scoring_server = batch_scoring_server
+        fv._FeatureView__batch_scoring_server = batch_scoring_server
         mocker.patch("hsfs.feature_view.FeatureView.init_batch_scoring")
 
         return fv
