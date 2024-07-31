@@ -1256,7 +1256,7 @@ class Engine:
                 dropped_features.update(tf.hopsworks_udf.dropped_features)
             dataset = pd.concat(
                 [
-                    dataset,
+                    dataset.reset_index(drop=True),
                     tf.hopsworks_udf.get_udf()(
                         *(
                             [
@@ -1264,7 +1264,7 @@ class Engine:
                                 for feature in tf.hopsworks_udf.transformation_features
                             ]
                         )
-                    ),
+                    ).reset_index(drop=True),
                 ],
                 axis=1,
             )
