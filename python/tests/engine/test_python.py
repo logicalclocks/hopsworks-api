@@ -16,6 +16,7 @@
 import decimal
 from datetime import date, datetime
 
+import hopsworks_common
 import numpy as np
 import pandas as pd
 import polars as pl
@@ -1494,11 +1495,17 @@ class TestPython:
 
     def test_legacy_save_dataframe(self, mocker):
         # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mock_get_url = mocker.patch("hopsworks_common.execution.Execution.get_url")
+        mock_execution_api = mocker.patch(
+            "hopsworks_common.core.execution_api.ExecutionApi",
+        )
+        mock_execution_api.return_value._start.return_value = (
+            hopsworks_common.execution.Execution(job=mocker.Mock())
+        )
         mocker.patch("hsfs.engine.python.Engine._get_app_options")
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
         mock_dataset_api = mocker.patch("hsfs.core.dataset_api.DatasetApi")
-        mock_job_api = mocker.patch("hsfs.core.job_api.JobApi")
-        mock_util_get_job_url = mocker.patch("hsfs.util.get_job_url")
 
         python_engine = python.Engine()
 
@@ -1521,8 +1528,8 @@ class TestPython:
         # Assert
         assert mock_fg_api.return_value.ingestion.call_count == 1
         assert mock_dataset_api.return_value.upload_feature_group.call_count == 1
-        assert mock_job_api.return_value.launch.call_count == 1
-        assert mock_util_get_job_url.call_count == 1
+        assert mock_execution_api.return_value._start.call_count == 1
+        assert mock_get_url.call_count == 1
 
     def test_get_training_data(self, mocker):
         # Arrange

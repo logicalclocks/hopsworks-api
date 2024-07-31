@@ -23,10 +23,10 @@ from hsfs.core import execution, job
 class TestJob:
     def test_from_response_json(self, mocker, backend_fixtures):
         # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
         json = backend_fixtures["job"]["get"]["response"]
 
         # Act
-        mocker.patch("hopsworks_common.client.get_instance")
         j = job.Job.from_response_json(json)
 
         # Assert
@@ -37,10 +37,10 @@ class TestJob:
 
     def test_from_response_json_empty(self, mocker, backend_fixtures):
         # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
         json = backend_fixtures["job"]["get_empty"]["response"]
 
         # Act
-        mocker.patch("hopsworks_common.client.get_instance")
         j = job.Job.from_response_json(json)
 
         # Assert
@@ -71,10 +71,10 @@ class TestJob:
 
     def test_wait_for_job_wait_for_job_false(self, mocker, backend_fixtures):
         # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
         mock_job_api = mocker.patch("hopsworks_common.core.execution_api.ExecutionApi")
 
         json = backend_fixtures["job"]["get"]["response"]
-        mocker.patch("hopsworks_common.client.get_instance")
         job.Job.from_response_json(json).run(await_termination=False)
 
         # Assert
@@ -116,7 +116,6 @@ class TestJob:
         )
 
         json = backend_fixtures["job"]["get"]["response"]
-        mocker.patch("hopsworks_common.client.get_instance")
         x = job.Job.from_response_json(json).run(await_termination=False)
 
         mock_execution_api.return_value._get.return_value = execution.Execution(
@@ -146,7 +145,6 @@ class TestJob:
         )
 
         json = backend_fixtures["job"]["get"]["response"]
-        mocker.patch("hopsworks_common.client.get_instance")
         x = job.Job.from_response_json(json).run(await_termination=False)
 
         mock_execution_api.return_value._get.return_value = execution.Execution(

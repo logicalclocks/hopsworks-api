@@ -98,7 +98,7 @@ class ExecutionEngine:
         :rtype: str, str
         """
 
-        is_yarn_job = (
+        is_yarn_job = job.job_type is not None and (
             job.job_type.lower() == "spark"
             or job.job_type.lower() == "pyspark"
             or job.job_type.lower() == "flink"
