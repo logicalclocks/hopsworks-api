@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest
@@ -27,13 +28,14 @@ class TestVectorDbClient:
     embedding_index = EmbeddingIndex("2249__embedding_default_embedding")
     embedding_index.add_embedding("f2", 3)
     embedding_index._col_prefix = ""
-    fg = FeatureGroup("test_fg", 1, 99, id=1, embedding_index=embedding_index)
-    f1 = Feature("f1", feature_group=fg, primary=True, type="int")
-    f2 = Feature("f2", feature_group=fg, primary=True, type="int")
-    f3 = Feature("f3", feature_group=fg, type="int")
-    fg.features = [f1, f2, f3]
-    fg2 = FeatureGroup("test_fg", 1, 99, id=2)
-    fg2.features = [f1, f2]
+    with mock.patch("hopsworks_common.client.get_instance"):
+        fg = FeatureGroup("test_fg", 1, 99, id=1, embedding_index=embedding_index)
+        f1 = Feature("f1", feature_group=fg, primary=True, type="int")
+        f2 = Feature("f2", feature_group=fg, primary=True, type="int")
+        f3 = Feature("f3", feature_group=fg, type="int")
+        fg.features = [f1, f2, f3]
+        fg2 = FeatureGroup("test_fg", 1, 99, id=2)
+        fg2.features = [f1, f2]
 
     @pytest.fixture(autouse=True)
     def setup_mocks(self, mocker):

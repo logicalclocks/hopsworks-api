@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 import warnings
+from unittest import mock
 
 import pytest
 from hsfs import feature, feature_group
@@ -22,53 +23,55 @@ from hsfs.constructor import filter, join, query
 
 
 class TestQuery:
-    fg1 = feature_group.FeatureGroup(
-        name="test1",
-        version=1,
-        featurestore_id=99,
-        primary_key=[],
-        partition_key=[],
-        features=[
-            feature.Feature("id", feature_group_id=11),
-            feature.Feature("label", feature_group_id=11),
-            feature.Feature("tf_name", feature_group_id=11),
-        ],
-        id=11,
-        stream=False,
-    )
+    with mock.patch("hopsworks_common.client.get_instance"):
+        fg1 = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[
+                feature.Feature("id", feature_group_id=11),
+                feature.Feature("label", feature_group_id=11),
+                feature.Feature("tf_name", feature_group_id=11),
+            ],
+            id=11,
+            stream=False,
+        )
 
-    fg2 = feature_group.FeatureGroup(
-        name="test2",
-        version=1,
-        featurestore_id=99,
-        primary_key=[],
-        partition_key=[],
-        features=[
-            feature.Feature("id", feature_group_id=12),
-            feature.Feature("tf1_name", feature_group_id=12),
-        ],
-        id=12,
-        stream=False,
-    )
+        fg2 = feature_group.FeatureGroup(
+            name="test2",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[
+                feature.Feature("id", feature_group_id=12),
+                feature.Feature("tf1_name", feature_group_id=12),
+            ],
+            id=12,
+            stream=False,
+        )
 
-    fg3 = feature_group.FeatureGroup(
-        name="test3",
-        version=1,
-        featurestore_id=99,
-        primary_key=[],
-        partition_key=[],
-        features=[
-            feature.Feature("id", feature_group_id=13),
-            feature.Feature("tf_name", feature_group_id=13),
-            feature.Feature("tf1_name", feature_group_id=13),
-            feature.Feature("tf3_name", feature_group_id=13),
-        ],
-        id=13,
-        stream=False,
-    )
+        fg3 = feature_group.FeatureGroup(
+            name="test3",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[
+                feature.Feature("id", feature_group_id=13),
+                feature.Feature("tf_name", feature_group_id=13),
+                feature.Feature("tf1_name", feature_group_id=13),
+                feature.Feature("tf3_name", feature_group_id=13),
+            ],
+            id=13,
+            stream=False,
+        )
 
     def test_from_response_json_python(self, mocker, backend_fixtures):
         # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         json = backend_fixtures["query"]["get"]["response"]
 
@@ -90,6 +93,7 @@ class TestQuery:
 
     def test_from_response_json_external_fg_python(self, mocker, backend_fixtures):
         # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         json = backend_fixtures["query"]["get_external_fg"]["response"]
 
@@ -111,6 +115,7 @@ class TestQuery:
 
     def test_from_response_json_spark(self, mocker, backend_fixtures):
         # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
         json = backend_fixtures["query"]["get"]["response"]
 
@@ -132,6 +137,7 @@ class TestQuery:
 
     def test_from_response_json_external_fg_spark(self, mocker, backend_fixtures):
         # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
         json = backend_fixtures["query"]["get_external_fg"]["response"]
 
@@ -153,6 +159,7 @@ class TestQuery:
 
     def test_from_response_json_basic_info(self, mocker, backend_fixtures):
         # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         json = backend_fixtures["query"]["get_basic_info"]["response"]
 
@@ -174,6 +181,7 @@ class TestQuery:
 
     def test_from_response_json_basic_info_deprecated(self, mocker, backend_fixtures):
         # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         json = backend_fixtures["query"]["get_basic_info_deprecated"]["response"]
 
@@ -199,6 +207,7 @@ class TestQuery:
         )
 
     def test_as_of(self, mocker, backend_fixtures):
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         q = query.Query.from_response_json(backend_fixtures["query"]["get"]["response"])
         q.as_of("2022-01-01 00:00:00")

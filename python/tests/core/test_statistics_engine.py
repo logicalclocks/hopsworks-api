@@ -15,6 +15,7 @@
 #
 
 import json
+from unittest import mock
 
 import pytest
 from hsfs import (
@@ -30,15 +31,16 @@ from hsfs.core import statistics_engine
 
 
 engine._engine_type = "python"
-fg = feature_group.FeatureGroup(
-    name="test",
-    version=1,
-    featurestore_id=99,
-    primary_key=[],
-    partition_key=[],
-    id=10,
-    stream=False,
-)
+with mock.patch("hopsworks_common.client.get_instance"):
+    fg = feature_group.FeatureGroup(
+        name="test",
+        version=1,
+        featurestore_id=99,
+        primary_key=[],
+        partition_key=[],
+        id=10,
+        stream=False,
+    )
 query = fg.select_all()
 
 
@@ -47,7 +49,7 @@ class TestStatisticsEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
         mock_statistics_engine_profile_statistics = mocker.patch(
@@ -90,7 +92,7 @@ class TestStatisticsEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
         mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
         mock_statistics_engine_profile_statistics = mocker.patch(
@@ -133,6 +135,7 @@ class TestStatisticsEngine:
         # Arrange
         feature_store_id = 99
 
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.client.get_instance")
         mocker.patch("hsfs.engine.get_type")
         mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
@@ -191,7 +194,7 @@ class TestStatisticsEngine:
             ]["response"]
         )
 
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
         mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
         mock_statistics_engine_profile_statistics = mocker.patch(
@@ -241,6 +244,7 @@ class TestStatisticsEngine:
             ]["response"]
         )
 
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.client.get_instance")
         mocker.patch("hsfs.engine.get_type")
         mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
@@ -294,7 +298,7 @@ class TestStatisticsEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
         mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
         mock_statistics_engine_profile_statistics = mocker.patch(
@@ -339,6 +343,7 @@ class TestStatisticsEngine:
         # Arrange
         feature_store_id = 99
 
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.client.get_instance")
         mocker.patch("hsfs.engine.get_type")
         mocker.patch("hsfs.util.get_hudi_datestr_from_timestamp")
@@ -390,6 +395,7 @@ class TestStatisticsEngine:
         # Arrange
         feature_store_id = 99
 
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type")
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
         mock_warning = mocker.patch("warnings.warn")
@@ -435,6 +441,7 @@ class TestStatisticsEngine:
         # Arrange
         feature_store_id = 99
 
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type")
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
 
