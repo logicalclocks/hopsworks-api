@@ -13,10 +13,11 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+
 from __future__ import annotations
 
 import humps
-from hsfs.core.job import Job
+from hopsworks_common.job import Job
 
 
 class IngestionJob:

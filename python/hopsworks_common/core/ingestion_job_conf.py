@@ -13,11 +13,12 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+
 from __future__ import annotations
 
 import json
 
-from hsfs import util
+from hopsworks_common import util
 
 
 class IngestionJobConf:
