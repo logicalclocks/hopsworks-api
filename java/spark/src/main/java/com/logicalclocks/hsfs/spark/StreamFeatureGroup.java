@@ -29,7 +29,6 @@ import com.logicalclocks.hsfs.HudiOperationType;
 import com.logicalclocks.hsfs.JobConfiguration;
 import com.logicalclocks.hsfs.StatisticsConfig;
 import com.logicalclocks.hsfs.Storage;
-import com.logicalclocks.hsfs.engine.CodeEngine;
 import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.metadata.Statistics;
 
@@ -56,7 +55,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
 
   protected FeatureGroupEngine featureGroupEngine = new FeatureGroupEngine();
   private final StatisticsEngine statisticsEngine = new StatisticsEngine(EntityEndpointType.FEATURE_GROUP);
-  private final CodeEngine codeEngine = new CodeEngine(EntityEndpointType.FEATURE_GROUP);
 
   @Builder
   public StreamFeatureGroup(FeatureStore featureStore, @NonNull String name, Integer version, String description,
@@ -407,7 +405,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
   public void save(Dataset<Row> featureData, Map<String, String> writeOptions)
       throws FeatureStoreException, IOException, ParseException {
     featureGroupEngine.save(this, featureData, partitionKeys, hudiPrecombineKey, writeOptions, null);
-    codeEngine.saveCode(this);
   }
 
   @Deprecated
@@ -415,7 +412,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
       throws FeatureStoreException, IOException, ParseException {
     featureGroupEngine.save(this, featureData, partitionKeys, hudiPrecombineKey, writeOptions,
         jobConfiguration);
-    codeEngine.saveCode(this);
   }
 
   /**
@@ -649,7 +645,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
                      JobConfiguration jobConfiguration) throws FeatureStoreException, IOException, ParseException {
     featureGroupEngine.insert(this, featureData,  overwrite ? SaveMode.Overwrite : SaveMode.Append,
         partitionKeys, hudiPrecombineKey, writeOptions, jobConfiguration);
-    codeEngine.saveCode(this);
   }
 
   /**

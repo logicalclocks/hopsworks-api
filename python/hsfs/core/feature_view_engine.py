@@ -34,7 +34,6 @@ from hsfs.client.exceptions import FeatureStoreException
 from hsfs.constructor.filter import Filter, Logic
 from hsfs.core import (
     arrow_flight_client,
-    code_engine,
     feature_view_api,
     query_constructor_api,
     statistics_engine,
@@ -61,9 +60,6 @@ class FeatureViewEngine:
 
         self._feature_view_api = feature_view_api.FeatureViewApi(feature_store_id)
         self._tags_api = tags_api.TagsApi(feature_store_id, self.ENTITY_TYPE)
-        self._td_code_engine = code_engine.CodeEngine(
-            feature_store_id, self._TRAINING_DATA_API_PATH
-        )
         self._statistics_engine = statistics_engine.StatisticsEngine(
             feature_store_id, self._TRAINING_DATA_API_PATH
         )
@@ -655,7 +651,6 @@ class FeatureViewEngine:
             self._OVERWRITE,
             feature_view_obj=feature_view_obj,
         )
-        self._td_code_engine.save_code(training_dataset_obj)
 
         if engine.get_type().startswith("spark"):
             # if spark engine, read td and compute stats

@@ -62,7 +62,6 @@ from hsfs.client.exceptions import FeatureStoreException, RestAPIError
 from hsfs.constructor import filter, query
 from hsfs.constructor.filter import Filter, Logic
 from hsfs.core import (
-    code_engine,
     deltastreamer_jobconf,
     expectation_suite_engine,
     explicit_provenance,
@@ -155,9 +154,6 @@ class FeatureGroupBase:
         ] = None
         self._statistics_engine: statistics_engine.StatisticsEngine = (
             statistics_engine.StatisticsEngine(featurestore_id, self.ENTITY_TYPE)
-        )
-        self._code_engine: code_engine.CodeEngine = code_engine.CodeEngine(
-            featurestore_id, self.ENTITY_TYPE
         )
         self._great_expectation_engine: great_expectation_engine.GreatExpectationEngine = great_expectation_engine.GreatExpectationEngine(
             featurestore_id
@@ -2616,8 +2612,6 @@ class FeatureGroup(FeatureGroupBase):
         fg_job, ge_report = self._feature_group_engine.save(
             self, feature_dataframe, write_options, validation_options or {}
         )
-        if ge_report is None or ge_report.ingestion_result == "INGESTED":
-            self._code_engine.save_code(self)
 
         if self.statistics_config.enabled and engine.get_type().startswith("spark"):
             # Only compute statistics if the engine is Spark.
@@ -2797,10 +2791,6 @@ class FeatureGroup(FeatureGroupBase):
             write_options=write_options,
             validation_options={"save_report": True, **validation_options},
         )
-        if save_code and (
-            ge_report is None or ge_report.ingestion_result == "INGESTED"
-        ):
-            self._code_engine.save_code(self)
 
         if engine.get_type().startswith("spark") and not self.stream:
             # Also, only compute statistics if stream is False.
@@ -3716,7 +3706,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
         fg.save()
         """
         self._feature_group_engine.save(self)
-        self._code_engine.save_code(self)
 
         if self.statistics_config.enabled:
             self._statistics_engine.compute_and_save_statistics(self)
@@ -3815,11 +3804,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
             write_options=write_options,
             validation_options={"save_report": True, **validation_options},
         )
-
-        if save_code and (
-            ge_report is None or ge_report.ingestion_result == "INGESTED"
-        ):
-            self._code_engine.save_code(self)
 
         if self.statistics_config.enabled:
             warnings.warn(
