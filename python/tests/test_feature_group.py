@@ -33,7 +33,7 @@ from hsfs import (
 from hsfs.client.exceptions import FeatureStoreException, RestAPIError
 from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
 from hsfs.engine import python
-from hsfs.hopsworks_udf import UDFType
+from hsfs.transformation_function import TransformationType
 
 
 with mock.patch("hopsworks_common.client.get_instance"):
@@ -878,10 +878,10 @@ class TestExternalFeatureGroup:
             == "\n@udf(float)\ndef add_two(data1 : pd.Series):\n    return data1 + 2\n"
         )
         assert (
-            fg.transformation_functions[0].hopsworks_udf.udf_type == UDFType.ON_DEMAND
+            fg.transformation_functions[0].transformation_type == TransformationType.ON_DEMAND
         )
         assert (
-            fg.transformation_functions[1].hopsworks_udf.udf_type == UDFType.ON_DEMAND
+            fg.transformation_functions[1].transformation_type == TransformationType.ON_DEMAND
         )
         assert isinstance(fg.creator, user.User)
         assert fg.id == 15
