@@ -16,7 +16,6 @@
 from __future__ import annotations
 
 import copy
-import importlib.util
 import json
 import os
 import re
@@ -135,10 +134,6 @@ class Engine:
         self._spark_session.conf.set("hive.exec.dynamic.partition.mode", "nonstrict")
         self._spark_session.conf.set("spark.sql.hive.convertMetastoreParquet", "false")
         self._spark_session.conf.set("spark.sql.session.timeZone", "UTC")
-
-        if importlib.util.find_spec("pydoop"):
-            # If we are on Databricks don't setup Pydoop as it's not available and cannot be easily installed.
-            util.setup_pydoop()
         self._dataset_api = dataset_api.DatasetApi()
 
     def sql(
