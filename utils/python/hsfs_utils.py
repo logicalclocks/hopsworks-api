@@ -285,20 +285,21 @@ if __name__ == "__main__":
     args = parser.parse_args()
     job_conf = read_job_conf(args.path)
 
-    if args.op == "insert_fg":
-        insert_fg(spark, job_conf)
-    elif args.op == "create_td":
-        create_td(job_conf)
-    elif args.op == "create_fv_td":
-        create_fv_td(job_conf)
-    elif args.op == "compute_stats":
-        compute_stats(job_conf)
-    elif args.op == "ge_validate":
-        ge_validate(job_conf)
-    elif args.op == "import_fg":
-        import_fg(job_conf)
-    elif args.op == "run_feature_monitoring":
-        run_feature_monitoring(job_conf)
-
-    if spark is not None:
-        spark.stop()
+    try:
+        if args.op == "insert_fg":
+            insert_fg(spark, job_conf)
+        elif args.op == "create_td":
+            create_td(job_conf)
+        elif args.op == "create_fv_td":
+            create_fv_td(job_conf)
+        elif args.op == "compute_stats":
+            compute_stats(job_conf)
+        elif args.op == "ge_validate":
+            ge_validate(job_conf)
+        elif args.op == "import_fg":
+            import_fg(job_conf)
+        elif args.op == "run_fm":
+            run_feature_monitoring(job_conf)
+    finally:
+        if spark is not None:
+            spark.stop()
