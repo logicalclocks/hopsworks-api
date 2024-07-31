@@ -18,7 +18,8 @@ import warnings
 from hsfs import feature_view, training_dataset_feature
 from hsfs.constructor import fs_query, query
 from hsfs.feature_store import FeatureStore
-from hsfs.hopsworks_udf import UDFType, udf
+from hsfs.hopsworks_udf import udf
+from hsfs.transformation_function import TransformationType
 
 
 class TestFeatureView:
@@ -107,12 +108,12 @@ class TestFeatureView:
             == "\n@udf(float)\ndef add_one_fs(data1 : pd.Series):\n    return data1 + 1\n"
         )
         assert (
-            fv.transformation_functions[0].hopsworks_udf.udf_type
-            == UDFType.MODEL_DEPENDENT
+            fv.transformation_functions[0].transformation_type
+            == TransformationType.MODEL_DEPENDENT
         )
         assert (
-            fv.transformation_functions[1].hopsworks_udf.udf_type
-            == UDFType.MODEL_DEPENDENT
+            fv.transformation_functions[1].transformation_type
+            == TransformationType.MODEL_DEPENDENT
         )
 
         assert len(fv.schema) == 2
