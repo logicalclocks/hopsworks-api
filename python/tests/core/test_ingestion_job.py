@@ -15,6 +15,8 @@
 #
 
 
+from unittest import mock
+
 from hsfs.core import ingestion_job, job
 
 
@@ -24,7 +26,8 @@ class TestIngestionJob:
         json = backend_fixtures["ingestion_job"]["get"]["response"]
 
         # Act
-        ij = ingestion_job.IngestionJob.from_response_json(json)
+        with mock.patch("hopsworks_common.client.get_instance"):
+            ij = ingestion_job.IngestionJob.from_response_json(json)
 
         # Assert
         assert ij.data_path == "test_data_path"
