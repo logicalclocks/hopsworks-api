@@ -298,7 +298,7 @@ if __name__ == "__main__":
             ge_validate(job_conf)
         elif args.op == "import_fg":
             import_fg(job_conf)
-        elif args.op == "run_fm":
+        elif args.op == "run_feature_monitoring":
             run_feature_monitoring(job_conf)
     finally:
         if spark is not None:
