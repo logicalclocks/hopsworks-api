@@ -29,6 +29,7 @@ from hopsworks_common.client.exceptions import (
     RestAPIError,
     UnknownSecretStorageError,
     VectorDatabaseException,
+    HopsworksSSLClientError,
 )
 
 
@@ -47,4 +48,5 @@ __all__ = [
     RestAPIError,
     UnknownSecretStorageError,
     VectorDatabaseException,
+    HopsworksSSLClientError,
 ]
