@@ -1,17 +1,22 @@
 from __future__ import annotations
 
+import os
 import argparse
 import json
 from datetime import datetime
 from typing import Any, Dict
 
-import hsfs
-from hsfs.constructor import query
-from hsfs.core import feature_monitoring_config_engine, feature_view_engine
-from hsfs.statistics_config import StatisticsConfig
-from pydoop import hdfs
+import fsspec.implementations.arrow as pfs
+
+hopsfs = pfs.HadoopFileSystem("default", user=os.environ["HADOOP_USER_NAME"])
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructField, StructType, _parse_datatype_string
+
+import hopsworks
+
+from hsfs.constructor import query
+from hsfs.statistics_config import StatisticsConfig
+from hsfs.core import feature_monitoring_config_engine, feature_view_engine
 
 
 def read_job_conf(path: str) -> Dict[Any, Any]:
@@ -19,8 +24,10 @@ def read_job_conf(path: str) -> Dict[Any, Any]:
     The configuration file is passed as path on HopsFS
     The path is a JSON containing different values depending on the op type
     """
-    file_content = hdfs.load(path)
-    return json.loads(file_content)
+    file_name = os.path.basename(path)
+    hopsfs.download(path, ".")
+    with open(file_name, "r") as f:
+        return json.loads(f.read())
 
 
 def setup_spark() -> SparkSession:
@@ -28,8 +35,8 @@ def setup_spark() -> SparkSession:
 
 
 def get_feature_store_handle(feature_store: str = "") -> hsfs.feature_store:
-    connection = hsfs.connection()
-    return connection.get_feature_store(feature_store)
+    project = hopsworks.login()
+    return project.get_feature_store(feature_store)
 
 
 def sort_schema(fg_schema: StructType, csv_df_schema: StructType) -> StructType:
@@ -278,20 +285,21 @@ if __name__ == "__main__":
     args = parser.parse_args()
     job_conf = read_job_conf(args.path)
 
-    if args.op == "insert_fg":
-        insert_fg(spark, job_conf)
-    elif args.op == "create_td":
-        create_td(job_conf)
-    elif args.op == "create_fv_td":
-        create_fv_td(job_conf)
-    elif args.op == "compute_stats":
-        compute_stats(job_conf)
-    elif args.op == "ge_validate":
-        ge_validate(job_conf)
-    elif args.op == "import_fg":
-        import_fg(job_conf)
-    elif args.op == "run_feature_monitoring":
-        run_feature_monitoring(job_conf)
-
-    if spark is not None:
-        spark.stop()
+    try:
+        if args.op == "insert_fg":
+            insert_fg(spark, job_conf)
+        elif args.op == "create_td":
+            create_td(job_conf)
+        elif args.op == "create_fv_td":
+            create_fv_td(job_conf)
+        elif args.op == "compute_stats":
+            compute_stats(job_conf)
+        elif args.op == "ge_validate":
+            ge_validate(job_conf)
+        elif args.op == "import_fg":
+            import_fg(job_conf)
+        elif args.op == "run_feature_monitoring":
+            run_feature_monitoring(job_conf)
+    finally:
+        if spark is not None:
+            spark.stop()

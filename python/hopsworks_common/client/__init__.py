@@ -31,8 +31,6 @@ def init(
     port: Optional[int] = None,
     project: Optional[str] = None,
     engine: Optional[str] = None,
-    region_name: Optional[str] = None,
-    secrets_store=None,
     hostname_verification: Optional[bool] = None,
     trust_store_path: Optional[str] = None,
     cert_folder: Optional[str] = None,
@@ -49,8 +47,6 @@ def init(
                 port,
                 project,
                 engine,
-                region_name,
-                secrets_store,
                 hostname_verification,
                 trust_store_path,
                 cert_folder,
@@ -58,7 +54,7 @@ def init(
                 api_key_value,
             )
     elif isinstance(_client, external.Client) and not _client._project_name:
-        _client._hsfs_post_init(project, engine, region_name)
+        _client._hsfs_post_init(project, engine)
 
 
 def get_instance() -> Union[hopsworks.Client, external.Client]:
