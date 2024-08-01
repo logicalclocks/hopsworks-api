@@ -123,5 +123,6 @@ public class MainClass {
       LOGGER.info("Closing spark session...");
       SparkEngine.getInstance().closeSparkSession();
     }
+    System.exit(0);
   }
 }
