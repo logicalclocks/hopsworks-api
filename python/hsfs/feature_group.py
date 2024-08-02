@@ -129,8 +129,6 @@ class FeatureGroupBase:
         deprecated: bool = False,
         **kwargs,
     ) -> None:
-        print("IM HEREEE")
-
         self._version = version
         self._name = name
         self.event_time = event_time
