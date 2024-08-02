@@ -79,25 +79,28 @@ class Client(base.Client):
         self._cert_folder_base = cert_folder
         self._cert_folder = None
 
-        self._hsfs_post_init(project, engine)
+        self._engine = engine
 
-    def _hsfs_post_init(self, project, engine):
-        self._project_name = project
-        if project is not None:
-            project_info = self._get_project_info(project)
-            self._project_id = str(project_info["projectId"])
-            _logger.debug("Setting Project ID: %s", self._project_id)
-        else:
-            self._project_id = None
-        _logger.debug("Project name: %s", self._project_name)
-
-        if project is None:
+        if not project:
+            # This should only happen due to the way of work of and in hopsworks.login:
+            # It first initalizes a client, and then uses it to figure out which project to use.
+            self._project_name = None
             return
 
-        if engine == "python":
-            self.download_certs(project)
+        self.provide_project(project)
 
-        elif engine == "spark":
+    def provide_project(self, project):
+        self._project_name = project
+        _logger.debug("Project name: %s", self._project_name)
+
+        project_info = self._get_project_info(project)
+        self._project_id = str(project_info["projectId"])
+        _logger.debug("Setting Project ID: %s", self._project_id)
+
+        if self._engine == "python":
+            self.download_certs()
+
+        elif self._engine == "spark":
             # When using the Spark engine with metastore connection, the certificates
             # are needed when the application starts (before user code is run)
             # So in this case, we can't materialize the certificates on the fly.
@@ -118,12 +121,12 @@ class Client(base.Client):
                 "spark.hadoop.hops.ssl.keystore.name"
             )
 
-        elif engine == "spark-no-metastore":
+        elif self._engine == "spark-no-metastore":
             _logger.debug(
                 "Running in Spark environment with no metastore, initializing Spark session"
             )
             _spark_session = SparkSession.builder.getOrCreate()
-            self.download_certs(project)
+            self.download_certs()
 
             # Set credentials location in the Spark configuration
             # Set other options in the Spark configuration
@@ -142,22 +145,17 @@ class Client(base.Client):
             for conf_key, conf_value in configuration_dict.items():
                 _spark_session._jsc.hadoopConfiguration().set(conf_key, conf_value)
 
-    def download_certs(self, project):
-        res = self._materialize_certs(project)
+    def download_certs(self):
+        res = self._materialize_certs()
         self._write_pem_file(res["caChain"], self._get_ca_chain_path())
         self._write_pem_file(res["clientCert"], self._get_client_cert_path())
         self._write_pem_file(res["clientKey"], self._get_client_key_path())
         return res
 
-    def _materialize_certs(self, project):
-        if project != self._project_name:
-            self._project_name = project
-            _logger.debug("Project name: %s", self._project_name)
-            project_info = self._get_project_info(project)
-            self._project_id = str(project_info["projectId"])
-            _logger.debug("Setting Project ID: %s", self._project_id)
-
-        self._cert_folder = os.path.join(self._cert_folder_base, self._host, project)
+    def _materialize_certs(self):
+        self._cert_folder = os.path.join(
+            self._cert_folder_base, self._host, self._project_name
+        )
         self._trust_store_path = os.path.join(self._cert_folder, "trustStore.jks")
         self._key_store_path = os.path.join(self._cert_folder, "keyStore.jks")
 
@@ -255,29 +253,23 @@ class Client(base.Client):
         _logger.debug("Getting key store path: %s", self._key_store_path)
         return self._key_store_path
 
-    def _get_ca_chain_path(self, project_name=None) -> str:
-        if project_name is None:
-            project_name = self._project_name
+    def _get_ca_chain_path(self) -> str:
         path = os.path.join(
-            self._cert_folder_base, self._host, project_name, "ca_chain.pem"
+            self._cert_folder_base, self._host, self._project_name, "ca_chain.pem"
         )
         _logger.debug(f"Getting ca chain path {path}")
         return path
 
-    def _get_client_cert_path(self, project_name=None) -> str:
-        if project_name is None:
-            project_name = self._project_name
+    def _get_client_cert_path(self) -> str:
         path = os.path.join(
-            self._cert_folder_base, self._host, project_name, "client_cert.pem"
+            self._cert_folder_base, self._host, self._project_name, "client_cert.pem"
         )
         _logger.debug(f"Getting client cert path {path}")
         return path
 
-    def _get_client_key_path(self, project_name=None) -> str:
-        if project_name is None:
-            project_name = self._project_name
+    def _get_client_key_path(self) -> str:
         path = os.path.join(
-            self._cert_folder_base, self._host, project_name, "client_key.pem"
+            self._cert_folder_base, self._host, self._project_name, "client_key.pem"
         )
         _logger.debug(f"Getting client key path {path}")
         return path

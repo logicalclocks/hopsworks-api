@@ -32,7 +32,6 @@ class Library:
         type=None,
         href=None,
         environment=None,
-        project_id=None,
         **kwargs,
     ):
         self._channel = channel
@@ -47,9 +46,8 @@ class Library:
         )
 
         self._environment = environment
-        self._project_id = project_id
 
     @classmethod
-    def from_response_json(cls, json_dict, environment, project_id):
+    def from_response_json(cls, json_dict, environment):
         json_decamelized = humps.decamelize(json_dict)
-        return cls(**json_decamelized, environment=environment, project_id=project_id)
+        return cls(**json_decamelized, environment=environment)

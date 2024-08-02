@@ -18,7 +18,7 @@ import os
 from typing import Optional
 
 import humps
-from hopsworks_common import command, util
+from hopsworks_common import client, command, util
 from hopsworks_common.core import environment_api, library_api
 from hopsworks_common.engine import environment_engine
 
@@ -37,8 +37,6 @@ class Environment:
         commands=None,
         href=None,
         type=None,
-        project_id=None,
-        project_name=None,
         **kwargs,
     ):
         self._name = name
@@ -51,31 +49,18 @@ class Environment:
         self._commands = (
             command.Command.from_response_json(commands) if commands else None
         )
-        self._project_id = project_id
-        self._project_name = project_name
 
-        self._environment_engine = environment_engine.EnvironmentEngine(project_id)
-        self._library_api = library_api.LibraryApi(project_id, project_name)
-        self._environment_api = environment_api.EnvironmentApi(project_id, project_name)
+        self._environment_engine = environment_engine.EnvironmentEngine()
+        self._library_api = library_api.LibraryApi()
+        self._environment_api = environment_api.EnvironmentApi()
 
     @classmethod
-    def from_response_json(cls, json_dict, project_id, project_name):
+    def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
         if "count" in json_decamelized:
-            return [
-                cls(
-                    **env,
-                    project_id=project_id,
-                    project_name=project_name,
-                )
-                for env in json_decamelized["items"]
-            ]
+            return [cls(**env) for env in json_decamelized["items"]]
         else:
-            return cls(
-                **json_decamelized,
-                project_id=project_id,
-                project_name=project_name,
-            )
+            return cls(**json_decamelized)
 
     @property
     def python_version(self):
@@ -125,7 +110,8 @@ class Environment:
 
         library_name = os.path.basename(path)
 
-        path = util.convert_to_abs(path, self._project_name)
+        _client = client.get_instance()
+        path = util.convert_to_abs(path, _client._project_name)
 
         library_spec = {
             "dependencyUrl": path,
@@ -178,7 +164,8 @@ class Environment:
 
         library_name = os.path.basename(path)
 
-        path = util.convert_to_abs(path, self._project_name)
+        _client = client.get_instance()
+        path = util.convert_to_abs(path, _client._project_name)
 
         library_spec = {
             "dependencyUrl": path,

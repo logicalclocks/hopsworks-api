@@ -21,13 +21,7 @@ from hopsworks.core import variable_api
 
 
 class OpenSearchApi:
-    def __init__(
-        self,
-        project_id,
-        project_name,
-    ):
-        self._project_id = project_id
-        self._project_name = project_name
+    def __init__(self):
         self._variable_api = variable_api.VariableApi()
 
     def _get_opensearch_url(self):
@@ -60,7 +54,8 @@ class OpenSearchApi:
         Returns:
             A valid opensearch index name.
         """
-        return (self._project_name + "_" + index).lower()
+        _client = client.get_instance()
+        return (_client._project_name + "_" + index).lower()
 
     def get_default_py_config(self):
         """
@@ -91,9 +86,7 @@ class OpenSearchApi:
             constants.OPENSEARCH_CONFIG.USE_SSL: True,
             constants.OPENSEARCH_CONFIG.VERIFY_CERTS: True,
             constants.OPENSEARCH_CONFIG.SSL_ASSERT_HOSTNAME: False,
-            constants.OPENSEARCH_CONFIG.CA_CERTS: client.get_instance()._get_ca_chain_path(
-                self._project_name
-            ),
+            constants.OPENSEARCH_CONFIG.CA_CERTS: client.get_instance()._get_ca_chain_path(),
         }
 
     def _get_authorization_token(self):
@@ -106,7 +99,7 @@ class OpenSearchApi:
         """
 
         _client = client.get_instance()
-        path_params = ["elastic", "jwt", self._project_id]
+        path_params = ["elastic", "jwt", _client._project_id]
 
         headers = {"content-type": "application/json"}
         return _client._send_request("GET", path_params, headers=headers)["token"]

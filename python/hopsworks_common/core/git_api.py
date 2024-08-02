@@ -33,17 +33,9 @@ from hopsworks_common.git_file_status import GitFileStatus
 
 
 class GitApi:
-    def __init__(
-        self,
-        project_id,
-        project_name,
-    ):
-        self._project_id = project_id
-        self._project_name = project_name
-        self._git_engine = git_engine.GitEngine(project_id, project_name)
-        self._git_provider_api = git_provider_api.GitProviderApi(
-            project_id, project_name
-        )
+    def __init__(self):
+        self._git_engine = git_engine.GitEngine()
+        self._git_provider_api = git_provider_api.GitProviderApi()
         self._log = logging.getLogger(__name__)
 
     def clone(self, url: str, path: str, provider: str = None, branch: str = None):
@@ -74,12 +66,12 @@ class GitApi:
         _client = client.get_instance()
 
         # Support absolute and relative path to dataset
-        path = util.convert_to_abs(path, self._project_name)
+        path = util.convert_to_abs(path, _client._project_name)
 
         if provider is None:
             provider = self._git_provider_api._get_default_configured_provider()
 
-        path_params = ["project", self._project_id, "git", "clone"]
+        path_params = ["project", _client._project_id, "git", "clone"]
 
         clone_config = {
             "url": url,
@@ -97,14 +89,12 @@ class GitApi:
                 headers=headers,
                 data=json.dumps(clone_config),
                 query_params=query_params,
-            ),
-            self._project_id,
-            self._project_name,
+            )
         )
         print(
             "Git clone operation running, explore it at "
             + util.get_hostname_replaced_url(
-                "/p/" + str(self._project_id) + "/settings/git"
+                "/p/" + str(_client._project_id) + "/settings/git"
             )
         )
         git_op = self._git_engine.execute_op_blocking(git_op, "CLONE")
@@ -122,14 +112,12 @@ class GitApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "git",
         ]
         query_params = {"expand": "creator"}
         return git_repo.GitRepo.from_response_json(
-            _client._send_request("GET", path_params, query_params=query_params),
-            self._project_id,
-            self._project_name,
+            _client._send_request("GET", path_params, query_params=query_params)
         )
 
     def get_providers(self):
@@ -191,19 +179,17 @@ class GitApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "git",
         ]
         query_params = {"expand": "creator"}
 
         repos = git_repo.GitRepo.from_response_json(
-            _client._send_request("GET", path_params, query_params=query_params),
-            self._project_id,
-            self._project_name,
+            _client._send_request("GET", path_params, query_params=query_params)
         )
 
         if path is not None:
-            path = util.convert_to_abs(path, self._project_name)
+            path = util.convert_to_abs(path, _client._project_name)
 
         filtered_repos = []
         for repository in repos:
@@ -228,7 +214,7 @@ class GitApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "git",
             "repository",
             str(repo_id),
@@ -239,7 +225,7 @@ class GitApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "git",
             "repository",
             str(repo_id),
@@ -257,9 +243,7 @@ class GitApi:
         git_op = git_op_execution.GitOpExecution.from_response_json(
             _client._send_request(
                 "POST", path_params, headers=headers, query_params=query_params
-            ),
-            self._project_id,
-            self._project_name,
+            )
         )
         _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
 
@@ -267,7 +251,7 @@ class GitApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "git",
             "repository",
             str(repo_id),
@@ -284,9 +268,7 @@ class GitApi:
         git_op = git_op_execution.GitOpExecution.from_response_json(
             _client._send_request(
                 "POST", path_params, headers=headers, query_params=query_params
-            ),
-            self._project_id,
-            self._project_name,
+            )
         )
         _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
 
@@ -296,7 +278,7 @@ class GitApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "git",
             "repository",
             str(repo_id),
@@ -314,9 +296,7 @@ class GitApi:
         git_op = git_op_execution.GitOpExecution.from_response_json(
             _client._send_request(
                 "POST", path_params, headers=headers, query_params=query_params
-            ),
-            self._project_id,
-            self._project_name,
+            )
         )
         _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
 
@@ -324,7 +304,7 @@ class GitApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "git",
             "repository",
             str(repo_id),
@@ -339,9 +319,7 @@ class GitApi:
                 path_params,
                 headers=headers,
                 query_params=query_params,
-            ),
-            self._project_id,
-            self._project_name,
+            )
         )
         git_op = self._git_engine.execute_op_blocking(git_op, query_params["action"])
 
@@ -362,7 +340,7 @@ class GitApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "git",
             "repository",
             str(repo_id),
@@ -384,9 +362,7 @@ class GitApi:
                 headers=headers,
                 query_params=query_params,
                 data=json.dumps(commit_config),
-            ),
-            self._project_id,
-            self._project_name,
+            )
         )
         _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
 
@@ -394,7 +370,7 @@ class GitApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "git",
             "repository",
             str(repo_id),
@@ -416,9 +392,7 @@ class GitApi:
                 headers=headers,
                 query_params=query_params,
                 data=json.dumps(push_config),
-            ),
-            self._project_id,
-            self._project_name,
+            )
         )
         _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
 
@@ -426,7 +400,7 @@ class GitApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "git",
             "repository",
             str(repo_id),
@@ -448,9 +422,7 @@ class GitApi:
                 headers=headers,
                 query_params=query_params,
                 data=json.dumps(push_config),
-            ),
-            self._project_id,
-            self._project_name,
+            )
         )
         _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
 
@@ -460,7 +432,7 @@ class GitApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "git",
             "repository",
             str(repo_id),
@@ -477,9 +449,7 @@ class GitApi:
                 headers=headers,
                 query_params=query_params,
                 data=json.dumps({"files": files}),
-            ),
-            self._project_id,
-            self._project_name,
+            )
         )
         _ = self._git_engine.execute_op_blocking(git_op, "CHECKOUT_FILES")
 
@@ -487,7 +457,7 @@ class GitApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "git",
             "repository",
             str(repo_id),

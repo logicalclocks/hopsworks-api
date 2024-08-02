@@ -23,14 +23,8 @@ from hopsworks.core import job_api
 
 
 class FlinkClusterApi:
-    def __init__(
-        self,
-        project_id,
-        project_name,
-    ):
-        self._project_id = project_id
-        self._project_name = project_name
-        self._job_api = job_api.JobsApi(project_id, project_name)
+    def __init__(self):
+        self._job_api = job_api.JobsApi()
 
     def get_configuration(self):
         """Get configuration for the Flink cluster.
@@ -85,21 +79,17 @@ class FlinkClusterApi:
     def _create_cluster(self, name: str, config: dict):
         _client = client.get_instance()
 
-        config = util.validate_job_conf(config, self._project_name)
+        config = util.validate_job_conf(config, _client._project_name)
 
-        path_params = ["project", self._project_id, "jobs", name]
+        path_params = ["project", _client._project_id, "jobs", name]
 
         headers = {"content-type": "application/json"}
         flink_job = job.Job.from_response_json(
             _client._send_request(
                 "PUT", path_params, headers=headers, data=json.dumps(config)
-            ),
-            self._project_id,
-            self._project_name,
+            )
         )
-        flink_cluster_obj = flink_cluster.FlinkCluster(
-            flink_job, self._project_id, self._project_name
-        )
+        flink_cluster_obj = flink_cluster.FlinkCluster(flink_job)
         print(flink_cluster_obj.get_url())
         return flink_cluster_obj
 
@@ -126,20 +116,16 @@ class FlinkClusterApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "jobs",
             name,
         ]
         query_params = {"expand": ["creator"]}
         flink_job = job.Job.from_response_json(
-            _client._send_request("GET", path_params, query_params=query_params),
-            self._project_id,
-            self._project_name,
+            _client._send_request("GET", path_params, query_params=query_params)
         )
 
-        return flink_cluster.FlinkCluster(
-            flink_job, self._project_id, self._project_name
-        )
+        return flink_cluster.FlinkCluster(flink_job)
 
     def _get_job(self, execution, job_id):
         """Get specific job from the specific execution of the flink cluster.

@@ -30,11 +30,8 @@ class KafkaTopic:
         schema_name=None,
         schema_version=None,
         schema_content=None,
-        owner_project_id=None,
         shared=None,
         accepted=None,
-        project_id=None,
-        project_name=None,
         type=None,
         href=None,
         expand=None,
@@ -48,26 +45,20 @@ class KafkaTopic:
         self._schema_name = schema_name
         self._schema_version = schema_version
         self._schema_content = schema_content
-        self._owner_project_id = owner_project_id
         self._shared = shared
         self._accepted = accepted
 
-        self._kafka_api = kafka_api.KafkaApi(project_id, project_name)
+        self._kafka_api = kafka_api.KafkaApi()
 
     @classmethod
-    def from_response_json(cls, json_dict, project_id, project_name):
+    def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
         if "count" not in json_decamelized:
-            return cls(
-                **json_decamelized, project_id=project_id, project_name=project_name
-            )
+            return cls(**json_decamelized)
         elif json_decamelized["count"] == 0:
             return []
         else:
-            return [
-                cls(**kafka_topic, project_id=project_id, project_name=project_name)
-                for kafka_topic in json_decamelized["items"]
-            ]
+            return [cls(**kafka_topic) for kafka_topic in json_decamelized["items"]]
 
     def update_from_response_json(self, json_dict):
         json_decamelized = humps.decamelize(json_dict)

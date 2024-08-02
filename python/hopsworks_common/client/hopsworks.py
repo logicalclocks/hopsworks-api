@@ -93,13 +93,13 @@ class Client(base.Client):
             self._write_ca_chain(ks, ts, ca_chain_path)
         return str(ca_chain_path)
 
-    def _get_ca_chain_path(self, project_name=None) -> str:
+    def _get_ca_chain_path(self) -> str:
         return os.path.join("/tmp", "ca_chain.pem")
 
-    def _get_client_cert_path(self, project_name=None) -> str:
+    def _get_client_cert_path(self) -> str:
         return os.path.join("/tmp", "client_cert.pem")
 
-    def _get_client_key_path(self, project_name=None) -> str:
+    def _get_client_key_path(self) -> str:
         return os.path.join("/tmp", "client_key.pem")
 
     def _get_jks_trust_store_path(self):
