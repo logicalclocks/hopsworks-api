@@ -36,7 +36,6 @@ import com.logicalclocks.hsfs.TrainingDatasetBase;
 import com.logicalclocks.hsfs.TrainingDatasetType;
 import com.logicalclocks.hsfs.constructor.Filter;
 import com.logicalclocks.hsfs.constructor.FilterLogic;
-import com.logicalclocks.hsfs.engine.CodeEngine;
 import com.logicalclocks.hsfs.engine.FeatureGroupUtils;
 import com.logicalclocks.hsfs.metadata.Statistics;
 import lombok.Builder;
@@ -64,7 +63,6 @@ public class TrainingDataset extends TrainingDatasetBase {
 
   private TrainingDatasetEngine trainingDatasetEngine = new TrainingDatasetEngine();
   private StatisticsEngine statisticsEngine = new StatisticsEngine(EntityEndpointType.TRAINING_DATASET);
-  private CodeEngine codeEngine = new CodeEngine(EntityEndpointType.TRAINING_DATASET);
 
   @Builder
   public TrainingDataset(@NonNull String name, Integer version, String description, DataFormat dataFormat,
@@ -122,7 +120,6 @@ public class TrainingDataset extends TrainingDatasetBase {
     this.queryInt = query;
     TrainingDataset trainingDataset = trainingDatasetEngine.save(this, this.queryInt, writeOptions, label);
     this.setStorageConnector(trainingDataset.getStorageConnector());
-    codeEngine.saveCode(this);
     computeStatistics();
   }
 

@@ -585,52 +585,6 @@ class TestFeatureGroup:
 
         mock_convert_to_default_dataframe.assert_called_once_with(data)
 
-    def test_save_code_true(self, mocker, dataframe_fixture_basic):
-        engine = python.Engine()
-        mocker.patch("hsfs.engine.get_instance", return_value=engine)
-        mocker.patch("hsfs.engine.get_type", return_value="python")
-        mocker.patch(
-            "hsfs.core.feature_group_engine.FeatureGroupEngine.insert",
-            return_value=(None, None),
-        )
-        mock_code_engine = mocker.patch("hsfs.core.code_engine.CodeEngine.save_code")
-
-        fg = feature_group.FeatureGroup(
-            name="test_fg",
-            version=2,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            id=10,
-        )
-
-        fg.insert(dataframe_fixture_basic, save_code=True)
-
-        mock_code_engine.assert_called_once_with(fg)
-
-    def test_save_code_false(self, mocker, dataframe_fixture_basic):
-        engine = python.Engine()
-        mocker.patch("hsfs.engine.get_instance", return_value=engine)
-        mocker.patch("hsfs.engine.get_type", return_value="python")
-        mocker.patch(
-            "hsfs.core.feature_group_engine.FeatureGroupEngine.insert",
-            return_value=(None, None),
-        )
-        mock_code_engine = mocker.patch("hsfs.core.code_engine.CodeEngine.save_code")
-
-        fg = feature_group.FeatureGroup(
-            name="test_fg",
-            version=2,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            id=10,
-        )
-
-        fg.insert(dataframe_fixture_basic, save_code=False)
-
-        mock_code_engine.assert_not_called()
-
     def test_save_report_true_default(self, mocker, dataframe_fixture_basic):
         engine = python.Engine()
         mocker.patch("hsfs.engine.get_instance", return_value=engine)

@@ -31,7 +31,6 @@ import com.logicalclocks.hsfs.JobConfiguration;
 import com.logicalclocks.hsfs.StatisticsConfig;
 import com.logicalclocks.hsfs.Storage;
 import com.logicalclocks.hsfs.TimeTravelFormat;
-import com.logicalclocks.hsfs.engine.CodeEngine;
 import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.metadata.Statistics;
 import lombok.AllArgsConstructor;
@@ -58,7 +57,6 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
 
   private final FeatureGroupEngine featureGroupEngine = new FeatureGroupEngine();
   protected StatisticsEngine statisticsEngine = new StatisticsEngine(EntityEndpointType.FEATURE_GROUP);
-  private final CodeEngine codeEngine = new CodeEngine(EntityEndpointType.FEATURE_GROUP);
 
   @Builder
   public FeatureGroup(FeatureStore featureStore, @NonNull String name, Integer version,
@@ -419,7 +417,6 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
       throws FeatureStoreException, IOException, ParseException {
     featureGroupEngine.save(this, featureData, partitionKeys, hudiPrecombineKey,
         writeOptions);
-    codeEngine.saveCode(this);
     if (statisticsConfig.getEnabled()) {
       statisticsEngine.computeStatistics(this, featureData, null);
     }
@@ -744,7 +741,6 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
     featureGroupEngine.insert(this, featureData, storage, operation,
         overwrite ? SaveMode.Overwrite : SaveMode.Append, partitionKeys, hudiPrecombineKey, writeOptions);
 
-    codeEngine.saveCode(this);
     computeStatistics();
   }
 

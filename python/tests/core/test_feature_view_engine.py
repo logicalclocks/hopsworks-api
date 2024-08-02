@@ -1183,7 +1183,6 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine.get_batch_query")
         mocker.patch("hsfs.engine.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
-        mocker.patch("hsfs.core.code_engine.CodeEngine")
         mock_td_engine = mocker.patch(
             "hsfs.core.training_dataset_engine.TrainingDatasetEngine"
         )
@@ -1221,7 +1220,6 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine.get_batch_query")
         mocker.patch("hsfs.engine.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
-        mocker.patch("hsfs.core.code_engine.CodeEngine")
         mock_td_engine = mocker.patch(
             "hsfs.core.training_dataset_engine.TrainingDatasetEngine"
         )
@@ -1266,7 +1264,6 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine.get_batch_query")
         mocker.patch("hsfs.engine.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
-        mocker.patch("hsfs.core.code_engine.CodeEngine")
         mock_td_engine = mocker.patch(
             "hsfs.core.training_dataset_engine.TrainingDatasetEngine"
         )
@@ -1313,7 +1310,6 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine.get_batch_query")
         mocker.patch("hsfs.engine.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
-        mocker.patch("hsfs.core.code_engine.CodeEngine")
         mock_td_engine = mocker.patch(
             "hsfs.core.training_dataset_engine.TrainingDatasetEngine"
         )
@@ -1358,7 +1354,6 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine.get_batch_query")
         mocker.patch("hsfs.engine.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
-        mocker.patch("hsfs.core.code_engine.CodeEngine")
         mock_td_engine = mocker.patch(
             "hsfs.core.training_dataset_engine.TrainingDatasetEngine"
         )

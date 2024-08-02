@@ -62,7 +62,6 @@ from hsfs.client.exceptions import FeatureStoreException, RestAPIError
 from hsfs.constructor import filter, query
 from hsfs.constructor.filter import Filter, Logic
 from hsfs.core import (
-    code_engine,
     deltastreamer_jobconf,
     expectation_suite_engine,
     explicit_provenance,
@@ -155,9 +154,6 @@ class FeatureGroupBase:
         ] = None
         self._statistics_engine: statistics_engine.StatisticsEngine = (
             statistics_engine.StatisticsEngine(featurestore_id, self.ENTITY_TYPE)
-        )
-        self._code_engine: code_engine.CodeEngine = code_engine.CodeEngine(
-            featurestore_id, self.ENTITY_TYPE
         )
         self._great_expectation_engine: great_expectation_engine.GreatExpectationEngine = great_expectation_engine.GreatExpectationEngine(
             featurestore_id
@@ -2616,8 +2612,6 @@ class FeatureGroup(FeatureGroupBase):
         fg_job, ge_report = self._feature_group_engine.save(
             self, feature_dataframe, write_options, validation_options or {}
         )
-        if ge_report is None or ge_report.ingestion_result == "INGESTED":
-            self._code_engine.save_code(self)
 
         if self.statistics_config.enabled and engine.get_type().startswith("spark"):
             # Only compute statistics if the engine is Spark.
@@ -2651,7 +2645,6 @@ class FeatureGroup(FeatureGroupBase):
         storage: Optional[str] = None,
         write_options: Optional[Dict[str, Any]] = None,
         validation_options: Optional[Dict[str, Any]] = None,
-        save_code: Optional[bool] = True,
         wait: bool = False,
     ) -> Tuple[Optional[Job], Optional[ValidationReport]]:
         """Persist the metadata and materialize the feature group to the feature store
@@ -2757,10 +2750,6 @@ class FeatureGroup(FeatureGroupBase):
                 * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
                 * key `fetch_expectation_suite` a boolean value, by default `True`, to control whether the expectation
                    suite of the feature group should be fetched before every insert.
-            save_code: When running HSFS on Hopsworks or Databricks, HSFS can save the code/notebook used to create
-                the feature group or used to insert data to it. When calling the `insert` method repeatedly
-                with small batches of data, this can slow down the writes. Use this option to turn off saving
-                code. Defaults to `True`.
             wait: Wait for job to finish before returning, defaults to `False`.
                 Shortcut for read_options `{"wait_for_job": False}`.
 
@@ -2797,10 +2786,6 @@ class FeatureGroup(FeatureGroupBase):
             write_options=write_options,
             validation_options={"save_report": True, **validation_options},
         )
-        if save_code and (
-            ge_report is None or ge_report.ingestion_result == "INGESTED"
-        ):
-            self._code_engine.save_code(self)
 
         if engine.get_type().startswith("spark") and not self.stream:
             # Also, only compute statistics if stream is False.
@@ -3716,7 +3701,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
         fg.save()
         """
         self._feature_group_engine.save(self)
-        self._code_engine.save_code(self)
 
         if self.statistics_config.enabled:
             self._statistics_engine.compute_and_save_statistics(self)
@@ -3732,7 +3716,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
         ],
         write_options: Optional[Dict[str, Any]] = None,
         validation_options: Optional[Dict[str, Any]] = None,
-        save_code: Optional[bool] = True,
         wait: bool = False,
     ) -> Tuple[
         None, Optional[great_expectations.core.ExpectationSuiteValidationResult]
@@ -3785,10 +3768,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
                 * key `fetch_expectation_suite` a boolean value, by default `True`, to control whether the expectation
                    suite of the feature group should be fetched before every insert.
-            save_code: When running HSFS on Hopsworks or Databricks, HSFS can save the code/notebook used to create
-                the feature group or used to insert data to it. When calling the `insert` method repeatedly
-                with small batches of data, this can slow down the writes. Use this option to turn off saving
-                code. Defaults to `True`.
 
         # Returns
             Tuple(None, `ge.core.ExpectationSuiteValidationResult`) The validation report if validation is enabled.
@@ -3815,11 +3794,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
             write_options=write_options,
             validation_options={"save_report": True, **validation_options},
         )
-
-        if save_code and (
-            ge_report is None or ge_report.ingestion_result == "INGESTED"
-        ):
-            self._code_engine.save_code(self)
 
         if self.statistics_config.enabled:
             warnings.warn(

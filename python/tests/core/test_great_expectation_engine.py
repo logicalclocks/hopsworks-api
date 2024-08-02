@@ -26,7 +26,7 @@ if HAS_GREAT_EXPECTATIONS:
     import great_expectations
 
 
-class TestCodeEngine:
+class TestGreatExpectationEngine:
     def test_validate(self, mocker):
         # Arrange
         feature_store_id = 99
