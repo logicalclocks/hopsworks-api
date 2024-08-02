@@ -17,7 +17,7 @@
 import json
 
 import humps
-from hopsworks import constants, util
+from hopsworks import client, constants, util
 from hopsworks.core import execution_api
 from hopsworks.engine import execution_engine
 
@@ -42,7 +42,6 @@ class Execution:
         monitoring=None,
         type=None,
         href=None,
-        project_id=None,
         job=None,
         **kwargs,
     ):
@@ -60,22 +59,20 @@ class Execution:
         self._app_id = app_id
         self._hdfs_user = hdfs_user
         self._job = job
-        self._project_id = project_id
 
-        self._execution_engine = execution_engine.ExecutionEngine(project_id)
-        self._execution_api = execution_api.ExecutionsApi(project_id)
+        self._execution_engine = execution_engine.ExecutionEngine()
+        self._execution_api = execution_api.ExecutionsApi()
 
     @classmethod
-    def from_response_json(cls, json_dict, project_id, job):
+    def from_response_json(cls, json_dict, job):
         json_decamelized = humps.decamelize(json_dict)
         if "count" not in json_decamelized:
-            return cls(**json_decamelized, project_id=project_id, job=job)
+            return cls(**json_decamelized, job=job)
         elif json_decamelized["count"] == 0:
             return []
         else:
             return [
-                cls(**execution, project_id=project_id, job=job)
-                for execution in json_decamelized["items"]
+                cls(**execution, job=job) for execution in json_decamelized["items"]
             ]
 
     def update_from_response_json(self, json_dict):
@@ -240,9 +237,10 @@ class Execution:
         return f"Execution({self._final_status!r}, {self._state!r}, {self._submission_time!r}, {self._args!r})"
 
     def get_url(self):
+        _client = client.get_instance()
         path = (
             "/p/"
-            + str(self._project_id)
+            + str(_client._project_id)
             + "/jobs/named/"
             + self.job_name
             + "/executions"

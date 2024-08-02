@@ -26,14 +26,6 @@ from hopsworks_common.client.external import Client
 
 
 class KafkaApi:
-    def __init__(
-        self,
-        project_id=None,
-        project_name=None,
-    ):
-        self._project_id = project_id
-        self._project_name = project_name
-
     def create_topic(
         self,
         name: str,
@@ -68,7 +60,7 @@ class KafkaApi:
         """
         _client = client.get_instance()
 
-        path_params = ["project", self._project_id, "kafka", "topics"]
+        path_params = ["project", _client._project_id, "kafka", "topics"]
         data = {
             "name": name,
             "schemaName": schema,
@@ -81,9 +73,7 @@ class KafkaApi:
         return kafka_topic.KafkaTopic.from_response_json(
             _client._send_request(
                 "POST", path_params, headers=headers, data=json.dumps(data)
-            ),
-            self._project_id,
-            self._project_name,
+            )
         )
 
     def create_schema(self, subject: str, schema: dict):
@@ -127,7 +117,7 @@ class KafkaApi:
 
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "kafka",
             "subjects",
             subject,
@@ -141,9 +131,7 @@ class KafkaApi:
                 path_params,
                 headers=headers,
                 data=json.dumps({"schema": json.dumps(schema)}),
-            ),
-            self._project_id,
-            self._project_name,
+            )
         )
         # TODO: Fix backend, GET request required as POST does not set schema field in the returned payload
         return self.get_schema(schema.subject, schema.version)
@@ -175,12 +163,10 @@ class KafkaApi:
             `RestAPIError`: If unable to get the topics
         """
         _client = client.get_instance()
-        path_params = ["project", self._project_id, "kafka", "topics"]
+        path_params = ["project", _client._project_id, "kafka", "topics"]
 
         return kafka_topic.KafkaTopic.from_response_json(
-            _client._send_request("GET", path_params),
-            self._project_id,
-            self._project_name,
+            _client._send_request("GET", path_params)
         )
 
     def _delete_topic(self, name: str):
@@ -191,7 +177,7 @@ class KafkaApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "kafka",
             "topics",
             name,
@@ -208,7 +194,7 @@ class KafkaApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "kafka",
             "subjects",
             subject,
@@ -247,7 +233,7 @@ class KafkaApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "kafka",
             "subjects",
             subject,
@@ -294,7 +280,7 @@ class KafkaApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "kafka",
             "subjects",
             subject,
@@ -303,16 +289,14 @@ class KafkaApi:
         ]
 
         return kafka_schema.KafkaSchema.from_response_json(
-            _client._send_request("GET", path_params),
-            self._project_id,
-            self._project_name,
+            _client._send_request("GET", path_params)
         )
 
     def _get_broker_endpoints(self, externalListeners: bool = False):
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "kafka",
             "clusterinfo",
         ]
@@ -354,22 +338,16 @@ class KafkaApi:
             `RestAPIError`: If unable to get the kafka configuration.
         """
 
+        _client = client.get_instance()
         config = {
             constants.KAFKA_SSL_CONFIG.SECURITY_PROTOCOL_CONFIG: self._get_security_protocol(),
-            constants.KAFKA_SSL_CONFIG.SSL_CA_LOCATION_CONFIG: client.get_instance()._get_ca_chain_path(
-                self._project_name
-            ),
-            constants.KAFKA_SSL_CONFIG.SSL_CERTIFICATE_LOCATION_CONFIG: client.get_instance()._get_client_cert_path(
-                self._project_name
-            ),
-            constants.KAFKA_SSL_CONFIG.SSL_PRIVATE_KEY_LOCATION_CONFIG: client.get_instance()._get_client_key_path(
-                self._project_name
-            ),
+            constants.KAFKA_SSL_CONFIG.SSL_CA_LOCATION_CONFIG: _client._get_ca_chain_path(),
+            constants.KAFKA_SSL_CONFIG.SSL_CERTIFICATE_LOCATION_CONFIG: _client._get_client_cert_path(),
+            constants.KAFKA_SSL_CONFIG.SSL_PRIVATE_KEY_LOCATION_CONFIG: _client._get_client_key_path(),
             constants.KAFKA_CONSUMER_CONFIG.CLIENT_ID_CONFIG: socket.gethostname(),
             constants.KAFKA_CONSUMER_CONFIG.GROUP_ID_CONFIG: "my-group-id",
             constants.KAFKA_SSL_CONFIG.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG: "none",
         }
-        _client = client.get_instance()
         if type(_client) is Client:
             config[constants.KAFKA_PRODUCER_CONFIG.BOOTSTRAP_SERVERS_CONFIG] = ",".join(
                 [

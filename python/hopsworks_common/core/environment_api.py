@@ -22,15 +22,8 @@ from hopsworks_common.engine import environment_engine
 
 
 class EnvironmentApi:
-    def __init__(
-        self,
-        project_id,
-        project_name,
-    ):
-        self._project_id = project_id
-        self._project_name = project_name
-
-        self._environment_engine = environment_engine.EnvironmentEngine(project_id)
+    def __init__(self):
+        self._environment_engine = environment_engine.EnvironmentEngine()
 
     def create_environment(
         self,
@@ -66,7 +59,7 @@ class EnvironmentApi:
 
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "python",
             "environments",
             name,
@@ -79,9 +72,7 @@ class EnvironmentApi:
         env = environment.Environment.from_response_json(
             _client._send_request(
                 "POST", path_params, headers=headers, data=json.dumps(data)
-            ),
-            self._project_id,
-            self._project_name,
+            )
         )
 
         if await_creation:
@@ -95,15 +86,13 @@ class EnvironmentApi:
         """
         _client = client.get_instance()
 
-        path_params = ["project", self._project_id, "python", "environments"]
+        path_params = ["project", _client._project_id, "python", "environments"]
         query_params = {"expand": ["libraries", "commands"]}
         headers = {"content-type": "application/json"}
         return environment.Environment.from_response_json(
             _client._send_request(
                 "GET", path_params, query_params=query_params, headers=headers
-            ),
-            self._project_id,
-            self._project_name,
+            )
         )
 
     def get_environment(self, name: str) -> environment.Environment:
@@ -129,15 +118,13 @@ class EnvironmentApi:
         """
         _client = client.get_instance()
 
-        path_params = ["project", self._project_id, "python", "environments", name]
+        path_params = ["project", _client._project_id, "python", "environments", name]
         query_params = {"expand": ["libraries", "commands"]}
         headers = {"content-type": "application/json"}
         return environment.Environment.from_response_json(
             _client._send_request(
                 "GET", path_params, query_params=query_params, headers=headers
-            ),
-            self._project_id,
-            self._project_name,
+            )
         )
 
     def _delete(self, name):
@@ -149,7 +136,7 @@ class EnvironmentApi:
 
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "python",
             "environments",
             name,

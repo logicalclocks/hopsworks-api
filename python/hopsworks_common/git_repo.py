@@ -40,8 +40,6 @@ class GitRepo:
         expand=None,
         items=None,
         count=None,
-        project_id=None,
-        project_name=None,
         **kwargs,
     ):
         self._id = id
@@ -57,25 +55,20 @@ class GitRepo:
         self._expand = expand
         self._items = items
         self._count = count
-        self._project_id = project_id
 
-        self._git_api = git_api.GitApi(project_id, project_name)
-        self._git_remote_api = git_remote_api.GitRemoteApi(project_id, project_name)
-        self._dataset_api = dataset_api.DatasetApi(project_id)
+        self._git_api = git_api.GitApi()
+        self._git_remote_api = git_remote_api.GitRemoteApi()
+        self._dataset_api = dataset_api.DatasetApi()
 
     @classmethod
-    def from_response_json(cls, json_dict, project_id, project_name):
+    def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
         if "count" in json_decamelized:
             if json_decamelized["count"] == 0:
                 return []
-            return [
-                cls(**repo, project_id=project_id) for repo in json_decamelized["items"]
-            ]
+            return [cls(**repo) for repo in json_decamelized["items"]]
         else:
-            return cls(
-                **json_decamelized, project_id=project_id, project_name=project_name
-            )
+            return cls(**json_decamelized)
 
     @property
     def id(self):

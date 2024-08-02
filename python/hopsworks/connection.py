@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 
+import importlib
 import os
 import re
 import sys
@@ -111,6 +112,7 @@ class Connection:
         self._api_key_file = api_key_file
         self._api_key_value = api_key_value
         self._connected = False
+        self._engine = None
 
         self.connect()
 
@@ -239,12 +241,33 @@ class Connection:
         try:
             # init client
             if client.base.Client.REST_ENDPOINT not in os.environ:
+                # determine engine, needed to init client
+                if (self._engine is not None and self._engine.lower() == "spark") or (
+                    self._engine is None and importlib.util.find_spec("pyspark")
+                ):
+                    self._engine = "spark"
+                elif (
+                    self._engine is not None and self._engine.lower() == "python"
+                ) or (self._engine is None and not importlib.util.find_spec("pyspark")):
+                    self._engine = "python"
+                elif self._engine is not None and self._engine.lower() == "training":
+                    self._engine = "training"
+                elif (
+                    self._engine is not None
+                    and self._engine.lower() == "spark-no-metastore"
+                ):
+                    self._engine = "spark-no-metastore"
+                else:
+                    raise ConnectionError(
+                        "Engine you are trying to initialize is unknown. "
+                        "Supported engines are `'spark'`, `'python'` and `'training'`."
+                    )
                 client.init(
                     "external",
                     self._host,
                     self._port,
                     self._project,
-                    None,
+                    self._engine,
                     self._hostname_verification,
                     self._trust_store_path,
                     self._cert_folder,

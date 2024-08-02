@@ -20,7 +20,6 @@ import json
 import hsfs.feature_store
 import humps
 from hopsworks import client, constants, util
-from hopsworks.client.external import Client
 from hopsworks.core import (
     dataset_api,
     environment_api,
@@ -60,15 +59,13 @@ class Project:
         self._description = description
         self._created = created
 
-        self._opensearch_api = opensearch_api.OpenSearchApi(project_id, project_name)
-        self._kafka_api = kafka_api.KafkaApi(project_id, project_name)
-        self._jobs_api = job_api.JobsApi(project_id, project_name)
-        self._flink_cluster_api = flink_cluster_api.FlinkClusterApi(
-            project_id, project_name
-        )
-        self._git_api = git_api.GitApi(project_id, project_name)
-        self._dataset_api = dataset_api.DatasetApi(project_id)
-        self._environment_api = environment_api.EnvironmentApi(project_id, project_name)
+        self._opensearch_api = opensearch_api.OpenSearchApi()
+        self._kafka_api = kafka_api.KafkaApi()
+        self._jobs_api = job_api.JobsApi()
+        self._flink_cluster_api = flink_cluster_api.FlinkClusterApi()
+        self._git_api = git_api.GitApi()
+        self._dataset_api = dataset_api.DatasetApi()
+        self._environment_api = environment_api.EnvironmentApi()
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -133,7 +130,7 @@ class Project:
         from hsfs import connection
 
         _client = client.get_instance()
-        if type(_client) is Client:  # If external client
+        if type(_client) is client.external.Client:
             if _client._host == constants.HOSTS.APP_HOST and engine is None:
                 engine = "python"
             return connection(
@@ -168,7 +165,7 @@ class Project:
         from hsml import connection
 
         _client = client.get_instance()
-        if type(_client) is Client:  # If external client
+        if type(_client) is client.external.Client:
             return connection(
                 host=_client._host,
                 port=_client._port,
@@ -198,7 +195,7 @@ class Project:
         from hsml import connection
 
         _client = client.get_instance()
-        if type(_client) is Client:  # If external client
+        if type(_client) is client.external.Client:
             return connection(
                 host=_client._host,
                 port=_client._port,
@@ -215,7 +212,7 @@ class Project:
             `KafkaApi`: The Kafka Api handle
         """
         _client = client.get_instance()
-        if type(_client) is Client:
+        if type(_client) is client.external.Client:
             _client.download_certs(self.name)
         return self._kafka_api
 
@@ -226,7 +223,7 @@ class Project:
             `OpenSearchApi`: The OpenSearch Api handle
         """
         _client = client.get_instance()
-        if type(_client) is Client:
+        if type(_client) is client.external.Client:
             _client.download_certs(self.name)
         return self._opensearch_api
 

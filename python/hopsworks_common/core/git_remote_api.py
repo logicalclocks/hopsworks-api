@@ -19,16 +19,14 @@ from hopsworks_common.engine import git_engine
 
 
 class GitRemoteApi:
-    def __init__(self, project_id, project_name):
-        self._git_engine = git_engine.GitEngine(project_id, project_name)
-        self._project_id = project_id
-        self._project_name = project_name
+    def __init__(self):
+        self._git_engine = git_engine.GitEngine()
 
     def _get(self, repo_id, name: str):
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "git",
             "repository",
             str(repo_id),
@@ -37,9 +35,7 @@ class GitRemoteApi:
         ]
 
         remote = git_remote.GitRemote.from_response_json(
-            _client._send_request("GET", path_params),
-            self._project_id,
-            self._project_name,
+            _client._send_request("GET", path_params)
         )
         remote._repo_id = repo_id
         return remote
@@ -48,7 +44,7 @@ class GitRemoteApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "git",
             "repository",
             str(repo_id),
@@ -56,9 +52,7 @@ class GitRemoteApi:
         ]
 
         remotes = git_remote.GitRemote.from_response_json(
-            _client._send_request("GET", path_params),
-            self._project_id,
-            self._project_name,
+            _client._send_request("GET", path_params)
         )
         for remote in remotes:
             remote._repo_id = repo_id
@@ -68,7 +62,7 @@ class GitRemoteApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "git",
             "repository",
             str(repo_id),
@@ -86,9 +80,7 @@ class GitRemoteApi:
         git_op = git_op_execution.GitOpExecution.from_response_json(
             _client._send_request(
                 "POST", path_params, headers=headers, query_params=query_params
-            ),
-            self._project_id,
-            self._project_name,
+            )
         )
         _ = self._git_engine.execute_op_blocking(git_op, "ADD_REMOTE")
         return self._get(repo_id, name)
@@ -97,7 +89,7 @@ class GitRemoteApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "git",
             "repository",
             str(repo_id),
@@ -114,8 +106,6 @@ class GitRemoteApi:
         git_op = git_op_execution.GitOpExecution.from_response_json(
             _client._send_request(
                 "POST", path_params, headers=headers, query_params=query_params
-            ),
-            self._project_id,
-            self._project_name,
+            )
         )
         _ = self._git_engine.execute_op_blocking(git_op, "DELETE_REMOTE")

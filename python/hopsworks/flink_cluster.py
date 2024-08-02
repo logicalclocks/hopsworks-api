@@ -16,7 +16,7 @@
 
 import time
 
-from hopsworks import util
+from hopsworks import client, util
 from hopsworks.core import execution_api, flink_cluster_api
 from hopsworks.engine import execution_engine
 
@@ -25,20 +25,14 @@ class FlinkCluster:
     def __init__(
         self,
         job,
-        project_id=None,
-        project_name=None,
         **kwargs,
     ):
         self._job = job
-        self._project_id = project_id
-        self._project_name = project_name
         self._execution_id = None
 
-        self._execution_engine = execution_engine.ExecutionEngine(project_id)
-        self._execution_api = execution_api.ExecutionsApi(project_id)
-        self._flink_cluster_api = flink_cluster_api.FlinkClusterApi(
-            project_id, project_name
-        )
+        self._execution_engine = execution_engine.ExecutionEngine()
+        self._execution_api = execution_api.ExecutionsApi()
+        self._flink_cluster_api = flink_cluster_api.FlinkClusterApi()
 
     def _get_execution(self, assert_running=False):
         current_execution = None
@@ -385,7 +379,8 @@ class FlinkCluster:
             return None
 
     def get_url(self):
-        path = "/p/" + str(self._project_id) + "/jobs/named/" + self.name
+        _client = client.get_instance()
+        path = "/p/" + str(_client._project_id) + "/jobs/named/" + self.name
         return (
             "FlinkCluster created successfully, explore it at "
             + util.get_hostname_replaced_url(path)

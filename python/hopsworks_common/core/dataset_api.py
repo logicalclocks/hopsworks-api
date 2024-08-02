@@ -39,11 +39,7 @@ class Chunk:
 
 
 class DatasetApi:
-    def __init__(
-        self,
-        project_id=None,
-    ):
-        self._project_id = project_id
+    def __init__(self):
         self._log = logging.getLogger(__name__)
 
     DEFAULT_FLOW_CHUNK_SIZE = 1048576
@@ -75,7 +71,7 @@ class DatasetApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "dataset",
             "download",
             "with_auth",
@@ -309,7 +305,7 @@ class DatasetApi:
 
     def _upload_request(self, params, path, file_name, chunk):
         _client = client.get_instance()
-        path_params = ["project", self._project_id, "dataset", "upload", path]
+        path_params = ["project", _client._project_id, "dataset", "upload", path]
 
         # Flow configuration params are sent as form data
         _client._send_request(
@@ -325,7 +321,7 @@ class DatasetApi:
         :rtype: dict
         """
         _client = client.get_instance()
-        path_params = ["project", self._project_id, "dataset", path]
+        path_params = ["project", _client._project_id, "dataset", path]
         headers = {"content-type": "application/json"}
         return _client._send_request("GET", path_params, headers=headers)
 
@@ -354,7 +350,7 @@ class DatasetApi:
             `RestAPIError`: If unable to remove the path
         """
         _client = client.get_instance()
-        path_params = ["project", self._project_id, "dataset", path]
+        path_params = ["project", _client._project_id, "dataset", path]
         _client._send_request("DELETE", path_params)
 
     def mkdir(self, path: str):
@@ -379,7 +375,7 @@ class DatasetApi:
             `RestAPIError`: If unable to create the directory
         """
         _client = client.get_instance()
-        path_params = ["project", self._project_id, "dataset", path]
+        path_params = ["project", _client._project_id, "dataset", path]
         query_params = {
             "action": "create",
             "searchable": "true",
@@ -423,7 +419,7 @@ class DatasetApi:
                 )
 
         _client = client.get_instance()
-        path_params = ["project", self._project_id, "dataset", source_path]
+        path_params = ["project", _client._project_id, "dataset", source_path]
         query_params = {
             "action": "copy",
             "destination_path": destination_path,
@@ -463,7 +459,7 @@ class DatasetApi:
                 )
 
         _client = client.get_instance()
-        path_params = ["project", self._project_id, "dataset", source_path]
+        path_params = ["project", _client._project_id, "dataset", source_path]
         query_params = {
             "action": "move",
             "destination_path": destination_path,
@@ -501,7 +497,7 @@ class DatasetApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "dataset",
             path[(path.index("/", 10) + 1) :],
         ]
@@ -521,7 +517,7 @@ class DatasetApi:
 
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "dataset",
             "download",
             "with_auth",

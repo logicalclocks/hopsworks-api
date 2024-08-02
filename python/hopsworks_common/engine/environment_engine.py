@@ -21,9 +21,6 @@ from hopsworks_common.client.exceptions import EnvironmentException, RestAPIErro
 
 
 class EnvironmentEngine:
-    def __init__(self, project_id):
-        self._project_id = project_id
-
     def await_library_command(self, environment_name, library_name):
         commands = [command.Command(status="ONGOING")]
         while len(commands) > 0 and not self._is_final_status(commands[0]):
@@ -59,7 +56,7 @@ class EnvironmentEngine:
 
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "python",
             "environments",
             environment_name,
@@ -90,7 +87,7 @@ class EnvironmentEngine:
 
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "python",
             "environments",
             environment_name,

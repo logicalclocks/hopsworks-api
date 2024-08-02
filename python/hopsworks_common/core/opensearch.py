@@ -151,10 +151,7 @@ class OpenSearchClientSingleton:
             # 2023-11-24 15:10:49,470 INFO: POST https://localhost:9200/index/_search [status:200 request:0.041s]
             logging.getLogger("opensearchpy").setLevel(logging.WARNING)
             self._opensearch_client = OpenSearch(
-                **OpenSearchApi(
-                    client.get_instance()._project_id,
-                    client.get_instance()._project_name,
-                ).get_default_py_config()
+                **OpenSearchApi().get_default_py_config()
             )
 
     def _refresh_opensearch_connection(self):
