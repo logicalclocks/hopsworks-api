@@ -26,7 +26,7 @@ from hopsworks_common.core import dataset_api, execution_api
 class ExecutionEngine:
     def __init__(self):
         self._dataset_api = dataset_api.DatasetApi()
-        self._execution_api = execution_api.ExecutionsApi()
+        self._execution_api = execution_api.ExecutionApi()
         self._log = logging.getLogger(__name__)
 
     def download_logs(self, execution, path=None):

@@ -62,7 +62,7 @@ class Execution:
         self._job = job
 
         self._execution_engine = execution_engine.ExecutionEngine()
-        self._execution_api = execution_api.ExecutionsApi()
+        self._execution_api = execution_api.ExecutionApi()
 
     @classmethod
     def from_response_json(cls, json_dict, job):

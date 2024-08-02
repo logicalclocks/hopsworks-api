@@ -61,7 +61,7 @@ class Project:
 
         self._opensearch_api = opensearch_api.OpenSearchApi()
         self._kafka_api = kafka_api.KafkaApi()
-        self._jobs_api = job_api.JobsApi()
+        self._jobs_api = job_api.JobApi()
         self._flink_cluster_api = flink_cluster_api.FlinkClusterApi()
         self._git_api = git_api.GitApi()
         self._dataset_api = dataset_api.DatasetApi()

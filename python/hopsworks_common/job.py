@@ -60,9 +60,9 @@ class Job:
         )
 
         self._execution_engine = execution_engine.ExecutionEngine()
-        self._execution_api = execution_api.ExecutionsApi()
+        self._execution_api = execution_api.ExecutionApi()
         self._execution_engine = execution_engine.ExecutionEngine()
-        self._job_api = job_api.JobsApi()
+        self._job_api = job_api.JobApi()
 
     @classmethod
     def from_response_json(cls, json_dict):

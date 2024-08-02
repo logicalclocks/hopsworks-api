@@ -24,7 +24,7 @@ from hopsworks_common.core import job_api
 
 class FlinkClusterApi:
     def __init__(self):
-        self._job_api = job_api.JobsApi()
+        self._job_api = job_api.JobApi()
 
     def get_configuration(self):
         """Get configuration for the Flink cluster.

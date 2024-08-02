@@ -31,7 +31,7 @@ class FlinkCluster:
         self._execution_id = None
 
         self._execution_engine = execution_engine.ExecutionEngine()
-        self._execution_api = execution_api.ExecutionsApi()
+        self._execution_api = execution_api.ExecutionApi()
         self._flink_cluster_api = flink_cluster_api.FlinkClusterApi()
 
     def _get_execution(self, assert_running=False):
