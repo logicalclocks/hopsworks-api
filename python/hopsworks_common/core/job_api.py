@@ -244,7 +244,8 @@ class JobApi:
         return execution.Execution.from_response_json(
             _client._send_request(
                 "GET", path_params, headers=headers, query_params=query_params
-            )
+            ),
+            job=job,
         )
 
     def create_or_update_schedule_job(
