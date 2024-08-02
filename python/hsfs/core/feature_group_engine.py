@@ -128,7 +128,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         validation_options: dict = None,
     ):
         dataframe_features = engine.get_instance().parse_schema_feature_group(
-            feature_dataframe, feature_group.time_travel_format, features=feature_group.features
+            feature_dataframe,
+            feature_group.time_travel_format,
+            features=feature_group.features,
         )
         dataframe_features = (
             self._update_feature_group_schema_on_demand_transformations(

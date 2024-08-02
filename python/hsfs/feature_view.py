@@ -3650,7 +3650,9 @@ class FeatureView:
             transformed,
             write_options,
             training_dataset_version=(
-                training_dataset_version or (model.training_dataset_version if model else None) or self.get_last_accessed_training_dataset()
+                training_dataset_version
+                or (model.training_dataset_version if model else None)
+                or self.get_last_accessed_training_dataset()
             ),
             hsml_model=model,
         )
@@ -3771,7 +3773,9 @@ class FeatureView:
         """
         self._feature_view_engine.resume_logging(self)
 
-    def materialize_log(self, wait: Optional[bool] = False, transformed: Optional[bool] = None) -> Tuple[Job, Job]:
+    def materialize_log(
+        self, wait: Optional[bool] = False, transformed: Optional[bool] = None
+    ) -> Tuple[Job, Job]:
         """Materialize the log for the current feature view.
 
         # Arguments
@@ -3790,7 +3794,9 @@ class FeatureView:
         # Raises
             `hsfs.client.exceptions.RestAPIError` in case the backend fails to materialize the log.
         """
-        return self._feature_view_engine.materialize_feature_logs(self, wait, transformed)
+        return self._feature_view_engine.materialize_feature_logs(
+            self, wait, transformed
+        )
 
     def delete_log(self, transformed: Optional[bool] = None) -> None:
         """Delete the logged feature data for the current feature view.

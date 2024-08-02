@@ -22,7 +22,6 @@ from functools import wraps
 
 import opensearchpy
 import urllib3
-from hopsworks_common import client
 from hopsworks_common.client.exceptions import (
     FeatureStoreException,
     VectorDatabaseException,

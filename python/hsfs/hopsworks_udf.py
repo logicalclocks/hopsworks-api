@@ -716,7 +716,9 @@ def renaming_wrapper(*args):
         transformation_function_argument_names = (
             [
                 arg_name.strip()
-                for arg_name in json_decamelized["transformation_function_argument_names"]
+                for arg_name in json_decamelized[
+                    "transformation_function_argument_names"
+                ]
             ]
             if "transformation_function_argument_names" in json_decamelized
             else None
@@ -770,7 +772,7 @@ def renaming_wrapper(*args):
             dropped_argument_names=dropped_argument_names,
             dropped_feature_names=dropped_feature_names,
             feature_name_prefix=feature_name_prefix,
-            transformation_function_argument_names=transformation_function_argument_names
+            transformation_function_argument_names=transformation_function_argument_names,
         )
 
         # Set transformation features if already set.

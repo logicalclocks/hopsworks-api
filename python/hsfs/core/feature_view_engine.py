@@ -994,11 +994,17 @@ class FeatureViewEngine:
         td_predictions = [feature for feature in fv.features if feature.label]
         td_predictions_names = set([feature.name for feature in td_predictions])
         if transformed:
-            td_features = [feature_name for feature_name in fv.transformed_features if feature_name not in td_predictions_names]
+            td_features = [
+                feature_name
+                for feature_name in fv.transformed_features
+                if feature_name not in td_predictions_names
+            ]
         else:
-            td_features = [feature.name for feature in
-                           fv.features if
-                           feature.name not in td_predictions_names]
+            td_features = [
+                feature.name
+                for feature in fv.features
+                if feature.name not in td_predictions_names
+            ]
         df = engine.get_instance().get_feature_logging_df(
             features_rows,
             fg=fg,
@@ -1109,8 +1115,10 @@ class FeatureViewEngine:
 
     def materialize_feature_logs(self, fv, wait, transform):
         if transform is None:
-            jobs = [self._get_logging_fg(fv, True).materialization_job,
-                    self._get_logging_fg(fv, False).materialization_job]
+            jobs = [
+                self._get_logging_fg(fv, True).materialization_job,
+                self._get_logging_fg(fv, False).materialization_job,
+            ]
         else:
             jobs = [self._get_logging_fg(fv, transform).materialization_job]
         for job in jobs:

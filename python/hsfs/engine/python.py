@@ -1448,9 +1448,7 @@ class Engine:
         training_dataset_version: Optional[int] = None,
         hsml_model=None,
     ) -> pd.DataFrame:
-        features = Engine._convert_feature_log_to_df(
-            features, td_features
-        )
+        features = Engine._convert_feature_log_to_df(features, td_features)
         if td_predictions:
             predictions = Engine._convert_feature_log_to_df(
                 predictions, [f.name for f in td_predictions]
