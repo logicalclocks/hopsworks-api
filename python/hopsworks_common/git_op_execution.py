@@ -36,8 +36,6 @@ class GitOpExecution:
         expand=None,
         items=None,
         count=None,
-        project_id=None,
-        project_name=None,
         **kwargs,
     ):
         self._id = id
@@ -48,14 +46,12 @@ class GitOpExecution:
         self._git_command_configuration = git_command_configuration
         self._state = state
         self._command_result_message = command_result_message
-        self._repository = git_repo.GitRepo.from_response_json(
-            repository, project_id, project_name
-        )
+        self._repository = git_repo.GitRepo.from_response_json(repository)
 
     @classmethod
-    def from_response_json(cls, json_dict, project_id, project_name):
+    def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
-        return cls(**json_decamelized, project_id=project_id, project_name=project_name)
+        return cls(**json_decamelized)
 
     @property
     def id(self):

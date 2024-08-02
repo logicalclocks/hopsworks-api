@@ -18,25 +18,19 @@ from hopsworks import client, execution
 
 
 class ExecutionsApi:
-    def __init__(
-        self,
-        project_id,
-    ):
-        self._project_id = project_id
-
     def _start(self, job, args: str = None):
         _client = client.get_instance()
-        path_params = ["project", self._project_id, "jobs", job.name, "executions"]
+        path_params = ["project", _client._project_id, "jobs", job.name, "executions"]
 
         return execution.Execution.from_response_json(
-            _client._send_request("POST", path_params, data=args), self._project_id, job
+            _client._send_request("POST", path_params, data=args), job
         )
 
     def _get(self, job, id):
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "jobs",
             job.name,
             "executions",
@@ -45,14 +39,12 @@ class ExecutionsApi:
 
         headers = {"content-type": "application/json"}
         return execution.Execution.from_response_json(
-            _client._send_request("GET", path_params, headers=headers),
-            self._project_id,
-            job,
+            _client._send_request("GET", path_params, headers=headers), job
         )
 
     def _get_all(self, job):
         _client = client.get_instance()
-        path_params = ["project", self._project_id, "jobs", job.name, "executions"]
+        path_params = ["project", _client._project_id, "jobs", job.name, "executions"]
 
         query_params = {"sort_by": "submissiontime:desc"}
 
@@ -61,7 +53,6 @@ class ExecutionsApi:
             _client._send_request(
                 "GET", path_params, headers=headers, query_params=query_params
             ),
-            self._project_id,
             job,
         )
 
@@ -69,7 +60,7 @@ class ExecutionsApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "jobs",
             job_name,
             "executions",
@@ -81,7 +72,7 @@ class ExecutionsApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "jobs",
             job_name,
             "executions",

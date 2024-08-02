@@ -33,29 +33,22 @@ class GitRemote:
         expand=None,
         items=None,
         count=None,
-        project_id=None,
-        project_name=None,
         **kwargs,
     ):
         self._name = remote_name
         self._url = remote_url
 
-        self._git_remote_api = git_remote_api.GitRemoteApi(project_id, project_name)
+        self._git_remote_api = git_remote_api.GitRemoteApi()
 
     @classmethod
-    def from_response_json(cls, json_dict, project_id, project_name):
+    def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
         if "count" in json_decamelized:
             if json_decamelized["count"] == 0:
                 return []
-            return [
-                cls(**remote, project_id=project_id)
-                for remote in json_decamelized["items"]
-            ]
+            return [cls(**remote) for remote in json_decamelized["items"]]
         else:
-            return cls(
-                **json_decamelized, project_id=project_id, project_name=project_name
-            )
+            return cls(**json_decamelized)
 
     @property
     def name(self):

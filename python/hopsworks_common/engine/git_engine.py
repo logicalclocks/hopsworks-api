@@ -22,14 +22,8 @@ from hopsworks_common.core import git_op_execution_api
 
 
 class GitEngine:
-    def __init__(
-        self,
-        project_id,
-        project_name,
-    ):
-        self._git_op_execution_api = git_op_execution_api.GitOpExecutionApi(
-            project_id, project_name
-        )
+    def __init__(self):
+        self._git_op_execution_api = git_op_execution_api.GitOpExecutionApi()
         self._log = logging.getLogger(__name__)
 
     def execute_op_blocking(self, git_op, command):

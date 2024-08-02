@@ -20,14 +20,6 @@ from hopsworks_common import client, library
 
 
 class LibraryApi:
-    def __init__(
-        self,
-        project_id,
-        project_name,
-    ):
-        self._project_id = project_id
-        self._project_name = project_name
-
     def _install(self, library_name: str, name: str, library_spec: dict):
         """Install a library in the environment
 
@@ -45,7 +37,7 @@ class LibraryApi:
 
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "python",
             "environments",
             name,
@@ -59,6 +51,5 @@ class LibraryApi:
                 "POST", path_params, headers=headers, data=json.dumps(library_spec)
             ),
             environment=self,
-            project_id=self._project_id,
         )
         return library_rest

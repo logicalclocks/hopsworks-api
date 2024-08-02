@@ -18,8 +18,8 @@ import json
 from datetime import datetime, timezone
 
 import humps
+from hopsworks import client, util
 from hopsworks import job_schedule as js
-from hopsworks import util
 from hopsworks.core import execution_api, job_api
 from hopsworks.engine import execution_engine
 
@@ -39,8 +39,6 @@ class Job:
         expand=None,
         items=None,
         count=None,
-        project_id=None,
-        project_name=None,
         job_schedule=None,
         **kwargs,
     ):
@@ -51,20 +49,19 @@ class Job:
         self._job_type = job_type
         self._creator = creator
         self._executions = executions
-        self._project_id = project_id
         self._job_schedule = (
             js.JobSchedule.from_response_json(job_schedule)
             if job_schedule
             else job_schedule
         )
 
-        self._execution_engine = execution_engine.ExecutionEngine(project_id)
-        self._execution_api = execution_api.ExecutionsApi(project_id)
-        self._execution_engine = execution_engine.ExecutionEngine(project_id)
-        self._job_api = job_api.JobsApi(project_id, project_name)
+        self._execution_engine = execution_engine.ExecutionEngine()
+        self._execution_api = execution_api.ExecutionsApi()
+        self._execution_engine = execution_engine.ExecutionEngine()
+        self._job_api = job_api.JobsApi()
 
     @classmethod
-    def from_response_json(cls, json_dict, project_id, project_name):
+    def from_response_json(cls, json_dict):
         if "items" in json_dict:
             jobs = []
             for job in json_dict["items"]:
@@ -72,13 +69,7 @@ class Job:
                 config = job.pop("config")
                 json_decamelized = humps.decamelize(job)
                 json_decamelized["config"] = config
-                jobs.append(
-                    cls(
-                        **json_decamelized,
-                        project_id=project_id,
-                        project_name=project_name,
-                    )
-                )
+                jobs.append(cls(**json_decamelized))
             return jobs
         elif "id" not in json_dict:
             return []
@@ -87,9 +78,7 @@ class Job:
             config = json_dict.pop("config")
             json_decamelized = humps.decamelize(json_dict)
             json_decamelized["config"] = config
-            return cls(
-                **json_decamelized, project_id=project_id, project_name=project_name
-            )
+            return cls(**json_decamelized)
 
     @property
     def id(self):
@@ -249,7 +238,8 @@ class Job:
         return f"Job({self._name!r}, {self._job_type!r})"
 
     def get_url(self):
-        path = "/p/" + str(self._project_id) + "/jobs/named/" + self.name
+        _client = client.get_instance()
+        path = "/p/" + str(_client._project_id) + "/jobs/named/" + self.name
         return (
             "Job created successfully, explore it at "
             + util.get_hostname_replaced_url(path)

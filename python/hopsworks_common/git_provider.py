@@ -34,28 +34,21 @@ class GitProvider:
         expand=None,
         items=None,
         count=None,
-        project_id=None,
-        project_name=None,
         **kwargs,
     ):
         self._username = username
         self._git_provider = git_provider
 
-        self._git_provider_api = git_provider_api.GitProviderApi(
-            project_id, project_name
-        )
+        self._git_provider_api = git_provider_api.GitProviderApi()
 
     @classmethod
-    def from_response_json(cls, json_dict, project_id, project_name):
+    def from_response_json(cls, json_dict):
         # Count is not set by the backend so parse based on items array
         json_decamelized = humps.decamelize(json_dict)
         if len(json_decamelized["items"]) == 0:
             return []
         else:
-            return [
-                cls(**provider, project_id=project_id, project_name=project_name)
-                for provider in json_decamelized["items"]
-            ]
+            return [cls(**provider) for provider in json_decamelized["items"]]
 
     @property
     def username(self):

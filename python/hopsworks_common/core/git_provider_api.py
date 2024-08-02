@@ -22,23 +22,15 @@ from hopsworks_common.engine import git_engine
 
 
 class GitProviderApi:
-    def __init__(
-        self,
-        project_id,
-        project_name,
-    ):
-        self._git_engine = git_engine.GitEngine(project_id, project_name)
-        self._project_id = project_id
-        self._project_name = project_name
+    def __init__(self):
+        self._git_engine = git_engine.GitEngine()
 
     def _get_providers(self):
         _client = client.get_instance()
         path_params = ["users", "git", "provider"]
 
         return git_provider.GitProvider.from_response_json(
-            _client._send_request("GET", path_params),
-            self._project_id,
-            self._project_name,
+            _client._send_request("GET", path_params)
         )
 
     def _get_default_configured_provider(self):
@@ -57,9 +49,7 @@ class GitProviderApi:
         path_params = ["users", "git", "provider"]
 
         providers = git_provider.GitProvider.from_response_json(
-            _client._send_request("GET", path_params),
-            self._project_id,
-            self._project_name,
+            _client._send_request("GET", path_params)
         )
         for p in providers:
             if p.git_provider.lower() == provider.lower():
@@ -80,9 +70,7 @@ class GitProviderApi:
         return git_provider.GitProvider.from_response_json(
             _client._send_request(
                 "POST", path_params, headers=headers, data=json.dumps(provider_config)
-            ),
-            self._project_id,
-            self._project_name,
+            )
         )
 
     def _delete_provider(self, provider: str):

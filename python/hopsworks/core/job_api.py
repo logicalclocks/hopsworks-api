@@ -21,14 +21,6 @@ from hopsworks.client.exceptions import RestAPIError
 
 
 class JobsApi:
-    def __init__(
-        self,
-        project_id,
-        project_name,
-    ):
-        self._project_id = project_id
-        self._project_name = project_name
-
     def create_job(self, name: str, config: dict):
         """Create a new job or update an existing one.
 
@@ -57,17 +49,15 @@ class JobsApi:
         """
         _client = client.get_instance()
 
-        config = util.validate_job_conf(config, self._project_name)
+        config = util.validate_job_conf(config, _client._project_name)
 
-        path_params = ["project", self._project_id, "jobs", name]
+        path_params = ["project", _client._project_id, "jobs", name]
 
         headers = {"content-type": "application/json"}
         created_job = job.Job.from_response_json(
             _client._send_request(
                 "PUT", path_params, headers=headers, data=json.dumps(config)
-            ),
-            self._project_id,
-            self._project_name,
+            )
         )
         print(created_job.get_url())
         return created_job
@@ -85,15 +75,13 @@ class JobsApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "jobs",
             name,
         ]
         query_params = {"expand": ["creator"]}
         return job.Job.from_response_json(
-            _client._send_request("GET", path_params, query_params=query_params),
-            self._project_id,
-            self._project_name,
+            _client._send_request("GET", path_params, query_params=query_params)
         )
 
     def get_jobs(self):
@@ -107,14 +95,12 @@ class JobsApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "jobs",
         ]
         query_params = {"expand": ["creator"]}
         return job.Job.from_response_json(
-            _client._send_request("GET", path_params, query_params=query_params),
-            self._project_id,
-            self._project_name,
+            _client._send_request("GET", path_params, query_params=query_params)
         )
 
     def exists(self, name: str):
@@ -146,7 +132,7 @@ class JobsApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "jobs",
             type.lower(),
             "configuration",
@@ -163,7 +149,7 @@ class JobsApi:
         _client = client.get_instance()
         path_params = [
             "project",
-            self._project_id,
+            _client._project_id,
             "jobs",
             str(job.name),
         ]
@@ -182,20 +168,18 @@ class JobsApi:
 
         config = util.validate_job_conf(config, self._project_name)
 
-        path_params = ["project", self._project_id, "jobs", name]
+        path_params = ["project", _client._project_id, "jobs", name]
 
         headers = {"content-type": "application/json"}
         return job.Job.from_response_json(
             _client._send_request(
                 "PUT", path_params, headers=headers, data=json.dumps(config)
-            ),
-            self._project_id,
-            self._project_name,
+            )
         )
 
     def _schedule_job(self, name, schedule_config):
         _client = client.get_instance()
-        path_params = ["project", self._project_id, "jobs", name, "schedule", "v2"]
+        path_params = ["project", _client._project_id, "jobs", name, "schedule", "v2"]
         headers = {"content-type": "application/json"}
         method = "PUT" if schedule_config["id"] else "POST"
 
@@ -207,7 +191,7 @@ class JobsApi:
 
     def _delete_schedule_job(self, name):
         _client = client.get_instance()
-        path_params = ["project", self._project_id, "jobs", name, "schedule", "v2"]
+        path_params = ["project", _client._project_id, "jobs", name, "schedule", "v2"]
 
         return _client._send_request(
             "DELETE",
