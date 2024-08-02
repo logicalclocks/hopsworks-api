@@ -2645,7 +2645,6 @@ class FeatureGroup(FeatureGroupBase):
         storage: Optional[str] = None,
         write_options: Optional[Dict[str, Any]] = None,
         validation_options: Optional[Dict[str, Any]] = None,
-        save_code: Optional[bool] = True,
         wait: bool = False,
     ) -> Tuple[Optional[Job], Optional[ValidationReport]]:
         """Persist the metadata and materialize the feature group to the feature store
@@ -2751,10 +2750,6 @@ class FeatureGroup(FeatureGroupBase):
                 * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
                 * key `fetch_expectation_suite` a boolean value, by default `True`, to control whether the expectation
                    suite of the feature group should be fetched before every insert.
-            save_code: When running HSFS on Hopsworks or Databricks, HSFS can save the code/notebook used to create
-                the feature group or used to insert data to it. When calling the `insert` method repeatedly
-                with small batches of data, this can slow down the writes. Use this option to turn off saving
-                code. Defaults to `True`.
             wait: Wait for job to finish before returning, defaults to `False`.
                 Shortcut for read_options `{"wait_for_job": False}`.
 
@@ -3721,7 +3716,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
         ],
         write_options: Optional[Dict[str, Any]] = None,
         validation_options: Optional[Dict[str, Any]] = None,
-        save_code: Optional[bool] = True,
         wait: bool = False,
     ) -> Tuple[
         None, Optional[great_expectations.core.ExpectationSuiteValidationResult]
@@ -3774,10 +3768,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
                 * key `fetch_expectation_suite` a boolean value, by default `True`, to control whether the expectation
                    suite of the feature group should be fetched before every insert.
-            save_code: When running HSFS on Hopsworks or Databricks, HSFS can save the code/notebook used to create
-                the feature group or used to insert data to it. When calling the `insert` method repeatedly
-                with small batches of data, this can slow down the writes. Use this option to turn off saving
-                code. Defaults to `True`.
 
         # Returns
             Tuple(None, `ge.core.ExpectationSuiteValidationResult`) The validation report if validation is enabled.
