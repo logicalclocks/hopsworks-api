@@ -14,6 +14,8 @@
 #   limitations under the License.
 #
 
+from unittest import mock
+
 import pandas as pd
 from hsfs import (
     engine,
@@ -27,48 +29,49 @@ from hsfs.core import transformation_function_engine
 from hsfs.hopsworks_udf import UDFType, udf
 
 
-fg1 = feature_group.FeatureGroup(
-    name="test1",
-    version=1,
-    featurestore_id=99,
-    primary_key=[],
-    partition_key=[],
-    features=[
-        feature.Feature("id"),
-        feature.Feature("label"),
-        feature.Feature("tf_name"),
-    ],
-    id=11,
-    stream=False,
-)
+with mock.patch("hopsworks_common.client.get_instance"):
+    fg1 = feature_group.FeatureGroup(
+        name="test1",
+        version=1,
+        featurestore_id=99,
+        primary_key=[],
+        partition_key=[],
+        features=[
+            feature.Feature("id"),
+            feature.Feature("label"),
+            feature.Feature("tf_name"),
+        ],
+        id=11,
+        stream=False,
+    )
 
-fg2 = feature_group.FeatureGroup(
-    name="test2",
-    version=1,
-    featurestore_id=99,
-    primary_key=[],
-    partition_key=[],
-    features=[feature.Feature("id"), feature.Feature("tf1_name")],
-    id=12,
-    stream=False,
-)
+    fg2 = feature_group.FeatureGroup(
+        name="test2",
+        version=1,
+        featurestore_id=99,
+        primary_key=[],
+        partition_key=[],
+        features=[feature.Feature("id"), feature.Feature("tf1_name")],
+        id=12,
+        stream=False,
+    )
 
-fg3 = feature_group.FeatureGroup(
-    name="test3",
-    version=1,
-    featurestore_id=99,
-    primary_key=[],
-    partition_key=[],
-    features=[
-        feature.Feature("id"),
-        feature.Feature("tf_name"),
-        feature.Feature("tf1_name"),
-        feature.Feature("tf3_name"),
-    ],
-    id=12,
-    stream=False,
-)
-engine.init("python")
+    fg3 = feature_group.FeatureGroup(
+        name="test3",
+        version=1,
+        featurestore_id=99,
+        primary_key=[],
+        partition_key=[],
+        features=[
+            feature.Feature("id"),
+            feature.Feature("tf_name"),
+            feature.Feature("tf1_name"),
+            feature.Feature("tf3_name"),
+        ],
+        id=12,
+        stream=False,
+    )
+    engine.init("python")
 query = fg1.select_all().join(fg2.select(["tf1_name"]), on=["id"])
 query_self_join = fg1.select_all().join(fg1.select_all(), on=["id"], prefix="fg1_")
 query_prefix = (
@@ -258,6 +261,7 @@ class TestTransformationFunctionEngine:
 
     def test_compute_and_set_feature_statistics_no_split(self, mocker):
         feature_store_id = 99
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.client.get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 
@@ -318,6 +322,7 @@ class TestTransformationFunctionEngine:
 
     def test_compute_and_set_feature_statistics_train_test_split(self, mocker):
         feature_store_id = 99
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.client.get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 
@@ -377,6 +382,7 @@ class TestTransformationFunctionEngine:
 
     def test_get_and_set_feature_statistics_no_statistics_required(self, mocker):
         feature_store_id = 99
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.client.get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 
@@ -431,6 +437,7 @@ class TestTransformationFunctionEngine:
 
     def test_get_and_set_feature_statistics_statistics_required(self, mocker):
         feature_store_id = 99
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.client.get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 

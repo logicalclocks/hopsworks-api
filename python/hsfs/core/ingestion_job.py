@@ -1,5 +1,5 @@
 #
-#   Copyright 2020 Logical Clocks AB
+#   Copyright 2024 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -13,36 +13,12 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-from __future__ import annotations
 
-import humps
-from hsfs.core.job import Job
+from hopsworks_common.core.ingestion_job import (
+    IngestionJob,
+)
 
 
-class IngestionJob:
-    def __init__(
-        self,
-        data_path,
-        job,
-        href=None,
-        expand=None,
-        items=None,
-        count=None,
-        type=None,
-        **kwargs,
-    ):
-        self._data_path = data_path
-        self._job = Job.from_response_json(job)
-
-    @classmethod
-    def from_response_json(cls, json_dict):
-        json_decamelized = humps.decamelize(json_dict)
-        return cls(**json_decamelized)
-
-    @property
-    def data_path(self):
-        return self._data_path
-
-    @property
-    def job(self):
-        return self._job
+__all__ = [
+    IngestionJob,
+]

@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 import warnings
+from unittest import mock
 
 import hsfs
 import pytest
@@ -35,7 +36,8 @@ from hsfs.engine import python
 from hsfs.hopsworks_udf import UDFType
 
 
-engine.init("python")
+with mock.patch("hopsworks_common.client.get_instance"):
+    engine.init("python")
 test_feature_group = feature_group.FeatureGroup(
     name="test",
     version=1,

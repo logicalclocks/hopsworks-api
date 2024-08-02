@@ -56,12 +56,12 @@ PAGES = {
         ),
     },
     "api/jobs.md": {
-        "job_api_handle": ["hopsworks.project.Project.get_jobs_api"],
-        "job_create": ["hopsworks.core.job_api.JobsApi.create_job"],
-        "job_get": ["hopsworks.core.job_api.JobsApi.get_job"],
-        "job_get_all": ["hopsworks.core.job_api.JobsApi.get_jobs"],
+        "job_api_handle": ["hopsworks.project.Project.get_job_api"],
+        "job_create": ["hopsworks.core.job_api.JobApi.create_job"],
+        "job_get": ["hopsworks.core.job_api.JobApi.get_job"],
+        "job_get_all": ["hopsworks.core.job_api.JobApi.get_jobs"],
         "job_properties": keras_autodoc.get_properties("hopsworks.job.Job"),
-        "job_config": ["hopsworks.core.job_api.JobsApi.get_configuration"],
+        "job_config": ["hopsworks.core.job_api.JobApi.get_configuration"],
         "job_methods": keras_autodoc.get_methods(
             "hopsworks.job.Job", exclude=["from_response_json", "json"]
         ),

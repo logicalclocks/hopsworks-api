@@ -19,11 +19,12 @@ from hsfs.core import ingestion_job, job
 
 
 class TestIngestionJob:
-    def test_from_response_json(self, backend_fixtures):
+    def test_from_response_json(self, mocker, backend_fixtures):
         # Arrange
         json = backend_fixtures["ingestion_job"]["get"]["response"]
 
         # Act
+        mocker.patch("hopsworks_common.client.get_instance")
         ij = ingestion_job.IngestionJob.from_response_json(json)
 
         # Assert
