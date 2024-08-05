@@ -20,6 +20,7 @@ package com.logicalclocks.hsfs;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Strings;
+import com.logicalclocks.hsfs.FeatureGroupBase.OnlineStorageType;
 import com.logicalclocks.hsfs.constructor.Filter;
 import com.logicalclocks.hsfs.constructor.SqlFilterCondition;
 import com.logicalclocks.hsfs.util.Constants;
@@ -72,6 +73,10 @@ public class Feature {
   @Setter
   private Integer featureGroupId;
 
+  @Getter
+  @Setter
+  private OnlineStorageType onlineStorageType;
+
   private static ObjectMapper mapper = new ObjectMapper();
 
   public Feature(@NonNull String name) {
@@ -116,7 +121,7 @@ public class Feature {
 
   @Builder
   public Feature(String name, String type, String onlineType, Boolean primary, Boolean partition, String defaultValue,
-                 String description)
+                 String description, OnlineStorageType onlineStorageType)
       throws FeatureStoreException {
     if (Strings.isNullOrEmpty(name)) {
       throw new FeatureStoreException("Name is required when creating a feature");
@@ -132,6 +137,7 @@ public class Feature {
     this.partition = partition;
     this.defaultValue = defaultValue;
     this.description = description;
+    this.onlineStorageType = onlineStorageType;
   }
 
   /**

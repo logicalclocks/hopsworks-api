@@ -280,7 +280,7 @@ public abstract class FeatureGroupBase<T> {
     Feature feature = this.getFeature(featureName);
 
     Feature newFeature = new Feature(feature.getName(), feature.getType(), feature.getOnlineType(),
-            feature.getPrimary(), feature.getPartition(), feature.getDefaultValue(), description);
+            feature.getPrimary(), feature.getPartition(), feature.getDefaultValue(), description, null);
 
     featureGroupEngineBase.updateFeatures(this,
         Collections.singletonList(newFeature),
