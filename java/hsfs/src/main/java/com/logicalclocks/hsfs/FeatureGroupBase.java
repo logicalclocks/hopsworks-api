@@ -128,6 +128,20 @@ public abstract class FeatureGroupBase<T> {
   @Getter
   protected Boolean deprecated;
 
+  @Getter
+  @Setter
+  protected List<String> onlineComments;
+
+  @Getter
+  @Setter
+  protected OnlineStorageType onlineStorageType;
+
+  // https://docs.rondb.com/disk_columns/#controlling-which-columns-are-stored-on-disk
+  public enum OnlineStorageType {
+    MEMORY,
+    DISK
+  }
+
   @JsonIgnore
   // These are only used in the client. In the server they are aggregated in the `features` field
   protected List<String> partitionKeys;

@@ -513,6 +513,8 @@ class FeatureStore:
         transformation_functions: Optional[
             List[Union[TransformationFunction, HopsworksUdf]]
         ] = None,
+        online_comments: Optional[Dict[str, Any]] = None,
+        online_storage_type: Optional[str] = None,
     ) -> feature_group.FeatureGroup:
         """Create a feature group metadata object.
 
@@ -611,6 +613,11 @@ class FeatureStore:
             transformation_functions: On-Demand Transformation functions attached to the feature group.
                 It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
                 Defaults to `None`, no transformations.
+            online_comments: Optionally, define comments which are used to define online table properties.
+                For more info visit: https://docs.rondb.com/table_options/#table-options.
+            online_storage_type: Optionally, define where online enabled feature group should persist its data.
+                Options are `MEMORY` and `DISK`, for more info read: https://docs.rondb.com/disk_columns/#controlling-which-columns-are-stored-on-disk.
+                Defaults to `MEMORY`.
 
         # Returns
             `FeatureGroup`. The feature group metadata object.
@@ -636,6 +643,8 @@ class FeatureStore:
             topic_name=topic_name,
             notification_topic_name=notification_topic_name,
             transformation_functions=transformation_functions,
+            online_comments=online_comments,
+            online_storage_type=online_storage_type,
         )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -668,6 +677,8 @@ class FeatureStore:
         transformation_functions: Optional[
             List[Union[TransformationFunction, HopsworksUdf]]
         ] = None,
+        online_comments: Optional[Dict[str, Any]] = None,
+        online_storage_type: Optional[str] = None,
     ) -> Union[
         feature_group.FeatureGroup,
         feature_group.ExternalFeatureGroup,
@@ -756,6 +767,11 @@ class FeatureStore:
             transformation_functions: On-Demand Transformation functions attached to the feature group.
                 It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
                 Defaults to `None`, no transformations.
+            online_comments: Optionally, define comments which are used to define online table properties.
+                For more info visit: https://docs.rondb.com/table_options/#table-options.
+            online_storage_type: Optionally, define where online enabled feature group should persist its data.
+                Options are `MEMORY` and `DISK`, for more info read: https://docs.rondb.com/disk_columns/#controlling-which-columns-are-stored-on-disk.
+                Defaults to `MEMORY`.
 
         # Returns
             `FeatureGroup`. The feature group metadata object.
@@ -790,6 +806,8 @@ class FeatureStore:
                     topic_name=topic_name,
                     notification_topic_name=notification_topic_name,
                     transformation_functions=transformation_functions,
+                    online_comments=online_comments,
+                    online_storage_type=online_storage_type,
                 )
                 feature_group_object.feature_store = self
                 return feature_group_object
@@ -933,6 +951,8 @@ class FeatureStore:
         online_enabled: bool = False,
         topic_name: Optional[str] = None,
         notification_topic_name: Optional[str] = None,
+        online_comments: Optional[Dict[str, Any]] = None,
+        online_storage_type: Optional[str] = None,
     ) -> feature_group.ExternalFeatureGroup:
         """Create a external feature group metadata object.
 
@@ -1032,6 +1052,11 @@ class FeatureStore:
                 defaults to using project topic.
             notification_topic_name: Optionally, define the name of the topic used for sending notifications when entries
                 are inserted or updated on the online feature store. If left undefined no notifications are sent.
+            online_comments: Optionally, define comments which are used to define online table properties.
+                For more info visit: https://docs.rondb.com/table_options/#table-options.
+            online_storage_type: Optionally, define where online enabled feature group should persist its data.
+                Options are `MEMORY` and `DISK`, for more info read: https://docs.rondb.com/disk_columns/#controlling-which-columns-are-stored-on-disk.
+                Defaults to `MEMORY`.
 
         # Returns
             `ExternalFeatureGroup`. The external feature group metadata object.
@@ -1056,6 +1081,8 @@ class FeatureStore:
             online_enabled=online_enabled,
             topic_name=topic_name,
             notification_topic_name=notification_topic_name,
+            online_comments=online_comments,
+            online_storage_type=online_storage_type,
         )
         feature_group_object.feature_store = self
         return feature_group_object

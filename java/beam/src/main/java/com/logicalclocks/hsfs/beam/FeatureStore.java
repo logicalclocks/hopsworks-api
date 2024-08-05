@@ -17,6 +17,7 @@
 
 package com.logicalclocks.hsfs.beam;
 
+import com.logicalclocks.hsfs.FeatureGroupBase.OnlineStorageType;
 import com.logicalclocks.hsfs.FeatureStoreBase;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.StatisticsConfig;
@@ -73,7 +74,8 @@ public class FeatureStore extends FeatureStoreBase<Query> {
   @Override
   public Object getOrCreateFeatureGroup(String name, Integer version, String description, List<String> primaryKeys,
       List<String> partitionKeys, String hudiPrecombineKey, boolean onlineEnabled, TimeTravelFormat timeTravelFormat,
-      StatisticsConfig statisticsConfig, String topicName, String notificationTopicName, String eventTime)
+      StatisticsConfig statisticsConfig, String topicName, String notificationTopicName, String eventTime,
+      List<String> onlineComments, OnlineStorageType onlineStorageType)
       throws IOException, FeatureStoreException {
     throw new UnsupportedOperationException("Not supported for Beam");
   }
@@ -158,7 +160,9 @@ public class FeatureStore extends FeatureStoreBase<Query> {
   @Override
   public StreamFeatureGroup getOrCreateStreamFeatureGroup(String name, Integer version, String description,
       List<String> primaryKeys, List<String> partitionKeys, String hudiPrecombineKey, boolean onlineEnabled,
-      StatisticsConfig statisticsConfig, String eventTime) throws IOException, FeatureStoreException {
+      StatisticsConfig statisticsConfig, String eventTime, List<String> onlineComments,
+      OnlineStorageType onlineStorageType)
+      throws IOException, FeatureStoreException {
     throw new UnsupportedOperationException("Not supported for Beam");
   }
 

@@ -46,8 +46,8 @@ public class StreamFeatureGroup extends FeatureGroupBase<PCollection<Object>> {
   @Builder
   public StreamFeatureGroup(FeatureStore featureStore, @NonNull String name, Integer version, String description,
       List<String> primaryKeys, List<String> partitionKeys, String hudiPrecombineKey,
-      boolean onlineEnabled, List<Feature> features,
-      StatisticsConfig statisticsConfig, String onlineTopicName, String eventTime) {
+      boolean onlineEnabled, List<Feature> features, StatisticsConfig statisticsConfig, String onlineTopicName,
+      String eventTime, List<String> onlineComments, OnlineStorageType onlineStorageType) {
     this();
     this.featureStore = featureStore;
     this.name = name;
@@ -63,6 +63,8 @@ public class StreamFeatureGroup extends FeatureGroupBase<PCollection<Object>> {
     this.statisticsConfig = statisticsConfig != null ? statisticsConfig : new StatisticsConfig();
     this.onlineTopicName = onlineTopicName;
     this.eventTime = eventTime;
+    this.onlineComments = onlineComments;
+    this.onlineStorageType = onlineStorageType;
   }
 
   public StreamFeatureGroup() {

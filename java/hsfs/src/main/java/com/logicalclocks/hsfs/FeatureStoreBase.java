@@ -18,6 +18,7 @@
 package com.logicalclocks.hsfs;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.logicalclocks.hsfs.FeatureGroupBase.OnlineStorageType;
 import com.logicalclocks.hsfs.constructor.QueryBase;
 import com.logicalclocks.hsfs.metadata.FeatureGroupApi;
 import com.logicalclocks.hsfs.metadata.StorageConnectorApi;
@@ -78,7 +79,8 @@ public abstract class FeatureStoreBase<T2 extends QueryBase> {
                                                  List<String> primaryKeys, List<String> partitionKeys,
                                                  String hudiPrecombineKey, boolean onlineEnabled,
                                                  TimeTravelFormat timeTravelFormat, StatisticsConfig statisticsConfig,
-                                                 String topicName, String notificationTopicName, String eventTime)
+                                                 String topicName, String notificationTopicName, String eventTime,
+                                                 List<String> onlineComments, OnlineStorageType onlineStorageType)
       throws IOException, FeatureStoreException;
 
   /**
@@ -121,7 +123,8 @@ public abstract class FeatureStoreBase<T2 extends QueryBase> {
   public abstract Object getOrCreateStreamFeatureGroup(String name, Integer version, String description,
                                                 List<String> primaryKeys, List<String> partitionKeys,
                                                 String hudiPrecombineKey, boolean onlineEnabled,
-                                                StatisticsConfig statisticsConfig, String eventTime)
+                                                StatisticsConfig statisticsConfig, String eventTime,
+                                                List<String> onlineComments, OnlineStorageType onlineStorageType)
       throws IOException, FeatureStoreException;
 
   public abstract Object  createExternalFeatureGroup();
