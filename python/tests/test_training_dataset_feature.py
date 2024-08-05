@@ -16,7 +16,7 @@
 
 
 from hsfs import feature_group, training_dataset_feature
-from hsfs.hopsworks_udf import UDFType
+from hsfs.transformation_function import TransformationType
 
 
 class TestTrainingDatasetFeature:
@@ -64,8 +64,8 @@ class TestTrainingDatasetFeature:
             == "\n@udf(float)\ndef add_one_fs(data1 : pd.Series):\n    return data1 + 1\n"
         )
         assert (
-            td_feature.on_demand_transformation_function.hopsworks_udf.udf_type
-            == UDFType.ON_DEMAND
+            td_feature.on_demand_transformation_function.transformation_type
+            == TransformationType.ON_DEMAND
         )
         assert isinstance(td_feature._feature_group, feature_group.FeatureGroup)
         assert (
