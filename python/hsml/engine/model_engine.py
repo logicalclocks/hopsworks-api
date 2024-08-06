@@ -343,11 +343,6 @@ class ModelEngine:
         # Attach model summary xattr to /Models/{model_instance._name}/{model_instance._version}
         model_query_params = {}
 
-        if "ML_ID" in os.environ:
-            model_instance._experiment_id = os.environ["ML_ID"]
-
-        model_instance._experiment_project_name = _client._project_name
-
         if "HOPSWORKS_JOB_NAME" in os.environ:
             model_query_params["jobName"] = os.environ["HOPSWORKS_JOB_NAME"]
         elif "HOPSWORKS_KERNEL_ID" in os.environ:
