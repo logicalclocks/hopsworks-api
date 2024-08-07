@@ -130,17 +130,7 @@ public abstract class FeatureGroupBase<T> {
 
   @Getter
   @Setter
-  protected List<String> onlineComments;
-
-  @Getter
-  @Setter
-  protected OnlineStorageType onlineStorageType;
-
-  // https://docs.rondb.com/disk_columns/#controlling-which-columns-are-stored-on-disk
-  public enum OnlineStorageType {
-    MEMORY,
-    DISK
-  }
+  protected OnlineConfig onlineConfig;
 
   @JsonIgnore
   // These are only used in the client. In the server they are aggregated in the `features` field
@@ -280,7 +270,7 @@ public abstract class FeatureGroupBase<T> {
     Feature feature = this.getFeature(featureName);
 
     Feature newFeature = new Feature(feature.getName(), feature.getType(), feature.getOnlineType(),
-            feature.getPrimary(), feature.getPartition(), feature.getDefaultValue(), description, null);
+            feature.getPrimary(), feature.getPartition(), feature.getDefaultValue(), description);
 
     featureGroupEngineBase.updateFeatures(this,
         Collections.singletonList(newFeature),

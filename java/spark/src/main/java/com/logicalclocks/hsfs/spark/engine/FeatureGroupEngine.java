@@ -23,11 +23,11 @@ import com.logicalclocks.hsfs.FeatureGroupCommit;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.HudiOperationType;
 import com.logicalclocks.hsfs.JobConfiguration;
+import com.logicalclocks.hsfs.OnlineConfig;
 import com.logicalclocks.hsfs.Storage;
 import com.logicalclocks.hsfs.TimeTravelFormat;
 import com.logicalclocks.hsfs.engine.FeatureGroupEngineBase;
 import com.logicalclocks.hsfs.FeatureGroupBase;
-import com.logicalclocks.hsfs.FeatureGroupBase.OnlineStorageType;
 import com.logicalclocks.hsfs.StatisticsConfig;
 import com.logicalclocks.hsfs.spark.ExternalFeatureGroup;
 import com.logicalclocks.hsfs.spark.StreamFeatureGroup;
@@ -307,7 +307,7 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
                                               String hudiPrecombineKey, boolean onlineEnabled,
                                               TimeTravelFormat timeTravelFormat, StatisticsConfig statisticsConfig,
                                               String topicName, String notificationTopicName, String eventTime,
-                                              List<String> onlineComments, OnlineStorageType onlineStorageType)
+                                              OnlineConfig onlineConfig)
       throws IOException, FeatureStoreException {
 
     FeatureGroup featureGroup;
@@ -329,8 +329,7 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
             .eventTime(eventTime)
             .topicName(topicName)
             .notificationTopicName(notificationTopicName)
-            .onlineComments(onlineComments)
-            .onlineStorageType(onlineStorageType)
+            .onlineConfig(onlineConfig)
             .build();
 
         featureGroup.setFeatureStore(featureStore);
@@ -366,8 +365,7 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
                                                           String description, List<String> primaryKeys,
                                                           List<String> partitionKeys, String hudiPrecombineKey,
                                                           boolean onlineEnabled, StatisticsConfig statisticsConfig,
-                                                          String eventTime, List<String> onlineComments,
-                                                          OnlineStorageType onlineStorageType)
+                                                          String eventTime, OnlineConfig onlineConfig)
       throws IOException, FeatureStoreException {
     StreamFeatureGroup featureGroup;
     try {
@@ -385,8 +383,7 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
             .onlineEnabled(onlineEnabled)
             .statisticsConfig(statisticsConfig)
             .eventTime(eventTime)
-            .onlineComments(onlineComments)
-            .onlineStorageType(onlineStorageType)
+            .onlineConfig(onlineConfig)
             .build();
 
         featureGroup.setFeatureStore(featureStore);

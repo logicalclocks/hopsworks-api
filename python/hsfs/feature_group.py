@@ -127,8 +127,12 @@ class FeatureGroupBase:
         topic_name: Optional[str] = None,
         notification_topic_name: Optional[str] = None,
         deprecated: bool = False,
-        online_comments: Optional[Dict[str, Any]] = None,
-        online_storage_type: Optional[str] = None,
+        online_config: Optional[
+            Union[
+                hsfs.core.online_config.OnlineConfig,
+                Dict[str, Any],
+            ]
+        ] = None,
         **kwargs,
     ) -> None:
         self._version = version
@@ -142,11 +146,11 @@ class FeatureGroupBase:
         self._topic_name = topic_name
         self._notification_topic_name = notification_topic_name
         self._deprecated = deprecated
-        self._online_comments = online_comments
-        self._online_storage_type = online_storage_type
         self._feature_store_id = featurestore_id
         self._feature_store = None
         self._variable_api: VariableApi = VariableApi()
+
+        self._online_config = hsfs.core.online_config.OnlineConfig.from_response_json(online_config) if isinstance(online_config, dict) else online_config
 
         self._multi_part_insert: bool = False
         self._embedding_index = embedding_index
@@ -2108,8 +2112,12 @@ class FeatureGroup(FeatureGroupBase):
         transformation_functions: Optional[
             List[Union[TransformationFunction, HopsworksUdf]]
         ] = None,
-        online_comments: Optional[Dict[str, Any]] = None,
-        online_storage_type: Optional[str] = None,
+        online_config: Optional[
+            Union[
+                hsfs.core.online_config.OnlineConfig,
+                Dict[str, Any],
+            ]
+        ] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -2126,8 +2134,7 @@ class FeatureGroup(FeatureGroupBase):
             topic_name=topic_name,
             notification_topic_name=notification_topic_name,
             deprecated=deprecated,
-            online_comments=online_comments,
-            online_storage_type=online_storage_type,
+            online_config=online_config,
         )
         self._feature_store_name: Optional[str] = featurestore_name
         self._description: Optional[str] = description
@@ -3427,8 +3434,7 @@ class FeatureGroup(FeatureGroupBase):
             "notificationTopicName": self.notification_topic_name,
             "deprecated": self.deprecated,
             "transformationFunctions": self._transformation_functions,
-            "onlineComments": self._online_comments,
-            "onlineStorageType": self._online_storage_type,
+            "onlineConfig": self._online_config,
         }
         if self.embedding_index:
             fg_meta_dict["embeddingIndex"] = self.embedding_index.to_dict()
@@ -3616,8 +3622,12 @@ class ExternalFeatureGroup(FeatureGroupBase):
         spine: bool = False,
         deprecated: bool = False,
         embedding_index: Optional[EmbeddingIndex] = None,
-        online_comments: Optional[Dict[str, Any]] = None,
-        online_storage_type: Optional[str] = None,
+        online_config: Optional[
+            Union[
+                hsfs.core.online_config.OnlineConfig,
+                Dict[str, Any],
+            ]
+        ] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -3634,8 +3644,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
             topic_name=topic_name,
             notification_topic_name=notification_topic_name,
             deprecated=deprecated,
-            online_comments=online_comments,
-            online_storage_type=online_storage_type,
+            online_config=online_config,
         )
 
         self._feature_store_name = featurestore_name
@@ -4057,8 +4066,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
             "topicName": self.topic_name,
             "notificationTopicName": self.notification_topic_name,
             "deprecated": self.deprecated,
-            "onlineComments": self._online_comments,
-            "onlineStorageType": self._online_storage_type,
+            "onlineConfig": self._online_config,
         }
         if self.embedding_index:
             fg_meta_dict["embeddingIndex"] = self.embedding_index
@@ -4150,8 +4158,12 @@ class SpineGroup(FeatureGroupBase):
         spine: bool = True,
         dataframe: Optional[str] = None,
         deprecated: bool = False,
-        online_comments: Optional[Dict[str, Any]] = None,
-        online_storage_type: Optional[str] = None,
+        online_config: Optional[
+            Union[
+                hsfs.core.online_config.OnlineConfig,
+                Dict[str, Any],
+            ]
+        ] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -4166,8 +4178,7 @@ class SpineGroup(FeatureGroupBase):
             online_topic_name=online_topic_name,
             topic_name=topic_name,
             deprecated=deprecated,
-            online_comments=online_comments,
-            online_storage_type=online_storage_type,
+            online_config=online_config,
         )
 
         self._feature_store_name = featurestore_name

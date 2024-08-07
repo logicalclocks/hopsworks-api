@@ -27,6 +27,7 @@ import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.HudiOperationType;
 import com.logicalclocks.hsfs.JobConfiguration;
+import com.logicalclocks.hsfs.OnlineConfig;
 import com.logicalclocks.hsfs.StatisticsConfig;
 import com.logicalclocks.hsfs.Storage;
 
@@ -87,8 +88,7 @@ public class ExternalFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
                               @NonNull StorageConnector storageConnector, String description, List<String> primaryKeys,
                               List<Feature> features, StatisticsConfig statisticsConfig, String eventTime,
                               boolean onlineEnabled, String onlineTopicName, String topicName,
-                              String notificationTopicName, List<String> onlineComments,
-                              OnlineStorageType onlineStorageType) {
+                              String notificationTopicName, OnlineConfig onlineConfig) {
     this();
     this.timeTravelFormat = null;
     this.featureStore = featureStore;
@@ -112,8 +112,7 @@ public class ExternalFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
     this.onlineTopicName = onlineTopicName;
     this.topicName = topicName;
     this.notificationTopicName = notificationTopicName;
-    this.onlineComments = onlineComments;
-    this.onlineStorageType = onlineStorageType;
+    this.onlineConfig = onlineConfig;
   }
 
   public ExternalFeatureGroup() {

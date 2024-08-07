@@ -22,6 +22,7 @@ import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.HudiOperationType;
 import com.logicalclocks.hsfs.JobConfiguration;
+import com.logicalclocks.hsfs.OnlineConfig;
 import com.logicalclocks.hsfs.StatisticsConfig;
 import com.logicalclocks.hsfs.Storage;
 import com.logicalclocks.hsfs.beam.engine.FeatureGroupEngine;
@@ -47,7 +48,7 @@ public class StreamFeatureGroup extends FeatureGroupBase<PCollection<Object>> {
   public StreamFeatureGroup(FeatureStore featureStore, @NonNull String name, Integer version, String description,
       List<String> primaryKeys, List<String> partitionKeys, String hudiPrecombineKey,
       boolean onlineEnabled, List<Feature> features, StatisticsConfig statisticsConfig, String onlineTopicName,
-      String eventTime, List<String> onlineComments, OnlineStorageType onlineStorageType) {
+      String eventTime, OnlineConfig onlineConfig) {
     this();
     this.featureStore = featureStore;
     this.name = name;
@@ -63,8 +64,7 @@ public class StreamFeatureGroup extends FeatureGroupBase<PCollection<Object>> {
     this.statisticsConfig = statisticsConfig != null ? statisticsConfig : new StatisticsConfig();
     this.onlineTopicName = onlineTopicName;
     this.eventTime = eventTime;
-    this.onlineComments = onlineComments;
-    this.onlineStorageType = onlineStorageType;
+    this.onlineConfig = onlineConfig;
   }
 
   public StreamFeatureGroup() {

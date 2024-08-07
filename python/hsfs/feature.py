@@ -55,7 +55,6 @@ class Feature:
             ]
         ] = None,
         on_demand: bool = False,
-        online_storage_type: Optional[str] = None,
         **kwargs,
     ) -> None:
         self._name = util.autofix_feature_name(name)
@@ -71,7 +70,6 @@ class Feature:
         else:
             self._feature_group_id = feature_group_id
         self._on_demand = on_demand
-        self._online_storage_type = online_storage_type
 
     def to_dict(self) -> Dict[str, Any]:
         """Get structured info about specific Feature in python dictionary format.
@@ -99,7 +97,6 @@ class Feature:
             "defaultValue": self._default_value,
             "featureGroupId": self._feature_group_id,
             "onDemand": self.on_demand,
-            "onlineStorageType": self._online_storage_type,
         }
 
     def json(self) -> str:

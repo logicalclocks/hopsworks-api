@@ -23,12 +23,12 @@ import com.logicalclocks.hsfs.spark.engine.FeatureViewEngine;
 import com.logicalclocks.hsfs.spark.engine.SparkEngine;
 import com.logicalclocks.hsfs.FeatureStoreBase;
 import com.logicalclocks.hsfs.FeatureStoreException;
+import com.logicalclocks.hsfs.OnlineConfig;
 import com.logicalclocks.hsfs.StatisticsConfig;
 import com.logicalclocks.hsfs.StorageConnector;
 import com.logicalclocks.hsfs.TimeTravelFormat;
 import com.logicalclocks.hsfs.TrainingDatasetBase;
 import com.logicalclocks.hsfs.FeatureGroupBase;
-import com.logicalclocks.hsfs.FeatureGroupBase.OnlineStorageType;
 import com.logicalclocks.hsfs.metadata.StorageConnectorApi;
 import com.logicalclocks.hsfs.metadata.TrainingDatasetApi;
 
@@ -177,7 +177,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
   @Override
   public FeatureGroup getOrCreateFeatureGroup(String name, Integer version) throws IOException, FeatureStoreException {
     return   featureGroupEngine.getOrCreateFeatureGroup(this, name, version, null, null,
-        null, null, false, null, null, null, null, null, null, null);
+        null, null, false, null, null, null, null, null, null);
   }
 
   /**
@@ -211,7 +211,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
                                               boolean onlineEnabled, String eventTime)
       throws IOException, FeatureStoreException {
     return featureGroupEngine.getOrCreateFeatureGroup(this, name, version, null, primaryKeys,
-        null, null, onlineEnabled, null, null, null, null, eventTime, null, null);
+        null, null, onlineEnabled, null, null, null, null, eventTime, null);
   }
 
   /**
@@ -250,7 +250,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
                                               String eventTime) throws IOException, FeatureStoreException {
 
     return featureGroupEngine.getOrCreateFeatureGroup(this, name, version, null, primaryKeys,
-        partitionKeys, null, onlineEnabled, null, null, null, null, eventTime, null, null);
+        partitionKeys, null, onlineEnabled, null, null, null, null, eventTime, null);
   }
 
   /**
@@ -291,11 +291,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
    * @param eventTime Name of the feature containing the event time for the features in this feature group. If
    *                  eventTime is set the feature group can be used for point-in-time joins.
    *                  The supported data types for the eventTime column are: timestamp, date and bigint
-   * @param onlineComments Optionally, define comments which are used to define online table properties.
-   *                       For more info visit: https://docs.rondb.com/table_options/#table-options.
-   * @param onlineStorageType Optionally, define where online enabled feature group should persist its data.
-   *                          Options are `MEMORY` and `DISK`, for more info read: https://docs.rondb.com/disk_columns/#controlling-which-columns-are-stored-on-disk.
-   *                          Defaults to `MEMORY`.
+   * @param onlineConfig Optionally, define configuration which is used to configure online table.
    * @return FeatureGroup: The feature group metadata object.
    * @throws IOException Generic IO exception.
    * @throws FeatureStoreException If unable to retrieve FeatureGroup from the feature store.
@@ -306,12 +302,12 @@ public class FeatureStore extends FeatureStoreBase<Query> {
                                               String hudiPrecombineKey, boolean onlineEnabled,
                                               TimeTravelFormat timeTravelFormat, StatisticsConfig statisticsConfig,
                                               String topicName, String notificationTopicName, String eventTime,
-                                              List<String> onlineComments, OnlineStorageType onlineStorageType)
+                                              OnlineConfig onlineConfig)
       throws IOException, FeatureStoreException {
 
     return featureGroupEngine.getOrCreateFeatureGroup(this, name, version, description, primaryKeys,
         partitionKeys, hudiPrecombineKey, onlineEnabled, timeTravelFormat, statisticsConfig, topicName,
-        notificationTopicName, eventTime, onlineComments, onlineStorageType);
+        notificationTopicName, eventTime, onlineConfig);
   }
 
   /**
@@ -408,7 +404,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
   public StreamFeatureGroup getOrCreateStreamFeatureGroup(String name, Integer version)
       throws IOException, FeatureStoreException {
     return featureGroupEngine.getOrCreateStreamFeatureGroup(this, name, version, null,
-        null, null, null, false, null, null, null, null);
+        null, null, null, false, null, null, null);
   }
 
   /**
@@ -442,7 +438,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
                                                           boolean onlineEnabled, String eventTime)
       throws IOException, FeatureStoreException {
     return featureGroupEngine.getOrCreateStreamFeatureGroup(this, name, version, null,
-        primaryKeys, null, null, onlineEnabled, null, eventTime, null, null);
+        primaryKeys, null, null, onlineEnabled, null, eventTime, null);
   }
 
   /**
@@ -481,7 +477,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
 
 
     return featureGroupEngine.getOrCreateStreamFeatureGroup(this, name, version, null,
-        primaryKeys, partitionKeys, null, onlineEnabled, null, eventTime, null, null);
+        primaryKeys, partitionKeys, null, onlineEnabled, null, eventTime, null);
   }
 
   /**
@@ -518,11 +514,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
    * @param eventTime Name of the feature containing the event
    *                 time for the features in this feature group. If eventTime is set
    *                 the feature group can be used for point-in-time joins.
-   * @param onlineComments Optionally, define comments which are used to define online table properties.
-   *                       For more info visit: https://docs.rondb.com/table_options/#table-options.
-   * @param onlineStorageType Optionally, define where online enabled feature group should persist its data.
-   *                          Options are `MEMORY` and `DISK`, for more info read: https://docs.rondb.com/disk_columns/#controlling-which-columns-are-stored-on-disk.
-   *                          Defaults to `MEMORY`.
+   * @param onlineConfig Optionally, define configuration which is used to configure online table.
    * @return FeatureGroup: The feature group metadata object.
    * @throws IOException Generic IO exception.
    * @throws FeatureStoreException If unable to retrieve FeatureGroup from the feature store.
@@ -532,13 +524,12 @@ public class FeatureStore extends FeatureStoreBase<Query> {
                                                           List<String> primaryKeys, List<String> partitionKeys,
                                                           String hudiPrecombineKey, boolean onlineEnabled,
                                                           StatisticsConfig statisticsConfig, String eventTime,
-                                                          List<String> onlineComments,
-                                                          OnlineStorageType onlineStorageType)
+                                                          OnlineConfig onlineConfig)
       throws IOException, FeatureStoreException {
 
     return featureGroupEngine.getOrCreateStreamFeatureGroup(this, name, version, description,
         primaryKeys, partitionKeys, hudiPrecombineKey, onlineEnabled, statisticsConfig, eventTime,
-        onlineComments, onlineStorageType);
+        onlineConfig);
   }
 
   /**
