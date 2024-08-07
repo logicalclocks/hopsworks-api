@@ -28,7 +28,7 @@ except ImportError:
 
 
 class Client(base.Client):
-    HOSTNAME_VERIFICATION_DEFAULT = "HOPSWORKS_HOSTNAME_VERIFICATION"
+    HOPSWORKS_HOSTNAME_VERIFICATION = "HOPSWORKS_HOSTNAME_VERIFICATION"
     DOMAIN_CA_TRUSTSTORE_PEM = "DOMAIN_CA_TRUSTSTORE_PEM"
     PROJECT_ID = "HOPSWORKS_PROJECT_ID"
     PROJECT_NAME = "HOPSWORKS_PROJECT_NAME"
@@ -53,7 +53,7 @@ class Client(base.Client):
         )
         self._cert_key = self._get_cert_pw()
 
-        self._hostname_verification = os.environ.get([self.HOPSWORKS_HOSTNAME_VERIFICATION], hostname_verification).lower() in ("true", "1", "y", "yes")
+        self._hostname_verification = os.environ.get(self.HOPSWORKS_HOSTNAME_VERIFICATION, "{}".format(hostname_verification)).lower() in ("true", "1", "y", "yes")
         self._hopsworks_ca_trust_store_path = self._get_trust_store_path()
 
         self._project_id = os.environ[self.PROJECT_ID]

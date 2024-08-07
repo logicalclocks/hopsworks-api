@@ -212,6 +212,7 @@ def login(
             # API Key may be invalid, have the user supply it again
             os.remove(api_key_path)
         except SSLError as ssl_e:
+            logout()
             _handle_ssl_errors(ssl_e)
 
     if api_key is None and is_app:
@@ -237,6 +238,7 @@ def login(
         logout()
         raise hw_e
     except SSLError as ssl_e:
+        logout()
         _handle_ssl_errors(ssl_e)
 
 
