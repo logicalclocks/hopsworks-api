@@ -23,7 +23,7 @@ import humps
 class OnlineConfig:
     def __init__(
         self,
-        online_comments,
+        online_comments = None,
         **kwargs,
     ):
         self._online_comments = online_comments
