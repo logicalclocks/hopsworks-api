@@ -3435,8 +3435,9 @@ class FeatureGroup(FeatureGroupBase):
             "notificationTopicName": self.notification_topic_name,
             "deprecated": self.deprecated,
             "transformationFunctions": self._transformation_functions,
-            "onlineConfig": self._online_config.to_dict(),
         }
+        if self._online_config:
+            fg_meta_dict["onlineConfig"] = self._online_config.to_dict()
         if self.embedding_index:
             fg_meta_dict["embeddingIndex"] = self.embedding_index.to_dict()
         if self._stream:
@@ -4067,8 +4068,9 @@ class ExternalFeatureGroup(FeatureGroupBase):
             "topicName": self.topic_name,
             "notificationTopicName": self.notification_topic_name,
             "deprecated": self.deprecated,
-            "onlineConfig": self._online_config.to_dict(),
         }
+        if self._online_config:
+            fg_meta_dict["onlineConfig"] = self._online_config.to_dict()
         if self.embedding_index:
             fg_meta_dict["embeddingIndex"] = self.embedding_index
         return fg_meta_dict
