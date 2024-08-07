@@ -44,7 +44,7 @@ class OnlineConfig:
         return {
             "onlineComments": self._online_comments,
         }
-    
+
     @property
     def online_comments(self) -> List[str]:
         """List of comments applied to online feature store table."""

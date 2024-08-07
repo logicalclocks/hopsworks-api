@@ -83,7 +83,6 @@ from hsfs.core.constants import (
     HAS_GREAT_EXPECTATIONS,
 )
 from hsfs.core.job import Job
-from hsfs.online_config import OnlineConfig
 from hsfs.core.variable_api import VariableApi
 from hsfs.core.vector_db_client import VectorDbClient
 
@@ -92,6 +91,7 @@ from hsfs.decorators import typechecked, uses_great_expectations
 from hsfs.embedding import EmbeddingIndex
 from hsfs.ge_validation_result import ValidationResult
 from hsfs.hopsworks_udf import HopsworksUdf, UDFType
+from hsfs.online_config import OnlineConfig
 from hsfs.statistics import Statistics
 from hsfs.statistics_config import StatisticsConfig
 from hsfs.transformation_function import TransformationFunction
