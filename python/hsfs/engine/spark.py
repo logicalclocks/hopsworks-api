@@ -357,7 +357,8 @@ class Engine:
         validation_id=None,
     ):
         try:
-            if feature_group.transformation_functions:
+            # Currently on-demand transformation functions not supported in external feature groups.
+            if not isinstance(feature_group, fg_mod.ExternalFeatureGroup) and feature_group.transformation_functions:
                 dataframe = self._apply_transformation_function(
                     feature_group.transformation_functions, dataframe
                 )
