@@ -18,9 +18,9 @@ from __future__ import annotations
 
 from enum import Enum
 from typing import Any, Union
-from requests.exceptions import SSLError
 
 import requests
+from requests.exceptions import SSLError
 
 
 class RestAPIError(Exception):

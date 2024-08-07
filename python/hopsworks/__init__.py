@@ -21,14 +21,18 @@ import os
 import sys
 import tempfile
 import warnings
-from requests.exceptions import SSLError
 from pathlib import Path
 
 from hopsworks import client, constants, project, version
-from hopsworks.client.exceptions import ProjectException, RestAPIError, HopsworksSSLClientError
+from hopsworks.client.exceptions import (
+    HopsworksSSLClientError,
+    ProjectException,
+    RestAPIError,
+)
 from hopsworks.connection import Connection
 from hopsworks.core import project_api, secret_api
 from hopsworks.decorators import NoHopsworksConnectionError
+from requests.exceptions import SSLError
 
 
 # Needs to run before import of hsml and hsfs
