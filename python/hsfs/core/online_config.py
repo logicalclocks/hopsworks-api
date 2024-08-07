@@ -38,7 +38,7 @@ class OnlineConfig:
 
     def to_dict(self):
         return {
-            "onlineConfig": self._online_comments,
+            "onlineComments": self._online_comments,
         }
 
     @property
