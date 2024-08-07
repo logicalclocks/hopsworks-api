@@ -131,7 +131,7 @@ def login(
 
     # If inside hopsworks, just return the current project for now
     if "REST_ENDPOINT" in os.environ:
-        _hw_connection = _hw_connection()
+        _hw_connection = _hw_connection(hostname_verification=hostname_verification)
         _connected_project = _hw_connection.get_project()
         _initialize_module_apis()
         print("\nLogged in to project, explore it here " + _connected_project.get_url())

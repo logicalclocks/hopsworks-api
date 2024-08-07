@@ -168,6 +168,8 @@ class Client:
             files=files,
         )
 
+        print("verify:{}".format(self._verify))
+
         prepped = self._session.prepare_request(request)
         response = self._session.send(prepped, verify=self._verify, stream=stream)
 
