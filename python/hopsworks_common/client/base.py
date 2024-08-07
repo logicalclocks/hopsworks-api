@@ -199,7 +199,6 @@ class Client:
         # Update request with the new token
         request.auth = self._auth
         prepped = self._session.prepare_request(request)
-        print(self._verify)
         response = self._session.send(prepped, verify=self._verify, stream=stream)
 
         if response.status_code == 401 and retries < self.TOKEN_EXPIRED_MAX_RETRIES:
