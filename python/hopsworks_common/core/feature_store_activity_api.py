@@ -41,16 +41,26 @@ class FeatureStoreActivityApi:
             feature_store_id,
             "featuregroups",
             feature_group_id,
-            "activities",
+            "activity",
         ]
 
         query_params = {
             "limit": limit,
             "offset": offset,
+            "expand": [
+                "users",
+                "commits",
+                "jobs",
+                "validationreport",
+                "expectationsuite",
+                "executions",
+                "statistics",
+            ],
+            "sortby": "timestamp:desc",
         }
         if activity_type is not None and len(activity_type) > 0:
             query_params["activityType"] = activity_type
 
-        response = _client._request("GET", path_params, query_params=query_params)
+        response = _client._send_request("GET", path_params, query_params=query_params)
 
         return fsa_mod.FeatureStoreActivity.from_response_json(response)

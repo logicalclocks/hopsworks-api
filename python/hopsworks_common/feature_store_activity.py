@@ -21,8 +21,12 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
+import humps
+from hopsworks import execution as execution_mod
 from hopsworks_common import user as user_mod
 from hopsworks_common import util
+from hsfs import expectation_suite as es_mod
+from hsfs import validation_report as vr_mod
 from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
 
 
@@ -31,8 +35,6 @@ if TYPE_CHECKING or HAS_GREAT_EXPECTATIONS:
         ExpectationSuite,
         ExpectationSuiteValidationResult,
     )
-    from hsfs import expectation_suite as es_mod
-    from hsfs import validation_report as vr_mod
 
 
 class FeatureStoreActivityType(Enum):
@@ -44,12 +46,12 @@ class FeatureStoreActivityType(Enum):
     COMMIT = "COMMIT"
 
 
-@dataclass(frozen=True, init=False, repr=False)
+@dataclass(init=False, repr=False)
 class FeatureStoreActivity:
     type: FeatureStoreActivityType
-    metadata: str
     timestamp: int
-    user: user_mod.User
+    metadata: str
+    user: Optional[user_mod.User]
     # optional fields depending on the activity type
     validation_report: Optional[
         Union[vr_mod.ValidationReport, ExpectationSuiteValidationResult]
@@ -57,56 +59,54 @@ class FeatureStoreActivity:
     expectation_suite: Optional[Union[es_mod.ExpectationSuite, ExpectationSuite]] = None
     commit: Optional[Dict[str, Union[str, int, float]]] = None
     statistics: Optional[Dict[str, Union[str, int, float]]] = None
+    execution: Optional[execution_mod.Execution] = None
+    execution_last_event_time: Optional[int] = None
     # internal fields
     id: int
     href: str
 
     def __init__(
         self,
-        type: FeatureStoreActivityType,
-        metadata: str,
+        type: str,
         timestamp: int,
-        user: Dict[str, Any],
+        metadata: Optional[str] = None,
+        user: Optional[Dict[str, Any]] = None,
+        expectation_suite: Optional[Dict[str, Any]] = None,
+        validation_report: Optional[Dict[str, Any]] = None,
+        commit: Optional[Dict[str, Union[str, int, float]]] = None,
+        statistics: Optional[Dict[str, Union[str, int, float]]] = None,
+        execution: Optional[Dict[str, Any]] = None,
+        execution_last_event_time: Optional[int] = None,
         **kwargs,
     ):
-        self.type = type
-        self.metadata = metadata
+        self.type = FeatureStoreActivityType(type) if isinstance(type, str) else type
         self.timestamp = timestamp
-        self.user = user_mod.User.from_response_json(user)
 
         self.id = kwargs.get("id")
-        self.href = kwargs.get("href", "")
+        self.href = kwargs.get("href")
 
-        self.commit = None
-        self.expectation_suite = None
-        self.validation_report = None
-        self.statistics = None
+        self.user = user_mod.User.from_response_json(user) if user else None
+        self.metadata = metadata
+        self.commit = commit
+        self.statistics = statistics
+        self.execution = (
+            execution_mod.Execution.from_response_json(execution) if execution else None
+        )
+        self.execution_last_event_time = execution_last_event_time
 
-        if self.type == FeatureStoreActivityType.VALIDATIONS:
+        if self.type == FeatureStoreActivityType.VALIDATIONS and validation_report:
+            self.validation_report = vr_mod.ValidationReport.from_response_json(
+                validation_report
+            )
             if HAS_GREAT_EXPECTATIONS:
-                self.validation_report = ExpectationSuiteValidationResult(
-                    **kwargs.get("validation_report")
-                )
-            else:
-                self.validation_report = vr_mod.ValidationReport(
-                    **kwargs.get("validation_report")
-                )
+                self.validation_report = self.validation_report.to_ge_type()
 
-        if self.type == FeatureStoreActivityType.EXPECTATIONS:
+        if self.type == FeatureStoreActivityType.EXPECTATIONS and expectation_suite:
+            self.expectation_suite = es_mod.ExpectationSuite.from_response_json(
+                expectation_suite
+            )
             if HAS_GREAT_EXPECTATIONS:
-                self.expectation_suite = ExpectationSuite(
-                    **kwargs.get("expectation_suite")
-                )
-            else:
-                self.expectation_suite = es_mod.ExpectationSuite(
-                    **kwargs.get("expectation_suite")
-                )
-
-        if self.type == FeatureStoreActivityType.COMMIT:
-            self.commit = kwargs.get("commit")
-
-        if self.statistics:
-            self.statistics = kwargs.get("statistics")
+                self.expectation_suite = self.expectation_suite.to_ge_type()
 
     @classmethod
     def from_response_json(
@@ -117,26 +117,39 @@ class FeatureStoreActivity:
                 cls.from_response_json(activity) for activity in response_json["items"]
             ]
         else:
-            return cls(**response_json)
+            return cls(**humps.decamelize(response_json))
 
     def to_dict(self) -> Dict[str, Any]:
-        json = {
+        activity_dict = {
             "id": self.id,
             "type": self.type.value,
             "metadata": self.metadata,
             "timestamp": self.timestamp,
-            "user": self.user.json(),
         }
+        if self.user:
+            activity_dict["user"] = self.user.to_dict()
         if self.validation_report:
-            json["validation_report"] = self.validation_report.json()
+            activity_dict["validation_report"] = (
+                self.validation_report.to_dict()
+                if hasattr(self.validation_report, "_id")
+                else self.validation_report.to_json_dict()
+            )
         if self.expectation_suite:
-            json["expectation_suite"] = self.expectation_suite.json()
+            activity_dict["expectation_suite"] = (
+                self.expectation_suite.to_dict()
+                if hasattr(self.expectation_suite, "_id")
+                else self.expectation_suite.to_json_dict()
+            )
         if self.commit:
-            json["commit"] = self.commit
+            activity_dict["commit"] = self.commit
         if self.statistics:
-            json["statistics"] = self.statistics
+            activity_dict["statistics"] = self.statistics
+        if self.execution:
+            activity_dict["execution"] = humps.decamelize(
+                json.loads(self.execution.json())
+            )
 
-        return json
+        return activity_dict
 
     def json(self) -> str:
         return json.dumps(self.to_dict(), cls=util.Encoder)
@@ -144,8 +157,27 @@ class FeatureStoreActivity:
     def __repr__(self):
         utc_human_readable = (
             datetime.datetime.fromtimestamp(
-                self.timestamp, datetime.timezone.utc
+                self.timestamp / 1000, datetime.timezone.utc
             ).strftime(r"%Y-%m-%d %H:%M:%S")
             + " UTC"
         )
-        return f"Activity:\n{self.type},\n{self.metadata},\nat: {utc_human_readable},\nuser: {self.user}"
+        the_string = f"Activity {self.type.value},"
+        the_string += f" at: {utc_human_readable}"
+        if self.user:
+            the_string += f", by: {self.user.email}"
+        if self.metadata:
+            the_string += f"\n\t{self.metadata}"
+        if self.execution:
+            the_string += f"\n{self.execution.get_url()},"
+        if self.validation_report:
+            the_string += f"Validation {'succeeded' if self.validation_report.success else 'failed'}."
+        if self.expectation_suite:
+            the_string += (
+                f"It has {len(self.expectation_suite.expectations)} expectations."
+            )
+        if self.statistics:
+            the_string += f"\nComputed following statistics:\n{json.dumps(self.statistics, indent=2)}"
+        if self.commit:
+            the_string += f"\nData ingestion:\n{json.dumps(self.commit, indent=2)}"
+
+        return the_string
