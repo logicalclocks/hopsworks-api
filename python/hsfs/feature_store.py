@@ -45,6 +45,7 @@ from hsfs.core import (
     training_dataset_api,
     transformation_function_engine,
 )
+from hsfs.core.online_config import OnlineConfig
 from hsfs.decorators import typechecked
 from hsfs.embedding import EmbeddingIndex
 from hsfs.hopsworks_udf import HopsworksUdf
@@ -515,7 +516,7 @@ class FeatureStore:
         ] = None,
         online_config: Optional[
             Union[
-                hsfs.core.online_config.OnlineConfig,
+                OnlineConfig,
                 Dict[str, Any],
             ]
         ] = None,
@@ -678,7 +679,7 @@ class FeatureStore:
         ] = None,
         online_config: Optional[
             Union[
-                hsfs.core.online_config.OnlineConfig,
+                OnlineConfig,
                 Dict[str, Any],
             ]
         ] = None,
@@ -951,7 +952,7 @@ class FeatureStore:
         notification_topic_name: Optional[str] = None,
         online_config: Optional[
             Union[
-                hsfs.core.online_config.OnlineConfig,
+                OnlineConfig,
                 Dict[str, Any],
             ]
         ] = None,

@@ -19,6 +19,7 @@ from typing import Any, Dict
 
 import humps
 
+
 class OnlineConfig:
     def __init__(
         self,

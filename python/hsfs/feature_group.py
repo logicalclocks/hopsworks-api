@@ -83,6 +83,7 @@ from hsfs.core.constants import (
     HAS_GREAT_EXPECTATIONS,
 )
 from hsfs.core.job import Job
+from hsfs.core.online_config import OnlineConfig
 from hsfs.core.variable_api import VariableApi
 from hsfs.core.vector_db_client import VectorDbClient
 
@@ -129,7 +130,7 @@ class FeatureGroupBase:
         deprecated: bool = False,
         online_config: Optional[
             Union[
-                hsfs.core.online_config.OnlineConfig,
+                OnlineConfig,
                 Dict[str, Any],
             ]
         ] = None,
@@ -150,7 +151,7 @@ class FeatureGroupBase:
         self._feature_store = None
         self._variable_api: VariableApi = VariableApi()
 
-        self._online_config = hsfs.core.online_config.OnlineConfig.from_response_json(online_config) if isinstance(online_config, dict) else online_config
+        self._online_config = OnlineConfig.from_response_json(online_config) if isinstance(online_config, dict) else online_config
 
         self._multi_part_insert: bool = False
         self._embedding_index = embedding_index
@@ -2114,7 +2115,7 @@ class FeatureGroup(FeatureGroupBase):
         ] = None,
         online_config: Optional[
             Union[
-                hsfs.core.online_config.OnlineConfig,
+                OnlineConfig,
                 Dict[str, Any],
             ]
         ] = None,
@@ -3624,7 +3625,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         embedding_index: Optional[EmbeddingIndex] = None,
         online_config: Optional[
             Union[
-                hsfs.core.online_config.OnlineConfig,
+                OnlineConfig,
                 Dict[str, Any],
             ]
         ] = None,
@@ -4160,7 +4161,7 @@ class SpineGroup(FeatureGroupBase):
         deprecated: bool = False,
         online_config: Optional[
             Union[
-                hsfs.core.online_config.OnlineConfig,
+                OnlineConfig,
                 Dict[str, Any],
             ]
         ] = None,
