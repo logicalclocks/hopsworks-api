@@ -83,7 +83,7 @@ from hsfs.core.constants import (
     HAS_GREAT_EXPECTATIONS,
 )
 from hsfs.core.job import Job
-from hsfs.core.online_config import OnlineConfig
+from hsfs.online_config import OnlineConfig
 from hsfs.core.variable_api import VariableApi
 from hsfs.core.vector_db_client import VectorDbClient
 

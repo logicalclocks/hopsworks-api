@@ -45,7 +45,7 @@ from hsfs.core import (
     training_dataset_api,
     transformation_function_engine,
 )
-from hsfs.core.online_config import OnlineConfig
+from hsfs.online_config import OnlineConfig
 from hsfs.decorators import typechecked
 from hsfs.embedding import EmbeddingIndex
 from hsfs.hopsworks_udf import HopsworksUdf
