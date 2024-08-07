@@ -36,6 +36,11 @@ class OnlineConfig:
         json_decamelized = humps.decamelize(json_dict)
         return cls(**json_decamelized)
 
+    def to_dict(self):
+        return {
+            "onlineConfig": self._online_comments,
+        }
+
     @property
     def online_comments(self):
         return self._online_comments
