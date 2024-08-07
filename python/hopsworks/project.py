@@ -213,7 +213,7 @@ class Project:
         """
         _client = client.get_instance()
         if type(_client) is client.external.Client:
-            _client.download_certs(self.name)
+            _client.download_certs()
         return self._kafka_api
 
     def get_opensearch_api(self):
@@ -224,7 +224,7 @@ class Project:
         """
         _client = client.get_instance()
         if type(_client) is client.external.Client:
-            _client.download_certs(self.name)
+            _client.download_certs()
         return self._opensearch_api
 
     def get_jobs_api(self):
