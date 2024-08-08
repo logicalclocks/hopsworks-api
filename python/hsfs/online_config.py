@@ -28,9 +28,11 @@ class OnlineConfig:
     def __init__(
         self,
         online_comments: List[str] = None,
+        table_space: str = None,
         **kwargs,
     ):
         self._online_comments = online_comments
+        self._table_space = table_space
 
     @classmethod
     def from_response_json(cls, json_dict: Dict[str, Any]) -> "OnlineConfig":
@@ -43,6 +45,7 @@ class OnlineConfig:
     def to_dict(self):
         return {
             "onlineComments": self._online_comments,
+            "tableSpace": self._table_space,
         }
 
     @property
@@ -53,3 +56,12 @@ class OnlineConfig:
     @online_comments.setter
     def online_comments(self, online_comments: List[str]) -> None:
         self._online_comments = online_comments
+
+    @property
+    def table_space(self) -> str:
+        """Table space of online feature store table for storing data on disk."""
+        return self._table_space
+
+    @table_space.setter
+    def table_space(self, table_space: str) -> None:
+        self._table_space = table_space

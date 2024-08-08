@@ -31,4 +31,8 @@ public class OnlineConfig {
   @Getter
   @Setter
   private List<String> onlineComments;
+
+  @Getter
+  @Setter
+  private List<String> tableSpace;
 }
