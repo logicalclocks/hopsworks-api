@@ -40,7 +40,7 @@ def init(
     global _client
     if not _client:
         if client_type == "hopsworks":
-            _client = hopsworks.Client()
+            _client = hopsworks.Client(hostname_verification)
         elif client_type == "external":
             _client = external.Client(
                 host,

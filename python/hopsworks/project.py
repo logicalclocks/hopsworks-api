@@ -139,6 +139,8 @@ class Project:
                 project=self.name,
                 api_key_value=_client._auth._token,
                 engine=engine,
+                hostname_verification=_client._hostname_verification,
+                trust_store_path=_client._hopsworks_ca_trust_store_path,
             ).get_feature_store(name)
         else:
             return connection(engine=engine).get_feature_store(
@@ -171,6 +173,8 @@ class Project:
                 port=_client._port,
                 project=self.name,
                 api_key_value=_client._auth._token,
+                hostname_verification=_client._hostname_verification,
+                trust_store_path=_client._hopsworks_ca_trust_store_path,
             ).get_model_registry()
         else:
             return connection().get_model_registry()  # If internal client
@@ -201,6 +205,8 @@ class Project:
                 port=_client._port,
                 project=self.name,
                 api_key_value=_client._auth._token,
+                hostname_verification=_client._hostname_verification,
+                trust_store_path=_client._hopsworks_ca_trust_store_path,
             ).get_model_serving()
         else:
             return connection().get_model_serving()  # If internal client
