@@ -54,6 +54,7 @@ _project_api = None
 
 udf = hsfs.hopsworks_udf.udf
 
+
 def hw_formatwarning(message, category, filename, lineno, line=None):
     return "{}: {}\n".format(category.__name__, message)
 
@@ -67,6 +68,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s: %(message)s",
     stream=sys.stdout,
 )
+
 
 def login(
     host: str = None,
@@ -167,7 +169,9 @@ def login(
     if port == 443 and "HOPSWORKS_PORT" in os.environ:
         port = os.environ["HOPSWORKS_PORT"]
 
-    hostname_verification = os.getenv("HOPSWORKS_HOSTNAME_VERIFICATION", '{}'.format(hostname_verification)).lower() in ("true", "1", "y", "yes")
+    hostname_verification = os.getenv(
+        "HOPSWORKS_HOSTNAME_VERIFICATION", "{}".format(hostname_verification)
+    ).lower() in ("true", "1", "y", "yes")
 
     trust_store_path = os.getenv("HOPSWORKS_TRUST_STORE_PATH", trust_store_path)
 
@@ -196,7 +200,11 @@ def login(
     elif os.path.exists(api_key_path) and is_app:
         try:
             _hw_connection = _hw_connection(
-                host=host, port=port, api_key_file=api_key_path, hostname_verification=hostname_verification, trust_store_path=trust_store_path
+                host=host,
+                port=port,
+                api_key_file=api_key_path,
+                hostname_verification=hostname_verification,
+                trust_store_path=trust_store_path,
             )
             _connected_project = _prompt_project(_hw_connection, project, is_app)
             if _connected_project:
@@ -230,7 +238,13 @@ def login(
             fh.write(api_key.strip())
 
     try:
-        _hw_connection = _hw_connection(host=host, port=port, api_key_value=api_key, hostname_verification=hostname_verification, trust_store_path=trust_store_path)
+        _hw_connection = _hw_connection(
+            host=host,
+            port=port,
+            api_key_value=api_key,
+            hostname_verification=hostname_verification,
+            trust_store_path=trust_store_path,
+        )
         _connected_project = _prompt_project(_hw_connection, project, is_app)
         if _connected_project:
             _set_active_project(_connected_project)
@@ -240,7 +254,6 @@ def login(
     except SSLError as ssl_e:
         logout()
         _handle_ssl_errors(ssl_e)
-
 
     if _connected_project is None:
         print(
@@ -254,8 +267,11 @@ def login(
 
 
 def _handle_ssl_errors(ssl_e):
-    raise HopsworksSSLClientError("Hopsworks certificate verification can be turned off by specifying hopsworks.login(hostname_verification=False) "
-                    "or setting the environment variable HOPSWORKS_HOSTNAME_VERIFICATION='False'") from ssl_e
+    raise HopsworksSSLClientError(
+        "Hopsworks certificate verification can be turned off by specifying hopsworks.login(hostname_verification=False) "
+        "or setting the environment variable HOPSWORKS_HOSTNAME_VERIFICATION='False'"
+    ) from ssl_e
+
 
 def _get_cached_api_key_path():
     """
@@ -451,7 +467,8 @@ def get_secrets_api():
         raise NoHopsworksConnectionError()
     return _secrets_api
 
+
 def _set_active_project(project):
     _client = client.get_instance()
-    if isinstance(_client, client.external.Client):
+    if _client._is_external():
         _client.provide_project(project.name)

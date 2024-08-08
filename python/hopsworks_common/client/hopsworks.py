@@ -53,7 +53,9 @@ class Client(base.Client):
         )
         self._cert_key = self._get_cert_pw()
 
-        self._hostname_verification = os.environ.get(self.HOPSWORKS_HOSTNAME_VERIFICATION, "{}".format(hostname_verification)).lower() in ("true", "1", "y", "yes")
+        self._hostname_verification = os.environ.get(
+            self.HOPSWORKS_HOSTNAME_VERIFICATION, "{}".format(hostname_verification)
+        ).lower() in ("true", "1", "y", "yes")
         self._hopsworks_ca_trust_store_path = self._get_trust_store_path()
 
         self._project_id = os.environ[self.PROJECT_ID]
@@ -62,7 +64,9 @@ class Client(base.Client):
             self._auth = auth.BearerAuth(self._read_jwt())
         except FileNotFoundError:
             self._auth = auth.ApiKeyAuth(self._read_apikey())
-        self._verify = self._get_verify(self._hostname_verification, self._hopsworks_ca_trust_store_path)
+        self._verify = self._get_verify(
+            self._hostname_verification, self._hopsworks_ca_trust_store_path
+        )
         self._session = requests.session()
 
         self._connected = True
@@ -169,6 +173,9 @@ class Client(base.Client):
         """replace hostname to public hostname set in HOPSWORKS_PUBLIC_HOST"""
         ui_url = url._replace(netloc=os.environ[self.HOPSWORKS_PUBLIC_HOST])
         return ui_url
+
+    def _is_external(self):
+        return False
 
     @property
     def host(self):

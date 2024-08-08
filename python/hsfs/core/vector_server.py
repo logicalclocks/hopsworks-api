@@ -174,7 +174,7 @@ class VectorServer:
         )
 
         if external is None:
-            external = isinstance(client.get_instance(), client.external.Client)
+            external = client.get_instance()._is_external()
         # `init_prepared_statement` should be the last because other initialisations
         # has to be done successfully before it is able to fetch feature vectors.
         self.init_transformation(entity)

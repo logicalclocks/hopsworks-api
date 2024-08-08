@@ -49,7 +49,7 @@ class OpenSearchApi:
         self._variable_api: VariableApi = VariableApi()
 
     def _get_opensearch_url(self) -> str:
-        if isinstance(client.get_instance(), client.external.Client):
+        if client.get_instance()._is_external():
             external_domain = self._variable_api.get_loadbalancer_external_domain()
             if external_domain == "":
                 # fallback to use hostname of head node

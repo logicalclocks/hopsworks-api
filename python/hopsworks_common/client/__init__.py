@@ -53,7 +53,7 @@ def init(
                 api_key_file,
                 api_key_value,
             )
-    elif isinstance(_client, external.Client) and not _client._project_name:
+    elif _client._is_external() and not _client._project_name:
         _client.provide_project(project)
 
 
