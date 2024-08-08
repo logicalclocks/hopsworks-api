@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import base64
+import logging
 import os
 import textwrap
 import time
@@ -33,6 +34,8 @@ try:
     import jks
 except ImportError:
     pass
+
+_logger = logging.getLogger(__name__)
 
 
 urllib3.disable_warnings(urllib3.exceptions.SecurityWarning)
@@ -168,7 +171,7 @@ class Client:
             files=files,
         )
 
-        print("verify:{}".format(self._verify))
+        _logger.debug("url:{} hostname_verification:{}".format(url, self._verify))
 
         prepped = self._session.prepare_request(request)
         response = self._session.send(prepped, verify=self._verify, stream=stream)
