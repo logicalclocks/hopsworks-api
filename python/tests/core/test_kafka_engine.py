@@ -148,8 +148,7 @@ class TestKafkaEngine:
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
 
-        mocker.patch("hsfs.core.kafka_engine.isinstance", return_value=True)
-
+        mocker.patch("hsfs.client._is_external", return_value=False)
         mock_client = mocker.patch("hsfs.client.get_instance")
         mock_client.return_value._write_pem.return_value = (
             "test_ssl_ca_location",
@@ -191,8 +190,7 @@ class TestKafkaEngine:
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
 
-        mocker.patch("hsfs.engine.python.isinstance", return_value=False)
-
+        mocker.patch("hsfs.client._is_external", return_value=True)
         mock_client = mocker.patch("hsfs.client.get_instance")
         mock_client.return_value._write_pem.return_value = (
             "test_ssl_ca_location",
@@ -234,8 +232,7 @@ class TestKafkaEngine:
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
 
-        mocker.patch("hsfs.engine.python.isinstance", return_value=True)
-
+        mocker.patch("hsfs.client._is_external", return_value=False)
         mock_client = mocker.patch("hsfs.client.get_instance")
         mock_client.return_value._write_pem.return_value = (
             "test_ssl_ca_location",
@@ -280,7 +277,7 @@ class TestKafkaEngine:
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
 
-        mocker.patch("hsfs.engine.python.isinstance", return_value=False)
+        mocker.patch("hsfs.client._is_external", return_value=True)
 
         mock_client = mocker.patch("hsfs.client.get_instance")
         mock_client.return_value._write_pem.return_value = (
@@ -417,8 +414,7 @@ class TestKafkaEngine:
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
 
-        mocker.patch("hsfs.core.kafka_engine.isinstance", return_value=True)
-
+        mocker.patch("hsfs.client._is_external", return_value=False)
         # Act
         results = kafka_engine.get_kafka_config(
             1, write_options={"user_opt": "ABC"}, engine="spark"
@@ -448,6 +444,7 @@ class TestKafkaEngine:
     def test_spark_get_kafka_config_external_client(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hsfs.client._is_external", return_value=True)
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
         mock_engine_get_instance.return_value.add_file.return_value = (
             "result_from_add_file"
@@ -488,6 +485,7 @@ class TestKafkaEngine:
     def test_spark_get_kafka_config_internal_kafka(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hsfs.client._is_external", return_value=True)
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
         mock_engine_get_instance.return_value.add_file.return_value = (
             "result_from_add_file"

@@ -96,6 +96,7 @@ class TestPython:
             "hsfs.core.util_sql.create_mysql_engine"
         )
         mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hsfs.client._is_external")
         mock_python_engine_return_dataframe_type = mocker.patch(
             "hsfs.engine.python.Engine._return_dataframe_type"
         )
