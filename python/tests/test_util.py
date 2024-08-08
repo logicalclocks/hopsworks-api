@@ -500,16 +500,14 @@ class TestUtil:
         mock_url_parsed.geturl = mocker.MagicMock(return_value=geturl_return)
         mock_client = mocker.MagicMock()
         mock_client._base_url = base_url + "url"
-        mock_client._replace_public_host = mocker.MagicMock(
-            return_value=mock_url_parsed
-        )
+        mock_client.replace_public_host = mocker.MagicMock(return_value=mock_url_parsed)
         mocker.patch("hsml.client.get_instance", return_value=mock_client)
 
         # Act
         url = util.get_hostname_replaced_url(sub_path)
 
         # Assert
-        mock_client._replace_public_host.assert_called_once_with(urlparse_href_arg)
+        mock_client.replace_public_host.assert_called_once_with(urlparse_href_arg)
         mock_url_parsed.geturl.assert_called_once()
         assert url == geturl_return
 
