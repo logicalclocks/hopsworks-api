@@ -37,7 +37,6 @@ from urllib.parse import urljoin, urlparse
 
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException, JobException
-from hopsworks_common.core import variable_api
 from hopsworks_common.git_file_status import GitFileStatus
 
 
@@ -102,15 +101,6 @@ def strip_feature_store_suffix(name: str) -> str:
         return name[: -1 * len(FEATURE_STORE_NAME_SUFFIX)]
     else:
         return name
-
-
-def get_host_name() -> str:
-    host = variable_api.VariableApi().get_loadbalancer_external_domain()
-    if host == "":
-        # If the load balancer is not configured, then fall back to
-        # use the MySQL node on the head node
-        host = client.get_instance().host
-    return host
 
 
 def get_dataset_type(path: str) -> Literal["HIVEDB", "DATASET"]:

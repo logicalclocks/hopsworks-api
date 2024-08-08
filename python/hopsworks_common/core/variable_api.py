@@ -20,13 +20,19 @@ import re
 from typing import Optional, Tuple
 
 from hopsworks_common import client
-from hopsworks_common.client.exceptions import RestAPIError
+from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
+
+
+LOADBALANCER_SERVICES = {
+    "mysqld": "mysqld",
+    "online_store_rest_server": "rdrs",
+    "opensearch": "opensearch",
+    "kafka": "kafka",
+    "feature_query": "flyingduck",
+}
 
 
 class VariableApi:
-    def __init__(self):
-        pass
-
     def get_variable(self, variable: str):
         """Get the configured value of a variable.
 
@@ -94,53 +100,23 @@ class VariableApi:
         """
         return self.get_variable("enable_flyingduck") == "true"
 
-    def get_loadbalancer_external_domain_mysqld(self) -> str:
+    def get_loadbalancer_external_domain(self, service: str) -> str:
         """Get domain of external loadbalancer for MySQLd.
 
         # Returns
             `str`: The domain of external loadbalancer for MySQLd, if it is set up, otherwise empty string `""`.
         """
         try:
-            return self.get_variable("loadbalancer_external_domain_mysqld")
-        except RestAPIError:
-            return ""
-
-    def get_loadbalancer_external_domain_kafka(self) -> str:
-        """Get domain of external loadbalancer for Kafka.
-
-        # Returns
-            `str`: The domain of external loadbalancer for Kafka, if it is set up, otherwise empty string `""`.
-        """
-        try:
-            return self.get_variable("loadbalancer_external_domain_kafka")
-        except RestAPIError:
-            return ""
-
-    def get_loadbalancer_external_domain_feature_query(self) -> str:
-        """Get domain of external loadbalancer for Hopsworks Feature Query Service.
-
-        # Returns
-            `str`: The domain of external loadbalancer for Hopsworks Feature Query Service (a.k.a flyingduck),
-                if it is set up, otherwise empty string `""`.
-        """
-        try:
-            return self.get_variable("loadbalancer_external_domain_hopsworks")
-        except RestAPIError:
-            return ""
-
-    def get_loadbalancer_external_domain_online_store_rest_server(self) -> str:
-        """Get domain of external loadbalancer for Hopsworks.
-
-        # Returns
-            `str`: The domain of external loadbalancer for the Online Store Rest Server (RonDB Rest Server),
-                if it is set up, otherwise empty string `""`.
-        """
-        try:
-            return self.get_variable(
-                "loadbalancer_external_domain_online_store_rest_server"
-            )
-        except RestAPIError:
-            return ""
+            return self.get_variable(f"loadbalancer_external_domain_{service}")
+        except RestAPIError as err:
+            if err.STATUS_CODE_NOT_FOUND:
+                raise FeatureStoreException(
+                    f"Client could not get {LOADBALANCER_SERVICES[service]} service hostname from "
+                    f"loadbalancer_external_domain_{service}. "
+                    "The variable is either not set or empty in Hopsworks cluster configuration."
+                ) from err
+            else:
+                raise err
 
     def get_service_discovery_domain(self) -> str:
         """Get domain of service discovery server.

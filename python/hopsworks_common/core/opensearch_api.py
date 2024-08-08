@@ -50,10 +50,9 @@ class OpenSearchApi:
 
     def _get_opensearch_url(self) -> str:
         if isinstance(client.get_instance(), client.external.Client):
-            external_domain = self._variable_api.get_loadbalancer_external_domain()
-            if external_domain == "":
-                # fallback to use hostname of head node
-                external_domain = client.get_instance().host
+            external_domain = self._variable_api.get_loadbalancer_external_domain(
+                "opensearch"
+            )
             return f"https://{external_domain}:9200"
         else:
             service_discovery_domain = self._variable_api.get_service_discovery_domain()

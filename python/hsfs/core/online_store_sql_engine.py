@@ -21,6 +21,7 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
 
+from hopsworks_common.core import variable_api
 from hsfs import util
 from hsfs.core import (
     feature_view_api,
@@ -238,7 +239,11 @@ class OnlineStoreSqlClient:
             self._feature_store_id
         )
         self._connection_options = options
-        self._hostname = util.get_host_name() if self._external else None
+        self._hostname = (
+            variable_api.VariableApi().get_loadbalancer_external_domain("mysqld")
+            if self._external
+            else None
+        )
 
         if util.is_runtime_notebook():
             _logger.debug("Running in Jupyter notebook, applying nest_asyncio")
