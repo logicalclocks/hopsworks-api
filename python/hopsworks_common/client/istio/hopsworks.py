@@ -209,3 +209,6 @@ class Client(istio.Client):
         """replace hostname to public hostname set in HOPSWORKS_PUBLIC_HOST"""
         ui_url = url._replace(netloc=os.environ[self.HOPSWORKS_PUBLIC_HOST])
         return ui_url
+
+    def _is_external(self):
+        return False

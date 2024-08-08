@@ -214,7 +214,7 @@ class ArrowFlightClient:
 
     def _retrieve_host_url(self) -> Optional[str]:
         _logger.debug("Retrieving host URL.")
-        if isinstance(self._client, client.external.Client):
+        if self._client._is_external():
             external_domain = self._variable_api.get_loadbalancer_external_domain()
             if external_domain == "":
                 _logger.debug("loadbalancer_external_domain not set on cluster")
