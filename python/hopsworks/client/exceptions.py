@@ -21,6 +21,7 @@ from hopsworks_common.client.exceptions import (
     ExternalClientError,
     FeatureStoreException,
     GitException,
+    HopsworksSSLClientError,
     JobException,
     JobExecutionException,
     KafkaException,
@@ -47,4 +48,5 @@ __all__ = [
     RestAPIError,
     UnknownSecretStorageError,
     VectorDatabaseException,
+    HopsworksSSLClientError,
 ]

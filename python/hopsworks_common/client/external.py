@@ -73,6 +73,8 @@ class Client(base.Client):
         self._connected = True
 
         self._verify = self._get_verify(hostname_verification, trust_store_path)
+        self._hostname_verification = hostname_verification
+        self._hopsworks_ca_trust_store_path = trust_store_path
         _logger.debug("Verify: %s", self._verify)
 
         self._cert_key = None
