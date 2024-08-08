@@ -911,8 +911,6 @@ class TestSpark:
         mock_common_client_get_instance = mocker.patch(
             "hopsworks_common.client.get_instance"
         )
-        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hopsworks_common.client._is_external", return_value=False)
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
         mocker.patch("hsfs.engine.spark.Engine._encode_complex_features")
         mock_spark_engine_online_fg_to_avro = mocker.patch(
@@ -947,7 +945,6 @@ class TestSpark:
         fg.feature_store.project_id = project_id
 
         mock_common_client_get_instance.return_value._project_name = "test_project_name"
-        mock_client_get_instance.return_value._project_name = "test_project_name"
 
         # Act
         spark_engine.save_stream_dataframe(
@@ -1035,7 +1032,7 @@ class TestSpark:
         mock_common_client_get_instance = mocker.patch(
             "hopsworks_common.client.get_instance"
         )
-        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._is_external", return_value=False)
         mocker.patch("hsfs.engine.spark.Engine._encode_complex_features")
         mock_spark_engine_online_fg_to_avro = mocker.patch(
             "hsfs.engine.spark.Engine._online_fg_to_avro"
@@ -1079,7 +1076,6 @@ class TestSpark:
         fg.feature_store.project_id = project_id
 
         mock_common_client_get_instance.return_value._project_name = "test_project_name"
-        mock_client_get_instance.return_value._project_name = "test_project_name"
 
         # Act
         spark_engine.save_stream_dataframe(
@@ -1168,7 +1164,7 @@ class TestSpark:
         mock_common_client_get_instance = mocker.patch(
             "hopsworks_common.client.get_instance"
         )
-        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._is_external", return_value=False)
         mocker.patch("hsfs.engine.spark.Engine._encode_complex_features")
         mock_spark_engine_online_fg_to_avro = mocker.patch(
             "hsfs.engine.spark.Engine._online_fg_to_avro"
@@ -1200,7 +1196,6 @@ class TestSpark:
         fg.feature_store = mocker.Mock()
 
         mock_common_client_get_instance.return_value._project_name = "test_project_name"
-        mock_client_get_instance.return_value._project_name = "test_project_name"
 
         # Act
         spark_engine.save_stream_dataframe(
@@ -1294,7 +1289,7 @@ class TestSpark:
         mock_common_client_get_instance = mocker.patch(
             "hopsworks_common.client.get_instance"
         )
-        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._is_external", return_value=False)
         mocker.patch("hsfs.engine.spark.Engine._encode_complex_features")
         mock_spark_engine_online_fg_to_avro = mocker.patch(
             "hsfs.engine.spark.Engine._online_fg_to_avro"
@@ -1328,7 +1323,6 @@ class TestSpark:
         fg.feature_store.project_id = project_id
 
         mock_common_client_get_instance.return_value._project_name = "test_project_name"
-        mock_client_get_instance.return_value._project_name = "test_project_name"
 
         # Act
         spark_engine.save_stream_dataframe(
@@ -1416,7 +1410,7 @@ class TestSpark:
         mock_common_client_get_instance = mocker.patch(
             "hopsworks_common.client.get_instance"
         )
-        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._is_external", return_value=False)
         mocker.patch("hsfs.engine.spark.Engine._encode_complex_features")
         mock_spark_engine_online_fg_to_avro = mocker.patch(
             "hsfs.engine.spark.Engine._online_fg_to_avro"
@@ -1450,7 +1444,6 @@ class TestSpark:
         fg.feature_store.project_id = project_id
 
         mock_common_client_get_instance.return_value._project_name = "test_project_name"
-        mock_client_get_instance.return_value._project_name = "test_project_name"
 
         # Act
         spark_engine.save_stream_dataframe(
@@ -1675,7 +1668,7 @@ class TestSpark:
     def test_save_online_dataframe(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._is_external", return_value=False)
         mocker.patch("hsfs.engine.spark.Engine._encode_complex_features")
         mock_spark_engine_online_fg_to_avro = mocker.patch(
             "hsfs.engine.spark.Engine._online_fg_to_avro"
