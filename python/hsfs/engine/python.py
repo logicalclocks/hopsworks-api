@@ -57,7 +57,6 @@ from botocore.response import StreamingBody
 from hsfs import (
     client,
     feature,
-    feature_store,
     feature_view,
     transformation_function,
     util,
@@ -128,7 +127,7 @@ class Engine:
     def sql(
         self,
         sql_query: str,
-        feature_store: feature_store.FeatureStore,
+        feature_store: str,
         online_conn: Optional["sc.JdbcConnector"],
         dataframe_type: str,
         read_options: Optional[Dict[str, Any]],
@@ -430,7 +429,7 @@ class Engine:
     def show(
         self,
         sql_query: str,
-        feature_store: feature_store.FeatureStore,
+        feature_store: str,
         n: int,
         online_conn: "sc.JdbcConnector",
         read_options: Optional[Dict[str, Any]] = None,
@@ -762,7 +761,10 @@ class Engine:
         validation_id: Optional[int] = None,
     ) -> Optional[job.Job]:
         # Currently on-demand transformation functions not supported in external feature groups.
-        if not isinstance(feature_group, ExternalFeatureGroup) and feature_group.transformation_functions:
+        if (
+            not isinstance(feature_group, ExternalFeatureGroup)
+            and feature_group.transformation_functions
+        ):
             dataframe = self._apply_transformation_function(
                 feature_group.transformation_functions, dataframe
             )
