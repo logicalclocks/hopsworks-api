@@ -328,7 +328,7 @@ class TestMonitoringWindowConfigEngine:
     def test_fetch_entity_data_in_monitoring_window(self, backend_fixtures, mocker):
         # Arrange
         mocker.patch("hsfs.engine.get_type", return_value="spark")
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         fetch_feature_group_data_mocker = mocker.patch(
             "hsfs.core.monitoring_window_config_engine.MonitoringWindowConfigEngine.fetch_feature_group_data",

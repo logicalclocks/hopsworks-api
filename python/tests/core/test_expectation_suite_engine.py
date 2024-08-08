@@ -168,7 +168,7 @@ class TestExpectationSuiteEngine:
         feature_group_id = 10
 
         mocker.patch("hsfs.engine.get_type")
-        mock_client_get_instance = mocker.patch("hsfs.client.get_instance")
+        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
         mock_util_get_hostname_replaced_url = mocker.patch(
             "hsfs.util.get_hostname_replaced_url"
         )

@@ -171,7 +171,7 @@ class TestSpark:
 
     def test_register_external_temporary_table(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mock_sc_read = mocker.patch("hsfs.storage_connector.JdbcConnector.read")
         mock_pyspark_getOrCreate = mocker.patch(
             "pyspark.sql.session.SparkSession.builder.getOrCreate"
@@ -205,7 +205,7 @@ class TestSpark:
 
     def test_register_external_temporary_table_external_fg_location(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mock_sc_read = mocker.patch("hsfs.storage_connector.JdbcConnector.read")
         mock_pyspark_getOrCreate = mocker.patch(
             "pyspark.sql.session.SparkSession.builder.getOrCreate"
@@ -911,8 +911,8 @@ class TestSpark:
         mock_common_client_get_instance = mocker.patch(
             "hopsworks_common.client.get_instance"
         )
-        mock_client_get_instance = mocker.patch("hsfs.client.get_instance")
-        mocker.patch("hsfs.client._is_external", return_value=False)
+        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._is_external", return_value=False)
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
         mocker.patch("hsfs.engine.spark.Engine._encode_complex_features")
         mock_spark_engine_online_fg_to_avro = mocker.patch(
@@ -1035,7 +1035,7 @@ class TestSpark:
         mock_common_client_get_instance = mocker.patch(
             "hopsworks_common.client.get_instance"
         )
-        mock_client_get_instance = mocker.patch("hsfs.client.get_instance")
+        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.spark.Engine._encode_complex_features")
         mock_spark_engine_online_fg_to_avro = mocker.patch(
             "hsfs.engine.spark.Engine._online_fg_to_avro"
@@ -1168,7 +1168,7 @@ class TestSpark:
         mock_common_client_get_instance = mocker.patch(
             "hopsworks_common.client.get_instance"
         )
-        mock_client_get_instance = mocker.patch("hsfs.client.get_instance")
+        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.spark.Engine._encode_complex_features")
         mock_spark_engine_online_fg_to_avro = mocker.patch(
             "hsfs.engine.spark.Engine._online_fg_to_avro"
@@ -1294,7 +1294,7 @@ class TestSpark:
         mock_common_client_get_instance = mocker.patch(
             "hopsworks_common.client.get_instance"
         )
-        mock_client_get_instance = mocker.patch("hsfs.client.get_instance")
+        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.spark.Engine._encode_complex_features")
         mock_spark_engine_online_fg_to_avro = mocker.patch(
             "hsfs.engine.spark.Engine._online_fg_to_avro"
@@ -1416,7 +1416,7 @@ class TestSpark:
         mock_common_client_get_instance = mocker.patch(
             "hopsworks_common.client.get_instance"
         )
-        mock_client_get_instance = mocker.patch("hsfs.client.get_instance")
+        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.spark.Engine._encode_complex_features")
         mock_spark_engine_online_fg_to_avro = mocker.patch(
             "hsfs.engine.spark.Engine._online_fg_to_avro"
@@ -1675,7 +1675,7 @@ class TestSpark:
     def test_save_online_dataframe(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.spark.Engine._encode_complex_features")
         mock_spark_engine_online_fg_to_avro = mocker.patch(
             "hsfs.engine.spark.Engine._online_fg_to_avro"
@@ -1761,7 +1761,7 @@ class TestSpark:
 
     def test_encode_complex_features(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch(
             "hsfs.feature_group.FeatureGroup.get_complex_features",
             return_value=["col_1"],
@@ -1925,7 +1925,7 @@ class TestSpark:
 
     def test_write_training_dataset(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.spark.Engine.write_options")
         mock_spark_engine_convert_to_default_dataframe = mocker.patch(
             "hsfs.engine.spark.Engine.convert_to_default_dataframe"
@@ -1972,7 +1972,7 @@ class TestSpark:
     def test_write_training_dataset_to_df(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hsfs.engine.get_type", return_value="python")
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         spark_engine = spark.Engine()
 
@@ -2043,7 +2043,7 @@ class TestSpark:
     def test_write_training_dataset_split_to_df(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hsfs.engine.get_type", return_value="python")
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         spark_engine = spark.Engine()
 
@@ -2123,7 +2123,7 @@ class TestSpark:
     def test_write_training_dataset_query(self, mocker):
         # Arrange
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.constructor.query.Query.read")
         mocker.patch("hsfs.engine.spark.Engine.write_options")
         mock_spark_engine_convert_to_default_dataframe = mocker.patch(
@@ -2189,7 +2189,7 @@ class TestSpark:
     def test_write_training_dataset_query_coalesce(self, mocker):
         # Arrange
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.constructor.query.Query.read")
         mocker.patch("hsfs.engine.spark.Engine.write_options")
         mock_spark_engine_convert_to_default_dataframe = mocker.patch(
@@ -2256,7 +2256,7 @@ class TestSpark:
     def test_write_training_dataset_td_splits(self, mocker):
         # Arrange
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.constructor.query.Query.read")
         mocker.patch("hsfs.engine.spark.Engine.write_options")
         mock_spark_engine_convert_to_default_dataframe = mocker.patch(
@@ -2327,7 +2327,7 @@ class TestSpark:
     def test_write_training_dataset_td_splits_coalesce(self, mocker):
         # Arrange
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.constructor.query.Query.read")
         mocker.patch("hsfs.engine.spark.Engine.write_options")
         mock_spark_engine_convert_to_default_dataframe = mocker.patch(
@@ -2399,7 +2399,7 @@ class TestSpark:
     def test_split_df(self, mocker):
         # Arrange
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.constructor.query.Query.read")
         mock_spark_engine_time_series_split = mocker.patch(
             "hsfs.engine.spark.Engine._time_series_split"
@@ -2444,7 +2444,7 @@ class TestSpark:
     def test_split_df_time_split_td_features(self, mocker):
         # Arrange
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.constructor.query.Query.read")
         mock_spark_engine_time_series_split = mocker.patch(
             "hsfs.engine.spark.Engine._time_series_split"
@@ -2497,7 +2497,7 @@ class TestSpark:
     def test_split_df_time_split_query_features(self, mocker):
         # Arrange
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.constructor.query.Query.read")
         mock_spark_engine_time_series_split = mocker.patch(
             "hsfs.engine.spark.Engine._time_series_split"
@@ -2548,7 +2548,7 @@ class TestSpark:
 
     def test_random_split(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         spark_engine = spark.Engine()
 
@@ -2585,7 +2585,7 @@ class TestSpark:
 
     def test_time_series_split(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         spark_engine = spark.Engine()
 
@@ -2636,7 +2636,7 @@ class TestSpark:
 
     def test_time_series_split_date(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         spark_engine = spark.Engine()
 
@@ -2696,7 +2696,7 @@ class TestSpark:
 
     def test_time_series_split_timestamp(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         spark_engine = spark.Engine()
 
@@ -2756,7 +2756,7 @@ class TestSpark:
 
     def test_time_series_split_epoch_sec(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         spark_engine = spark.Engine()
 
@@ -2807,7 +2807,7 @@ class TestSpark:
 
     def test_time_series_split_drop_event_time(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         spark_engine = spark.Engine()
 
@@ -2860,7 +2860,7 @@ class TestSpark:
 
     def test_write_training_dataset_splits(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mock_spark_engine_write_training_dataset_single = mocker.patch(
             "hsfs.engine.spark.Engine._write_training_dataset_single"
         )
@@ -2910,7 +2910,7 @@ class TestSpark:
 
     def test_write_training_dataset_splits_to_df(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mock_spark_engine_write_training_dataset_single = mocker.patch(
             "hsfs.engine.spark.Engine._write_training_dataset_single"
         )
@@ -2965,7 +2965,7 @@ class TestSpark:
 
     def test_write_training_dataset_single(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mock_spark_engine_apply_transformation_function = mocker.patch(
             "hsfs.engine.spark.Engine._apply_transformation_function"
         )
@@ -2999,7 +2999,7 @@ class TestSpark:
 
     def test_write_training_dataset_single_tsv(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mock_spark_engine_apply_transformation_function = mocker.patch(
             "hsfs.engine.spark.Engine._apply_transformation_function"
         )
@@ -3033,7 +3033,7 @@ class TestSpark:
 
     def test_write_training_dataset_single_to_df(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mock_spark_engine_apply_transformation_function = mocker.patch(
             "hsfs.engine.spark.Engine._apply_transformation_function"
         )
@@ -3348,7 +3348,7 @@ class TestSpark:
     def test_read_stream(self, mocker):
         # Arrange
         mocker.patch("hsfs.engine.get_instance")
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mock_pyspark_getOrCreate = mocker.patch(
             "pyspark.sql.session.SparkSession.builder.getOrCreate"
         )
@@ -3637,7 +3637,7 @@ class TestSpark:
             "pyspark.sql.session.SparkSession.builder.getOrCreate"
         )
         mock_pyspark_files_get = mocker.patch("pyspark.files.SparkFiles.get")
-        mocker.patch("hsfs.client._is_external", return_value=False)
+        mocker.patch("hopsworks_common.client._is_external", return_value=False)
         mocker.patch("shutil.copy")
 
         spark_engine = spark.Engine()
@@ -4529,7 +4529,7 @@ class TestSpark:
 
     def test_apply_transformation_function_single_output(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         engine._engine_type = "spark"
         spark_engine = spark.Engine()
 
@@ -4588,7 +4588,7 @@ class TestSpark:
 
     def test_apply_transformation_function_multiple_output(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         engine._engine_type = "spark"
         spark_engine = spark.Engine()
 
@@ -4648,7 +4648,7 @@ class TestSpark:
 
     def test_apply_transformation_function_multiple_input_output(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         engine._engine_type = "spark"
         spark_engine = spark.Engine()
 
@@ -4711,7 +4711,7 @@ class TestSpark:
         self, mocker
     ):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         engine._engine_type = "spark"
         spark_engine = spark.Engine()
 
@@ -4771,7 +4771,7 @@ class TestSpark:
 
     def test_apply_transformation_function_multiple_input_output_drop_all(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         engine._engine_type = "spark"
         spark_engine = spark.Engine()
 

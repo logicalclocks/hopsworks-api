@@ -305,7 +305,7 @@ class TestFeatureGroup:
         self, mocker, backend_fixtures, dataframe_fixture_basic
     ):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type")
         json = backend_fixtures["feature_store"]["get"]["response"]
 

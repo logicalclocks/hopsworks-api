@@ -22,7 +22,7 @@ from hsfs import feature_store as feature_store_mod
 class TestFeatureStore:
     def test_from_response_json(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         json = backend_fixtures["feature_store"]["get"]["response"]
 
         # Act
@@ -45,7 +45,7 @@ class TestFeatureStore:
 
     def test_from_response_json_basic_info(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         json = backend_fixtures["feature_store"]["get_basic_info"]["response"]
 
         # Act
@@ -68,7 +68,7 @@ class TestFeatureStore:
 
     def test_get_feature_group(self, backend_fixtures, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         json = backend_fixtures["feature_store"]["get"]["response"]
         fs = feature_store_mod.FeatureStore.from_response_json(json)
         fg = feature_group_mod.FeatureGroup.from_response_json(
@@ -85,7 +85,7 @@ class TestFeatureStore:
 
     def test_create_feature_group(self, backend_fixtures, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         json = backend_fixtures["feature_store"]["get"]["response"]
         fs = feature_store_mod.FeatureStore.from_response_json(json)
