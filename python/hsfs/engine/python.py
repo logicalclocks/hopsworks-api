@@ -201,7 +201,7 @@ class Engine:
             self._mysql_online_fs_engine = util_sql.create_mysql_engine(
                 connector,
                 (
-                    client.get_instance()._is_external()
+                    client._is_external()
                     if "external" not in read_options
                     else read_options["external"]
                 ),

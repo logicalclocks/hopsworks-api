@@ -248,7 +248,7 @@ class OnlineStoreRestClientSingleton:
         Returns:
             str: RonDB Rest Server endpoint with default port.
         """
-        if client.get_instance()._is_external():
+        if client._is_external():
             _logger.debug(
                 "External Online Store REST Client : Retrieving RonDB Rest Server endpoint via loadbalancer."
             )
@@ -316,7 +316,7 @@ class OnlineStoreRestClientSingleton:
         The api key determines the permissions of the user making the request for access to a given Feature Store.
         """
         _logger.debug("Setting authentication for Online Store REST Client.")
-        if client.get_instance()._is_external():
+        if client._is_external():
             assert hasattr(
                 client.get_instance()._auth, "_token"
             ), "External client must use API Key authentication. Contact your system administrator."

@@ -198,9 +198,7 @@ def get_kafka_config(
 ) -> Dict[str, Any]:
     if write_options is None:
         write_options = {}
-    external = client.get_instance()._is_external() and not write_options.get(
-        "internal_kafka", False
-    )
+    external = client._is_external() and not write_options.get("internal_kafka", False)
 
     storage_connector = storage_connector_api.StorageConnectorApi().get_kafka_connector(
         feature_store_id, external

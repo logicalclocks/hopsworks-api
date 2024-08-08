@@ -30,7 +30,7 @@ def init(host, port, project=None, api_key_value=None):
 
     if _client:
         return
-    if not _main._client._is_external():
+    if not _main._is_external():
         _client = hopsworks.Client(host, port)
     else:
         _client = external.Client(host, port, project, api_key_value)

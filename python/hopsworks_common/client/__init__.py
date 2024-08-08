@@ -134,3 +134,10 @@ def get_knative_domain():
 def set_knative_domain(knative_domain):
     global _knative_domain
     _knative_domain = knative_domain
+
+
+def _is_external():
+    global _client
+    if _client is None:
+        raise ConnectionError("Hopsworks Client not initialized.")
+    return _client._is_external()
