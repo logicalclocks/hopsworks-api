@@ -26,7 +26,7 @@ from mock import call
 DEFAULT_FEATURE_NAME = "amount"
 
 ENGINE_GET_TYPE = "hsfs.engine.get_type"
-CLIENT_GET_INSTANCE = "hsfs.client.get_instance"
+CLIENT_GET_INSTANCE = "hopsworks_common.client.get_instance"
 
 
 class TestMonitoringWindowConfigEngine:

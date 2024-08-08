@@ -14,8 +14,8 @@
 #
 from __future__ import annotations
 
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import engine, util
-from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core import feature_group_base_engine
 
 

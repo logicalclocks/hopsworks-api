@@ -55,6 +55,7 @@ import polars as pl
 import pyarrow as pa
 from botocore.response import StreamingBody
 from hopsworks_common import client
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import (
     feature,
     feature_view,
@@ -62,7 +63,6 @@ from hsfs import (
     util,
 )
 from hsfs import storage_connector as sc
-from hsfs.client.exceptions import FeatureStoreException
 from hsfs.constructor import query
 from hsfs.core import (
     arrow_flight_client,

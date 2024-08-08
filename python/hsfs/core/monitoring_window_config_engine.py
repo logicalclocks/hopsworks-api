@@ -19,8 +19,8 @@ import re
 from datetime import datetime, timedelta
 from typing import List, Optional, Tuple, TypeVar, Union
 
+from hopsworks_common.client.exceptions import RestAPIError
 from hsfs import feature_group, feature_view, util
-from hsfs.client.exceptions import RestAPIError
 from hsfs.core import monitoring_window_config as mwc
 from hsfs.core import statistics_engine
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics

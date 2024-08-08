@@ -86,6 +86,7 @@ except ImportError:
     pass
 
 from hopsworks_common import client
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import (
     feature,
     feature_view,
@@ -95,7 +96,6 @@ from hsfs import (
     util,
 )
 from hsfs import feature_group as fg_mod
-from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core import (
     dataset_api,
     delta_engine,

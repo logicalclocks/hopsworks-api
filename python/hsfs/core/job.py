@@ -19,8 +19,8 @@ import time
 from datetime import datetime, timezone
 
 import humps
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import util
-from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core import job_api
 from hsfs.core import job_schedule as js
 

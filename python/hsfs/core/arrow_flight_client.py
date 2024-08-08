@@ -28,8 +28,8 @@ import pyarrow
 import pyarrow._flight
 import pyarrow.flight
 from hopsworks_common import client
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import feature_group, util
-from hsfs.client.exceptions import FeatureStoreException
 from hsfs.constructor import query
 from hsfs.core.variable_api import VariableApi
 from hsfs.storage_connector import StorageConnector

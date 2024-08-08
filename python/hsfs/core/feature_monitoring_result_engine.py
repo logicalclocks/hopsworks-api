@@ -18,8 +18,8 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Dict, List, Optional, Tuple, Union
 
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import util
-from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core import feature_monitoring_config as fmc
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hsfs.core.feature_monitoring_config_api import FeatureMonitoringConfigApi

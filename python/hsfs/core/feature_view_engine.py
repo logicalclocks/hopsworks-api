@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, TypeVar, Union
 import numpy as np
 import pandas as pd
 from hopsworks_common import client
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import (
     engine,
     feature_group,
@@ -30,7 +31,6 @@ from hsfs import (
     util,
 )
 from hsfs.client import exceptions
-from hsfs.client.exceptions import FeatureStoreException
 from hsfs.constructor.filter import Filter, Logic
 from hsfs.core import (
     arrow_flight_client,
