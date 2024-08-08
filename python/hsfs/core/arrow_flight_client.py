@@ -166,6 +166,15 @@ class ArrowFlightClient:
         try:
             self._check_cluster_service_enabled()
             self._host_url = self._retrieve_host_url()
+            if self._host_url is None:
+                _logger.error(
+                    "Hopsworks Feature Query Service host is not configured on the cluster."
+                    "External client should check if the variable `loadbalancer_external_domain_feature_query` "
+                    "is correctly set in the cluster configuration. "
+                    "Internal client should check if the service discovery domain is set."
+                )
+                self._disable_for_session(on_purpose=True)
+                return
 
             if self._enabled_on_cluster:
                 _logger.debug(
@@ -215,7 +224,9 @@ class ArrowFlightClient:
     def _retrieve_host_url(self) -> Optional[str]:
         _logger.debug("Retrieving host URL.")
         if isinstance(self._client, client.external.Client):
-            external_domain = self._variable_api.get_loadbalancer_external_domain()
+            external_domain = (
+                self._variable_api.get_loadbalancer_external_domain_feature_query()
+            )
             if external_domain == "":
                 _logger.debug("loadbalancer_external_domain not set on cluster")
                 return None

@@ -94,14 +94,51 @@ class VariableApi:
         """
         return self.get_variable("enable_flyingduck") == "true"
 
-    def get_loadbalancer_external_domain(self) -> str:
-        """Get domain of external loadbalancer.
+    def get_loadbalancer_external_domain_mysqld(self) -> str:
+        """Get domain of external loadbalancer for MySQLd.
 
         # Returns
-            `str`: The domain of external loadbalancer, if it is set up, otherwise empty string `""`.
+            `str`: The domain of external loadbalancer for MySQLd, if it is set up, otherwise empty string `""`.
         """
         try:
-            return self.get_variable("loadbalancer_external_domain")
+            return self.get_variable("loadbalancer_external_domain_mysqld")
+        except RestAPIError:
+            return ""
+
+    def get_loadbalancer_external_domain_kafka(self) -> str:
+        """Get domain of external loadbalancer for Kafka.
+
+        # Returns
+            `str`: The domain of external loadbalancer for Kafka, if it is set up, otherwise empty string `""`.
+        """
+        try:
+            return self.get_variable("loadbalancer_external_domain_kafka")
+        except RestAPIError:
+            return ""
+
+    def get_loadbalancer_external_domain_feature_query(self) -> str:
+        """Get domain of external loadbalancer for Hopsworks Feature Query Service.
+
+        # Returns
+            `str`: The domain of external loadbalancer for Hopsworks Feature Query Service (a.k.a flyingduck),
+                if it is set up, otherwise empty string `""`.
+        """
+        try:
+            return self.get_variable("loadbalancer_external_domain_hopsworks")
+        except RestAPIError:
+            return ""
+
+    def get_loadbalancer_external_domain_online_store_rest_server(self) -> str:
+        """Get domain of external loadbalancer for Hopsworks.
+
+        # Returns
+            `str`: The domain of external loadbalancer for the Online Store Rest Server (RonDB Rest Server),
+                if it is set up, otherwise empty string `""`.
+        """
+        try:
+            return self.get_variable(
+                "loadbalancer_external_domain_online_store_rest_server"
+            )
         except RestAPIError:
             return ""
 

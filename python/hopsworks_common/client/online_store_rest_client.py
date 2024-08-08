@@ -252,12 +252,16 @@ class OnlineStoreRestClientSingleton:
             _logger.debug(
                 "External Online Store REST Client : Retrieving RonDB Rest Server endpoint via loadbalancer."
             )
-            external_domain = self.variable_api.get_loadbalancer_external_domain()
+            external_domain = self.variable_api.get_loadbalancer_external_domain_online_store_rest_server()
             if external_domain == "":
                 _logger.debug(
-                    "External Online Store REST Client : Loadbalancer external domain is not set. Using client host as endpoint."
+                    "External Online Store REST Client : Cluster configuration variable "
+                    "loadbalancer external domain online store rest server is not set."
                 )
-                external_domain = client.get_instance().host
+                raise FeatureStoreException(
+                    "External Online Store REST Client : Cluster configuration variable "
+                    "loadbalancer external domain online store rest server is not set."
+                )
             default_url = f"https://{external_domain}:{self._DEFAULT_ONLINE_STORE_REST_CLIENT_PORT}"
             _logger.debug(
                 f"External Online Store REST Client : Default RonDB Rest Server endpoint: {default_url}"
