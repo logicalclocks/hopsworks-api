@@ -18,8 +18,9 @@ from __future__ import annotations
 import warnings
 from typing import List, Optional, Union
 
-from hsfs import client, feature_group_commit, util
+from hopsworks_common import client
 from hsfs import feature_group as fg_mod
+from hsfs import feature_group_commit, util
 from hsfs.core import explicit_provenance, ingestion_job, ingestion_job_conf
 
 

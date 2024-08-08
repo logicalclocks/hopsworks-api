@@ -23,9 +23,9 @@ from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 import humps
 import numpy as np
 import pandas as pd
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import engine, storage_connector, util
 from hsfs import feature_group as fg_mod
-from hsfs.client.exceptions import FeatureStoreException
 from hsfs.constructor import join
 from hsfs.constructor.filter import Filter, Logic
 from hsfs.constructor.fs_query import FsQuery

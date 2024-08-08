@@ -44,6 +44,7 @@ import humps
 import numpy as np
 import pandas as pd
 import polars as pl
+from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hsfs import (
     engine,
     feature,
@@ -58,7 +59,6 @@ from hsfs import (
 from hsfs import (
     storage_connector as sc,
 )
-from hsfs.client.exceptions import FeatureStoreException, RestAPIError
 from hsfs.constructor import filter, query
 from hsfs.constructor.filter import Filter, Logic
 from hsfs.core import (

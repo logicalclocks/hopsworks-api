@@ -71,7 +71,7 @@ class TestBaseClient:
         )
 
         # Mock and spy the client
-        mocker.patch("hsfs.client.base.Client._read_jwt")
+        mocker.patch("hopsworks_common.client.base.Client._read_jwt")
         spy_retry_token_expired = mocker.spy(client, "_retry_token_expired")
 
         # Act
@@ -109,7 +109,7 @@ class TestBaseClient:
         )
 
         # Mock and spy the client
-        mocker.patch("hsfs.client.base.Client._read_jwt")
+        mocker.patch("hopsworks_common.client.base.Client._read_jwt")
         spy_retry_token_expired = mocker.spy(client, "_retry_token_expired")
 
         # Act

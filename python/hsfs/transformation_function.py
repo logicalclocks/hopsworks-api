@@ -19,8 +19,8 @@ import json
 from typing import Any, Dict, List, Optional, Union
 
 import humps
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import util
-from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core import transformation_function_engine
 from hsfs.decorators import typechecked
 from hsfs.hopsworks_udf import HopsworksUdf, UDFType

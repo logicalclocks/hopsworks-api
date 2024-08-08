@@ -26,7 +26,7 @@ from mock import call
 DEFAULT_FEATURE_NAME = "amount"
 
 ENGINE_GET_TYPE = "hsfs.engine.get_type"
-CLIENT_GET_INSTANCE = "hsfs.client.get_instance"
+CLIENT_GET_INSTANCE = "hopsworks_common.client.get_instance"
 
 
 class TestMonitoringWindowConfigEngine:
@@ -328,7 +328,7 @@ class TestMonitoringWindowConfigEngine:
     def test_fetch_entity_data_in_monitoring_window(self, backend_fixtures, mocker):
         # Arrange
         mocker.patch("hsfs.engine.get_type", return_value="spark")
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         fetch_feature_group_data_mocker = mocker.patch(
             "hsfs.core.monitoring_window_config_engine.MonitoringWindowConfigEngine.fetch_feature_group_data",

@@ -225,7 +225,7 @@ class TestTransformationFunctionEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -258,7 +258,7 @@ class TestTransformationFunctionEngine:
 
     def test_compute_and_set_feature_statistics_no_split(self, mocker):
         feature_store_id = 99
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -318,7 +318,7 @@ class TestTransformationFunctionEngine:
 
     def test_compute_and_set_feature_statistics_train_test_split(self, mocker):
         feature_store_id = 99
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -377,7 +377,7 @@ class TestTransformationFunctionEngine:
 
     def test_get_and_set_feature_statistics_no_statistics_required(self, mocker):
         feature_store_id = 99
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -431,7 +431,7 @@ class TestTransformationFunctionEngine:
 
     def test_get_and_set_feature_statistics_statistics_required(self, mocker):
         feature_store_id = 99
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(

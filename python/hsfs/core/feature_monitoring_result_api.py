@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, Union
 
-from hsfs import client
+from hopsworks_common import client
 from hsfs.core.feature_monitoring_result import FeatureMonitoringResult
 
 

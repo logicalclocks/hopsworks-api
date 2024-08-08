@@ -21,8 +21,9 @@ from typing import Any, Dict, List, Optional, Set, TypeVar, Union
 import humps
 import numpy as np
 import pandas as pd
-from hsfs import client, engine, training_dataset_feature, util
-from hsfs.client.exceptions import RestAPIError
+from hopsworks_common import client
+from hopsworks_common.client.exceptions import RestAPIError
+from hsfs import engine, training_dataset_feature, util
 from hsfs.constructor import filter, query
 from hsfs.core import (
     statistics_engine,

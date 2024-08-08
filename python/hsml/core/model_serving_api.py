@@ -84,7 +84,7 @@ class ModelServingApi:
 
             # setup istio client
             inference_endpoints = self._serving_api.get_inference_endpoints()
-            if isinstance(client.get_instance(), client.hopsworks.Client):
+            if not client._is_external():
                 # if internal, get node port
                 endpoint = get_endpoint_by_type(
                     inference_endpoints, INFERENCE_ENDPOINTS.ENDPOINT_TYPE_NODE

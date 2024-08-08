@@ -25,7 +25,7 @@ class OpenSearchApi:
         self._variable_api = variable_api.VariableApi()
 
     def _get_opensearch_url(self):
-        if isinstance(client.get_instance(), client.external.Client):
+        if client._is_external():
             external_domain = self._variable_api.get_variable(
                 "loadbalancer_external_domain"
             )

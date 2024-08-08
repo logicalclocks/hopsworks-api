@@ -17,8 +17,9 @@ from __future__ import annotations
 
 from typing import List, Optional, Union
 
-from hsfs import client, feature_view, training_dataset
-from hsfs.client.exceptions import RestAPIError
+from hopsworks_common import client
+from hopsworks_common.client.exceptions import RestAPIError
+from hsfs import feature_view, training_dataset
 from hsfs.constructor import query, serving_prepared_statement
 from hsfs.core import explicit_provenance, job, training_dataset_job_conf
 from hsfs.core.job import Job

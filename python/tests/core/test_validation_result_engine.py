@@ -28,7 +28,7 @@ class TestValidationResultEngine:
         feature_group_id = 10
         expectation_id = 31
 
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mock_validation_result_api = mocker.patch(
             "hsfs.core.validation_result_api.ValidationResultApi"
         )

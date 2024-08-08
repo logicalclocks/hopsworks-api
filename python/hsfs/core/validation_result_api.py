@@ -17,7 +17,8 @@ from __future__ import annotations
 
 from typing import Dict, List, Union
 
-from hsfs import client, ge_validation_result
+from hopsworks_common import client
+from hsfs import ge_validation_result
 
 
 class ValidationResultApi:

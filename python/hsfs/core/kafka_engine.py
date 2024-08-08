@@ -19,8 +19,7 @@ import json
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Callable, Dict, Literal, Optional, Tuple, Union
 
-from hsfs import client
-from hsfs.client import hopsworks
+from hopsworks_common import client
 from hsfs.core import storage_connector_api
 from hsfs.core.constants import HAS_AVRO, HAS_CONFLUENT_KAFKA, HAS_FAST_AVRO
 from tqdm import tqdm
@@ -199,10 +198,7 @@ def get_kafka_config(
 ) -> Dict[str, Any]:
     if write_options is None:
         write_options = {}
-    external = not (
-        isinstance(client.get_instance(), hopsworks.Client)
-        or write_options.get("internal_kafka", False)
-    )
+    external = client._is_external() and not write_options.get("internal_kafka", False)
 
     storage_connector = storage_connector_api.StorageConnectorApi().get_kafka_connector(
         feature_store_id, external
