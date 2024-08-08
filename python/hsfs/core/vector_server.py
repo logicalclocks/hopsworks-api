@@ -28,8 +28,8 @@ import avro.schema
 import numpy as np
 import pandas as pd
 import polars as pl
+from hopsworks_common import client
 from hsfs import (
-    client,
     feature_view,
     training_dataset,
     transformation_function,

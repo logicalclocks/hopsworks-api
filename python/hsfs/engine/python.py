@@ -54,8 +54,8 @@ import pandas as pd
 import polars as pl
 import pyarrow as pa
 from botocore.response import StreamingBody
+from hopsworks_common import client
 from hsfs import (
-    client,
     feature,
     feature_view,
     transformation_function,

@@ -27,7 +27,8 @@ import polars as pl
 import pyarrow
 import pyarrow._flight
 import pyarrow.flight
-from hsfs import client, feature_group, util
+from hopsworks_common import client
+from hsfs import feature_group, util
 from hsfs.client.exceptions import FeatureStoreException
 from hsfs.constructor import query
 from hsfs.core.variable_api import VariableApi

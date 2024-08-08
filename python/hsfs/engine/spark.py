@@ -85,9 +85,8 @@ try:
 except ImportError:
     pass
 
-
+from hopsworks_common import client
 from hsfs import (
-    client,
     feature,
     feature_view,
     training_dataset,

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import List, Union
 
-from hsfs import client
+from hopsworks_common import client
 from hsfs.core.variable_api import VariableApi
 from hsfs.validation_report import ValidationReport
 

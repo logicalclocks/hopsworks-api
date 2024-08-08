@@ -21,8 +21,8 @@ from typing import Any, Dict, List, Optional, TypeVar, Union
 
 import numpy as np
 import pandas as pd
+from hopsworks_common import client
 from hsfs import (
-    client,
     engine,
     feature_group,
     feature_view,
