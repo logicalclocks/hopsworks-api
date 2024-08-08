@@ -23,6 +23,7 @@ import com.logicalclocks.hsfs.FeatureGroupCommit;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.HudiOperationType;
 import com.logicalclocks.hsfs.JobConfiguration;
+import com.logicalclocks.hsfs.OnlineConfig;
 import com.logicalclocks.hsfs.Storage;
 import com.logicalclocks.hsfs.TimeTravelFormat;
 import com.logicalclocks.hsfs.engine.FeatureGroupEngineBase;
@@ -305,7 +306,8 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
                                               String description, List<String> primaryKeys, List<String> partitionKeys,
                                               String hudiPrecombineKey, boolean onlineEnabled,
                                               TimeTravelFormat timeTravelFormat, StatisticsConfig statisticsConfig,
-                                              String topicName, String notificationTopicName, String eventTime)
+                                              String topicName, String notificationTopicName, String eventTime,
+                                              OnlineConfig onlineConfig)
       throws IOException, FeatureStoreException {
 
     FeatureGroup featureGroup;
@@ -327,6 +329,7 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
             .eventTime(eventTime)
             .topicName(topicName)
             .notificationTopicName(notificationTopicName)
+            .onlineConfig(onlineConfig)
             .build();
 
         featureGroup.setFeatureStore(featureStore);
@@ -361,11 +364,9 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
   public StreamFeatureGroup getOrCreateStreamFeatureGroup(FeatureStore featureStore, String name, Integer version,
                                                           String description, List<String> primaryKeys,
                                                           List<String> partitionKeys, String hudiPrecombineKey,
-                                                          boolean onlineEnabled,
-                                                          StatisticsConfig statisticsConfig,
-                                                          String eventTime) throws IOException, FeatureStoreException {
-
-
+                                                          boolean onlineEnabled, StatisticsConfig statisticsConfig,
+                                                          String eventTime, OnlineConfig onlineConfig)
+      throws IOException, FeatureStoreException {
     StreamFeatureGroup featureGroup;
     try {
       featureGroup = getStreamFeatureGroup(featureStore, name, version);
@@ -382,6 +383,7 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
             .onlineEnabled(onlineEnabled)
             .statisticsConfig(statisticsConfig)
             .eventTime(eventTime)
+            .onlineConfig(onlineConfig)
             .build();
 
         featureGroup.setFeatureStore(featureStore);

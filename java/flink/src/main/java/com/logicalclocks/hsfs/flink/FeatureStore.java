@@ -19,6 +19,7 @@ package com.logicalclocks.hsfs.flink;
 
 import com.logicalclocks.hsfs.FeatureStoreBase;
 import com.logicalclocks.hsfs.FeatureStoreException;
+import com.logicalclocks.hsfs.OnlineConfig;
 import com.logicalclocks.hsfs.StatisticsConfig;
 import com.logicalclocks.hsfs.StorageConnector;
 import com.logicalclocks.hsfs.TimeTravelFormat;
@@ -76,7 +77,8 @@ public class FeatureStore extends FeatureStoreBase<Query> {
   @Override
   public Object getOrCreateFeatureGroup(String name, Integer version, String description, List<String> primaryKeys,
       List<String> partitionKeys, String hudiPrecombineKey, boolean onlineEnabled, TimeTravelFormat timeTravelFormat,
-      StatisticsConfig statisticsConfig, String topicName, String notificationTopicName, String eventTime) {
+      StatisticsConfig statisticsConfig, String topicName, String notificationTopicName, String eventTime,
+      OnlineConfig onlineConfig) {
     throw new UnsupportedOperationException("Not supported for Flink");
   }
 
@@ -163,8 +165,8 @@ public class FeatureStore extends FeatureStoreBase<Query> {
   public StreamFeatureGroup getOrCreateStreamFeatureGroup(String name, Integer version, String description,
                                                           List<String> primaryKeys, List<String> partitionKeys,
                                                           String hudiPrecombineKey, boolean onlineEnabled,
-                                                          StatisticsConfig statisticsConfig,
-                                                          String eventTime)
+                                                          StatisticsConfig statisticsConfig, String eventTime,
+                                                          OnlineConfig onlineConfig)
       throws IOException, FeatureStoreException {
     throw new UnsupportedOperationException("Not supported for Flink");
   }
