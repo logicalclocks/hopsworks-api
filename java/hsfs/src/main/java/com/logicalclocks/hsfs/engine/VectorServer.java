@@ -389,7 +389,7 @@ public class VectorServer {
         host = loadbalancerVariable.get().getValue();
       } else {
         // Fall back to the mysql server on the head node
-        host = HopsworksClient.getInstance().getHost();
+        throw new FeatureStoreException("No external domain for MySQL was found in the Hopsworks Cluster Configuration variables. Contact your administrator.");
       }
 
       url = url.replaceAll("/[0-9.]+:", "/" + host + ":");

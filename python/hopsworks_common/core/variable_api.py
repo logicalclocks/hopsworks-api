@@ -101,10 +101,14 @@ class VariableApi:
         return self.get_variable("enable_flyingduck") == "true"
 
     def get_loadbalancer_external_domain(self, service: str) -> str:
-        """Get domain of external loadbalancer for MySQLd.
+        """Get domain loadbalancer for a service.
 
         # Returns
-            `str`: The domain of external loadbalancer for MySQLd, if it is set up, otherwise empty string `""`.
+            `str`: The domain of external loadbalancer for a service, if it is set up.
+
+        # Raises
+            `FeatureStoreException`: If variable is not set in Hopsworks Cluster Configuration.
+            `RestAPIError`: Other errors than variable not found.
         """
         try:
             return self.get_variable(f"loadbalancer_external_domain_{service}")
