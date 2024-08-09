@@ -513,6 +513,7 @@ class FeatureStore:
         transformation_functions: Optional[
             List[Union[TransformationFunction, HopsworksUdf]]
         ] = None,
+        offline_backfill_every: Optional[Union[int, str]] = 24,
     ) -> feature_group.FeatureGroup:
         """Create a feature group metadata object.
 
@@ -611,6 +612,10 @@ class FeatureStore:
             transformation_functions: On-Demand Transformation functions attached to the feature group.
                 It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
                 Defaults to `None`, no transformations.
+            offline_backfill_every: Optional. If specified, the materialization job will be scheduled to run
+                periodically. The value can be either an integer representing the number of hours between each run
+                or a string representing a cron expression. Set the value to None to avoid scheduling the materialization
+                job. Defaults to 24 (i.e daily scheduling).
 
         # Returns
             `FeatureGroup`. The feature group metadata object.
@@ -636,6 +641,7 @@ class FeatureStore:
             topic_name=topic_name,
             notification_topic_name=notification_topic_name,
             transformation_functions=transformation_functions,
+            offline_backfill_every=offline_backfill_every,
         )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -668,6 +674,7 @@ class FeatureStore:
         transformation_functions: Optional[
             List[Union[TransformationFunction, HopsworksUdf]]
         ] = None,
+        offline_backfill_every: Optional[Union[int, str]] = 24,
     ) -> Union[
         feature_group.FeatureGroup,
         feature_group.ExternalFeatureGroup,
@@ -756,6 +763,10 @@ class FeatureStore:
             transformation_functions: On-Demand Transformation functions attached to the feature group.
                 It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
                 Defaults to `None`, no transformations.
+            offline_backfill_every: Optional. If specified, the materialization job will be scheduled to run
+                periodically. The value can be either an integer representing the number of hours between each run
+                or a string representing a cron expression. Set the value to None to avoid scheduling the materialization
+                job. Defaults to 24 (i.e daily scheduling). Applies only to Feature Group creation.
 
         # Returns
             `FeatureGroup`. The feature group metadata object.
@@ -790,6 +801,7 @@ class FeatureStore:
                     topic_name=topic_name,
                     notification_topic_name=notification_topic_name,
                     transformation_functions=transformation_functions,
+                    offline_backfill_every=offline_backfill_every,
                 )
                 feature_group_object.feature_store = self
                 return feature_group_object
