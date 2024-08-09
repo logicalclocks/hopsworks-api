@@ -267,8 +267,7 @@ class OnlineStoreRestClientSingleton:
             service_discovery_domain = self.variable_api.get_service_discovery_domain()
             if service_discovery_domain == "":
                 raise FeatureStoreException(
-                    "Client could not get Feature Query Service hostname from "
-                    "service_discovery_domain. "
+                    "Client could not get Online Store hostname from service_discovery_domain. "
                     "The variable is either not set or empty in Hopsworks cluster configuration."
                 )
             default_url = f"https://rdrs.service.{service_discovery_domain}:{self._DEFAULT_ONLINE_STORE_REST_CLIENT_PORT}"
