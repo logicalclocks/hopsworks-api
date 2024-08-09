@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import numbers
 import os
@@ -24,7 +25,7 @@ import re
 import sys
 import uuid
 import warnings
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 from typing import (
@@ -109,9 +110,12 @@ if HAS_SQLALCHEMY:
 if HAS_PANDAS:
     from hsfs.core.type_systems import convert_pandas_dtype_to_offline_type
 
+_logger = logging.getLogger(__name__)
+
 
 class Engine:
     def __init__(self) -> None:
+        _logger.debug("Initialising Python Engine...")
         self._dataset_api: dataset_api.DatasetApi = dataset_api.DatasetApi()
         self._job_api: job_api.JobApi = job_api.JobApi()
         self._feature_group_api: feature_group_api.FeatureGroupApi = (
@@ -123,15 +127,16 @@ class Engine:
 
         # cache the sql engine which contains the connection pool
         self._mysql_online_fs_engine = None
+        _logger.info("Python Engine initialized.")
 
     def sql(
         self,
         sql_query: str,
         feature_store: str,
-        online_conn: Optional["sc.JdbcConnector"],
+        online_conn: Optional[sc.JdbcConnector],
         dataframe_type: str,
         read_options: Optional[Dict[str, Any]],
-        schema: Optional[List["feature.Feature"]] = None,
+        schema: Optional[List[feature.Feature]] = None,
     ) -> Union[pd.DataFrame, pl.DataFrame]:
         if not online_conn:
             return self._sql_offline(
@@ -355,7 +360,7 @@ class Engine:
 
     def _read_s3(
         self,
-        storage_connector: "sc.S3Connector",
+        storage_connector: sc.S3Connector,
         location: str,
         data_format: str,
         dataframe_type: str = "default",
@@ -416,7 +421,7 @@ class Engine:
 
     def read_stream(
         self,
-        storage_connector: "sc.StorageConnector",
+        storage_connector: sc.StorageConnector,
         message_format: Any,
         schema: Any,
         options: Optional[Dict[str, Any]],
@@ -431,7 +436,7 @@ class Engine:
         sql_query: str,
         feature_store: str,
         n: int,
-        online_conn: "sc.JdbcConnector",
+        online_conn: sc.JdbcConnector,
         read_options: Optional[Dict[str, Any]] = None,
     ) -> Union[pd.DataFrame, pl.DataFrame]:
         return self.sql(
@@ -1358,11 +1363,28 @@ class Engine:
                 offline_write_options=offline_write_options,
                 high=True,
             )
+            now = datetime.now(timezone.utc)
             feature_group.materialization_job.run(
                 args=feature_group.materialization_job.config.get("defaultArgs", "")
                 + initial_check_point,
                 await_termination=offline_write_options.get("wait_for_job", False),
             )
+            offline_backfill_every = offline_write_options.get(
+                "offline_backfill_every", None
+            )
+            if offline_backfill_every:
+                if isinstance(offline_backfill_every, str):
+                    cron_expression = offline_backfill_every
+                elif isinstance(offline_backfill_every, int):
+                    cron_expression = f"{now.second} {now.minute} {now.hour}/{offline_backfill_every} ? * * *"
+                feature_group.materialization_job.schedule(
+                    cron_expression=cron_expression,
+                    # added 2 seconds after the current time to avoid retriggering the job directly
+                    start_time=now + timedelta(seconds=2),
+                )
+            else:
+                _logger.info("Materialisation job was not scheduled.")
+
         elif self._start_offline_materialization(offline_write_options):
             if not offline_write_options.get(
                 "skip_offsets", False
