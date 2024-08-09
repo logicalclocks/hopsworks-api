@@ -14,7 +14,6 @@
 #   limitations under the License.
 #
 
-import os
 from abc import abstractmethod
 
 from hopsworks_common.client import base
@@ -76,11 +75,6 @@ class Client(base.Client):
     def _close(self):
         """Closes a client. Can be implemented for clean up purposes, not mandatory."""
         self._connected = False
-
-    def _replace_public_host(self, url):
-        """replace hostname to public hostname set in HOPSWORKS_PUBLIC_HOST"""
-        ui_url = url._replace(netloc=os.environ[self.HOPSWORKS_PUBLIC_HOST])
-        return ui_url
 
     def _create_grpc_channel(self, service_hostname: str) -> GRPCInferenceServerClient:
         return GRPCInferenceServerClient(

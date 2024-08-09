@@ -15,6 +15,7 @@
 #
 
 from hopsworks_common.client import (
+    _is_external,
     auth,
     base,
     exceptions,
@@ -59,4 +60,5 @@ __all__ = [
     set_serving_num_instances_limits,
     set_serving_resource_limits,
     stop,
+    _is_external,
 ]

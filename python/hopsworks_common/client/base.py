@@ -296,8 +296,3 @@ class Client:
         )
         pem_str = pem_str + "-----END {}-----".format(pem_type) + "\n"
         return pem_str
-
-    def _replace_public_host(self, url):
-        """replace hostname to public hostname set in HOPSWORKS_PUBLIC_HOST"""
-        ui_url = url._replace(netloc=os.environ[self.HOPSWORKS_PUBLIC_HOST])
-        return ui_url

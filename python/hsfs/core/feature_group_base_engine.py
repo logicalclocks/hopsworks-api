@@ -15,8 +15,8 @@
 #
 from __future__ import annotations
 
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import util
-from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core import feature_group_api, kafka_api, storage_connector_api, tags_api
 
 

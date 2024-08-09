@@ -15,7 +15,7 @@
 #
 from __future__ import annotations
 
-from hsfs import client
+from hopsworks_common import client
 from hsfs.constructor import fs_query
 
 

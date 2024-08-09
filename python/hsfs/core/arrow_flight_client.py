@@ -27,8 +27,9 @@ import polars as pl
 import pyarrow
 import pyarrow._flight
 import pyarrow.flight
-from hsfs import client, feature_group, util
-from hsfs.client.exceptions import FeatureStoreException
+from hopsworks_common import client
+from hopsworks_common.client.exceptions import FeatureStoreException
+from hsfs import feature_group, util
 from hsfs.constructor import query
 from hsfs.core.variable_api import VariableApi
 from hsfs.storage_connector import StorageConnector
@@ -207,14 +208,14 @@ class ArrowFlightClient:
         except Exception as e:
             # if feature flag cannot be retrieved, assume it is disabled
             _logger.debug(
-                "Unable to fetch Hopsworks Feature Query Service flag, disabling HFQS client."
+                "Unable to fetch Hopsworks Feature Query Service (HQFS) flag, disabling HFQS client."
             )
             _logger.exception(e)
             self._enabled_on_cluster = False
 
     def _retrieve_host_url(self) -> Optional[str]:
         _logger.debug("Retrieving host URL.")
-        if isinstance(self._client, client.external.Client):
+        if client._is_external():
             external_domain = self._variable_api.get_loadbalancer_external_domain(
                 "feature_query"
             )

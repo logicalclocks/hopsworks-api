@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, Union
 
-from hsfs import client
+from hopsworks_common import client
 from hsfs.core import (
     execution,
     ingestion_job_conf,

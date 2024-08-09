@@ -17,8 +17,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Union
 
-from hsfs import client, util
+from hopsworks_common import client
 from hsfs import expectation_suite as es
+from hsfs import util
 from hsfs.core import expectation_suite_api
 from hsfs.ge_expectation import GeExpectation
 

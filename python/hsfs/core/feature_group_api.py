@@ -18,8 +18,9 @@ from __future__ import annotations
 import warnings
 from typing import List, Optional, Union
 
-from hsfs import client, feature_group_commit, util
+from hopsworks_common import client
 from hsfs import feature_group as fg_mod
+from hsfs import feature_group_commit, util
 from hsfs.core import explicit_provenance, ingestion_job, ingestion_job_conf
 
 
@@ -179,6 +180,41 @@ class FeatureGroupApi:
                 return fg_mod.SpineGroup.from_response_json(fg_json)
             else:
                 return fg_mod.ExternalFeatureGroup.from_response_json(fg_json)
+
+    def get_all(
+        self,
+        feature_store_id: int,
+        with_features: bool = False,
+    ) -> List[
+        Union[
+            fg_mod.FeatureGroup,
+            fg_mod.SpineGroup,
+            fg_mod.ExternalFeatureGroup,
+        ]
+    ]:
+        """Get a list of feature groups in a feature store.
+        :param feature_store_id: feature store id
+        :type feature_store_id: int
+        :param feature_group_type: type of the feature group to return
+        :type feature_group_type: string
+        :return: list of feature group metadata objects
+        :rtype: List[FeatureGroup]
+        """
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            feature_store_id,
+            "featuregroups",
+        ]
+        query_params = {}
+        if with_features:
+            query_params["expand"] = ["features"]
+
+        return fg_mod.FeatureGroup.from_response_json(
+            _client._send_request("GET", path_params, query_params)
+        )
 
     def delete_content(
         self,

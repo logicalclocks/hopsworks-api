@@ -108,7 +108,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_builtin_minmax_from_backend(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.core.statistics_engine.StatisticsEngine._save_statistics")
         spark_engine = spark.Engine()
 
@@ -188,7 +188,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_builtin_minmax(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.core.statistics_engine.StatisticsEngine._save_statistics")
         spark_engine = spark.Engine()
 
@@ -251,7 +251,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_builtin_standard_scaler_from_backend(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.core.statistics_engine.StatisticsEngine._save_statistics")
         spark_engine = spark.Engine()
 
@@ -332,7 +332,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_builtin_standard_scaler(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.core.statistics_engine.StatisticsEngine._save_statistics")
         spark_engine = spark.Engine()
 
@@ -397,7 +397,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_builtin_robust_scaler_from_backend(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.core.statistics_engine.StatisticsEngine._save_statistics")
         spark_engine = spark.Engine()
 
@@ -481,7 +481,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_builtin_robust_scaler(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.core.statistics_engine.StatisticsEngine._save_statistics")
         spark_engine = spark.Engine()
 
@@ -548,7 +548,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_int(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -608,7 +608,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_str(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -667,7 +667,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_double(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -726,7 +726,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_datetime_no_tz(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -804,7 +804,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_datetime_tz_utc(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -883,7 +883,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_datetime_tz_pst(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -964,7 +964,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_datetime_ts_none(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -1046,7 +1046,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_date(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -1115,7 +1115,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_invalid_type(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         # Arrange
         with pytest.raises(FeatureStoreException) as e_info:

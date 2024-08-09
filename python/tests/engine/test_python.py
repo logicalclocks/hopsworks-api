@@ -95,7 +95,8 @@ class TestPython:
         mock_util_create_mysql_engine = mocker.patch(
             "hsfs.core.util_sql.create_mysql_engine"
         )
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._is_external")
         mock_python_engine_return_dataframe_type = mocker.patch(
             "hsfs.engine.python.Engine._return_dataframe_type"
         )
@@ -115,7 +116,7 @@ class TestPython:
     def test_jdbc_dataframe_type_none(self, mocker):
         # Arrange
         mocker.patch("hsfs.core.util_sql.create_mysql_engine")
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         query = "SELECT * FROM TABLE"
 
         python_engine = python.Engine()
@@ -137,7 +138,7 @@ class TestPython:
         mock_util_create_mysql_engine = mocker.patch(
             "hsfs.core.util_sql.create_mysql_engine"
         )
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mock_python_engine_return_dataframe_type = mocker.patch(
             "hsfs.engine.python.Engine._return_dataframe_type"
         )
@@ -1526,7 +1527,7 @@ class TestPython:
 
     def test_get_training_data(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mock_python_engine_prepare_transform_split_df = mocker.patch(
             "hsfs.engine.python.Engine._prepare_transform_split_df"
         )
@@ -1561,7 +1562,7 @@ class TestPython:
 
     def test_get_training_data_splits(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mock_python_engine_prepare_transform_split_df = mocker.patch(
             "hsfs.engine.python.Engine._prepare_transform_split_df"
         )
@@ -1788,7 +1789,7 @@ class TestPython:
 
     def test_prepare_transform_split_df_random_split(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type")
         mocker.patch("hsfs.constructor.query.Query.read")
         mock_python_engine_random_split = mocker.patch(
@@ -1837,7 +1838,7 @@ class TestPython:
 
     def test_prepare_transform_split_df_time_split_td_features(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type")
         mocker.patch("hsfs.constructor.query.Query.read")
         mock_python_engine_time_series_split = mocker.patch(
@@ -1904,7 +1905,7 @@ class TestPython:
 
     def test_prepare_transform_split_df_time_split_query_features(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type")
         mocker.patch("hsfs.constructor.query.Query.read")
         mock_python_engine_time_series_split = mocker.patch(
@@ -1970,7 +1971,7 @@ class TestPython:
 
     def test_random_split(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         python_engine = python.Engine()
 
@@ -1999,7 +2000,7 @@ class TestPython:
         # In python sum([0.6, 0.3, 0.1]) != 1.0 due to floating point precision.
         # This test checks if different split ratios can be handled.
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         python_engine = python.Engine()
 
@@ -2027,7 +2028,7 @@ class TestPython:
     def test_random_split_size_precision_2(self, mocker):
         # This test checks if the method can handle split ratio with high precision.
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         python_engine = python.Engine()
 
@@ -2054,7 +2055,7 @@ class TestPython:
 
     def test_random_split_bad_percentage(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         python_engine = python.Engine()
 
@@ -2083,7 +2084,7 @@ class TestPython:
 
     def test_time_series_split(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         python_engine = python.Engine()
 
@@ -2120,7 +2121,7 @@ class TestPython:
 
     def test_time_series_split_drop_event_time(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         python_engine = python.Engine()
 
@@ -2159,7 +2160,7 @@ class TestPython:
 
     def test_time_series_split_event_time(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         python_engine = python.Engine()
 
@@ -2284,7 +2285,7 @@ class TestPython:
 
     def test_write_training_dataset_query_td(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type")
         mocker.patch("hsfs.core.training_dataset_job_conf.TrainingDatasetJobConf")
         mock_job = mocker.patch("hsfs.core.job.Job")
@@ -2329,7 +2330,7 @@ class TestPython:
 
     def test_write_training_dataset_query_fv(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type")
         mocker.patch("hsfs.core.training_dataset_job_conf.TrainingDatasetJobConf")
         mock_job = mocker.patch("hsfs.core.job.Job")
@@ -2545,7 +2546,7 @@ class TestPython:
 
     def test_apply_transformation_function_pandas(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         engine._engine_type = "python"
         python_engine = python.Engine()
 
@@ -2585,7 +2586,7 @@ class TestPython:
 
     def test_apply_transformation_function_multiple_output(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         engine._engine_type = "python"
         python_engine = python.Engine()
 
@@ -2628,7 +2629,7 @@ class TestPython:
 
     def test_apply_transformation_function_multiple_input_output(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         engine._engine_type = "python"
         python_engine = python.Engine()
@@ -2679,7 +2680,7 @@ class TestPython:
 
     def test_apply_transformation_function_multiple_input_output_drop_all(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         engine._engine_type = "python"
         python_engine = python.Engine()
@@ -2725,7 +2726,7 @@ class TestPython:
         self, mocker
     ):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         engine._engine_type = "python"
         python_engine = python.Engine()
@@ -2773,7 +2774,7 @@ class TestPython:
 
     def test_apply_transformation_function_polars(self, mocker):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
 
         engine._engine_type = "python"
         python_engine = python.Engine()
@@ -2848,7 +2849,7 @@ class TestPython:
             return_value=["", ""],
         )
 
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hopsworks_common.client.get_instance")
 
         python_engine = python.Engine()
@@ -2906,7 +2907,7 @@ class TestPython:
             return_value=[],
         )
 
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hopsworks_common.client.get_instance")
 
         python_engine = python.Engine()
@@ -2960,7 +2961,7 @@ class TestPython:
             return_value=" tests_offsets",
         )
 
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hopsworks_common.client.get_instance")
 
         python_engine = python.Engine()
@@ -3017,7 +3018,7 @@ class TestPython:
             side_effect=["", " tests_offsets"],
         )
 
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hopsworks_common.client.get_instance")
 
         python_engine = python.Engine()

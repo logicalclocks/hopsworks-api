@@ -204,3 +204,11 @@ class Client(istio.Client):
         if self.SERVING_API_KEY not in os.environ:
             raise exceptions.InternalClientError("Serving API key not found")
         return os.environ[self.SERVING_API_KEY]
+
+    def replace_public_host(self, url):
+        """replace hostname to public hostname set in HOPSWORKS_PUBLIC_HOST"""
+        ui_url = url._replace(netloc=os.environ[self.HOPSWORKS_PUBLIC_HOST])
+        return ui_url
+
+    def _is_external(self):
+        return False

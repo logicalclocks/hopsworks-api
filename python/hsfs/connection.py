@@ -19,7 +19,8 @@ import importlib.util
 import os
 from typing import Any, Optional
 
-from hsfs import client, engine, feature_store, usage, util
+from hopsworks_common import client
+from hsfs import engine, feature_store, usage, util
 from hsfs.core import (
     feature_store_api,
     hosts_api,
