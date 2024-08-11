@@ -58,9 +58,9 @@ def one_hot_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
     unique_data = [
         value for value in statistics.feature.unique_values
     ]
-    one_hot = pd.get_dummies(feature, dtype="bool")
-    for data in unique_data:
-        if data not in one_hot:
-            one_hot[data] = False
+
+    # One hot encode features. Re-indexing to set missing categories to False and drop categories not in training data statistics.
+    one_hot = pd.get_dummies(feature, dtype="bool").reindex(unique_data, axis=1, fill_value=False)
+
     # Sorting by columns so as to maintain consistency in column order.
     return one_hot.reindex(sorted(one_hot.columns), axis=1)

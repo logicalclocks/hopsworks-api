@@ -572,9 +572,7 @@ def renaming_wrapper(*args):
             self._return_types[0]
             for _ in range(
                 len(
-                    self.transformation_statistics[
-                        "statistics_feature"
-                    ].unique_values
+                    self.transformation_statistics.feature.unique_values
                 )
             )
         ]

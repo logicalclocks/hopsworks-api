@@ -23,8 +23,10 @@ import humps
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import util
 from hsfs.core import transformation_function_engine
+from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hsfs.decorators import typechecked
 from hsfs.hopsworks_udf import HopsworksUdf
+from hsfs.transformation_statistics import TransformationStatistics
 
 
 class TransformationType(Enum):
@@ -77,8 +79,7 @@ class TransformationFunction:
 
         self._hopsworks_udf: HopsworksUdf = hopsworks_udf
         TransformationFunction._validate_transformation_type(transformation_type=transformation_type, hopsworks_udf=hopsworks_udf)
-        self._transformation_type = transformation_type
-        self._hopsworks_udf.output_column_names = self._get_output_column_names()
+        self.transformation_type = transformation_type
 
     def save(self) -> None:
         """Save a transformation function into the backend.
@@ -149,6 +150,7 @@ class TransformationFunction:
         # Deep copy so that the same transformation function can be used to create multiple new transformation function with different features.
         transformation = copy.deepcopy(self)
         transformation._hopsworks_udf = transformation._hopsworks_udf(*features)
+        # Regenerate output column names when setting new transformation features.
         transformation._hopsworks_udf.output_column_names = transformation._get_output_column_names()
         return transformation
 
@@ -294,6 +296,25 @@ class TransformationFunction:
     @transformation_type.setter
     def transformation_type(self, transformation_type) -> None:
         self._transformation_type = transformation_type
+        # Generate output column names when setting transformation type
+        self._hopsworks_udf.output_column_names = self._get_output_column_names()
+
+    @property
+    def transformation_statistics(
+        self,
+    ) -> Optional[TransformationStatistics]:
+        """Feature statistics required for the defined UDF"""
+        return self.hopsworks_udf.transformation_statistics
+
+    @transformation_statistics.setter
+    def transformation_statistics(
+        self, statistics: List[FeatureDescriptiveStatistics]
+    ) -> None:
+        self.hopsworks_udf.transformation_statistics = statistics
+        # Generate output column names for one-hot encoder after transformation statistics is set.
+        # This is done because the number of output columns for one-hot encoding dependents on number of unique values in training dataset statistics.
+        if self.hopsworks_udf.function_name == "one_hot_encoder":
+            self._hopsworks_udf.output_column_names = self._get_output_column_names()
 
     @property
     def output_column_names(self) -> List[str]:
