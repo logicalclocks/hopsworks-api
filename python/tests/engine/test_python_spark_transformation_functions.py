@@ -177,7 +177,7 @@ class TestPythonSparkTransformationFunctions:
             )
         ]
 
-        transformation_functions[0].hopsworks_udf.transformation_statistics = [
+        transformation_functions[0].transformation_statistics = [
             FeatureDescriptiveStatistics(feature_name="col_0", min=1, max=2)
         ]
 
@@ -240,7 +240,7 @@ class TestPythonSparkTransformationFunctions:
             )
         ]
 
-        transformation_functions[0].hopsworks_udf.transformation_statistics = [
+        transformation_functions[0].transformation_statistics = [
             FeatureDescriptiveStatistics(feature_name="col_0", min=1, max=2)
         ]
 
@@ -321,7 +321,7 @@ class TestPythonSparkTransformationFunctions:
         ]
         mean = statistics.mean([1, 2])
         stddev = statistics.pstdev([1, 2])
-        transformation_functions[0].hopsworks_udf.transformation_statistics = [
+        transformation_functions[0].transformation_statistics = [
             FeatureDescriptiveStatistics(feature_name="col_0", mean=mean, stddev=stddev)
         ]
 
@@ -386,7 +386,7 @@ class TestPythonSparkTransformationFunctions:
 
         mean = statistics.mean([1, 2])
         stddev = statistics.pstdev([1, 2])
-        transformation_functions[0].hopsworks_udf.transformation_statistics = [
+        transformation_functions[0].transformation_statistics = [
             FeatureDescriptiveStatistics(feature_name="col_0", mean=mean, stddev=stddev)
         ]
 
@@ -470,7 +470,7 @@ class TestPythonSparkTransformationFunctions:
         percentiles[24] = 1
         percentiles[49] = 2
         percentiles[74] = 2
-        transformation_functions[0].hopsworks_udf.transformation_statistics = [
+        transformation_functions[0].transformation_statistics = [
             FeatureDescriptiveStatistics(feature_name="col_0", percentiles=percentiles)
         ]
 
@@ -537,7 +537,7 @@ class TestPythonSparkTransformationFunctions:
         percentiles[24] = 1
         percentiles[49] = 2
         percentiles[74] = 2
-        transformation_functions[0].hopsworks_udf.transformation_statistics = [
+        transformation_functions[0].transformation_statistics = [
             FeatureDescriptiveStatistics(feature_name="col_0", percentiles=percentiles)
         ]
 
