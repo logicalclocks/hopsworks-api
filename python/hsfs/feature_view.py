@@ -4061,9 +4061,8 @@ class FeatureView:
     def _vector_server(self) -> vector_server.VectorServer:
         if not self.__vector_server:
             self.__vector_server = vector_server.VectorServer(
-                self._featurestore_id,
-                self._features,
-                None,
+                feature_store_id=self._featurestore_id,
+                features=self._features,
                 serving_keys=self._serving_keys,
                 skip_fg_ids=set([fg.id for fg in self._get_embedding_fgs()]),
                 feature_view_name=self._name,
@@ -4076,9 +4075,8 @@ class FeatureView:
     def _batch_scoring_server(self) -> vector_server.VectorServer:
         if not self.__batch_scoring_server:
             self.__batch_scoring_server = vector_server.VectorServer(
-                self._featurestore_id,
-                self._features,
-                None,
+                feature_store_id=self._featurestore_id,
+                features=self._features,
                 serving_keys=self._serving_keys,
                 skip_fg_ids=set([fg.id for fg in self._get_embedding_fgs()]),
                 feature_view_name=self._name,

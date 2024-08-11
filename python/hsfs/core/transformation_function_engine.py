@@ -189,7 +189,7 @@ class TransformationFunctionEngine:
 
         if is_stat_required:
             for transformation_function in feature_view.transformation_functions:
-                transformation_function.hopsworks_udf.transformation_statistics = (
+                transformation_function.transformation_statistics = (
                     td_tffn_stats.feature_descriptive_statistics
                 )
         return feature_view.transformation_functions
@@ -252,7 +252,7 @@ class TransformationFunctionEngine:
 
             # Set statistics computed in the hopsworks UDF
             for tf in feature_view_obj.transformation_functions:
-                tf.hopsworks_udf.transformation_statistics = (
+                tf.transformation_statistics = (
                     stats.feature_descriptive_statistics
                 )
 
@@ -296,6 +296,6 @@ class TransformationFunctionEngine:
                 )
 
             for tf in feature_view_obj.transformation_functions:
-                tf.hopsworks_udf.transformation_statistics = (
+                tf.transformation_statistics = (
                     td_tffn_stats.feature_descriptive_statistics
                 )
