@@ -48,6 +48,6 @@ class Library:
         self._environment = environment
 
     @classmethod
-    def from_response_json(cls, json_dict, environment):
+    def from_response_json(cls, json_dict, *, environment=None):
         json_decamelized = humps.decamelize(json_dict)
         return cls(**json_decamelized, environment=environment)
