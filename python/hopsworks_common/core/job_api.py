@@ -37,13 +37,13 @@ class JobApi:
 
         project = hopsworks.login()
 
-        jobs_api = project.get_jobs_api()
+        job_api = project.get_job_api()
 
-        spark_config = jobs_api.get_configuration("PYSPARK")
+        spark_config = job_api.get_configuration("PYSPARK")
 
         spark_config['appPath'] = "/Resources/my_app.py"
 
-        job = jobs_api.create_job("my_spark_job", spark_config)
+        job = job_api.create_job("my_spark_job", spark_config)
 
         ```
         # Arguments
@@ -66,7 +66,7 @@ class JobApi:
                 "PUT", path_params, headers=headers, data=json.dumps(config)
             )
         )
-        print(created_job.get_url())
+        print(f"Job created successfully, explore it at {created_job.get_url()}")
         return created_job
 
     def get_job(self, name: str):
@@ -185,6 +185,7 @@ class JobApi:
         )
 
     def _schedule_job(self, name, schedule_config):
+        """Attach the `schedule_config` to the job with the given `name`."""
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "jobs", name, "schedule", "v2"]
         headers = {"content-type": "application/json"}

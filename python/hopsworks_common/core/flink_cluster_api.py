@@ -90,7 +90,9 @@ class FlinkClusterApi:
             )
         )
         flink_cluster_obj = flink_cluster.FlinkCluster(flink_job)
-        print(flink_cluster_obj.get_url())
+        print(
+            f"FlinkCluster created successfully, explore it at {flink_cluster_obj.get_url()}"
+        )
         return flink_cluster_obj
 
     def get_cluster(self, name: str):

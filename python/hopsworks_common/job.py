@@ -334,7 +334,4 @@ class Job:
     def get_url(self):
         _client = client.get_instance()
         path = "/p/" + str(_client._project_id) + "/jobs/named/" + self.name
-        return (
-            "Job created successfully, explore it at "
-            + util.get_hostname_replaced_url(path)
-        )
+        return util.get_hostname_replaced_url(path)

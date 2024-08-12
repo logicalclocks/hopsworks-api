@@ -151,7 +151,7 @@ class SecretsApi:
         )
 
         created_secret = self.get_secret(name)
-        print(created_secret.get_url())
+        print(f"Secret created successfully, explore it at {created_secret.get_url()}")
         return created_secret
 
     def _delete(self, name: str):
