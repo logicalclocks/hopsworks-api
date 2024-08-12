@@ -253,7 +253,7 @@ class ServingApi:
                 _client._project_id, deployment_instance
             )
         else:
-            _client = client.istio_get_instance()
+            _client = client.istio.get_instance()
             if _client is not None:
                 # use istio client
                 path_params = self._get_istio_inference_path(deployment_instance)
