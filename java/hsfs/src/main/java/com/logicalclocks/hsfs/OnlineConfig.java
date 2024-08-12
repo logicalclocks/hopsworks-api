@@ -34,5 +34,5 @@ public class OnlineConfig {
 
   @Getter
   @Setter
-  private List<String> tableSpace;
+  private String tableSpace;
 }

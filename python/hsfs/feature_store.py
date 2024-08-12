@@ -547,7 +547,8 @@ class FeatureStore:
                     primary_key=['city','date'],
                     online_enabled=True,
                     event_time='date',
-                    transformation_functions=transformation_functions
+                    transformation_functions=transformation_functions,
+                    online_config={'online_comments': ['NDB_TABLE=READ_BACKUP=1']}
                 )
             ```
 
@@ -703,6 +704,7 @@ class FeatureStore:
                     online_enabled=True,
                     event_time="timestamp",
                     transformation_functions=transformation_functions,
+                    online_config={'online_comments': ['NDB_TABLE=READ_BACKUP=1']}
                     )
             ```
 
@@ -992,7 +994,8 @@ class FeatureStore:
                     storage_connector=connector,
                     primary_key=['ss_store_sk'],
                     event_time='sale_date',
-                    online_enabled=True
+                    online_enabled=True,
+                    online_config={'online_comments': ['NDB_TABLE=READ_BACKUP=1']}
                     )
         external_fg.save()
 
