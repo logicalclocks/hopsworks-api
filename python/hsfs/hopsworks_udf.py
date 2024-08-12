@@ -25,8 +25,8 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import humps
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import engine, util
-from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hsfs.decorators import typechecked
 from hsfs.transformation_statistics import TransformationStatistics

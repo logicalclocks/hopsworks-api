@@ -125,7 +125,7 @@ class TestPythonReader:
 
     def test_read_hopsfs_remote_parquet(self, mocker, dataframe_fixture_basic):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mock_dataset_api = mocker.patch("hsfs.core.dataset_api.DatasetApi")
         i = inode.Inode(attributes={"path": "test_path"})
         mock_dataset_api.return_value.list_files.return_value = (0, [i])

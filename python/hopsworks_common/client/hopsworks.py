@@ -28,7 +28,7 @@ except ImportError:
 
 
 class Client(base.Client):
-    REQUESTS_VERIFY = "REQUESTS_VERIFY"
+    HOPSWORKS_HOSTNAME_VERIFICATION = "HOPSWORKS_HOSTNAME_VERIFICATION"
     DOMAIN_CA_TRUSTSTORE_PEM = "DOMAIN_CA_TRUSTSTORE_PEM"
     PROJECT_ID = "HOPSWORKS_PROJECT_ID"
     PROJECT_NAME = "HOPSWORKS_PROJECT_NAME"
@@ -44,7 +44,7 @@ class Client(base.Client):
     MATERIAL_PWD = "material_passwd"
     SECRETS_DIR = "SECRETS_DIR"
 
-    def __init__(self):
+    def __init__(self, hostname_verification):
         """Initializes a client being run from a job/notebook directly on Hopsworks."""
         self._base_url = self._get_hopsworks_rest_endpoint()
         self._host, self._port = self._get_host_port_pair()
@@ -52,19 +52,21 @@ class Client(base.Client):
             os.environ[self.SECRETS_DIR] if self.SECRETS_DIR in os.environ else ""
         )
         self._cert_key = self._get_cert_pw()
-        trust_store_path = self._get_trust_store_path()
-        hostname_verification = (
-            os.environ[self.REQUESTS_VERIFY] == "true"
-            if self.REQUESTS_VERIFY in os.environ
-            else True
-        )
+
+        self._hostname_verification = os.environ.get(
+            self.HOPSWORKS_HOSTNAME_VERIFICATION, "{}".format(hostname_verification)
+        ).lower() in ("true", "1", "y", "yes")
+        self._hopsworks_ca_trust_store_path = self._get_trust_store_path()
+
         self._project_id = os.environ[self.PROJECT_ID]
         self._project_name = self._project_name()
         try:
             self._auth = auth.BearerAuth(self._read_jwt())
         except FileNotFoundError:
             self._auth = auth.ApiKeyAuth(self._read_apikey())
-        self._verify = self._get_verify(hostname_verification, trust_store_path)
+        self._verify = self._get_verify(
+            self._hostname_verification, self._hopsworks_ca_trust_store_path
+        )
         self._session = requests.session()
 
         self._connected = True
@@ -171,6 +173,9 @@ class Client(base.Client):
         """replace hostname to public hostname set in HOPSWORKS_PUBLIC_HOST"""
         ui_url = url._replace(netloc=os.environ[self.HOPSWORKS_PUBLIC_HOST])
         return ui_url
+
+    def _is_external(self):
+        return False
 
     @property
     def host(self):

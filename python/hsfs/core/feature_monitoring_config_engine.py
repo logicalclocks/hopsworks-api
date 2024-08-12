@@ -20,8 +20,8 @@ from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Union
 
 import pandas as pd
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import feature_group, feature_view
-from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core import feature_monitoring_config as fmc
 from hsfs.core import feature_monitoring_config_api, monitoring_window_config_engine
 from hsfs.core import monitoring_window_config as mwc

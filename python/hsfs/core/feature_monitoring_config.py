@@ -21,8 +21,8 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
 import humps
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import util
-from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core import (
     feature_monitoring_config_engine,
     feature_monitoring_result_engine,

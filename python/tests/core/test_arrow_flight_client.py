@@ -30,7 +30,7 @@ from hsfs.storage_connector import HopsFSConnector, StorageConnector
 class TestArrowFlightClient:
     @pytest.fixture(autouse=True)
     def run_around_tests(self, mocker):
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         arrow_flight_client.get_instance()._enabled_on_cluster = True
         arrow_flight_client.get_instance()._disabled_for_session = False
         yield
@@ -38,7 +38,7 @@ class TestArrowFlightClient:
         arrow_flight_client.get_instance()._disabled_for_session = True
 
     def _arrange_engine_mocks(self, mocker, backend_fixtures):
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)

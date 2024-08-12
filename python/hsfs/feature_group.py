@@ -44,6 +44,7 @@ import humps
 import numpy as np
 import pandas as pd
 import polars as pl
+from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hsfs import (
     engine,
     feature,
@@ -58,11 +59,9 @@ from hsfs import (
 from hsfs import (
     storage_connector as sc,
 )
-from hsfs.client.exceptions import FeatureStoreException, RestAPIError
 from hsfs.constructor import filter, query
 from hsfs.constructor.filter import Filter, Logic
 from hsfs.core import (
-    code_engine,
     deltastreamer_jobconf,
     expectation_suite_engine,
     explicit_provenance,
@@ -92,6 +91,7 @@ from hsfs.decorators import typechecked, uses_great_expectations
 from hsfs.embedding import EmbeddingIndex
 from hsfs.ge_validation_result import ValidationResult
 from hsfs.hopsworks_udf import HopsworksUdf, UDFType
+from hsfs.online_config import OnlineConfig
 from hsfs.statistics import Statistics
 from hsfs.statistics_config import StatisticsConfig
 from hsfs.transformation_function import TransformationFunction
@@ -128,6 +128,12 @@ class FeatureGroupBase:
         topic_name: Optional[str] = None,
         notification_topic_name: Optional[str] = None,
         deprecated: bool = False,
+        online_config: Optional[
+            Union[
+                OnlineConfig,
+                Dict[str, Any],
+            ]
+        ] = None,
         **kwargs,
     ) -> None:
         self._version = version
@@ -145,6 +151,8 @@ class FeatureGroupBase:
         self._feature_store = None
         self._variable_api: VariableApi = VariableApi()
 
+        self._online_config = OnlineConfig.from_response_json(online_config) if isinstance(online_config, dict) else online_config
+
         self._multi_part_insert: bool = False
         self._embedding_index = embedding_index
         # use setter for correct conversion
@@ -155,9 +163,6 @@ class FeatureGroupBase:
         ] = None
         self._statistics_engine: statistics_engine.StatisticsEngine = (
             statistics_engine.StatisticsEngine(featurestore_id, self.ENTITY_TYPE)
-        )
-        self._code_engine: code_engine.CodeEngine = code_engine.CodeEngine(
-            featurestore_id, self.ENTITY_TYPE
         )
         self._great_expectation_engine: great_expectation_engine.GreatExpectationEngine = great_expectation_engine.GreatExpectationEngine(
             featurestore_id
@@ -2108,6 +2113,12 @@ class FeatureGroup(FeatureGroupBase):
         transformation_functions: Optional[
             List[Union[TransformationFunction, HopsworksUdf]]
         ] = None,
+        online_config: Optional[
+            Union[
+                OnlineConfig,
+                Dict[str, Any],
+            ]
+        ] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -2124,6 +2135,7 @@ class FeatureGroup(FeatureGroupBase):
             topic_name=topic_name,
             notification_topic_name=notification_topic_name,
             deprecated=deprecated,
+            online_config=online_config,
         )
         self._feature_store_name: Optional[str] = featurestore_name
         self._description: Optional[str] = description
@@ -2616,8 +2628,6 @@ class FeatureGroup(FeatureGroupBase):
         fg_job, ge_report = self._feature_group_engine.save(
             self, feature_dataframe, write_options, validation_options or {}
         )
-        if ge_report is None or ge_report.ingestion_result == "INGESTED":
-            self._code_engine.save_code(self)
 
         if self.statistics_config.enabled and engine.get_type().startswith("spark"):
             # Only compute statistics if the engine is Spark.
@@ -2651,7 +2661,6 @@ class FeatureGroup(FeatureGroupBase):
         storage: Optional[str] = None,
         write_options: Optional[Dict[str, Any]] = None,
         validation_options: Optional[Dict[str, Any]] = None,
-        save_code: Optional[bool] = True,
         wait: bool = False,
     ) -> Tuple[Optional[Job], Optional[ValidationReport]]:
         """Persist the metadata and materialize the feature group to the feature store
@@ -2757,10 +2766,6 @@ class FeatureGroup(FeatureGroupBase):
                 * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
                 * key `fetch_expectation_suite` a boolean value, by default `True`, to control whether the expectation
                    suite of the feature group should be fetched before every insert.
-            save_code: When running HSFS on Hopsworks or Databricks, HSFS can save the code/notebook used to create
-                the feature group or used to insert data to it. When calling the `insert` method repeatedly
-                with small batches of data, this can slow down the writes. Use this option to turn off saving
-                code. Defaults to `True`.
             wait: Wait for job to finish before returning, defaults to `False`.
                 Shortcut for read_options `{"wait_for_job": False}`.
 
@@ -2797,10 +2802,6 @@ class FeatureGroup(FeatureGroupBase):
             write_options=write_options,
             validation_options={"save_report": True, **validation_options},
         )
-        if save_code and (
-            ge_report is None or ge_report.ingestion_result == "INGESTED"
-        ):
-            self._code_engine.save_code(self)
 
         if engine.get_type().startswith("spark") and not self.stream:
             # Also, only compute statistics if stream is False.
@@ -3435,6 +3436,8 @@ class FeatureGroup(FeatureGroupBase):
             "deprecated": self.deprecated,
             "transformationFunctions": self._transformation_functions,
         }
+        if self._online_config:
+            fg_meta_dict["onlineConfig"] = self._online_config.to_dict()
         if self.embedding_index:
             fg_meta_dict["embeddingIndex"] = self.embedding_index.to_dict()
         if self._stream:
@@ -3621,6 +3624,12 @@ class ExternalFeatureGroup(FeatureGroupBase):
         spine: bool = False,
         deprecated: bool = False,
         embedding_index: Optional[EmbeddingIndex] = None,
+        online_config: Optional[
+            Union[
+                OnlineConfig,
+                Dict[str, Any],
+            ]
+        ] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -3637,6 +3646,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
             topic_name=topic_name,
             notification_topic_name=notification_topic_name,
             deprecated=deprecated,
+            online_config=online_config,
         )
 
         self._feature_store_name = featurestore_name
@@ -3716,7 +3726,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
         fg.save()
         """
         self._feature_group_engine.save(self)
-        self._code_engine.save_code(self)
 
         if self.statistics_config.enabled:
             self._statistics_engine.compute_and_save_statistics(self)
@@ -3732,7 +3741,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
         ],
         write_options: Optional[Dict[str, Any]] = None,
         validation_options: Optional[Dict[str, Any]] = None,
-        save_code: Optional[bool] = True,
         wait: bool = False,
     ) -> Tuple[
         None, Optional[great_expectations.core.ExpectationSuiteValidationResult]
@@ -3785,10 +3793,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
                 * key `fetch_expectation_suite` a boolean value, by default `True`, to control whether the expectation
                    suite of the feature group should be fetched before every insert.
-            save_code: When running HSFS on Hopsworks or Databricks, HSFS can save the code/notebook used to create
-                the feature group or used to insert data to it. When calling the `insert` method repeatedly
-                with small batches of data, this can slow down the writes. Use this option to turn off saving
-                code. Defaults to `True`.
 
         # Returns
             Tuple(None, `ge.core.ExpectationSuiteValidationResult`) The validation report if validation is enabled.
@@ -3815,11 +3819,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
             write_options=write_options,
             validation_options={"save_report": True, **validation_options},
         )
-
-        if save_code and (
-            ge_report is None or ge_report.ingestion_result == "INGESTED"
-        ):
-            self._code_engine.save_code(self)
 
         if self.statistics_config.enabled:
             warnings.warn(
@@ -4070,6 +4069,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
             "notificationTopicName": self.notification_topic_name,
             "deprecated": self.deprecated,
         }
+        if self._online_config:
+            fg_meta_dict["onlineConfig"] = self._online_config.to_dict()
         if self.embedding_index:
             fg_meta_dict["embeddingIndex"] = self.embedding_index
         return fg_meta_dict
@@ -4160,6 +4161,12 @@ class SpineGroup(FeatureGroupBase):
         spine: bool = True,
         dataframe: Optional[str] = None,
         deprecated: bool = False,
+        online_config: Optional[
+            Union[
+                OnlineConfig,
+                Dict[str, Any],
+            ]
+        ] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -4174,6 +4181,7 @@ class SpineGroup(FeatureGroupBase):
             online_topic_name=online_topic_name,
             topic_name=topic_name,
             deprecated=deprecated,
+            online_config=online_config,
         )
 
         self._feature_store_name = featurestore_name

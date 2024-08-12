@@ -48,9 +48,7 @@ class Model:
         creator=None,
         environment=None,
         description=None,
-        experiment_id=None,
         project_name=None,
-        experiment_project_name=None,
         metrics=None,
         program=None,
         user_full_name=None,
@@ -78,9 +76,7 @@ class Model:
         self._created = created
         self._creator = creator
         self._environment = environment
-        self._experiment_id = experiment_id
         self._project_name = project_name
-        self._experiment_project_name = experiment_project_name
         self._training_metrics = metrics
         self._program = program
         self._user_full_name = user_full_name
@@ -362,9 +358,7 @@ class Model:
     def to_dict(self):
         return {
             "id": self._name + "_" + str(self._version),
-            "experimentId": self._experiment_id,
             "projectName": self._project_name,
-            "experimentProjectName": self._experiment_project_name,
             "name": self._name,
             "modelSchema": self._model_schema,
             "version": self._version,
@@ -445,15 +439,6 @@ class Model:
     @environment.setter
     def environment(self, environment):
         self._environment = environment
-
-    @property
-    def experiment_id(self):
-        """Experiment Id of the model."""
-        return self._experiment_id
-
-    @experiment_id.setter
-    def experiment_id(self, experiment_id):
-        self._experiment_id = experiment_id
 
     @property
     def training_metrics(self):
@@ -542,15 +527,6 @@ class Model:
     @model_registry_id.setter
     def model_registry_id(self, model_registry_id):
         self._model_registry_id = model_registry_id
-
-    @property
-    def experiment_project_name(self):
-        """experiment_project_name of the model."""
-        return self._experiment_project_name
-
-    @experiment_project_name.setter
-    def experiment_project_name(self, experiment_project_name):
-        self._experiment_project_name = experiment_project_name
 
     @property
     def model_path(self):

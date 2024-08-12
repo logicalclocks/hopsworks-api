@@ -85,9 +85,9 @@ try:
 except ImportError:
     pass
 
-
+from hopsworks_common import client
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import (
-    client,
     feature,
     feature_view,
     training_dataset,
@@ -96,7 +96,6 @@ from hsfs import (
     util,
 )
 from hsfs import feature_group as fg_mod
-from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core import (
     dataset_api,
     delta_engine,
@@ -357,7 +356,11 @@ class Engine:
         validation_id=None,
     ):
         try:
-            if feature_group.transformation_functions:
+            # Currently on-demand transformation functions not supported in external feature groups.
+            if (
+                not isinstance(feature_group, fg_mod.ExternalFeatureGroup)
+                and feature_group.transformation_functions
+            ):
                 dataframe = self._apply_transformation_function(
                     feature_group.transformation_functions, dataframe
                 )
@@ -1016,7 +1019,7 @@ class Engine:
         file_name = os.path.basename(file)
 
         # for external clients, download the file
-        if isinstance(client.get_instance(), client.external.Client):
+        if client._is_external():
             tmp_file = os.path.join(SparkFiles.getRootDirectory(), file_name)
             print("Reading key file from storage connector.")
             response = self._dataset_api.read_content(file, util.get_dataset_type(file))

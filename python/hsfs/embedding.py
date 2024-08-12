@@ -20,11 +20,9 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 import humps
-from hsfs import (
-    client,
-    util,
-)
-from hsfs.client.exceptions import FeatureStoreException
+from hopsworks_common import client
+from hopsworks_common.client.exceptions import FeatureStoreException
+from hsfs import util
 from hsfs.core.vector_db_client import VectorDbClient
 
 

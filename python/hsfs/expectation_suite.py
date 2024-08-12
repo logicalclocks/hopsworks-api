@@ -24,8 +24,8 @@ if TYPE_CHECKING:
     import great_expectations
 
 import humps
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import util
-from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core import expectation_suite_engine
 from hsfs.core.constants import (
     HAS_GREAT_EXPECTATIONS,

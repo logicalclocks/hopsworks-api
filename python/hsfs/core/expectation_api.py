@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import List
 
-from hsfs import client
+from hopsworks_common import client
 from hsfs.ge_expectation import GeExpectation
 
 

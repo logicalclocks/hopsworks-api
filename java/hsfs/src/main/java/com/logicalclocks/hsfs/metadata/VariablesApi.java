@@ -16,18 +16,19 @@
 
 package com.logicalclocks.hsfs.metadata;
 
-import com.damnhandy.uri.template.UriTemplate;
-import com.logicalclocks.hsfs.FeatureStoreException;
+import java.io.IOException;
+import java.util.Optional;
+
 import org.apache.http.client.methods.HttpGet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.util.Optional;
+import com.damnhandy.uri.template.UriTemplate;
+import com.logicalclocks.hsfs.FeatureStoreException;
 
 public class VariablesApi {
 
-  public static final String LOADBALANCER_EXTERNAL_DOMAIN = "loadbalancer_external_domain";
+  public static final String LOADBALANCER_EXTERNAL_DOMAIN_MYSQL = "loadbalancer_external_domain_mysqld";
 
   private static final String VARIABLE_PATH = "/variables/{variableName}";
   private static final Logger LOGGER = LoggerFactory.getLogger(Variable.class);

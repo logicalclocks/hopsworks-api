@@ -40,7 +40,7 @@ def init(
     global _client
     if not _client:
         if client_type == "hopsworks":
-            _client = hopsworks.Client()
+            _client = hopsworks.Client(hostname_verification)
         elif client_type == "external":
             _client = external.Client(
                 host,
@@ -53,7 +53,7 @@ def init(
                 api_key_file,
                 api_key_value,
             )
-    elif isinstance(_client, external.Client) and not _client._project_name:
+    elif _client._is_external() and not _client._project_name:
         _client.provide_project(project)
 
 
@@ -134,3 +134,10 @@ def get_knative_domain():
 def set_knative_domain(knative_domain):
     global _knative_domain
     _knative_domain = knative_domain
+
+
+def _is_external():
+    global _client
+    if _client is None:
+        raise ConnectionError("Hopsworks Client not initialized.")
+    return _client._is_external()

@@ -36,6 +36,7 @@ import humps
 import numpy as np
 import pandas as pd
 import polars as pl
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import (
     feature_group,
     storage_connector,
@@ -46,7 +47,6 @@ from hsfs import (
     util,
 )
 from hsfs import serving_key as skm
-from hsfs.client.exceptions import FeatureStoreException
 from hsfs.constructor import filter, query
 from hsfs.constructor.filter import Filter, Logic
 from hsfs.core import (

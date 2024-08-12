@@ -21,11 +21,11 @@ from typing import Any, Dict, List, Optional, Set, TypeVar, Union
 import humps
 import numpy as np
 import pandas as pd
-from hsfs import client, engine, training_dataset_feature, util
-from hsfs.client.exceptions import RestAPIError
+from hopsworks_common import client
+from hopsworks_common.client.exceptions import RestAPIError
+from hsfs import engine, training_dataset_feature, util
 from hsfs.constructor import filter, query
 from hsfs.core import (
-    code_engine,
     statistics_engine,
     training_dataset_api,
     training_dataset_engine,
@@ -588,7 +588,6 @@ class TrainingDataset(TrainingDatasetBase):
         self._statistics_engine = statistics_engine.StatisticsEngine(
             featurestore_id, self.ENTITY_TYPE
         )
-        self._code_engine = code_engine.CodeEngine(featurestore_id, self.ENTITY_TYPE)
         self._vector_server = vector_server.VectorServer(
             featurestore_id, features=self._features
         )
@@ -643,7 +642,6 @@ class TrainingDataset(TrainingDatasetBase):
         self.storage_connector = training_dataset.storage_connector
         # currently we do not save the training dataset statistics config for training datasets
         self.statistics_config = user_stats_config
-        self._code_engine.save_code(self)
         if self.statistics_config.enabled and engine.get_type().startswith("spark"):
             self.compute_statistics()
         if user_version is None:
@@ -706,7 +704,6 @@ class TrainingDataset(TrainingDatasetBase):
             self, features, write_options or {}, overwrite
         )
 
-        self._code_engine.save_code(self)
         self.compute_statistics()
 
         return td_job

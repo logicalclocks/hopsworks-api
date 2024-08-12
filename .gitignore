@@ -127,6 +127,7 @@ dmypy.json
 .vscode
 *.iml
 target/
+delombok/
 
 # Mac
 .DS_Store
@@ -139,3 +140,7 @@ docs/index.md
 
 # Test artifacts
 keyFile.json
+
+# Dev directories
+dev_tools/
+dev_scripts/

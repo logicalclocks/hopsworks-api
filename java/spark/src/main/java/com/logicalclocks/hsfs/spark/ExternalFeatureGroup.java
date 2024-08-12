@@ -27,12 +27,12 @@ import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.HudiOperationType;
 import com.logicalclocks.hsfs.JobConfiguration;
+import com.logicalclocks.hsfs.OnlineConfig;
 import com.logicalclocks.hsfs.StatisticsConfig;
 import com.logicalclocks.hsfs.Storage;
 
 import com.logicalclocks.hsfs.StorageConnector;
 import com.logicalclocks.hsfs.constructor.QueryBase;
-import com.logicalclocks.hsfs.engine.CodeEngine;
 import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.metadata.OnDemandOptions;
 import com.logicalclocks.hsfs.metadata.Statistics;
@@ -81,7 +81,6 @@ public class ExternalFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
   private final FeatureGroupEngine featureGroupEngine = new FeatureGroupEngine();
 
   private final StatisticsEngine statisticsEngine = new StatisticsEngine(EntityEndpointType.FEATURE_GROUP);
-  private final CodeEngine codeEngine = new CodeEngine(EntityEndpointType.FEATURE_GROUP);
 
   @Builder
   public ExternalFeatureGroup(FeatureStore featureStore, @NonNull String name, Integer version, String query,
@@ -89,7 +88,7 @@ public class ExternalFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
                               @NonNull StorageConnector storageConnector, String description, List<String> primaryKeys,
                               List<Feature> features, StatisticsConfig statisticsConfig, String eventTime,
                               boolean onlineEnabled, String onlineTopicName, String topicName,
-                              String notificationTopicName) {
+                              String notificationTopicName, OnlineConfig onlineConfig) {
     this();
     this.timeTravelFormat = null;
     this.featureStore = featureStore;
@@ -113,6 +112,7 @@ public class ExternalFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
     this.onlineTopicName = onlineTopicName;
     this.topicName = topicName;
     this.notificationTopicName = notificationTopicName;
+    this.onlineConfig = onlineConfig;
   }
 
   public ExternalFeatureGroup() {
@@ -127,7 +127,6 @@ public class ExternalFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
 
   public void save() throws FeatureStoreException, IOException {
     featureGroupEngine.saveExternalFeatureGroup(this);
-    codeEngine.saveCode(this);
     if (statisticsConfig.getEnabled()) {
       statisticsEngine.computeStatistics(this, read(), null);
     }
@@ -262,7 +261,6 @@ public class ExternalFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
 
     featureGroupEngine.insert(this, featureData, null);
 
-    codeEngine.saveCode(this);
     computeStatistics();
   }
 
@@ -299,7 +297,6 @@ public class ExternalFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
 
     featureGroupEngine.insert(this, featureData, writeOptions);
 
-    codeEngine.saveCode(this);
     computeStatistics();
   }
 
