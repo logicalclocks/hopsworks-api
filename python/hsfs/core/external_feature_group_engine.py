@@ -14,9 +14,12 @@
 #
 from __future__ import annotations
 
+from hopsworks_common.client.exceptions import (
+    DataValidationException,
+    FeatureStoreException,
+)
 from hsfs import engine, util
 from hsfs import feature_group as fg
-from hsfs.client.exceptions import DataValidationException, FeatureStoreException
 from hsfs.core import feature_group_base_engine
 
 

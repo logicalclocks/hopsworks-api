@@ -140,5 +140,7 @@ docs/index.md
 
 # Test artifacts
 keyFile.json
-bigquery.json
-gcs.json
+
+# Dev directories
+dev_tools/
+dev_scripts/

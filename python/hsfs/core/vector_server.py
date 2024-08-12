@@ -28,8 +28,8 @@ import avro.schema
 import numpy as np
 import pandas as pd
 import polars as pl
+from hopsworks_common import client
 from hsfs import (
-    client,
     feature_view,
     training_dataset,
     transformation_function,
@@ -174,7 +174,7 @@ class VectorServer:
         )
 
         if external is None:
-            external = isinstance(client.get_instance(), client.external.Client)
+            external = client._is_external()
         # `init_prepared_statement` should be the last because other initialisations
         # has to be done successfully before it is able to fetch feature vectors.
         self.init_transformation(entity)

@@ -20,13 +20,19 @@ import re
 from typing import Optional, Tuple
 
 from hopsworks_common import client
-from hopsworks_common.client.exceptions import RestAPIError
+from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
+
+
+LOADBALANCER_SERVICES = {
+    "mysqld": "mysqld",
+    "online_store_rest_server": "rdrs",
+    "opensearch": "opensearch",
+    "kafka": "kafka",
+    "feature_query": "flyingduck",
+}
 
 
 class VariableApi:
-    def __init__(self):
-        pass
-
     def get_variable(self, variable: str):
         """Get the configured value of a variable.
 
@@ -94,16 +100,27 @@ class VariableApi:
         """
         return self.get_variable("enable_flyingduck") == "true"
 
-    def get_loadbalancer_external_domain(self) -> str:
-        """Get domain of external loadbalancer.
+    def get_loadbalancer_external_domain(self, service: str) -> str:
+        """Get domain loadbalancer for a service.
 
         # Returns
-            `str`: The domain of external loadbalancer, if it is set up, otherwise empty string `""`.
+            `str`: The domain of external loadbalancer for a service, if it is set up.
+
+        # Raises
+            `FeatureStoreException`: If variable is not set in Hopsworks Cluster Configuration.
+            `RestAPIError`: Other errors than variable not found.
         """
         try:
-            return self.get_variable("loadbalancer_external_domain")
-        except RestAPIError:
-            return ""
+            return self.get_variable(f"loadbalancer_external_domain_{service}")
+        except RestAPIError as err:
+            if err.STATUS_CODE_NOT_FOUND:
+                raise FeatureStoreException(
+                    f"Client could not get {LOADBALANCER_SERVICES[service]} service hostname from "
+                    f"loadbalancer_external_domain_{service}. "
+                    "The variable is either not set or empty in Hopsworks cluster configuration."
+                ) from err
+            else:
+                raise err
 
     def get_service_discovery_domain(self) -> str:
         """Get domain of service discovery server.

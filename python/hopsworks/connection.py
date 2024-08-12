@@ -27,7 +27,7 @@ from requests.exceptions import ConnectionError
 
 
 HOPSWORKS_PORT_DEFAULT = 443
-HOSTNAME_VERIFICATION_DEFAULT = True
+HOPSWORKS_HOSTNAME_VERIFICATION_DEFAULT = os.environ.get("HOPSWORKS_HOSTNAME_VERIFICATION", "True").lower() in ("true", "1", "y", "yes")
 CERT_FOLDER_DEFAULT = "/tmp"
 PROJECT_ID = "HOPSWORKS_PROJECT_ID"
 PROJECT_NAME = "HOPSWORKS_PROJECT_NAME"
@@ -97,7 +97,7 @@ class Connection:
         host: str = None,
         port: int = HOPSWORKS_PORT_DEFAULT,
         project: str = None,
-        hostname_verification: bool = HOSTNAME_VERIFICATION_DEFAULT,
+        hostname_verification: bool = HOPSWORKS_HOSTNAME_VERIFICATION_DEFAULT,
         trust_store_path: str = None,
         cert_folder: str = CERT_FOLDER_DEFAULT,
         api_key_file: str = None,
@@ -275,7 +275,8 @@ class Connection:
                     self._api_key_value,
                 )
             else:
-                client.init("hopsworks")
+                client.init(client_type="hopsworks",
+                            hostname_verification=self._hostname_verification)
 
             self._project_api = project_api.ProjectApi()
             self._secret_api = secret_api.SecretsApi()
@@ -328,7 +329,7 @@ class Connection:
         host: str = None,
         port: int = HOPSWORKS_PORT_DEFAULT,
         project: str = None,
-        hostname_verification: bool = HOSTNAME_VERIFICATION_DEFAULT,
+        hostname_verification: bool = HOPSWORKS_HOSTNAME_VERIFICATION_DEFAULT,
         trust_store_path: str = None,
         cert_folder: str = CERT_FOLDER_DEFAULT,
         api_key_file: str = None,

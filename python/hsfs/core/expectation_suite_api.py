@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from hsfs import client
+from hopsworks_common import client
 from hsfs import expectation_suite as es
 from hsfs.core.variable_api import VariableApi
 

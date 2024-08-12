@@ -17,33 +17,6 @@
 
 package com.logicalclocks.hsfs.engine;
 
-import com.google.common.base.Strings;
-import com.google.common.collect.Lists;
-import com.logicalclocks.hsfs.constructor.ServingPreparedStatement;
-import com.logicalclocks.hsfs.metadata.FeatureViewApi;
-import com.logicalclocks.hsfs.metadata.HopsworksClient;
-import com.logicalclocks.hsfs.metadata.HopsworksExternalClient;
-import com.logicalclocks.hsfs.metadata.StorageConnectorApi;
-import com.logicalclocks.hsfs.metadata.TrainingDatasetApi;
-import com.logicalclocks.hsfs.FeatureStoreBase;
-import com.logicalclocks.hsfs.FeatureStoreException;
-import com.logicalclocks.hsfs.FeatureViewBase;
-import com.logicalclocks.hsfs.StorageConnector;
-import com.logicalclocks.hsfs.TrainingDatasetBase;
-import com.logicalclocks.hsfs.TrainingDatasetFeature;
-import com.logicalclocks.hsfs.metadata.Variable;
-import com.logicalclocks.hsfs.metadata.VariablesApi;
-import com.logicalclocks.hsfs.util.Constants;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericDatumReader;
-import org.apache.avro.io.BinaryDecoder;
-import org.apache.avro.io.DatumReader;
-import org.apache.avro.io.Decoder;
-import org.apache.avro.io.DecoderFactory;
-
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -60,6 +33,34 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
+
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericDatumReader;
+import org.apache.avro.io.BinaryDecoder;
+import org.apache.avro.io.DatumReader;
+import org.apache.avro.io.Decoder;
+import org.apache.avro.io.DecoderFactory;
+
+import com.google.common.base.Strings;
+import com.google.common.collect.Lists;
+import com.logicalclocks.hsfs.FeatureStoreBase;
+import com.logicalclocks.hsfs.FeatureStoreException;
+import com.logicalclocks.hsfs.FeatureViewBase;
+import com.logicalclocks.hsfs.StorageConnector;
+import com.logicalclocks.hsfs.TrainingDatasetBase;
+import com.logicalclocks.hsfs.TrainingDatasetFeature;
+import com.logicalclocks.hsfs.constructor.ServingPreparedStatement;
+import com.logicalclocks.hsfs.metadata.FeatureViewApi;
+import com.logicalclocks.hsfs.metadata.HopsworksClient;
+import com.logicalclocks.hsfs.metadata.HopsworksExternalClient;
+import com.logicalclocks.hsfs.metadata.StorageConnectorApi;
+import com.logicalclocks.hsfs.metadata.TrainingDatasetApi;
+import com.logicalclocks.hsfs.metadata.Variable;
+import com.logicalclocks.hsfs.metadata.VariablesApi;
+import com.logicalclocks.hsfs.util.Constants;
+
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 @NoArgsConstructor
 public class VectorServer {
@@ -383,12 +384,13 @@ public class VectorServer {
       // if external is true, replace the IP coming from the storage connector with the host
       // used during the connection setup
       String host;
-      Optional<Variable> loadbalancerVariable = variablesApi.get(VariablesApi.LOADBALANCER_EXTERNAL_DOMAIN);
+      Optional<Variable> loadbalancerVariable = variablesApi.get(VariablesApi.LOADBALANCER_EXTERNAL_DOMAIN_MYSQL);
       if (loadbalancerVariable.isPresent() && !Strings.isNullOrEmpty(loadbalancerVariable.get().getValue())) {
         host = loadbalancerVariable.get().getValue();
       } else {
         // Fall back to the mysql server on the head node
-        host = HopsworksClient.getInstance().getHost();
+        throw new FeatureStoreException("No external domain for MySQL was found in the "
+        + "Hopsworks Cluster Configuration variables. Contact your administrator.");
       }
 
       url = url.replaceAll("/[0-9.]+:", "/" + host + ":");

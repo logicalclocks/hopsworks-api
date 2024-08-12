@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import Union
 
 import hsfs.feature_store
-from hsfs import client
+from hopsworks_common import client
 
 
 class FeatureStoreApi:

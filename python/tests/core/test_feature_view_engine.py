@@ -1887,7 +1887,7 @@ class TestFeatureViewEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.client.get_instance")  # for arrow_flight_client
+        mocker.patch("hopsworks_common.client.get_instance")  # for arrow_flight_client
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mock_engine_get_type = mocker.patch("hsfs.engine.get_type")
         mock_constructor_query = mocker.patch("hsfs.constructor.query.Query")
@@ -1922,7 +1922,7 @@ class TestFeatureViewEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.client.get_instance")  # for arrow_flight_client
+        mocker.patch("hopsworks_common.client.get_instance")  # for arrow_flight_client
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mock_engine_get_type = mocker.patch(
             "hsfs.engine.get_type", return_value="python"
@@ -1959,7 +1959,7 @@ class TestFeatureViewEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.client.get_instance")  # for arrow_flight_client
+        mocker.patch("hopsworks_common.client.get_instance")  # for arrow_flight_client
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
@@ -2001,7 +2001,7 @@ class TestFeatureViewEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.client.get_instance")  # for arrow_flight_client
+        mocker.patch("hopsworks_common.client.get_instance")  # for arrow_flight_client
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
@@ -2113,7 +2113,7 @@ class TestFeatureViewEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
-        mock_client_get_instance = mocker.patch("hsfs.client.get_instance")
+        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
         mock_util_get_hostname_replaced_url = mocker.patch(
             "hsfs.util.get_hostname_replaced_url"
         )

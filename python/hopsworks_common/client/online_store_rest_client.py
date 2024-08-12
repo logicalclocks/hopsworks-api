@@ -248,16 +248,13 @@ class OnlineStoreRestClientSingleton:
         Returns:
             str: RonDB Rest Server endpoint with default port.
         """
-        if client.get_instance()._is_external():
+        if client._is_external():
             _logger.debug(
                 "External Online Store REST Client : Retrieving RonDB Rest Server endpoint via loadbalancer."
             )
-            external_domain = self.variable_api.get_loadbalancer_external_domain()
-            if external_domain == "":
-                _logger.debug(
-                    "External Online Store REST Client : Loadbalancer external domain is not set. Using client host as endpoint."
-                )
-                external_domain = client.get_instance().host
+            external_domain = self.variable_api.get_loadbalancer_external_domain(
+                "online_store_rest_server"
+            )
             default_url = f"https://{external_domain}:{self._DEFAULT_ONLINE_STORE_REST_CLIENT_PORT}"
             _logger.debug(
                 f"External Online Store REST Client : Default RonDB Rest Server endpoint: {default_url}"
@@ -269,7 +266,10 @@ class OnlineStoreRestClientSingleton:
             )
             service_discovery_domain = self.variable_api.get_service_discovery_domain()
             if service_discovery_domain == "":
-                raise FeatureStoreException("Service discovery domain is not set.")
+                raise FeatureStoreException(
+                    "Client could not get Online Store hostname from service_discovery_domain. "
+                    "The variable is either not set or empty in Hopsworks cluster configuration."
+                )
             default_url = f"https://rdrs.service.{service_discovery_domain}:{self._DEFAULT_ONLINE_STORE_REST_CLIENT_PORT}"
             _logger.debug(
                 f"Internal Online Store REST Client : Default RonDB Rest Server endpoint: {default_url}"
@@ -316,7 +316,7 @@ class OnlineStoreRestClientSingleton:
         The api key determines the permissions of the user making the request for access to a given Feature Store.
         """
         _logger.debug("Setting authentication for Online Store REST Client.")
-        if client.get_instance()._is_external():
+        if client._is_external():
             assert hasattr(
                 client.get_instance()._auth, "_token"
             ), "External client must use API Key authentication. Contact your system administrator."

@@ -24,10 +24,15 @@ import warnings
 from pathlib import Path
 
 from hopsworks import client, constants, project, version
-from hopsworks.client.exceptions import ProjectException, RestAPIError
+from hopsworks.client.exceptions import (
+    HopsworksSSLClientError,
+    ProjectException,
+    RestAPIError,
+)
 from hopsworks.connection import Connection
 from hopsworks.core import project_api, secret_api
 from hopsworks.decorators import NoHopsworksConnectionError
+from requests.exceptions import SSLError
 
 
 # Needs to run before import of hsml and hsfs
@@ -71,6 +76,8 @@ def login(
     project: str = None,
     api_key_value: str = None,
     api_key_file: str = None,
+    hostname_verification: bool = True,
+    trust_store_path: str = None,
 ) -> project.Project:
     """Connect to [Serverless Hopsworks](https://app.hopsworks.ai) by calling the `hopsworks.login()` function with no arguments.
 
@@ -97,7 +104,7 @@ def login(
         ```
 
     In addition to setting function arguments directly, `hopsworks.login()` also reads the environment variables:
-    HOPSWORKS_HOST, HOPSWORKS_PORT, HOPSWORKS_PROJECT and HOPSWORKS_API_KEY.
+    HOPSWORKS_HOST, HOPSWORKS_PORT, HOPSWORKS_PROJECT, HOPSWORKS_API_KEY, HOPSWORKS_HOSTNAME_VERIFICATION and HOPSWORKS_TRUST_STORE_PATH.
 
     The function arguments do however take precedence over the environment variables in case both are set.
 
@@ -108,10 +115,13 @@ def login(
         project: Name of the project to access. If used inside a Hopsworks environment it always gets the current project. If not provided you will be prompted to enter it.
         api_key_value: Value of the Api Key
         api_key_file: Path to file wih Api Key
+        hostname_verification: Whether to verify Hopsworks' certificate
+        trust_store_path: Path on the file system containing the Hopsworks certificates
     # Returns
         `Project`: The Project object to perform operations on
     # Raises
         `RestAPIError`: If unable to connect to Hopsworks
+        `HopsworksSSLClientError`: If SSLError is raised from underlying requests library
     """
 
     global _connected_project
@@ -123,7 +133,7 @@ def login(
 
     # If inside hopsworks, just return the current project for now
     if "REST_ENDPOINT" in os.environ:
-        _hw_connection = _hw_connection()
+        _hw_connection = _hw_connection(hostname_verification=hostname_verification)
         _connected_project = _hw_connection.get_project()
         _initialize_module_apis()
         print("\nLogged in to project, explore it here " + _connected_project.get_url())
@@ -159,6 +169,12 @@ def login(
     if port == 443 and "HOPSWORKS_PORT" in os.environ:
         port = os.environ["HOPSWORKS_PORT"]
 
+    hostname_verification = os.getenv(
+        "HOPSWORKS_HOSTNAME_VERIFICATION", "{}".format(hostname_verification)
+    ).lower() in ("true", "1", "y", "yes")
+
+    trust_store_path = os.getenv("HOPSWORKS_TRUST_STORE_PATH", trust_store_path)
+
     # This .hw_api_key is created when a user logs into Serverless Hopsworks the first time.
     # It is then used only for future login calls to Serverless. For other Hopsworks installations it's ignored.
     api_key_path = _get_cached_api_key_path()
@@ -184,9 +200,15 @@ def login(
     elif os.path.exists(api_key_path) and is_app:
         try:
             _hw_connection = _hw_connection(
-                host=host, port=port, api_key_file=api_key_path
+                host=host,
+                port=port,
+                api_key_file=api_key_path,
+                hostname_verification=hostname_verification,
+                trust_store_path=trust_store_path,
             )
             _connected_project = _prompt_project(_hw_connection, project, is_app)
+            if _connected_project:
+                _set_active_project(_connected_project)
             print(
                 "\nLogged in to project, explore it here "
                 + _connected_project.get_url()
@@ -197,6 +219,9 @@ def login(
             logout()
             # API Key may be invalid, have the user supply it again
             os.remove(api_key_path)
+        except SSLError as ssl_e:
+            logout()
+            _handle_ssl_errors(ssl_e)
 
     if api_key is None and is_app:
         print(
@@ -213,11 +238,22 @@ def login(
             fh.write(api_key.strip())
 
     try:
-        _hw_connection = _hw_connection(host=host, port=port, api_key_value=api_key)
+        _hw_connection = _hw_connection(
+            host=host,
+            port=port,
+            api_key_value=api_key,
+            hostname_verification=hostname_verification,
+            trust_store_path=trust_store_path,
+        )
         _connected_project = _prompt_project(_hw_connection, project, is_app)
-    except RestAPIError as e:
+        if _connected_project:
+            _set_active_project(_connected_project)
+    except RestAPIError as hw_e:
         logout()
-        raise e
+        raise hw_e
+    except SSLError as ssl_e:
+        logout()
+        _handle_ssl_errors(ssl_e)
 
     if _connected_project is None:
         print(
@@ -228,6 +264,13 @@ def login(
 
     _initialize_module_apis()
     return _connected_project
+
+
+def _handle_ssl_errors(ssl_e):
+    raise HopsworksSSLClientError(
+        "Hopsworks certificate verification can be turned off by specifying hopsworks.login(hostname_verification=False) "
+        "or setting the environment variable HOPSWORKS_HOSTNAME_VERIFICATION='False'"
+    ) from ssl_e
 
 
 def _get_cached_api_key_path():
@@ -313,7 +356,7 @@ def _prompt_project(valid_connection, project, is_app):
 
 
 def logout():
-    """Cleans up and closes the connection for the hopsworks, hsfs and hsml libraries."""
+    """Cleans up and closes the connection for hopsworks."""
     global _hw_connection
     global _project_api
     global _secrets_api
@@ -397,6 +440,8 @@ def create_project(name: str, description: str = None, feature_store_topic: str 
     )
     if _connected_project is None:
         _connected_project = new_project
+        if _connected_project:
+            _set_active_project(_connected_project)
         print(
             "Setting {} as the current project, a reference can be retrieved by calling hopsworks.get_current_project()".format(
                 _connected_project.name
@@ -421,3 +466,9 @@ def get_secrets_api():
     if not _is_connection_active():
         raise NoHopsworksConnectionError()
     return _secrets_api
+
+
+def _set_active_project(project):
+    _client = client.get_instance()
+    if _client._is_external():
+        _client.provide_project(project.name)

@@ -130,7 +130,7 @@ class Project:
         from hsfs import connection
 
         _client = client.get_instance()
-        if type(_client) is client.external.Client:
+        if _client._is_external():
             if _client._host == constants.HOSTS.APP_HOST and engine is None:
                 engine = "python"
             return connection(
@@ -139,6 +139,8 @@ class Project:
                 project=self.name,
                 api_key_value=_client._auth._token,
                 engine=engine,
+                hostname_verification=_client._hostname_verification,
+                trust_store_path=_client._hopsworks_ca_trust_store_path,
             ).get_feature_store(name)
         else:
             return connection(engine=engine).get_feature_store(
@@ -165,12 +167,14 @@ class Project:
         from hsml import connection
 
         _client = client.get_instance()
-        if type(_client) is client.external.Client:
+        if _client._is_external():
             return connection(
                 host=_client._host,
                 port=_client._port,
                 project=self.name,
                 api_key_value=_client._auth._token,
+                hostname_verification=_client._hostname_verification,
+                trust_store_path=_client._hopsworks_ca_trust_store_path,
             ).get_model_registry()
         else:
             return connection().get_model_registry()  # If internal client
@@ -195,12 +199,14 @@ class Project:
         from hsml import connection
 
         _client = client.get_instance()
-        if type(_client) is client.external.Client:
+        if _client._is_external():
             return connection(
                 host=_client._host,
                 port=_client._port,
                 project=self.name,
                 api_key_value=_client._auth._token,
+                hostname_verification=_client._hostname_verification,
+                trust_store_path=_client._hopsworks_ca_trust_store_path,
             ).get_model_serving()
         else:
             return connection().get_model_serving()  # If internal client
@@ -212,8 +218,8 @@ class Project:
             `KafkaApi`: The Kafka Api handle
         """
         _client = client.get_instance()
-        if type(_client) is client.external.Client:
-            _client.download_certs(self.name)
+        if _client._is_external():
+            _client.download_certs()
         return self._kafka_api
 
     def get_opensearch_api(self):
@@ -223,8 +229,8 @@ class Project:
             `OpenSearchApi`: The OpenSearch Api handle
         """
         _client = client.get_instance()
-        if type(_client) is client.external.Client:
-            _client.download_certs(self.name)
+        if _client._is_external():
+            _client.download_certs()
         return self._opensearch_api
 
     def get_jobs_api(self):

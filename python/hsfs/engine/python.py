@@ -54,16 +54,15 @@ import pandas as pd
 import polars as pl
 import pyarrow as pa
 from botocore.response import StreamingBody
+from hopsworks_common import client
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import (
-    client,
     feature,
-    feature_store,
     feature_view,
     transformation_function,
     util,
 )
 from hsfs import storage_connector as sc
-from hsfs.client.exceptions import FeatureStoreException
 from hsfs.constructor import query
 from hsfs.core import (
     arrow_flight_client,
@@ -128,7 +127,7 @@ class Engine:
     def sql(
         self,
         sql_query: str,
-        feature_store: feature_store.FeatureStore,
+        feature_store: str,
         online_conn: Optional["sc.JdbcConnector"],
         dataframe_type: str,
         read_options: Optional[Dict[str, Any]],
@@ -202,7 +201,7 @@ class Engine:
             self._mysql_online_fs_engine = util_sql.create_mysql_engine(
                 connector,
                 (
-                    isinstance(client.get_instance(), client.external.Client)
+                    client._is_external()
                     if "external" not in read_options
                     else read_options["external"]
                 ),
@@ -430,7 +429,7 @@ class Engine:
     def show(
         self,
         sql_query: str,
-        feature_store: feature_store.FeatureStore,
+        feature_store: str,
         n: int,
         online_conn: "sc.JdbcConnector",
         read_options: Optional[Dict[str, Any]] = None,
@@ -761,7 +760,11 @@ class Engine:
         online_write_options: Dict[str, Any],
         validation_id: Optional[int] = None,
     ) -> Optional[job.Job]:
-        if feature_group.transformation_functions:
+        # Currently on-demand transformation functions not supported in external feature groups.
+        if (
+            not isinstance(feature_group, ExternalFeatureGroup)
+            and feature_group.transformation_functions
+        ):
             dataframe = self._apply_transformation_function(
                 feature_group.transformation_functions, dataframe
             )

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import List, Optional, Union
 
-from hsfs import client
+from hopsworks_common import client
 from hsfs.core import feature_monitoring_config as fmc
 from hsfs.core.job import Job
 

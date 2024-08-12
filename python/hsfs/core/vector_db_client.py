@@ -20,7 +20,10 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import hsfs
-from hsfs.client.exceptions import FeatureStoreException, VectorDatabaseException
+from hopsworks_common.client.exceptions import (
+    FeatureStoreException,
+    VectorDatabaseException,
+)
 from hsfs.constructor.filter import Filter, Logic
 from hsfs.constructor.join import Join
 from hsfs.core.opensearch import OpenSearchClientSingleton

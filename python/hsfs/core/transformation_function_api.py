@@ -17,8 +17,8 @@ from __future__ import annotations
 
 from typing import List, Optional, Union
 
+from hopsworks_common import client
 from hsfs import (
-    client,
     transformation_function,
 )
 

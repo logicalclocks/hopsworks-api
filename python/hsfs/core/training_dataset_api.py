@@ -17,7 +17,8 @@ from __future__ import annotations
 
 from typing import List, Optional, Union
 
-from hsfs import client, training_dataset
+from hopsworks_common import client
+from hsfs import training_dataset
 from hsfs.constructor import fs_query, serving_prepared_statement
 from hsfs.core import job, training_dataset_job_conf
 
