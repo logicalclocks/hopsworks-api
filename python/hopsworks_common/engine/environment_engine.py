@@ -72,8 +72,6 @@ class EnvironmentEngine:
                 _client._send_request(
                     "GET", path_params, headers=headers, query_params=query_params
                 ),
-                None,
-                None,
             )
         except RestAPIError as e:
             if (
@@ -100,6 +98,4 @@ class EnvironmentEngine:
             _client._send_request(
                 "GET", path_params, headers=headers, query_params=query_params
             ),
-            None,
-            None,
         )
