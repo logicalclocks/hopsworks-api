@@ -195,22 +195,22 @@ class FeatureTransformationStatistics:
 
     @property
     def correlations(self) -> Optional[dict]:
-        """ """
+        """Correlations of feature values."""
         return self._correlations
 
     @property
     def histogram(self) -> Optional[dict]:
-        """ """
+        """Histogram of feature values."""
         return self._histogram
 
     @property
     def kll(self) -> Optional[dict]:
-        """ """
+        """KLL of feature values."""
         return self._kll
 
     @property
     def unique_values(self) -> Optional[dict]:
-        """Number of Unique Values"""
+        """Number of Unique Values."""
         return self._unique_values
 
 
