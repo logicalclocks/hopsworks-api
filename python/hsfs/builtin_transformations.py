@@ -48,8 +48,9 @@ def label_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Serie
         [value for value in statistics.feature.unique_values]
     )
     value_to_index = {value: index for index, value in enumerate(unique_data)}
+    # Unknown categories not present in training dataset are encoded as -1.
     return pd.Series(
-        [value_to_index[data] if not pd.isna(data) else np.nan for data in feature]
+        [value_to_index.get(data, -1) if not pd.isna(data) else np.nan for data in feature]
     )
 
 
@@ -60,6 +61,7 @@ def one_hot_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
     ]
 
     # One hot encode features. Re-indexing to set missing categories to False and drop categories not in training data statistics.
+    # Hence one-hot encoded features would have all categories as False when a category not in training dataset is encountered.
     one_hot = pd.get_dummies(feature, dtype="bool").reindex(unique_data, axis=1, fill_value=False)
 
     # Sorting by columns so as to maintain consistency in column order.
