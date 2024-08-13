@@ -252,8 +252,9 @@ class ServingApi:
             path_params = self._get_hopsworks_inference_path(
                 _client._project_id, deployment_instance
             )
+            with_base_path_params = True
         else:
-            _client = client.istio_get_instance()
+            _client = client.istio.get_instance()
             if _client is not None:
                 # use istio client
                 path_params = self._get_istio_inference_path(deployment_instance)
@@ -263,16 +264,19 @@ class ServingApi:
                     deployment_instance.name,
                     client.get_knative_domain(),
                 )
+                with_base_path_params = False
             else:
                 # fallback to Hopsworks client
                 _client = client.get_instance()
                 path_params = self._get_hopsworks_inference_path(
                     _client._project_id, deployment_instance
                 )
+                with_base_path_params = True
 
         # send inference request
         return _client._send_request(
-            "POST", path_params, headers=headers, data=json.dumps(data)
+            "POST", path_params, headers=headers, data=json.dumps(data),
+            with_base_path_params=with_base_path_params
         )
 
     def _send_inference_request_via_grpc_protocol(
@@ -302,7 +306,7 @@ class ServingApi:
         return infer_response.outputs
 
     def _create_grpc_channel(self, deployment_name: str):
-        _client = client.istio_get_instance()
+        _client = client.istio.get_instance()
         service_hostname = self._get_inference_request_host_header(
             _client._project_name,
             deployment_name,

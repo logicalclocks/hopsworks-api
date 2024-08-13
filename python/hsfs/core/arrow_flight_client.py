@@ -208,7 +208,7 @@ class ArrowFlightClient:
         except Exception as e:
             # if feature flag cannot be retrieved, assume it is disabled
             _logger.debug(
-                "Unable to fetch Hopsworks Feature Query Service flag, disabling HFQS client."
+                "Unable to fetch Hopsworks Feature Query Service (HQFS) flag, disabling HFQS client."
             )
             _logger.exception(e)
             self._enabled_on_cluster = False
@@ -216,16 +216,17 @@ class ArrowFlightClient:
     def _retrieve_host_url(self) -> Optional[str]:
         _logger.debug("Retrieving host URL.")
         if client._is_external():
-            external_domain = self._variable_api.get_loadbalancer_external_domain()
-            if external_domain == "":
-                _logger.debug("loadbalancer_external_domain not set on cluster")
-                return None
+            external_domain = self._variable_api.get_loadbalancer_external_domain(
+                "feature_query"
+            )
             host_url = f"grpc+tls://{external_domain}:5005"
         else:
             service_discovery_domain = self._variable_api.get_service_discovery_domain()
             if service_discovery_domain == "":
-                _logger.debug("service_discovery_domain not set on cluster")
-                return None
+                raise FeatureStoreException(
+                    "Client could not get Feature Query Service hostname from service_discovery_domain. "
+                    "The variable is either not set or empty in Hopsworks cluster configuration."
+                )
             host_url = f"grpc+tls://flyingduck.service.{service_discovery_domain}:5005"
         _logger.debug(
             f"Connecting to Hopsworks Feature Query Service on host {host_url}"

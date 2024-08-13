@@ -127,6 +127,7 @@ dmypy.json
 .vscode
 *.iml
 target/
+delombok/
 
 # Mac
 .DS_Store

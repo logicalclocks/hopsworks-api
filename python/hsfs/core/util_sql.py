@@ -19,7 +19,7 @@ import asyncio
 import re
 from typing import Any, Dict, Optional
 
-from hsfs import util
+from hopsworks_common.core import variable_api
 from hsfs.core.constants import HAS_AIOMYSQL, HAS_SQLALCHEMY
 
 
@@ -44,7 +44,7 @@ def create_mysql_engine(
     if external:
         # This only works with external clients.
         # Hopsworks clients should use the storage connector
-        host = util.get_host_name()
+        host = variable_api.VariableApi().get_loadbalancer_external_domain("mysqld")
         online_options["url"] = re.sub(
             "/[0-9.]+:",
             "/{}:".format(host),
@@ -94,7 +94,9 @@ async def create_async_engine(
     url = make_url(online_options["url"].replace("jdbc:", ""))
     if hostname is None:
         if external:
-            hostname = util.get_host_name()
+            hostname = variable_api.VariableApi().get_loadbalancer_external_domain(
+                "mysqld"
+            )
         else:
             hostname = url.host
 

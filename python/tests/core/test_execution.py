@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 
+from unittest import mock
 
 from hsfs.core import execution
 
@@ -24,7 +25,7 @@ class TestExecution:
         json = backend_fixtures["execution"]["get"]["response"]
 
         # Act
-        ex_list = execution.Execution.from_response_json(json)
+        ex_list = execution.Execution.from_response_json(json, job=mock.Mock())
 
         # Assert
         assert len(ex_list) == 1
@@ -38,7 +39,7 @@ class TestExecution:
         json = backend_fixtures["execution"]["get_empty"]["response"]
 
         # Act
-        ex_list = execution.Execution.from_response_json(json)
+        ex_list = execution.Execution.from_response_json(json, job=mock.Mock())
 
         # Assert
         assert len(ex_list) == 0

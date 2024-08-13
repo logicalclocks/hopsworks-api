@@ -48,6 +48,7 @@ from hsfs.core import (
 from hsfs.decorators import typechecked
 from hsfs.embedding import EmbeddingIndex
 from hsfs.hopsworks_udf import HopsworksUdf
+from hsfs.online_config import OnlineConfig
 from hsfs.statistics_config import StatisticsConfig
 from hsfs.transformation_function import TransformationFunction
 
@@ -513,7 +514,13 @@ class FeatureStore:
         transformation_functions: Optional[
             List[Union[TransformationFunction, HopsworksUdf]]
         ] = None,
-        offline_backfill_every: Optional[Union[int, str]] = 24,
+        online_config: Optional[
+            Union[
+                OnlineConfig,
+                Dict[str, Any],
+            ]
+        ] = None,
+        offline_backfill_every: Optional[Union[int, str]] = None,
     ) -> feature_group.FeatureGroup:
         """Create a feature group metadata object.
 
@@ -541,7 +548,8 @@ class FeatureStore:
                     primary_key=['city','date'],
                     online_enabled=True,
                     event_time='date',
-                    transformation_functions=transformation_functions
+                    transformation_functions=transformation_functions,
+                    online_config={'online_comments': ['NDB_TABLE=READ_BACKUP=1']}
                 )
             ```
 
@@ -612,10 +620,11 @@ class FeatureStore:
             transformation_functions: On-Demand Transformation functions attached to the feature group.
                 It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
                 Defaults to `None`, no transformations.
+            online_config: Optionally, define configuration which is used to configure online table.
             offline_backfill_every: Optional. If specified, the materialization job will be scheduled to run
                 periodically. The value can be either an integer representing the number of hours between each run
                 or a string representing a cron expression. Set the value to None to avoid scheduling the materialization
-                job. Defaults to 24 (i.e daily scheduling).
+                job. Defaults to None (i.e no scheduling).
 
         # Returns
             `FeatureGroup`. The feature group metadata object.
@@ -641,6 +650,7 @@ class FeatureStore:
             topic_name=topic_name,
             notification_topic_name=notification_topic_name,
             transformation_functions=transformation_functions,
+            online_config=online_config,
             offline_backfill_every=offline_backfill_every,
         )
         feature_group_object.feature_store = self
@@ -674,7 +684,8 @@ class FeatureStore:
         transformation_functions: Optional[
             List[Union[TransformationFunction, HopsworksUdf]]
         ] = None,
-        offline_backfill_every: Optional[Union[int, str]] = 24,
+        online_config: Optional[Union[OnlineConfig, Dict[str, Any]]] = None,
+        offline_backfill_every: Optional[Union[int, str]] = None,
     ) -> Union[
         feature_group.FeatureGroup,
         feature_group.ExternalFeatureGroup,
@@ -695,6 +706,7 @@ class FeatureStore:
                     online_enabled=True,
                     event_time="timestamp",
                     transformation_functions=transformation_functions,
+                    online_config={'online_comments': ['NDB_TABLE=READ_BACKUP=1']}
                     )
             ```
 
@@ -763,10 +775,11 @@ class FeatureStore:
             transformation_functions: On-Demand Transformation functions attached to the feature group.
                 It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
                 Defaults to `None`, no transformations.
+            online_config: Optionally, define configuration which is used to configure online table.
             offline_backfill_every: Optional. If specified, the materialization job will be scheduled to run
                 periodically. The value can be either an integer representing the number of hours between each run
                 or a string representing a cron expression. Set the value to None to avoid scheduling the materialization
-                job. Defaults to 24 (i.e daily scheduling). Applies only to Feature Group creation.
+                job. Defaults to None (i.e no automatic scheduling). Applies only on Feature Group creation.
 
         # Returns
             `FeatureGroup`. The feature group metadata object.
@@ -801,6 +814,7 @@ class FeatureStore:
                     topic_name=topic_name,
                     notification_topic_name=notification_topic_name,
                     transformation_functions=transformation_functions,
+                    online_config=online_config,
                     offline_backfill_every=offline_backfill_every,
                 )
                 feature_group_object.feature_store = self
@@ -945,6 +959,12 @@ class FeatureStore:
         online_enabled: bool = False,
         topic_name: Optional[str] = None,
         notification_topic_name: Optional[str] = None,
+        online_config: Optional[
+            Union[
+                OnlineConfig,
+                Dict[str, Any],
+            ]
+        ] = None,
     ) -> feature_group.ExternalFeatureGroup:
         """Create a external feature group metadata object.
 
@@ -981,7 +1001,8 @@ class FeatureStore:
                     storage_connector=connector,
                     primary_key=['ss_store_sk'],
                     event_time='sale_date',
-                    online_enabled=True
+                    online_enabled=True,
+                    online_config={'online_comments': ['NDB_TABLE=READ_BACKUP=1']}
                     )
         external_fg.save()
 
@@ -1044,6 +1065,7 @@ class FeatureStore:
                 defaults to using project topic.
             notification_topic_name: Optionally, define the name of the topic used for sending notifications when entries
                 are inserted or updated on the online feature store. If left undefined no notifications are sent.
+            online_config: Optionally, define configuration which is used to configure online table.
 
         # Returns
             `ExternalFeatureGroup`. The external feature group metadata object.
@@ -1068,6 +1090,7 @@ class FeatureStore:
             online_enabled=online_enabled,
             topic_name=topic_name,
             notification_topic_name=notification_topic_name,
+            online_config=online_config,
         )
         feature_group_object.feature_store = self
         return feature_group_object

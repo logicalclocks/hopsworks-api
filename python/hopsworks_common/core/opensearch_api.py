@@ -50,17 +50,16 @@ class OpenSearchApi:
 
     def _get_opensearch_url(self) -> str:
         if client._is_external():
-            external_domain = self._variable_api.get_loadbalancer_external_domain()
-            if external_domain == "":
-                # fallback to use hostname of head node
-                external_domain = client.get_instance().host
+            external_domain = self._variable_api.get_loadbalancer_external_domain(
+                "opensearch"
+            )
             return f"https://{external_domain}:9200"
         else:
             service_discovery_domain = self._variable_api.get_service_discovery_domain()
             if service_discovery_domain == "":
                 raise FeatureStoreException(
                     "Client could not locate service_discovery_domain "
-                    "in cluster configuration or variable is empty."
+                    "in Hopsworks cluster configuration or variable is empty."
                 )
             return f"https://rest.elastic.service.{service_discovery_domain}:9200"
 

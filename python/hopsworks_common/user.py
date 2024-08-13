@@ -26,9 +26,9 @@ from hopsworks_common import util
 
 @dataclass
 class User:
-    email: str
-    first_name: str
-    last_name: str
+    email: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     href: Optional[str] = None
     username: Optional[str] = None
     status: Optional[str] = None

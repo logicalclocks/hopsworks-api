@@ -61,7 +61,8 @@ class Project:
 
         self._opensearch_api = opensearch_api.OpenSearchApi()
         self._kafka_api = kafka_api.KafkaApi()
-        self._jobs_api = job_api.JobsApi()
+        self._job_api = job_api.JobApi()
+        self._jobs_api = self._job_api  # deprecated
         self._flink_cluster_api = flink_cluster_api.FlinkClusterApi()
         self._git_api = git_api.GitApi()
         self._dataset_api = dataset_api.DatasetApi()
@@ -233,16 +234,20 @@ class Project:
             _client.download_certs()
         return self._opensearch_api
 
-    def get_jobs_api(self):
-        """Get the jobs api for the project.
+    def get_job_api(self):
+        """Get the job API for the project.
 
         # Returns
-            `JobsApi`: The Jobs Api handle
+            `JobApi`: The Job Api handle
         """
-        return self._jobs_api
+        return self._job_api
+
+    def get_jobs_api(self):
+        """**Deprecated**, use get_job_api instead."""
+        return self.get_job_api()
 
     def get_flink_cluster_api(self):
-        """Get the flink cluster api for the project.
+        """Get the flink cluster API for the project.
 
         # Returns
             `FlinkClusterApi`: The Flink Cluster Api handle
