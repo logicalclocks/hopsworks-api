@@ -1,5 +1,5 @@
 #
-#   Copyright 2020 Logical Clocks AB
+#   Copyright 2024 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -13,65 +13,12 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-from __future__ import annotations
 
-import json
+from hopsworks_common.core.ingestion_job_conf import (
+    IngestionJobConf,
+)
 
-from hsfs import util
 
-
-class IngestionJobConf:
-    def __init__(
-        self, data_format, data_options, write_options, spark_job_configuration
-    ):
-        self._data_format = data_format
-        self._data_options = data_options
-        self._write_options = write_options
-        self._spark_job_configuration = spark_job_configuration
-
-    @property
-    def data_format(self):
-        return self._data_format
-
-    @data_format.setter
-    def data_format(self, data_format):
-        self._data_format = data_format
-
-    @property
-    def data_options(self):
-        return self._data_options
-
-    @data_options.setter
-    def data_options(self, data_options):
-        self._data_options = data_options
-
-    @property
-    def write_options(self):
-        return self._write_options
-
-    @write_options.setter
-    def write_options(self, write_options):
-        self._write_options = write_options
-
-    @property
-    def spark_job_configuration(self):
-        return self._spark_job_configuration
-
-    @spark_job_configuration.setter
-    def spark_job_configuration(self, spark_job_configuration):
-        self._spark_job_configuration = spark_job_configuration
-
-    def json(self):
-        return json.dumps(self, cls=util.Encoder)
-
-    def to_dict(self):
-        return {
-            "dataFormat": self._data_format,
-            "dataOptions": self._data_options,
-            "writeOptions": [
-                {"name": k, "value": v} for k, v in self._write_options.items()
-            ]
-            if self._write_options
-            else None,
-            "sparkJobConfiguration": self._spark_job_configuration,
-        }
+__all__ = [
+    IngestionJobConf,
+]

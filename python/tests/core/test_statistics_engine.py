@@ -390,6 +390,7 @@ class TestStatisticsEngine:
         # Arrange
         feature_store_id = 99
 
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type")
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
         mock_warning = mocker.patch("warnings.warn")
@@ -435,6 +436,7 @@ class TestStatisticsEngine:
         # Arrange
         feature_store_id = 99
 
+        mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type")
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
 

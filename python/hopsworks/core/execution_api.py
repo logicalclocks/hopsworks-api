@@ -1,5 +1,5 @@
 #
-#   Copyright 2022 Logical Clocks AB
+#   Copyright 2024 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -14,74 +14,11 @@
 #   limitations under the License.
 #
 
-from hopsworks import client, execution
+from hopsworks_common.core.execution_api import (
+    ExecutionApi,
+)
 
 
-class ExecutionsApi:
-    def _start(self, job, args: str = None):
-        _client = client.get_instance()
-        path_params = ["project", _client._project_id, "jobs", job.name, "executions"]
-
-        return execution.Execution.from_response_json(
-            _client._send_request("POST", path_params, data=args), job
-        )
-
-    def _get(self, job, id):
-        _client = client.get_instance()
-        path_params = [
-            "project",
-            _client._project_id,
-            "jobs",
-            job.name,
-            "executions",
-            id,
-        ]
-
-        headers = {"content-type": "application/json"}
-        return execution.Execution.from_response_json(
-            _client._send_request("GET", path_params, headers=headers), job
-        )
-
-    def _get_all(self, job):
-        _client = client.get_instance()
-        path_params = ["project", _client._project_id, "jobs", job.name, "executions"]
-
-        query_params = {"sort_by": "submissiontime:desc"}
-
-        headers = {"content-type": "application/json"}
-        return execution.Execution.from_response_json(
-            _client._send_request(
-                "GET", path_params, headers=headers, query_params=query_params
-            ),
-            job,
-        )
-
-    def _delete(self, job_name, id):
-        _client = client.get_instance()
-        path_params = [
-            "project",
-            _client._project_id,
-            "jobs",
-            job_name,
-            "executions",
-            id,
-        ]
-        _client._send_request("DELETE", path_params)
-
-    def _stop(self, job_name: str, id: int) -> None:
-        _client = client.get_instance()
-        path_params = [
-            "project",
-            _client._project_id,
-            "jobs",
-            job_name,
-            "executions",
-            id,
-            "status",
-        ]
-        _client._send_request(
-            "PUT",
-            path_params=path_params,
-            data={"state": "stopped"},
-            headers={"Content-Type": "application/json"},
-        )
+__all__ = [
+    ExecutionApi,
+]

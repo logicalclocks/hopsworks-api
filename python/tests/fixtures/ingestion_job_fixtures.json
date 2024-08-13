@@ -13,7 +13,6 @@
         "type": "test_type",
         "href": "test_href",
         "expand": "test_expand",
-        "items": "test_items",
         "count": "test_count"
       },
       "href": "test_href",
