@@ -256,14 +256,15 @@ class MonitoringWindowConfigEngine:
             == mwc.WindowConfigType.TRAINING_DATASET
             and isinstance(entity, feature_view.FeatureView)
         ):
-            td_meta = entity._feature_view_engine._get_training_dataset_metadata(
-                entity,
-                training_dataset_version=monitoring_window_config.training_dataset_version,
-            )
             before_transformation = (
                 feature_name is not None
-                and td_meta.transformation_functions is not None
-                and feature_name in td_meta.transformation_functions.keys()
+                and entity.transformation_functions is not None
+                and feature_name
+                in {
+                    transformation_feature
+                    for transformation_function in entity.transformation_functions
+                    for transformation_feature in transformation_function.hopsworks_udf.transformation_features
+                }
             )
             registered_stats = entity.get_training_dataset_statistics(
                 training_dataset_version=monitoring_window_config.training_dataset_version,

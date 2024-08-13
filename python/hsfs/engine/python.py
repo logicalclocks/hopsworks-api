@@ -1052,7 +1052,8 @@ class Engine:
         if (
             arrow_flight_client.is_query_supported(dataset, user_write_options)
             and len(training_dataset.splits) == 0
-            and len(training_dataset.transformation_functions) == 0
+            and feature_view_obj
+            and len(feature_view_obj.transformation_functions) == 0
             and training_dataset.data_format == "parquet"
         ):
             query_obj, _ = dataset._prep_read(False, user_write_options)
