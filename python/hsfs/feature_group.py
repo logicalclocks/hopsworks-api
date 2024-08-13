@@ -151,7 +151,11 @@ class FeatureGroupBase:
         self._feature_store = None
         self._variable_api: VariableApi = VariableApi()
 
-        self._online_config = OnlineConfig.from_response_json(online_config) if isinstance(online_config, dict) else online_config
+        self._online_config = (
+            OnlineConfig.from_response_json(online_config)
+            if isinstance(online_config, dict)
+            else online_config
+        )
 
         self._multi_part_insert: bool = False
         self._embedding_index = embedding_index

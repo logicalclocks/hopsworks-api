@@ -4532,7 +4532,9 @@ class TestSpark:
             return col1 + 1
 
         tf = transformation_function.TransformationFunction(
-            99, hopsworks_udf=plus_one, transformation_type=TransformationType.MODEL_DEPENDENT
+            99,
+            hopsworks_udf=plus_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
         )
 
         f = feature.Feature(name="col_0", type=IntegerType(), index=0)
@@ -4591,7 +4593,9 @@ class TestSpark:
             return pd.DataFrame({"new_col1": col1 + 1, "new_col2": col1 + 2})
 
         tf = transformation_function.TransformationFunction(
-            99, hopsworks_udf=plus_two, transformation_type=TransformationType.MODEL_DEPENDENT
+            99,
+            hopsworks_udf=plus_two,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
         )
 
         f = feature.Feature(name="col_0", type=IntegerType(), index=0)
@@ -4651,7 +4655,9 @@ class TestSpark:
             return pd.DataFrame({"new_col1": col1 + 1, "new_col2": col2 + 2})
 
         tf = transformation_function.TransformationFunction(
-            99, hopsworks_udf=test, transformation_type=TransformationType.MODEL_DEPENDENT
+            99,
+            hopsworks_udf=test,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
         )
 
         f = feature.Feature(name="col_0", type=IntegerType(), index=0)
@@ -4714,7 +4720,9 @@ class TestSpark:
             return pd.DataFrame({"new_col1": col1 + 1, "new_col2": col2 + 2})
 
         tf = transformation_function.TransformationFunction(
-            99, hopsworks_udf=test, transformation_type=TransformationType.MODEL_DEPENDENT
+            99,
+            hopsworks_udf=test,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
         )
 
         f = feature.Feature(name="col_0", type=IntegerType(), index=0)
@@ -4774,7 +4782,9 @@ class TestSpark:
             return pd.DataFrame({"new_col1": col1 + 1, "new_col2": col2 + 2})
 
         tf = transformation_function.TransformationFunction(
-            99, hopsworks_udf=test, transformation_type=TransformationType.MODEL_DEPENDENT
+            99,
+            hopsworks_udf=test,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
         )
 
         f = feature.Feature(name="col_0", type=IntegerType(), index=0)
