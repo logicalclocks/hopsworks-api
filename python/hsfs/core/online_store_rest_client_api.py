@@ -30,6 +30,8 @@ if HAS_NUMPY:
 _logger = logging.getLogger(__name__)
 
 if HAS_NUMPY:
+    # Custom JSON encoder to handle numpy/datetime types in case
+    # they need to be sent as passed features to the RonDB Rest Server
 
     class NpDatetimeEncoder(json.JSONEncoder):
         def default(self, obj):
@@ -93,14 +95,14 @@ class OnlineStoreRestClientApi:
                 - 500: Internal server error.
         """
         _logger.debug(
-            f"Sending request to RonDB Rest Server with payload: {json.dumps(payload, indent=2, cls=util.NpDatetimeEncoder)}"
+            f"Sending request to RonDB Rest Server with payload: {json.dumps(payload, indent=2, cls=NpDatetimeEncoder)}"
         )
         return self.handle_rdrs_feature_store_response(
             online_store_rest_client.get_instance().send_request(
                 method="POST",
                 path_params=[self.SINGLE_VECTOR_ENDPOINT],
                 headers={"Content-Type": "application/json"},
-                data=json.dumps(payload, cls=util.NpDatetimeEncoder),
+                data=json.dumps(payload, cls=NpDatetimeEncoder),
             ),
         )
 
@@ -137,14 +139,14 @@ class OnlineStoreRestClientApi:
                 - 500: Internal server error.
         """
         _logger.debug(
-            f"Sending request to RonDB Rest Server with payload: {json.dumps(payload, indent=2, cls=util.NpDatetimeEncoder)}"
+            f"Sending request to RonDB Rest Server with payload: {json.dumps(payload, indent=2, cls=NpDatetimeEncoder)}"
         )
         return self.handle_rdrs_feature_store_response(
             online_store_rest_client.get_instance().send_request(
                 method="POST",
                 path_params=[self.BATCH_VECTOR_ENDPOINT],
                 headers={"Content-Type": "application/json"},
-                data=json.dumps(payload, cls=util.NpDatetimeEncoder),
+                data=json.dumps(payload, cls=NpDatetimeEncoder),
             ),
         )
 
