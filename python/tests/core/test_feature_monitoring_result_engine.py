@@ -40,7 +40,7 @@ FEATURE_MONITORING_RESULT_CREATE_API = (
 )
 GET_JOB_API = "hsfs.core.job_api.JobApi.get"
 LAST_EXECUTION_API = "hsfs.core.job_api.JobApi.last_execution"
-HSFS_CLIENT_GET_INSTANCE = "hsfs.client.get_instance"
+HSFS_CLIENT_GET_INSTANCE = "hopsworks_common.client.get_instance"
 
 
 class TestFeatureMonitoringResultEngine:

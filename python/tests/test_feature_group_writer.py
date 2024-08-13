@@ -50,7 +50,6 @@ class TestFeatureGroupWriter:
         engine = python.Engine()
         mocker.patch("hsfs.engine.get_instance", return_value=engine)
         mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.client.get_instance")
         producer, feature_writers, writer_m = (
             mocker.MagicMock(),
             mocker.MagicMock(),
@@ -109,7 +108,6 @@ class TestFeatureGroupWriter:
         engine = python.Engine()
         mocker.patch("hsfs.engine.get_instance", return_value=engine)
         mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.client.get_instance")
         producer, feature_writers, writer_m = (
             mocker.MagicMock(),
             mocker.MagicMock(),
