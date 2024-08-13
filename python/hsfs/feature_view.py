@@ -382,7 +382,7 @@ class FeatureView:
             reset_rest_client=reset_rest_client,
             config_rest_client=config_rest_client,
             default_client=default_client,
-            training_dataset_version=training_dataset_version
+            training_dataset_version=training_dataset_version,
         )
 
         self._prefix_serving_key_map = dict(
@@ -438,7 +438,9 @@ class FeatureView:
             training_dataset_version: int, optional. Default to be None. Transformation statistics
                 are fetched from training dataset and applied to the feature vector.
         """
-        self._batch_scoring_server.init_batch_scoring(self, training_dataset_version=training_dataset_version)
+        self._batch_scoring_server.init_batch_scoring(
+            self, training_dataset_version=training_dataset_version
+        )
 
     def get_batch_query(
         self,
@@ -4084,4 +4086,3 @@ class FeatureView:
                 feature_store_name=self._feature_store_name,
             )
         return self.__batch_scoring_server
-

@@ -244,10 +244,18 @@ class TestTransformationFunction:
         def test_func(col1):
             return col1 + 1
 
-        mdt = TransformationFunction(featurestore_id = 10, hopsworks_udf=test_func, transformation_type= TransformationType.MODEL_DEPENDENT)
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=test_func,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
         assert mdt._get_output_column_names() == ["test_func_col1_"]
 
-        odt = TransformationFunction(featurestore_id = 10, hopsworks_udf=test_func, transformation_type= TransformationType.ON_DEMAND)
+        odt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=test_func,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
         assert odt._get_output_column_names() == ["test_func"]
 
     def test_generate_output_column_names_one_argument_one_output_type_prefix(self):
@@ -257,11 +265,19 @@ class TestTransformationFunction:
 
         test_func._feature_name_prefix = "prefix_"
 
-        mdt = TransformationFunction(featurestore_id = 10, hopsworks_udf=test_func, transformation_type= TransformationType.MODEL_DEPENDENT)
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=test_func,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
         assert mdt._get_output_column_names() == ["test_func_prefix_col1_"]
         assert mdt.output_column_names == ["prefix_test_func_prefix_col1_"]
 
-        odt = TransformationFunction(featurestore_id = 10, hopsworks_udf=test_func, transformation_type= TransformationType.ON_DEMAND)
+        odt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=test_func,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
         assert odt._get_output_column_names() == ["test_func"]
         assert odt.output_column_names == ["prefix_test_func"]
 
@@ -270,9 +286,17 @@ class TestTransformationFunction:
         def test_func(col1, col2, col3):
             return col1 + 1
 
-        mdt = TransformationFunction(featurestore_id = 10, hopsworks_udf=test_func, transformation_type= TransformationType.MODEL_DEPENDENT)
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=test_func,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
         assert mdt._get_output_column_names() == ["test_func_col1_col2_col3_"]
-        odt = TransformationFunction(featurestore_id = 10, hopsworks_udf=test_func, transformation_type= TransformationType.ON_DEMAND)
+        odt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=test_func,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
         assert odt._get_output_column_names() == ["test_func"]
 
     def test_generate_output_column_names_multiple_argument_one_output_type_prefix(
@@ -284,14 +308,22 @@ class TestTransformationFunction:
 
         test_func._feature_name_prefix = "prefix_"
 
-        mdt = TransformationFunction(featurestore_id = 10, hopsworks_udf=test_func, transformation_type= TransformationType.MODEL_DEPENDENT)
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=test_func,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
         assert mdt._get_output_column_names() == [
             "test_func_prefix_col1_prefix_col2_prefix_col3_"
         ]
         assert mdt.output_column_names == [
             "prefix_test_func_prefix_col1_prefix_col2_prefix_col3_"
         ]
-        odt = TransformationFunction(featurestore_id = 10, hopsworks_udf=test_func, transformation_type= TransformationType.ON_DEMAND)
+        odt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=test_func,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
         assert odt._get_output_column_names() == ["test_func"]
         assert odt.output_column_names == ["prefix_test_func"]
 
@@ -302,7 +334,11 @@ class TestTransformationFunction:
                 {"col1": [col1 + 1], "col2": [col1 + 1], "col3": [col1 + 1]}
             )
 
-        mdt = TransformationFunction(featurestore_id = 10, hopsworks_udf=test_func, transformation_type= TransformationType.MODEL_DEPENDENT)
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=test_func,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
         assert mdt._get_output_column_names() == [
             "test_func_col1_0",
             "test_func_col1_1",
@@ -320,7 +356,11 @@ class TestTransformationFunction:
 
         test_func._feature_name_prefix = "prefix_"
 
-        mdt = TransformationFunction(featurestore_id = 10, hopsworks_udf=test_func, transformation_type= TransformationType.MODEL_DEPENDENT)
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=test_func,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
         assert mdt._get_output_column_names() == [
             "test_func_prefix_col1_0",
             "test_func_prefix_col1_1",
@@ -339,7 +379,11 @@ class TestTransformationFunction:
                 {"col1": [col1 + 1], "col2": [col2 + 1], "col3": [col3 + 1]}
             )
 
-        mdt = TransformationFunction(featurestore_id = 10, hopsworks_udf=test_func, transformation_type= TransformationType.MODEL_DEPENDENT)
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=test_func,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
         assert mdt._get_output_column_names() == [
             "test_func_col1_col2_col3_0",
             "test_func_col1_col2_col3_1",
@@ -357,7 +401,11 @@ class TestTransformationFunction:
 
         test_func._feature_name_prefix = "prefix_"
 
-        mdt = TransformationFunction(featurestore_id = 10, hopsworks_udf=test_func, transformation_type= TransformationType.MODEL_DEPENDENT)
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=test_func,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
         assert mdt._get_output_column_names() == [
             "test_func_prefix_col1_prefix_col2_prefix_col3_0",
             "test_func_prefix_col1_prefix_col2_prefix_col3_1",
@@ -375,7 +423,11 @@ class TestTransformationFunction:
             return pd.DataFrame({"out1": col1 + 1, "out2": col2 + 2})
 
         with pytest.raises(FeatureStoreException) as exe:
-            TransformationFunction(featurestore_id = 10, hopsworks_udf=test_func, transformation_type= TransformationType.ON_DEMAND)
+            TransformationFunction(
+                featurestore_id=10,
+                hopsworks_udf=test_func,
+                transformation_type=TransformationType.ON_DEMAND,
+            )
 
         assert (
             str(exe.value)
@@ -392,7 +444,11 @@ class TestTransformationFunction:
             return col1 + statistics.col1.mean
 
         with pytest.raises(FeatureStoreException) as exe:
-            TransformationFunction(featurestore_id = 10, hopsworks_udf=test_func, transformation_type= TransformationType.ON_DEMAND)
+            TransformationFunction(
+                featurestore_id=10,
+                hopsworks_udf=test_func,
+                transformation_type=TransformationType.ON_DEMAND,
+            )
 
         assert (
             str(exe.value)

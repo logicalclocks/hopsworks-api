@@ -878,10 +878,12 @@ class TestExternalFeatureGroup:
             == "\n@udf(float)\ndef add_two(data1 : pd.Series):\n    return data1 + 2\n"
         )
         assert (
-            fg.transformation_functions[0].transformation_type == TransformationType.ON_DEMAND
+            fg.transformation_functions[0].transformation_type
+            == TransformationType.ON_DEMAND
         )
         assert (
-            fg.transformation_functions[1].transformation_type == TransformationType.ON_DEMAND
+            fg.transformation_functions[1].transformation_type
+            == TransformationType.ON_DEMAND
         )
         assert isinstance(fg.creator, user.User)
         assert fg.id == 15

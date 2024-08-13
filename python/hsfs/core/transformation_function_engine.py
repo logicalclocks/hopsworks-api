@@ -252,9 +252,7 @@ class TransformationFunctionEngine:
 
             # Set statistics computed in the hopsworks UDF
             for tf in feature_view_obj.transformation_functions:
-                tf.transformation_statistics = (
-                    stats.feature_descriptive_statistics
-                )
+                tf.transformation_statistics = stats.feature_descriptive_statistics
 
     @staticmethod
     def get_and_set_feature_statistics(
