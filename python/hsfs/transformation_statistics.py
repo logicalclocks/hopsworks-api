@@ -213,8 +213,6 @@ class FeatureTransformationStatistics:
         """Number of Unique Values."""
         return self._unique_values
 
-
-
     @classmethod
     def from_response_json(
         cls: FeatureTransformationStatistics, json_dict: Dict[str, Any]

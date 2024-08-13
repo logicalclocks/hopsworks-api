@@ -332,7 +332,6 @@ def test_function():
                 {"col1": [col1 + 1], "col2": [col2 + 1], "col3": [col3 + 1]}
             )
 
-
         assert test_func.dropped_features == ["col1"]
 
     def test_drop_features_one_element_prefix(self):
@@ -353,7 +352,6 @@ def test_function():
             return pd.DataFrame(
                 {"col1": [col1 + 1], "col2": [col2 + 1], "col3": [col3 + 1]}
             )
-
 
         assert test_func.dropped_features == ["col1", "col2"]
 
@@ -406,7 +404,15 @@ def test_function():
                 }
             )
 
-        test_func.output_column_names = ["test_func_col1_0", "test_func_col1_1", "test_func_col1_2", "test_func_col1_3", "test_func_col1_4", "test_func_col1_5", "test_func_col1_6"]
+        test_func.output_column_names = [
+            "test_func_col1_0",
+            "test_func_col1_1",
+            "test_func_col1_2",
+            "test_func_col1_3",
+            "test_func_col1_4",
+            "test_func_col1_5",
+            "test_func_col1_6",
+        ]
 
         assert (
             test_func._create_pandas_udf_return_schema_from_list()
@@ -428,13 +434,15 @@ def test_function():
         assert result.name == "test_func_col1_"
         assert result.values.tolist() == [2, 3, 4, 5]
 
-
     def test_hopsworks_wrapper_multiple_output(self):
         @udf([int, float])
         def test_func(col1, col2):
             return pd.DataFrame({"out1": col1 + 1, "out2": col2 + 2})
 
-        test_func.output_column_names = ["test_func_col1_col2_0", "test_func_col1_col2_1"]
+        test_func.output_column_names = [
+            "test_func_col1_col2_0",
+            "test_func_col1_col2_1",
+        ]
         renaming_wrapper_function = test_func.hopsworksUdf_wrapper()
 
         test_dataframe = pd.DataFrame(

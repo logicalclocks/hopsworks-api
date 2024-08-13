@@ -570,11 +570,7 @@ def renaming_wrapper(*args):
     def update_return_type_one_hot(self):
         self._return_types = [
             self._return_types[0]
-            for _ in range(
-                len(
-                    self.transformation_statistics.feature.unique_values
-                )
-            )
+            for _ in range(len(self.transformation_statistics.feature.unique_values))
         ]
 
     def get_udf(self, force_python_udf: bool = False) -> Callable:

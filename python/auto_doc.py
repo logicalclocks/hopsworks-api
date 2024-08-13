@@ -459,15 +459,11 @@ PAGES = {
         ),
     },
     "api/hopsworks_udf.md": {
-            "hopsworks_udf": [
-            "hsfs.hopsworks_udf.HopsworksUdf"
-        ],
+        "hopsworks_udf": ["hsfs.hopsworks_udf.HopsworksUdf"],
         "hopsworks_udf_properties": keras_autodoc.get_properties(
             "hsfs.hopsworks_udf.HopsworksUdf"
         ),
-        "transformation_feature": [
-            "hsfs.hopsworks_udf.TransformationFeature"
-        ]
+        "transformation_feature": ["hsfs.hopsworks_udf.TransformationFeature"],
     },
     "api/transformation_statistics.md": {
         "transformation_statistics": [

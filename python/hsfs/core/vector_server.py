@@ -137,7 +137,7 @@ class VectorServer:
         self._feature_to_handle_if_rest: Optional[Set[str]] = None
         self._feature_to_handle_if_sql: Optional[Set[str]] = None
         self._valid_serving_keys: Set[str] = set()
-        self._serving_initialized : bool = False
+        self._serving_initialized: bool = False
 
     def init_serving(
         self,
