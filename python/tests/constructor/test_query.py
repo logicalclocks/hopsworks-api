@@ -14,7 +14,6 @@
 #   limitations under the License.
 #
 import warnings
-from unittest import mock
 
 import pytest
 from hsfs import feature, feature_group
@@ -23,51 +22,50 @@ from hsfs.constructor import filter, join, query
 
 
 class TestQuery:
-    with mock.patch("hopsworks_common.client.get_instance"):
-        fg1 = feature_group.FeatureGroup(
-            name="test1",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            features=[
-                feature.Feature("id", feature_group_id=11),
-                feature.Feature("label", feature_group_id=11),
-                feature.Feature("tf_name", feature_group_id=11),
-            ],
-            id=11,
-            stream=False,
-        )
+    fg1 = feature_group.FeatureGroup(
+        name="test1",
+        version=1,
+        featurestore_id=99,
+        primary_key=[],
+        partition_key=[],
+        features=[
+            feature.Feature("id", feature_group_id=11),
+            feature.Feature("label", feature_group_id=11),
+            feature.Feature("tf_name", feature_group_id=11),
+        ],
+        id=11,
+        stream=False,
+    )
 
-        fg2 = feature_group.FeatureGroup(
-            name="test2",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            features=[
-                feature.Feature("id", feature_group_id=12),
-                feature.Feature("tf1_name", feature_group_id=12),
-            ],
-            id=12,
-            stream=False,
-        )
+    fg2 = feature_group.FeatureGroup(
+        name="test2",
+        version=1,
+        featurestore_id=99,
+        primary_key=[],
+        partition_key=[],
+        features=[
+            feature.Feature("id", feature_group_id=12),
+            feature.Feature("tf1_name", feature_group_id=12),
+        ],
+        id=12,
+        stream=False,
+    )
 
-        fg3 = feature_group.FeatureGroup(
-            name="test3",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            features=[
-                feature.Feature("id", feature_group_id=13),
-                feature.Feature("tf_name", feature_group_id=13),
-                feature.Feature("tf1_name", feature_group_id=13),
-                feature.Feature("tf3_name", feature_group_id=13),
-            ],
-            id=13,
-            stream=False,
-        )
+    fg3 = feature_group.FeatureGroup(
+        name="test3",
+        version=1,
+        featurestore_id=99,
+        primary_key=[],
+        partition_key=[],
+        features=[
+            feature.Feature("id", feature_group_id=13),
+            feature.Feature("tf_name", feature_group_id=13),
+            feature.Feature("tf1_name", feature_group_id=13),
+            feature.Feature("tf3_name", feature_group_id=13),
+        ],
+        id=13,
+        stream=False,
+    )
 
     def test_from_response_json_python(self, mocker, backend_fixtures):
         # Arrange

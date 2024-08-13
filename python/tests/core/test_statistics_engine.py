@@ -15,7 +15,6 @@
 #
 
 import json
-from unittest import mock
 
 import pytest
 from hsfs import (
@@ -31,16 +30,15 @@ from hsfs.core import statistics_engine
 
 
 engine._engine_type = "python"
-with mock.patch("hopsworks_common.client.get_instance"):
-    fg = feature_group.FeatureGroup(
-        name="test",
-        version=1,
-        featurestore_id=99,
-        primary_key=[],
-        partition_key=[],
-        id=10,
-        stream=False,
-    )
+fg = feature_group.FeatureGroup(
+    name="test",
+    version=1,
+    featurestore_id=99,
+    primary_key=[],
+    partition_key=[],
+    id=10,
+    stream=False,
+)
 query = fg.select_all()
 
 

@@ -13,7 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-from unittest import mock
+
 from unittest.mock import MagicMock
 
 import pytest
@@ -33,51 +33,50 @@ from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistic
 from hsfs.storage_connector import BigQueryConnector, StorageConnector
 
 
-with mock.patch("hopsworks_common.client.get_instance"):
-    engine.init("python")
-    fg1 = feature_group.FeatureGroup(
-        name="test1",
-        version=1,
-        featurestore_id=99,
-        primary_key=[],
-        partition_key=[],
-        features=[feature.Feature("id"), feature.Feature("label")],
-        id=11,
-        stream=False,
-    )
+engine.init("python")
+fg1 = feature_group.FeatureGroup(
+    name="test1",
+    version=1,
+    featurestore_id=99,
+    primary_key=[],
+    partition_key=[],
+    features=[feature.Feature("id"), feature.Feature("label")],
+    id=11,
+    stream=False,
+)
 
-    fg2 = feature_group.FeatureGroup(
-        name="test2",
-        version=1,
-        featurestore_id=99,
-        primary_key=[],
-        partition_key=[],
-        features=[feature.Feature("id"), feature.Feature("label")],
-        id=12,
-        stream=False,
-    )
+fg2 = feature_group.FeatureGroup(
+    name="test2",
+    version=1,
+    featurestore_id=99,
+    primary_key=[],
+    partition_key=[],
+    features=[feature.Feature("id"), feature.Feature("label")],
+    id=12,
+    stream=False,
+)
 
-    fg3 = feature_group.FeatureGroup(
-        name="test2",
-        version=1,
-        featurestore_id=99,
-        primary_key=[],
-        partition_key=[],
-        features=[feature.Feature("id"), feature.Feature("label")],
-        id=13,
-        stream=False,
-    )
+fg3 = feature_group.FeatureGroup(
+    name="test2",
+    version=1,
+    featurestore_id=99,
+    primary_key=[],
+    partition_key=[],
+    features=[feature.Feature("id"), feature.Feature("label")],
+    id=13,
+    stream=False,
+)
 
-    fg4 = feature_group.FeatureGroup(
-        name="test4",
-        version=1,
-        featurestore_id=99,
-        primary_key=[],
-        partition_key=[],
-        features=[feature.Feature("id4"), feature.Feature("label4")],
-        id=14,
-        stream=False,
-    )
+fg4 = feature_group.FeatureGroup(
+    name="test4",
+    version=1,
+    featurestore_id=99,
+    primary_key=[],
+    partition_key=[],
+    features=[feature.Feature("id4"), feature.Feature("label4")],
+    id=14,
+    stream=False,
+)
 
 query = fg1.select_all()
 
