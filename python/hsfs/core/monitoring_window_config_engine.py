@@ -259,7 +259,12 @@ class MonitoringWindowConfigEngine:
             before_transformation = (
                 feature_name is not None
                 and entity.transformation_functions is not None
-                and feature_name in {transformation_feature for transformation_function in entity.transformation_functions for transformation_feature in transformation_function.hopsworks_udf.transformation_features}
+                and feature_name
+                in {
+                    transformation_feature
+                    for transformation_function in entity.transformation_functions
+                    for transformation_feature in transformation_function.hopsworks_udf.transformation_features
+                }
             )
             registered_stats = entity.get_training_dataset_statistics(
                 training_dataset_version=monitoring_window_config.training_dataset_version,
