@@ -98,7 +98,13 @@ class Execution:
 
     @property
     def state(self):
-        """Current state of the execution."""
+        """Current state of the execution.
+
+        Can be: `INITIALIZING`, `INITIALIZATION_FAILED`, `FINISHED`, `RUNNING`, `ACCEPTED`,
+        `FAILED`, `KILLED`, `NEW`, `NEW_SAVING`, `SUBMITTED`, `AGGREGATING_LOGS`,
+        `FRAMEWORK_FAILURE`, `STARTING_APP_MASTER`, `APP_MASTER_START_FAILED`,
+        `GENERATING_SECURITY_MATERIAL`, or `CONVERTING_NOTEBOOK`.
+        """
         return self._state
 
     @property
