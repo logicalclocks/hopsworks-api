@@ -25,10 +25,10 @@ from hopsworks_common.decorators import (
 
 
 __all__ = [
-    HopsworksConnectionError,
-    NoHopsworksConnectionError,
-    connected,
-    not_connected,
-    typechecked,
-    uses_great_expectations,
+    "HopsworksConnectionError",
+    "NoHopsworksConnectionError",
+    "connected",
+    "not_connected",
+    "typechecked",
+    "uses_great_expectations",
 ]

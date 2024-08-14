@@ -20,5 +20,5 @@ from hopsworks_common.git_repo import (
 
 
 __all__ = [
-    GitRepo,
+    "GitRepo",
 ]

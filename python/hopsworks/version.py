@@ -20,5 +20,5 @@ from hopsworks_common.version import (
 
 
 __all__ = [
-    __version__,
+    "__version__",
 ]

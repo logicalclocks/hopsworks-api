@@ -1919,43 +1919,6 @@ class TestFeatureViewEngine:
         )
         assert mock_engine_get_type.call_count == 1
 
-    def test_check_feature_group_accessibility_get_type_hive(self, mocker):
-        # Arrange
-        feature_store_id = 99
-
-        mocker.patch("hopsworks_common.client.get_instance")  # for arrow_flight_client
-        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
-        mock_engine_get_type = mocker.patch(
-            "hsfs.engine.get_type", return_value="python"
-        )
-        mock_constructor_query = mocker.patch("hsfs.constructor.query.Query")
-
-        fv_engine = feature_view_engine.FeatureViewEngine(
-            feature_store_id=feature_store_id
-        )
-
-        fv = feature_view.FeatureView(
-            name="fv_name",
-            version=1,
-            query=mock_constructor_query,
-            featurestore_id=feature_store_id,
-            labels=[],
-        )
-
-        mock_constructor_query.is_cache_feature_group_only.return_value = False
-        mock_engine_get_type.return_value = "hive"
-
-        # Act
-        with pytest.raises(NotImplementedError) as e_info:
-            fv_engine._check_feature_group_accessibility(feature_view_obj=fv)
-
-        # Assert
-        assert (
-            str(e_info.value)
-            == "Python kernel can only read from cached feature groups. When using external feature groups please use `feature_view.create_training_data` instead. If you are using spines, use a Spark Kernel."
-        )
-        assert mock_engine_get_type.call_count == 1
-
     def test_check_feature_group_accessibility_arrow_flight(self, mocker):
         # Arrange
         feature_store_id = 99

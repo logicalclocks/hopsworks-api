@@ -258,6 +258,7 @@ class Job:
         """
         self._job_api._delete(self)
 
+
     def _is_materialization_running(self, args: str) -> bool:
         if self.name.endswith("offline_fg_materialization") or self.name.endswith(
             "offline_fg_backfill"
@@ -281,6 +282,18 @@ class Job:
                 )
                 return True
         return False
+
+    def _wait_for_job(self, await_termination=True):
+        # If the user passed the wait_for_job option consider it,
+        # otherwise use the default True
+        while await_termination:
+            executions = self._job_api.last_execution(self)
+            if len(executions) > 0:
+                execution = executions[0]
+            else:
+                return
+            self._execution_engine.wait_until_finished(job=self, execution=execution)
+
 
     def schedule(
         self,

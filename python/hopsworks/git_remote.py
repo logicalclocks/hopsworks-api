@@ -20,5 +20,5 @@ from hopsworks_common.git_remote import (
 
 
 __all__ = [
-    GitRemote,
+    "GitRemote",
 ]

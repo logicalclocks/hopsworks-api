@@ -25,10 +25,10 @@ from hopsworks_common.client.istio.grpc.exceptions import (
 
 
 __all__ = [
-    ApiException,
-    ApiKeyError,
-    ApiTypeError,
-    ApiValueError,
-    OpenApiException,
-    render_path,
+    "ApiException",
+    "ApiKeyError",
+    "ApiTypeError",
+    "ApiValueError",
+    "OpenApiException",
+    "render_path",
 ]

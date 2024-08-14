@@ -20,5 +20,5 @@ from hopsworks_common.execution import (
 
 
 __all__ = [
-    Execution,
+    "Execution",
 ]

@@ -20,5 +20,5 @@ from hopsworks_common.job import (
 
 
 __all__ = [
-    Job,
+    "Job",
 ]

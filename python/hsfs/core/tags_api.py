@@ -20,5 +20,5 @@ from hopsworks_common.core.tags_api import (
 
 
 __all__ = [
-    TagsApi,
+    "TagsApi",
 ]

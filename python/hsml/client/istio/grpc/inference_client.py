@@ -20,5 +20,5 @@ from hopsworks_common.client.istio.grpc.inference_client import (
 
 
 __all__ = [
-    GRPCInferenceServerClient,
+    "GRPCInferenceServerClient",
 ]

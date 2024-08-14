@@ -20,5 +20,5 @@ from hopsworks_common.engine.git_engine import (
 
 
 __all__ = [
-    GitEngine,
+    "GitEngine",
 ]

@@ -20,5 +20,5 @@ from hopsworks_common.git_commit import (
 
 
 __all__ = [
-    GitCommit,
+    "GitCommit",
 ]

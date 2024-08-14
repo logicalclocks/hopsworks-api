@@ -20,5 +20,5 @@ from hopsworks_common.client.base import (
 
 
 __all__ = [
-    Client,
+    "Client",
 ]

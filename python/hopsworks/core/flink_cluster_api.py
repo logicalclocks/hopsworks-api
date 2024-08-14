@@ -20,5 +20,5 @@ from hopsworks_common.core.flink_cluster_api import (
 
 
 __all__ = [
-    FlinkClusterApi,
+    "FlinkClusterApi",
 ]

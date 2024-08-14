@@ -20,5 +20,5 @@ from hopsworks_common.core.dataset_api import (
 
 
 __all__ = [
-    DatasetApi,
+    "DatasetApi",
 ]
