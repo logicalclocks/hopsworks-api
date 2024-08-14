@@ -59,7 +59,7 @@ class Query:
             fg_mod.ExternalFeatureGroup,
             fg_mod.SpineGroup,
         ],
-        left_features: List[Union[str, "Feature", Dict]],
+        left_features: List[Union[str, Feature, Dict]],
         feature_store_name: Optional[str] = None,
         feature_store_id: Optional[int] = None,
         left_feature_group_start_time: Optional[Union[str, int, date, datetime]] = None,
@@ -633,7 +633,7 @@ class Query:
     ) -> None:
         self._left_feature_group_end_time = left_feature_group_end_time
 
-    def append_feature(self, feature: Union[str, "Feature"]) -> Query:
+    def append_feature(self, feature: Union[str, Feature]) -> Query:
         """
         Append a feature to the query.
 
@@ -699,7 +699,7 @@ class Query:
         self,
         feature_name: str,
     ) -> Tuple[
-        "Feature",
+        Feature,
         Optional[str],
         Union[
             fg_mod.FeatureGroup,
@@ -785,7 +785,7 @@ class Query:
         return filters
 
     @property
-    def features(self) -> List["Feature"]:
+    def features(self) -> List[Feature]:
         """List of all features in the query"""
         features = []
         for feat in self._left_features:
@@ -797,7 +797,7 @@ class Query:
 
         return features
 
-    def get_feature(self, feature_name: str) -> "Feature":
+    def get_feature(self, feature_name: str) -> Feature:
         """
         Get a feature by name.
 
