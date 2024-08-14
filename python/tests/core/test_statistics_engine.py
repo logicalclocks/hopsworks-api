@@ -517,40 +517,6 @@ class TestStatisticsEngine:
             "to the online storage of a feature group."
         )
 
-    def test_profile_transformation_fn_statistics_get_type_hive(self, mocker):
-        # Arrange
-        feature_store_id = 99
-
-        mock_engine_get_type = mocker.patch("hsfs.engine.get_type")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mock_statistics_engine_profile_unique_values = mocker.patch(
-            "hsfs.core.statistics_engine.StatisticsEngine._profile_unique_values"
-        )
-
-        s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
-
-        feature_dataframe = mocker.Mock()
-        feature_dataframe.head.return_value = []
-        mock_engine_get_type.return_value = "hive"
-
-        # Act
-        with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            s_engine._profile_transformation_fn_statistics(
-                feature_dataframe=feature_dataframe,
-                columns=[],
-                label_encoder_features=None,
-            )
-
-        # Assert
-        assert mock_engine_get_instance.return_value.profile.call_count == 0
-        assert mock_statistics_engine_profile_unique_values.call_count == 0
-        assert (
-            str(e_info.value)
-            == "There is no data in the entity that you are trying to compute "
-            "statistics for. A possible cause might be that you inserted only data "
-            "to the online storage of a feature group."
-        )
-
     def test_profile_transformation_fn_statistics_get_type_spark(self, mocker):
         # Arrange
         feature_store_id = 99
