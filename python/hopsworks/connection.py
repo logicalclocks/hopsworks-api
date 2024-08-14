@@ -27,7 +27,9 @@ from requests.exceptions import ConnectionError
 
 
 HOPSWORKS_PORT_DEFAULT = 443
-HOPSWORKS_HOSTNAME_VERIFICATION_DEFAULT = os.environ.get("HOPSWORKS_HOSTNAME_VERIFICATION", "True").lower() in ("true", "1", "y", "yes")
+HOPSWORKS_HOSTNAME_VERIFICATION_DEFAULT = os.environ.get(
+    "HOPSWORKS_HOSTNAME_VERIFICATION", "True"
+).lower() in ("true", "1", "y", "yes")
 CERT_FOLDER_DEFAULT = "/tmp"
 PROJECT_ID = "HOPSWORKS_PROJECT_ID"
 PROJECT_NAME = "HOPSWORKS_PROJECT_NAME"
@@ -162,8 +164,15 @@ class Connection:
         # Returns
             `Project`. A project handle object to perform operations on.
         """
-
-        if not name:
+        _client = client.get_instance()
+        if not name and _client._project_name:
+            raise ValueError(
+                "No project name provided. Please provide a project name or"
+                " set a project when login or creating the connection."
+            )
+        elif not _client._project_name:
+            _client.provide_project(name)
+        elif not name:
             name = client.get_instance()._project_name
 
         return self._project_api._get_project(name)
@@ -275,8 +284,10 @@ class Connection:
                     self._api_key_value,
                 )
             else:
-                client.init(client_type="hopsworks",
-                            hostname_verification=self._hostname_verification)
+                client.init(
+                    client_type="hopsworks",
+                    hostname_verification=self._hostname_verification,
+                )
 
             self._project_api = project_api.ProjectApi()
             self._secret_api = secret_api.SecretsApi()
