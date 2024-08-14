@@ -643,7 +643,7 @@ def renaming_wrapper(*args):
         if self.udf_type is None:
             raise FeatureStoreException("UDF Type cannot be None")
 
-        if engine.get_type() in ["hive", "python", "training"] or force_python_udf:
+        if engine.get_type() in ["python", "training"] or force_python_udf:
             return self.hopsworksUdf_wrapper()
         else:
             from pyspark.sql.functions import pandas_udf
