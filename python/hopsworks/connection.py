@@ -165,7 +165,7 @@ class Connection:
             `Project`. A project handle object to perform operations on.
         """
         _client = client.get_instance()
-        if not name and _client._project_name:
+        if not name and not _client._project_name:
             raise ValueError(
                 "No project name provided. Please provide a project name or"
                 " set a project when login or creating the connection."
