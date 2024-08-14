@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import warnings
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Optional
 
 import humps
 from hopsworks_common import client, util
@@ -26,6 +27,10 @@ from hopsworks_common.client.exceptions import JobException
 from hopsworks_common.core import execution_api, job_api
 from hopsworks_common.engine import execution_engine
 from hopsworks_common.job_schedule import JobSchedule
+
+
+if TYPE_CHECKING:
+    from hopsworks_common.execution import Execution
 
 
 class Job:
@@ -138,7 +143,9 @@ class Job:
         """Configuration for the job"""
         return self._config
 
-    def run(self, args: str = None, await_termination: bool = True):
+    def run(
+        self, args: str = None, await_termination: bool = True
+    ) -> Optional[Execution]:
         """Run the job.
 
         Run the job, by default awaiting its completion, with the option of passing runtime arguments.
@@ -170,19 +177,8 @@ class Job:
         # Returns
             `Execution`. The execution object for the submitted run.
         """
-        if (
-            self.name.endswith("offline_fg_materialization")
-            or self.name.endswith("offline_fg_backfill")
-        ) and self.get_final_state() == "UNDEFINED":
-            warnings.warn(
-                "Materialization job is already running, aborting new execution."
-                "Please wait for the current execution to finish before triggering a new one."
-                "You can check the status of the current execution using `fg.materialization_job.get_state()`."
-                "or `fg.materialization_job.get_final_state()` or check it out in the Hopsworks UI."
-                f"at {self.get_url()}.\n"
-                f"Use fg.materialization_job.run(args={args}) to trigger the materialization job again.",
-                stacklevel=2,
-            )
+        if self._is_materialization_running(args):
+            return None
         print(f"Launching job: {self.name}")
         execution = self._execution_api._start(self, args=args)
         print(
@@ -201,7 +197,8 @@ class Job:
             `INITIALIZING`, `INITIALIZATION_FAILED`, `FINISHED`, `RUNNING`, `ACCEPTED`,
             `FAILED`, `KILLED`, `NEW`, `NEW_SAVING`, `SUBMITTED`, `AGGREGATING_LOGS`,
             `FRAMEWORK_FAILURE`, `STARTING_APP_MASTER`, `APP_MASTER_START_FAILED`,
-            `GENERATING_SECURITY_MATERIAL`, `CONVERTING_NOTEBOOK`
+            `GENERATING_SECURITY_MATERIAL`, `CONVERTING_NOTEBOOK`. If no executions are found for the job,
+            a warning is raised and it returns `UNDEFINED`.
         """
         last_execution = self._job_api.last_execution(self)
         if len(last_execution) != 1:
@@ -256,6 +253,30 @@ class Job:
             `RestAPIError`.
         """
         self._job_api._delete(self)
+
+    def _is_materialization_running(self, args: str) -> bool:
+        if self.name.endswith("offline_fg_materialization") or self.name.endswith(
+            "offline_fg_backfill"
+        ):
+            try:
+                should_abort = self.get_final_state() == "UNDEFINED"
+            except JobException as e:
+                if "No executions found for job" in str(e):
+                    should_abort = False
+                else:
+                    raise e
+            if should_abort:
+                warnings.warn(
+                    "Materialization job is already running, aborting new execution."
+                    "Please wait for the current execution to finish before triggering a new one."
+                    "You can check the status of the current execution using `fg.materialization_job.get_state()`."
+                    "or `fg.materialization_job.get_final_state()` or check it out in the Hopsworks UI."
+                    f"at {self.get_url()}.\n"
+                    f"Use fg.materialization_job.run(args={args}) to trigger the materialization job again.",
+                    stacklevel=2,
+                )
+                return True
+        return False
 
     def schedule(
         self,
