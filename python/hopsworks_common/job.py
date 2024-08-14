@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import warnings
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Optional
+from typing import Literal
 
 import humps
 from hopsworks_common import client, util
@@ -27,10 +27,6 @@ from hopsworks_common.client.exceptions import JobException
 from hopsworks_common.core import execution_api, job_api
 from hopsworks_common.engine import execution_engine
 from hopsworks_common.job_schedule import JobSchedule
-
-
-if TYPE_CHECKING:
-    from hopsworks_common.execution import Execution
 
 
 class Job:
@@ -143,9 +139,7 @@ class Job:
         """Configuration for the job"""
         return self._config
 
-    def run(
-        self, args: str = None, await_termination: bool = True
-    ) -> Optional[Execution]:
+    def run(self, args: str = None, await_termination: bool = True):
         """Run the job.
 
         Run the job, by default awaiting its completion, with the option of passing runtime arguments.
@@ -206,7 +200,17 @@ class Job:
 
         return last_execution[0].state
 
-    def get_final_state(self):
+    def get_final_state(
+        self,
+    ) -> Literal[
+        "UNDEFINED",
+        "FINISHED",
+        "FAILED",
+        "KILLED",
+        "FRAMEWORK_FAILURE",
+        "APP_MASTER_START_FAILED",
+        "INITIALIZATION_FAILED",
+    ]:
         """Get the final state of the job.
 
         # Returns
