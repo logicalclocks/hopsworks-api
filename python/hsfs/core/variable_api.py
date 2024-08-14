@@ -20,5 +20,5 @@ from hopsworks_common.core.variable_api import (
 
 
 __all__ = [
-    VariableApi,
+    "VariableApi",
 ]

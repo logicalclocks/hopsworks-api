@@ -28,13 +28,13 @@ from hopsworks_common.client.istio.utils.infer_type import (
 
 
 __all__ = [
-    GRPC_CONTENT_DATATYPE_MAPPINGS,
-    InferenceServerException,
-    InferInput,
-    InferOutput,
-    InferRequest,
-    InferResponse,
-    get_content,
-    raise_error,
-    serialize_byte_tensor,
+    "GRPC_CONTENT_DATATYPE_MAPPINGS",
+    "InferenceServerException",
+    "InferInput",
+    "InferOutput",
+    "InferRequest",
+    "InferResponse",
+    "get_content",
+    "raise_error",
+    "serialize_byte_tensor",
 ]

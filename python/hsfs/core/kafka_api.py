@@ -20,5 +20,5 @@ from hopsworks_common.core.kafka_api import (
 
 
 __all__ = [
-    KafkaApi,
+    "KafkaApi",
 ]

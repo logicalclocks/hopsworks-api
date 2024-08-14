@@ -20,5 +20,5 @@ from hopsworks_common.command import (
 
 
 __all__ = [
-    Command,
+    "Command",
 ]

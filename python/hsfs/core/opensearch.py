@@ -21,6 +21,6 @@ from hopsworks_common.core.opensearch import (
 
 
 __all__ = [
-    OpenSearchClientSingleton,
-    OpensearchRequestOption,
+    "OpenSearchClientSingleton",
+    "OpensearchRequestOption",
 ]

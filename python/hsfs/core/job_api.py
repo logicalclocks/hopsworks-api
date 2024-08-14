@@ -20,5 +20,5 @@ from hopsworks_common.core.job_api import (
 
 
 __all__ = [
-    JobApi,
+    "JobApi",
 ]

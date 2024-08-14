@@ -20,5 +20,5 @@ from hopsworks_common.git_op_execution import (
 
 
 __all__ = [
-    GitOpExecution,
+    "GitOpExecution",
 ]

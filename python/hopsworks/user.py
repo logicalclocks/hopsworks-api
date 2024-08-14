@@ -20,5 +20,5 @@ from hopsworks_common.user import (
 
 
 __all__ = [
-    User,
+    "User",
 ]

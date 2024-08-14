@@ -20,5 +20,5 @@ from hopsworks_common.kafka_schema import (
 
 
 __all__ = [
-    KafkaSchema,
+    "KafkaSchema",
 ]

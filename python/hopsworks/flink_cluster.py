@@ -20,5 +20,5 @@ from hopsworks_common.flink_cluster import (
 
 
 __all__ = [
-    FlinkCluster,
+    "FlinkCluster",
 ]

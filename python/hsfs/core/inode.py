@@ -19,5 +19,5 @@ from hopsworks_common.core.inode import (
 
 
 __all__ = [
-    Inode,
+    "Inode",
 ]

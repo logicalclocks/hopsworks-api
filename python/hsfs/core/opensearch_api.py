@@ -21,6 +21,6 @@ from hopsworks_common.core.opensearch_api import (
 
 
 __all__ = [
-    OPENSEARCH_CONFIG,
-    OpenSearchApi,
+    "OPENSEARCH_CONFIG",
+    "OpenSearchApi",
 ]

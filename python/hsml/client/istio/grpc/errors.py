@@ -20,5 +20,5 @@ from hopsworks_common.client.istio.grpc.errors import (
 
 
 __all__ = [
-    InvalidInput,
+    "InvalidInput",
 ]

@@ -20,5 +20,5 @@ from hopsworks_common.library import (
 
 
 __all__ = [
-    Library,
+    "Library",
 ]

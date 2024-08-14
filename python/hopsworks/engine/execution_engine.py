@@ -20,5 +20,5 @@ from hopsworks_common.engine.execution_engine import (
 
 
 __all__ = [
-    ExecutionEngine,
+    "ExecutionEngine",
 ]

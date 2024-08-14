@@ -20,5 +20,5 @@ from hopsworks_common.core.ingestion_job import (
 
 
 __all__ = [
-    IngestionJob,
+    "IngestionJob",
 ]

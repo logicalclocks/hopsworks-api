@@ -20,5 +20,5 @@ from hopsworks_common.core.hosts_api import (
 
 
 __all__ = [
-    HostsApi,
+    "HostsApi",
 ]

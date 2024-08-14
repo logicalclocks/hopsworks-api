@@ -20,5 +20,5 @@ from hopsworks_common.core.job_configuration import (
 
 
 __all__ = [
-    JobConfiguration,
+    "JobConfiguration",
 ]

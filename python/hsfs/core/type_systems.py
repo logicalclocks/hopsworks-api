@@ -30,15 +30,15 @@ from hopsworks_common.core.type_systems import (
 
 
 __all__ = [
-    PYARROW_HOPSWORKS_DTYPE_MAPPING,
-    cast_column_to_offline_type,
-    cast_column_to_online_type,
-    cast_pandas_column_to_offline_type,
-    cast_polars_column_to_offline_type,
-    convert_pandas_dtype_to_offline_type,
-    convert_pandas_object_type_to_offline_type,
-    convert_simple_pandas_dtype_to_offline_type,
-    convert_spark_type_to_offline_type,
-    infer_spark_type,
-    translate_legacy_spark_type,
+    "PYARROW_HOPSWORKS_DTYPE_MAPPING",
+    "cast_column_to_offline_type",
+    "cast_column_to_online_type",
+    "cast_pandas_column_to_offline_type",
+    "cast_polars_column_to_offline_type",
+    "convert_pandas_dtype_to_offline_type",
+    "convert_pandas_object_type_to_offline_type",
+    "convert_simple_pandas_dtype_to_offline_type",
+    "convert_spark_type_to_offline_type",
+    "infer_spark_type",
+    "translate_legacy_spark_type",
 ]

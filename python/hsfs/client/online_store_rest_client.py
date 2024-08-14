@@ -22,7 +22,7 @@ from hopsworks_common.client.online_store_rest_client import (
 
 
 __all__ = [
-    OnlineStoreRestClientSingleton,
-    get_instance,
-    init_or_reset_online_store_rest_client,
+    "OnlineStoreRestClientSingleton",
+    "get_instance",
+    "init_or_reset_online_store_rest_client",
 ]

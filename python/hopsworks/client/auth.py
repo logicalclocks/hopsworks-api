@@ -22,7 +22,7 @@ from hopsworks_common.client.auth import (
 
 
 __all__ = [
-    ApiKeyAuth,
-    BearerAuth,
-    OnlineStoreKeyAuth,
+    "ApiKeyAuth",
+    "BearerAuth",
+    "OnlineStoreKeyAuth",
 ]

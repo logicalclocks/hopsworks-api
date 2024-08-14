@@ -20,5 +20,5 @@ from hopsworks_common.git_provider import (
 
 
 __all__ = [
-    GitProvider,
+    "GitProvider",
 ]
