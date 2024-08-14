@@ -361,13 +361,13 @@ class Job:
         )
         return self._job_schedule
 
-    def json(self):
+    def json(self) -> str:
         return json.dumps(self, cls=util.Encoder)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.json()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Job({self._name!r}, {self._job_type!r})"
 
     def get_url(self):
