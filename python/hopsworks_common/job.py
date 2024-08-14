@@ -17,7 +17,9 @@
 from __future__ import annotations
 
 import json
+import warnings
 from datetime import datetime, timezone
+from typing import Literal
 
 import humps
 from hopsworks_common import client, util
@@ -169,6 +171,8 @@ class Job:
         # Returns
             `Execution`. The execution object for the submitted run.
         """
+        if self._is_materialization_running(args):
+            return None
         print(f"Launching job: {self.name}")
         execution = self._execution_api._start(self, args=args)
         print(
@@ -187,7 +191,8 @@ class Job:
             `INITIALIZING`, `INITIALIZATION_FAILED`, `FINISHED`, `RUNNING`, `ACCEPTED`,
             `FAILED`, `KILLED`, `NEW`, `NEW_SAVING`, `SUBMITTED`, `AGGREGATING_LOGS`,
             `FRAMEWORK_FAILURE`, `STARTING_APP_MASTER`, `APP_MASTER_START_FAILED`,
-            `GENERATING_SECURITY_MATERIAL`, `CONVERTING_NOTEBOOK`
+            `GENERATING_SECURITY_MATERIAL`, `CONVERTING_NOTEBOOK`. If no executions are found for the job,
+            a warning is raised and it returns `UNDEFINED`.
         """
         last_execution = self._job_api.last_execution(self)
         if len(last_execution) != 1:
@@ -195,7 +200,17 @@ class Job:
 
         return last_execution[0].state
 
-    def get_final_state(self):
+    def get_final_state(
+        self,
+    ) -> Literal[
+        "UNDEFINED",
+        "FINISHED",
+        "FAILED",
+        "KILLED",
+        "FRAMEWORK_FAILURE",
+        "APP_MASTER_START_FAILED",
+        "INITIALIZATION_FAILED",
+    ]:
         """Get the final state of the job.
 
         # Returns
@@ -243,6 +258,31 @@ class Job:
         """
         self._job_api._delete(self)
 
+
+    def _is_materialization_running(self, args: str) -> bool:
+        if self.name.endswith("offline_fg_materialization") or self.name.endswith(
+            "offline_fg_backfill"
+        ):
+            try:
+                should_abort = self.get_final_state() == "UNDEFINED"
+            except JobException as e:
+                if "No executions found for job" in str(e):
+                    should_abort = False
+                else:
+                    raise e
+            if should_abort:
+                warnings.warn(
+                    "Materialization job is already running, aborting new execution."
+                    "Please wait for the current execution to finish before triggering a new one."
+                    "You can check the status of the current execution using `fg.materialization_job.get_state()`."
+                    "or `fg.materialization_job.get_final_state()` or check it out in the Hopsworks UI."
+                    f"at {self.get_url()}.\n"
+                    f"Use fg.materialization_job.run(args={args}) to trigger the materialization job again.",
+                    stacklevel=2,
+                )
+                return True
+        return False
+
     def _wait_for_job(self, await_termination=True):
         # If the user passed the wait_for_job option consider it,
         # otherwise use the default True
@@ -253,6 +293,7 @@ class Job:
             else:
                 return
             self._execution_engine.wait_until_finished(job=self, execution=execution)
+
 
     def schedule(
         self,
@@ -333,13 +374,13 @@ class Job:
         )
         return self._job_schedule
 
-    def json(self):
+    def json(self) -> str:
         return json.dumps(self, cls=util.Encoder)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.json()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Job({self._name!r}, {self._job_type!r})"
 
     def get_url(self):

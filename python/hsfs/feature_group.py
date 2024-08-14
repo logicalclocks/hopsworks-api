@@ -151,7 +151,11 @@ class FeatureGroupBase:
         self._feature_store = None
         self._variable_api: VariableApi = VariableApi()
 
-        self._online_config = OnlineConfig.from_response_json(online_config) if isinstance(online_config, dict) else online_config
+        self._online_config = (
+            OnlineConfig.from_response_json(online_config)
+            if isinstance(online_config, dict)
+            else online_config
+        )
 
         self._multi_part_insert: bool = False
         self._embedding_index = embedding_index
@@ -2119,6 +2123,7 @@ class FeatureGroup(FeatureGroupBase):
                 Dict[str, Any],
             ]
         ] = None,
+        offline_backfill_every: Optional[Union[str, int]] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -2180,6 +2185,7 @@ class FeatureGroup(FeatureGroupBase):
                 self._hudi_precombine_key: Optional[str] = None
 
             self.statistics_config = statistics_config
+            self._offline_backfill_every = None
 
         else:
             # initialized by user
@@ -2210,6 +2216,7 @@ class FeatureGroup(FeatureGroupBase):
                 else None
             )
             self.statistics_config = statistics_config
+            self._offline_backfill_every = offline_backfill_every
 
         self._feature_group_engine: "feature_group_engine.FeatureGroupEngine" = (
             feature_group_engine.FeatureGroupEngine(featurestore_id)
@@ -2792,6 +2799,8 @@ class FeatureGroup(FeatureGroupBase):
             write_options = {}
         if "wait_for_job" not in write_options:
             write_options["wait_for_job"] = wait
+        if not self._id:
+            write_options["offline_backfill_every"] = self._offline_backfill_every
 
         job, ge_report = self._feature_group_engine.insert(
             self,
@@ -3582,6 +3591,38 @@ class FeatureGroup(FeatureGroupBase):
         transformation_functions: List[TransformationFunction],
     ) -> None:
         self._transformation_functions = transformation_functions
+
+    @property
+    def offline_backfill_every(self) -> Optional[Union[int, str]]:
+        """On Feature Group creation, used to set scheduled run of the materialisation job."""
+        if self.id:
+            job = self.materialization_job
+            if job.job_schedule:
+                print(
+                    "You can checkout the full job schedule for the materialization job using `.materialization_job.job_schedule`"
+                )
+                return job.job_schedule.cron_expression
+            else:
+                warnings.warn(
+                    "No schedule found for the materialization job. Use `job = fg.materialization_job` "
+                    "to get the full job object and edit the schedule",
+                    stacklevel=1,
+                )
+                return None
+        else:
+            return self._offline_backfill_every
+
+    @offline_backfill_every.setter
+    def offline_backfill_every(
+        self, new_offline_backfill_every: Optional[Union[int, str]]
+    ) -> None:
+        if self.id:
+            raise FeatureStoreException(
+                "This property is read-only for existing Feature Groups. "
+                "Use `job = fg.materialization_job` to get the full job object and edit the schedule"
+            )
+        else:
+            self._offline_backfill_every = new_offline_backfill_every
 
 
 @typechecked
