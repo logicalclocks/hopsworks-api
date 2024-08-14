@@ -295,10 +295,19 @@ class Connection:
         except (TypeError, ConnectionError):
             self._connected = False
             raise
-        print(
-            "Connected. Call `.close()` to terminate connection gracefully.",
-            flush=True,
-        )
+
+        _client = client.get_instance()
+        if _client._is_external() and not hasattr(_client, "_project_name"):
+            warnings.warn(
+                "Connected to Hopsworks. You must provide a project name to access project resources."
+                "Use `connection.get_project('my_project')` or `hopsworks.client.get_instance().provide_project('my_project')`",
+                stacklevel=2,
+            )
+        else:
+            print(
+                "Connected. Call `.close()` to terminate connection gracefully.",
+                flush=True,
+            )
 
         self._check_compatibility()
 
