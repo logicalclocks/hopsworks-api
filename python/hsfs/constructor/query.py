@@ -235,13 +235,13 @@ class Query:
 
     def join(
         self,
-        sub_query: "Query",
+        sub_query: Query,
         on: Optional[List[str]] = None,
         left_on: Optional[List[str]] = None,
         right_on: Optional[List[str]] = None,
         join_type: Optional[str] = "left",
         prefix: Optional[str] = None,
-    ) -> "Query":
+    ) -> Query:
         """Join Query with another Query.
 
         If no join keys are specified, Hopsworks will use the maximal matching subset of
@@ -300,7 +300,7 @@ class Query:
         self,
         wallclock_time: Optional[Union[str, int, datetime, date]] = None,
         exclude_until: Optional[Union[str, int, datetime, date]] = None,
-    ) -> "Query":
+    ) -> Query:
         """Perform time travel on the given Query.
 
         !!! warning "Pyspark/Spark Only"
@@ -395,7 +395,7 @@ class Query:
         self,
         wallclock_start_time: Union[str, int, date, datetime],
         wallclock_end_time: Union[str, int, date, datetime],
-    ) -> "Query":
+    ) -> Query:
         """
         !!! warning "Deprecated"
         `pull_changes` method is deprecated. Use
@@ -409,7 +409,7 @@ class Query:
         )
         return self
 
-    def filter(self, f: Union[Filter, Logic]) -> "Query":
+    def filter(self, f: Union[Filter, Logic]) -> Query:
         """Apply filter to the feature group.
 
         Selects all features and returns the resulting `Query` with the applied filter.
@@ -496,7 +496,7 @@ class Query:
         }
 
     @classmethod
-    def from_response_json(cls, json_dict: Dict[str, Any]) -> "Query":
+    def from_response_json(cls, json_dict: Dict[str, Any]) -> Query:
         json_decamelized = humps.decamelize(json_dict)
         feature_group_json = json_decamelized["left_feature_group"]
         if (
@@ -560,7 +560,7 @@ class Query:
             )
 
     @classmethod
-    def _hopsworks_json(cls, json_dict: Dict[str, Any]) -> "Query":
+    def _hopsworks_json(cls, json_dict: Dict[str, Any]) -> Query:
         """
         This method is used by the Hopsworks helper job.
         It does not fully deserialize the message as the usecase is to
@@ -573,7 +573,7 @@ class Query:
             A partially deserialize query object
         """
         json_decamelized = humps.decamelize(json_dict)
-        _ = json_decamelized.pop("hive_engine", None)
+        json_decamelized.pop("hive_engine", None)
         new = cls(**json_decamelized)
         new._joins = humps.camelize(new._joins)
         return new
@@ -633,7 +633,7 @@ class Query:
     ) -> None:
         self._left_feature_group_end_time = left_feature_group_end_time
 
-    def append_feature(self, feature: Union[str, "Feature"]) -> "Query":
+    def append_feature(self, feature: Union[str, "Feature"]) -> Query:
         """
         Append a feature to the query.
 

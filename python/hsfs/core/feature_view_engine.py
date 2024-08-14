@@ -865,7 +865,7 @@ class FeatureViewEngine:
         )
 
     def _check_feature_group_accessibility(self, feature_view_obj):
-        if engine.get_type() in ["python", "hive"]:
+        if engine.get_type() in ["python"]:
             if arrow_flight_client.get_instance().is_enabled():
                 if not arrow_flight_client.supports(
                     feature_view_obj.query.featuregroups
