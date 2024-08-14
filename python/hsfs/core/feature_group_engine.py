@@ -25,7 +25,7 @@ from hsfs.core.deltastreamer_jobconf import DeltaStreamerJobConf
 
 
 class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
-    def __init__(self, feature_store_id):
+    def __init__(self, feature_store_id: int):
         super().__init__(feature_store_id)
 
         # cache online feature store connector

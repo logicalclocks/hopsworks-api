@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from datetime import datetime, timezone
 
 import humps
@@ -169,6 +170,19 @@ class Job:
         # Returns
             `Execution`. The execution object for the submitted run.
         """
+        if (
+            self.name.endswith("offline_fg_materialization")
+            or self.name.endswith("offline_fg_backfill")
+        ) and self.get_final_state() == "UNDEFINED":
+            warnings.warn(
+                "Materialization job is already running, aborting new execution."
+                "Please wait for the current execution to finish before triggering a new one."
+                "You can check the status of the current execution using `fg.materialization_job.get_state()`."
+                "or `fg.materialization_job.get_final_state()` or check it out in the Hopsworks UI."
+                f"at {self.get_url()}.\n"
+                f"Use fg.materialization_job.run(args={args}) to trigger the materialization job again.",
+                stacklevel=2,
+            )
         print(f"Launching job: {self.name}")
         execution = self._execution_api._start(self, args=args)
         print(
