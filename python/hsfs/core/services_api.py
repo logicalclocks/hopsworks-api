@@ -20,5 +20,5 @@ from hopsworks_common.core.services_api import (
 
 
 __all__ = [
-    ServicesApi,
+    "ServicesApi",
 ]

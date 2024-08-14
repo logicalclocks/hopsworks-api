@@ -31,16 +31,16 @@ from hopsworks_common.core.constants import (
 
 
 __all__ = [
-    HAS_AIOMYSQL,
-    HAS_ARROW,
-    HAS_AVRO,
-    HAS_CONFLUENT_KAFKA,
-    HAS_FAST_AVRO,
-    HAS_GREAT_EXPECTATIONS,
-    HAS_NUMPY,
-    HAS_PANDAS,
-    HAS_POLARS,
-    HAS_SQLALCHEMY,
-    great_expectations_not_installed_message,
-    initialise_expectation_suite_for_single_expectation_api_message,
+    "HAS_AIOMYSQL",
+    "HAS_ARROW",
+    "HAS_AVRO",
+    "HAS_CONFLUENT_KAFKA",
+    "HAS_FAST_AVRO",
+    "HAS_GREAT_EXPECTATIONS",
+    "HAS_NUMPY",
+    "HAS_PANDAS",
+    "HAS_POLARS",
+    "HAS_SQLALCHEMY",
+    "great_expectations_not_installed_message",
+    "initialise_expectation_suite_for_single_expectation_api_message",
 ]

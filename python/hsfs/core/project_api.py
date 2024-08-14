@@ -20,5 +20,5 @@ from hopsworks_common.core.project_api import (
 
 
 __all__ = [
-    ProjectApi,
+    "ProjectApi",
 ]

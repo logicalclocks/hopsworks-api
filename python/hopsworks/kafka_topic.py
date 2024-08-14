@@ -20,5 +20,5 @@ from hopsworks_common.kafka_topic import (
 
 
 __all__ = [
-    KafkaTopic,
+    "KafkaTopic",
 ]

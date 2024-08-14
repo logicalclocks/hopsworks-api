@@ -29,14 +29,14 @@ from hopsworks_common.client import (
 
 
 __all__ = [
-    auth,
-    base,
-    exceptions,
-    external,
-    get_instance,
-    hopsworks,
-    init,
-    online_store_rest_client,
-    stop,
-    _is_external,
+    "auth",
+    "base",
+    "exceptions",
+    "external",
+    "get_instance",
+    "hopsworks",
+    "init",
+    "online_store_rest_client",
+    "stop",
+    "_is_external",
 ]

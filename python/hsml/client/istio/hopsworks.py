@@ -20,5 +20,5 @@ from hopsworks_common.client.istio.hopsworks import (
 
 
 __all__ = [
-    Client,
+    "Client",
 ]

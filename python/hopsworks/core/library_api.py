@@ -20,5 +20,5 @@ from hopsworks_common.core.library_api import (
 
 
 __all__ = [
-    LibraryApi,
+    "LibraryApi",
 ]

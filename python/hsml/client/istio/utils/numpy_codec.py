@@ -21,6 +21,6 @@ from hopsworks_common.client.istio.utils.numpy_codec import (
 
 
 __all__ = [
-    from_np_dtype,
-    to_np_dtype,
+    "from_np_dtype",
+    "to_np_dtype",
 ]

@@ -20,5 +20,5 @@ from hopsworks_common.job_schedule import (
 
 
 __all__ = [
-    JobSchedule,
+    "JobSchedule",
 ]

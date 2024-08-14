@@ -20,5 +20,5 @@ from hopsworks_common.core.git_op_execution_api import (
 
 
 __all__ = [
-    GitOpExecutionApi,
+    "GitOpExecutionApi",
 ]

@@ -26,11 +26,11 @@ from hopsworks_common.client.istio import (
 
 
 __all__ = [
-    base,
-    external,
-    get_instance,
-    grpc,
-    hopsworks,
-    init,
-    utils,
+    "base",
+    "external",
+    "get_instance",
+    "grpc",
+    "hopsworks",
+    "init",
+    "utils",
 ]

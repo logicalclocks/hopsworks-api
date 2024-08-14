@@ -20,5 +20,5 @@ from hopsworks_common.core.environment_api import (
 
 
 __all__ = [
-    EnvironmentApi,
+    "EnvironmentApi",
 ]

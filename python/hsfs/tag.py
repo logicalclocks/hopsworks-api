@@ -20,5 +20,5 @@ from hopsworks_common.tag import (
 
 
 __all__ = [
-    Tag,
+    "Tag",
 ]

@@ -20,5 +20,5 @@ from hopsworks_common.git_file_status import (
 
 
 __all__ = [
-    GitFileStatus,
+    "GitFileStatus",
 ]
