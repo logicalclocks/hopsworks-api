@@ -2799,7 +2799,7 @@ class FeatureGroup(FeatureGroupBase):
             write_options = {}
         if "wait_for_job" not in write_options:
             write_options["wait_for_job"] = wait
-        if not self._id:
+        if not self._id and self._offline_backfill_every is not None:
             write_options["offline_backfill_every"] = self._offline_backfill_every
 
         job, ge_report = self._feature_group_engine.insert(

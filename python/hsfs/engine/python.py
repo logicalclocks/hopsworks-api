@@ -1370,7 +1370,7 @@ class Engine:
                 + initial_check_point,
                 await_termination=offline_write_options.get("wait_for_job", False),
             )
-            offline_backfill_every = offline_write_options.get(
+            offline_backfill_every = offline_write_options.pop(
                 "offline_backfill_every", None
             )
             if offline_backfill_every:
