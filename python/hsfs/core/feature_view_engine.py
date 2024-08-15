@@ -783,7 +783,7 @@ class FeatureViewEngine:
             with_label=False,
             primary_keys=primary_keys,
             event_time=event_time,
-            inference_helper_columns=inference_helper_columns or transformed,
+            inference_helper_columns=inference_helper_columns or not transformed,
             training_helper_columns=False,
             training_dataset_version=training_dataset_version,
             spine=spine,
