@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 
 from hsfs import util
 
@@ -32,4 +33,12 @@ class DeltaStreamerJobConf:
         }
 
     def json(self):
+        # no null values are allowed in the configuration
+        null_options = {k: v for k, v in self._options.items() if v is None}
+        if len(null_options) > 0:
+            warnings.warn(
+                f"None values are not allowed in Delta Streamer Job Configuration, dropping {null_options.keys()}.",
+                stacklevel=2,
+            )
+            self._options = {k: v for k, v in self._options.items() if v is not None}
         return json.dumps(self, cls=util.Encoder)
