@@ -21,7 +21,6 @@ import json
 import warnings
 from dataclasses import dataclass
 from datetime import date, datetime, time
-from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import humps
@@ -32,20 +31,11 @@ from hsfs.decorators import typechecked
 from hsfs.transformation_statistics import TransformationStatistics
 
 
-class UDFType(Enum):
-    """
-    Class that store the possible types of transformation functions.
-    """
-
-    MODEL_DEPENDENT = "model_dependent"
-    ON_DEMAND = "on_demand"
-
-
 def udf(
     return_type: Union[List[type], type], drop: Optional[Union[str, List[str]]] = None
 ) -> "HopsworksUdf":
     """
-    Create an User Defined Function that can be and used within the Hopsworks Feature Store.
+    Create an User Defined Function that can be and used within the Hopsworks Feature Store to create transformation functions.
 
     Hopsworks UDF's are user defined functions that executes as 'pandas_udf' when executing
     in spark engine and as pandas functions in the python engine. The pandas udf/pandas functions
@@ -58,14 +48,14 @@ def udf(
         ```python
         from hopsworks import udf
 
-       @udf(float)
-        def add_one(data1 : pd.Series):
+        @udf(float)
+        def add_one(data1):
             return data1 + 1
         ```
 
     # Arguments
-        return_type: `list`. The output types of the defined UDF
-        drop: `List[str]`. The features to be dropped after application of transformation functions
+        return_type: The output types of the defined UDF
+        drop: The features to be dropped after application of transformation functions
 
     # Returns
         `HopsworksUdf`: The metadata object for hopsworks UDF's.
@@ -90,10 +80,9 @@ class TransformationFeature:
 
     The statistic_argument_name for a feature name would be None if the feature does not need statistics.
 
-    Attributes
-    ----------
-        feature_name (str) : Name of the feature.
-        statistic_argument_name (str) : Name of the statistics argument in the code for the feature specified in the feature name.
+    # Arguments
+        feature_name : `str`. Name of the feature.
+        statistic_argument_name : `str`. Name of the statistics argument in the code for the feature specified in the feature name.
     """
 
     feature_name: str
@@ -115,8 +104,7 @@ class HopsworksUdf:
     The class generates uses the metadata to dynamically generate user defined functions based on the
     engine it is executed in.
 
-    Arguments
-    ---------
+    # Arguments
         func : `Union[Callable, str]`. The transformation function object or the source code of the transformation function.
         return_types : `Union[List[type], type, List[str], str]`. A python type or a list of python types that denotes the data types of the columns output from the transformation functions.
         name : `Optional[str]`. Name of the transformation function.
@@ -125,18 +113,6 @@ class HopsworksUdf:
         dropped_argument_names : `Optional[List[str]]`. The arguments to be dropped from the finial DataFrame after the transformation functions are applied.
         dropped_feature_names : `Optional[List[str]]`. The feature name corresponding to the arguments names that are dropped
         feature_name_prefix: `Optional[str]` = None. Prefixes if any used in the feature view.
-
-    Attributes
-    ----------
-        function_name `str` : Name of the UDF
-        udf_type `UDFType`: Type of the UDF can be either \"model dependent\" or \"on-demand\".
-        return_types `List[str]`: The data types of the columns returned from the UDF.
-        transformation_features `List[str]` : List of feature names to which the transformation function would be applied.
-        output_column_names `List[str]`: Column names of the DataFrame returned after application of the transformation function.
-        dropped_features `List[str]`: List of features that will be dropped after the UDF is applied.
-        transformation_statistics `Dict[str, FeatureDescriptiveStatistics]`: Dictionary that maps the statistics_argument name in the function to the actual statistics variable.
-        statistics_required `bool` : True if statistics is required for any of the parameters of the UDF.
-        statistics_features `List[str]` : List of feature names that requires statistics.
     """
 
     # Mapping for converting python types to spark types - required for creating pandas UDF's.
@@ -215,8 +191,6 @@ class HopsworksUdf:
         )
 
         self._statistics: Optional[TransformationStatistics] = None
-
-        self._udf_type: UDFType = None
 
         self._output_column_names: List[str] = []
 
@@ -461,26 +435,6 @@ class HopsworksUdf:
 
         return modified_source, module_imports
 
-    def _get_output_column_names(self) -> str:
-        """
-        Function that generates feature names for the transformed features
-
-        # Returns
-            `List[str]`: List of feature names for the transformed columns
-        """
-        if self._udf_type == UDFType.MODEL_DEPENDENT:
-            _BASE_COLUMN_NAME = (
-                f'{self.function_name}_{"_".join(self.transformation_features)}_'
-            )
-            if len(self.return_types) > 1:
-                return [
-                    f"{_BASE_COLUMN_NAME}{i}" for i in range(len(self.return_types))
-                ]
-            else:
-                return [f"{_BASE_COLUMN_NAME}"]
-        elif self._udf_type == UDFType.ON_DEMAND:
-            return [self.function_name]
-
     def _create_pandas_udf_return_schema_from_list(self) -> str:
         """
         Function that creates the return schema required for executing the defined UDF's as pandas UDF's in Spark.
@@ -610,22 +564,14 @@ def renaming_wrapper(*args):
                 self._transformation_features, features
             )
         ]
-        udf.output_column_names = udf._get_output_column_names()
         udf.dropped_features = updated_dropped_features
         return udf
 
     def update_return_type_one_hot(self):
         self._return_types = [
             self._return_types[0]
-            for _ in range(
-                len(
-                    self.transformation_statistics[
-                        "statistics_feature"
-                    ].extended_statistics["unique_values"]
-                )
-            )
+            for _ in range(len(self.transformation_statistics.feature.unique_values))
         ]
-        self.output_column_names = self._get_output_column_names()
 
     def get_udf(self, force_python_udf: bool = False) -> Callable:
         """
@@ -640,8 +586,6 @@ def renaming_wrapper(*args):
         # Returns
             `Callable`: Pandas UDF in the spark engine otherwise returns a python function for the UDF.
         """
-        if self.udf_type is None:
-            raise FeatureStoreException("UDF Type cannot be None")
 
         if engine.get_type() in ["python", "training"] or force_python_udf:
             return self.hopsworksUdf_wrapper()
@@ -778,25 +722,6 @@ def renaming_wrapper(*args):
         # Set transformation features if already set.
         return hopsworks_udf
 
-    def _validate_udf_type(self):
-        """
-        Function that returns validates if the defined transformation function can be used for the specified UDF type.
-
-        # Raises
-            `hsfs.client.exceptions.FeatureStoreException` : If the UDF Type is None or if statistics or multiple columns has been output by a on-demand transformation function
-        """
-
-        if self._udf_type == UDFType.ON_DEMAND:
-            if len(self.return_types) > 1:
-                raise FeatureStoreException(
-                    "On-Demand Transformation functions can only return one column as output"
-                )
-
-            if self.statistics_required:
-                raise FeatureStoreException(
-                    "On-Demand Transformation functions cannot use statistics, please remove statistics parameters from the functions"
-                )
-
     @property
     def return_types(self) -> List[str]:
         """Get the output types of the UDF"""
@@ -881,17 +806,6 @@ def renaming_wrapper(*args):
             for transformation_feature in self._transformation_features
             if transformation_feature.statistic_argument_name is not None
         ]
-
-    @property
-    def udf_type(self) -> UDFType:
-        """Type of the UDF : Can be \"model dependent\" or \"on-demand\" """
-        return self._udf_type
-
-    @udf_type.setter
-    def udf_type(self, udf_type: UDFType) -> None:
-        self._udf_type = udf_type
-        self._validate_udf_type()
-        self._output_column_names = self._get_output_column_names()
 
     @property
     def dropped_features(self) -> List[str]:

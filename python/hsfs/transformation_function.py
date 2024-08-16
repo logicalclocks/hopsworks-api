@@ -16,26 +16,39 @@ from __future__ import annotations
 
 import copy
 import json
+from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
 import humps
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import util
 from hsfs.core import transformation_function_engine
+from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hsfs.decorators import typechecked
-from hsfs.hopsworks_udf import HopsworksUdf, UDFType
+from hsfs.hopsworks_udf import HopsworksUdf
+from hsfs.transformation_statistics import TransformationStatistics
+
+
+class TransformationType(Enum):
+    """
+    Class that store the possible types of transformation functions.
+    """
+
+    MODEL_DEPENDENT = "model_dependent"
+    ON_DEMAND = "on_demand"
 
 
 @typechecked
 class TransformationFunction:
     """
-    Main DTO class for transformation functions.
+    DTO class for transformation functions.
 
-    Attributes
-    ----------
-        id (int) : Id of transformation function.
-        version (int) : Version of transformation function.
-        hopsworks_udf (HopsworksUdf): Meta data class for user defined functions.
+    # Arguments
+        featurestore_id : `int`. Id of the feature store in which the transformation function is saved.
+        hopsworks_udf : `HopsworksUDF`. The meta data object for UDF in Hopsworks, which can be created using the `@udf` decorator.
+        version : `int`. The version of the transformation function.
+        id : `int`. The id of the transformation function in the feature store.
+        transformation_type : `UDFType`. The type of the transformation function. Can be "on-demand" or "model-dependent"
     """
 
     def __init__(
@@ -44,7 +57,7 @@ class TransformationFunction:
         hopsworks_udf: HopsworksUdf,
         version: Optional[int] = None,
         id: Optional[int] = None,
-        transformation_type: Optional[UDFType] = None,
+        transformation_type: Optional[TransformationType] = None,
         type=None,
         items=None,
         count=None,
@@ -66,7 +79,10 @@ class TransformationFunction:
             )
 
         self._hopsworks_udf: HopsworksUdf = hopsworks_udf
-        self._hopsworks_udf.udf_type = transformation_type
+        TransformationFunction._validate_transformation_type(
+            transformation_type=transformation_type, hopsworks_udf=hopsworks_udf
+        )
+        self.transformation_type = transformation_type
 
     def save(self) -> None:
         """Save a transformation function into the backend.
@@ -74,7 +90,8 @@ class TransformationFunction:
         !!! example
             ```python
             # import hopsworks udf decorator
-            from hsfs.hopsworks_udf import HopsworksUdf
+            from hopworks import udf
+
             # define function
             @udf(int)
             def plus_one(value):
@@ -98,7 +115,8 @@ class TransformationFunction:
         !!! example
             ```python
             # import hopsworks udf decorator
-            from hsfs.hopsworks_udf import HopsworksUdf
+            from hopworks import udf
+
             # define function
             @udf(int)
             def plus_one(value):
@@ -135,6 +153,10 @@ class TransformationFunction:
         # Deep copy so that the same transformation function can be used to create multiple new transformation function with different features.
         transformation = copy.deepcopy(self)
         transformation._hopsworks_udf = transformation._hopsworks_udf(*features)
+        # Regenerate output column names when setting new transformation features.
+        transformation._hopsworks_udf.output_column_names = (
+            transformation._get_output_column_names()
+        )
         return transformation
 
     @classmethod
@@ -208,6 +230,47 @@ class TransformationFunction:
             "hopsworksUdf": self._hopsworks_udf,
         }
 
+    def _get_output_column_names(self) -> str:
+        """
+        Function that generates feature names for the transformed features
+
+        # Returns
+            `List[str]`: List of feature names for the transformed columns
+        """
+        if self.transformation_type == TransformationType.MODEL_DEPENDENT:
+            _BASE_COLUMN_NAME = f'{self._hopsworks_udf.function_name}_{"_".join(self._hopsworks_udf.transformation_features)}_'
+            if len(self._hopsworks_udf.return_types) > 1:
+                return [
+                    f"{_BASE_COLUMN_NAME}{i}"
+                    for i in range(len(self._hopsworks_udf.return_types))
+                ]
+            else:
+                return [f"{_BASE_COLUMN_NAME}"]
+        elif self.transformation_type == TransformationType.ON_DEMAND:
+            return [self._hopsworks_udf.function_name]
+
+    @staticmethod
+    def _validate_transformation_type(
+        transformation_type: TransformationType, hopsworks_udf: HopsworksUdf
+    ):
+        """
+        Function that returns validates if the defined transformation function can be used for the specified UDF type.
+
+        # Raises
+            `hsfs.client.exceptions.FeatureStoreException` : If the UDF Type is None or if statistics or multiple columns has been output by a on-demand transformation function
+        """
+
+        if transformation_type == TransformationType.ON_DEMAND:
+            if len(hopsworks_udf.return_types) > 1:
+                raise FeatureStoreException(
+                    "On-Demand Transformation functions can only return one column as output"
+                )
+
+            if hopsworks_udf.statistics_required:
+                raise FeatureStoreException(
+                    "On-Demand Transformation functions cannot use statistics, please remove statistics parameters from the functions"
+                )
+
     @property
     def id(self) -> id:
         """Transformation function id."""
@@ -232,16 +295,48 @@ class TransformationFunction:
         return self._hopsworks_udf
 
     @property
+    def transformation_type(self) -> TransformationType:
+        """Type of the Transformation : Can be \"model dependent\" or \"on-demand\" """
+        return self._transformation_type
+
+    @transformation_type.setter
+    def transformation_type(self, transformation_type) -> None:
+        self._transformation_type = transformation_type
+        # Generate output column names when setting transformation type
+        self._hopsworks_udf.output_column_names = self._get_output_column_names()
+
+    @property
+    def transformation_statistics(
+        self,
+    ) -> Optional[TransformationStatistics]:
+        """Feature statistics required for the defined UDF"""
+        return self.hopsworks_udf.transformation_statistics
+
+    @transformation_statistics.setter
+    def transformation_statistics(
+        self, statistics: List[FeatureDescriptiveStatistics]
+    ) -> None:
+        self.hopsworks_udf.transformation_statistics = statistics
+        # Generate output column names for one-hot encoder after transformation statistics is set.
+        # This is done because the number of output columns for one-hot encoding dependents on number of unique values in training dataset statistics.
+        if self.hopsworks_udf.function_name == "one_hot_encoder":
+            self._hopsworks_udf.output_column_names = self._get_output_column_names()
+
+    @property
     def output_column_names(self) -> List[str]:
-        """Output column names of transformation functions"""
-        return self._hopsworks_udf._output_column_names
+        """Names of the output columns generated by the transformation functions"""
+        if self._hopsworks_udf.function_name == "one_hot_encoder" and len(
+            self._hopsworks_udf.output_column_names
+        ) != len(self._hopsworks_udf.return_types):
+            self._hopsworks_udf.output_column_names = self._get_output_column_names()
+        return self._hopsworks_udf.output_column_names
 
     def __repr__(self):
-        if self.hopsworks_udf._udf_type == UDFType.MODEL_DEPENDENT:
+        if self.transformation_type == TransformationType.MODEL_DEPENDENT:
             return (
                 f"Model-Dependent Transformation Function : {repr(self.hopsworks_udf)}"
             )
-        elif self.hopsworks_udf._udf_type == UDFType.ON_DEMAND:
+        elif self.transformation_type == TransformationType.ON_DEMAND:
             return f"On-Demand Transformation Function : {repr(self.hopsworks_udf)}"
         else:
             return f"Transformation Function : {repr(self.hopsworks_udf)}"

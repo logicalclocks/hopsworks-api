@@ -90,11 +90,11 @@ from hsfs.core.vector_db_client import VectorDbClient
 from hsfs.decorators import typechecked, uses_great_expectations
 from hsfs.embedding import EmbeddingIndex
 from hsfs.ge_validation_result import ValidationResult
-from hsfs.hopsworks_udf import HopsworksUdf, UDFType
+from hsfs.hopsworks_udf import HopsworksUdf
 from hsfs.online_config import OnlineConfig
 from hsfs.statistics import Statistics
 from hsfs.statistics_config import StatisticsConfig
-from hsfs.transformation_function import TransformationFunction
+from hsfs.transformation_function import TransformationFunction, TransformationType
 from hsfs.validation_report import ValidationReport
 
 
@@ -2240,13 +2240,13 @@ class FeatureGroup(FeatureGroupBase):
                             featurestore_id,
                             hopsworks_udf=transformation_function,
                             version=1,
-                            transformation_type=UDFType.ON_DEMAND,
+                            transformation_type=TransformationType.ON_DEMAND,
                         )
                     )
                 else:
-                    if not transformation_function.hopsworks_udf.udf_type:
-                        transformation_function.hopsworks_udf.udf_type = (
-                            UDFType.ON_DEMAND
+                    if not transformation_function.transformation_type:
+                        transformation_function.transformation_type = (
+                            TransformationType.ON_DEMAND
                         )
                     self._transformation_functions.append(transformation_function)
 
@@ -3350,7 +3350,7 @@ class FeatureGroup(FeatureGroupBase):
                     TransformationFunction.from_response_json(
                         {
                             **transformation_function,
-                            "transformation_type": UDFType.ON_DEMAND,
+                            "transformation_type": TransformationType.ON_DEMAND,
                         }
                     )
                     for transformation_function in transformation_functions
@@ -3371,7 +3371,7 @@ class FeatureGroup(FeatureGroupBase):
                     TransformationFunction.from_response_json(
                         {
                             **transformation_function,
-                            "transformation_type": UDFType.ON_DEMAND,
+                            "transformation_type": TransformationType.ON_DEMAND,
                         }
                     )
                     for transformation_function in transformation_functions
@@ -3392,7 +3392,7 @@ class FeatureGroup(FeatureGroupBase):
                 TransformationFunction.from_response_json(
                     {
                         **transformation_function,
-                        "transformation_type": UDFType.ON_DEMAND,
+                        "transformation_type": TransformationType.ON_DEMAND,
                     }
                 )
                 for transformation_function in transformation_functions

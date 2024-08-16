@@ -44,23 +44,26 @@ def robust_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Serie
 
 @udf(int, drop=["feature"])
 def label_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
-    unique_data = sorted(
-        [value for value in statistics.feature.extended_statistics["unique_values"]]
-    )
+    unique_data = sorted([value for value in statistics.feature.unique_values])
     value_to_index = {value: index for index, value in enumerate(unique_data)}
+    # Unknown categories not present in training dataset are encoded as -1.
     return pd.Series(
-        [value_to_index[data] if not pd.isna(data) else np.nan for data in feature]
+        [
+            value_to_index.get(data, -1) if not pd.isna(data) else np.nan
+            for data in feature
+        ]
     )
 
 
 @udf(bool, drop=["feature"])
 def one_hot_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
-    unique_data = [
-        value for value in statistics.feature.extended_statistics["unique_values"]
-    ]
-    one_hot = pd.get_dummies(feature, dtype="bool")
-    for data in unique_data:
-        if data not in one_hot:
-            one_hot[data] = False
+    unique_data = [value for value in statistics.feature.unique_values]
+
+    # One hot encode features. Re-indexing to set missing categories to False and drop categories not in training data statistics.
+    # Hence one-hot encoded features would have all categories as False when a category not in training dataset is encountered.
+    one_hot = pd.get_dummies(feature, dtype="bool").reindex(
+        unique_data, axis=1, fill_value=False
+    )
+
     # Sorting by columns so as to maintain consistency in column order.
     return one_hot.reindex(sorted(one_hot.columns), axis=1)

@@ -458,6 +458,26 @@ PAGES = {
             "hsfs.core.feature_descriptive_statistics.FeatureDescriptiveStatistics"
         ),
     },
+    "api/hopsworks_udf.md": {
+        "hopsworks_udf": ["hsfs.hopsworks_udf.HopsworksUdf"],
+        "hopsworks_udf_properties": keras_autodoc.get_properties(
+            "hsfs.hopsworks_udf.HopsworksUdf"
+        ),
+        "transformation_feature": ["hsfs.hopsworks_udf.TransformationFeature"],
+    },
+    "api/transformation_statistics.md": {
+        "transformation_statistics": [
+            "hsfs.transformation_statistics.TransformationStatistics"
+        ],
+    },
+    "api/feature_transformation_statistics.md": {
+        "feature_transformation_statistics": [
+            "hsfs.transformation_statistics.FeatureTransformationStatistics"
+        ],
+        "feature_transformation_statistics_properties": keras_autodoc.get_properties(
+            "hsfs.transformation_statistics.FeatureTransformationStatistics"
+        ),
+    },
     "api/feature_monitoring_config_api.md": {
         "feature_monitoring_config": [
             "hsfs.core.feature_monitoring_config.FeatureMonitoringConfig"

@@ -31,7 +31,8 @@ from hsfs import (
 from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hsfs.engine import python, spark
-from hsfs.hopsworks_udf import HopsworksUdf, UDFType, udf
+from hsfs.hopsworks_udf import HopsworksUdf, udf
+from hsfs.transformation_function import TransformationType
 from pyspark.sql.types import (
     BooleanType,
     DateType,
@@ -172,11 +173,11 @@ class TestPythonSparkTransformationFunctions:
             transformation_function.TransformationFunction(
                 hopsworks_udf=tf_fun("col_0"),
                 featurestore_id=99,
-                transformation_type=UDFType.MODEL_DEPENDENT,
+                transformation_type=TransformationType.MODEL_DEPENDENT,
             )
         ]
 
-        transformation_functions[0].hopsworks_udf.transformation_statistics = [
+        transformation_functions[0].transformation_statistics = [
             FeatureDescriptiveStatistics(feature_name="col_0", min=1, max=2)
         ]
 
@@ -235,11 +236,11 @@ class TestPythonSparkTransformationFunctions:
             transformation_function.TransformationFunction(
                 hopsworks_udf=min_max_scaler("col_0"),
                 featurestore_id=99,
-                transformation_type=UDFType.MODEL_DEPENDENT,
+                transformation_type=TransformationType.MODEL_DEPENDENT,
             )
         ]
 
-        transformation_functions[0].hopsworks_udf.transformation_statistics = [
+        transformation_functions[0].transformation_statistics = [
             FeatureDescriptiveStatistics(feature_name="col_0", min=1, max=2)
         ]
 
@@ -315,12 +316,12 @@ class TestPythonSparkTransformationFunctions:
             transformation_function.TransformationFunction(
                 hopsworks_udf=tf_fun("col_0"),
                 featurestore_id=99,
-                transformation_type=UDFType.MODEL_DEPENDENT,
+                transformation_type=TransformationType.MODEL_DEPENDENT,
             )
         ]
         mean = statistics.mean([1, 2])
         stddev = statistics.pstdev([1, 2])
-        transformation_functions[0].hopsworks_udf.transformation_statistics = [
+        transformation_functions[0].transformation_statistics = [
             FeatureDescriptiveStatistics(feature_name="col_0", mean=mean, stddev=stddev)
         ]
 
@@ -379,13 +380,13 @@ class TestPythonSparkTransformationFunctions:
             transformation_function.TransformationFunction(
                 hopsworks_udf=standard_scaler("col_0"),
                 featurestore_id=99,
-                transformation_type=UDFType.MODEL_DEPENDENT,
+                transformation_type=TransformationType.MODEL_DEPENDENT,
             )
         ]
 
         mean = statistics.mean([1, 2])
         stddev = statistics.pstdev([1, 2])
-        transformation_functions[0].hopsworks_udf.transformation_statistics = [
+        transformation_functions[0].transformation_statistics = [
             FeatureDescriptiveStatistics(feature_name="col_0", mean=mean, stddev=stddev)
         ]
 
@@ -462,14 +463,14 @@ class TestPythonSparkTransformationFunctions:
             transformation_function.TransformationFunction(
                 hopsworks_udf=tf_fun("col_0"),
                 featurestore_id=99,
-                transformation_type=UDFType.MODEL_DEPENDENT,
+                transformation_type=TransformationType.MODEL_DEPENDENT,
             )
         ]
         percentiles = [1] * 100
         percentiles[24] = 1
         percentiles[49] = 2
         percentiles[74] = 2
-        transformation_functions[0].hopsworks_udf.transformation_statistics = [
+        transformation_functions[0].transformation_statistics = [
             FeatureDescriptiveStatistics(feature_name="col_0", percentiles=percentiles)
         ]
 
@@ -528,7 +529,7 @@ class TestPythonSparkTransformationFunctions:
             transformation_function.TransformationFunction(
                 hopsworks_udf=robust_scaler("col_0"),
                 featurestore_id=99,
-                transformation_type=UDFType.MODEL_DEPENDENT,
+                transformation_type=TransformationType.MODEL_DEPENDENT,
             )
         ]
 
@@ -536,7 +537,7 @@ class TestPythonSparkTransformationFunctions:
         percentiles[24] = 1
         percentiles[49] = 2
         percentiles[74] = 2
-        transformation_functions[0].hopsworks_udf.transformation_statistics = [
+        transformation_functions[0].transformation_statistics = [
             FeatureDescriptiveStatistics(feature_name="col_0", percentiles=percentiles)
         ]
 
@@ -596,7 +597,7 @@ class TestPythonSparkTransformationFunctions:
             transformation_function.TransformationFunction(
                 hopsworks_udf=tf_fun,
                 featurestore_id=99,
-                transformation_type=UDFType.MODEL_DEPENDENT,
+                transformation_type=TransformationType.MODEL_DEPENDENT,
             )
         ]
 
@@ -655,7 +656,7 @@ class TestPythonSparkTransformationFunctions:
             transformation_function.TransformationFunction(
                 hopsworks_udf=tf_fun,
                 featurestore_id=99,
-                transformation_type=UDFType.MODEL_DEPENDENT,
+                transformation_type=TransformationType.MODEL_DEPENDENT,
             )
         ]
 
@@ -714,7 +715,7 @@ class TestPythonSparkTransformationFunctions:
             transformation_function.TransformationFunction(
                 hopsworks_udf=tf_fun,
                 featurestore_id=99,
-                transformation_type=UDFType.MODEL_DEPENDENT,
+                transformation_type=TransformationType.MODEL_DEPENDENT,
             )
         ]
 
@@ -790,7 +791,7 @@ class TestPythonSparkTransformationFunctions:
             transformation_function.TransformationFunction(
                 hopsworks_udf=tf_fun,
                 featurestore_id=99,
-                transformation_type=UDFType.MODEL_DEPENDENT,
+                transformation_type=TransformationType.MODEL_DEPENDENT,
             )
         ]
 
@@ -869,7 +870,7 @@ class TestPythonSparkTransformationFunctions:
             transformation_function.TransformationFunction(
                 hopsworks_udf=tf_fun,
                 featurestore_id=99,
-                transformation_type=UDFType.MODEL_DEPENDENT,
+                transformation_type=TransformationType.MODEL_DEPENDENT,
             )
         ]
 
@@ -950,7 +951,7 @@ class TestPythonSparkTransformationFunctions:
             transformation_function.TransformationFunction(
                 hopsworks_udf=tf_fun,
                 featurestore_id=99,
-                transformation_type=UDFType.MODEL_DEPENDENT,
+                transformation_type=TransformationType.MODEL_DEPENDENT,
             )
         ]
 
@@ -1032,7 +1033,7 @@ class TestPythonSparkTransformationFunctions:
             transformation_function.TransformationFunction(
                 hopsworks_udf=tf_fun,
                 featurestore_id=99,
-                transformation_type=UDFType.MODEL_DEPENDENT,
+                transformation_type=TransformationType.MODEL_DEPENDENT,
             )
         ]
 
@@ -1103,7 +1104,7 @@ class TestPythonSparkTransformationFunctions:
             transformation_function.TransformationFunction(
                 hopsworks_udf=tf_fun,
                 featurestore_id=99,
-                transformation_type=UDFType.MODEL_DEPENDENT,
+                transformation_type=TransformationType.MODEL_DEPENDENT,
             )
         ]
 

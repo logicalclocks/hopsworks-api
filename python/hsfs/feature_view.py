@@ -67,11 +67,11 @@ from hsfs.core.job import Job
 from hsfs.core.vector_db_client import VectorDbClient
 from hsfs.decorators import typechecked
 from hsfs.feature import Feature
-from hsfs.hopsworks_udf import HopsworksUdf, UDFType
+from hsfs.hopsworks_udf import HopsworksUdf
 from hsfs.statistics import Statistics
 from hsfs.statistics_config import StatisticsConfig
 from hsfs.training_dataset_split import TrainingDatasetSplit
-from hsfs.transformation_function import TransformationFunction
+from hsfs.transformation_function import TransformationFunction, TransformationType
 from hsml.model import Model
 
 
@@ -145,13 +145,13 @@ class FeatureView:
                             self.featurestore_id,
                             hopsworks_udf=transformation_function,
                             version=1,
-                            transformation_type=UDFType.MODEL_DEPENDENT,
+                            transformation_type=TransformationType.MODEL_DEPENDENT,
                         )
                     )
                 else:
-                    if not transformation_function.hopsworks_udf.udf_type:
-                        transformation_function.hopsworks_udf.udf_type = (
-                            UDFType.MODEL_DEPENDENT
+                    if not transformation_function.transformation_type:
+                        transformation_function.transformation_type = (
+                            TransformationType.MODEL_DEPENDENT
                         )
                     self._transformation_functions.append(transformation_function)
 
@@ -167,8 +167,8 @@ class FeatureView:
         self._transformation_function_engine: transformation_function_engine.TransformationFunctionEngine = transformation_function_engine.TransformationFunctionEngine(
             featurestore_id
         )
-        self._vector_server: Optional[vector_server.VectorServer] = None
-        self._batch_scoring_server: Optional[vector_server.VectorServer] = None
+        self.__vector_server: Optional[vector_server.VectorServer] = None
+        self.__batch_scoring_server: Optional[vector_server.VectorServer] = None
         self._serving_keys = serving_keys if serving_keys else []
         self._prefix_serving_key_map = {}
         self._primary_keys: Set[str] = set()  # Lazy initialized via serving keys
@@ -372,16 +372,6 @@ class FeatureView:
             )
 
         # initiate single vector server
-        self._vector_server = vector_server.VectorServer(
-            self._featurestore_id,
-            self._features,
-            training_dataset_version,
-            serving_keys=self._serving_keys,
-            skip_fg_ids=set([fg.id for fg in self._get_embedding_fgs()]),
-            feature_view_name=self._name,
-            feature_view_version=self._version,
-            feature_store_name=self._feature_store_name,
-        )
         self._vector_server.init_serving(
             entity=self,
             external=external,
@@ -392,6 +382,7 @@ class FeatureView:
             reset_rest_client=reset_rest_client,
             config_rest_client=config_rest_client,
             default_client=default_client,
+            training_dataset_version=training_dataset_version,
         )
 
         self._prefix_serving_key_map = dict(
@@ -447,17 +438,9 @@ class FeatureView:
             training_dataset_version: int, optional. Default to be None. Transformation statistics
                 are fetched from training dataset and applied to the feature vector.
         """
-        self._batch_scoring_server = vector_server.VectorServer(
-            self._featurestore_id,
-            self._features,
-            training_dataset_version,
-            serving_keys=self._serving_keys,
-            skip_fg_ids=set([fg.id for fg in self._get_embedding_fgs()]),
-            feature_view_name=self._name,
-            feature_view_version=self._version,
-            feature_store_name=self._feature_store_name,
+        self._batch_scoring_server.init_batch_scoring(
+            self, training_dataset_version=training_dataset_version
         )
-        self._batch_scoring_server.init_batch_scoring(self)
 
     def get_batch_query(
         self,
@@ -603,7 +586,7 @@ class FeatureView:
             `Exception`. When primary key entry cannot be found in one or more of the feature groups used by this
                 feature view.
         """
-        if self._vector_server is None:
+        if not self._vector_server._serving_initialized:
             self.init_serving(external=external)
 
         vector_db_features = None
@@ -717,8 +700,9 @@ class FeatureView:
             `Exception`. When primary key entry cannot be found in one or more of the feature groups used by this
                 feature view.
         """
-        if self._vector_server is None:
+        if not self._vector_server._serving_initialized:
             self.init_serving(external=external, init_rest_client=force_rest_client)
+
         vector_db_features = []
         if self._vector_db_client:
             for _entry in entry:
@@ -777,7 +761,7 @@ class FeatureView:
             `Exception`. When primary key entry cannot be found in one or more of the feature groups used by this
                 feature view.
         """
-        if self._vector_server is None:
+        if not self._vector_server._serving_initialized:
             self.init_serving(external=external, init_rest_client=force_rest_client)
         return self._vector_server.get_inference_helper(
             entry, return_type, force_rest_client, force_sql_client
@@ -1051,7 +1035,7 @@ class FeatureView:
             `numpy.ndarray`. A two-dimensional Numpy array.
             `list`. A two-dimensional Python list.
         """
-        if self._batch_scoring_server is None:
+        if not self._batch_scoring_server._serving_initialized:
             self.init_batch_scoring()
 
         return self._feature_view_engine.get_batch_data(
@@ -3461,7 +3445,7 @@ class FeatureView:
                 TransformationFunction.from_response_json(
                     {
                         **transformation_function,
-                        "transformation_type": UDFType.MODEL_DEPENDENT,
+                        "transformation_type": TransformationType.MODEL_DEPENDENT,
                     }
                 )
                 for transformation_function in transformation_functions
@@ -3531,19 +3515,11 @@ class FeatureView:
         # Arguments
             feature_vector: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vector to be transformed.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
-            external: boolean, optional. If set to True, the connection to the
-                online feature store is established using the same host as
-                for the `host` parameter in the [`hsfs.connection()`](connection_api.md#connection) method.
-                If set to False, the online feature store storage connector is used
-                which relies on the private IP. Defaults to True if connection to Hopsworks is established from
-                external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
         # Returns
             `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The feature vector that contains all on-demand features in the feature view.
         """
-        if self._vector_server is None:
-            self.init_serving(external=external)
 
-        return self._batch_scoring_server.compute_on_demand_features(
+        return self._vector_server.compute_on_demand_features(
             feature_vectors=feature_vector, request_parameters=request_parameters
         )
 
@@ -3569,10 +3545,10 @@ class FeatureView:
         # Returns
             `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The transformed feature vector obtained by applying Model-Dependent Transformations.
         """
-        if self._vector_server is None:
+        if not self._vector_server._serving_initialized:
             self.init_serving(external=external)
 
-        return self._batch_scoring_server.transform(feature_vectors=feature_vector)
+        return self._vector_server.transform(feature_vectors=feature_vector)
 
     def enable_logging(self) -> None:
         """Enable feature logging for the current feature view.
@@ -4082,3 +4058,31 @@ class FeatureView:
         if self.logging_enabled and self._feature_logging is None:
             self._feature_logging = self._feature_view_engine.get_feature_logging(self)
         return self._feature_logging
+
+    @property
+    def _vector_server(self) -> vector_server.VectorServer:
+        if not self.__vector_server:
+            self.__vector_server = vector_server.VectorServer(
+                feature_store_id=self._featurestore_id,
+                features=self._features,
+                serving_keys=self._serving_keys,
+                skip_fg_ids=set([fg.id for fg in self._get_embedding_fgs()]),
+                feature_view_name=self._name,
+                feature_view_version=self._version,
+                feature_store_name=self._feature_store_name,
+            )
+        return self.__vector_server
+
+    @property
+    def _batch_scoring_server(self) -> vector_server.VectorServer:
+        if not self.__batch_scoring_server:
+            self.__batch_scoring_server = vector_server.VectorServer(
+                feature_store_id=self._featurestore_id,
+                features=self._features,
+                serving_keys=self._serving_keys,
+                skip_fg_ids=set([fg.id for fg in self._get_embedding_fgs()]),
+                feature_view_name=self._name,
+                feature_view_version=self._version,
+                feature_store_name=self._feature_store_name,
+            )
+        return self.__batch_scoring_server

@@ -72,14 +72,13 @@ class VectorServer:
         self,
         feature_store_id: int,
         features: Optional[List[tdf_mod.TrainingDatasetFeature]] = None,
-        training_dataset_version: Optional[int] = None,
         serving_keys: Optional[List[sk_mod.ServingKey]] = None,
         skip_fg_ids: Optional[Set[int]] = None,
         feature_store_name: Optional[str] = None,
         feature_view_name: Optional[str] = None,
         feature_view_version: Optional[int] = None,
     ):
-        self._training_dataset_version = training_dataset_version
+        self._training_dataset_version = None
         self._feature_store_id = feature_store_id
         self._feature_store_name = feature_store_name
         self._feature_view_name = feature_view_name
@@ -138,10 +137,12 @@ class VectorServer:
         self._feature_to_handle_if_rest: Optional[Set[str]] = None
         self._feature_to_handle_if_sql: Optional[Set[str]] = None
         self._valid_serving_keys: Set[str] = set()
+        self._serving_initialized: bool = False
 
     def init_serving(
         self,
         entity: Union[feature_view.FeatureView],
+        training_dataset_version: int,
         external: Optional[bool] = None,
         inference_helper_columns: bool = False,
         options: Optional[Dict[str, Any]] = None,
@@ -151,6 +152,7 @@ class VectorServer:
         config_rest_client: Optional[Dict[str, Any]] = None,
         default_client: Optional[Literal["rest", "sql"]] = None,
     ):
+        self._training_dataset_version = training_dataset_version
         if options is not None:
             reset_rest_client = reset_rest_client or options.get(
                 self.RESET_REST_CLIENT_OPTIONS_KEY, False
@@ -194,12 +196,16 @@ class VectorServer:
                 inference_helper_columns=inference_helper_columns,
                 options=options,
             )
+        self._serving_initialized = True
 
     def init_batch_scoring(
         self,
         entity: Union[feature_view.FeatureView, training_dataset.TrainingDataset],
+        training_dataset_version: int,
     ):
+        self._training_dataset_version = training_dataset_version
         self.init_transformation(entity)
+        self._serving_initialized = True
 
     def init_transformation(
         self,
