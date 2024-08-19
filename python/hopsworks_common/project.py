@@ -17,10 +17,9 @@ from __future__ import annotations
 
 import json
 
-import hsfs.feature_store
 import humps
-from hopsworks import client, constants, util
-from hopsworks.core import (
+from hopsworks_common import client, constants, util
+from hopsworks_common.core import (
     dataset_api,
     environment_api,
     flink_cluster_api,
@@ -103,7 +102,7 @@ class Project:
 
     def get_feature_store(
         self, name: str = None, engine: str = None
-    ) -> hsfs.feature_store.FeatureStore:
+    ):  # -> hsfs.feature_store.FeatureStore
         """Connect to Project's Feature Store.
 
         Defaulting to the project name of default feature store. To get a

@@ -1,5 +1,5 @@
 #
-#   Copyright 2022 Logical Clocks AB
+#   Copyright 2024 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -14,11 +14,11 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.core.project_api import (
-    ProjectApi,
+from hopsworks_common.project import (
+    Project,
 )
 
 
 __all__ = [
-    "ProjectApi",
+    "Project",
 ]
