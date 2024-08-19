@@ -14,108 +14,11 @@
 #   limitations under the License.
 #
 
-import json
+from hopsworks_common.core.project_api import (
+    ProjectApi,
+)
 
-from hopsworks import client, constants, project
-from hopsworks.client.exceptions import RestAPIError
 
-
-class ProjectApi:
-    def _exists(self, name: str):
-        """Check if a project exists.
-
-        # Arguments
-            name: Name of the project.
-        # Returns
-            `bool`: True if project exists, otherwise False
-        """
-        try:
-            self._get_project(name)
-            return True
-        except RestAPIError:
-            return False
-
-    def _get_projects(self):
-        """Get all projects accessible by the user.
-
-        # Returns
-            `List[Project]`: List of Project objects
-        # Raises
-            `RestAPIError`: If unable to get the projects
-        """
-        _client = client.get_instance()
-        path_params = [
-            "project",
-        ]
-        project_team_json = _client._send_request("GET", path_params)
-        projects = []
-        for project_team in project_team_json:
-            projects.append(self._get_project(project_team["project"]["name"]))
-        return projects
-
-    def _get_project(self, name: str):
-        """Get a project.
-
-        # Arguments
-            name: Name of the project.
-        # Returns
-            `Project`: The Project object
-        # Raises
-            `RestAPIError`: If unable to get the project
-        """
-        _client = client.get_instance()
-        path_params = [
-            "project",
-            "getProjectInfo",
-            name,
-        ]
-        project_json = _client._send_request("GET", path_params)
-        return project.Project.from_response_json(project_json)
-
-    def _create_project(
-        self, name: str, description: str = None, feature_store_topic: str = None
-    ):
-        """Create a new project.
-
-        # Arguments
-            name: Name of the project.
-            description: Description of the project.
-            feature_store_topic: Feature store topic name.
-        # Returns
-            `Project`: The Project object
-        # Raises
-            `RestAPIError`: If unable to create the project
-        """
-        _client = client.get_instance()
-
-        path_params = ["project"]
-        query_params = {"projectName": name}
-        headers = {"content-type": "application/json"}
-
-        data = {
-            "projectName": name,
-            "services": constants.SERVICES.LIST,
-            "description": description,
-            "featureStoreTopic": feature_store_topic,
-        }
-        _client._send_request(
-            "POST",
-            path_params,
-            headers=headers,
-            query_params=query_params,
-            data=json.dumps(data),
-        )
-
-        # The return of the project creation is not a ProjectDTO, so get the correct object after creation
-        project = self._get_project(name)
-        print("Project created successfully, explore it at " + project.get_url())
-        return project
-
-    def get_client(self):
-        _client = client.get_instance()
-        path_params = [
-            "project",
-            _client._project_id,
-            "client",
-        ]
-        return _client._send_request("GET", path_params, stream=True)
+__all__ = [
+    "ProjectApi",
+]
