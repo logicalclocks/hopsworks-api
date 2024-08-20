@@ -3750,12 +3750,13 @@ class FeatureView:
         self._feature_view_engine.resume_logging(self)
 
     def materialize_log(
-        self, wait: Optional[bool] = False, transformed: Optional[bool] = None
-    ) -> Tuple[Job, Job]:
+        self, wait: bool = False, transformed: Optional[bool] = None
+    ) -> List[Job]:
         """Materialize the log for the current feature view.
 
         # Arguments
             wait: Whether to wait for the materialization to complete. Defaults to False.
+            transformed: Whether to materialize transformed or untrasformed logs. Defaults to None, in which case the returned list contains a job for materialization of transformed features and then a job for untransformed features. Otherwise the list contains only transformed jobs if transformed is True and untransformed jobs if it is False.
 
         # Example
             ```python
@@ -3764,7 +3765,7 @@ class FeatureView:
             ```
 
         # Returns
-            Tuple(`Job`, `Job`) Job information for the materialization jobs of transformed/untransformed features
+            List[`Job`] Job information for the materialization jobs of transformed and untransformed features.
 
 
         # Raises
