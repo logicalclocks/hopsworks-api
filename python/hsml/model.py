@@ -32,6 +32,8 @@ from hsml.inference_logger import InferenceLogger
 from hsml.predictor import Predictor
 from hsml.resources import PredictorResources
 from hsml.transformer import Transformer
+from hsml.model_schema import ModelSchema
+from hsml.schema import Schema
 
 
 _logger = logging.getLogger(__name__)
@@ -95,17 +97,17 @@ class Model:
         self._model_engine = model_engine.ModelEngine()
         self._feature_view = feature_view
         self._training_dataset_version = training_dataset_version
-        if training_dataset_version is None and feature_view is not None:
-            if feature_view.get_last_accessed_training_dataset() is not None:
-                self._training_dataset_version = (
-                    feature_view.get_last_accessed_training_dataset()
-                )
-            else:
+        if (    self._training_dataset is not None and
+                self._training_dataset._version != self._training_dataset_version):
+            if self._training_dataset_version is not None:
                 warnings.warn(
-                    "Provenance cached data - feature view provided, but training dataset version is missing",
+                    "Training dataset's version and the provided training_dataset_version do not match"+
+                    " - training dataset's version will be used",
                     util.ProvenanceWarning,
                     stacklevel=1,
                 )
+            self._training_dataset_version = self._training_dataset._version
+
 
     @usage.method_logger
     def save(
@@ -131,6 +133,39 @@ class Model:
         # Returns
             `Model`: The model metadata object.
         """
+        if self._training_dataset_version is None and self._feature_view is not None:
+            if self._feature_view.get_last_accessed_training_dataset() is not None:
+                self._training_dataset_version = (
+                    self._feature_view.get_last_accessed_training_dataset()
+                )
+            else:
+                warnings.warn(
+                    "Provenance cached data - feature view provided, but training dataset version is missing",
+                    util.ProvenanceWarning,
+                    stacklevel=1,
+                )
+        if self._model_schema is None:
+            if (self._feature_view is not None
+                and self._training_dataset_version is not None):
+                if self._training_dataset:
+                    all_features = self._training_dataset.schema
+                else:
+                    td_meta = self._feature_view._feature_view_engine._get_training_dataset_metadata(
+                        feature_view_obj = self._feature_view,
+                        training_dataset_version = self._training_dataset_version
+                    )
+                    all_features = td_meta.schema
+                features, labels = [], []
+                for feature in all_features:
+                    (labels if feature.label else features).append(feature.to_dict())
+                self._model_schema = ModelSchema(input_schema = Schema(features), output_schema = Schema(labels))
+            else:
+                warnings.warn(
+                    "Model schema cannot not be inferred without both the feature view and the training dataset version.",
+                    util.ProvenanceWarning,
+                    stacklevel=1,
+                )
+
         return self._model_engine.save(
             model_instance=self,
             model_path=model_path,
