@@ -67,6 +67,7 @@ from hsfs.core.job import Job
 from hsfs.core.vector_db_client import VectorDbClient
 from hsfs.decorators import typechecked
 from hsfs.feature import Feature
+from hsfs.feature_logger import FeatureLogger
 from hsfs.hopsworks_udf import HopsworksUdf
 from hsfs.statistics import Statistics
 from hsfs.statistics_config import StatisticsConfig
@@ -188,6 +189,8 @@ class FeatureView:
         # last accessed (read/write) training dataset is not necessarily the newest (highest version).
         self._last_accessed_training_dataset = None
 
+        self._feature_logger = None
+
     def get_last_accessed_training_dataset(self):
         return self._last_accessed_training_dataset
 
@@ -297,6 +300,7 @@ class FeatureView:
         reset_rest_client: bool = False,
         config_rest_client: Optional[Dict[str, Any]] = None,
         default_client: Optional[Literal["sql", "rest"]] = None,
+        feature_logger: Optional[FeatureLogger] = None,
         **kwargs,
     ) -> None:
         """Initialise feature view to retrieve feature vector from online and offline feature store.
@@ -343,6 +347,8 @@ class FeatureView:
                     provided if initialising the rest client in an internal environment.
                 * `timeout`: int, optional. The timeout for the rest client in seconds. Defaults to 2.
                 * `use_ssl`: boolean, optional. Use SSL to connect to the online store. Defaults to True.
+            feature_logger: Custom feature logger which [`feature_view.log()`](#log) uses to log feature vectors. If provided,
+                feature vectors will not be inserted to logging feature group automatically when `feature_view.log()` is called.
 
         """
         # initiate batch scoring server
@@ -395,6 +401,13 @@ class FeatureView:
             self._vector_db_client = VectorDbClient(
                 self.query, serving_keys=self._serving_keys
             )
+
+        if feature_logger:
+            self._feature_logger = feature_logger
+            self._feature_logger.init(self)
+        else:
+            # reset feature logger in case init_serving is called again without feature logger
+            self._feature_logger = None
 
     @staticmethod
     def _sort_transformation_functions(
@@ -3576,37 +3589,48 @@ class FeatureView:
 
     def log(
         self,
-        features: Union[
+        untransformed_features: Union[
             pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
-        ],
+        ] = None,
         predictions: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
-        transformed: Optional[bool] = False,
+        transformed_features: Union[
+            pd.DataFrame, list[list], np.ndarray, TypeVar(
+                "pyspark.sql.DataFrame")
+        ] = None,
         write_options: Optional[Dict[str, Any]] = None,
         training_dataset_version: Optional[int] = None,
         model: Model = None,
-    ) -> Optional[Job]:
+    ) -> Optional[list[Job]]:
         """Log features and optionally predictions for the current feature view. The logged features are written periodically to the offline store. If you need it to be available immediately, call `materialize_log`.
 
         Note: If features is a `pyspark.Dataframe`, prediction needs to be provided as columns in the dataframe,
             values in `predictions` will be ignored.
 
         # Arguments
-            features: The features to be logged. Can be a pandas DataFrame, a list of lists, or a numpy ndarray.
+            untransformed_features: The untransformed features to be logged. Can be a pandas DataFrame, a list of lists, or a numpy ndarray.
             prediction: The predictions to be logged. Can be a pandas DataFrame, a list of lists, or a numpy ndarray. Defaults to None.
-            transformed: Whether the features are transformed. Defaults to False.
+            transformed_features: The transformed features to be logged. Can be a pandas DataFrame, a list of lists, or a numpy ndarray.
             write_options: Options for writing the log. Defaults to None.
             training_dataset_version: Version of the training dataset. Defaults to None.
             model: `hsml.model.Model` Hopsworks model associated with the log. Defaults to None.
 
         # Returns
-            `Job` job information if python engine is used
+            `list[Job]` job information for feature insertion if python engine is used
 
         # Example
             ```python
-            # log features
+            # log untransformed features
             feature_view.log(features)
             # log features and predictions
             feature_view.log(features, prediction)
+            ```
+
+            ```python
+            # log both untransformed and transformed features
+            feature_view.log(
+                untransformed_features=features,
+                transformed_features=transformed_features
+            )
             ```
 
         # Raises
@@ -3621,9 +3645,9 @@ class FeatureView:
         return self._feature_view_engine.log_features(
             self,
             self.feature_logging,
-            features,
+            untransformed_features,
+            transformed_features,
             predictions,
-            transformed,
             write_options,
             training_dataset_version=(
                 training_dataset_version
@@ -3631,6 +3655,7 @@ class FeatureView:
                 or self.get_last_accessed_training_dataset()
             ),
             hsml_model=model,
+            logger=self._feature_logger
         )
 
     def get_log_timeline(
