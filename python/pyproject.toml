@@ -142,6 +142,7 @@ exclude = [
     "site-packages",
     "venv",
     "java",
+    "transformation_test_helper.py"  # File excluded from ruff formatting to maintain formatting required for tests
 ]
 
 # Same as Black.
