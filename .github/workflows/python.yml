@@ -28,6 +28,7 @@ jobs:
               - '!python/tests/**/*.py'
             test:
               - 'python/tests/**/*.py'
+              - '!python/tests/test_helpers/transformation_test_helper.py'
 
       - name: install deps
         run: pip install ruff==0.4.2

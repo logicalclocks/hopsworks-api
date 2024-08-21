@@ -306,7 +306,216 @@ def test_function():
             == "No argument corresponding to statistics parameter 'arg3' present in function definition."
         )
 
-    def test_format_source_code(self):
+    def test_format_source_code_one_argument(self):
+        from .test_helpers.transformation_test_helper import (
+            test_function_one_argument,
+        )
+
+        function_source = HopsworksUdf._extract_source_code(test_function_one_argument)
+
+        formated_source, module_imports = HopsworksUdf._format_source_code(
+            function_source
+        )
+
+        assert (
+            formated_source.strip()
+            == """def test_function_one_argument(arg1):
+\t    pass"""
+        )
+
+    def test_format_source_code_one_argument_with_statistics(self):
+        from .test_helpers.transformation_test_helper import (
+            test_function_one_argument_with_statistics,
+        )
+
+        function_source = HopsworksUdf._extract_source_code(
+            test_function_one_argument_with_statistics
+        )
+
+        formated_source, module_imports = HopsworksUdf._format_source_code(
+            function_source
+        )
+
+        assert (
+            formated_source.strip()
+            == """def test_function_one_argument_with_statistics(arg1):
+\t    pass"""
+        )
+
+    def test_format_source_code_one_argument_with_typehints(self):
+        from .test_helpers.transformation_test_helper import (
+            test_function_one_argument_with_typehints,
+        )
+
+        function_source = HopsworksUdf._extract_source_code(
+            test_function_one_argument_with_typehints
+        )
+
+        formated_source, module_imports = HopsworksUdf._format_source_code(
+            function_source
+        )
+
+        assert (
+            formated_source.strip()
+            == """def test_function_one_argument_with_typehints(arg1):
+\t    pass"""
+        )
+
+    def test_format_source_code_one_argument_with_statistics_and_typehints(self):
+        from .test_helpers.transformation_test_helper import (
+            test_function_one_argument_with_statistics_and_typehints,
+        )
+
+        function_source = HopsworksUdf._extract_source_code(
+            test_function_one_argument_with_statistics_and_typehints
+        )
+
+        formated_source, module_imports = HopsworksUdf._format_source_code(
+            function_source
+        )
+
+        assert (
+            formated_source.strip()
+            == """def test_function_one_argument_with_statistics_and_typehints(arg1):
+\t    pass"""
+        )
+
+    def test_format_source_code_multiple_argument(self):
+        from .test_helpers.transformation_test_helper import (
+            test_function_multiple_argument,
+        )
+
+        function_source = HopsworksUdf._extract_source_code(
+            test_function_multiple_argument
+        )
+
+        formated_source, module_imports = HopsworksUdf._format_source_code(
+            function_source
+        )
+
+        assert (
+            formated_source.strip()
+            == """def test_function_multiple_argument(arg1, arg2):
+\t    pass"""
+        )
+
+    def test_format_source_code_multiple_argument_with_statistics(self):
+        from .test_helpers.transformation_test_helper import (
+            test_function_multiple_argument_with_statistics,
+        )
+
+        function_source = HopsworksUdf._extract_source_code(
+            test_function_multiple_argument_with_statistics
+        )
+
+        formated_source, module_imports = HopsworksUdf._format_source_code(
+            function_source
+        )
+
+        assert (
+            formated_source.strip()
+            == """def test_function_multiple_argument_with_statistics(arg1, arg2, arg3):
+\t    pass"""
+        )
+
+    def test_format_source_code_multiple_argument_with_typehints(self):
+        from .test_helpers.transformation_test_helper import (
+            test_function_multiple_argument_with_typehints,
+        )
+
+        function_source = HopsworksUdf._extract_source_code(
+            test_function_multiple_argument_with_typehints
+        )
+
+        formated_source, module_imports = HopsworksUdf._format_source_code(
+            function_source
+        )
+
+        assert (
+            formated_source.strip()
+            == """def test_function_multiple_argument_with_typehints(arg1, arg2):
+\t    pass"""
+        )
+
+    def test_format_source_code_multiple_argument_with_statistics_and_typehints(self):
+        from .test_helpers.transformation_test_helper import (
+            test_function_multiple_argument_with_statistics_and_typehints,
+        )
+
+        function_source = HopsworksUdf._extract_source_code(
+            test_function_multiple_argument_with_statistics_and_typehints
+        )
+
+        formated_source, module_imports = HopsworksUdf._format_source_code(
+            function_source
+        )
+
+        assert (
+            formated_source.strip()
+            == """def test_function_multiple_argument_with_statistics_and_typehints(arg1, arg2):
+\t    pass"""
+        )
+
+    def test_format_source_code_multiple_argument_with_mixed_statistics_and_typehints(
+        self,
+    ):
+        from .test_helpers.transformation_test_helper import (
+            test_function_multiple_argument_with_mixed_statistics_and_typehints,
+        )
+
+        function_source = HopsworksUdf._extract_source_code(
+            test_function_multiple_argument_with_mixed_statistics_and_typehints
+        )
+
+        formated_source, module_imports = HopsworksUdf._format_source_code(
+            function_source
+        )
+
+        assert (
+            formated_source.strip()
+            == """def test_function_multiple_argument_with_mixed_statistics_and_typehints(arg1, arg2, arg3):
+\t    pass"""
+        )
+
+    def test_format_source_code_multiple_argument_all_parameter_with_spaces(self):
+        from .test_helpers.transformation_test_helper import (
+            test_function_multiple_argument_all_parameter_with_spaces,
+        )
+
+        function_source = HopsworksUdf._extract_source_code(
+            test_function_multiple_argument_all_parameter_with_spaces
+        )
+
+        formated_source, module_imports = HopsworksUdf._format_source_code(
+            function_source
+        )
+
+        assert (
+            formated_source.strip()
+            == """def test_function_multiple_argument_all_parameter_with_spaces(arg1, arg2):
+\t    pass"""
+        )
+
+    def test_format_source_code_multiple_argument_all_parameter_multiline(self):
+        from .test_helpers.transformation_test_helper import (
+            test_function_multiple_argument_all_parameter_multiline,
+        )
+
+        function_source = HopsworksUdf._extract_source_code(
+            test_function_multiple_argument_all_parameter_multiline
+        )
+
+        formated_source, module_imports = HopsworksUdf._format_source_code(
+            function_source
+        )
+
+        assert (
+            formated_source.strip()
+            == """def test_function_multiple_argument_all_parameter_multiline(arg1, arg2, arg3):
+\t    pass"""
+        )
+
+    def test_format_source_code_multiline_with_comments(self):
         from .test_helpers.transformation_test_helper import (
             test_function_multiple_argument_all_parameter_multiline_with_comments,
         )
@@ -322,6 +531,109 @@ def test_function():
         assert (
             formated_source.strip()
             == """def test_function_multiple_argument_all_parameter_multiline_with_comments(arg1, arg2, arg3):
+\t    pass"""
+        )
+
+    def test_format_source_code_transformation_statistics_as_default_one_line(self):
+        from .test_helpers.transformation_test_helper import (
+            test_function_transformation_statistics_as_default_one_line,
+        )
+
+        function_source = HopsworksUdf._extract_source_code(
+            test_function_transformation_statistics_as_default_one_line
+        )
+
+        formated_source, module_imports = HopsworksUdf._format_source_code(
+            function_source
+        )
+
+        assert (
+            formated_source.strip()
+            == """def test_function_transformation_statistics_as_default_one_line(arg1, arg2):
+\t    pass"""
+        )
+
+    def test_format_source_code_transformation_statistics_as_default_one_line_return_type(
+        self,
+    ):
+        from .test_helpers.transformation_test_helper import (
+            test_function_transformation_statistics_as_default_one_line_return_type,
+        )
+
+        function_source = HopsworksUdf._extract_source_code(
+            test_function_transformation_statistics_as_default_one_line_return_type
+        )
+
+        formated_source, module_imports = HopsworksUdf._format_source_code(
+            function_source
+        )
+
+        assert (
+            formated_source.strip()
+            == """def test_function_transformation_statistics_as_default_one_line_return_type(arg1, arg2):
+\t    pass"""
+        )
+
+    def test_format_source_code_transformation_statistics_as_default_multiple_line(
+        self,
+    ):
+        from .test_helpers.transformation_test_helper import (
+            test_function_transformation_statistics_as_default_multiple_line,
+        )
+
+        function_source = HopsworksUdf._extract_source_code(
+            test_function_transformation_statistics_as_default_multiple_line
+        )
+
+        formated_source, module_imports = HopsworksUdf._format_source_code(
+            function_source
+        )
+
+        assert (
+            formated_source.strip()
+            == """def test_function_transformation_statistics_as_default_multiple_line(arg1, arg2):
+\t    pass"""
+        )
+
+    def test_format_source_code_transformation_statistics_as_default_multiple_line_return_type_spaces(
+        self,
+    ):
+        from .test_helpers.transformation_test_helper import (
+            test_function_transformation_statistics_as_default_multiple_line_return_type_spaces,
+        )
+
+        function_source = HopsworksUdf._extract_source_code(
+            test_function_transformation_statistics_as_default_multiple_line_return_type_spaces
+        )
+
+        formated_source, module_imports = HopsworksUdf._format_source_code(
+            function_source
+        )
+
+        assert (
+            formated_source.strip()
+            == """def test_function_transformation_statistics_as_default_multiple_line_return_type_spaces(arg1, arg2):
+\t    pass"""
+        )
+
+    def test_format_source_code_transformation_statistics_as_default_multiple_line_return_type_no_spaces(
+        self,
+    ):
+        from .test_helpers.transformation_test_helper import (
+            test_function_transformation_statistics_as_default_multiple_line_return_type_no_spaces,
+        )
+
+        function_source = HopsworksUdf._extract_source_code(
+            test_function_transformation_statistics_as_default_multiple_line_return_type_no_spaces
+        )
+
+        formated_source, module_imports = HopsworksUdf._format_source_code(
+            function_source
+        )
+
+        assert (
+            formated_source.strip()
+            == """def test_function_transformation_statistics_as_default_multiple_line_return_type_no_spaces(arg1, arg2):
 \t    pass"""
         )
 

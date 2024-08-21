@@ -18,6 +18,7 @@ import ast
 import copy
 import inspect
 import json
+import re
 import warnings
 from dataclasses import dataclass
 from datetime import date, datetime, time
@@ -345,7 +346,9 @@ class HopsworksUdf:
         for i, line in enumerate(source_code):
             if line.strip().startswith("def "):
                 signature_start_line = i
-            if signature_start_line is not None and ")" in line:
+            if signature_start_line is not None and re.search(
+                r"\)\s*(->.*)?\s*:$", line.split("#")[0].strip()
+            ):
                 signature_end_line = i
                 break
 
