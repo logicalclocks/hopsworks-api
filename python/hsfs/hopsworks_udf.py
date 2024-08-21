@@ -347,7 +347,7 @@ class HopsworksUdf:
             if line.strip().startswith("def "):
                 signature_start_line = i
             if signature_start_line is not None and re.search(
-                r"\)\s*[->]*.*:$", line.split("#")[0].strip()
+                r"\)\s*(->.*)?\s*:$", line.split("#")[0].strip()
             ):
                 signature_end_line = i
                 break
