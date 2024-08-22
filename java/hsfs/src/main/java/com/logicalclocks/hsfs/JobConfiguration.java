@@ -30,14 +30,13 @@ public class JobConfiguration {
   @Setter
   private String type = "sparkJobConfiguration";
 
+  @Getter
+  @Setter
+  private int driverMemory;
 
   @Getter
   @Setter
-  private int amMemory;
-
-  @Getter
-  @Setter
-  private int amCores;
+  private int driverCores;
 
   @Getter
   @Setter
@@ -66,4 +65,8 @@ public class JobConfiguration {
   @Getter
   @Setter
   private int dynamicAllocationInitialExecutors;
+
+  @Getter
+  @Setter
+  private String environmentName;
 }

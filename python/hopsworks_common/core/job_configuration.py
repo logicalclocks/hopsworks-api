@@ -26,35 +26,38 @@ class JobConfiguration:
 
     def __init__(
         self,
-        am_memory=2048,
-        am_cores=1,
+        driver_memory=2048,
+        driver_cores=1,
         executor_memory=4096,
         executor_cores=1,
         executor_instances=1,
         dynamic_allocation=True,
         dynamic_min_executors=1,
         dynamic_max_executors=2,
+        environment_name="spark-feature-pipeline",
         **kwargs,
     ):
-        self._am_memory = am_memory
-        self._am_cores = am_cores
+        self._driver_memory = driver_memory
+        self._driver_cores = driver_cores
         self._executor_memory = executor_memory
         self._executor_cores = executor_cores
         self._executor_instances = executor_instances
         self._dynamic_allocation = dynamic_allocation
         self._dynamic_min_executors = dynamic_min_executors
         self._dynamic_max_executors = dynamic_max_executors
+        self._environment_name = environment_name
 
     def to_dict(self):
         return {
-            "amMemory": self._am_memory,
-            "amCores": self._am_cores,
+            "spark.driver.memory": self._driver_memory,
+            "spark.driver.cores": self._driver_cores,
             "spark.executor.memory": self._executor_memory,
             "spark.executor.cores": self._executor_cores,
             "spark.executor.instances": self._executor_instances,
             "spark.dynamicAllocation.enabled": self._dynamic_allocation,
             "spark.dynamicAllocation.minExecutors": self._dynamic_min_executors,
             "spark.dynamicAllocation.maxExecutors": self._dynamic_max_executors,
+            "environmentName": self._environment_name,
             "type": JobConfiguration.DTO_TYPE,
         }
 

@@ -587,7 +587,7 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    *        // Define job configuration.
    *        JobConfiguration jobConfiguration = new JobConfiguration();
    *        jobConfiguration.setDynamicAllocationEnabled(true);
-   *        jobConfiguration.setAmMemory(2048);
+   *        jobConfiguration.setDriverMemory(2048);
    *        // insert feature data
    *        fg.insert(featureData, jobConfiguration);
    * }
@@ -627,7 +627,7 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    *        // Define job configuration.
    *        JobConfiguration jobConfiguration = new JobConfiguration();
    *        jobConfiguration.setDynamicAllocationEnabled(true);
-   *        jobConfiguration.setAmMemory(2048);
+   *        jobConfiguration.setDriverMemory(2048);
    *
    *        // insert feature data
    *        fg.insert(featureData, false, writeOptions, jobConfiguration);
@@ -1019,7 +1019,7 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    *        // Define job configuration.
    *        JobConfiguration jobConfiguration = new JobConfiguration();
    *        jobConfiguration.setDynamicAllocationEnabled(true);
-   *        jobConfiguration.setAmMemory(2048);
+   *        jobConfiguration.setDriverMemory(2048);
    *        String queryName = "electricity_prices_streaming_query";
    *        String outputMode = "append";
    *        String checkpointLocation = "path_to_checkpoint_dir";
