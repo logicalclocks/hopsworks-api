@@ -28,14 +28,15 @@ class TestJobConfiguration:
 
         # Assert
         expected_dict = {
-            "amMemory": 2048,
-            "amCores": 1,
+            "spark.driver.memory": 2048,
+            "spark.driver.cores": 1,
             "spark.executor.memory": 4096,
             "spark.executor.cores": 1,
             "spark.executor.instances": 1,
             "spark.dynamicAllocation.enabled": True,
             "spark.dynamicAllocation.minExecutors": 1,
             "spark.dynamicAllocation.maxExecutors": 2,
+            "environmentName": "spark-feature-pipeline",
             "type": job_configuration.JobConfiguration.DTO_TYPE,
         }
         assert expected_dict == result_dict
@@ -43,14 +44,15 @@ class TestJobConfiguration:
     def test_to_dict_non_defaults(self):
         # Arrange
         job_config = job_configuration.JobConfiguration(
-            am_memory=4096,
-            am_cores=2,
+            driver_memory=4096,
+            driver_cores=2,
             executor_memory=8192,
             executor_cores=2,
             executor_instances=2,
             dynamic_allocation=False,
             dynamic_min_executors=2,
             dynamic_max_executors=4,
+            environment_name="spark-feature-pipeline",
         )
 
         # Act
@@ -58,14 +60,15 @@ class TestJobConfiguration:
 
         # Assert
         expected_dict = {
-            "amMemory": 4096,
-            "amCores": 2,
+            "spark.driver.memory": 4096,
+            "spark.driver.cores": 2,
             "spark.executor.memory": 8192,
             "spark.executor.cores": 2,
             "spark.executor.instances": 2,
             "spark.dynamicAllocation.enabled": False,
             "spark.dynamicAllocation.minExecutors": 2,
             "spark.dynamicAllocation.maxExecutors": 4,
+            "environmentName": "spark-feature-pipeline",
             "type": job_configuration.JobConfiguration.DTO_TYPE,
         }
         assert expected_dict == result_dict
