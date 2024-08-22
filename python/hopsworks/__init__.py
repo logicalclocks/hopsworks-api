@@ -38,8 +38,12 @@ from requests.exceptions import SSLError
 # Needs to run before import of hsml and hsfs
 warnings.filterwarnings(action="ignore", category=UserWarning, module=r".*psycopg2")
 
-import hsfs  # noqa: F401, E402
-import hsml  # noqa: F401, E402
+import hsfs  # noqa: E402
+import hsml  # noqa: E402
+
+
+sys.modules["hopsworks.hsfs"] = hsfs
+sys.modules["hopsworks.hsml"] = hsml
 
 
 __version__ = version.__version__
