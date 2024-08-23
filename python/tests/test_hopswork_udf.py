@@ -739,7 +739,7 @@ def test_function():
             return col1 + 1
 
         test_func.output_column_names = ["test_func_col1_"]
-        renaming_wrapper_function = test_func.hopsworksUdf_wrapper()
+        renaming_wrapper_function = test_func.pandas_udf_wrapper()
 
         result = renaming_wrapper_function(test_dataframe["col1"])
 
@@ -755,7 +755,7 @@ def test_function():
             "test_func_col1_col2_0",
             "test_func_col1_col2_1",
         ]
-        renaming_wrapper_function = test_func.hopsworksUdf_wrapper()
+        renaming_wrapper_function = test_func.pandas_udf_wrapper()
 
         test_dataframe = pd.DataFrame(
             {"column1": [1, 2, 3, 4], "column2": [10, 20, 30, 40]}

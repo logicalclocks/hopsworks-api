@@ -1012,7 +1012,7 @@ class VectorServer:
                 )
                 for feature in tf.hopsworks_udf.transformation_features
             ]
-            on_demand_feature = tf.hopsworks_udf.get_udf(force_python_udf=True)(
+            on_demand_feature = tf.hopsworks_udf.get_udf(inference=True)(
                 *features
             )  # Get only python compatible UDF irrespective of engine
 
@@ -1028,7 +1028,7 @@ class VectorServer:
                 else rows[feature]
                 for feature in tf.hopsworks_udf.transformation_features
             ]
-            transformed_result = tf.hopsworks_udf.get_udf(force_python_udf=True)(
+            transformed_result = tf.hopsworks_udf.get_udf(inference=True)(
                 *features
             )  # Get only python compatible UDF irrespective of engine
             if isinstance(transformed_result, pd.Series):
