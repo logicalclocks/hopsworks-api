@@ -546,8 +546,7 @@ class VectorServer:
                 "1. There is no match in the given entry."
                 " Please check if the entry exists in the online feature store"
                 " or provide the feature as passed_feature. "
-                f"2. Required entries [{', '.join(self.required_serving_keys)}] or "
-                f"[{', '.join(set(sk.feature_name for sk in self._serving_keys))}] are not provided."
+                f"2. Required entries [{', '.join(self.required_serving_keys)}] are not provided."
             )
 
         if len(self.return_feature_value_handlers) > 0:
@@ -1459,7 +1458,6 @@ class VectorServer:
         if not self._valid_serving_keys or len(self._valid_serving_keys) == 0:
             self._valid_serving_keys = set(
                 [sk.required_serving_key for sk in self.serving_keys]
-                + [sk.feature_name for sk in self.serving_keys]
             )
         return self._valid_serving_keys
 
