@@ -19,6 +19,7 @@ from typing import Optional, TypeVar, Union
 
 import numpy
 import pandas
+from hopsworks_common import usage
 from hsml.utils.schema.columnar_schema import ColumnarSchema
 from hsml.utils.schema.tensor_schema import TensorSchema
 
@@ -33,6 +34,7 @@ class Schema:
         `Schema`. The schema object.
     """
 
+    @usage.method_logger
     def __init__(
         self,
         object: Optional[

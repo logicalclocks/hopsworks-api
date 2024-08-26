@@ -16,6 +16,8 @@
 
 import os
 
+from hopsworks_common import usage
+from hopsworks_common.core import variable_api
 from hsml.decorators import connected, not_connected
 from requests.exceptions import ConnectionError
 
@@ -186,6 +188,9 @@ class Connection:
 
             self._model_api = model_api.ModelApi()
             self._model_serving_api.load_default_configuration()  # istio client, default resources,...
+            usage.init_usage(
+                self._host, variable_api.VariableApi().get_version("hopsworks")
+            )
         except (TypeError, ConnectionError):
             self._connected = False
             raise

@@ -15,6 +15,7 @@
 
 from typing import Dict, List, Optional, Union
 
+from hopsworks_common import usage
 from hsml import client, util
 from hsml import predictor as predictor_mod
 from hsml.client.exceptions import ModelServingException
@@ -32,6 +33,7 @@ from hsml.transformer import Transformer
 class Deployment:
     """Metadata object representing a deployment in Model Serving."""
 
+    @usage.method_logger
     def __init__(
         self,
         predictor,
@@ -63,6 +65,7 @@ class Deployment:
         self._grpc_channel = None
         self._model_registry_id = None
 
+    @usage.method_logger
     def save(self, await_update: Optional[int] = 60):
         """Persist this deployment including the predictor and metadata to Model Serving.
 
@@ -74,6 +77,7 @@ class Deployment:
 
         self._serving_engine.save(self, await_update)
 
+    @usage.method_logger
     def start(self, await_running: Optional[int] = 60):
         """Start the deployment
 
@@ -85,6 +89,7 @@ class Deployment:
 
         self._serving_engine.start(self, await_status=await_running)
 
+    @usage.method_logger
     def stop(self, await_stopped: Optional[int] = 60):
         """Stop the deployment
 
@@ -96,6 +101,7 @@ class Deployment:
 
         self._serving_engine.stop(self, await_status=await_stopped)
 
+    @usage.method_logger
     def delete(self, force=False):
         """Delete the deployment
 
@@ -165,6 +171,7 @@ class Deployment:
             )
         )
 
+    @usage.method_logger
     def predict(
         self,
         data: Union[Dict, InferInput] = None,
@@ -211,6 +218,7 @@ class Deployment:
             self.model_name, self.model_version, self.model_registry_id
         )
 
+    @usage.method_logger
     def download_artifact(self):
         """Download the model artifact served by the deployment"""
 

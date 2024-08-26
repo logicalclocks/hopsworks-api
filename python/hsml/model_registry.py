@@ -17,6 +17,7 @@
 import warnings
 
 import humps
+from hopsworks_common import usage
 from hsml import util
 from hsml.core import model_api
 from hsml.python import signature as python_signature  # noqa: F401
@@ -59,6 +60,7 @@ class ModelRegistry:
         json_decamelized = humps.decamelize(json_dict)
         return cls(**json_decamelized)
 
+    @usage.method_logger
     def get_model(self, name: str, version: int = None):
         """Get a model entity from the model registry.
         Getting a model from the Model Registry means getting its metadata handle
@@ -91,6 +93,7 @@ class ModelRegistry:
             shared_registry_project_name=self.shared_registry_project_name,
         )
 
+    @usage.method_logger
     def get_models(self, name: str):
         """Get all model entities from the model registry for a specified name.
         Getting all models from the Model Registry for a given name returns a list of model entities, one for each version registered under
@@ -110,6 +113,7 @@ class ModelRegistry:
             shared_registry_project_name=self.shared_registry_project_name,
         )
 
+    @usage.method_logger
     def get_best_model(self, name: str, metric: str, direction: str):
         """Get the best performing model entity from the model registry.
         Getting the best performing model from the Model Registry means specifying in addition to the name, also a metric

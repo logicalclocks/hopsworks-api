@@ -164,6 +164,23 @@ data = { "instances": [ model.input_example ] }
 predictions = deployment.predict(data)
 ```
 
+## Usage
+
+Usage data is collected for improving quality of the library.
+It is turned on by default if the backend is "c.app.hopsworks.ai".
+To turn it off, use one of the following ways:
+```python
+# use environment variable
+import os
+os.environ["ENABLE_HOPSWORKS_USAGE"] = "false"
+
+# use `disable_usage_logging`
+import hopsworks
+hopsworks.disable_usage_logging()
+```
+
+The corresponding source code is in `python/hopsworks_common/usage.py`.
+
 ## Tutorials
 
 Need more inspiration or want to learn more about the Hopsworks platform? Check out our [tutorials](https://github.com/logicalclocks/hopsworks-tutorials).
