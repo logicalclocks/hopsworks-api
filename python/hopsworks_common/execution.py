@@ -14,7 +14,10 @@
 #   limitations under the License.
 #
 
+from __future__ import annotations
+
 import json
+from typing import Optional
 
 import humps
 from hopsworks_common import client, constants, util
@@ -225,13 +228,13 @@ class Execution:
         """
         self._execution_api._stop(self.job_name, self.id)
 
-    def await_termination(self):
+    def await_termination(self, timeout: Optional[float] = None):
         """Wait until execution reaches terminal state
 
         # Raises
             `RestAPIError`.
         """
-        x = self._execution_engine.wait_until_finished(self._job, self)
+        x = self._execution_engine.wait_until_finished(self._job, self, timeout)
         if x.final_status == "KILLED":
             raise JobExecutionException("The Hopsworks Job was stopped")
         elif x.final_status == "FAILED":
