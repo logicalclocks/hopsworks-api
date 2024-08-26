@@ -229,7 +229,11 @@ class Execution:
         self._execution_api._stop(self.job_name, self.id)
 
     def await_termination(self, timeout: Optional[float] = None):
-        """Wait until execution reaches terminal state
+        """Wait until execution terminates.
+
+
+        # Arguments
+            timeout: the maximum waiting time in seconds, if `None` the waiting time is unbounded; defaults to `None`. Note: the actual waiting time may be bigger by approximately 3 seconds.
 
         # Raises
             `RestAPIError`.

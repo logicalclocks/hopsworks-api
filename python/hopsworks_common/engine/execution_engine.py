@@ -98,9 +98,11 @@ class ExecutionEngine:
         # Arguments
             job: job of the execution
             execution: execution to monitor
-            timeout: the requested maximum time in seconds to wait for the execution to finish, if `None` the waiting time is unbounded; defaults to `None`. Note: the actual waiting time may be bigger by approximately 3 seconds.
+            timeout: the maximum waiting time in seconds, if `None` the waiting time is unbounded; defaults to `None`. Note: the actual waiting time may be bigger by approximately 3 seconds.
         # Returns
             `Optional[Execution]`: The final execution or `None` if the timeout is exceeded.
+        # Raises
+            `RestAPIError`.
         """
         start_time = datetime.now()
 
