@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import os
 import argparse
 import json
@@ -285,6 +286,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     job_conf = read_job_conf(args.path)
 
+    success = False
     try:
         if args.op == "insert_fg":
             insert_fg(spark, job_conf)
@@ -300,6 +302,16 @@ if __name__ == "__main__":
             import_fg(job_conf)
         elif args.op == "run_feature_monitoring":
             run_feature_monitoring(job_conf)
+
+        success = True
     finally:
         if spark is not None:
-            spark.stop()
+            try:
+                spark.stop()
+            except Exception as e:
+                print(f"Error stopping spark session: {e}")
+        if not success:
+            sys.exit(1)
+
+    sys.exit(0)
+

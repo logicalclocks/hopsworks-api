@@ -115,13 +115,22 @@ public class MainClass {
     }
     LOGGER.info("Hsfs utils write options: {}", writeOptions);
 
+    boolean success = false;
     try {
       if (op.equals("offline_fg_materialization") || op.equals("offline_fg_backfill")) {
         SparkEngine.getInstance().streamToHudiTable(streamFeatureGroup, writeOptions);
       }
+      success = true;
     } finally {
       LOGGER.info("Closing spark session...");
-      SparkEngine.getInstance().closeSparkSession();
+      try {
+        SparkEngine.getInstance().closeSparkSession();
+      } catch (Exception e) {
+        LOGGER.error("Error closing spark session", e);
+      }
+      if (!success) {
+        System.exit(1);
+      }
     }
     System.exit(0);
   }
