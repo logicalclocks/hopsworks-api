@@ -53,6 +53,9 @@ jobs:
             ${{ steps.get-changed-files.outputs.all_changed_files }}
         run: ruff format $ALL_CHANGED_FILES
 
+      - name: check aliases
+        run: python python/aliases.py check
+
   unit_tests:
     name: Unit Tests
     needs: lint_stylecheck
