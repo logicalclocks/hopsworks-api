@@ -53,7 +53,21 @@ jobs:
             ${{ steps.get-changed-files.outputs.all_changed_files }}
         run: ruff format $ALL_CHANGED_FILES
 
-      - name: check aliases
+  check_aliases:
+    name: Check Aliases
+    needs: lint_stylecheck
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/setup-python@v5
+        name: Setup Python
+        with:
+          python-version: "3.10"
+          cache: "pip"
+          cache-dependency-path: "python/setup.py"
+      - run: pip install -e python[dev]
+
+      - name: Check aliases
         run: python python/aliases.py check
 
   unit_tests:
