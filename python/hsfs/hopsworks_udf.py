@@ -55,7 +55,7 @@ class UDFExecutionMode(Enum):
         try:
             return UDFExecutionMode[execution_mode.upper()]
         except KeyError as e:
-            raise Exception(
+            raise FeatureStoreException(
                 f"Ivalid execution mode `{execution_mode}` for UDF. Please use `default`, `python` or `pandas` instead."
             ) from e
 
