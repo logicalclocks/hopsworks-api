@@ -1323,7 +1323,18 @@ class Engine:
         hopsworks_udf: HopsworksUdf,
         dataframe: Union[pd.DataFrame, pl.DataFrame],
     ) -> Union[pd.DataFrame, pl.DataFrame]:
-        udf = hopsworks_udf.get_udf()
+        """
+        Apply a python udf to a dataframe
+
+        # Arguments
+            transformation_functions `List[transformation_function.TransformationFunction]` : List of transformation functions.
+            dataset `Union[pd.DataFrame, pl.DataFrame]`: A pandas or polars dataframe.
+        # Returns
+            `DataFrame`: A pandas dataframe with the transformed data.
+        # Raises
+            `FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
+        """
+        udf = hopsworks_udf.get_udf(inference=False)
         if isinstance(dataframe, pd.DataFrame):
             if len(hopsworks_udf.return_types) > 1:
                 dataframe[hopsworks_udf.output_column_names] = dataframe.apply(
@@ -1381,7 +1392,7 @@ class Engine:
         dataframe = pd.concat(
             [
                 dataframe.reset_index(drop=True),
-                hopsworks_udf.get_udf()(
+                hopsworks_udf.get_udf(inference=False)(
                     *(
                         [
                             dataframe[feature]
