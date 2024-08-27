@@ -178,7 +178,7 @@ class HopsworksUdf:
             return_types
         )
 
-        self._execution_mode = execution_mode
+        self._execution_mode: UDFExecutionMode = execution_mode
 
         self._feature_name_prefix: Optional[str] = (
             feature_name_prefix  # Prefix to be added to feature names
@@ -491,37 +491,78 @@ class HopsworksUdf:
         else:
             return self.return_types[0]
 
-    def python_udf_wrapper(self, renaming_wrapper) -> Callable:
-        # TODO : Implement the convert_timezone function for python udfs.
-        if renaming_wrapper:
-            # A renaming wrapper function that creates a dictionary with correct output columns names is required for spark udf to return multiple columns.
-            code = (
-                self._module_imports
-                + "\n"
-                + "def renaming_wrapper(*args):\n"
-                + f"   {self._formatted_function_source}\n"
-                + f"   transformed_features = {self.function_name}(*args)\n"
-            )
-            if len(self.return_types) > 1:
+    def python_udf_wrapper(self, rename_outputs) -> Callable:
+        """
+        Function that creates a dynamic wrapper function for the defined udf. The wrapper function would be used to specify column names, in spark engines and to localize timezones.
+
+        The renames is done so that the column names match the schema expected by spark when multiple columns are returned in a spark udf.
+        The wrapper function would be available in the main scope of the program.
+
+        # Returns
+            `Callable`: A wrapper function that renames outputs of the User defined function into specified output column names.
+        """
+        # Check if any output is of date time type.
+        date_time_output_index = [
+            ind
+            for ind, ele in enumerate(self.return_types)
+            if ele == "timestamp" or ele == "date"
+        ]
+
+        # Function that converts the timestamp to localized timezone
+        convert_timstamp_function = (
+            "from datetime import datetime\n"
+            + "import tzlocal\n"
+            + "def convert_timezone(date_time_obj : datetime):\n"
+            + "   current_timezone = tzlocal.get_localzone()\n"
+            + "   if date_time_obj.tzinfo is None:\n"
+            + "   # if timestamp is timezone unaware, make sure it's localized to the system's timezone.\n"
+            + "   # otherwise, spark will implicitly convert it to the system's timezone.\n"
+            "      return date_time_obj.replace(tzinfo=current_timezone)\n"
+            + "   else:\n"
+            + "      return date_time_obj.astimezone(timezone.utc).replace(tzinfo=current_timezone)\n"
+        )
+
+        # Start wrapper function generation
+        code = (
+            self._module_imports + "\n" + convert_timstamp_function
+            if date_time_output_index
+            else "\n"
+            + "def wrapper(*args):\n"
+            + f"   {self._formatted_function_source}\n"
+            + f"   transformed_features = {self.function_name}(*args)\n"
+        )
+        if len(self.return_types) > 1:
+            # If date time columns are there convert make sure that they are localized.
+            if date_time_output_index:
+                code += (
+                    "   transformed_features = list(transformed_features)\n"
+                    "   for index in _date_time_output_index:\n"
+                    + "      transformed_features[index] = convert_timezone(transformed_features[index])"
+                )
+            if rename_outputs:
+                # Use a dictionary to rename output to correct column names. This must be for the udf's to be executable in spark.
                 code += "   return dict(zip(_output_col_names, transformed_features))"
             else:
                 code += "   return transformed_features"
         else:
-            code = self._module_imports + "\n" + f"{self._formatted_function_source}\n"
+            if date_time_output_index:
+                code += (
+                    "   transformed_features = convert_timezone(transformed_features)\n"
+                )
+            code += "   return transformed_features"
 
+        # Inject required parameter to scope
         scope = __import__("__main__").__dict__.copy()
         if self.transformation_statistics is not None:
             scope.update({"statistics": self.transformation_statistics})
         scope.update({"_output_col_names": self.output_column_names})
+        scope.update({"_date_time_output_index": date_time_output_index})
 
         # executing code
         exec(code, scope)
 
         # returning executed function object
-        if renaming_wrapper:
-            return eval("renaming_wrapper", scope)
-        else:
-            return eval(self.function_name, scope)
+        return eval("wrapper", scope)
 
     def pandas_udf_wrapper(self) -> Callable:
         """
@@ -533,6 +574,12 @@ class HopsworksUdf:
         # Returns
             `Callable`: A wrapper function that renames outputs of the User defined function into specified output column names.
         """
+
+        date_time_output_columns = [
+            self.output_column_names[ind]
+            for ind, ele in enumerate(self.return_types)
+            if ele == "timestamp" or ele == "date"
+        ]
 
         # Function to make transformation function time safe. Defined as a string because it has to be dynamically injected into scope to be executed by spark
         convert_timstamp_function = """def convert_timezone(date_time_col : pd.Series):
@@ -559,7 +606,7 @@ def renaming_wrapper(*args):
     if isinstance(df, tuple):
         df = pd.concat(df, axis=1)
     df = df.rename(columns = {{df.columns[i]: _output_col_names[i] for i in range(len(df.columns))}})
-    for col in df:
+    for col in _date_time_output_columns:
         if pd.api.types.is_datetime64_any_dtype(df[col]):
             df[col] = convert_timezone(df[col])
     return df"""
@@ -574,7 +621,7 @@ def renaming_wrapper(*args):
     {self._formatted_function_source}
     df = {self.function_name}(*args)
     df = df.rename(_output_col_names[0])
-    if pd.api.types.is_datetime64_any_dtype(df):
+    if _date_time_output_columns:
         df = convert_timezone(df)
     return df"""
             )
@@ -586,6 +633,7 @@ def renaming_wrapper(*args):
         if self.transformation_statistics is not None:
             scope.update({"statistics": self.transformation_statistics})
         scope.update({"_output_col_names": self.output_column_names})
+        scope.update({"_date_time_output_columns": date_time_output_columns})
         # executing code
         exec(code, scope)
 
@@ -648,13 +696,20 @@ def renaming_wrapper(*args):
 
     def get_udf(self, inference: bool = False) -> Callable:
         """
-        Function that checks the current engine type and returns the appropriate UDF.
+        Function that checks the current engine type, execution type and returns the appropriate UDF.
 
-        In the spark engine the UDF is returned as a pandas UDF.
-        While in the python engine the UDF is returned as python function.
+        If the execution mode is : "default":
+            - In the `spark` engine : During inference a spark udf is returned otherwise a spark pandas_udf is returned.
+            - In the `python` engine : During inference a python udf is returned otherwise a pandas udf is returned.
+        If the execution mode is : "pandas":
+            - In the `spark` engine : Always returns a spark pandas udf.
+            - In the `python` engine : Always returns a pandas udf.
+        If the execution mode is : "python":
+            - In the `spark` engine : Always returns a spark udf.
+            - In the `python` engine : Always returns a python udf.
 
         # Arguments
-            force_python_udf: `bool`. Force return a python compatible udf irrespective of engine.
+            inference: `bool`. Specify if udf required for online inference.
 
         # Returns
             `Callable`: Pandas UDF in the spark engine otherwise returns a python function for the UDF.
@@ -664,7 +719,6 @@ def renaming_wrapper(*args):
             self.execution_mode.get_current_execution_mode(inference)
             == UDFExecutionMode.PANDAS
         ):
-            print("pandas engine")
             if engine.get_type() in ["python", "training"] or inference:
                 return self.pandas_udf_wrapper()
             else:
@@ -678,14 +732,14 @@ def renaming_wrapper(*args):
             self.execution_mode.get_current_execution_mode(inference)
             == UDFExecutionMode.PYTHON
         ):
-            print("python engine")
             if engine.get_type() in ["python", "training"] or inference:
-                return self.python_udf_wrapper(renaming_wrapper=False)
+                # Renaming into correct column names done within Python engine since a wrapper does not work for polars dataFrames.
+                return self.python_udf_wrapper(rename_outputs=False)
             else:
                 from pyspark.sql.functions import udf as pyspark_udf
 
                 return pyspark_udf(
-                    f=self.python_udf_wrapper(renaming_wrapper=True),
+                    f=self.python_udf_wrapper(rename_outputs=True),
                     returnType=self._create_pandas_udf_return_schema_from_list(),
                 )
 
