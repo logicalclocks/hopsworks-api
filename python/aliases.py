@@ -31,7 +31,14 @@ SOURCES = [
     "hopsworks/fs",
     "hopsworks/ml",
 ]
-IGNORED = ["tests", "hsfs", "hopsworks", "hsml", "hopsworks_common"]
+IGNORED = [
+    "tests",
+    "hsfs",
+    "hopsworks",
+    "hsml",
+    "hopsworks_common",
+    "hopsworks.egg-info",
+]
 # Everything that is not a top-level file, a part of sources, or a part of ignored is considered to be autmoatically managed.
 
 
