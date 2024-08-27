@@ -59,6 +59,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@v4
+      - name: Copy README
+        run: cp README.md python/
+
       - uses: actions/setup-python@v5
         name: Setup Python
         with:
