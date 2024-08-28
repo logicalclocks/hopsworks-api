@@ -3856,7 +3856,7 @@ class FeatureView:
 
         # Example
             ```python
-            schema = feature_view.get_schema(training_dataset_version=1)
+            schema = feature_view.get_training_dataset_schema(training_dataset_version=1)
             ```
 
         # Returns
@@ -3865,7 +3865,9 @@ class FeatureView:
         # Raises
             `ValueError` if the  training dataset version provided cannot be found.
         """
-        return self._feature_view_engine.get_schema(self, training_dataset_version)
+        return self._feature_view_engine.get_training_dataset_schema(
+            self, training_dataset_version
+        )
 
     @property
     def id(self) -> int:
@@ -4060,40 +4062,6 @@ class FeatureView:
     @logging_enabled.setter
     def logging_enabled(self, logging_enabled) -> None:
         self._logging_enabled = logging_enabled
-
-    @property
-    def transformed_features(self) -> List[str]:
-        """Names of features in the latest training dataset version generated from the feature view after transformation functions have been applied"""
-        dropped_features = set()
-        transformed_column_names = []
-        for tf in self.transformation_functions:
-            if self.labels not in tf.hopsworks_udf.transformation_features:
-                transformed_column_names.extend(tf.output_column_names)
-                if tf.hopsworks_udf.dropped_features:
-                    dropped_features.update(tf.hopsworks_udf.dropped_features)
-
-        return [
-            feature.name
-            for feature in self.features
-            if feature.name not in dropped_features
-        ] + transformed_column_names
-
-    @property
-    def transformed_labels(self) -> List[str]:
-        """Names of labels in the latest training dataset version generated from the feature view after transformation functions have been applied"""
-        dropped_features = set()
-        transformed_column_names = []
-        for tf in self.transformation_functions:
-            if any(
-                label in tf.hopsworks_udf.transformation_features
-                for label in self.labels
-            ):
-                transformed_column_names.extend(tf.output_column_names)
-                if tf.hopsworks_udf.dropped_features:
-                    dropped_features.update(tf.hopsworks_udf.dropped_features)
-        return [
-            label for label in self.labels if label not in dropped_features
-        ] + transformed_column_names
 
     @property
     def feature_logging(self) -> Optional[FeatureLogging]:

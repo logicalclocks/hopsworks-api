@@ -189,7 +189,9 @@ class FeatureViewEngine:
         else:
             return self._feature_view_api.delete_by_name(name)
 
-    def get_schema(self, feature_view: FeatureView, training_dataset_version: int):
+    def get_training_dataset_schema(
+        self, feature_view: FeatureView, training_dataset_version: int
+    ):
         """
         Function that returns the schema of the training dataset generated using the feature view.
 
@@ -208,73 +210,69 @@ class FeatureViewEngine:
             # Return the features in the feature view if the no transformation functions in the feature view.
             return feature_view.features
         else:
-            # Create schema based on transformation function.
-            (
-                transformed_feature_names,
-                output_types_features,
-                transformed_label_names,
-                output_types_labels,
-            ) = [], [], [], []
+            transformed_features = []
+            transformed_labels = []
             dropped_features = set()
+
             # Get transformation functions with correct statistics based on training dataset version.
             transformation_functions = self._transformation_function_engine.get_ready_to_use_transformation_fns(
                 feature_view=feature_view,
                 training_dataset_version=training_dataset_version,
             )
-            for tf in transformation_functions:
-                # create transformed label names if a transformation functions take a labels as input.
-                if any(
-                    label in tf.hopsworks_udf.transformation_features
-                    for label in feature_view.labels
-                ):
-                    transformed_label_names.extend(tf.output_column_names)
-                    output_types_labels.extend(tf.hopsworks_udf.return_types)
-                    if tf.hopsworks_udf.dropped_features:
-                        dropped_features.update(tf.hopsworks_udf.dropped_features)
-                else:
-                    # create transformed features names if a transformation functions take a no labels as input.
-                    transformed_feature_names.extend(tf.output_column_names)
-                    output_types_features.extend(tf.hopsworks_udf.return_types)
-                    if tf.hopsworks_udf.dropped_features:
-                        dropped_features.update(tf.hopsworks_udf.dropped_features)
 
-            # Add features that are not dropped to the schema
-            schema = [
+            # Getting all dropped features
+            for tf in transformation_functions:
+                if tf.hopsworks_udf.dropped_features:
+                    dropped_features.update(tf.hopsworks_udf.dropped_features)
+
+            # Creating list of features not dropped after transformations
+            transformed_features = [
                 feature
                 for feature in feature_view.features
                 if feature.name not in dropped_features and not feature.label
             ]
 
-            # Add transformed features to the schema
-            for transformed_feature_name, output_type in zip(
-                transformed_feature_names, output_types_features
-            ):
-                schema.append(
-                    training_dataset_feature.TrainingDatasetFeature(
-                        name=transformed_feature_name, type=output_type, label=False
+            # Creating list of labels not dropped after transformations
+            transformed_labels = [
+                feature
+                for feature in feature_view.features
+                if feature.name not in dropped_features and feature.label
+            ]
+
+            for tf in transformation_functions:
+                # create transformed labels if a transformation functions take a labels as input.
+                if any(
+                    label in tf.hopsworks_udf.transformation_features
+                    for label in feature_view.labels
+                ):
+                    transformed_labels.extend(
+                        [
+                            training_dataset_feature.TrainingDatasetFeature(
+                                name=transformed_label_name,
+                                type=output_type,
+                                label=True,
+                            )
+                            for transformed_label_name, output_type in zip(
+                                tf.output_column_names, tf.hopsworks_udf.return_types
+                            )
+                        ]
                     )
-                )
-
-            # Add labels that are not dropped to the schema
-            schema.extend(
-                [
-                    feature
-                    for feature in feature_view.features
-                    if feature.name not in dropped_features and feature.label
-                ]
-            )
-
-            # Add transformed labels to the schema
-            for transformed_label_name, output_type in zip(
-                transformed_label_names, output_types_labels
-            ):
-                schema.append(
-                    training_dataset_feature.TrainingDatasetFeature(
-                        name=transformed_label_name, type=output_type, label=True
+                # create transformed features if a transformation functions take a no labels as input.
+                else:
+                    transformed_features.extend(
+                        [
+                            training_dataset_feature.TrainingDatasetFeature(
+                                name=transformed_feature_name,
+                                type=output_type,
+                                label=False,
+                            )
+                            for transformed_feature_name, output_type in zip(
+                                tf.output_column_names, tf.hopsworks_udf.return_types
+                            )
+                        ]
                     )
-                )
 
-            return schema
+            return transformed_features + transformed_labels
 
     def get_batch_query(
         self,
@@ -481,9 +479,19 @@ class FeatureViewEngine:
                 feature_view_obj, td_updated, split_df
             )
 
+        # Getting transformed label names
+        transformed_labels = [
+            feature.name
+            for feature in self.get_training_dataset_schema(
+                feature_view=feature_view_obj,
+                training_dataset_version=td_updated.version,
+            )
+            if feature.label
+        ]
+
         # Updating labels based if transformation functions are attached to the feature view.
         labels = (
-            feature_view_obj.transformed_labels
+            transformed_labels
             if feature_view_obj.transformation_functions
             else feature_view_obj.labels
         )
@@ -1086,12 +1094,17 @@ class FeatureViewEngine:
         if write_options:
             default_write_options.update(write_options)
         fg = feature_logging.get_feature_group(transformed)
-        td_predictions = [feature for feature in fv.features if feature.label]
+        training_dataset_schema = fv.get_training_dataset_schema(
+            training_dataset_version=training_dataset_version
+        )
+        td_predictions = [
+            feature for feature in training_dataset_schema if feature.label
+        ]
         td_predictions_names = set([feature.name for feature in td_predictions])
         if transformed:
             td_features = [
                 feature_name
-                for feature_name in fv.transformed_features
+                for feature_name in training_dataset_schema
                 if feature_name not in td_predictions_names
             ]
         else:
