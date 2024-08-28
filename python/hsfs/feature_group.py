@@ -251,7 +251,7 @@ class FeatureGroupBase:
         include_primary_key: Optional[bool] = True,
         include_event_time: Optional[bool] = True,
     ) -> query.Query:
-        """Select all features in the feature group and return a query object.
+        """Select all features along with primary key and event time from the feature group and return a query object.
 
         The query can be used to construct joins of feature groups or create a
         feature view.
@@ -315,6 +315,53 @@ class FeatureGroupBase:
             return self.select_except([self.event_time])
         else:
             return self.select_except(self.primary_key + [self.event_time])
+
+    def select_features(
+        self,
+    ) -> query.Query:
+        """Select all the features in the feature group and return a query object.
+
+        The query can be used to construct joins of feature groups or create a
+        feature view.
+
+        !!! example
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            # get the Feature Group instances
+            fg1 = fs.get_or_create_feature_group(...)
+            fg2 = fs.get_or_create_feature_group(...)
+
+            # construct the query
+            query = fg1.select_features().join(fg2.select_features())
+
+            # show first 5 rows
+            query.show(5)
+
+
+            # select all features exclude primary key and event time
+            from hsfs.feature import Feature
+            fg = fs.create_feature_group(
+                    "fg",
+                    features=[
+                            Feature("id", type="string"),
+                            Feature("ts", type="bigint"),
+                            Feature("f1", type="date"),
+                            Feature("f2", type="double")
+                            ],
+                    primary_key=["id"],
+                    event_time="ts")
+
+            query = fg.select_features()
+            query.features
+            # [Feature('f1', ...), Feature('f2', ...)]
+            ```
+
+        # Returns
+            `Query`. A query object with all features of the feature group.
+        """
+        return self.select_except(self.primary_key + [self.event_time])
 
     def select(self, features: List[Union[str, feature.Feature]]) -> query.Query:
         """Select a subset of features of the feature group and return a query object.
