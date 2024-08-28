@@ -85,7 +85,7 @@ class TestPythonSparkTransformationFunctions:
             transformation_functions=transformation_functions,
             dataset=df,
         )
-
+        print(result)
         assert list(result.columns) == list(expected_df.columns)
         assert list(result.dtypes) == list(expected_df.dtypes)
         assert result.equals(expected_df)
@@ -163,6 +163,7 @@ class TestPythonSparkTransformationFunctions:
             "statisticsArgumentNames": ["feature"],
             "name": "min_max_scaler",
             "droppedArgumentNames": ["feature"],
+            "executionMode": "default",
         }
 
         tf_fun = HopsworksUdf.from_response_json(udf_response)
@@ -306,6 +307,7 @@ class TestPythonSparkTransformationFunctions:
             "statisticsArgumentNames": ["feature"],
             "name": "standard_scaler",
             "droppedArgumentNames": ["feature"],
+            "executionMode": "default",
         }
 
         tf_fun = HopsworksUdf.from_response_json(udf_response)
@@ -453,6 +455,7 @@ class TestPythonSparkTransformationFunctions:
             "statisticsArgumentNames": ["feature"],
             "name": "robust_scaler",
             "droppedArgumentNames": ["feature"],
+            "executionMode": "default",
         }
 
         tf_fun = HopsworksUdf.from_response_json(udf_response)

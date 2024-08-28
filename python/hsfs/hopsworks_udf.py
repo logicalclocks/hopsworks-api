@@ -622,7 +622,9 @@ def renaming_wrapper(*args):
     df = {self.function_name}(*args)
     df = df.rename(_output_col_names[0])
     if _date_time_output_columns:
-        df = convert_timezone(df)
+        # Set correct type is column is not of datetime type
+        if pd.api.types.is_datetime64_any_dtype(df):
+            df = convert_timezone(df)
     return df"""
             )
 
@@ -863,6 +865,9 @@ def renaming_wrapper(*args):
             dropped_feature_names=dropped_feature_names,
             feature_name_prefix=feature_name_prefix,
             transformation_function_argument_names=transformation_function_argument_names,
+            execution_mode=UDFExecutionMode.from_string(
+                json_decamelized["execution_mode"]
+            ),
         )
 
         # Set transformation features if already set.
