@@ -59,7 +59,7 @@ def collect_imports(root):
         pkg = str(file.parent.relative_to(root)).replace("/", ".")
         if file.name == "__init__.py":
             imports.append(pkg)
-        elif file.name.endswith(".py"):
+        elif file.suffix == ".py":
             imports.append(pkg + "." + file.name[:-3])
 
     for source in SOURCES:
@@ -146,6 +146,8 @@ def check(root):
     def check_file(path):
         global ok
         if path.parent == root or any(path.is_relative_to(p) for p in ignored):
+            return
+        if path.suffix == ".pyc" or "__pycache__" in path.parts:
             return
         if path not in managed:
             print(f"Error: {path} shouldn't exist.")
