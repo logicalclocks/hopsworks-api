@@ -447,7 +447,7 @@ class OnlineStoreSqlClient:
     def _get_or_create_event_loop(self):
         try:
             _logger.debug("Acquiring or starting event loop for async engine.")
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             asyncio.set_event_loop(loop)
         except RuntimeError as ex:
             if "There is no current event loop in thread" in str(ex):
