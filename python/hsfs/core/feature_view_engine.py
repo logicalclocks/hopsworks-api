@@ -1103,9 +1103,9 @@ class FeatureViewEngine:
         td_predictions_names = set([feature.name for feature in td_predictions])
         if transformed:
             td_features = [
-                feature_name
-                for feature_name in training_dataset_schema
-                if feature_name not in td_predictions_names
+                feature.name
+                for feature in training_dataset_schema
+                if feature.name not in td_predictions_names
             ]
         else:
             td_features = [
