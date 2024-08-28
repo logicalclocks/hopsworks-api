@@ -329,7 +329,6 @@ class OnlineStoreSqlClient:
         results_dict = loop.run_until_complete(
             self._execute_prep_statements(prepared_statement_execution, bind_entries)
         )
-        loop.stop()
 
         _logger.debug(f"Retrieved feature vectors: {results_dict}")
         _logger.debug("Constructing serving vector from results")
@@ -339,6 +338,7 @@ class OnlineStoreSqlClient:
                 result_dict = dict(row)
                 serving_vector.update(result_dict)
 
+        loop.stop()
         return serving_vector
 
     def _batch_vector_results(
@@ -399,7 +399,6 @@ class OnlineStoreSqlClient:
         parallel_results = loop.run_until_complete(
             self._execute_prep_statements(prepared_stmts_to_execute, entry_values)
         )
-        loop.stop()
 
         _logger.debug(f"Retrieved feature vectors: {parallel_results}, stitching them.")
         # construct the results
@@ -442,6 +441,8 @@ class OnlineStoreSqlClient:
                         self._get_result_key_serving_key(serving_keys, entry), {}
                     )
                 )
+        
+        loop.stop()
         return batch_results, serving_keys_all_fg
 
     def _get_or_create_event_loop(self):
