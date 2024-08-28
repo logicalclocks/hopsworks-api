@@ -14,17 +14,25 @@
 #   limitations under the License.
 #
 
-import os
+from __future__ import annotations
 
-from hsml.decorators import connected, not_connected
-from requests.exceptions import ConnectionError
+import hopsworks_common.connection
+from hopsworks_common import usage
+from hopsworks_common.connection import (
+    HOPSWORKS_PORT_DEFAULT,
+    HOSTNAME_VERIFICATION_DEFAULT,
+)
+from hopsworks_common.decorators import connected, not_connected
 
 
-HOPSWORKS_PORT_DEFAULT = 443
-HOSTNAME_VERIFICATION_DEFAULT = True
+__all__ = [
+    "Connection",
+    "HOPSWORKS_PORT_DEFAULT",
+    "HOSTNAME_VERIFICATION_DEFAULT",
+]
 
 
-class Connection:
+class Connection(hopsworks_common.connection.Connection):
     """A Hopsworks Model Management connection object.
 
     The connection is project specific, so you can access the project's own Model Registry and Model Serving.
@@ -86,32 +94,34 @@ class Connection:
         `Connection`. Connection handle to perform operations on a Hopsworks project.
     """
 
-    def __init__(
-        self,
-        host: str = None,
-        port: int = HOPSWORKS_PORT_DEFAULT,
-        project: str = None,
-        hostname_verification: bool = HOSTNAME_VERIFICATION_DEFAULT,
-        trust_store_path: str = None,
-        api_key_file: str = None,
-        api_key_value: str = None,
-    ):
+    @not_connected
+    def connect(self):
+        """Instantiate the connection.
+
+        Creating a `Connection` object implicitly calls this method for you to
+        instantiate the connection. However, it is possible to close the connection
+        gracefully with the `close()` method, in order to clean up materialized
+        certificates. This might be desired when working on external environments.
+        Subsequently you can call `connect()` again to reopen the connection.
+
+        !!! example
+            ```python
+            import hsml
+            conn = hsml.connection()
+            conn.close()
+            conn.connect()
+            ```
+        """
+        super().connect()
+
         from hsml.core import model_api, model_registry_api, model_serving_api
 
-        self._host = host
-        self._port = port
-        self._project = project
-        self._hostname_verification = hostname_verification
-        self._trust_store_path = trust_store_path
-        self._api_key_file = api_key_file
-        self._api_key_value = api_key_value
-        self._connected = False
         self._model_api = model_api.ModelApi()
         self._model_registry_api = model_registry_api.ModelRegistryApi()
         self._model_serving_api = model_serving_api.ModelServingApi()
+        self._model_serving_api.load_default_configuration()  # istio client, default resources,...
 
-        self.connect()
-
+    @usage.method_logger
     @connected
     def get_model_registry(self, project: str = None):
         """Get a reference to a model registry to perform operations on, defaulting to the project's default model registry.
@@ -125,6 +135,7 @@ class Connection:
         """
         return self._model_registry_api.get(project)
 
+    @usage.method_logger
     @connected
     def get_model_serving(self):
         """Get a reference to model serving to perform operations on. Model serving operates on top of a model registry, defaulting to the project's default model registry.
@@ -144,53 +155,6 @@ class Connection:
         """
         return self._model_serving_api.get()
 
-    @not_connected
-    def connect(self):
-        """Instantiate the connection.
-
-        Creating a `Connection` object implicitly calls this method for you to
-        instantiate the connection. However, it is possible to close the connection
-        gracefully with the `close()` method, in order to clean up materialized
-        certificates. This might be desired when working on external environments.
-        Subsequently you can call `connect()` again to reopen the connection.
-
-        !!! example
-            ```python
-            import hsml
-            conn = hsml.connection()
-            conn.close()
-            conn.connect()
-            ```
-        """
-        from hsml import client
-        from hsml.core import model_api
-
-        self._connected = True
-        try:
-            # init client
-            if client.hopsworks.base.Client.REST_ENDPOINT not in os.environ:
-                client.init(
-                    "external",
-                    self._host,
-                    self._port,
-                    self._project,
-                    None,
-                    self._hostname_verification,
-                    self._trust_store_path,
-                    None,
-                    self._api_key_file,
-                    self._api_key_value,
-                )
-            else:
-                client.init("internal")
-
-            self._model_api = model_api.ModelApi()
-            self._model_serving_api.load_default_configuration()  # istio client, default resources,...
-        except (TypeError, ConnectionError):
-            self._connected = False
-            raise
-        print("Connected. Call `.close()` to terminate connection gracefully.")
-
     def close(self):
         """Close a connection gracefully.
 
@@ -205,95 +169,3 @@ class Connection:
         self._model_api = None
         self._connected = False
         print("Connection closed.")
-
-    @classmethod
-    def connection(
-        cls,
-        host: str = None,
-        port: int = HOPSWORKS_PORT_DEFAULT,
-        project: str = None,
-        hostname_verification: bool = HOSTNAME_VERIFICATION_DEFAULT,
-        trust_store_path: str = None,
-        api_key_file: str = None,
-        api_key_value: str = None,
-    ):
-        """Connection factory method, accessible through `hsml.connection()`."""
-        return cls(
-            host,
-            port,
-            project,
-            hostname_verification,
-            trust_store_path,
-            api_key_file,
-            api_key_value,
-        )
-
-    @property
-    def host(self):
-        return self._host
-
-    @host.setter
-    @not_connected
-    def host(self, host):
-        self._host = host
-
-    @property
-    def port(self):
-        return self._port
-
-    @port.setter
-    @not_connected
-    def port(self, port):
-        self._port = port
-
-    @property
-    def project(self):
-        return self._project
-
-    @project.setter
-    @not_connected
-    def project(self, project):
-        self._project = project
-
-    @property
-    def hostname_verification(self):
-        return self._hostname_verification
-
-    @hostname_verification.setter
-    @not_connected
-    def hostname_verification(self, hostname_verification):
-        self._hostname_verification = hostname_verification
-
-    @property
-    def trust_store_path(self):
-        return self._trust_store_path
-
-    @trust_store_path.setter
-    @not_connected
-    def trust_store_path(self, trust_store_path):
-        self._trust_store_path = trust_store_path
-
-    @property
-    def api_key_file(self):
-        return self._api_key_file
-
-    @property
-    def api_key_value(self):
-        return self._api_key_value
-
-    @api_key_file.setter
-    @not_connected
-    def api_key_file(self, api_key_file):
-        self._api_key_file = api_key_file
-
-    @api_key_value.setter
-    @not_connected
-    def api_key_value(self, api_key_value):
-        self._api_key_value = api_key_value
-
-    def __enter__(self):
-        self.connect()
-        return self
-
-    def __exit__(self, type, value, traceback):
-        self.close()

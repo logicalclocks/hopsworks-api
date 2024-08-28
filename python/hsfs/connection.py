@@ -13,32 +13,32 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+
 from __future__ import annotations
 
-import importlib.util
-import os
-from typing import Any, Optional
+from typing import Optional
 
-from hopsworks_common import client
-from hsfs import engine, feature_store, usage, util
-from hsfs.core import (
-    feature_store_api,
-    hosts_api,
-    project_api,
-    services_api,
-    variable_api,
+import hopsworks_common.connection
+from hopsworks_common import client, usage, util
+from hopsworks_common.connection import (
+    CERT_FOLDER_DEFAULT,
+    HOPSWORKS_PORT_DEFAULT,
+    HOSTNAME_VERIFICATION_DEFAULT,
 )
-from hsfs.core.opensearch import OpenSearchClientSingleton
-from hsfs.decorators import connected, not_connected
-from requests.exceptions import ConnectionError
+from hopsworks_common.decorators import connected, not_connected
+from hsfs import engine, feature_store
+from hsfs.core import feature_store_api
 
 
-HOPSWORKS_PORT_DEFAULT = 443
-HOSTNAME_VERIFICATION_DEFAULT = True
-CERT_FOLDER_DEFAULT = "/tmp"
+__all__ = [
+    "Connection",
+    "CERT_FOLDER_DEFAULT",
+    "HOPSWORKS_PORT_DEFAULT",
+    "HOSTNAME_VERIFICATION_DEFAULT",
+]
 
 
-class Connection:
+class Connection(hopsworks_common.connection.Connection):
     """A feature store connection object.
 
     The connection is project specific, so you can access the project's own feature
@@ -120,30 +120,31 @@ class Connection:
             Hopsworks project.
     """
 
-    def __init__(
-        self,
-        host: Optional[str] = None,
-        port: int = HOPSWORKS_PORT_DEFAULT,
-        project: Optional[str] = None,
-        engine: Optional[str] = None,
-        hostname_verification: bool = HOSTNAME_VERIFICATION_DEFAULT,
-        trust_store_path: Optional[str] = None,
-        cert_folder: str = CERT_FOLDER_DEFAULT,
-        api_key_file: Optional[str] = None,
-        api_key_value: Optional[str] = None,
-    ) -> None:
-        self._host = host
-        self._port = port
-        self._project = project
-        self._engine = engine
-        self._hostname_verification = hostname_verification
-        self._trust_store_path = trust_store_path
-        self._cert_folder = cert_folder
-        self._api_key_file = api_key_file
-        self._api_key_value = api_key_value
-        self._connected = False
+    @not_connected
+    def connect(self):
+        """Instantiate the connection.
 
-        self.connect()
+        Creating a `Connection` object implicitly calls this method for you to
+        instantiate the connection. However, it is possible to close the connection
+        gracefully with the `close()` method, in order to clean up materialized
+        certificates. This might be desired when working on external environments such
+        as AWS SageMaker. Subsequently you can call `connect()` again to reopen the
+        connection.
+
+        !!! example
+            ```python
+            import hsfs
+            conn = hsfs.connection()
+            conn.close()
+            conn.connect()
+            ```
+        """
+        super().connect()
+
+        # init engine
+        engine.init(self._engine)
+
+        self._feature_store_api = feature_store_api.FeatureStoreApi()
 
     @usage.method_logger
     @connected
@@ -179,81 +180,6 @@ class Connection:
             name = client.get_instance()._project_name
         return self._feature_store_api.get(util.append_feature_store_suffix(name))
 
-    @not_connected
-    def connect(self) -> None:
-        """Instantiate the connection.
-
-        Creating a `Connection` object implicitly calls this method for you to
-        instantiate the connection. However, it is possible to close the connection
-        gracefully with the `close()` method, in order to clean up materialized
-        certificates. This might be desired when working on external environments such
-        as AWS SageMaker. Subsequently you can call `connect()` again to reopen the
-        connection.
-
-        !!! example
-            ```python
-            import hsfs
-            conn = hsfs.connection()
-            conn.close()
-            conn.connect()
-            ```
-        """
-        self._connected = True
-        try:
-            # determine engine, needed to init client
-            if (self._engine is not None and self._engine.lower() == "spark") or (
-                self._engine is None and importlib.util.find_spec("pyspark")
-            ):
-                self._engine = "spark"
-            elif (self._engine is not None and self._engine.lower() == "python") or (
-                self._engine is None and not importlib.util.find_spec("pyspark")
-            ):
-                self._engine = "python"
-            elif self._engine is not None and self._engine.lower() == "training":
-                self._engine = "training"
-            elif (
-                self._engine is not None
-                and self._engine.lower() == "spark-no-metastore"
-            ):
-                self._engine = "spark-no-metastore"
-            else:
-                raise ConnectionError(
-                    "Engine you are trying to initialize is unknown. "
-                    "Supported engines are `'spark'`, `'python'` and `'training'`."
-                )
-
-            # init client
-            if client.base.Client.REST_ENDPOINT not in os.environ:
-                client.init(
-                    "external",
-                    self._host,
-                    self._port,
-                    self._project,
-                    self._engine,
-                    self._hostname_verification,
-                    self._trust_store_path,
-                    self._cert_folder,
-                    self._api_key_file,
-                    self._api_key_value,
-                )
-            else:
-                client.init("hopsworks")
-
-            # init engine
-            engine.init(self._engine)
-
-            self._feature_store_api = feature_store_api.FeatureStoreApi()
-            self._project_api = project_api.ProjectApi()
-            self._hosts_api = hosts_api.HostsApi()
-            self._services_api = services_api.ServicesApi()
-            usage.init_usage(
-                self._host, variable_api.VariableApi().get_version("hopsworks")
-            )
-        except (TypeError, ConnectionError):
-            self._connected = False
-            raise
-        print("Connected. Call `.close()` to terminate connection gracefully.")
-
     def close(self) -> None:
         """Close a connection gracefully.
 
@@ -264,119 +190,11 @@ class Connection:
 
         !!! example
             ```python
-            import hsfs
-            conn = hsfs.connection()
+            import hopsworks
+            conn = hopsworks.connection()
             conn.close()
             ```
         """
-        OpenSearchClientSingleton().close()
-        client.stop()
-        self._feature_store_api = None
+        super().close()
         engine.stop()
-        self._connected = False
-        print("Connection closed.")
-
-    @classmethod
-    def connection(
-        cls,
-        host: Optional[str] = None,
-        port: int = HOPSWORKS_PORT_DEFAULT,
-        project: Optional[str] = None,
-        engine: Optional[str] = None,
-        hostname_verification: bool = HOSTNAME_VERIFICATION_DEFAULT,
-        trust_store_path: Optional[str] = None,
-        cert_folder: str = CERT_FOLDER_DEFAULT,
-        api_key_file: Optional[str] = None,
-        api_key_value: Optional[str] = None,
-    ) -> Connection:
-        """Connection factory method, accessible through `hsfs.connection()`."""
-        return cls(
-            host,
-            port,
-            project,
-            engine,
-            hostname_verification,
-            trust_store_path,
-            cert_folder,
-            api_key_file,
-            api_key_value,
-        )
-
-    @property
-    def host(self) -> Optional[str]:
-        return self._host
-
-    @host.setter
-    @not_connected
-    def host(self, host: Optional[str]) -> None:
-        self._host = host
-
-    @property
-    def port(self) -> int:
-        return self._port
-
-    @port.setter
-    @not_connected
-    def port(self, port) -> int:
-        self._port = port
-
-    @property
-    def project(self) -> Optional[str]:
-        return self._project
-
-    @project.setter
-    @not_connected
-    def project(self, project: Optional[str]) -> str:
-        self._project = project
-
-    @property
-    def hostname_verification(self):
-        return self._hostname_verification
-
-    @hostname_verification.setter
-    @not_connected
-    def hostname_verification(self, hostname_verification):
-        self._hostname_verification = hostname_verification
-
-    @property
-    def trust_store_path(self) -> Optional[str]:
-        return self._trust_store_path
-
-    @trust_store_path.setter
-    @not_connected
-    def trust_store_path(self, trust_store_path: Optional[str]) -> None:
-        self._trust_store_path = trust_store_path
-
-    @property
-    def cert_folder(self) -> str:
-        return self._cert_folder
-
-    @cert_folder.setter
-    @not_connected
-    def cert_folder(self, cert_folder: str) -> None:
-        self._cert_folder = cert_folder
-
-    @property
-    def api_key_file(self) -> Optional[str]:
-        return self._api_key_file
-
-    @property
-    def api_key_value(self) -> Optional[str]:
-        return self._api_key_value
-
-    @api_key_file.setter
-    @not_connected
-    def api_key_file(self, api_key_file: Optional[str]) -> None:
-        self._api_key_file = api_key_file
-
-    @api_key_value.setter
-    @not_connected
-    def api_key_value(self, api_key_value: Optional[str]) -> Optional[str]:
-        self._api_key_value = api_key_value
-
-    def __enter__(self) -> Connection:
-        self.connect()
-        return self
-
-    def __exit__(self, type: Any, value: Any, traceback: Any):
-        self.close()
+        self._feature_store_api = None

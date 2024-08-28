@@ -1,5 +1,5 @@
 #
-#   Copyright 2022 Logical Clocks AB
+#   Copyright 2020 Logical Clocks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -13,23 +13,35 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import importlib
+import importlib.util
 import os
 import re
 import sys
 import warnings
+from typing import Any, Optional
 
-from hopsworks import client, version
-from hopsworks.core import project_api, secret_api, variable_api
-from hopsworks.decorators import connected, not_connected
+from hopsworks_common import client, usage, util, version
+from hopsworks_common.core import (
+    hosts_api,
+    project_api,
+    secret_api,
+    services_api,
+    variable_api,
+)
+from hopsworks_common.core.opensearch import OpenSearchClientSingleton
+from hopsworks_common.decorators import connected, not_connected
 from requests.exceptions import ConnectionError
 
 
 HOPSWORKS_PORT_DEFAULT = 443
-HOPSWORKS_HOSTNAME_VERIFICATION_DEFAULT = os.environ.get(
+HOSTNAME_VERIFICATION_DEFAULT = os.environ.get(
     "HOPSWORKS_HOSTNAME_VERIFICATION", "True"
 ).lower() in ("true", "1", "y", "yes")
+# alias for backwards compatibility:
+HOPSWORKS_HOSTNAME_VERIFICATION_DEFAULT = HOSTNAME_VERIFICATION_DEFAULT
 CERT_FOLDER_DEFAULT = "/tmp"
 PROJECT_ID = "HOPSWORKS_PROJECT_ID"
 PROJECT_NAME = "HOPSWORKS_PROJECT_NAME"
@@ -74,20 +86,31 @@ class Connection:
     For more information, see the [integration guides](../setup.md).
 
     # Arguments
-        host: The hostname of the Hopsworks instance, defaults to `None`.
+        host: The hostname of the Hopsworks instance in the form of `[UUID].cloud.hopsworks.ai`,
+            defaults to `None`. Do **not** use the url including `https://` when connecting
+            programatically.
         port: The port on which the Hopsworks instance can be reached,
             defaults to `443`.
-        project: The name of the project to connect to. If this is set connection.get_project() will return
-        the set project. If not set connection.get_project("my_project") should be used.
-        hostname_verification: Whether or not to verify Hopsworks’ certificate, defaults
+        project: The name of the project to connect to. When running on Hopsworks, this
+            defaults to the project from where the client is run from.
+            Defaults to `None`.
+        engine: Which engine to use, `"spark"`, `"python"` or `"training"`. Defaults to `None`,
+            which initializes the engine to Spark if the environment provides Spark, for
+            example on Hopsworks and Databricks, or falls back on Hive in Python if Spark is not
+            available, e.g. on local Python environments or AWS SageMaker. This option
+            allows you to override this behaviour. `"training"` engine is useful when only
+            feature store metadata is needed, for example training dataset location and label
+            information when Hopsworks training experiment is conducted.
+        hostname_verification: Whether or not to verify Hopsworks' certificate, defaults
             to `True`.
         trust_store_path: Path on the file system containing the Hopsworks certificates,
             defaults to `None`.
         cert_folder: The directory to store retrieved HopsFS certificates, defaults to
-            `"/tmp"`. Only required to produce messages to Kafka broker from external environment.
-        api_key_file: Path to a file containing the API Key.
-        api_key_value: API Key as string, if provided, however, this should be used with care,
-        especially if the used notebook or job script is accessible by multiple parties. Defaults to `None`.
+            `"/tmp"`. Only required when running without a Spark environment.
+        api_key_file: Path to a file containing the API Key, defaults to `None`.
+        api_key_value: API Key as string, if provided, `api_key_file` will be ignored,
+            however, this should be used with care, especially if the used notebook or
+            job script is accessible by multiple parties. Defaults to `None`.
 
     # Returns
         `Connection`. Connection handle to perform operations on a
@@ -96,28 +119,30 @@ class Connection:
 
     def __init__(
         self,
-        host: str = None,
+        host: Optional[str] = None,
         port: int = HOPSWORKS_PORT_DEFAULT,
-        project: str = None,
-        hostname_verification: bool = HOPSWORKS_HOSTNAME_VERIFICATION_DEFAULT,
-        trust_store_path: str = None,
+        project: Optional[str] = None,
+        engine: Optional[str] = None,
+        hostname_verification: bool = HOSTNAME_VERIFICATION_DEFAULT,
+        trust_store_path: Optional[str] = None,
         cert_folder: str = CERT_FOLDER_DEFAULT,
-        api_key_file: str = None,
-        api_key_value: str = None,
-    ):
+        api_key_file: Optional[str] = None,
+        api_key_value: Optional[str] = None,
+    ) -> None:
         self._host = host
         self._port = port
         self._project = project
+        self._engine = engine
         self._hostname_verification = hostname_verification
         self._trust_store_path = trust_store_path
         self._cert_folder = cert_folder
         self._api_key_file = api_key_file
         self._api_key_value = api_key_value
         self._connected = False
-        self._engine = None
 
         self.connect()
 
+    @usage.method_logger
     @connected
     def get_secrets_api(self):
         """Get the secrets api.
@@ -127,6 +152,7 @@ class Connection:
         """
         return self._secret_api
 
+    @usage.method_logger
     @connected
     def create_project(
         self, name: str, description: str = None, feature_store_topic: str = None
@@ -154,6 +180,7 @@ class Connection:
         """
         return self._project_api._create_project(name, description, feature_store_topic)
 
+    @usage.method_logger
     @connected
     def get_project(self, name: str = None):
         """Get an existing project.
@@ -177,6 +204,7 @@ class Connection:
 
         return self._project_api._get_project(name)
 
+    @usage.method_logger
     @connected
     def get_projects(self):
         """Get all projects.
@@ -187,6 +215,7 @@ class Connection:
 
         return self._project_api._get_projects()
 
+    @usage.method_logger
     @connected
     def project_exists(self, name: str):
         """Check if a project exists.
@@ -227,7 +256,7 @@ class Connection:
             sys.stderr.flush()
 
     @not_connected
-    def connect(self):
+    def connect(self) -> None:
         """Instantiate the connection.
 
         Creating a `Connection` object implicitly calls this method for you to
@@ -248,29 +277,30 @@ class Connection:
         client.stop()
         self._connected = True
         try:
+            # determine engine, needed to init client
+            if (self._engine is not None and self._engine.lower() == "spark") or (
+                self._engine is None and importlib.util.find_spec("pyspark")
+            ):
+                self._engine = "spark"
+            elif (self._engine is not None and self._engine.lower() == "python") or (
+                self._engine is None and not importlib.util.find_spec("pyspark")
+            ):
+                self._engine = "python"
+            elif self._engine is not None and self._engine.lower() == "training":
+                self._engine = "training"
+            elif (
+                self._engine is not None
+                and self._engine.lower() == "spark-no-metastore"
+            ):
+                self._engine = "spark-no-metastore"
+            else:
+                raise ConnectionError(
+                    "Engine you are trying to initialize is unknown. "
+                    "Supported engines are `'spark'`, `'python'` and `'training'`."
+                )
+
             # init client
             if client.base.Client.REST_ENDPOINT not in os.environ:
-                # determine engine, needed to init client
-                if (self._engine is not None and self._engine.lower() == "spark") or (
-                    self._engine is None and importlib.util.find_spec("pyspark")
-                ):
-                    self._engine = "spark"
-                elif (
-                    self._engine is not None and self._engine.lower() == "python"
-                ) or (self._engine is None and not importlib.util.find_spec("pyspark")):
-                    self._engine = "python"
-                elif self._engine is not None and self._engine.lower() == "training":
-                    self._engine = "training"
-                elif (
-                    self._engine is not None
-                    and self._engine.lower() == "spark-no-metastore"
-                ):
-                    self._engine = "spark-no-metastore"
-                else:
-                    raise ConnectionError(
-                        "Engine you are trying to initialize is unknown. "
-                        "Supported engines are `'spark'`, `'python'` and `'training'`."
-                    )
                 client.init(
                     "external",
                     self._host,
@@ -285,13 +315,16 @@ class Connection:
                 )
             else:
                 client.init(
-                    client_type="hopsworks",
+                    "hopsworks",
                     hostname_verification=self._hostname_verification,
                 )
 
             self._project_api = project_api.ProjectApi()
+            self._hosts_api = hosts_api.HostsApi()
+            self._services_api = services_api.ServicesApi()
             self._secret_api = secret_api.SecretsApi()
             self._variable_api = variable_api.VariableApi()
+            usage.init_usage(self._host, self._variable_api.get_version("hopsworks"))
         except (TypeError, ConnectionError):
             self._connected = False
             raise
@@ -311,55 +344,45 @@ class Connection:
 
         self._check_compatibility()
 
-    def close(self):
+    def close(self) -> None:
         """Close a connection gracefully.
 
         This will clean up any materialized certificates on the local file system of
         external environments such as AWS SageMaker.
 
         Usage is recommended but optional.
+
+        !!! example
+            ```python
+            import hopsworks
+            conn = hopsworks.connection()
+            conn.close()
+            ```
         """
-        from hsfs import client as hsfs_client
-        from hsfs import engine as hsfs_engine
-        from hsml import client as hsml_client
-
-        try:
-            hsfs_client.stop()
-        except:  # noqa: E722
-            pass
-
-        try:
-            hsfs_engine.stop()
-        except:  # noqa: E722
-            pass
-
-        try:
-            hsml_client.stop()
-        except:  # noqa: E722
-            pass
-
+        OpenSearchClientSingleton().close()
         client.stop()
         self._connected = False
-
         print("Connection closed.")
 
     @classmethod
     def connection(
         cls,
-        host: str = None,
+        host: Optional[str] = None,
         port: int = HOPSWORKS_PORT_DEFAULT,
-        project: str = None,
-        hostname_verification: bool = HOPSWORKS_HOSTNAME_VERIFICATION_DEFAULT,
-        trust_store_path: str = None,
+        project: Optional[str] = None,
+        engine: Optional[str] = None,
+        hostname_verification: bool = HOSTNAME_VERIFICATION_DEFAULT,
+        trust_store_path: Optional[str] = None,
         cert_folder: str = CERT_FOLDER_DEFAULT,
-        api_key_file: str = None,
-        api_key_value: str = None,
-    ):
+        api_key_file: Optional[str] = None,
+        api_key_value: Optional[str] = None,
+    ) -> Connection:
         """Connection factory method, accessible through `hopsworks.connection()`."""
         return cls(
             host,
             port,
             project,
+            engine,
             hostname_verification,
             trust_store_path,
             cert_folder,
@@ -368,30 +391,30 @@ class Connection:
         )
 
     @property
-    def host(self):
+    def host(self) -> Optional[str]:
         return self._host
 
     @host.setter
     @not_connected
-    def host(self, host):
+    def host(self, host: Optional[str]) -> None:
         self._host = host
 
     @property
-    def port(self):
+    def port(self) -> int:
         return self._port
 
     @port.setter
     @not_connected
-    def port(self, port):
+    def port(self, port) -> int:
         self._port = port
 
     @property
-    def project(self):
+    def project(self) -> Optional[str]:
         return self._project
 
     @project.setter
     @not_connected
-    def project(self, project):
+    def project(self, project: Optional[str]) -> str:
         self._project = project
 
     @property
@@ -404,44 +427,44 @@ class Connection:
         self._hostname_verification = hostname_verification
 
     @property
-    def api_key_file(self):
-        return self._api_key_file
-
-    @property
-    def api_key_value(self):
-        return self._api_key_value
-
-    @api_key_file.setter
-    @not_connected
-    def api_key_file(self, api_key_file):
-        self._api_key_file = api_key_file
-
-    @api_key_value.setter
-    @not_connected
-    def api_key_value(self, api_key_value):
-        self._api_key_value = api_key_value
-
-    @property
-    def trust_store_path(self):
+    def trust_store_path(self) -> Optional[str]:
         return self._trust_store_path
 
     @trust_store_path.setter
     @not_connected
-    def trust_store_path(self, trust_store_path):
+    def trust_store_path(self, trust_store_path: Optional[str]) -> None:
         self._trust_store_path = trust_store_path
 
     @property
-    def cert_folder(self):
+    def cert_folder(self) -> str:
         return self._cert_folder
 
     @cert_folder.setter
     @not_connected
-    def cert_folder(self, cert_folder):
+    def cert_folder(self, cert_folder: str) -> None:
         self._cert_folder = cert_folder
 
-    def __enter__(self):
+    @property
+    def api_key_file(self) -> Optional[str]:
+        return self._api_key_file
+
+    @property
+    def api_key_value(self) -> Optional[str]:
+        return self._api_key_value
+
+    @api_key_file.setter
+    @not_connected
+    def api_key_file(self, api_key_file: Optional[str]) -> None:
+        self._api_key_file = api_key_file
+
+    @api_key_value.setter
+    @not_connected
+    def api_key_value(self, api_key_value: Optional[str]) -> Optional[str]:
+        self._api_key_value = api_key_value
+
+    def __enter__(self) -> Connection:
         self.connect()
         return self
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(self, type: Any, value: Any, traceback: Any):
         self.close()
