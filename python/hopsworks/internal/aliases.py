@@ -92,11 +92,15 @@ def deprecated(*, available_until: Optional[str] = None):
 
     v = f"version {available_until}" if available_until else "a future release"
 
-    def decorator(symbol):
+    def deprecate(symbol):
         if inspect.isclass(symbol):
+            methods = inspect.getmembers(symbol, predicate=inspect.isfunction)
+            for name, value in methods:
+                setattr(symbol, name, deprecate(value))
+        elif inspect.isfunction(symbol):
 
             @functools.wraps(symbol)
-            def decorated_f(*args, **kwargs):
+            def deprecated_f(*args, **kwargs):
                 caller = inspect.getmodule(inspect.stack()[1][0])
                 if not caller or not caller.__name__.startswith("hopsworks"):
                     warnings.warn(
@@ -107,6 +111,8 @@ def deprecated(*, available_until: Optional[str] = None):
                     )
                 return symbol(*args, **kwargs)
 
-            return decorated_f
+            return deprecated_f
+        else:
+            raise InternalError("Deprecation of something else than class or function.")
 
-    return decorator
+    return deprecate
