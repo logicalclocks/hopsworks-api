@@ -133,6 +133,14 @@ def check(root):
     global ok
     ok = True
     managed = collect_managed(root)
+    for filepath, content in managed.items():
+        if not filepath.exists():
+            print(f"Error: {filepath} should exist.")
+            ok = False
+            continue
+        if filepath.read_text() != content:
+            print(f"Error: {filepath} has wrong content.")
+            ok = False
     ignored = [root / path for path in SOURCES + IGNORED]
 
     def check_file(path):
@@ -141,10 +149,6 @@ def check(root):
             return
         if path not in managed:
             print(f"Error: {path} shouldn't exist.")
-            ok = False
-            return
-        if path.read_text() != managed[path]:
-            print(f"Error: {path} has wrong content.")
             ok = False
 
     traverse(root, check_file)
