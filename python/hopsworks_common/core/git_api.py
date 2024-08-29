@@ -24,6 +24,7 @@ from hopsworks_common import (
     git_file_status,
     git_op_execution,
     git_repo,
+    usage,
     util,
 )
 from hopsworks_common.client.exceptions import GitException
@@ -38,6 +39,7 @@ class GitApi:
         self._git_provider_api = git_provider_api.GitProviderApi()
         self._log = logging.getLogger(__name__)
 
+    @usage.method_logger
     def clone(self, url: str, path: str, provider: str = None, branch: str = None):
         """Clone a new Git Repo in to Hopsworks Filesystem.
 
@@ -101,6 +103,7 @@ class GitApi:
         created_repo = self.get_repo(git_op.repository.name, git_op.repository.path)
         return created_repo
 
+    @usage.method_logger
     def get_repos(self):
         """Get the existing Git repositories
 
@@ -120,6 +123,7 @@ class GitApi:
             _client._send_request("GET", path_params, query_params=query_params)
         )
 
+    @usage.method_logger
     def get_providers(self):
         """Get the configured Git providers
 
@@ -130,6 +134,7 @@ class GitApi:
         """
         return self._git_provider_api._get_providers()
 
+    @usage.method_logger
     def get_provider(self, provider: str):
         """Get the configured Git provider
 
@@ -142,6 +147,7 @@ class GitApi:
         """
         return self._git_provider_api._get_provider(provider)
 
+    @usage.method_logger
     def set_provider(self, provider: str, username: str, token: str):
         """Configure a Git provider
 
@@ -165,6 +171,7 @@ class GitApi:
         """
         self._git_provider_api._set_provider(provider, username, token)
 
+    @usage.method_logger
     def get_repo(self, name: str, path: str = None):
         """Get the cloned Git repository
 

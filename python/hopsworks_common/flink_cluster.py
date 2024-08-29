@@ -16,7 +16,7 @@
 
 import time
 
-from hopsworks_common import client, util
+from hopsworks_common import client, usage, util
 from hopsworks_common.core import execution_api, flink_cluster_api
 from hopsworks_common.engine import execution_engine
 
@@ -64,6 +64,7 @@ class FlinkCluster:
                     ongoing_executions += 1
         return ongoing_executions
 
+    @usage.method_logger
     def start(self, await_time=1800):
         """Start the flink cluster and wait until it reaches RUNNING state.
 
@@ -174,6 +175,7 @@ class FlinkCluster:
             self._get_execution(assert_running=True), job_id
         )
 
+    @usage.method_logger
     def stop_job(self, job_id):
         """Stop specific job in the flink cluster.
         ```python
@@ -250,6 +252,7 @@ class FlinkCluster:
             self._get_execution(assert_running=True), jar_file
         )
 
+    @usage.method_logger
     def submit_job(self, jar_id, main_class, job_arguments=None):
         """Submit job using the specific jar file uploaded to the flink cluster.
         ```python
@@ -317,6 +320,7 @@ class FlinkCluster:
             self._get_execution(assert_running=True), job_id
         )
 
+    @usage.method_logger
     def stop(self):
         """Stop this cluster.
         ```python

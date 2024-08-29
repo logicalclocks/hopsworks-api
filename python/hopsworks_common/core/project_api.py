@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 
-from hopsworks_common import client, constants, project
+from hopsworks_common import client, constants, project, usage
 from hopsworks_common.client.exceptions import RestAPIError
 
 
@@ -113,6 +113,7 @@ class ProjectApi:
         print("Project created successfully, explore it at " + project.get_url())
         return project
 
+    @usage.method_logger
     def get_client(self):
         _client = client.get_instance()
         path_params = [

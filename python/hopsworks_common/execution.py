@@ -20,7 +20,7 @@ import json
 from typing import Optional
 
 import humps
-from hopsworks_common import client, constants, util
+from hopsworks_common import client, constants, usage, util
 from hopsworks_common.client.exceptions import JobExecutionException
 from hopsworks_common.core import execution_api
 from hopsworks_common.engine import execution_engine
@@ -210,6 +210,7 @@ class Execution:
         """
         return self._execution_engine.download_logs(self, path)
 
+    @usage.method_logger
     def delete(self):
         """Delete the execution
         !!! danger "Potentially dangerous operation"
@@ -219,6 +220,7 @@ class Execution:
         """
         self._execution_api._delete(self._job.name, self.id)
 
+    @usage.method_logger
     def stop(self):
         """Stop the execution
         !!! danger "Potentially dangerous operation"
