@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import warnings
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Literal, Optional
 
 import humps
 from hopsworks_common import client, util
@@ -258,7 +258,6 @@ class Job:
         """
         self._job_api._delete(self)
 
-
     def _is_materialization_running(self, args: str) -> bool:
         if self.name.endswith("offline_fg_materialization") or self.name.endswith(
             "offline_fg_backfill"
@@ -283,7 +282,7 @@ class Job:
                 return True
         return False
 
-    def _wait_for_job(self, await_termination=True):
+    def _wait_for_job(self, await_termination=True, timeout: Optional[float] = None):
         # If the user passed the wait_for_job option consider it,
         # otherwise use the default True
         if await_termination:
@@ -292,8 +291,9 @@ class Job:
                 execution = executions[0]
             else:
                 return
-            self._execution_engine.wait_until_finished(job=self, execution=execution)
-
+            self._execution_engine.wait_until_finished(
+                job=self, execution=execution, timeout=timeout
+            )
 
     def schedule(
         self,

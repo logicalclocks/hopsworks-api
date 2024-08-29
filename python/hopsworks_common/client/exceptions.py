@@ -117,6 +117,7 @@ class ExternalClientError(TypeError):
         ).format(missing_argument)
         super().__init__(message)
 
+
 class HopsworksClientError(TypeError):
     """Raised when hopsworks internal client cannot be initialized due to missing arguments."""
 
@@ -127,11 +128,13 @@ class HopsworksClientError(TypeError):
         ).format(missing_argument)
         super().__init__(message)
 
+
 class HopsworksSSLClientError(SSLError):
     """Raised when the client connection fails with SSL related errors."""
 
     def __init__(self, message: str) -> None:
         super().__init__(message)
+
 
 class GitException(Exception):
     """Generic git exception"""
