@@ -23,7 +23,8 @@ import tempfile
 import warnings
 from pathlib import Path
 
-from hopsworks import client, constants, project, usage, version
+from hopsworks import client, constants, project, version
+from hopsworks_common import usage
 from hopsworks.client.exceptions import (
     HopsworksSSLClientError,
     ProjectException,
@@ -476,6 +477,7 @@ def _set_active_project(project):
     _client = client.get_instance()
     if _client._is_external():
         _client.provide_project(project.name)
+
 
 def disable_usage_logging():
     usage.disable()
