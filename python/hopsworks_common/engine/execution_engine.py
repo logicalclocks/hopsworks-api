@@ -120,8 +120,9 @@ class ExecutionEngine:
         updated_execution = self._execution_api._get(job, execution.id)
         execution_state = None
         while updated_execution.success is None:
-            if passed() + MAX_LAG >= timeout:
-                return None
+            if timeout and timeout <= passed() + MAX_LAG:
+                self._log.info("The waiting timeout was exceeded.")
+                return updated_execution
             time.sleep(MAX_LAG)
             updated_execution = self._execution_api._get(job, execution.id)
             if execution_state != updated_execution.state:
@@ -147,7 +148,7 @@ class ExecutionEngine:
         log_aggregation_files_exist_already = log_aggregation_files_exist
         self._log.info("Waiting for log aggregation to finish.")
         while not log_aggregation_files_exist and await_time >= 0:
-            if passed() + MAX_LAG >= timeout:
+            if timeout and timeout <= passed() + MAX_LAG:
                 break
             await_time -= MAX_LAG
             time.sleep(MAX_LAG)
@@ -157,8 +158,9 @@ class ExecutionEngine:
                 updated_execution.stdout_path
             ) and self._dataset_api.exists(updated_execution.stderr_path)
 
-        if not log_aggregation_files_exist_already and passed() + 5 < timeout:
-            time.sleep(5)  # Helps for log aggregation to flush to filesystem
+        if not log_aggregation_files_exist_already:
+            if not timeout or timeout > passed() + 5:
+                time.sleep(5)  # Helps for log aggregation to flush to filesystem
 
         if is_yarn_job and not updated_execution.success:
             self._log.error(
