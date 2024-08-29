@@ -20,10 +20,10 @@ import re
 import sys
 import warnings
 
-from hopsworks_common import usage
 from hopsworks import client, version
 from hopsworks.core import project_api, secret_api, variable_api
 from hopsworks.decorators import connected, not_connected
+from hopsworks_common import usage
 from requests.exceptions import ConnectionError
 
 

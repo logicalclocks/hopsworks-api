@@ -24,7 +24,6 @@ import warnings
 from pathlib import Path
 
 from hopsworks import client, constants, project, version
-from hopsworks_common import usage
 from hopsworks.client.exceptions import (
     HopsworksSSLClientError,
     ProjectException,
@@ -33,6 +32,7 @@ from hopsworks.client.exceptions import (
 from hopsworks.connection import Connection
 from hopsworks.core import project_api, secret_api
 from hopsworks.decorators import NoHopsworksConnectionError
+from hopsworks_common import usage
 from requests.exceptions import SSLError
 
 
