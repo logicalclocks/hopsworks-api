@@ -121,7 +121,8 @@ class ExecutionEngine:
         execution_state = None
         while updated_execution.success is None:
             if timeout and timeout <= passed() + MAX_LAG:
-                return None
+                self._log.info("The waiting timeout was exceeded.")
+                return updated_execution
             time.sleep(MAX_LAG)
             updated_execution = self._execution_api._get(job, execution.id)
             if execution_state != updated_execution.state:
