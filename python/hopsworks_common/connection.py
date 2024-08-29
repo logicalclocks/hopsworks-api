@@ -21,7 +21,7 @@ import os
 import re
 import sys
 import warnings
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from hopsworks_common import client, usage, util, version
 from hopsworks_common.core import (
@@ -34,6 +34,10 @@ from hopsworks_common.core import (
 from hopsworks_common.core.opensearch import OpenSearchClientSingleton
 from hopsworks_common.decorators import connected, not_connected
 from requests.exceptions import ConnectionError
+
+
+if TYPE_CHECKING:
+    from hsfs import feature_store
 
 
 HOPSWORKS_PORT_DEFAULT = 443
@@ -141,6 +145,60 @@ class Connection:
         self._connected = False
 
         self.connect()
+
+    @usage.method_logger
+    @connected
+    def get_feature_store(
+        self, name: Optional[str] = None
+    ) -> feature_store.FeatureStore:
+        """Get a reference to a feature store to perform operations on.
+
+        Defaulting to the project name of default feature store. To get a
+        Shared feature stores, the project name of the feature store is required.
+
+        # Arguments
+            name: The name of the feature store, defaults to `None`.
+
+        # Returns
+            `FeatureStore`. A feature store handle object to perform operations on.
+        """
+        if not name:
+            name = client.get_instance()._project_name
+        return self._feature_store_api.get(util.append_feature_store_suffix(name))
+
+    @usage.method_logger
+    @connected
+    def get_model_registry(self, project: str = None):
+        """Get a reference to a model registry to perform operations on, defaulting to the project's default model registry.
+        Shared model registries can be retrieved by passing the `project` argument.
+
+        # Arguments
+            project: The name of the project that owns the shared model registry,
+            the model registry must be shared with the project the connection was established for, defaults to `None`.
+        # Returns
+            `ModelRegistry`. A model registry handle object to perform operations on.
+        """
+        return self._model_registry_api.get(project)
+
+    @usage.method_logger
+    @connected
+    def get_model_serving(self):
+        """Get a reference to model serving to perform operations on. Model serving operates on top of a model registry, defaulting to the project's default model registry.
+
+        !!! example
+            ```python
+
+            import hopsworks
+
+            project = hopsworks.login()
+
+            ms = project.get_model_serving()
+            ```
+
+        # Returns
+            `ModelServing`. A model serving handle object to perform operations on.
+        """
+        return self._model_serving_api.get()
 
     @usage.method_logger
     @connected
@@ -319,6 +377,21 @@ class Connection:
                     hostname_verification=self._hostname_verification,
                 )
 
+            from hsfs import engine
+            from hsfs.core import feature_store_api
+
+            # init engine
+            engine.init(self._engine)
+
+            self._feature_store_api = feature_store_api.FeatureStoreApi()
+
+            from hsml.core import model_api, model_registry_api, model_serving_api
+
+            self._model_api = model_api.ModelApi()
+            self._model_registry_api = model_registry_api.ModelRegistryApi()
+            self._model_serving_api = model_serving_api.ModelServingApi()
+            self._model_serving_api.load_default_configuration()  # istio client, default resources,...
+
             self._project_api = project_api.ProjectApi()
             self._hosts_api = hosts_api.HostsApi()
             self._services_api = services_api.ServicesApi()
@@ -359,8 +432,13 @@ class Connection:
             conn.close()
             ```
         """
+        from hsfs import engine
+
         OpenSearchClientSingleton().close()
         client.stop()
+        engine.stop()
+        self._feature_store_api = None
+        self._model_api = None
         self._connected = False
         print("Connection closed.")
 
