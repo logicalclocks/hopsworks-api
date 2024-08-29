@@ -51,6 +51,9 @@ PROJECT_ID = "HOPSWORKS_PROJECT_ID"
 PROJECT_NAME = "HOPSWORKS_PROJECT_NAME"
 
 
+_hsfs_engine_type = None
+
+
 class Connection:
     """A hopsworks connection object.
 
@@ -162,6 +165,16 @@ class Connection:
         # Returns
             `FeatureStore`. A feature store handle object to perform operations on.
         """
+        # Ensure the engine is initialized
+        from hsfs import engine
+
+        engine.get_instance()
+
+        if not self._feature_store_api:
+            from hsfs.core import feature_store_api
+
+            self._feature_store_api = feature_store_api.FeatureStoreApi()
+
         if not name:
             name = client.get_instance()._project_name
         return self._feature_store_api.get(util.append_feature_store_suffix(name))
@@ -178,6 +191,11 @@ class Connection:
         # Returns
             `ModelRegistry`. A model registry handle object to perform operations on.
         """
+        if not self._model_registry_api:
+            from hsml.core import model_registry_api
+
+            self._model_registry_api = model_registry_api.ModelRegistryApi()
+
         return self._model_registry_api.get(project)
 
     @usage.method_logger
@@ -198,6 +216,12 @@ class Connection:
         # Returns
             `ModelServing`. A model serving handle object to perform operations on.
         """
+        if not self._model_serving_api:
+            from hsml.core import model_serving_api
+
+            self._model_serving_api = model_serving_api.ModelServingApi()
+            self._model_serving_api.load_default_configuration()  # istio client, default resources,...
+
         return self._model_serving_api.get()
 
     @usage.method_logger
@@ -377,21 +401,11 @@ class Connection:
                     hostname_verification=self._hostname_verification,
                 )
 
-            from hsfs import engine
-            from hsfs.core import feature_store_api
-
-            # init engine
-            engine.init(self._engine)
-
-            self._feature_store_api = feature_store_api.FeatureStoreApi()
-
-            from hsml.core import model_api, model_registry_api, model_serving_api
-
-            self._model_api = model_api.ModelApi()
-            self._model_registry_api = model_registry_api.ModelRegistryApi()
-            self._model_serving_api = model_serving_api.ModelServingApi()
-            self._model_serving_api.load_default_configuration()  # istio client, default resources,...
-
+            global _hsfs_engine_type
+            _hsfs_engine_type = self._engine
+            self._feature_store_api = None
+            self._model_registry_api = None
+            self._model_serving_api = None
             self._project_api = project_api.ProjectApi()
             self._hosts_api = hosts_api.HostsApi()
             self._services_api = services_api.ServicesApi()
@@ -438,7 +452,6 @@ class Connection:
         client.stop()
         engine.stop()
         self._feature_store_api = None
-        self._model_api = None
         self._connected = False
         print("Connection closed.")
 
