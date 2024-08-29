@@ -39,6 +39,7 @@ from hsfs.core import (
     statistics_engine,
     tags_api,
     training_dataset_engine,
+    transformation_function_engine,
 )
 from hsfs.core.feature_logging import FeatureLogging
 from hsfs.feature_view import FeatureView
@@ -65,6 +66,11 @@ class FeatureViewEngine:
         )
         self._training_dataset_engine = training_dataset_engine.TrainingDatasetEngine(
             feature_store_id
+        )
+        self._transformation_function_engine = (
+            transformation_function_engine.TransformationFunctionEngine(
+                feature_store_id
+            )
         )
         self._query_constructor_api = query_constructor_api.QueryConstructorApi()
 
@@ -183,6 +189,91 @@ class FeatureViewEngine:
         else:
             return self._feature_view_api.delete_by_name(name)
 
+    def get_training_dataset_schema(
+        self, feature_view: FeatureView, training_dataset_version: int
+    ):
+        """
+        Function that returns the schema of the training dataset generated using the feature view.
+
+        # Arguments
+            feature_view: `FeatureView`. The feature view for which the schema is to be generated.
+            training_dataset_version: `int`. Version of the training dataset for which the schema is to be generated.
+
+        # Returns
+            `List[training_dataset_feature.TrainingDatasetFeature]`: List of training dataset features objects.
+
+        # Raises
+            `ValueError` if the  training dataset version provided cannot be found.
+        """
+
+        if not feature_view.transformation_functions:
+            # Return the features in the feature view if the no transformation functions in the feature view.
+            return feature_view.features
+        else:
+            transformed_features = []
+            transformed_labels = []
+            dropped_features = set()
+
+            # Get transformation functions with correct statistics based on training dataset version.
+            transformation_functions = self._transformation_function_engine.get_ready_to_use_transformation_fns(
+                feature_view=feature_view,
+                training_dataset_version=training_dataset_version,
+            )
+
+            # Getting all dropped features
+            for tf in transformation_functions:
+                if tf.hopsworks_udf.dropped_features:
+                    dropped_features.update(tf.hopsworks_udf.dropped_features)
+
+            # Creating list of features not dropped after transformations
+            transformed_features = [
+                feature
+                for feature in feature_view.features
+                if feature.name not in dropped_features and not feature.label
+            ]
+
+            # Creating list of labels not dropped after transformations
+            transformed_labels = [
+                feature
+                for feature in feature_view.features
+                if feature.name not in dropped_features and feature.label
+            ]
+
+            for tf in transformation_functions:
+                # create transformed labels if a transformation functions take a labels as input.
+                if any(
+                    label in tf.hopsworks_udf.transformation_features
+                    for label in feature_view.labels
+                ):
+                    transformed_labels.extend(
+                        [
+                            training_dataset_feature.TrainingDatasetFeature(
+                                name=transformed_label_name,
+                                type=output_type,
+                                label=True,
+                            )
+                            for transformed_label_name, output_type in zip(
+                                tf.output_column_names, tf.hopsworks_udf.return_types
+                            )
+                        ]
+                    )
+                # create transformed features if a transformation functions take a no labels as input.
+                else:
+                    transformed_features.extend(
+                        [
+                            training_dataset_feature.TrainingDatasetFeature(
+                                name=transformed_feature_name,
+                                type=output_type,
+                                label=False,
+                            )
+                            for transformed_feature_name, output_type in zip(
+                                tf.output_column_names, tf.hopsworks_udf.return_types
+                            )
+                        ]
+                    )
+
+            return transformed_features + transformed_labels
+
     def get_batch_query(
         self,
         feature_view_obj,
@@ -296,7 +387,7 @@ class FeatureViewEngine:
 
     def get_training_data(
         self,
-        feature_view_obj,
+        feature_view_obj: FeatureView,
         read_options=None,
         splits=None,
         training_dataset_obj=None,
@@ -388,12 +479,29 @@ class FeatureViewEngine:
                 feature_view_obj, td_updated, split_df
             )
 
+        # Getting transformed label names
+        transformed_labels = [
+            feature.name
+            for feature in self.get_training_dataset_schema(
+                feature_view=feature_view_obj,
+                training_dataset_version=td_updated.version,
+            )
+            if feature.label
+        ]
+
+        # Updating labels based if transformation functions are attached to the feature view.
+        labels = (
+            transformed_labels
+            if feature_view_obj.transformation_functions
+            else feature_view_obj.labels
+        )
+
         # split df into features and labels df
         if td_updated.splits:
             for split in td_updated.splits:
                 split_name = split.name
                 split_df[split_name] = engine.get_instance().split_labels(
-                    split_df[split_name], feature_view_obj.labels, dataframe_type
+                    split_df[split_name], labels, dataframe_type
                 )
             feature_dfs = []
             label_dfs = []
@@ -403,7 +511,7 @@ class FeatureViewEngine:
             return td_updated, feature_dfs + label_dfs
         else:
             split_df = engine.get_instance().split_labels(
-                split_df, feature_view_obj.labels, dataframe_type
+                split_df, labels, dataframe_type
             )
             return td_updated, split_df
 
@@ -699,22 +807,24 @@ class FeatureViewEngine:
                 )
 
     def _get_training_dataset_metadata(
-        self, feature_view_obj, training_dataset_version
+        self, feature_view_obj: FeatureView, training_dataset_version
     ):
         td = self._feature_view_api.get_training_dataset_by_version(
             feature_view_obj.name, feature_view_obj.version, training_dataset_version
         )
         # schema needs to be set for writing training data or feature serving
-        td.schema = feature_view_obj.schema
+        td.schema = feature_view_obj.get_training_dataset_schema(
+            training_dataset_version
+        )
         return td
 
-    def _get_training_datasets_metadata(self, feature_view_obj):
+    def _get_training_datasets_metadata(self, feature_view_obj: FeatureView):
         tds = self._feature_view_api.get_training_datasets(
             feature_view_obj.name, feature_view_obj.version
         )
         # schema needs to be set for writing training data or feature serving
         for td in tds:
-            td.schema = feature_view_obj.schema
+            td.schema = feature_view_obj.get_training_dataset_schema(td.version)
         return tds
 
     def get_training_datasets(self, feature_view_obj):
@@ -727,8 +837,6 @@ class FeatureViewEngine:
         td = self._feature_view_api.create_training_dataset(
             feature_view_obj.name, feature_view_obj.version, training_dataset_obj
         )
-        td.schema = feature_view_obj.schema
-        td.transformation_functions = feature_view_obj.transformation_functions
         return td
 
     def delete_training_data(self, feature_view_obj, training_data_version=None):
@@ -986,13 +1094,18 @@ class FeatureViewEngine:
         if write_options:
             default_write_options.update(write_options)
         fg = feature_logging.get_feature_group(transformed)
-        td_predictions = [feature for feature in fv.features if feature.label]
+        training_dataset_schema = fv.get_training_dataset_schema(
+            training_dataset_version=training_dataset_version
+        )
+        td_predictions = [
+            feature for feature in training_dataset_schema if feature.label
+        ]
         td_predictions_names = set([feature.name for feature in td_predictions])
         if transformed:
             td_features = [
-                feature_name
-                for feature_name in fv.transformed_features
-                if feature_name not in td_predictions_names
+                feature.name
+                for feature in training_dataset_schema
+                if feature.name not in td_predictions_names
             ]
         else:
             td_features = [
