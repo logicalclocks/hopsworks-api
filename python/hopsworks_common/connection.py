@@ -21,7 +21,7 @@ import os
 import re
 import sys
 import warnings
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any, Optional
 
 from hopsworks_common import client, usage, util, version
 from hopsworks_common.core import (
@@ -34,10 +34,6 @@ from hopsworks_common.core import (
 from hopsworks_common.core.opensearch import OpenSearchClientSingleton
 from hopsworks_common.decorators import connected, not_connected
 from requests.exceptions import ConnectionError
-
-
-if TYPE_CHECKING:
-    from hsfs import feature_store
 
 
 HOPSWORKS_PORT_DEFAULT = 443
@@ -153,7 +149,8 @@ class Connection:
     @connected
     def get_feature_store(
         self, name: Optional[str] = None
-    ) -> feature_store.FeatureStore:
+    ):  # -> feature_store.FeatureStore
+        # the typing is commented out due to circular dependency, it breaks auto_doc.py
         """Get a reference to a feature store to perform operations on.
 
         Defaulting to the project name of default feature store. To get a
