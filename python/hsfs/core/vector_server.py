@@ -46,6 +46,7 @@ from hsfs.core import (
 from hsfs.core import (
     transformation_function_engine as tf_engine_mod,
 )
+from hsfs.hopsworks_udf import UDFExecutionMode
 
 
 HAS_FASTAVRO = False
@@ -986,43 +987,91 @@ class VectorServer:
     ) -> dict:
         _logger.debug("Applying On-Demand transformation functions.")
         for tf in self._on_demand_transformation_functions:
-            # Check if feature provided as request parameter if not get it from retrieved feature vector.
-            features = [
-                pd.Series(request_parameter[feature])
-                if feature in request_parameter.keys()
-                else (
-                    pd.Series(
-                        rows[feature]
-                        if (not isinstance(rows[feature], pd.Series))
-                        else rows[feature]
-                    )
+            if (
+                tf.hopsworks_udf.execution_mode.get_current_execution_mode(
+                    inference=True
                 )
-                for feature in tf.hopsworks_udf.transformation_features
-            ]
+                == UDFExecutionMode.PANDAS
+            ):
+                # Check if feature provided as request parameter if not get it from retrieved feature vector.
+                features = [
+                    pd.Series(request_parameter[feature])
+                    if feature in request_parameter.keys()
+                    else (
+                        pd.Series(
+                            rows[feature]
+                            if (not isinstance(rows[feature], pd.Series))
+                            else rows[feature]
+                        )
+                    )
+                    for feature in tf.hopsworks_udf.transformation_features
+                ]
+            else:
+                # No need to cast to pandas Series for Python UDF's
+                features = [
+                    request_parameter[feature]
+                    if feature in request_parameter.keys()
+                    else rows[feature]
+                    for feature in tf.hopsworks_udf.transformation_features
+                ]
+
             on_demand_feature = tf.hopsworks_udf.get_udf(inference=True)(
                 *features
             )  # Get only python compatible UDF irrespective of engine
-
-            rows[on_demand_feature.name] = on_demand_feature.values[0]
+            if (
+                tf.hopsworks_udf.execution_mode.get_current_execution_mode(
+                    inference=True
+                )
+                == UDFExecutionMode.PANDAS
+            ):
+                rows[on_demand_feature.name] = on_demand_feature.values[0]
+            else:
+                rows[tf.output_column_names[0]] = on_demand_feature
         return rows
 
     def apply_model_dependent_transformations(self, rows: Union[dict, pd.DataFrame]):
         _logger.debug("Applying Model-Dependent transformation functions.")
         for tf in self.model_dependent_transformation_functions:
-            features = [
-                pd.Series(rows[feature])
-                if (not isinstance(rows[feature], pd.Series))
-                else rows[feature]
-                for feature in tf.hopsworks_udf.transformation_features
-            ]
+            if (
+                tf.hopsworks_udf.execution_mode.get_current_execution_mode(
+                    inference=True
+                )
+                == UDFExecutionMode.PANDAS
+            ):
+                features = [
+                    pd.Series(rows[feature])
+                    if (not isinstance(rows[feature], pd.Series))
+                    else rows[feature]
+                    for feature in tf.hopsworks_udf.transformation_features
+                ]
+            else:
+                # No need to cast to pandas Series for Python UDF's
+                # print("executing as python udfs")
+                features = [
+                    rows[feature]
+                    for feature in tf.hopsworks_udf.transformation_features
+                ]
             transformed_result = tf.hopsworks_udf.get_udf(inference=True)(
                 *features
             )  # Get only python compatible UDF irrespective of engine
-            if isinstance(transformed_result, pd.Series):
-                rows[transformed_result.name] = transformed_result.values[0]
+
+            if (
+                tf.hopsworks_udf.execution_mode.get_current_execution_mode(
+                    inference=True
+                )
+                == UDFExecutionMode.PANDAS
+            ):
+                if isinstance(transformed_result, pd.Series):
+                    rows[transformed_result.name] = transformed_result.values[0]
+                else:
+                    for col in transformed_result:
+                        rows[col] = transformed_result[col].values[0]
             else:
-                for col in transformed_result:
-                    rows[col] = transformed_result[col].values[0]
+                if isinstance(transformed_result, tuple):
+                    for index, result in enumerate(transformed_result):
+                        rows[tf.output_column_names[index]] = result
+                else:
+                    rows[tf.output_column_names[0]] = transformed_result
         return rows
 
     def apply_transformation(
