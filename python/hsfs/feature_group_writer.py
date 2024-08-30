@@ -55,7 +55,7 @@ class FeatureGroupWriter:
             operation=operation,
             storage=storage,
             write_options={"start_offline_materialization": False, **write_options},
-            validation_options={"fetch_expectation_suite": False, **validation_options}
+            validation_options={"fetch_expectation_suite": False, **validation_options},
         )
 
     def __exit__(self, exc_type, exc_value, exc_tb):

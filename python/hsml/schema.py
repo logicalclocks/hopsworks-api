@@ -19,7 +19,6 @@ from typing import Optional, TypeVar, Union
 
 import numpy
 import pandas
-from hopsworks_common import usage
 from hsml.utils.schema.columnar_schema import ColumnarSchema
 from hsml.utils.schema.tensor_schema import TensorSchema
 
