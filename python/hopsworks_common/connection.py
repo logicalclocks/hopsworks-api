@@ -213,6 +213,12 @@ class Connection:
         # Returns
             `ModelServing`. A model serving handle object to perform operations on.
         """
+        if not self._model_serving_api:
+            from hsml.core import model_serving_api
+
+            self._model_serving_api = model_serving_api.ModelRegistryApi()
+            self._model_serving_api.load_default_configuration()  # istio client, default resources,...
+
         return self._model_serving_api.get()
 
     @usage.method_logger
@@ -396,6 +402,7 @@ class Connection:
             _hsfs_engine_type = self._engine
             self._feature_store_api = None
             self._model_registry_api = None
+            self._model_serving_api = None
             self._project_api = project_api.ProjectApi()
             self._hosts_api = hosts_api.HostsApi()
             self._services_api = services_api.ServicesApi()
@@ -403,11 +410,13 @@ class Connection:
             self._variable_api = variable_api.VariableApi()
             usage.init_usage(self._host, self._variable_api.get_version("hopsworks"))
 
-            # load_default_configuration has to be called before using hsml
-            from hsml.core import model_serving_api
+            if self._project:
+                # load_default_configuration has to be called before using hsml
+                # but after a project is provided to client
+                from hsml.core import model_serving_api
 
-            self._model_serving_api = model_serving_api.ModelServingApi()
-            self._model_serving_api.load_default_configuration()  # istio client, default resources,...
+                self._model_serving_api = model_serving_api.ModelRegistryApi()
+                self._model_serving_api.load_default_configuration()  # istio client, default resources,...
         except (TypeError, ConnectionError):
             self._connected = False
             raise
