@@ -18,11 +18,10 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from hopsworks_common import client, usage
+from hopsworks_common import client
 
 
 class ServicesApi:
-    @usage.method_logger
     def get_service(self, service: str) -> Dict[str, Any]:
         _client = client.get_instance()
         path_params = [
