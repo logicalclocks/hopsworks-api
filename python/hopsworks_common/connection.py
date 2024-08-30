@@ -216,7 +216,7 @@ class Connection:
         if not self._model_serving_api:
             from hsml.core import model_serving_api
 
-            self._model_serving_api = model_serving_api.ModelRegistryApi()
+            self._model_serving_api = model_serving_api.ModelServingApi()
             self._model_serving_api.load_default_configuration()  # istio client, default resources,...
 
         return self._model_serving_api.get()
@@ -415,7 +415,7 @@ class Connection:
                 # but after a project is provided to client
                 from hsml.core import model_serving_api
 
-                self._model_serving_api = model_serving_api.ModelRegistryApi()
+                self._model_serving_api = model_serving_api.ModelServingApi()
                 self._model_serving_api.load_default_configuration()  # istio client, default resources,...
         except (TypeError, ConnectionError):
             self._connected = False
