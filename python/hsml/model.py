@@ -40,7 +40,6 @@ _logger = logging.getLogger(__name__)
 class Model:
     """Metadata object representing a model in the Model Registry."""
 
-    @usage.method_logger
     def __init__(
         self,
         id,

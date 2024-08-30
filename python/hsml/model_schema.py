@@ -17,7 +17,6 @@
 import json
 from typing import Optional
 
-from hopsworks_common import usage
 from hsml.schema import Schema
 
 
@@ -32,7 +31,6 @@ class ModelSchema:
         `ModelSchema`. The model schema object.
     """
 
-    @usage.method_logger
     def __init__(
         self,
         input_schema: Optional[Schema] = None,

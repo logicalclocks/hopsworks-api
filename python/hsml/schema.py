@@ -34,7 +34,6 @@ class Schema:
         `Schema`. The schema object.
     """
 
-    @usage.method_logger
     def __init__(
         self,
         object: Optional[

@@ -33,7 +33,6 @@ from hsml.transformer import Transformer
 class Deployment:
     """Metadata object representing a deployment in Model Serving."""
 
-    @usage.method_logger
     def __init__(
         self,
         predictor,
@@ -171,7 +170,6 @@ class Deployment:
             )
         )
 
-    @usage.method_logger
     def predict(
         self,
         data: Union[Dict, InferInput] = None,
