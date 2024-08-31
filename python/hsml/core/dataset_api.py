@@ -414,6 +414,9 @@ class DatasetApi:
             time.sleep(1)
             count += 1
             if count >= timeout:
+                self._log.info(
+                    f"Timeout of {timeout} seconds exceeded while {action} {remote_path}."
+                )
                 return False
 
     def unzip(
