@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 
 import humps
-from hopsworks_common import client, constants, util
+from hopsworks_common import client, util
 from hopsworks_common.core import (
     dataset_api,
     environment_api,
@@ -127,25 +127,7 @@ class Project:
         # Raises
             `RestAPIError`: If unable to connect
         """
-        from hsfs import connection
-
-        _client = client.get_instance()
-        if _client._is_external():
-            if _client._host == constants.HOSTS.APP_HOST and engine is None:
-                engine = "python"
-            return connection(
-                host=_client._host,
-                port=_client._port,
-                project=self.name,
-                api_key_value=_client._auth._token,
-                engine=engine,
-                hostname_verification=_client._hostname_verification,
-                trust_store_path=_client._hopsworks_ca_trust_store_path,
-            ).get_feature_store(name)
-        else:
-            return connection(engine=engine).get_feature_store(
-                name
-            )  # If internal client
+        return client.get_connection().get_feature_store(name)
 
     def get_model_registry(self):
         """Connect to Project's Model Registry API.
@@ -164,20 +146,7 @@ class Project:
         # Raises
             `RestAPIError`: If unable to connect
         """
-        from hsml import connection
-
-        _client = client.get_instance()
-        if _client._is_external():
-            return connection(
-                host=_client._host,
-                port=_client._port,
-                project=self.name,
-                api_key_value=_client._auth._token,
-                hostname_verification=_client._hostname_verification,
-                trust_store_path=_client._hopsworks_ca_trust_store_path,
-            ).get_model_registry()
-        else:
-            return connection().get_model_registry()  # If internal client
+        client.get_connection().get_model_registry()
 
     def get_model_serving(self):
         """Connect to Project's Model Serving API.
@@ -196,20 +165,7 @@ class Project:
         # Raises
             `RestAPIError`: If unable to connect
         """
-        from hsml import connection
-
-        _client = client.get_instance()
-        if _client._is_external():
-            return connection(
-                host=_client._host,
-                port=_client._port,
-                project=self.name,
-                api_key_value=_client._auth._token,
-                hostname_verification=_client._hostname_verification,
-                trust_store_path=_client._hopsworks_ca_trust_store_path,
-            ).get_model_serving()
-        else:
-            return connection().get_model_serving()  # If internal client
+        client.get_connection().get_model_serving()
 
     def get_kafka_api(self):
         """Get the kafka api for the project.
