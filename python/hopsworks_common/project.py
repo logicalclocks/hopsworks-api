@@ -146,7 +146,7 @@ class Project:
         # Raises
             `RestAPIError`: If unable to connect
         """
-        client.get_connection().get_model_registry()
+        return client.get_connection().get_model_registry()
 
     def get_model_serving(self):
         """Connect to Project's Model Serving API.
@@ -165,7 +165,7 @@ class Project:
         # Raises
             `RestAPIError`: If unable to connect
         """
-        client.get_connection().get_model_serving()
+        return client.get_connection().get_model_serving()
 
     def get_kafka_api(self):
         """Get the kafka api for the project.
