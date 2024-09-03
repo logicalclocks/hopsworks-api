@@ -410,7 +410,9 @@ class Connection:
             self._variable_api = variable_api.VariableApi()
             usage.init_usage(self._host, self._variable_api.get_version("hopsworks"))
 
-            if self._project:
+            if self._project and self._variable_api.get_variable(
+                "enable_data_science_profile"
+            ):
                 # load_default_configuration has to be called before using hsml
                 # but after a project is provided to client
                 from hsml.core import model_serving_api
