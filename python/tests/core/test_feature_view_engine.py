@@ -601,6 +601,17 @@ class TestFeatureViewEngine:
             "hsfs.core.feature_view_engine.FeatureViewEngine.compute_training_dataset_statistics"
         )
 
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={},
+        )
+
+        mock_fv_engine_create_training_data_metadata.return_value = td
+
         fv_engine = feature_view_engine.FeatureViewEngine(
             feature_store_id=feature_store_id
         )
@@ -613,7 +624,13 @@ class TestFeatureViewEngine:
             labels=[],
         )
 
-        mock_fv_engine_create_training_data_metadata.return_value.splits = []
+        # Setting feature view schema
+        fv.schema = [
+            TrainingDatasetFeature(name="id", type="bigint", label=False),
+            TrainingDatasetFeature(name="label", type="bigint", label=False),
+        ]
+
+        mock_fv_engine_create_training_data_metadata.return_value.splits = {}
 
         # Act
         fv_engine.get_training_data(feature_view_obj=fv)
@@ -623,6 +640,148 @@ class TestFeatureViewEngine:
         assert mock_fv_engine_create_training_data_metadata.call_count == 1
         assert mock_fv_engine_read_from_storage_connector.call_count == 1
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
+
+        assert len(td.schema) == len(fv.schema)
+        for td_feature, expected_td_feature in zip(td.schema, fv.schema):
+            assert td_feature.name == expected_td_feature.name
+            assert td_feature.type == expected_td_feature.type
+            assert td_feature.label == expected_td_feature.label
+
+    def test_get_training_data_transformations(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mock_fv_engine_get_training_dataset_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._set_event_time")
+        mock_fv_engine_create_training_data_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._create_training_data_metadata"
+        )
+        mocker.patch("hsfs.engine.get_instance")
+        mock_fv_engine_read_from_storage_connector = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._read_from_storage_connector"
+        )
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._check_feature_group_accessibility"
+        )
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine.get_batch_query")
+        mock_fv_engine_compute_training_dataset_statistics = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine.compute_training_dataset_statistics"
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={},
+        )
+
+        mock_fv_engine_create_training_data_metadata.return_value = td
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["id"],
+            partition_key=[],
+            features=[
+                feature.Feature("id"),
+                feature.Feature("feature1"),
+                feature.Feature("feature2"),
+                feature.Feature("label1"),
+                feature.Feature("label2"),
+            ],
+            id=14,
+            stream=False,
+        )
+
+        @udf(return_type=[int, int], drop=["feature1"])
+        def transform_feature_drop(feature1):
+            return pd.DataFrame({"a": feature1 + 1, "b": feature1 + 2})
+
+        @udf(return_type=[int])
+        def transform_feature_no_drop(feature2):
+            return feature2 + 2
+
+        @udf(return_type=int, drop=["label1"])
+        def transform_labels_drop(label1):
+            return label1 + 2
+
+        @udf(return_type=[int, int])
+        def transform_labels_no_drop(label2):
+            return pd.DataFrame({"a": label2 + 1, "b": label2 + 2})
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=fg.select_all(),
+            labels=["label1", "label2"],
+            transformation_functions=[
+                transform_feature_drop,
+                transform_feature_no_drop,
+                transform_labels_drop,
+                transform_labels_no_drop,
+            ],
+        )
+
+        # Setting feature view schema
+        fv.schema = [
+            TrainingDatasetFeature(name="id", type="bigint", label=False),
+            TrainingDatasetFeature(name="feature1", type="bigint", label=False),
+            TrainingDatasetFeature(name="feature2", type="bigint", label=False),
+            TrainingDatasetFeature(name="label1", type="bigint", label=True),
+            TrainingDatasetFeature(name="label2", type="bigint", label=True),
+        ]
+
+        mock_fv_engine_create_training_data_metadata.return_value.splits = {}
+
+        # Act
+        fv_engine.get_training_data(feature_view_obj=fv)
+
+        expected_schema = [
+            TrainingDatasetFeature(name="id", type="bigint", label=False),
+            TrainingDatasetFeature(name="feature2", type="bigint", label=False),
+            TrainingDatasetFeature(
+                name="transform_feature_drop_feature1_0", type="bigint", label=False
+            ),
+            TrainingDatasetFeature(
+                name="transform_feature_drop_feature1_1", type="bigint", label=False
+            ),
+            TrainingDatasetFeature(
+                name="transform_feature_no_drop_feature2_", type="bigint", label=False
+            ),
+            TrainingDatasetFeature(name="label2", type="bigint", label=True),
+            TrainingDatasetFeature(
+                name="transform_labels_drop_label1_", type="bigint", label=True
+            ),
+            TrainingDatasetFeature(
+                name="transform_labels_no_drop_label2_0", type="bigint", label=True
+            ),
+            TrainingDatasetFeature(
+                name="transform_labels_no_drop_label2_1", type="bigint", label=True
+            ),
+        ]
+
+        # Assert
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 0
+        assert mock_fv_engine_create_training_data_metadata.call_count == 1
+        assert mock_fv_engine_read_from_storage_connector.call_count == 1
+        assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
+
+        assert len(expected_schema) == len(td.schema)
+        for td_feature, expected_td_feature in zip(td.schema, expected_schema):
+            assert td_feature.name == expected_td_feature.name
+            assert td_feature.type == expected_td_feature.type
+            assert td_feature.label == expected_td_feature.label
 
     def test_get_training_data_td_version(self, mocker):
         # Arrange
@@ -647,6 +806,17 @@ class TestFeatureViewEngine:
             "hsfs.core.feature_view_engine.FeatureViewEngine.compute_training_dataset_statistics"
         )
 
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={},
+        )
+
+        mock_fv_engine_get_training_dataset_metadata.return_value = td
+
         fv_engine = feature_view_engine.FeatureViewEngine(
             feature_store_id=feature_store_id
         )
@@ -659,7 +829,13 @@ class TestFeatureViewEngine:
             labels=[],
         )
 
-        mock_fv_engine_get_training_dataset_metadata.return_value.splits = []
+        # Setting feature view schema
+        fv.schema = [
+            TrainingDatasetFeature(name="id", type="bigint", label=False),
+            TrainingDatasetFeature(name="label", type="bigint", label=False),
+        ]
+
+        mock_fv_engine_get_training_dataset_metadata.return_value.splits = {}
 
         # Act
         fv_engine.get_training_data(feature_view_obj=fv, training_dataset_version=1)
@@ -669,6 +845,147 @@ class TestFeatureViewEngine:
         assert mock_fv_engine_create_training_data_metadata.call_count == 0
         assert mock_fv_engine_read_from_storage_connector.call_count == 1
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
+
+        assert len(td.schema) == len(fv.schema)
+        for td_feature, expected_td_feature in zip(td.schema, fv.schema):
+            assert td_feature.name == expected_td_feature.name
+            assert td_feature.type == expected_td_feature.type
+            assert td_feature.label == expected_td_feature.label
+
+    def test_get_training_data_td_version_transformations(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mock_fv_engine_get_training_dataset_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mock_fv_engine_create_training_data_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._create_training_data_metadata"
+        )
+        mocker.patch("hsfs.engine.get_instance")
+        mock_fv_engine_read_from_storage_connector = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._read_from_storage_connector"
+        )
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._check_feature_group_accessibility"
+        )
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine.get_batch_query")
+        mock_fv_engine_compute_training_dataset_statistics = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine.compute_training_dataset_statistics"
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={},
+        )
+
+        mock_fv_engine_get_training_dataset_metadata.return_value = td
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["id"],
+            partition_key=[],
+            features=[
+                feature.Feature("id"),
+                feature.Feature("feature1"),
+                feature.Feature("feature2"),
+                feature.Feature("label1"),
+                feature.Feature("label2"),
+            ],
+            id=14,
+            stream=False,
+        )
+
+        @udf(return_type=[int, int], drop=["feature1"])
+        def transform_feature_drop(feature1):
+            return pd.DataFrame({"a": feature1 + 1, "b": feature1 + 2})
+
+        @udf(return_type=[int])
+        def transform_feature_no_drop(feature2):
+            return feature2 + 2
+
+        @udf(return_type=int, drop=["label1"])
+        def transform_labels_drop(label1):
+            return label1 + 2
+
+        @udf(return_type=[int, int])
+        def transform_labels_no_drop(label2):
+            return pd.DataFrame({"a": label2 + 1, "b": label2 + 2})
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=fg.select_all(),
+            labels=["label1", "label2"],
+            transformation_functions=[
+                transform_feature_drop,
+                transform_feature_no_drop,
+                transform_labels_drop,
+                transform_labels_no_drop,
+            ],
+        )
+
+        # Setting feature view schema
+        fv.schema = [
+            TrainingDatasetFeature(name="id", type="bigint", label=False),
+            TrainingDatasetFeature(name="feature1", type="bigint", label=False),
+            TrainingDatasetFeature(name="feature2", type="bigint", label=False),
+            TrainingDatasetFeature(name="label1", type="bigint", label=True),
+            TrainingDatasetFeature(name="label2", type="bigint", label=True),
+        ]
+
+        mock_fv_engine_get_training_dataset_metadata.return_value.splits = {}
+
+        # Act
+        fv_engine.get_training_data(feature_view_obj=fv, training_dataset_version=1)
+
+        expected_schema = [
+            TrainingDatasetFeature(name="id", type="bigint", label=False),
+            TrainingDatasetFeature(name="feature2", type="bigint", label=False),
+            TrainingDatasetFeature(
+                name="transform_feature_drop_feature1_0", type="bigint", label=False
+            ),
+            TrainingDatasetFeature(
+                name="transform_feature_drop_feature1_1", type="bigint", label=False
+            ),
+            TrainingDatasetFeature(
+                name="transform_feature_no_drop_feature2_", type="bigint", label=False
+            ),
+            TrainingDatasetFeature(name="label2", type="bigint", label=True),
+            TrainingDatasetFeature(
+                name="transform_labels_drop_label1_", type="bigint", label=True
+            ),
+            TrainingDatasetFeature(
+                name="transform_labels_no_drop_label2_0", type="bigint", label=True
+            ),
+            TrainingDatasetFeature(
+                name="transform_labels_no_drop_label2_1", type="bigint", label=True
+            ),
+        ]
+
+        # Assert
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 1
+        assert mock_fv_engine_create_training_data_metadata.call_count == 0
+        assert mock_fv_engine_read_from_storage_connector.call_count == 1
+        assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
+
+        assert len(expected_schema) == len(td.schema)
+        for td_feature, expected_td_feature in zip(td.schema, expected_schema):
+            assert td_feature.name == expected_td_feature.name
+            assert td_feature.type == expected_td_feature.type
+            assert td_feature.label == expected_td_feature.label
 
     def test_get_training_data_type_in_memory(self, mocker):
         # Arrange
@@ -975,13 +1292,37 @@ class TestFeatureViewEngine:
             "hsfs.core.feature_view_engine.FeatureViewEngine.compute_training_dataset"
         )
 
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={},
+        )
+
+        mock_fv_engine_get_training_dataset_metadata.return_value = td
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+
+        # Setting feature view schema
+        fv.schema = [
+            TrainingDatasetFeature(name="id", type="bigint", label=False),
+            TrainingDatasetFeature(name="label", type="bigint", label=False),
+        ]
+
         fv_engine = feature_view_engine.FeatureViewEngine(
             feature_store_id=feature_store_id
         )
 
         # Act
         fv_engine.recreate_training_dataset(
-            feature_view_obj=None,
+            feature_view_obj=fv,
             training_dataset_version=None,
             statistics_config=None,
             user_write_options={},
@@ -990,6 +1331,135 @@ class TestFeatureViewEngine:
         # Assert
         assert mock_fv_engine_get_training_dataset_metadata.call_count == 1
         assert mock_fv_engine_compute_training_dataset.call_count == 1
+        assert len(td.schema) == len(fv.schema)
+        for td_feature, expected_td_feature in zip(td.schema, fv.schema):
+            assert td_feature.name == expected_td_feature.name
+            assert td_feature.type == expected_td_feature.type
+            assert td_feature.label == expected_td_feature.label
+
+    def test_recreate_training_dataset_transformations(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mock_fv_engine_get_training_dataset_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mock_fv_engine_compute_training_dataset = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine.compute_training_dataset"
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={},
+        )
+
+        mock_fv_engine_get_training_dataset_metadata.return_value = td
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["id"],
+            partition_key=[],
+            features=[
+                feature.Feature("id"),
+                feature.Feature("feature1"),
+                feature.Feature("feature2"),
+                feature.Feature("label1"),
+                feature.Feature("label2"),
+            ],
+            id=14,
+            stream=False,
+        )
+
+        @udf(return_type=[int, int], drop=["feature1"])
+        def transform_feature_drop(feature1):
+            return pd.DataFrame({"a": feature1 + 1, "b": feature1 + 2})
+
+        @udf(return_type=[int])
+        def transform_feature_no_drop(feature2):
+            return feature2 + 2
+
+        @udf(return_type=int, drop=["label1"])
+        def transform_labels_drop(label1):
+            return label1 + 2
+
+        @udf(return_type=[int, int])
+        def transform_labels_no_drop(label2):
+            return pd.DataFrame({"a": label2 + 1, "b": label2 + 2})
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=fg.select_all(),
+            labels=["label1", "label2"],
+            transformation_functions=[
+                transform_feature_drop,
+                transform_feature_no_drop,
+                transform_labels_drop,
+                transform_labels_no_drop,
+            ],
+        )
+
+        # Setting feature view schema
+        fv.schema = [
+            TrainingDatasetFeature(name="id", type="bigint", label=False),
+            TrainingDatasetFeature(name="feature1", type="bigint", label=False),
+            TrainingDatasetFeature(name="feature2", type="bigint", label=False),
+            TrainingDatasetFeature(name="label1", type="bigint", label=True),
+            TrainingDatasetFeature(name="label2", type="bigint", label=True),
+        ]
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        # Act
+        fv_engine.recreate_training_dataset(
+            feature_view_obj=fv,
+            training_dataset_version=None,
+            statistics_config=None,
+            user_write_options={},
+        )
+
+        expected_schema = [
+            TrainingDatasetFeature(name="id", type="bigint", label=False),
+            TrainingDatasetFeature(name="feature2", type="bigint", label=False),
+            TrainingDatasetFeature(
+                name="transform_feature_drop_feature1_0", type="bigint", label=False
+            ),
+            TrainingDatasetFeature(
+                name="transform_feature_drop_feature1_1", type="bigint", label=False
+            ),
+            TrainingDatasetFeature(
+                name="transform_feature_no_drop_feature2_", type="bigint", label=False
+            ),
+            TrainingDatasetFeature(name="label2", type="bigint", label=True),
+            TrainingDatasetFeature(
+                name="transform_labels_drop_label1_", type="bigint", label=True
+            ),
+            TrainingDatasetFeature(
+                name="transform_labels_no_drop_label2_0", type="bigint", label=True
+            ),
+            TrainingDatasetFeature(
+                name="transform_labels_no_drop_label2_1", type="bigint", label=True
+            ),
+        ]
+
+        # Assert
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 1
+        assert mock_fv_engine_compute_training_dataset.call_count == 1
+        assert len(expected_schema) == len(td.schema)
+        for td_feature, expected_td_feature in zip(td.schema, expected_schema):
+            assert td_feature.name == expected_td_feature.name
+            assert td_feature.type == expected_td_feature.type
+            assert td_feature.label == expected_td_feature.label
 
     def test_read_from_storage_connector(self, mocker):
         # Arrange
@@ -1231,6 +1701,18 @@ class TestFeatureViewEngine:
             "hsfs.core.feature_view_engine.FeatureViewEngine.compute_training_dataset_statistics"
         )
 
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+        # Setting feature view schema
+        fv.schema = [
+            TrainingDatasetFeature(name="id", type="bigint", label=False),
+            TrainingDatasetFeature(name="label", type="bigint", label=False),
+        ]
+
         fv_engine = feature_view_engine.FeatureViewEngine(
             feature_store_id=feature_store_id
         )
@@ -1246,7 +1728,7 @@ class TestFeatureViewEngine:
 
         # Act
         fv_engine.compute_training_dataset(
-            feature_view_obj=None,
+            feature_view_obj=fv,
             user_write_options={},
             training_dataset_obj=td,
             training_dataset_version=None,
@@ -1256,6 +1738,139 @@ class TestFeatureViewEngine:
         assert mock_fv_engine_get_training_dataset_metadata.call_count == 0
         assert mock_td_engine.return_value.read.call_count == 0
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
+        assert len(td.schema) == len(fv.schema)
+        for td_feature, expected_td_feature in zip(td.schema, fv.schema):
+            assert td_feature.name == expected_td_feature.name
+            assert td_feature.type == expected_td_feature.type
+            assert td_feature.label == expected_td_feature.label
+
+    def test_compute_training_dataset_td_transformations(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mock_fv_engine_get_training_dataset_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine.get_batch_query")
+        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mock_td_engine = mocker.patch(
+            "hsfs.core.training_dataset_engine.TrainingDatasetEngine"
+        )
+        mock_fv_engine_compute_training_dataset_statistics = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine.compute_training_dataset_statistics"
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["id"],
+            partition_key=[],
+            features=[
+                feature.Feature("id"),
+                feature.Feature("feature1"),
+                feature.Feature("feature2"),
+                feature.Feature("label1"),
+                feature.Feature("label2"),
+            ],
+            id=14,
+            stream=False,
+        )
+
+        @udf(return_type=[int, int], drop=["feature1"])
+        def transform_feature_drop(feature1):
+            return pd.DataFrame({"a": feature1 + 1, "b": feature1 + 2})
+
+        @udf(return_type=[int])
+        def transform_feature_no_drop(feature2):
+            return feature2 + 2
+
+        @udf(return_type=int, drop=["label1"])
+        def transform_labels_drop(label1):
+            return label1 + 2
+
+        @udf(return_type=[int, int])
+        def transform_labels_no_drop(label2):
+            return pd.DataFrame({"a": label2 + 1, "b": label2 + 2})
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=fg.select_all(),
+            labels=["label1", "label2"],
+            transformation_functions=[
+                transform_feature_drop,
+                transform_feature_no_drop,
+                transform_labels_drop,
+                transform_labels_no_drop,
+            ],
+        )
+        # Setting feature view schema
+        fv.schema = [
+            TrainingDatasetFeature(name="id", type="bigint", label=False),
+            TrainingDatasetFeature(name="feature1", type="bigint", label=False),
+            TrainingDatasetFeature(name="feature2", type="bigint", label=False),
+            TrainingDatasetFeature(name="label1", type="bigint", label=True),
+            TrainingDatasetFeature(name="label2", type="bigint", label=True),
+        ]
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={},
+        )
+
+        # Act
+        fv_engine.compute_training_dataset(
+            feature_view_obj=fv,
+            user_write_options={},
+            training_dataset_obj=td,
+            training_dataset_version=None,
+        )
+
+        expected_schema = [
+            TrainingDatasetFeature(name="id", type="bigint", label=False),
+            TrainingDatasetFeature(name="feature2", type="bigint", label=False),
+            TrainingDatasetFeature(
+                name="transform_feature_drop_feature1_0", type="bigint", label=False
+            ),
+            TrainingDatasetFeature(
+                name="transform_feature_drop_feature1_1", type="bigint", label=False
+            ),
+            TrainingDatasetFeature(
+                name="transform_feature_no_drop_feature2_", type="bigint", label=False
+            ),
+            TrainingDatasetFeature(name="label2", type="bigint", label=True),
+            TrainingDatasetFeature(
+                name="transform_labels_drop_label1_", type="bigint", label=True
+            ),
+            TrainingDatasetFeature(
+                name="transform_labels_no_drop_label2_0", type="bigint", label=True
+            ),
+            TrainingDatasetFeature(
+                name="transform_labels_no_drop_label2_1", type="bigint", label=True
+            ),
+        ]
+
+        # Assert
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 0
+        assert mock_td_engine.return_value.read.call_count == 0
+        assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
+        assert len(expected_schema) == len(td.schema)
+        for td_feature, expected_td_feature in zip(td.schema, expected_schema):
+            assert td_feature.name == expected_td_feature.name
+            assert td_feature.type == expected_td_feature.type
+            assert td_feature.label == expected_td_feature.label
 
     def test_compute_training_dataset_td_version(self, mocker):
         # Arrange
@@ -1275,6 +1890,13 @@ class TestFeatureViewEngine:
             "hsfs.core.feature_view_engine.FeatureViewEngine.compute_training_dataset_statistics"
         )
 
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+
         fv_engine = feature_view_engine.FeatureViewEngine(
             feature_store_id=feature_store_id
         )
@@ -1292,7 +1914,7 @@ class TestFeatureViewEngine:
 
         # Act
         fv_engine.compute_training_dataset(
-            feature_view_obj=None,
+            feature_view_obj=fv,
             user_write_options={},
             training_dataset_obj=None,
             training_dataset_version=1,
@@ -1321,6 +1943,13 @@ class TestFeatureViewEngine:
             "hsfs.core.feature_view_engine.FeatureViewEngine.compute_training_dataset_statistics"
         )
 
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+
         fv_engine = feature_view_engine.FeatureViewEngine(
             feature_store_id=feature_store_id
         )
@@ -1336,7 +1965,7 @@ class TestFeatureViewEngine:
 
         # Act
         fv_engine.compute_training_dataset(
-            feature_view_obj=None,
+            feature_view_obj=fv,
             user_write_options={},
             training_dataset_obj=td,
             training_dataset_version=None,
@@ -1365,6 +1994,13 @@ class TestFeatureViewEngine:
             "hsfs.core.feature_view_engine.FeatureViewEngine.compute_training_dataset_statistics"
         )
 
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+
         fv_engine = feature_view_engine.FeatureViewEngine(
             feature_store_id=feature_store_id
         )
@@ -1380,7 +2016,7 @@ class TestFeatureViewEngine:
 
         # Act
         fv_engine.compute_training_dataset(
-            feature_view_obj=None,
+            feature_view_obj=fv,
             user_write_options={},
             training_dataset_obj=td,
             training_dataset_version=None,
@@ -1528,22 +2164,6 @@ class TestFeatureViewEngine:
     def test_get_training_dataset_metadata_no_transformations(self, mocker):
         # Arrange
         feature_store_id = 99
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=["id"],
-            partition_key=[],
-            features=[
-                feature.Feature("id"),
-                feature.Feature("feature1"),
-                feature.Feature("feature2"),
-                feature.Feature("label1"),
-                feature.Feature("label2"),
-            ],
-            id=14,
-            stream=False,
-        )
 
         mock_fv_api = mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
 
@@ -1560,43 +2180,13 @@ class TestFeatureViewEngine:
             splits={},
         )
 
-        @udf(return_type=[int, int], drop=["feature1"])
-        def transform_feature_drop(feature1):
-            return pd.DataFrame({"a": feature1 + 1, "b": feature1 + 2})
-
-        @udf(return_type=[int])
-        def transform_feature_no_drop(feature2):
-            return feature2 + 2
-
-        @udf(return_type=int, drop=["label1"])
-        def transform_labels_drop(label1):
-            return label1 + 2
-
-        @udf(return_type=[int, int])
-        def transform_labels_no_drop(label2):
-            return pd.DataFrame({"a": label2 + 1, "b": label2 + 2})
-
         fv = feature_view.FeatureView(
             name="fv_name",
             version=1,
             featurestore_id=feature_store_id,
-            query=fg.select_all(),
-            labels=["label1", "label2"],
-            transformation_functions=[
-                transform_feature_drop,
-                transform_feature_no_drop,
-                transform_labels_drop,
-                transform_labels_no_drop,
-            ],
+            query=query,
         )
         # Setting feature view schema
-        fv.schema = [
-            TrainingDatasetFeature(name="id", type="bigint", label=False),
-            TrainingDatasetFeature(name="feature1", type="bigint", label=False),
-            TrainingDatasetFeature(name="feature2", type="bigint", label=False),
-            TrainingDatasetFeature(name="label1", type="bigint", label=True),
-            TrainingDatasetFeature(name="label2", type="bigint", label=True),
-        ]
         mock_fv_api.return_value.get_training_dataset_by_version.return_value = td
 
         # Act
@@ -1604,77 +2194,9 @@ class TestFeatureViewEngine:
             feature_view_obj=fv, training_dataset_version=1
         )
 
-        expected_schema = [
-            TrainingDatasetFeature(name="id", type="bigint", label=False),
-            TrainingDatasetFeature(name="feature2", type="bigint", label=False),
-            TrainingDatasetFeature(
-                name="transform_feature_drop_feature1_0", type="bigint", label=False
-            ),
-            TrainingDatasetFeature(
-                name="transform_feature_drop_feature1_1", type="bigint", label=False
-            ),
-            TrainingDatasetFeature(
-                name="transform_feature_no_drop_feature2_", type="bigint", label=False
-            ),
-            TrainingDatasetFeature(name="label2", type="bigint", label=True),
-            TrainingDatasetFeature(
-                name="transform_labels_drop_label1_", type="bigint", label=True
-            ),
-            TrainingDatasetFeature(
-                name="transform_labels_no_drop_label2_0", type="bigint", label=True
-            ),
-            TrainingDatasetFeature(
-                name="transform_labels_no_drop_label2_1", type="bigint", label=True
-            ),
-        ]
-
         # Assert
         assert mock_fv_api.return_value.get_training_dataset_by_version.call_count == 1
-        assert len(expected_schema) == len(result.schema)
-        for td_feature, expected_td_feature in zip(result.schema, expected_schema):
-            assert td_feature.name == expected_td_feature.name
-            assert td_feature.type == expected_td_feature.type
-            assert td_feature.label == expected_td_feature.label
-
-    def test_get_training_dataset_metadata_transformations(self, mocker):
-        # Arrange
-        feature_store_id = 99
-
-        mock_fv_api = mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
-
-        fv_engine = feature_view_engine.FeatureViewEngine(
-            feature_store_id=feature_store_id
-        )
-
-        td = training_dataset.TrainingDataset(
-            name="test",
-            location="location",
-            version=1,
-            data_format="CSV",
-            featurestore_id=99,
-            splits={},
-        )
-
-        fv = feature_view.FeatureView(
-            name="fv_name",
-            version=1,
-            query=query,
-            featurestore_id=feature_store_id,
-            labels=[],
-        )
-        fv.schema = "schema"
-        fv.transformation_functions = None
-
-        mock_fv_api.return_value.get_training_dataset_by_version.return_value = td
-
-        # Act
-        result = fv_engine._get_training_dataset_metadata(
-            feature_view_obj=fv, training_dataset_version=None
-        )
-
-        # Assert
-        assert mock_fv_api.return_value.get_training_dataset_by_version.call_count == 1
-        assert result.schema == fv.schema
+        assert result == td
 
     def test_create_training_data_metadata(self, mocker):
         # Arrange
