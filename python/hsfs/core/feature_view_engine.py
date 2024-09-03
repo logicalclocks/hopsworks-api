@@ -190,14 +190,16 @@ class FeatureViewEngine:
             return self._feature_view_api.delete_by_name(name)
 
     def get_training_dataset_schema(
-        self, feature_view: FeatureView, training_dataset_version: int
+        self, feature_view: FeatureView, training_dataset_version: Optional[int] = None
     ):
         """
         Function that returns the schema of the training dataset generated using the feature view.
 
         # Arguments
             feature_view: `FeatureView`. The feature view for which the schema is to be generated.
-            training_dataset_version: `int`. Version of the training dataset for which the schema is to be generated.
+            training_dataset_version: `int`. Specifies the version of the training dataset for which the schema should be generated.
+                By default, this is set to None. However, if the `one_hot_encoder` transformation function is used, the training dataset version must be provided.
+                This is because the schema will then depend on the statistics of the training data used.
 
         # Returns
             `List[training_dataset_feature.TrainingDatasetFeature]`: List of training dataset features objects.
@@ -223,6 +225,11 @@ class FeatureViewEngine:
             )
 
             if statistics_required:
+                if not training_dataset_version:
+                    raise FeatureStoreException(
+                        "The feature view includes the one_hot_encoder transformation function. As a result, the schema of the generated training dataset depends on its statistics. Please specify the version of the training dataset for which the schema should be generated."
+                    )
+
                 # Get transformation functions with correct statistics based on training dataset version.
                 transformation_functions = self._transformation_function_engine.get_ready_to_use_transformation_fns(
                     feature_view=feature_view,

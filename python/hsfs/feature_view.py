@@ -3845,15 +3845,16 @@ class FeatureView:
         }
 
     def get_training_dataset_schema(
-        self, training_dataset_version: bool
+        self, training_dataset_version: Optional[int] = None
     ) -> List[training_dataset_feature.TrainingDatasetFeature]:
         """
         Function that returns the schema of the training dataset that is generated from a feature view.
         It provides the schema of the features after all transformation functions have been applied.
 
         # Arguments
-            training_dataset_version: Version of the training dataset for which the schema is to be generated.
-
+            training_dataset_version: Specifies the version of the training dataset for which the schema should be generated.
+                By default, this is set to None. However, if the `one_hot_encoder` transformation function is used, the training dataset version must be provided.
+                This is because the schema will then depend on the statistics of the training data used.
         # Example
             ```python
             schema = feature_view.get_training_dataset_schema(training_dataset_version=1)
