@@ -20,12 +20,13 @@ import json
 import socket
 from typing import Any, Dict, Union
 
-from hopsworks_common import client, constants, kafka_schema, kafka_topic
+from hopsworks_common import client, constants, kafka_schema, kafka_topic, usage
 from hopsworks_common.client.exceptions import KafkaException
 from hopsworks_common.client.external import Client
 
 
 class KafkaApi:
+    @usage.method_logger
     def create_topic(
         self,
         name: str,
@@ -76,6 +77,7 @@ class KafkaApi:
             )
         )
 
+    @usage.method_logger
     def create_schema(self, subject: str, schema: dict):
         """Create a new kafka schema.
 
@@ -136,6 +138,7 @@ class KafkaApi:
         # TODO: Fix backend, GET request required as POST does not set schema field in the returned payload
         return self.get_schema(schema.subject, schema.version)
 
+    @usage.method_logger
     def get_topic(self, name: str):
         """Get kafka topic by name.
 
@@ -154,6 +157,7 @@ class KafkaApi:
 
         raise KafkaException("No topic named {} could be found".format(name))
 
+    @usage.method_logger
     def get_topics(self):
         """Get all kafka topics.
 
@@ -203,6 +207,7 @@ class KafkaApi:
         ]
         _client._send_request("DELETE", path_params)
 
+    @usage.method_logger
     def get_subjects(self):
         """Get all subjects.
 
@@ -220,6 +225,7 @@ class KafkaApi:
 
         return list(subjects)
 
+    @usage.method_logger
     def get_schemas(self, subject: str):
         """Get all schema versions for the subject.
 
@@ -248,6 +254,7 @@ class KafkaApi:
 
         return schemas
 
+    @usage.method_logger
     def get_schema(self, subject: str, version: int):
         """Get schema given subject name and version.
 
@@ -365,6 +372,7 @@ class KafkaApi:
 
         return config
 
+    @usage.method_logger
     def get_subject(
         self,
         feature_store_id: int,

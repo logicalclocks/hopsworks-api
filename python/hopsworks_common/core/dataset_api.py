@@ -24,7 +24,7 @@ import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
 
-from hopsworks_common import client, util
+from hopsworks_common import client, usage, util
 from hopsworks_common.client.exceptions import DatasetException, RestAPIError
 from hopsworks_common.core import inode
 from tqdm.auto import tqdm
@@ -45,6 +45,7 @@ class DatasetApi:
     DEFAULT_FLOW_CHUNK_SIZE = 1048576
     FLOW_PERMANENT_ERRORS = [404, 413, 415, 500, 501]
 
+    @usage.method_logger
     def download(self, path: str, local_path: str = None, overwrite: bool = False):
         """Download file from Hopsworks Filesystem to the current working directory.
 
@@ -136,6 +137,7 @@ class DatasetApi:
 
         return local_path
 
+    @usage.method_logger
     def upload(
         self,
         local_path: str,
@@ -341,6 +343,7 @@ class DatasetApi:
         except RestAPIError:
             return False
 
+    @usage.method_logger
     def remove(self, path: str):
         """Remove a path in the Hopsworks Filesystem.
 
@@ -353,6 +356,7 @@ class DatasetApi:
         path_params = ["project", _client._project_id, "dataset", path]
         _client._send_request("DELETE", path_params)
 
+    @usage.method_logger
     def mkdir(self, path: str):
         """Create a directory in the Hopsworks Filesystem.
 
@@ -387,6 +391,7 @@ class DatasetApi:
             "POST", path_params, headers=headers, query_params=query_params
         )["attributes"]["path"]
 
+    @usage.method_logger
     def copy(self, source_path: str, destination_path: str, overwrite: bool = False):
         """Copy a file or directory in the Hopsworks Filesystem.
 
@@ -426,6 +431,7 @@ class DatasetApi:
         }
         _client._send_request("POST", path_params, query_params=query_params)
 
+    @usage.method_logger
     def move(self, source_path: str, destination_path: str, overwrite: bool = False):
         """Move a file or directory in the Hopsworks Filesystem.
 
@@ -466,6 +472,7 @@ class DatasetApi:
         }
         _client._send_request("POST", path_params, query_params=query_params)
 
+    @usage.method_logger
     def upload_feature_group(self, feature_group, path, dataframe):
         # Convert the dataframe into PARQUET for upload
         df_parquet = dataframe.to_parquet(index=False)
@@ -493,6 +500,7 @@ class DatasetApi:
 
             chunk_number += 1
 
+    @usage.method_logger
     def list_files(self, path, offset, limit):
         _client = client.get_instance()
         path_params = [
@@ -512,6 +520,7 @@ class DatasetApi:
 
         return inode_lst["count"], inode.Inode.from_response_json(inode_lst)
 
+    @usage.method_logger
     def read_content(self, path: str, dataset_type: str = "DATASET"):
         _client = client.get_instance()
 

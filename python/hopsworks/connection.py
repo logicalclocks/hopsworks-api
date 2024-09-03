@@ -23,6 +23,7 @@ import warnings
 from hopsworks import client, version
 from hopsworks.core import project_api, secret_api, variable_api
 from hopsworks.decorators import connected, not_connected
+from hopsworks_common import usage
 from requests.exceptions import ConnectionError
 
 
@@ -292,6 +293,7 @@ class Connection:
             self._project_api = project_api.ProjectApi()
             self._secret_api = secret_api.SecretsApi()
             self._variable_api = variable_api.VariableApi()
+            usage.init_usage(self._host, self._variable_api.get_version("hopsworks"))
         except (TypeError, ConnectionError):
             self._connected = False
             raise

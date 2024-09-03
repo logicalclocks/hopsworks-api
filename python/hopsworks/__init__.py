@@ -32,6 +32,7 @@ from hopsworks.client.exceptions import (
 from hopsworks.connection import Connection
 from hopsworks.core import project_api, secret_api
 from hopsworks.decorators import NoHopsworksConnectionError
+from hopsworks_common import usage
 from requests.exceptions import SSLError
 
 
@@ -476,3 +477,7 @@ def _set_active_project(project):
     _client = client.get_instance()
     if _client._is_external():
         _client.provide_project(project.name)
+
+
+def disable_usage_logging():
+    usage.disable()

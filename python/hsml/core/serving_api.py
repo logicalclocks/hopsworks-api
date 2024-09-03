@@ -275,8 +275,11 @@ class ServingApi:
 
         # send inference request
         return _client._send_request(
-            "POST", path_params, headers=headers, data=json.dumps(data),
-            with_base_path_params=with_base_path_params
+            "POST",
+            path_params,
+            headers=headers,
+            data=json.dumps(data),
+            with_base_path_params=with_base_path_params,
         )
 
     def _send_inference_request_via_grpc_protocol(
