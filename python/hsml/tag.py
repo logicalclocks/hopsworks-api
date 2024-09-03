@@ -17,7 +17,7 @@
 import json
 
 import humps
-from hsml import util
+from hopsworks_common import util
 
 
 class Tag:
@@ -43,7 +43,7 @@ class Tag:
         }
 
     def json(self):
-        return json.dumps(self, cls=util.MLEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     @classmethod
     def from_response_json(cls, json_dict):

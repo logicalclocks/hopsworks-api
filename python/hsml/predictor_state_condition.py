@@ -17,7 +17,7 @@ import json
 from typing import Optional
 
 import humps
-from hsml import util
+from hopsworks_common import util
 
 
 class PredictorStateCondition:
@@ -60,7 +60,7 @@ class PredictorStateCondition:
         return self
 
     def json(self):
-        return json.dumps(self, cls=util.MLEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
         return {
