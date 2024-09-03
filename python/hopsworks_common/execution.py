@@ -14,10 +14,13 @@
 #   limitations under the License.
 #
 
+from __future__ import annotations
+
 import json
+from typing import Optional
 
 import humps
-from hopsworks_common import client, constants, util
+from hopsworks_common import client, constants, usage, util
 from hopsworks_common.client.exceptions import JobExecutionException
 from hopsworks_common.core import execution_api
 from hopsworks_common.engine import execution_engine
@@ -207,6 +210,7 @@ class Execution:
         """
         return self._execution_engine.download_logs(self, path)
 
+    @usage.method_logger
     def delete(self):
         """Delete the execution
         !!! danger "Potentially dangerous operation"
@@ -216,6 +220,7 @@ class Execution:
         """
         self._execution_api._delete(self._job.name, self.id)
 
+    @usage.method_logger
     def stop(self):
         """Stop the execution
         !!! danger "Potentially dangerous operation"
@@ -225,13 +230,17 @@ class Execution:
         """
         self._execution_api._stop(self.job_name, self.id)
 
-    def await_termination(self):
-        """Wait until execution reaches terminal state
+    def await_termination(self, timeout: Optional[float] = None):
+        """Wait until execution terminates.
+
+
+        # Arguments
+            timeout: the maximum waiting time in seconds, if `None` the waiting time is unbounded; defaults to `None`. Note: the actual waiting time may be bigger by approximately 3 seconds.
 
         # Raises
             `RestAPIError`.
         """
-        x = self._execution_engine.wait_until_finished(self._job, self)
+        x = self._execution_engine.wait_until_finished(self._job, self, timeout)
         if x.final_status == "KILLED":
             raise JobExecutionException("The Hopsworks Job was stopped")
         elif x.final_status == "FAILED":

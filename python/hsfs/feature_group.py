@@ -2123,7 +2123,7 @@ class FeatureGroup(FeatureGroupBase):
                 Dict[str, Any],
             ]
         ] = None,
-        offline_backfill_every: Optional[Union[str, int]] = None,
+        offline_backfill_every_hr: Optional[Union[str, int]] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -2185,7 +2185,7 @@ class FeatureGroup(FeatureGroupBase):
                 self._hudi_precombine_key: Optional[str] = None
 
             self.statistics_config = statistics_config
-            self._offline_backfill_every = None
+            self._offline_backfill_every_hr = None
 
         else:
             # initialized by user
@@ -2216,7 +2216,7 @@ class FeatureGroup(FeatureGroupBase):
                 else None
             )
             self.statistics_config = statistics_config
-            self._offline_backfill_every = offline_backfill_every
+            self._offline_backfill_every_hr = offline_backfill_every_hr
 
         self._feature_group_engine: "feature_group_engine.FeatureGroupEngine" = (
             feature_group_engine.FeatureGroupEngine(featurestore_id)
@@ -2799,8 +2799,8 @@ class FeatureGroup(FeatureGroupBase):
             write_options = {}
         if "wait_for_job" not in write_options:
             write_options["wait_for_job"] = wait
-        if not self._id and self._offline_backfill_every is not None:
-            write_options["offline_backfill_every"] = self._offline_backfill_every
+        if not self._id and self._offline_backfill_every_hr is not None:
+            write_options["offline_backfill_every_hr"] = self._offline_backfill_every_hr
 
         job, ge_report = self._feature_group_engine.insert(
             self,
@@ -3593,7 +3593,7 @@ class FeatureGroup(FeatureGroupBase):
         self._transformation_functions = transformation_functions
 
     @property
-    def offline_backfill_every(self) -> Optional[Union[int, str]]:
+    def offline_backfill_every_hr(self) -> Optional[Union[int, str]]:
         """On Feature Group creation, used to set scheduled run of the materialisation job."""
         if self.id:
             job = self.materialization_job
@@ -3610,11 +3610,11 @@ class FeatureGroup(FeatureGroupBase):
                 )
                 return None
         else:
-            return self._offline_backfill_every
+            return self._offline_backfill_every_hr
 
-    @offline_backfill_every.setter
-    def offline_backfill_every(
-        self, new_offline_backfill_every: Optional[Union[int, str]]
+    @offline_backfill_every_hr.setter
+    def offline_backfill_every_hr(
+        self, new_offline_backfill_every_hr: Optional[Union[int, str]]
     ) -> None:
         if self.id:
             raise FeatureStoreException(
@@ -3622,7 +3622,7 @@ class FeatureGroup(FeatureGroupBase):
                 "Use `job = fg.materialization_job` to get the full job object and edit the schedule"
             )
         else:
-            self._offline_backfill_every = new_offline_backfill_every
+            self._offline_backfill_every_hr = new_offline_backfill_every_hr
 
 
 @typechecked

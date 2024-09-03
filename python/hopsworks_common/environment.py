@@ -18,7 +18,7 @@ import os
 from typing import Optional
 
 import humps
-from hopsworks_common import client, command, util
+from hopsworks_common import client, command, usage, util
 from hopsworks_common.core import environment_api, library_api
 from hopsworks_common.engine import environment_engine
 
@@ -77,6 +77,7 @@ class Environment:
         """Description of the environment"""
         return self._description
 
+    @usage.method_logger
     def install_wheel(self, path: str, await_installation: Optional[bool] = True):
         """Install a python library packaged in a wheel file
 
@@ -128,6 +129,7 @@ class Environment:
 
         return library_rest
 
+    @usage.method_logger
     def install_requirements(
         self, path: str, await_installation: Optional[bool] = True
     ):
@@ -182,6 +184,7 @@ class Environment:
 
         return library_rest
 
+    @usage.method_logger
     def delete(self):
         """Delete the environment
         !!! danger "Potentially dangerous operation"

@@ -1370,14 +1370,14 @@ class Engine:
                 + initial_check_point,
                 await_termination=offline_write_options.get("wait_for_job", False),
             )
-            offline_backfill_every = offline_write_options.pop(
-                "offline_backfill_every", None
+            offline_backfill_every_hr = offline_write_options.pop(
+                "offline_backfill_every_hr", None
             )
-            if offline_backfill_every:
-                if isinstance(offline_backfill_every, str):
-                    cron_expression = offline_backfill_every
-                elif isinstance(offline_backfill_every, int):
-                    cron_expression = f"{now.second} {now.minute} {now.hour}/{offline_backfill_every} ? * * *"
+            if offline_backfill_every_hr:
+                if isinstance(offline_backfill_every_hr, str):
+                    cron_expression = offline_backfill_every_hr
+                elif isinstance(offline_backfill_every_hr, int):
+                    cron_expression = f"{now.second} {now.minute} {now.hour}/{offline_backfill_every_hr} ? * * *"
                 feature_group.materialization_job.schedule(
                     cron_expression=cron_expression,
                     # added 2 seconds after the current time to avoid retriggering the job directly

@@ -18,6 +18,7 @@ from typing import Optional, Union
 
 import numpy
 import pandas
+from hopsworks_common import usage
 from hsml.model_schema import ModelSchema
 from hsml.torch.model import Model
 
@@ -25,6 +26,7 @@ from hsml.torch.model import Model
 _mr = None
 
 
+@usage.method_logger
 def create_model(
     name: str,
     version: Optional[int] = None,

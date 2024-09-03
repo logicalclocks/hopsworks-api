@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, Union
 
-from hopsworks_common import client, execution, job, job_schedule, util
+from hopsworks_common import client, execution, job, job_schedule, usage, util
 from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.core import (
     ingestion_job_conf,
@@ -28,6 +28,7 @@ from hopsworks_common.core import (
 
 
 class JobApi:
+    @usage.method_logger
     def create_job(self, name: str, config: dict):
         """Create a new job or update an existing one.
 
@@ -69,6 +70,7 @@ class JobApi:
         print(f"Job created successfully, explore it at {created_job.get_url()}")
         return created_job
 
+    @usage.method_logger
     def get_job(self, name: str):
         """Get a job.
 
@@ -91,6 +93,7 @@ class JobApi:
             _client._send_request("GET", path_params, query_params=query_params)
         )
 
+    @usage.method_logger
     def get_jobs(self):
         """Get all jobs.
 
@@ -110,6 +113,7 @@ class JobApi:
             _client._send_request("GET", path_params, query_params=query_params)
         )
 
+    @usage.method_logger
     def exists(self, name: str):
         """Check if a job exists.
 
@@ -126,6 +130,7 @@ class JobApi:
         except RestAPIError:
             return False
 
+    @usage.method_logger
     def get_configuration(self, type: str):
         """Get configuration for the specific job type.
 
@@ -206,6 +211,7 @@ class JobApi:
             path_params,
         )
 
+    @usage.method_logger
     def create(
         self,
         name: str,
@@ -223,18 +229,21 @@ class JobApi:
             )
         )
 
+    @usage.method_logger
     def launch(self, name: str, args: str = None) -> None:
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "jobs", name, "executions"]
 
         _client._send_request("POST", path_params, data=args)
 
+    @usage.method_logger
     def get(self, name: str) -> job.Job:
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "jobs", name]
 
         return job.Job.from_response_json(_client._send_request("GET", path_params))
 
+    @usage.method_logger
     def last_execution(self, job: job.Job) -> execution.Execution:
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "jobs", job.name, "executions"]
@@ -249,6 +258,7 @@ class JobApi:
             job=job,
         )
 
+    @usage.method_logger
     def create_or_update_schedule_job(
         self, name: str, schedule_config: Dict[str, Any]
     ) -> job_schedule.JobSchedule:
@@ -263,6 +273,7 @@ class JobApi:
             )
         )
 
+    @usage.method_logger
     def delete_schedule_job(self, name: str) -> None:
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "jobs", name, "schedule", "v2"]

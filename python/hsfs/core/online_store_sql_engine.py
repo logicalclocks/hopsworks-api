@@ -557,10 +557,11 @@ class OnlineStoreSqlClient:
 
     async def _query_async_sql(self, stmt, bind_params):
         """Query prepared statement together with bind params using aiomysql connection pool"""
-        if self._connection_pool is None:
-            await self._get_connection_pool(
-                len(self._prepared_statements[self.SINGLE_VECTOR_KEY])
-            )
+        # create connection pool
+        await self._get_connection_pool(
+            len(self._prepared_statements[self.SINGLE_VECTOR_KEY])
+        )
+
         async with self._connection_pool.acquire() as conn:
             # Execute the prepared statement
             _logger.debug(
@@ -572,6 +573,10 @@ class OnlineStoreSqlClient:
             resultset = await cursor.fetchall()
             _logger.debug(f"Retrieved resultset: {resultset}. Closing cursor.")
             await cursor.close()
+
+        # close connection pool
+        self._connection_pool.close()
+        await self._connection_pool.wait_closed()
 
         return resultset
 
