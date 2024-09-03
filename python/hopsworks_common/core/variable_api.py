@@ -90,11 +90,21 @@ class VariableApi:
             return (None, None)
         return matches.group(1), matches.group(2)
 
+    def get_data_science_profile_enabled(self) -> bool:
+        """Check if data science profile is enabled on the backend.
+
+        # Returns
+            `True`: If data science profile is enabled, `False` otherwise.
+        # Raises
+            `RestAPIError`: If unable to obtain the flag's value.
+        """
+        return self.get_variable("enable_data_science_profile") == "true"
+
     def get_flyingduck_enabled(self) -> bool:
         """Check if Flying Duck is enabled on the backend.
 
         # Returns
-            `True`: If flying duck is availalbe, `False` otherwise.
+            `True`: If flying duck is available, `False` otherwise.
         # Raises
             `RestAPIError`: If unable to obtain the flag's value.
         """
