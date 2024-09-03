@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+from typing import Optional
 
 import humps
 from hopsworks_common import client, util
@@ -101,7 +102,7 @@ class Project:
         return self._created
 
     def get_feature_store(
-        self, name: str = None, engine: str = None
+        self, name: Optional[str] = None, engine: Optional[str] = None
     ):  # -> hsfs.feature_store.FeatureStore
         """Connect to Project's Feature Store.
 
@@ -127,7 +128,7 @@ class Project:
         # Raises
             `RestAPIError`: If unable to connect
         """
-        return client.get_connection().get_feature_store(name)
+        return client.get_connection().get_feature_store(name, engine)
 
     def get_model_registry(self):
         """Connect to Project's Model Registry API.
