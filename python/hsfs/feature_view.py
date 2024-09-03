@@ -190,6 +190,7 @@ class FeatureView:
         self._last_accessed_training_dataset = None
 
         self._feature_logger = None
+        self._serving_training_dataset_version = None
 
     def get_last_accessed_training_dataset(self):
         return self._last_accessed_training_dataset
@@ -362,7 +363,7 @@ class FeatureView:
                 self.init_batch_scoring(1)
             else:
                 raise e
-
+        self._serving_training_dataset_version = training_dataset_version
         # Compatibility with 3.7
         if init_sql_client is None:
             init_sql_client = kwargs.get("init_online_store_sql_client", None)
@@ -451,6 +452,7 @@ class FeatureView:
             training_dataset_version: int, optional. Default to be None. Transformation statistics
                 are fetched from training dataset and applied to the feature vector.
         """
+        self._serving_training_dataset_version = training_dataset_version
         self._batch_scoring_server.init_batch_scoring(
             self, training_dataset_version=training_dataset_version
         )
@@ -3611,7 +3613,9 @@ class FeatureView:
             prediction: The predictions to be logged. Can be a pandas DataFrame, a list of lists, or a numpy ndarray. Defaults to None.
             transformed_features: The transformed features to be logged. Can be a pandas DataFrame, a list of lists, or a numpy ndarray.
             write_options: Options for writing the log. Defaults to None.
-            training_dataset_version: Version of the training dataset. Defaults to None.
+            training_dataset_version: Version of the training dataset. If training dataset version is definied in
+                `init_serving` or `init_batch_scoring`, or model has training dataset version,
+                or training dataset version was cached, then the version will be used, otherwise defaults to None.
             model: `hsml.model.Model` Hopsworks model associated with the log. Defaults to None.
 
         # Returns
@@ -3651,6 +3655,7 @@ class FeatureView:
             write_options,
             training_dataset_version=(
                 training_dataset_version
+                or self._serving_training_dataset_version
                 or (model.training_dataset_version if model else None)
                 or self.get_last_accessed_training_dataset()
             ),
