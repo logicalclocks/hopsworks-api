@@ -19,11 +19,11 @@ import datetime
 import os
 import statistics
 
+import hopsworks_common
 import pandas as pd
 import pytest
 import tzlocal
 from hsfs import (
-    engine,
     training_dataset,
     training_dataset_feature,
     transformation_function,
@@ -77,7 +77,7 @@ class TestPythonSparkTransformationFunctions:
 
     def _validate_on_python_engine(self, td, df, expected_df, transformation_functions):
         # Arrange
-        engine._engine_type = "python"
+        hopsworks_common.connection._hsfs_engine_type = "python"
         python_engine = python.Engine()
 
         # Act
@@ -94,7 +94,7 @@ class TestPythonSparkTransformationFunctions:
         self, td, spark_df, expected_spark_df, transformation_functions
     ):
         # Arrange
-        engine._engine_type = "spark"
+        hopsworks_common.connection._hsfs_engine_type = "spark"
         spark_engine = spark.Engine()
 
         # Act

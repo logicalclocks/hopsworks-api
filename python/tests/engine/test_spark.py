@@ -15,11 +15,11 @@
 #
 from __future__ import annotations
 
+import hopsworks_common
 import numpy
 import pandas as pd
 import pytest
 from hsfs import (
-    engine,
     expectation_suite,
     feature,
     feature_group,
@@ -59,7 +59,7 @@ from pyspark.sql.types import (
 )
 
 
-engine._engine_type = "spark"
+hopsworks_common.connection._hsfs_engine_type = "spark"
 
 
 class TestSpark:
@@ -4524,7 +4524,7 @@ class TestSpark:
     def test_apply_transformation_function_single_output(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "spark"
+        hopsworks_common.connection._hsfs_engine_type = "spark"
         spark_engine = spark.Engine()
 
         @udf(int, drop=["col1"])
@@ -4585,7 +4585,7 @@ class TestSpark:
     def test_apply_transformation_function_multiple_output(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "spark"
+        hopsworks_common.connection._hsfs_engine_type = "spark"
         spark_engine = spark.Engine()
 
         @udf([int, int], drop=["col1"])
@@ -4647,7 +4647,7 @@ class TestSpark:
     def test_apply_transformation_function_multiple_input_output(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "spark"
+        hopsworks_common.connection._hsfs_engine_type = "spark"
         spark_engine = spark.Engine()
 
         @udf([int, int])
@@ -4712,7 +4712,7 @@ class TestSpark:
     ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "spark"
+        hopsworks_common.connection._hsfs_engine_type = "spark"
         spark_engine = spark.Engine()
 
         @udf([int, int], drop=["col1"])
@@ -4774,7 +4774,7 @@ class TestSpark:
     def test_apply_transformation_function_multiple_input_output_drop_all(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "spark"
+        hopsworks_common.connection._hsfs_engine_type = "spark"
         spark_engine = spark.Engine()
 
         @udf([int, int], drop=["col1", "col2"])
