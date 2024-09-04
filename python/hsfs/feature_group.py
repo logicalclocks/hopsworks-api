@@ -38,7 +38,6 @@ if TYPE_CHECKING:
     import great_expectations
 
 import avro.schema
-import confluent_kafka
 import hsfs.expectation_suite
 import humps
 import numpy as np
@@ -80,6 +79,7 @@ from hsfs.core import (
 from hsfs.core import feature_monitoring_config as fmc
 from hsfs.core import feature_monitoring_result as fmr
 from hsfs.core.constants import (
+    HAS_CONFLUENT_KAFKA,
     HAS_GREAT_EXPECTATIONS,
 )
 from hsfs.core.job import Job
@@ -100,6 +100,9 @@ from hsfs.validation_report import ValidationReport
 
 if HAS_GREAT_EXPECTATIONS:
     import great_expectations
+
+if HAS_CONFLUENT_KAFKA:
+    import confluent_kafka
 
 
 _logger = logging.getLogger(__name__)
