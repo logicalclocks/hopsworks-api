@@ -190,14 +190,16 @@ class FeatureViewEngine:
             return self._feature_view_api.delete_by_name(name)
 
     def get_training_dataset_schema(
-        self, feature_view: FeatureView, training_dataset_version: int
+        self, feature_view: FeatureView, training_dataset_version: Optional[int] = None
     ):
         """
         Function that returns the schema of the training dataset generated using the feature view.
 
         # Arguments
             feature_view: `FeatureView`. The feature view for which the schema is to be generated.
-            training_dataset_version: `int`. Version of the training dataset for which the schema is to be generated.
+            training_dataset_version: `int`. Specifies the version of the training dataset for which the schema should be generated.
+                By default, this is set to None. However, if the `one_hot_encoder` transformation function is used, the training dataset version must be provided.
+                This is because the schema will then depend on the statistics of the training data used.
 
         # Returns
             `List[training_dataset_feature.TrainingDatasetFeature]`: List of training dataset features objects.
@@ -214,11 +216,27 @@ class FeatureViewEngine:
             transformed_labels = []
             dropped_features = set()
 
-            # Get transformation functions with correct statistics based on training dataset version.
-            transformation_functions = self._transformation_function_engine.get_ready_to_use_transformation_fns(
-                feature_view=feature_view,
-                training_dataset_version=training_dataset_version,
+            # Statistics only required for computing schema if one-hot-encoder in the transformation functions
+            statistics_required = any(
+                [
+                    tf.hopsworks_udf.function_name == "one_hot_encoder"
+                    for tf in feature_view.transformation_functions
+                ]
             )
+
+            if statistics_required:
+                if not training_dataset_version:
+                    raise FeatureStoreException(
+                        "The feature view includes the one_hot_encoder transformation function. As a result, the schema of the generated training dataset depends on its statistics. Please specify the version of the training dataset for which the schema should be generated."
+                    )
+
+                # Get transformation functions with correct statistics based on training dataset version.
+                transformation_functions = self._transformation_function_engine.get_ready_to_use_transformation_fns(
+                    feature_view=feature_view,
+                    training_dataset_version=training_dataset_version,
+                )
+            else:
+                transformation_functions = feature_view.transformation_functions
 
             # Getting all dropped features
             for tf in transformation_functions:
@@ -496,6 +514,11 @@ class FeatureViewEngine:
             else feature_view_obj.labels
         )
 
+        # Set training dataset schema after training dataset has been generated
+        td_updated.schema = self.get_training_dataset_schema(
+            feature_view=feature_view_obj, training_dataset_version=td_updated.version
+        )
+
         # split df into features and labels df
         if td_updated.splits:
             for split in td_updated.splits:
@@ -569,6 +592,11 @@ class FeatureViewEngine:
             user_write_options,
             training_dataset_obj=training_dataset_obj,
             spine=spine,
+        )
+        # Set training dataset schema after training dataset has been generated
+        training_dataset_obj.schema = self.get_training_dataset_schema(
+            feature_view=feature_view_obj,
+            training_dataset_version=training_dataset_obj.version,
         )
         return training_dataset_obj, td_job
 
@@ -760,6 +788,12 @@ class FeatureViewEngine:
             feature_view_obj=feature_view_obj,
         )
 
+        # Set training dataset schema after training dataset has been generated
+        training_dataset_obj.schema = self.get_training_dataset_schema(
+            feature_view=feature_view_obj,
+            training_dataset_version=training_dataset_obj.version,
+        )
+
         if engine.get_type().startswith("spark"):
             # if spark engine, read td and compute stats
             if training_dataset_obj.splits:
@@ -812,10 +846,7 @@ class FeatureViewEngine:
         td = self._feature_view_api.get_training_dataset_by_version(
             feature_view_obj.name, feature_view_obj.version, training_dataset_version
         )
-        # schema needs to be set for writing training data or feature serving
-        td.schema = feature_view_obj.get_training_dataset_schema(
-            training_dataset_version
-        )
+
         return td
 
     def _get_training_datasets_metadata(self, feature_view_obj: FeatureView):
