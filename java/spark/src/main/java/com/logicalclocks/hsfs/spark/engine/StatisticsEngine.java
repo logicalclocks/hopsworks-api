@@ -39,6 +39,7 @@ import java.io.IOException;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -92,9 +93,12 @@ public class StatisticsEngine {
   private Statistics computeStatistics(Dataset<Row> dataFrame, List<String> statisticColumns, Boolean histograms,
       Boolean correlations, Boolean exactUniqueness, Long commitId) {
     String content;
-    Long commitTime = Timestamp.valueOf(LocalDateTime.now()).getTime();
 
     if (dataFrame.isEmpty()) {
+      if (statisticColumns == null || statisticColumns.isEmpty()) {
+        // if no specific columns are specified, use all column names in the dataframe
+        statisticColumns = Arrays.asList((String[]) dataFrame.columns());
+      }
       LOGGER.warn("There is no data in the entity that you are trying to compute statistics for. A "
           + "possible cause might be that you inserted only data to the online storage of a feature group.");
       content = buildEmptyStatistics(statisticColumns);
@@ -105,6 +109,8 @@ public class StatisticsEngine {
     }
 
     Collection<FeatureDescriptiveStatistics> featureDescriptiveStatistics = parseDeequStatistics(content);
+    
+    Long commitTime = Timestamp.valueOf(LocalDateTime.now()).getTime();
     return new Statistics(commitTime, 1.0f, featureDescriptiveStatistics, commitId, null);
   }
 
@@ -182,12 +188,12 @@ public class StatisticsEngine {
     JSONArray columns = new JSONArray();
     for (String name : featureNames) {
       JSONObject colStats = new JSONObject();
-      colStats.append("column", name);
-      colStats.append("count", 0L);
+      colStats.put("column", name);
+      colStats.put("count", 0L);
       columns.put(colStats);
     }
     JSONObject emptyStats = new JSONObject();
-    emptyStats.append("columns", columns);
+    emptyStats.put("columns", columns);
     return emptyStats.toString();
   }
 }
