@@ -1332,9 +1332,8 @@ class Engine:
         # Raises
             `FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
-        dataframe = pd.concat(
-            [
-                dataframe.reset_index(drop=True),
+        if len(hopsworks_udf.return_types) > 1:
+            print(
                 hopsworks_udf.get_udf(inference=False)(
                     *(
                         [
@@ -1342,10 +1341,29 @@ class Engine:
                             for feature in hopsworks_udf.transformation_features
                         ]
                     )
-                ).reset_index(drop=True),
-            ],
-            axis=1,
-        )
+                )
+            )
+            dataframe[hopsworks_udf.output_column_names] = hopsworks_udf.get_udf(
+                inference=False
+            )(
+                *(
+                    [
+                        dataframe[feature]
+                        for feature in hopsworks_udf.transformation_features
+                    ]
+                )
+            )
+        else:
+            dataframe[hopsworks_udf.output_column_names[0]] = hopsworks_udf.get_udf(
+                inference=False
+            )(
+                *(
+                    [
+                        dataframe[feature]
+                        for feature in hopsworks_udf.transformation_features
+                    ]
+                )
+            )
         return dataframe
 
     @staticmethod

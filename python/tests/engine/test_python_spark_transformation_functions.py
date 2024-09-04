@@ -550,7 +550,7 @@ class TestPythonSparkTransformationFunctions:
             td, spark_df, expected_spark_df, transformation_functions
         )
 
-    def test_apply_plus_one_int(self, mocker):
+    def test_apply_plus_one_int_default(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
         spark_engine = spark.Engine()
@@ -591,6 +591,126 @@ class TestPythonSparkTransformationFunctions:
 
         # Arrange
         @udf(int, drop=["col_0"])
+        def tf_fun(col_0):
+            return col_0 + 1
+
+        td = self._create_training_dataset()
+
+        transformation_functions = [
+            transformation_function.TransformationFunction(
+                hopsworks_udf=tf_fun,
+                featurestore_id=99,
+                transformation_type=TransformationType.MODEL_DEPENDENT,
+            )
+        ]
+
+        # Assert
+        self._validate_on_python_engine(td, df, expected_df, transformation_functions)
+        self._validate_on_spark_engine(
+            td, spark_df, expected_spark_df, transformation_functions
+        )
+
+    def test_apply_plus_one_int_python(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        spark_engine = spark.Engine()
+
+        schema = StructType(
+            [
+                StructField("col_0", IntegerType(), True),
+                StructField("col_1", StringType(), True),
+                StructField("col_2", BooleanType(), True),
+            ]
+        )
+        df = pd.DataFrame(
+            data={
+                "col_0": [1, 2],
+                "col_1": ["test_1", "test_2"],
+                "col_2": [True, False],
+            }
+        )
+        spark_df = spark_engine._spark_session.createDataFrame(df, schema=schema)
+
+        expected_schema = StructType(
+            [
+                StructField("col_1", StringType(), True),
+                StructField("col_2", BooleanType(), True),
+                StructField("tf_fun_col_0_", LongType(), True),
+            ]
+        )
+        expected_df = pd.DataFrame(
+            data={
+                "col_1": ["test_1", "test_2"],
+                "col_2": [True, False],
+                "tf_fun_col_0_": [2, 3],
+            }
+        )
+        expected_spark_df = spark_engine._spark_session.createDataFrame(
+            expected_df, schema=expected_schema
+        )
+
+        # Arrange
+        @udf(int, drop=["col_0"], mode="python")
+        def tf_fun(col_0):
+            return col_0 + 1
+
+        td = self._create_training_dataset()
+
+        transformation_functions = [
+            transformation_function.TransformationFunction(
+                hopsworks_udf=tf_fun,
+                featurestore_id=99,
+                transformation_type=TransformationType.MODEL_DEPENDENT,
+            )
+        ]
+
+        # Assert
+        self._validate_on_python_engine(td, df, expected_df, transformation_functions)
+        self._validate_on_spark_engine(
+            td, spark_df, expected_spark_df, transformation_functions
+        )
+
+    def test_apply_plus_one_int_pandas(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        spark_engine = spark.Engine()
+
+        schema = StructType(
+            [
+                StructField("col_0", IntegerType(), True),
+                StructField("col_1", StringType(), True),
+                StructField("col_2", BooleanType(), True),
+            ]
+        )
+        df = pd.DataFrame(
+            data={
+                "col_0": [1, 2],
+                "col_1": ["test_1", "test_2"],
+                "col_2": [True, False],
+            }
+        )
+        spark_df = spark_engine._spark_session.createDataFrame(df, schema=schema)
+
+        expected_schema = StructType(
+            [
+                StructField("col_1", StringType(), True),
+                StructField("col_2", BooleanType(), True),
+                StructField("tf_fun_col_0_", LongType(), True),
+            ]
+        )
+        expected_df = pd.DataFrame(
+            data={
+                "col_1": ["test_1", "test_2"],
+                "col_2": [True, False],
+                "tf_fun_col_0_": [2, 3],
+            }
+        )
+        expected_spark_df = spark_engine._spark_session.createDataFrame(
+            expected_df, schema=expected_schema
+        )
+
+        # Arrange
+        @udf(int, drop=["col_0"], mode="pandas")
         def tf_fun(col_0):
             return col_0 + 1
 
