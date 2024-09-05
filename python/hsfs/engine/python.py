@@ -1390,16 +1390,6 @@ class Engine:
             `FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
         if len(hopsworks_udf.return_types) > 1:
-            print(
-                hopsworks_udf.get_udf(inference=False)(
-                    *(
-                        [
-                            dataframe[feature]
-                            for feature in hopsworks_udf.transformation_features
-                        ]
-                    )
-                )
-            )
             dataframe[hopsworks_udf.output_column_names] = hopsworks_udf.get_udf(
                 inference=False
             )(
