@@ -605,9 +605,7 @@ def renaming_wrapper(*args):
     df = {self.function_name}(*args)
     if isinstance(df, tuple):
         df = pd.concat(df, axis=1)
-    print(df)
-    df = df.rename(columns = {{df.columns[i]: _output_col_names[i] for i in range(len(df.columns))}})
-    print(df)
+    df.columns = _output_col_names
     for col in _date_time_output_columns:
         if pd.api.types.is_datetime64_any_dtype(df[col]):
             df[col] = convert_timezone(df[col])
@@ -636,7 +634,6 @@ def renaming_wrapper(*args):
         scope = __import__("__main__").__dict__.copy()
         if self.transformation_statistics is not None:
             scope.update({"statistics": self.transformation_statistics})
-        print(self.output_column_names)
         scope.update({"_output_col_names": self.output_column_names})
         scope.update({"_date_time_output_columns": date_time_output_columns})
         # executing code
