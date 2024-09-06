@@ -22,7 +22,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "hsfs[python]==3.8.0rc0",
+    "hsfs[python]==3.8.0rc1",
     "hsml==3.8.0rc0",
     "pyhumps==1.6.1",
     "requests",
@@ -33,8 +33,10 @@ dependencies = [
     "tqdm",
 ]
 
+
 [project.optional-dependencies]
 dev = [ "ruff", "pytest"]
+polars=["polars>=0.20.18,<=0.21.0"]
 
 [build-system]
 requires = ["setuptools", "wheel"]
