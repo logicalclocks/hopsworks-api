@@ -418,7 +418,7 @@ class Connection:
         _client = client.get_instance()
         if _client._is_external() and not _client._project_name:
             warnings.warn(
-                "Connected to Hopsworks. You must provide a project name to access project resources."
+                "Connected to Hopsworks. You must provide a project name to access project resources. "
                 "Use `connection.get_project('my_project')`.",
                 stacklevel=2,
             )
