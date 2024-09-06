@@ -464,6 +464,10 @@ class Connection:
 
                 self._model_serving_api = model_serving_api.ModelServingApi()
             self._model_serving_api.load_default_configuration()  # istio client, default resources,...
+            if not self._model_registry_api:
+                from hsml.core import model_registry_api
+
+                self._model_registry_api = model_registry_api.ModelRegistryApi()
 
     def close(self) -> None:
         """Close a connection gracefully.
