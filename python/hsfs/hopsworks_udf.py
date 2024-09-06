@@ -524,9 +524,9 @@ class HopsworksUdf:
 
         # Start wrapper function generation
         code = (
-            self._module_imports + "\n" + convert_timstamp_function
-            if date_time_output_index
-            else "\n"
+            self._module_imports
+            + "\n"
+            + (convert_timstamp_function + "\n" if date_time_output_index else "\n")
             + "def wrapper(*args):\n"
             + f"   {self._formatted_function_source}\n"
             + f"   transformed_features = {self.function_name}(*args)\n"
@@ -560,6 +560,7 @@ class HopsworksUdf:
 
         # executing code
         exec(code, scope)
+        print(code)
 
         # returning executed function object
         return eval("wrapper", scope)
