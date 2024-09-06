@@ -454,8 +454,10 @@ class Connection:
             return
 
         from hsfs import engine
+        from hsfs.core import feature_store_api
 
         engine.get_instance()
+        self._feature_store_api = feature_store_api.FeatureStoreApi()
         if self._variable_api.get_data_science_profile_enabled():
             # load_default_configuration has to be called before using hsml
             # but after a project is provided to client
