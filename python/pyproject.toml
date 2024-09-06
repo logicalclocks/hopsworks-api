@@ -33,6 +33,8 @@ dependencies = [
     "tqdm",
 ]
 
+polars=["polars>=0.20.18,<=0.21.0"]
+
 [project.optional-dependencies]
 dev = [ "ruff", "pytest"]
 
