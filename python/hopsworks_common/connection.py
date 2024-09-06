@@ -177,10 +177,6 @@ class Connection:
         if engine:
             global _hsfs_engine_type
             _hsfs_engine_type = engine
-
-        if not self._feature_store_api:
-            self._provide_project()
-
         engine.get_instance()
 
         if not name:
@@ -199,9 +195,6 @@ class Connection:
         # Returns
             `ModelRegistry`. A model registry handle object to perform operations on.
         """
-        if not self._model_registry_api:
-            self._provide_project()
-
         return self._model_registry_api.get(project)
 
     @usage.method_logger
@@ -222,9 +215,6 @@ class Connection:
         # Returns
             `ModelServing`. A model serving handle object to perform operations on.
         """
-        if not self._model_serving_api:
-            self._provide_project()
-
         return self._model_serving_api.get()
 
     @usage.method_logger
@@ -405,12 +395,14 @@ class Connection:
                 )
 
             client.set_connection(self)
+            from hsfs.core import feature_store_api
+            from hsml.core import model_registry_api, model_serving_api
 
             global _hsfs_engine_type
             _hsfs_engine_type = self._engine
-            self._feature_store_api = None
-            self._model_registry_api = None
-            self._model_serving_api = None
+            self._feature_store_api = feature_store_api.FeatureStoreApi()
+            self._model_registry_api = model_registry_api.ModelRegistryApi()
+            self._model_serving_api = model_serving_api.ModelServingApi()
             self._project_api = project_api.ProjectApi()
             self._hosts_api = hosts_api.HostsApi()
             self._services_api = services_api.ServicesApi()
@@ -454,22 +446,12 @@ class Connection:
             return
 
         from hsfs import engine
-        from hsfs.core import feature_store_api
 
         engine.get_instance()
-        self._feature_store_api = feature_store_api.FeatureStoreApi()
         if self._variable_api.get_data_science_profile_enabled():
             # load_default_configuration has to be called before using hsml
             # but after a project is provided to client
-            if not self._model_serving_api:
-                from hsml.core import model_serving_api
-
-                self._model_serving_api = model_serving_api.ModelServingApi()
             self._model_serving_api.load_default_configuration()  # istio client, default resources,...
-            if not self._model_registry_api:
-                from hsml.core import model_registry_api
-
-                self._model_registry_api = model_registry_api.ModelRegistryApi()
 
     def close(self) -> None:
         """Close a connection gracefully.
