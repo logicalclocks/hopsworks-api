@@ -172,12 +172,12 @@ class Connection:
             `FeatureStore`. A feature store handle object to perform operations on.
         """
         # Ensure the engine is initialized and of right type
-        from hsfs import engine
+        from hsfs import hsfs_engine
 
         if engine:
             global _hsfs_engine_type
             _hsfs_engine_type = engine
-        engine.get_instance()
+        hsfs_engine.get_instance()
 
         if not name:
             name = client.get_instance()._project_name
