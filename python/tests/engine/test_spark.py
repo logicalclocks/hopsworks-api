@@ -4585,7 +4585,7 @@ class TestSpark:
     def test_apply_transformation_function_single_output_udf_python_mode(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "spark"
+        hopsworks_common.connection._hsfs_engine_type = "spark"
         spark_engine = spark.Engine()
 
         @udf(int, drop=["col1"], mode="python")
@@ -4646,7 +4646,7 @@ class TestSpark:
     def test_apply_transformation_function_single_output_udf_pandas_mode(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "spark"
+        hopsworks_common.connection._hsfs_engine_type = "spark"
         spark_engine = spark.Engine()
 
         @udf(int, drop=["col1"], mode="pandas")
@@ -4773,7 +4773,7 @@ class TestSpark:
     ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "spark"
+        hopsworks_common.connection._hsfs_engine_type = "spark"
         spark_engine = spark.Engine()
 
         @udf([int, int], drop=["col1"], mode="pandas")
@@ -4837,7 +4837,7 @@ class TestSpark:
     ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "spark"
+        hopsworks_common.connection._hsfs_engine_type = "spark"
         spark_engine = spark.Engine()
 
         @udf([int, int], drop=["col1"], mode="python")
@@ -4966,7 +4966,7 @@ class TestSpark:
     ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "spark"
+        hopsworks_common.connection._hsfs_engine_type = "spark"
         spark_engine = spark.Engine()
 
         @udf([int, int], mode="python")
@@ -5031,7 +5031,7 @@ class TestSpark:
     ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "spark"
+        hopsworks_common.connection._hsfs_engine_type = "spark"
         spark_engine = spark.Engine()
 
         @udf([int, int], mode="pandas")
@@ -5160,7 +5160,7 @@ class TestSpark:
     ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "spark"
+        hopsworks_common.connection._hsfs_engine_type = "spark"
         spark_engine = spark.Engine()
 
         @udf([int, int], drop=["col1"], mode="pandas")
@@ -5224,7 +5224,7 @@ class TestSpark:
     ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "spark"
+        hopsworks_common.connection._hsfs_engine_type = "spark"
         spark_engine = spark.Engine()
 
         @udf([int, int], drop=["col1"], mode="python")
@@ -5351,7 +5351,7 @@ class TestSpark:
     ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "spark"
+        hopsworks_common.connection._hsfs_engine_type = "spark"
         spark_engine = spark.Engine()
 
         @udf([int, int], drop=["col1", "col2"], mode="pandas")
@@ -5414,7 +5414,7 @@ class TestSpark:
     ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "spark"
+        hopsworks_common.connection._hsfs_engine_type = "spark"
         spark_engine = spark.Engine()
 
         @udf([int, int], drop=["col1", "col2"], mode="python")
