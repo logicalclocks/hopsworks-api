@@ -2593,7 +2593,7 @@ class TestPython:
     def test_apply_transformation_function_udf_pandas_mode(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "python"
+        hopsworks_common.connection._hsfs_engine_type = "python"
         python_engine = python.Engine()
 
         @udf(int, mode="pandas")
@@ -2633,7 +2633,7 @@ class TestPython:
     def test_apply_transformation_function_udf_python_mode(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "python"
+        hopsworks_common.connection._hsfs_engine_type = "python"
         python_engine = python.Engine()
 
         @udf(int, mode="python")
@@ -2720,7 +2720,7 @@ class TestPython:
     ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "python"
+        hopsworks_common.connection._hsfs_engine_type = "python"
         python_engine = python.Engine()
 
         @udf([int, int], drop=["col1"], mode="python")
@@ -2765,7 +2765,7 @@ class TestPython:
     ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "python"
+        hopsworks_common.connection._hsfs_engine_type = "python"
         python_engine = python.Engine()
 
         @udf([int, int], drop=["col1"], mode="pandas")
@@ -2864,7 +2864,7 @@ class TestPython:
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
 
-        engine._engine_type = "python"
+        hopsworks_common.connection._hsfs_engine_type = "python"
         python_engine = python.Engine()
 
         @udf([int, int], mode="pandas")
@@ -2917,7 +2917,7 @@ class TestPython:
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
 
-        engine._engine_type = "python"
+        hopsworks_common.connection._hsfs_engine_type = "python"
         python_engine = python.Engine()
 
         @udf([int, int], mode="python")
@@ -3016,7 +3016,7 @@ class TestPython:
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
 
-        engine._engine_type = "python"
+        hopsworks_common.connection._hsfs_engine_type = "python"
         python_engine = python.Engine()
 
         @udf([int, int], drop=["col1", "col2"], mode="python")
@@ -3062,7 +3062,7 @@ class TestPython:
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
 
-        engine._engine_type = "python"
+        hopsworks_common.connection._hsfs_engine_type = "python"
         python_engine = python.Engine()
 
         @udf([int, int], drop=["col1", "col2"], mode="pandas")
@@ -3158,7 +3158,7 @@ class TestPython:
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
 
-        engine._engine_type = "python"
+        hopsworks_common.connection._hsfs_engine_type = "python"
         python_engine = python.Engine()
 
         @udf([int, int], drop=["col1"], mode="python")
@@ -3208,7 +3208,7 @@ class TestPython:
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
 
-        engine._engine_type = "python"
+        hopsworks_common.connection._hsfs_engine_type = "python"
         python_engine = python.Engine()
 
         @udf([int, int], drop=["col1"], mode="pandas")
@@ -3297,7 +3297,7 @@ class TestPython:
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
 
-        engine._engine_type = "python"
+        hopsworks_common.connection._hsfs_engine_type = "python"
         python_engine = python.Engine()
 
         @udf(int, mode="python")
@@ -3338,7 +3338,7 @@ class TestPython:
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
 
-        engine._engine_type = "python"
+        hopsworks_common.connection._hsfs_engine_type = "python"
         python_engine = python.Engine()
 
         @udf(int, mode="pandas")
