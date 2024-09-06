@@ -177,12 +177,11 @@ class Connection:
         if engine:
             global _hsfs_engine_type
             _hsfs_engine_type = engine
-        engine.get_instance()
 
         if not self._feature_store_api:
-            from hsfs.core import feature_store_api
+            self._provide_project()
 
-            self._feature_store_api = feature_store_api.FeatureStoreApi()
+        engine.get_instance()
 
         if not name:
             name = client.get_instance()._project_name
@@ -201,9 +200,7 @@ class Connection:
             `ModelRegistry`. A model registry handle object to perform operations on.
         """
         if not self._model_registry_api:
-            from hsml.core import model_registry_api
-
-            self._model_registry_api = model_registry_api.ModelRegistryApi()
+            self._provide_project()
 
         return self._model_registry_api.get(project)
 
@@ -226,10 +223,7 @@ class Connection:
             `ModelServing`. A model serving handle object to perform operations on.
         """
         if not self._model_serving_api:
-            from hsml.core import model_serving_api
-
-            self._model_serving_api = model_serving_api.ModelServingApi()
-            self._model_serving_api.load_default_configuration()  # istio client, default resources,...
+            self._provide_project()
 
         return self._model_serving_api.get()
 
@@ -289,7 +283,7 @@ class Connection:
                 " set a project when login or creating the connection."
             )
         elif not _client._project_name:
-            _client.provide_project(name)
+            self._provide_project(name)
         elif not name:
             name = client.get_instance()._project_name
 
@@ -409,7 +403,6 @@ class Connection:
                     "hopsworks",
                     hostname_verification=self._hostname_verification,
                 )
-                self._project = client.get_instance()._project_name
 
             client.set_connection(self)
 
@@ -425,26 +418,16 @@ class Connection:
             self._variable_api = variable_api.VariableApi()
             usage.init_usage(self._host, self._variable_api.get_version("hopsworks"))
 
-            if self._project:
-                from hsfs import engine
-
-                engine.get_instance()
-                if self._variable_api.get_data_science_profile_enabled():
-                    # load_default_configuration has to be called before using hsml
-                    # but after a project is provided to client
-                    from hsml.core import model_serving_api
-
-                    self._model_serving_api = model_serving_api.ModelServingApi()
-                    self._model_serving_api.load_default_configuration()  # istio client, default resources,...
+            self._provide_project()
         except (TypeError, ConnectionError):
             self._connected = False
             raise
 
         _client = client.get_instance()
-        if _client._is_external() and not hasattr(_client, "_project_name"):
+        if _client._is_external() and not _client._project_name:
             warnings.warn(
                 "Connected to Hopsworks. You must provide a project name to access project resources."
-                "Use `connection.get_project('my_project')` or `hopsworks.client.get_instance().provide_project('my_project')`",
+                "Use `connection.get_project('my_project')`.",
                 stacklevel=2,
             )
         else:
@@ -454,6 +437,33 @@ class Connection:
             )
 
         self._check_compatibility()
+
+    @connected
+    def _provide_project(self, name=None):
+        _client = client.get_instance()
+
+        if name:
+            self._project = name
+            if _client._is_external():
+                _client.provide_project(name)
+
+        if _client._project_name:
+            self._project = _client._project_name
+
+        if not self._project:
+            return
+
+        from hsfs import engine
+
+        engine.get_instance()
+        if self._variable_api.get_data_science_profile_enabled():
+            # load_default_configuration has to be called before using hsml
+            # but after a project is provided to client
+            if not self._model_serving_api:
+                from hsml.core import model_serving_api
+
+                self._model_serving_api = model_serving_api.ModelServingApi()
+            self._model_serving_api.load_default_configuration()  # istio client, default resources,...
 
     def close(self) -> None:
         """Close a connection gracefully.

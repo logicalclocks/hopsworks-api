@@ -21,7 +21,7 @@ import logging
 import os
 
 import requests
-from hopsworks_common.client import auth, base, exceptions
+from hopsworks_common.client import auth, base, exceptions, get_connection
 from hopsworks_common.client.exceptions import FeatureStoreException
 
 
@@ -146,6 +146,8 @@ class Client(base.Client):
 
             for conf_key, conf_value in configuration_dict.items():
                 _spark_session._jsc.hadoopConfiguration().set(conf_key, conf_value)
+
+        get_connection()._provide_project()
 
     def download_certs(self):
         res = self._materialize_certs()
