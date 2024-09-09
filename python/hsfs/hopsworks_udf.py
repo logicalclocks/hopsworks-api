@@ -510,16 +510,19 @@ class HopsworksUdf:
 
         # Function that converts the timestamp to localized timezone
         convert_timstamp_function = (
-            "from datetime import datetime\n"
+            "from datetime import datetime, timezone\n"
             + "import tzlocal\n"
             + "def convert_timezone(date_time_obj : datetime):\n"
             + "   current_timezone = tzlocal.get_localzone()\n"
-            + "   if date_time_obj.tzinfo is None:\n"
-            + "   # if timestamp is timezone unaware, make sure it's localized to the system's timezone.\n"
-            + "   # otherwise, spark will implicitly convert it to the system's timezone.\n"
-            "      return date_time_obj.replace(tzinfo=current_timezone)\n"
+            + "   if date_time_obj and isinstance(date_time_obj, datetime):\n"
+            + "      if date_time_obj.tzinfo is None:\n"
+            + "      # if timestamp is timezone unaware, make sure it's localized to the system's timezone.\n"
+            + "      # otherwise, spark will implicitly convert it to the system's timezone.\n"
+            + "         return date_time_obj.replace(tzinfo=current_timezone)\n"
+            + "      else:\n"
+            + "         return date_time_obj.astimezone(timezone.utc).replace(tzinfo=current_timezone)\n"
             + "   else:\n"
-            + "      return date_time_obj.astimezone(timezone.utc).replace(tzinfo=current_timezone)\n"
+            + "      return None\n"
         )
 
         # Start wrapper function generation
@@ -560,7 +563,6 @@ class HopsworksUdf:
 
         # executing code
         exec(code, scope)
-        print(code)
 
         # returning executed function object
         return eval("wrapper", scope)

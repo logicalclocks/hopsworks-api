@@ -19,11 +19,11 @@ import datetime
 import os
 import statistics
 
-import hopsworks_common
 import pandas as pd
 import pytest
 import tzlocal
 from hsfs import (
+    engine,
     training_dataset,
     training_dataset_feature,
     transformation_function,
@@ -77,15 +77,13 @@ class TestPythonSparkTransformationFunctions:
 
     def _validate_on_python_engine(self, td, df, expected_df, transformation_functions):
         # Arrange
-        hopsworks_common.connection._hsfs_engine_type = "python"
         python_engine = python.Engine()
-
+        engine.set_instance(engine=python_engine, engine_type="python")
         # Act
         result = python_engine._apply_transformation_function(
             transformation_functions=transformation_functions,
             dataset=df,
         )
-        print(result)
         assert list(result.columns) == list(expected_df.columns)
         assert list(result.dtypes) == list(expected_df.dtypes)
         assert result.equals(expected_df)
@@ -94,9 +92,8 @@ class TestPythonSparkTransformationFunctions:
         self, td, spark_df, expected_spark_df, transformation_functions
     ):
         # Arrange
-        hopsworks_common.connection._hsfs_engine_type = "spark"
         spark_engine = spark.Engine()
-
+        engine.set_instance(engine=spark_engine, engine_type="spark")
         # Act
         result = spark_engine._apply_transformation_function(
             transformation_functions=transformation_functions,
@@ -730,7 +727,7 @@ class TestPythonSparkTransformationFunctions:
             td, spark_df, expected_spark_df, transformation_functions
         )
 
-    def test_apply_plus_one_str_default(self, mocker):
+    def test_apply_plus_one_str(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
         spark_engine = spark.Engine()
@@ -1162,7 +1159,7 @@ class TestPythonSparkTransformationFunctions:
             td, spark_df, expected_spark_df, transformation_functions
         )
 
-    def test_apply_plus_one_datetime_tz_utc(self, mocker):
+    def test_apply_plus_one_datetime_tz_utc_default(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
         spark_engine = spark.Engine()
@@ -1377,8 +1374,8 @@ class TestPythonSparkTransformationFunctions:
         def tf_fun(col_0) -> datetime.datetime:
             import datetime
 
-            return (col_0 + datetime.timedelta(milliseconds=1)).dt.tz_localize(
-                datetime.timezone.utc
+            return (col_0 + datetime.timedelta(milliseconds=1)).replace(
+                tzinfo=datetime.timezone.utc
             )
 
         td = self._create_training_dataset()
@@ -1698,7 +1695,7 @@ class TestPythonSparkTransformationFunctions:
             import pytz
 
             pdt = pytz.timezone("US/Pacific")
-            return (col_0 + datetime.timedelta(milliseconds=1)).dt.tz_localize(pdt)
+            return pdt.localize(col_0 + datetime.timedelta(milliseconds=1))
 
         td = self._create_training_dataset()
         transformation_functions = [
@@ -1938,11 +1935,10 @@ class TestPythonSparkTransformationFunctions:
         def tf_fun(col_0) -> datetime.datetime:
             import datetime
 
-            return pd.Series(
+            return (
                 None
-                if data == datetime.datetime.utcfromtimestamp(1640995200)
-                else data + datetime.timedelta(milliseconds=1)
-                for data in col_0
+                if col_0 == datetime.datetime.utcfromtimestamp(1640995200)
+                else col_0 + datetime.timedelta(milliseconds=1)
             )
 
         td = self._create_training_dataset()
