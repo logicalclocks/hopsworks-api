@@ -87,7 +87,6 @@ from hsfs.core.constants import (
     HAS_PANDAS,
     HAS_SQLALCHEMY,
 )
-from hsfs.core.feature_view_engine import FeatureViewEngine
 from hsfs.core.vector_db_client import VectorDbClient
 from hsfs.decorators import uses_great_expectations
 from hsfs.feature_group import ExternalFeatureGroup, FeatureGroup
@@ -1304,29 +1303,7 @@ class Engine:
                 # itertuples returns Python NamedTyple, to be able to serialize it using
                 # avro, create copy of row only by converting to dict, which preserves datatypes
                 row = row._asdict()
-
-                # transform special data types
-                # here we might need to handle also timestamps and other complex types
-                # possible optimizaiton: make it based on type so we don't need to loop over
-                # all keys in the row
-                for k in row.keys():
-                    # for avro to be able to serialize them, they need to be python data types
-                    if isinstance(row[k], np.ndarray):
-                        row[k] = row[k].tolist()
-                    if isinstance(row[k], pd.Timestamp):
-                        row[k] = row[k].to_pydatetime()
-                    if isinstance(row[k], datetime) and row[k].tzinfo is None:
-                        row[k] = row[k].replace(tzinfo=timezone.utc)
-                    if isinstance(row[k], pd._libs.missing.NAType):
-                        row[k] = None
-
-            # encode complex features
-            row = kafka_engine.encode_complex_features(feature_writers, row)
-
-            # encode feature row
-            with BytesIO() as outf:
-                writer(row, outf)
-                encoded_row = outf.getvalue()
+            encoded_row = kafka_engine.encode_row(feature_writers, writer, row)
 
             # assemble key
             key = "".join([str(row[pk]) for pk in sorted(feature_group.primary_key)])
@@ -1444,22 +1421,55 @@ class Engine:
         ):
             raise ValueError(f"Type '{type(feature_log)}' not accepted")
         if isinstance(feature_log, list) or isinstance(feature_log, np.ndarray):
-            if isinstance(feature_log[0], list) or isinstance(
-                feature_log[0], np.ndarray
-            ):
-                provided_len = len(feature_log[0])
-            else:
-                provided_len = 1
-            assert provided_len == len(
-                cols
-            ), f"Expecting {len(cols)} features/labels but {provided_len} provided."
-
+            Engine._validate_logging_list(feature_log, cols)
             return pd.DataFrame(feature_log, columns=cols)
         else:
             if isinstance(feature_log, pl.DataFrame):
                 return feature_log.clone().to_pandas()
             elif isinstance(feature_log, pd.DataFrame):
                 return feature_log.copy(deep=False)
+
+    @staticmethod
+    def _validate_logging_list(feature_log, cols):
+        if isinstance(feature_log[0], list) or isinstance(
+            feature_log[0], np.ndarray
+        ):
+            provided_len = len(feature_log[0])
+        else:
+            provided_len = 1
+        assert provided_len == len(
+            cols
+        ), f"Expecting {len(cols)} features/labels but {provided_len} provided."
+
+    @staticmethod
+    def get_logging_metadata(
+        size=None,
+        td_col_name: Optional[str] = None,
+        time_col_name: Optional[str] = None,
+        model_col_name: Optional[str] = None,
+        training_dataset_version: Optional[int] = None,
+        hsml_model: str = None,
+    ):
+        batch = True
+        if size is None:
+            size = 1
+            batch = False
+
+        now = datetime.now()
+        metadata = {
+            td_col_name: [training_dataset_version for _ in range(size)],
+            model_col_name: [
+                    hsml_model
+                    for _ in range(size)
+                ],
+            time_col_name: pd.Series([now for _ in range(size)]),
+            "log_id": [str(uuid.uuid4()) for _ in range(size)]
+        }
+
+        if not batch:
+            for k, v in metadata.items():
+                metadata[k] = v[0]
+        return metadata
 
     @staticmethod
     def get_feature_logging_df(
@@ -1472,7 +1482,7 @@ class Engine:
         model_col_name: Optional[str] = None,
         predictions: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
         training_dataset_version: Optional[int] = None,
-        hsml_model=None,
+        hsml_model: str = None,
     ) -> pd.DataFrame:
         features = Engine._convert_feature_log_to_df(features, td_features)
         if td_predictions:
@@ -1486,26 +1496,66 @@ class Engine:
             if not set(predictions.columns).intersection(set(features.columns)):
                 features = pd.concat([features, predictions], axis=1)
 
-        features[td_col_name] = pd.Series(
-            [training_dataset_version for _ in range(len(features))]
+        logging_metadata = Engine.get_logging_metadata(
+            size=len(features),
+            td_col_name=td_col_name,
+            time_col_name=time_col_name,
+            model_col_name=model_col_name,
+            training_dataset_version=training_dataset_version,
+            hsml_model=hsml_model,
         )
-        # _cast_column_to_offline_type cannot cast string type
-        features[model_col_name] = pd.Series(
-            [
-                FeatureViewEngine.get_hsml_model_value(hsml_model)
-                if hsml_model
-                else None
-                for _ in range(len(features))
-            ],
-            dtype=pd.StringDtype(),
-        )
-        now = datetime.now()
 
-        features[time_col_name] = pd.Series([now for _ in range(len(features))])
-        features["log_id"] = [str(uuid.uuid4()) for _ in range(len(features))]
+        for k, v in logging_metadata.items():
+            features[k] = pd.Series(v)
+        # _cast_column_to_offline_type cannot cast string type
+        features[model_col_name] = features[model_col_name].astype(
+            pd.StringDtype()
+        )
         return features[[feat.name for feat in fg.features]]
 
     @staticmethod
-    def read_feature_log(query):
+    def get_feature_logging_list(
+        features: Union[pd.DataFrame, list[list], np.ndarray],
+        fg: FeatureGroup = None,
+        td_features: List[str] = None,
+        td_predictions: List[TrainingDatasetFeature] = None,
+        td_col_name: Optional[str] = None,
+        time_col_name: Optional[str] = None,
+        model_col_name: Optional[str] = None,
+        predictions: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
+        training_dataset_version: Optional[int] = None,
+        hsml_model=None,
+    ) -> list:
+        if isinstance(features, pd.DataFrame):
+            return Engine.get_feature_logging_df(
+                features, fg, td_features, td_predictions, td_col_name, time_col_name, model_col_name, predictions, training_dataset_version, hsml_model
+            ).to_dict(orient='records')
+        else:
+            log_vectors = []
+
+            # convert features to dict
+            Engine._validate_logging_list(features, td_features)
+            for row in features:
+                log_vectors.append(dict(zip(td_features, row)))
+
+            # convert prediction to dict
+            if predictions:
+                Engine._validate_logging_list(predictions, td_predictions)
+                for log_vector, row in zip(log_vectors, predictions):
+                    log_vector.update(dict(zip([f.name for f in td_predictions], row)))
+
+            # get metadata
+            for row in log_vectors:
+                row.update(Engine.get_logging_metadata(
+                    td_col_name=td_col_name,
+                    time_col_name=time_col_name,
+                    model_col_name=model_col_name,
+                    training_dataset_version=training_dataset_version,
+                    hsml_model=hsml_model,
+                ))
+            return log_vectors
+
+    @staticmethod
+    def read_feature_log(query, time_col):
         df = query.read()
-        return df.drop(["log_id", FeatureViewEngine._LOG_TIME], axis=1)
+        return df.drop(["log_id", time_col], axis=1)
