@@ -16,9 +16,9 @@
 
 import json
 
+import hopsworks_common
 import pytest
 from hsfs import (
-    engine,
     feature,
     feature_group,
     feature_view,
@@ -29,7 +29,7 @@ from hsfs.client import exceptions
 from hsfs.core import statistics_engine
 
 
-engine._engine_type = "python"
+hopsworks_common.connection._hsfs_engine_type = "python"
 fg = feature_group.FeatureGroup(
     name="test",
     version=1,

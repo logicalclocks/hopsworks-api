@@ -17,6 +17,7 @@
 import os
 from typing import Optional, Union
 
+from hopsworks_common import usage
 from hsml import util
 from hsml.constants import ARTIFACT_VERSION, PREDICTOR_STATE
 from hsml.constants import INFERENCE_ENDPOINTS as IE
@@ -44,6 +45,7 @@ class ModelServing:
 
         self._serving_api = serving_api.ServingApi()
 
+    @usage.method_logger
     def get_deployment_by_id(self, id: int):
         """Get a deployment by id from Model Serving.
         Getting a deployment from Model Serving means getting its metadata handle
@@ -67,6 +69,7 @@ class ModelServing:
 
         return self._serving_api.get_by_id(id)
 
+    @usage.method_logger
     def get_deployment(self, name: str = None):
         """Get a deployment by name from Model Serving.
 
@@ -93,6 +96,7 @@ class ModelServing:
             name = os.environ["DEPLOYMENT_NAME"]
         return self._serving_api.get(name)
 
+    @usage.method_logger
     def get_deployments(self, model: Model = None, status: str = None):
         """Get all deployments from model serving.
         !!! example
@@ -148,6 +152,7 @@ class ModelServing:
 
         return self._serving_api.get_inference_endpoints()
 
+    @usage.method_logger
     def create_predictor(
         self,
         model: Model,
@@ -218,6 +223,7 @@ class ModelServing:
             api_protocol=api_protocol,
         )
 
+    @usage.method_logger
     def create_transformer(
         self,
         script_file: Optional[str] = None,
@@ -285,6 +291,7 @@ class ModelServing:
 
         return Transformer(script_file=script_file, resources=resources)
 
+    @usage.method_logger
     def create_deployment(
         self,
         predictor: Predictor,

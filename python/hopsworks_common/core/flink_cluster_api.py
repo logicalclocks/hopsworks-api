@@ -17,7 +17,7 @@
 import json
 import os
 
-from hopsworks_common import client, flink_cluster, job, util
+from hopsworks_common import client, flink_cluster, job, usage, util
 from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.core import job_api
 
@@ -26,6 +26,7 @@ class FlinkClusterApi:
     def __init__(self):
         self._job_api = job_api.JobApi()
 
+    @usage.method_logger
     def get_configuration(self):
         """Get configuration for the Flink cluster.
 
@@ -36,6 +37,7 @@ class FlinkClusterApi:
         """
         return self._job_api.get_configuration("FLINK")
 
+    @usage.method_logger
     def setup_cluster(self, name: str, config=None):
         """Create a new flink job representing a flink cluster, or update an existing one.
 
@@ -95,6 +97,7 @@ class FlinkClusterApi:
         )
         return flink_cluster_obj
 
+    @usage.method_logger
     def get_cluster(self, name: str):
         """Get the job corresponding to the flink cluster.
         ```python

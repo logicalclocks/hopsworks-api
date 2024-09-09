@@ -49,8 +49,14 @@ class FeatureViewApi:
 
     def __init__(self, feature_store_id: int) -> None:
         self._feature_store_id = feature_store_id
-        self._client = client.get_instance()
-        self._base_path = [
+
+    @property
+    def _client(self):
+        return client.get_instance()
+
+    @property
+    def _base_path(self):
+        return [
             "project",
             self._client._project_id,
             "featurestores",

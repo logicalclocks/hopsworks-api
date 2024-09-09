@@ -17,7 +17,7 @@
 import json
 
 import humps
-from hopsworks_common import util
+from hopsworks_common import usage, util
 from hopsworks_common.core import git_remote_api
 
 
@@ -60,6 +60,7 @@ class GitRemote:
         """Url of the remote"""
         return self._url
 
+    @usage.method_logger
     def delete(self):
         """Remove the git remote from the repo.
 

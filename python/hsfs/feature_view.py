@@ -3844,6 +3844,32 @@ class FeatureView:
             "type": "featureViewDTO",
         }
 
+    def get_training_dataset_schema(
+        self, training_dataset_version: Optional[int] = None
+    ) -> List[training_dataset_feature.TrainingDatasetFeature]:
+        """
+        Function that returns the schema of the training dataset that is generated from a feature view.
+        It provides the schema of the features after all transformation functions have been applied.
+
+        # Arguments
+            training_dataset_version: Specifies the version of the training dataset for which the schema should be generated.
+                By default, this is set to None. However, if the `one_hot_encoder` transformation function is used, the training dataset version must be provided.
+                This is because the schema will then depend on the statistics of the training data used.
+        # Example
+            ```python
+            schema = feature_view.get_training_dataset_schema(training_dataset_version=1)
+            ```
+
+        # Returns
+            `List[training_dataset_feature.TrainingDatasetFeature]`: List of training dataset features objects.
+
+        # Raises
+            `ValueError` if the  training dataset version provided cannot be found.
+        """
+        return self._feature_view_engine.get_training_dataset_schema(
+            self, training_dataset_version
+        )
+
     @property
     def id(self) -> int:
         """Feature view id."""
@@ -3978,12 +4004,12 @@ class FeatureView:
 
     @property
     def schema(self) -> List[training_dataset_feature.TrainingDatasetFeature]:
-        """Feature view schema."""
+        """Schema of untransformed features in the Feature view."""
         return self._features
 
     @property
     def features(self) -> List[training_dataset_feature.TrainingDatasetFeature]:
-        """Feature view schema. (alias)"""
+        """Schema of untransformed features in the Feature view. (alias)"""
         return self._features
 
     @schema.setter
@@ -4037,22 +4063,6 @@ class FeatureView:
     @logging_enabled.setter
     def logging_enabled(self, logging_enabled) -> None:
         self._logging_enabled = logging_enabled
-
-    @property
-    def transformed_features(self) -> List[str]:
-        """Name of features of a feature view after transformation functions have been applied"""
-        dropped_features = set()
-        transformed_column_names = []
-        for tf in self.transformation_functions:
-            transformed_column_names.extend(tf.output_column_names)
-            if tf.hopsworks_udf.dropped_features:
-                dropped_features.update(tf.hopsworks_udf.dropped_features)
-
-        return [
-            feature.name
-            for feature in self.features
-            if feature.name not in dropped_features
-        ] + transformed_column_names
 
     @property
     def feature_logging(self) -> Optional[FeatureLogging]:
