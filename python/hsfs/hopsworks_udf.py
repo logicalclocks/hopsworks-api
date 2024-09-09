@@ -503,9 +503,7 @@ class HopsworksUdf:
         """
         # Check if any output is of date time type.
         date_time_output_index = [
-            ind
-            for ind, ele in enumerate(self.return_types)
-            if ele == "timestamp" or ele == "date"
+            ind for ind, ele in enumerate(self.return_types) if ele == "timestamp"
         ]
 
         # Function that converts the timestamp to localized timezone
