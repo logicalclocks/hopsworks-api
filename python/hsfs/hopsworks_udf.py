@@ -579,7 +579,7 @@ class HopsworksUdf:
         date_time_output_columns = [
             self.output_column_names[ind]
             for ind, ele in enumerate(self.return_types)
-            if ele == "timestamp" or ele == "date"
+            if ele == "timestamp"
         ]
 
         # Function to make transformation function time safe. Defined as a string because it has to be dynamically injected into scope to be executed by spark
@@ -592,7 +592,7 @@ class HopsworksUdf:
             return date_time_col.dt.tz_localize(str(current_timezone))
         else:
             # convert to utc, then localize to system's timezone
-            return date_time_col.dt.tz_localize(None).dt.tz_localize(str(current_timezone))"""
+            return date_time_col.dt.tz_convert('UTC').dt.tz_localize(None).dt.tz_localize(str(current_timezone))"""
 
         # Defining wrapper function that renames the column names to specific names
         if len(self.return_types) > 1:

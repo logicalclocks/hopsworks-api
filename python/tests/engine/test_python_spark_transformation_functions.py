@@ -90,7 +90,6 @@ class TestPythonSparkTransformationFunctions:
         pd.testing.assert_frame_equal(
             result, expected_df, check_dtype=False, check_exact=True
         )
-        # assert np.all(result.values == expected_df.values)
 
     def _validate_on_spark_engine(
         self, td, spark_df, expected_spark_df, transformation_functions
@@ -1092,17 +1091,14 @@ class TestPythonSparkTransformationFunctions:
 
         schema = StructType(
             [
-                StructField("col_0", TimestampType(), True),
+                StructField("col_0", IntegerType(), True),
                 StructField("col_1", StringType(), True),
                 StructField("col_2", BooleanType(), True),
             ]
         )
         df = pd.DataFrame(
             data={
-                "col_0": [
-                    datetime.datetime.utcfromtimestamp(1640995200),
-                    datetime.datetime.utcfromtimestamp(1640995201),
-                ],
+                "col_0": [1640995200, 1640995201],
                 "col_1": ["test_1", "test_2"],
                 "col_2": [True, False],
             }
@@ -1122,10 +1118,8 @@ class TestPythonSparkTransformationFunctions:
                 "col_1": ["test_1", "test_2"],
                 "col_2": [True, False],
                 "tf_fun_col_0_": [
-                    datetime.datetime.utcfromtimestamp(1640995200)
-                    + datetime.timedelta(milliseconds=1),
-                    datetime.datetime.utcfromtimestamp(1640995201)
-                    + datetime.timedelta(milliseconds=1),
+                    datetime.datetime.utcfromtimestamp(1640995201),
+                    datetime.datetime.utcfromtimestamp(1640995202),
                 ],
             }
         )
@@ -1142,9 +1136,7 @@ class TestPythonSparkTransformationFunctions:
         # Arrange
         @udf(datetime.datetime, drop="col_0")
         def tf_fun(col_0):
-            import datetime
-
-            return col_0 + datetime.timedelta(milliseconds=1)
+            return pd.to_datetime(col_0 + 1, unit="s")
 
         td = self._create_training_dataset()
         transformation_functions = [
@@ -1170,17 +1162,14 @@ class TestPythonSparkTransformationFunctions:
 
         schema = StructType(
             [
-                StructField("col_0", TimestampType(), True),
+                StructField("col_0", IntegerType(), True),
                 StructField("col_1", StringType(), True),
                 StructField("col_2", BooleanType(), True),
             ]
         )
         df = pd.DataFrame(
             data={
-                "col_0": [
-                    datetime.datetime.utcfromtimestamp(1640995200),
-                    datetime.datetime.utcfromtimestamp(1640995201),
-                ],
+                "col_0": [1640995200, 1640995201],
                 "col_1": ["test_1", "test_2"],
                 "col_2": [True, False],
             }
@@ -1199,10 +1188,8 @@ class TestPythonSparkTransformationFunctions:
                 "col_1": ["test_1", "test_2"],
                 "col_2": [True, False],
                 "tf_fun_col_0_": [
-                    datetime.datetime.utcfromtimestamp(1640995200)
-                    + datetime.timedelta(milliseconds=1),
-                    datetime.datetime.utcfromtimestamp(1640995201)
-                    + datetime.timedelta(milliseconds=1),
+                    datetime.datetime.utcfromtimestamp(1640995201),
+                    datetime.datetime.utcfromtimestamp(1640995202),
                 ],
             }
         )
@@ -1221,7 +1208,7 @@ class TestPythonSparkTransformationFunctions:
         def tf_fun(col_0) -> datetime.datetime:
             import datetime
 
-            return (col_0 + datetime.timedelta(milliseconds=1)).dt.tz_localize(
+            return pd.to_datetime(col_0 + 1, unit="s").dt.tz_localize(
                 datetime.timezone.utc
             )
 
@@ -1243,7 +1230,6 @@ class TestPythonSparkTransformationFunctions:
         )
 
     def test_apply_plus_one_datetime_no_tz_python(self, mocker):
-        # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
         spark_engine = spark.Engine()
 
@@ -1276,10 +1262,8 @@ class TestPythonSparkTransformationFunctions:
                 "col_1": ["test_1", "test_2"],
                 "col_2": [True, False],
                 "tf_fun_col_0_": [
-                    datetime.datetime.utcfromtimestamp(1640995200)
-                    + datetime.timedelta(milliseconds=1),
-                    datetime.datetime.utcfromtimestamp(1640995201)
-                    + datetime.timedelta(milliseconds=1),
+                    datetime.datetime.utcfromtimestamp(1640995201),
+                    datetime.datetime.utcfromtimestamp(1640995202),
                 ],
             }
         )
@@ -1294,13 +1278,9 @@ class TestPythonSparkTransformationFunctions:
         )
 
         # Arrange
-        @udf(datetime.datetime, drop="col_0", mode="python")
+        @udf(datetime.datetime, drop="col_0", mode="pandas")
         def tf_fun(col_0):
-            import datetime
-
-            return datetime.datetime.utcfromtimestamp(col_0) + datetime.timedelta(
-                milliseconds=1
-            )
+            return pd.to_datetime(col_0 + 1, unit="s")
 
         td = self._create_training_dataset()
         transformation_functions = [
@@ -1481,17 +1461,14 @@ class TestPythonSparkTransformationFunctions:
 
         schema = StructType(
             [
-                StructField("col_0", TimestampType(), True),
+                StructField("col_0", IntegerType(), True),
                 StructField("col_1", StringType(), True),
                 StructField("col_2", BooleanType(), True),
             ]
         )
         df = pd.DataFrame(
             data={
-                "col_0": [
-                    datetime.datetime.utcfromtimestamp(1640995200),
-                    datetime.datetime.utcfromtimestamp(1640995201),
-                ],
+                "col_0": [1640995200, 1640995201],
                 "col_1": ["test_1", "test_2"],
                 "col_2": [True, False],
             }
@@ -1510,10 +1487,8 @@ class TestPythonSparkTransformationFunctions:
                 "col_1": ["test_1", "test_2"],
                 "col_2": [True, False],
                 "tf_fun_col_0_": [
-                    datetime.datetime.utcfromtimestamp(1640995200)
-                    + datetime.timedelta(milliseconds=1),
-                    datetime.datetime.utcfromtimestamp(1640995201)
-                    + datetime.timedelta(milliseconds=1),
+                    datetime.datetime.utcfromtimestamp(1640995201),
+                    datetime.datetime.utcfromtimestamp(1640995202),
                 ],
             }
         )
@@ -1532,7 +1507,7 @@ class TestPythonSparkTransformationFunctions:
         def tf_fun(col_0) -> datetime.datetime:
             import datetime
 
-            return (col_0 + datetime.timedelta(milliseconds=1)).dt.tz_localize(
+            return pd.to_datetime(col_0 + 1, unit="s").dt.tz_localize(
                 datetime.timezone.utc
             )
 
@@ -1560,17 +1535,14 @@ class TestPythonSparkTransformationFunctions:
 
         schema = StructType(
             [
-                StructField("col_0", TimestampType(), True),
+                StructField("col_0", IntegerType(), True),
                 StructField("col_1", StringType(), True),
                 StructField("col_2", BooleanType(), True),
             ]
         )
         df = pd.DataFrame(
             data={
-                "col_0": [
-                    datetime.datetime.utcfromtimestamp(1640995200),
-                    datetime.datetime.utcfromtimestamp(1640995201),
-                ],
+                "col_0": [1640995200, 1640995201],
                 "col_1": ["test_1", "test_2"],
                 "col_2": [True, False],
             }
@@ -1590,10 +1562,8 @@ class TestPythonSparkTransformationFunctions:
                 "col_1": ["test_1", "test_2"],
                 "col_2": [True, False],
                 "tf_fun_col_0_": [
-                    datetime.datetime.utcfromtimestamp(1640995200)
-                    + datetime.timedelta(milliseconds=1),
-                    datetime.datetime.utcfromtimestamp(1640995201)
-                    + datetime.timedelta(milliseconds=1),
+                    datetime.datetime.utcfromtimestamp(1641024001),
+                    datetime.datetime.utcfromtimestamp(1641024002),
                 ],
             }
         )
@@ -1610,12 +1580,10 @@ class TestPythonSparkTransformationFunctions:
         # Arrange
         @udf(datetime.datetime, drop="col_0")
         def tf_fun(col_0) -> datetime.datetime:
-            import datetime
-
             import pytz
 
             pdt = pytz.timezone("US/Pacific")
-            return (col_0 + datetime.timedelta(milliseconds=1)).dt.tz_localize(pdt)
+            return pd.to_datetime(col_0 + 1, unit="s").dt.tz_localize(pdt)
 
         td = self._create_training_dataset()
         transformation_functions = [
@@ -1717,17 +1685,14 @@ class TestPythonSparkTransformationFunctions:
 
         schema = StructType(
             [
-                StructField("col_0", TimestampType(), True),
+                StructField("col_0", IntegerType(), True),
                 StructField("col_1", StringType(), True),
                 StructField("col_2", BooleanType(), True),
             ]
         )
         df = pd.DataFrame(
             data={
-                "col_0": [
-                    datetime.datetime.utcfromtimestamp(1640995200),
-                    datetime.datetime.utcfromtimestamp(1640995201),
-                ],
+                "col_0": [1640995200, 1640995201],
                 "col_1": ["test_1", "test_2"],
                 "col_2": [True, False],
             }
@@ -1747,10 +1712,8 @@ class TestPythonSparkTransformationFunctions:
                 "col_1": ["test_1", "test_2"],
                 "col_2": [True, False],
                 "tf_fun_col_0_": [
-                    datetime.datetime.utcfromtimestamp(1640995200)
-                    + datetime.timedelta(milliseconds=1),
-                    datetime.datetime.utcfromtimestamp(1640995201)
-                    + datetime.timedelta(milliseconds=1),
+                    datetime.datetime.utcfromtimestamp(1641024001),
+                    datetime.datetime.utcfromtimestamp(1641024002),
                 ],
             }
         )
@@ -1767,12 +1730,10 @@ class TestPythonSparkTransformationFunctions:
         # Arrange
         @udf(datetime.datetime, drop="col_0", mode="pandas")
         def tf_fun(col_0) -> datetime.datetime:
-            import datetime
-
             import pytz
 
             pdt = pytz.timezone("US/Pacific")
-            return (col_0 + datetime.timedelta(milliseconds=1)).dt.tz_localize(pdt)
+            return pd.to_datetime(col_0 + 1, unit="s").dt.tz_localize(pdt)
 
         td = self._create_training_dataset()
         transformation_functions = [
@@ -1798,17 +1759,14 @@ class TestPythonSparkTransformationFunctions:
 
         schema = StructType(
             [
-                StructField("col_0", TimestampType(), True),
+                StructField("col_0", IntegerType(), True),
                 StructField("col_1", StringType(), True),
                 StructField("col_2", BooleanType(), True),
             ]
         )
         df = pd.DataFrame(
             data={
-                "col_0": [
-                    datetime.datetime.utcfromtimestamp(1640995200),
-                    datetime.datetime.utcfromtimestamp(1640995201),
-                ],
+                "col_0": [1640995200, 1640995201],
                 "col_1": ["test_1", "test_2"],
                 "col_2": [True, False],
             }
@@ -1829,8 +1787,7 @@ class TestPythonSparkTransformationFunctions:
                 "col_2": [True, False],
                 "tf_fun_col_0_": [
                     None,
-                    datetime.datetime.utcfromtimestamp(1640995201)
-                    + datetime.timedelta(milliseconds=1),
+                    datetime.datetime.utcfromtimestamp(1640995202),
                 ],
             }
         )
@@ -1847,12 +1804,8 @@ class TestPythonSparkTransformationFunctions:
         # Arrange
         @udf(datetime.datetime, drop=["col_0"])
         def tf_fun(col_0) -> datetime.datetime:
-            import datetime
-
             return pd.Series(
-                None
-                if data == datetime.datetime.utcfromtimestamp(1640995200)
-                else data + datetime.timedelta(milliseconds=1)
+                None if data == 1640995200 else pd.to_datetime(data + 1, unit="s")
                 for data in col_0
             )
 
@@ -1954,17 +1907,14 @@ class TestPythonSparkTransformationFunctions:
 
         schema = StructType(
             [
-                StructField("col_0", TimestampType(), True),
+                StructField("col_0", IntegerType(), True),
                 StructField("col_1", StringType(), True),
                 StructField("col_2", BooleanType(), True),
             ]
         )
         df = pd.DataFrame(
             data={
-                "col_0": [
-                    datetime.datetime.utcfromtimestamp(1640995200),
-                    datetime.datetime.utcfromtimestamp(1640995201),
-                ],
+                "col_0": [1640995200, 1640995201],
                 "col_1": ["test_1", "test_2"],
                 "col_2": [True, False],
             }
@@ -1985,8 +1935,7 @@ class TestPythonSparkTransformationFunctions:
                 "col_2": [True, False],
                 "tf_fun_col_0_": [
                     None,
-                    datetime.datetime.utcfromtimestamp(1640995201)
-                    + datetime.timedelta(milliseconds=1),
+                    datetime.datetime.utcfromtimestamp(1640995202),
                 ],
             }
         )
@@ -2003,12 +1952,8 @@ class TestPythonSparkTransformationFunctions:
         # Arrange
         @udf(datetime.datetime, drop=["col_0"], mode="pandas")
         def tf_fun(col_0) -> datetime.datetime:
-            import datetime
-
             return pd.Series(
-                None
-                if data == datetime.datetime.utcfromtimestamp(1640995200)
-                else data + datetime.timedelta(milliseconds=1)
+                None if data == 1640995200 else pd.to_datetime(data + 1, unit="s")
                 for data in col_0
             )
 
@@ -2036,17 +1981,14 @@ class TestPythonSparkTransformationFunctions:
 
         schema = StructType(
             [
-                StructField("col_0", DateType(), True),
+                StructField("col_0", IntegerType(), True),
                 StructField("col_1", StringType(), True),
                 StructField("col_2", BooleanType(), True),
             ]
         )
         df = pd.DataFrame(
             data={
-                "col_0": [
-                    datetime.datetime.utcfromtimestamp(1641045600).date(),
-                    datetime.datetime.utcfromtimestamp(1641132000).date(),
-                ],
+                "col_0": [1641045600, 1641132000],
                 "col_1": ["test_1", "test_2"],
                 "col_2": [True, False],
             }
@@ -2065,10 +2007,8 @@ class TestPythonSparkTransformationFunctions:
                 "col_1": ["test_1", "test_2"],
                 "col_2": [True, False],
                 "tf_fun_col_0_": [
-                    datetime.datetime.utcfromtimestamp(1641045600).date()
-                    + datetime.timedelta(days=1),
-                    datetime.datetime.utcfromtimestamp(1641132000).date()
-                    + datetime.timedelta(days=1),
+                    datetime.datetime.utcfromtimestamp(1641045601).date(),
+                    datetime.datetime.utcfromtimestamp(1641132001).date(),
                 ],
             }
         )
@@ -2079,9 +2019,7 @@ class TestPythonSparkTransformationFunctions:
         # Arrange
         @udf(datetime.date, drop=["col_0"])
         def tf_fun(col_0):
-            import datetime
-
-            return col_0 + datetime.timedelta(days=1)
+            return pd.to_datetime(col_0 + 1, unit="s").dt.date
 
         td = self._create_training_dataset()
         transformation_functions = [
@@ -2174,17 +2112,14 @@ class TestPythonSparkTransformationFunctions:
 
         schema = StructType(
             [
-                StructField("col_0", DateType(), True),
+                StructField("col_0", IntegerType(), True),
                 StructField("col_1", StringType(), True),
                 StructField("col_2", BooleanType(), True),
             ]
         )
         df = pd.DataFrame(
             data={
-                "col_0": [
-                    datetime.datetime.utcfromtimestamp(1641045600).date(),
-                    datetime.datetime.utcfromtimestamp(1641132000).date(),
-                ],
+                "col_0": [1641045600, 1641132000],
                 "col_1": ["test_1", "test_2"],
                 "col_2": [True, False],
             }
@@ -2203,10 +2138,8 @@ class TestPythonSparkTransformationFunctions:
                 "col_1": ["test_1", "test_2"],
                 "col_2": [True, False],
                 "tf_fun_col_0_": [
-                    datetime.datetime.utcfromtimestamp(1641045600).date()
-                    + datetime.timedelta(days=1),
-                    datetime.datetime.utcfromtimestamp(1641132000).date()
-                    + datetime.timedelta(days=1),
+                    datetime.datetime.utcfromtimestamp(1641045601).date(),
+                    datetime.datetime.utcfromtimestamp(1641132001).date(),
                 ],
             }
         )
@@ -2217,9 +2150,7 @@ class TestPythonSparkTransformationFunctions:
         # Arrange
         @udf(datetime.date, drop=["col_0"], mode="pandas")
         def tf_fun(col_0):
-            import datetime
-
-            return col_0 + datetime.timedelta(days=1)
+            return pd.to_datetime(col_0 + 1, unit="s").dt.date
 
         td = self._create_training_dataset()
         transformation_functions = [
