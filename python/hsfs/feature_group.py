@@ -329,33 +329,68 @@ class FeatureGroupBase:
             # connect to the Feature Store
             fs = ...
 
-            # get the Feature Group instances
-            fg1 = fs.get_or_create_feature_group(...)
-            fg2 = fs.get_or_create_feature_group(...)
-
-            # construct the query
-            query = fg1.select_features().join(fg2.select_features())
-
-            # show first 5 rows
-            query.show(5)
-
-
-            # select all features exclude primary key and event time
-            from hsfs.feature import Feature
-            fg = fs.create_feature_group(
-                    "fg",
+            # Create the Feature Group instances
+            fg1 = fs.create_feature_group(
+                    name = "fg1",
                     features=[
                             Feature("id", type="string"),
                             Feature("ts", type="bigint"),
-                            Feature("f1", type="date"),
-                            Feature("f2", type="double")
-                            ],
+                            Feature("feature_1", type="date"),
+                            Feature("feature_2", type="double"),
+                            Feature("feature_3", type="double")
+                    ],
                     primary_key=["id"],
                     event_time="ts")
 
-            query = fg.select_features()
-            query.features
-            # [Feature('f1', ...), Feature('f2', ...)]
+            fg2 = fs.create_feature_group(
+                    name = "fg2",
+                    features=[
+                            Feature("id", type="string"),
+                            Feature("ts", type="bigint"),
+                            Feature("feature_6", type="date"),
+                            Feature("feature_7", type="double"),
+                    ],
+                    primary_key=["id"],
+                    event_time="ts")
+
+            # Insert data to the feature group.
+            fg1.insert(..)
+            fg1.insert(..)
+
+
+            # select all features from `fg1` excluding primary key and event time
+            query = fg1.select_features()
+
+            # show first 5 rows
+            query.show(3)
+
+            # Output
+            +------------+------------+------------+
+            | feature_1  | feature_2  | feature_3  |
+            +------------+------------+------------+
+            |     8      |     7      |    15      |
+            |     3      |     1      |     6      |
+            |     1      |     2      |    18      |
+            +------------+------------+------------+
+
+
+
+            # select all features from `fg1` and join with all features from `fg2` excluding primary key and event time.
+
+            query = fg1.select_features().join(fg2.select_features())
+
+            # show first 5 rows
+            query.show(3)
+
+            # Output
+            +------------+------------+------------+------------+------------+
+            | feature_1  | feature_2  | feature_3  | feature_6  | feature_7  |
+            +------------+------------+------------+------------+------------+
+            |     8      |     7      |    15      |    11      |    15      |
+            |     3      |     1      |     6      |     4      |     3      |
+            |     1      |     2      |    18      |     9      |    20      |
+            +------------+------------+------------+------------+------------+
+
             ```
 
         # Returns
