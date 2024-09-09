@@ -1210,7 +1210,7 @@ class FeatureViewEngine:
                 model_col_name=FeatureViewEngine._HSML_MODEL,
                 predictions=predictions,
                 training_dataset_version=training_dataset_version,
-                hsml_model=hsml_model,
+                hsml_model=self.get_hsml_model_value(hsml_model) if hsml_model else None,
             )
         else:
             return engine.get_instance().get_feature_logging_df(
