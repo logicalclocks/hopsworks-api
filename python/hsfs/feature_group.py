@@ -361,6 +361,11 @@ class FeatureGroupBase:
         # Returns
             `Query`. A query object with all features of the feature group.
         """
+        warnings.warn(
+            "The `select_features` function does not select the primary key and event time of the feature group.",
+            stacklevel=1,
+        )
+
         return self.select_except(self.primary_key + [self.event_time])
 
     def select(self, features: List[Union[str, feature.Feature]]) -> query.Query:
