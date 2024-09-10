@@ -545,7 +545,7 @@ class TestUtil:
     def test_extract_field_from_json(self, mocker):
         # Arrange
         json = {"a": "1", "b": "2"}
-        get_obj_from_json = mocker.patch("hsml.util.get_obj_from_json")
+        get_obj_from_json = mocker.patch("hopsworks_common.util.get_obj_from_json")
 
         # Act
         b = util.extract_field_from_json(json, "b")
@@ -557,7 +557,7 @@ class TestUtil:
     def test_extract_field_from_json_fields(self, mocker):
         # Arrange
         json = {"a": "1", "b": "2"}
-        get_obj_from_json = mocker.patch("hsml.util.get_obj_from_json")
+        get_obj_from_json = mocker.patch("hopsworks_common.util.get_obj_from_json")
 
         # Act
         b = util.extract_field_from_json(json, ["B", "b"])  # alternative fields
@@ -570,7 +570,7 @@ class TestUtil:
         # Arrange
         json = {"a": "1", "b": "2"}
         get_obj_from_json = mocker.patch(
-            "hsml.util.get_obj_from_json", return_value="2"
+            "hopsworks_common.util.get_obj_from_json", return_value="2"
         )
 
         # Act
@@ -584,7 +584,7 @@ class TestUtil:
         # Arrange
         json = {"a": "1", "b": ["2", "2", "2"]}
         get_obj_from_json = mocker.patch(
-            "hsml.util.get_obj_from_json", return_value="2"
+            "hopsworks_common.util.get_obj_from_json", return_value="2"
         )
 
         # Act

@@ -187,7 +187,7 @@ class TestResources:
             "get_component_resources_num_instances_requests_and_limits"
         ]["response"]
         mock_util_get_obj_from_json = mocker.patch(
-            "hsml.util.get_obj_from_json",
+            "hopsworks_common.util.get_obj_from_json",
             side_effect=[json["requests"], json["limits"]],
         )
         mock_default_resource_limits = mocker.patch(

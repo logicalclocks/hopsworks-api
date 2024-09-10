@@ -781,7 +781,7 @@ class TestDeployment:
         mocker.patch("hsml.predictor.Predictor._validate_serving_tool")
         mocker.patch("hsml.predictor.Predictor._validate_resources")
         mocker.patch("hsml.predictor.Predictor._validate_script_file")
-        mocker.patch("hsml.util.get_obj_from_json")
+        mocker.patch("hopsworks_common.util.get_obj_from_json")
         return predictor.Predictor(
             id=p_json["id"],
             name=p_json["name"],
