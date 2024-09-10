@@ -1291,6 +1291,13 @@ class Engine:
                     axis=1,
                     result_type="expand",
                 )
+                if hopsworks_udf.output_column_names[0] in dataframe.columns:
+                    # Overwriting features so reordering dataframe to move overwritten column to the end of the dataframe
+                    cols = dataframe.columns.tolist()
+                    cols.append(
+                        cols.pop(cols.index(hopsworks_udf.output_column_names[0]))
+                    )
+                    dataframe = dataframe[cols]
         else:
             # Dynamically creating lambda function so that we do not need to loop though to extract features required for the udf.
             # This is done because polars 'map_rows' provides rows as tuples to the udf.
@@ -1354,6 +1361,11 @@ class Engine:
                     ]
                 )
             )
+            if hopsworks_udf.output_column_names[0] in dataframe.columns:
+                # Overwriting features so reordering dataframe to move overwritten column to the end of the dataframe
+                cols = dataframe.columns.tolist()
+                cols.append(cols.pop(cols.index(hopsworks_udf.output_column_names[0])))
+                dataframe = dataframe[cols]
         return dataframe
 
     @staticmethod
