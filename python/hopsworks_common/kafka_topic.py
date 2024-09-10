@@ -52,7 +52,7 @@ class KafkaTopic:
             num_of_replicas = num_replicas
         if not num_of_partitions:
             num_of_partitions = num_partitions
-        self._num_replicas, self._num_partitions = self._validate_topic_config(
+        self._num_of_replicas, self._num_of_partitions = self._validate_topic_config(
             self._name, num_of_replicas, num_of_partitions
         )
         self._schema_name = schema_name
@@ -187,8 +187,8 @@ class KafkaTopic:
         return {
             "kafkaTopicDTO": {
                 "name": self._name,
-                "numOfReplicas": self._num_replicas,
-                "numOfPartitions": self._num_partitions,
+                "numOfReplicas": self._num_of_replicas,
+                "numOfPartitions": self._num_of_partitions,
             }
         }
 
