@@ -16,9 +16,12 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Callable, Dict, Literal, Optional, Tuple, Union
 
+import numpy as np
+import pandas as pd
 from hopsworks_common import client
 from hsfs.core import storage_connector_api
 from hsfs.core.constants import HAS_AVRO, HAS_CONFLUENT_KAFKA, HAS_FAST_AVRO
@@ -189,6 +192,31 @@ def get_encoder_func(writer_schema: str) -> callable:
     parsed_schema = avro.schema.parse(writer_schema)
     writer = avro.io.DatumWriter(parsed_schema)
     return lambda record, outf: writer.write(record, avro.io.BinaryEncoder(outf))
+
+
+def encode_row(complex_feature_writers, writer, row):
+    # transform special data types
+    # here we might need to handle also timestamps and other complex types
+    # possible optimizaiton: make it based on type so we don't need to loop over
+    # all keys in the row
+    if isinstance(row, dict):
+        for k in row.keys():
+            # for avro to be able to serialize them, they need to be python data types
+            if isinstance(row[k], np.ndarray):
+                row[k] = row[k].tolist()
+            if isinstance(row[k], pd.Timestamp):
+                row[k] = row[k].to_pydatetime()
+            if isinstance(row[k], datetime) and row[k].tzinfo is None:
+                row[k] = row[k].replace(tzinfo=timezone.utc)
+            if isinstance(row[k], pd._libs.missing.NAType):
+                row[k] = None
+    # encode complex features
+    row = encode_complex_features(complex_feature_writers, row)
+    # encode feature row
+    with BytesIO() as outf:
+        writer(row, outf)
+        encoded_row = outf.getvalue()
+    return encoded_row
 
 
 def get_kafka_config(
