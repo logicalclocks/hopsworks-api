@@ -129,6 +129,9 @@ class HopsworksClientError(TypeError):
         super().__init__(message)
 
 
+InternalClientError = HopsworksClientError
+
+
 class HopsworksSSLClientError(SSLError):
     """Raised when the client connection fails with SSL related errors."""
 
