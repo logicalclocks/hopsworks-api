@@ -1431,9 +1431,7 @@ class Engine:
 
     @staticmethod
     def _validate_logging_list(feature_log, cols):
-        if isinstance(feature_log[0], list) or isinstance(
-            feature_log[0], np.ndarray
-        ):
+        if isinstance(feature_log[0], list) or isinstance(feature_log[0], np.ndarray):
             provided_len = len(feature_log[0])
         else:
             provided_len = 1
@@ -1458,12 +1456,9 @@ class Engine:
         now = datetime.now()
         metadata = {
             td_col_name: [training_dataset_version for _ in range(size)],
-            model_col_name: [
-                    hsml_model
-                    for _ in range(size)
-                ],
+            model_col_name: [hsml_model for _ in range(size)],
             time_col_name: pd.Series([now for _ in range(size)]),
-            "log_id": [str(uuid.uuid4()) for _ in range(size)]
+            "log_id": [str(uuid.uuid4()) for _ in range(size)],
         }
 
         if not batch:
@@ -1508,9 +1503,7 @@ class Engine:
         for k, v in logging_metadata.items():
             features[k] = pd.Series(v)
         # _cast_column_to_offline_type cannot cast string type
-        features[model_col_name] = features[model_col_name].astype(
-            pd.StringDtype()
-        )
+        features[model_col_name] = features[model_col_name].astype(pd.StringDtype())
         return features[[feat.name for feat in fg.features]]
 
     @staticmethod
@@ -1528,8 +1521,17 @@ class Engine:
     ) -> list:
         if isinstance(features, pd.DataFrame):
             return Engine.get_feature_logging_df(
-                features, fg, td_features, td_predictions, td_col_name, time_col_name, model_col_name, predictions, training_dataset_version, hsml_model
-            ).to_dict(orient='records')
+                features,
+                fg,
+                td_features,
+                td_predictions,
+                td_col_name,
+                time_col_name,
+                model_col_name,
+                predictions,
+                training_dataset_version,
+                hsml_model,
+            ).to_dict(orient="records")
         else:
             log_vectors = []
 
@@ -1546,13 +1548,15 @@ class Engine:
 
             # get metadata
             for row in log_vectors:
-                row.update(Engine.get_logging_metadata(
-                    td_col_name=td_col_name,
-                    time_col_name=time_col_name,
-                    model_col_name=model_col_name,
-                    training_dataset_version=training_dataset_version,
-                    hsml_model=hsml_model,
-                ))
+                row.update(
+                    Engine.get_logging_metadata(
+                        td_col_name=td_col_name,
+                        time_col_name=time_col_name,
+                        model_col_name=model_col_name,
+                        training_dataset_version=training_dataset_version,
+                        hsml_model=hsml_model,
+                    )
+                )
             return log_vectors
 
     @staticmethod

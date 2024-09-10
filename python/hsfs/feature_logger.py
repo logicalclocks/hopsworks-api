@@ -19,10 +19,12 @@ from typing import Dict, List, Optional, TypeVar
 
 
 class FeatureLogger(ABC):
-
     @abstractmethod
-    def log(self, untransformed_features: Optional[List[Dict]] = None,
-            transformed_features: Optional[List[Dict]] = None):
+    def log(
+        self,
+        untransformed_features: Optional[List[Dict]] = None,
+        transformed_features: Optional[List[Dict]] = None,
+    ):
         pass
 
     @abstractmethod

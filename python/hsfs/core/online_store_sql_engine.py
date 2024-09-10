@@ -609,9 +609,9 @@ class OnlineStoreSqlClient:
             # close connection pool
             self._connection_pool.close()
             try:
-                # await with timeout of 120 seconds            
+                # await with timeout of 120 seconds
                 await asyncio.wait_for(self._connection_pool.wait_closed(), timeout=120)
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError as e:
                 _logger.error(f"Connection pool did not close within time limit: {e}")
 
         # Create a dict of results with the prepared statement index as key

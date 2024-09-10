@@ -3596,8 +3596,7 @@ class FeatureView:
         ] = None,
         predictions: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
         transformed_features: Union[
-            pd.DataFrame, list[list], np.ndarray, TypeVar(
-                "pyspark.sql.DataFrame")
+            pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
         ] = None,
         write_options: Optional[Dict[str, Any]] = None,
         training_dataset_version: Optional[int] = None,
@@ -3660,7 +3659,7 @@ class FeatureView:
                 or self.get_last_accessed_training_dataset()
             ),
             hsml_model=model,
-            logger=self._feature_logger
+            logger=self._feature_logger,
         )
 
     def get_log_timeline(
