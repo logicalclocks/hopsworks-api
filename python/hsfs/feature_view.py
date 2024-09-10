@@ -20,7 +20,6 @@ import logging
 import warnings
 from datetime import date, datetime
 from typing import (
-    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -37,6 +36,7 @@ import humps
 import numpy as np
 import pandas as pd
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.core.constants import HAS_POLARS
 from hsfs import (
     feature_group,
     storage_connector,
@@ -76,7 +76,7 @@ from hsfs.transformation_function import TransformationFunction, TransformationT
 from hsml.model import Model
 
 
-if TYPE_CHECKING:
+if HAS_POLARS:
     import polars as pl
 
     TrainingDatasetDataFrameTypes = Union[
@@ -87,15 +87,23 @@ if TYPE_CHECKING:
         List[List[Any]],
         pl.DataFrame,
     ]
-
-    SplineDataFrameTypes = Union[
+else:
+    TrainingDatasetDataFrameTypes = Union[
         pd.DataFrame,
         TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
         TypeVar("pyspark.RDD"),  # noqa: F821
         np.ndarray,
         List[List[Any]],
-        TypeVar("SplineGroup"),  # noqa: F821
     ]
+
+SplineDataFrameTypes = Union[
+    pd.DataFrame,
+    TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
+    TypeVar("pyspark.RDD"),  # noqa: F821
+    np.ndarray,
+    List[List[Any]],
+    TypeVar("SplineGroup"),  # noqa: F821
+]
 
 
 _logger = logging.getLogger(__name__)

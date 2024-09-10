@@ -36,7 +36,6 @@ from typing import (
 
 if TYPE_CHECKING:
     import great_expectations
-    import polars as pl
 
 import avro.schema
 import hsfs.expectation_suite
@@ -44,6 +43,7 @@ import humps
 import numpy as np
 import pandas as pd
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
+from hopsworks_common.core.constants import HAS_POLARS
 from hsfs import (
     engine,
     feature,
@@ -103,6 +103,9 @@ if HAS_GREAT_EXPECTATIONS:
 
 if HAS_CONFLUENT_KAFKA:
     import confluent_kafka
+
+if HAS_POLARS:
+    import polars as pl
 
 
 _logger = logging.getLogger(__name__)
