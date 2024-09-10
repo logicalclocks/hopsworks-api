@@ -36,13 +36,13 @@ from typing import (
 
 if TYPE_CHECKING:
     import great_expectations
+    import polars as pl
 
 import avro.schema
 import hsfs.expectation_suite
 import humps
 import numpy as np
 import pandas as pd
-import polars as pl
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hsfs import (
     engine,

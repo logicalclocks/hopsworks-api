@@ -27,8 +27,12 @@ import avro.io
 import avro.schema
 import numpy as np
 import pandas as pd
-import polars as pl
 from hopsworks_common import client
+from hopsworks_common.core.constants import (
+    HAS_FAST_AVRO,
+    HAS_POLARS,
+    polars_not_installed_message,
+)
 from hsfs import (
     feature_view,
     training_dataset,
@@ -48,13 +52,13 @@ from hsfs.core import (
 )
 
 
-HAS_FASTAVRO = False
-try:
+if HAS_FAST_AVRO:
     from fastavro import schemaless_reader
-
-    HAS_FASTAVRO = True
-except ImportError:
+else:
     from avro.io import BinaryDecoder
+
+if HAS_POLARS:
+    import polars as pl
 
 _logger = logging.getLogger(__name__)
 
@@ -590,7 +594,7 @@ class VectorServer:
             return_type = "pandas"
             feature_vectors = feature_vectors.to_dict(orient="records")
 
-        elif isinstance(feature_vectors, pl.DataFrame):
+        elif HAS_POLARS and isinstance(feature_vectors, pl.DataFrame):
             return_type = "polars"
             feature_vectors = feature_vectors.to_pandas()
             feature_vectors = feature_vectors.to_dict(orient="records")
@@ -823,6 +827,8 @@ class VectorServer:
                 return pandas_df
         elif return_type.lower() == "polars":
             _logger.debug("Returning feature vector as polars dataframe")
+            if not HAS_POLARS:
+                raise ModuleNotFoundError(polars_not_installed_message)
             return pl.DataFrame(
                 feature_vectorz if batch else [feature_vectorz],
                 schema=column_names if not inference_helper else None,
@@ -1076,7 +1082,7 @@ class VectorServer:
             _logger.debug(
                 f"Building complex feature decoders corresponding to {complex_feature_schemas}."
             )
-        if HAS_FASTAVRO:
+        if HAS_FAST_AVRO:
             _logger.debug("Using fastavro for deserialization.")
             return {
                 f_name: (

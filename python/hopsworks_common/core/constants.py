@@ -47,6 +47,13 @@ HAS_ARROW: bool = importlib.util.find_spec("pyarrow") is not None
 HAS_PANDAS: bool = importlib.util.find_spec("pandas") is not None
 HAS_NUMPY: bool = importlib.util.find_spec("numpy") is not None
 HAS_POLARS: bool = importlib.util.find_spec("polars") is not None
+polars_not_installed_message = (
+    "Polars package not found. "
+    "If you want to use Polars with Hopsworks you can install the corresponding extras "
+    """`pip install hopsworks[polars]` or `pip install "hopsworks[polars]"` if using zsh. """
+    "You can also install polars directly in your environment e.g `pip install polars`. "
+    "You will need to restart your kernel if applicable."
+)
 
 # SQL packages
 HAS_SQLALCHEMY: bool = importlib.util.find_spec("sqlalchemy") is not None
