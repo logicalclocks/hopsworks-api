@@ -42,6 +42,7 @@ import humps
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException, JobException
 from hopsworks_common.constants import MODEL, PREDICTOR, Default
+from hopsworks_common.core.constants import HAS_PANDAS
 from hopsworks_common.git_file_status import GitFileStatus
 from six import string_types
 
@@ -72,7 +73,9 @@ class NumpyEncoder(json.JSONEncoder):
         import base64
 
         import numpy as np
-        import pandas as pd
+
+        if HAS_PANDAS:
+            import pandas as pd
 
         def encode_binary(x):
             return base64.encodebytes(x).decode("ascii")
@@ -85,7 +88,9 @@ class NumpyEncoder(json.JSONEncoder):
             else:
                 return obj.tolist(), True
 
-        if isinstance(obj, (pd.Timestamp, datetime.date)):
+        if isinstance(obj, datetime.date) or (
+            HAS_PANDAS and isinstance(obj, pd.Timestamp)
+        ):
             return obj.isoformat(), True
         if isinstance(obj, bytes) or isinstance(obj, bytearray):
             return encode_binary(obj), True
@@ -512,14 +517,16 @@ def _handle_tensor_input(input_tensor):
 
 
 def _handle_dataframe_input(input_ex):
-    if isinstance(input_ex, pd.DataFrame):
+    if HAS_PANDAS:
+        import pandas as pd
+    if HAS_PANDAS and isinstance(input_ex, pd.DataFrame):
         if not input_ex.empty:
             return input_ex.iloc[0].tolist()
         else:
             raise ValueError(
                 "input_example of type {} can not be empty".format(type(input_ex))
             )
-    elif isinstance(input_ex, pd.Series):
+    elif HAS_PANDAS and isinstance(input_ex, pd.Series):
         if not input_ex.empty:
             return input_ex.tolist()
         else:
