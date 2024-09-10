@@ -99,11 +99,11 @@ class KafkaTopic:
     def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
         if "count" not in json_decamelized:
-            return cls(**json_decamelized)
+            return cls.from_json(json_decamelized)
         elif json_decamelized["count"] == 0:
             return []
         else:
-            return [cls(**kafka_topic) for kafka_topic in json_decamelized["items"]]
+            return [cls.from_json(jd) for jd in json_decamelized["items"]]
 
     @classmethod
     def from_json(cls, json_decamelized):
