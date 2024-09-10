@@ -271,6 +271,7 @@ class TestPredictor:
         self._mock_serving_variables(
             mocker, SERVING_NUM_INSTANCES_NO_LIMIT, is_saas_connection=False
         )
+        mocker.patch("hopsworks_common.client.get_instance")
 
         # Act
         st = predictor.Predictor._validate_serving_tool(PREDICTOR.SERVING_TOOL_DEFAULT)
@@ -283,6 +284,7 @@ class TestPredictor:
         self._mock_serving_variables(
             mocker, SERVING_NUM_INSTANCES_NO_LIMIT, is_saas_connection=False
         )
+        mocker.patch("hopsworks_common.client.get_instance")
 
         # Act
         with pytest.raises(ValueError) as e_info:
@@ -296,6 +298,7 @@ class TestPredictor:
         self._mock_serving_variables(
             mocker, SERVING_NUM_INSTANCES_NO_LIMIT, is_saas_connection=True
         )
+        mocker.patch("hopsworks_common.client.get_instance")
 
         # Act
         st = predictor.Predictor._validate_serving_tool(PREDICTOR.SERVING_TOOL_KSERVE)
@@ -308,6 +311,7 @@ class TestPredictor:
         self._mock_serving_variables(
             mocker, SERVING_NUM_INSTANCES_NO_LIMIT, is_saas_connection=True
         )
+        mocker.patch("hopsworks_common.client.get_instance")
 
         # Act
         with pytest.raises(ValueError) as e_info:

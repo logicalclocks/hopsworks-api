@@ -501,7 +501,7 @@ class TestUtil:
         mock_client = mocker.MagicMock()
         mock_client._base_url = base_url + "url"
         mock_client.replace_public_host = mocker.MagicMock(return_value=mock_url_parsed)
-        mocker.patch("hsml.client.get_instance", return_value=mock_client)
+        mocker.patch("hopsworks_common.client.get_instance", return_value=mock_client)
 
         # Act
         url = util.get_hostname_replaced_url(sub_path)
