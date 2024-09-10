@@ -413,13 +413,13 @@ class FeatureGroupBase:
         # Returns
             `Query`. A query object with all features of the feature group.
         """
+        query = self.select_except(self.primary_key + [self.event_time])
         _logger.info(
-            "Selecting all features from feature group, "
-            f"excluding primary key : {self.primary_key} "
-            f"{f'and event time {self.event_time}' if self.event_time else ''}"
+            f"Using {[f.name for f in query.features]} as features for the query."
+            "To include primary key and event time use `select_all`."
         )
 
-        return self.select_except(self.primary_key + [self.event_time])
+        return query
 
     def select(self, features: List[Union[str, feature.Feature]]) -> query.Query:
         """Select a subset of features of the feature group and return a query object.
