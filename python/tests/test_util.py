@@ -121,9 +121,15 @@ class TestUtil:
 
     def test_input_example_to_json_from_numpy(self, mocker, input_example_numpy):
         # Arrange
-        mock_handle_tensor_input = mocker.patch("hsml.util._handle_tensor_input")
-        mock_handle_dataframe_input = mocker.patch("hsml.util._handle_dataframe_input")
-        mock_handle_dict_input = mocker.patch("hsml.util._handle_dict_input")
+        mock_handle_tensor_input = mocker.patch(
+            "hopsworks_common.util._handle_tensor_input"
+        )
+        mock_handle_dataframe_input = mocker.patch(
+            "hopsworks_common.util._handle_dataframe_input"
+        )
+        mock_handle_dict_input = mocker.patch(
+            "hopsworks_common.util._handle_dict_input"
+        )
 
         # Act
         util.input_example_to_json(input_example_numpy)
@@ -135,9 +141,15 @@ class TestUtil:
 
     def test_input_example_to_json_from_dict(self, mocker, input_example_dict):
         # Arrange
-        mock_handle_tensor_input = mocker.patch("hsml.util._handle_tensor_input")
-        mock_handle_dataframe_input = mocker.patch("hsml.util._handle_dataframe_input")
-        mock_handle_dict_input = mocker.patch("hsml.util._handle_dict_input")
+        mock_handle_tensor_input = mocker.patch(
+            "hopsworks_common.util._handle_tensor_input"
+        )
+        mock_handle_dataframe_input = mocker.patch(
+            "hopsworks_common.util._handle_dataframe_input"
+        )
+        mock_handle_dict_input = mocker.patch(
+            "hopsworks_common.util._handle_dict_input"
+        )
 
         # Act
         util.input_example_to_json(input_example_dict)
@@ -151,9 +163,15 @@ class TestUtil:
         self, mocker, input_example_dataframe_pandas_dataframe
     ):
         # Arrange
-        mock_handle_tensor_input = mocker.patch("hsml.util._handle_tensor_input")
-        mock_handle_dataframe_input = mocker.patch("hsml.util._handle_dataframe_input")
-        mock_handle_dict_input = mocker.patch("hsml.util._handle_dict_input")
+        mock_handle_tensor_input = mocker.patch(
+            "hopsworks_common.util._handle_tensor_input"
+        )
+        mock_handle_dataframe_input = mocker.patch(
+            "hopsworks_common.util._handle_dataframe_input"
+        )
+        mock_handle_dict_input = mocker.patch(
+            "hopsworks_common.util._handle_dict_input"
+        )
 
         # Act
         util.input_example_to_json(input_example_dataframe_pandas_dataframe)
@@ -165,9 +183,15 @@ class TestUtil:
 
     def test_input_example_to_json_unsupported(self, mocker):
         # Arrange
-        mock_handle_tensor_input = mocker.patch("hsml.util._handle_tensor_input")
-        mock_handle_dataframe_input = mocker.patch("hsml.util._handle_dataframe_input")
-        mock_handle_dict_input = mocker.patch("hsml.util._handle_dict_input")
+        mock_handle_tensor_input = mocker.patch(
+            "hopsworks_common.util._handle_tensor_input"
+        )
+        mock_handle_dataframe_input = mocker.patch(
+            "hopsworks_common.util._handle_dataframe_input"
+        )
+        mock_handle_dict_input = mocker.patch(
+            "hopsworks_common.util._handle_dict_input"
+        )
 
         # Act
         util.input_example_to_json(lambda unsupported_type: None)

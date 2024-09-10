@@ -332,7 +332,7 @@ class TestModel:
             "hopsworks_common.client.get_instance", return_value=ClientMock()
         )
         mock_util_get_hostname_replaced_url = mocker.patch(
-            "hsml.util.get_hostname_replaced_url", return_value="full_path"
+            "hopsworks_common.util.get_hostname_replaced_url", return_value="full_path"
         )
         path_arg = "/p/1/models/" + m_json["name"] + "/" + str(m_json["version"])
 

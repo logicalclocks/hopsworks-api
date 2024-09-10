@@ -597,7 +597,9 @@ class TestPredictor:
             pass
 
         mock_get_predictor_for_model = mocker.patch(
-            "hsml.util.get_predictor_for_model", return_value=True, spec=spec
+            "hopsworks_common.util.get_predictor_for_model",
+            return_value=True,
+            spec=spec,
         )
 
         class MockModel:
