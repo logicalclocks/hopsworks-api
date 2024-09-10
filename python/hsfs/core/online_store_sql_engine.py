@@ -574,10 +574,6 @@ class OnlineStoreSqlClient:
             _logger.debug(f"Retrieved resultset: {resultset}. Closing cursor.")
             await cursor.close()
 
-        # close connection pool
-        self._connection_pool.close()
-        await self._connection_pool.wait_closed()
-
         return resultset
 
     async def _execute_prep_statements(
@@ -609,6 +605,14 @@ class OnlineStoreSqlClient:
         except asyncio.CancelledError as e:
             _logger.error(f"Failed executing prepared statements: {e}")
             raise e
+        finally:
+            # close connection pool
+            self._connection_pool.close()
+            try:
+                # await with timeout of 120 seconds            
+                await asyncio.wait_for(self._connection_pool.wait_closed(), timeout=120)
+            except asyncio.TimeoutError:
+                _logger.error(f"Connection pool did not close within time limit: {e}")
 
         # Create a dict of results with the prepared statement index as key
         results_dict = {}
