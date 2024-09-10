@@ -19,15 +19,15 @@ import os
 from datetime import date, datetime
 from urllib.parse import ParseResult
 
-import hsfs.util
+import hopsworks_common.util
 import pytest
 import pytz
-from hsfs.client.exceptions import FeatureStoreException
-from hsfs.core.constants import HAS_AIOMYSQL, HAS_SQLALCHEMY
+from hopsworks_common import util
+from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.constants import MODEL
+from hopsworks_common.core.constants import HAS_AIOMYSQL, HAS_SQLALCHEMY
 from hsfs.embedding import EmbeddingFeature, EmbeddingIndex
 from hsfs.feature import Feature
-from hsml import util
-from hsml.constants import MODEL
 from hsml.model import Model as BaseModel
 from hsml.predictor import Predictor as BasePredictor
 from hsml.python.model import Model as PythonModel
@@ -680,91 +680,107 @@ class TestUtil:
         assert "cannot be converted to class" in str(e_info.value)
 
     def test_get_hudi_datestr_from_timestamp(self):
-        dt = hsfs.util.get_hudi_datestr_from_timestamp(1640995200000)
+        dt = hopsworks_common.util.get_hudi_datestr_from_timestamp(1640995200000)
         assert dt == "20220101000000000"
 
     def test_convert_event_time_to_timestamp_timestamp(self):
-        dt = hsfs.util.convert_event_time_to_timestamp(1640995200)
+        dt = hopsworks_common.util.convert_event_time_to_timestamp(1640995200)
         assert dt == 1640995200000
 
     def test_convert_event_time_to_timestamp_datetime(self):
-        dt = hsfs.util.convert_event_time_to_timestamp(datetime(2022, 1, 1, 0, 0, 0))
+        dt = hopsworks_common.util.convert_event_time_to_timestamp(
+            datetime(2022, 1, 1, 0, 0, 0)
+        )
         assert dt == 1640995200000
 
     def test_convert_event_time_to_timestamp_datetime_tz(self):
-        dt = hsfs.util.convert_event_time_to_timestamp(
+        dt = hopsworks_common.util.convert_event_time_to_timestamp(
             pytz.timezone("US/Pacific").localize(datetime(2021, 12, 31, 16, 0, 0))
         )
         assert dt == 1640995200000
 
     def test_convert_event_time_to_timestamp_date(self):
-        dt = hsfs.util.convert_event_time_to_timestamp(date(2022, 1, 1))
+        dt = hopsworks_common.util.convert_event_time_to_timestamp(date(2022, 1, 1))
         assert dt == 1640995200000
 
     def test_convert_event_time_to_timestamp_string(self):
-        dt = hsfs.util.convert_event_time_to_timestamp("2022-01-01 00:00:00")
+        dt = hopsworks_common.util.convert_event_time_to_timestamp(
+            "2022-01-01 00:00:00"
+        )
         assert dt == 1640995200000
 
     def test_convert_iso_event_time_to_timestamp_string(self):
-        dt = hsfs.util.convert_event_time_to_timestamp("2022-01-01T00:00:00.000000Z")
+        dt = hopsworks_common.util.convert_event_time_to_timestamp(
+            "2022-01-01T00:00:00.000000Z"
+        )
         assert dt == 1640995200000
 
     def test_convert_event_time_to_timestamp_yyyy_mm_dd(self):
-        timestamp = hsfs.util.get_timestamp_from_date_string("2022-01-01")
+        timestamp = hopsworks_common.util.get_timestamp_from_date_string("2022-01-01")
         assert timestamp == 1640995200000
 
     def test_convert_event_time_to_timestamp_yyyy_mm_dd_hh(self):
-        timestamp = hsfs.util.get_timestamp_from_date_string("2022-01-01 00")
+        timestamp = hopsworks_common.util.get_timestamp_from_date_string(
+            "2022-01-01 00"
+        )
         assert timestamp == 1640995200000
 
     def test_convert_event_time_to_timestamp_yyyy_mm_dd_hh_mm(self):
-        timestamp = hsfs.util.get_timestamp_from_date_string("2022-01-01 00:00")
+        timestamp = hopsworks_common.util.get_timestamp_from_date_string(
+            "2022-01-01 00:00"
+        )
         assert timestamp == 1640995200000
 
     def test_convert_event_time_to_timestamp_yyyy_mm_dd_hh_mm_ss(self):
-        timestamp = hsfs.util.get_timestamp_from_date_string("2022-01-01 00:00:00")
+        timestamp = hopsworks_common.util.get_timestamp_from_date_string(
+            "2022-01-01 00:00:00"
+        )
         assert timestamp == 1640995200000
 
     def test_convert_event_time_to_timestamp_yyyy_mm_dd_hh_mm_ss_f(self):
-        timestamp = hsfs.util.get_timestamp_from_date_string("2022-01-01 00:00:00.000")
+        timestamp = hopsworks_common.util.get_timestamp_from_date_string(
+            "2022-01-01 00:00:00.000"
+        )
         assert timestamp == 1640995200000
 
     def test_convert_event_time_to_timestamp_yyyy_mm_dd_hh_mm_ss_error(self):
         with pytest.raises(ValueError):
-            hsfs.util.get_timestamp_from_date_string("2022-13-01 00:00:00")
+            hopsworks_common.util.get_timestamp_from_date_string("2022-13-01 00:00:00")
 
     def test_convert_event_time_to_timestamp_yyyy_mm_dd_hh_mm_ss_error2(self):
         with pytest.raises(ValueError):
-            hsfs.util.get_timestamp_from_date_string("202-13-01 00:00:00")
+            hopsworks_common.util.get_timestamp_from_date_string("202-13-01 00:00:00")
 
     def test_convert_event_time_to_timestamp_yyyy_mm_dd_hh_mm_ss_error3(self):
         with pytest.raises(ValueError):
-            hsfs.util.get_timestamp_from_date_string("00:00:00 2022-01-01")
+            hopsworks_common.util.get_timestamp_from_date_string("00:00:00 2022-01-01")
 
     def test_convert_hudi_commit_time_to_timestamp(self):
-        timestamp = hsfs.util.get_timestamp_from_date_string("20221118095233099")
+        timestamp = hopsworks_common.util.get_timestamp_from_date_string(
+            "20221118095233099"
+        )
         assert timestamp == 1668765153099
 
     def test_get_dataset_type_HIVEDB(self):
-        db_type = hsfs.util.get_dataset_type(
+        db_type = hopsworks_common.util.get_dataset_type(
             "/apps/hive/warehouse/temp_featurestore.db/storage_connector_resources/kafka__tstore.jks"
         )
         assert db_type == "HIVEDB"
 
     def test_get_dataset_type_HIVEDB_with_dfs(self):
-        db_type = hsfs.util.get_dataset_type(
+        db_type = hopsworks_common.util.get_dataset_type(
             "hdfs:///apps/hive/warehouse/temp_featurestore.db/storage_connector_resources/kafka__tstore.jks"
         )
         assert db_type == "HIVEDB"
 
     def test_get_dataset_type_DATASET(self):
-        db_type = hsfs.util.get_dataset_type(
+        db_type = hopsworks_common.util.get_dataset_type(
             "/Projects/temp/Resources/kafka__tstore.jks"
         )
         assert db_type == "DATASET"
 
     def test_get_dataset_type_DATASET_with_dfs(self):
-        db_type = hsfs.util.get_dataset_type(
+        db_type = hopsworks_common.util.get_dataset_type(
             "hdfs:///Projects/temp/Resources/kafka__tstore.jks"
         )
         assert db_type == "DATASET"
@@ -774,7 +790,7 @@ class TestUtil:
         mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
 
         # Act
-        hsfs.util.get_job_url(href="1/2/3/4/5/6/7/8")
+        hopsworks_common.util.get_job_url(href="1/2/3/4/5/6/7/8")
 
         # Assert
         assert (
@@ -795,7 +811,7 @@ class TestUtil:
         mock_client_get_instance.return_value._project_id = 50
 
         # Act
-        hsfs.util.get_feature_group_url(
+        hopsworks_common.util.get_feature_group_url(
             feature_group_id=feature_group_id, feature_store_id=feature_store_id
         )
 
@@ -822,7 +838,7 @@ class TestUtil:
             Feature(name="feature4", type="array<double>"),
         ]
         # Call the method and expect no exceptions
-        hsfs.util.validate_embedding_feature_type(embedding_index, schema)
+        hopsworks_common.util.validate_embedding_feature_type(embedding_index, schema)
 
     def test_invalid_embedding_type(self):
         embedding_index = EmbeddingIndex(
@@ -838,7 +854,9 @@ class TestUtil:
         ]
         # Call the method and expect a FeatureStoreException
         with pytest.raises(FeatureStoreException):
-            hsfs.util.validate_embedding_feature_type(embedding_index, schema)
+            hopsworks_common.util.validate_embedding_feature_type(
+                embedding_index, schema
+            )
 
     def test_missing_embedding_index(self):
         # Define a schema without an embedding index
@@ -847,7 +865,7 @@ class TestUtil:
             Feature(name="feature2", type="array<bigint>"),
         ]
         # Call the method with an empty feature_group (no embedding index)
-        hsfs.util.validate_embedding_feature_type(None, schema)
+        hopsworks_common.util.validate_embedding_feature_type(None, schema)
         # No exception should be raised
 
     def test_empty_schema(self):
@@ -860,7 +878,7 @@ class TestUtil:
         # Define an empty schema
         schema = []
         # Call the method with an empty schema
-        hsfs.util.validate_embedding_feature_type(embedding_index, schema)
+        hopsworks_common.util.validate_embedding_feature_type(embedding_index, schema)
         # No exception should be raised
 
     @pytest.mark.skipif(
@@ -871,7 +889,9 @@ class TestUtil:
         # Test when get_running_loop() raises a RuntimeError
         with patch("asyncio.get_running_loop", side_effect=RuntimeError):
             # mock storage connector
-            online_connector = patch.object(hsfs.util, "get_online_connector")
+            online_connector = patch.object(
+                hopsworks_common.util, "get_online_connector"
+            )
             with pytest.raises(
                 RuntimeError,
                 match="Event loop is not running. Please invoke this co-routine from a running loop or provide an event loop.",
