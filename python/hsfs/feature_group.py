@@ -321,50 +321,50 @@ class FeatureGroupBase:
     ) -> query.Query:
         """Select all the features in the feature group and return a query object.
 
-        The query can be used to construct joins of feature groups or create a
-        feature view.
+        Queries define the schema of Feature View objects which can be used to
+        create Training Datasets, read from the Online Feature Store, and more. They can
+        also be composed to create more complex queries using the `join` method.
+
+        !!! info
+        This method does not select the primary key and event time of the feature group.
+        Use `select_all` to include them.
+        Note that primary keys do not need to be included in the query to allow joining
+        on them.
 
         !!! example
             ```python
             # connect to the Feature Store
-            fs = ...
+            fs = hopsworks.login().get_feature_store()
+
+            # Some dataframe to create the feature group with
+            # both an event time and a primary key column
+            my_df.head()
+            +------------+------------+------------+------------+
+            |    id      | feature_1  |    ...     |    ts      |
+            +------------+------------+------------+------------+
+            |     8      |     8      |            |    15      |
+            |     3      |     3      |    ...     |    6       |
+            |     1      |     1      |            |    18      |
+            +------------+------------+------------+------------+
 
             # Create the Feature Group instances
             fg1 = fs.create_feature_group(
                     name = "fg1",
-                    features=[
-                            Feature("id", type="string"),
-                            Feature("ts", type="bigint"),
-                            Feature("feature_1", type="date"),
-                            Feature("feature_2", type="double"),
-                            Feature("feature_3", type="double")
-                    ],
+                    version=1,
                     primary_key=["id"],
-                    event_time="ts")
-
-            fg2 = fs.create_feature_group(
-                    name = "fg2",
-                    features=[
-                            Feature("id", type="string"),
-                            Feature("ts", type="bigint"),
-                            Feature("feature_6", type="date"),
-                            Feature("feature_7", type="double"),
-                    ],
-                    primary_key=["id"],
-                    event_time="ts")
+                    event_time="ts",
+                )
 
             # Insert data to the feature group.
-            fg1.insert(..)
-            fg1.insert(..)
-
+            fg1.insert(my_df)
 
             # select all features from `fg1` excluding primary key and event time
             query = fg1.select_features()
 
-            # show first 5 rows
+            # show first 3 rows
             query.show(3)
 
-            # Output
+            # Output, no id or ts columns
             +------------+------------+------------+
             | feature_1  | feature_2  | feature_3  |
             +------------+------------+------------+
@@ -372,12 +372,29 @@ class FeatureGroupBase:
             |     3      |     1      |     6      |
             |     1      |     2      |    18      |
             +------------+------------+------------+
+            ```
 
+            !!! example
+            ```python
+            # connect to the Feature Store
+            fs = hopsworks.login().get_feature_store()
 
+            # Get the Feature Group from the previous example
+            fg1 = fs.get_feature_group("fg1", 1)
 
-            # select all features from `fg1` and join with all features from `fg2` excluding primary key and event time.
+            # Some dataframe to create another feature group
+            # with a primary key column
+            +------------+------------+------------+
+            |    id_2    | feature_6  | feature_7  |
+            +------------+------------+------------+
+            |     8      |     11     |            |
+            |     3      |     4      |    ...     |
+            |     1      |     9      |            |
+            +------------+------------+------------+
 
-            query = fg1.select_features().join(fg2.select_features())
+            # join the two feature groups on their indexes, `id` and `id_2`
+            # but does not include them in the query
+            query = fg1.select_features().join(fg2.select_features(), left_on="id", right_on="id_2")
 
             # show first 5 rows
             query.show(3)
@@ -396,9 +413,10 @@ class FeatureGroupBase:
         # Returns
             `Query`. A query object with all features of the feature group.
         """
-        warnings.warn(
-            "The `select_features` function does not select the primary key and event time of the feature group.",
-            stacklevel=1,
+        _logger.info(
+            "Selecting all features from feature group, "
+            f"excluding primary key : {self.primary_key} "
+            f"{f'and event time {self.event_time}' if self.event_time else ''}"
         )
 
         return self.select_except(self.primary_key + [self.event_time])
