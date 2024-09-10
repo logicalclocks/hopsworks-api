@@ -384,7 +384,7 @@ class TestResources:
             resources.ComponentResources._get_default_resource_limits
         )
         mock_get_serving_res_limits = mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=no_limit_res,  # no upper limit
         )
 
@@ -408,7 +408,7 @@ class TestResources:
             resources.ComponentResources._get_default_resource_limits
         )
         mock_get_serving_res_limits = mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=no_limit_res,  # no upper limit
         )
 
@@ -432,7 +432,7 @@ class TestResources:
             resources.ComponentResources._get_default_resource_limits
         )
         mock_get_serving_res_limits = mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=hard_limit_res,  # upper limit
         )
 
@@ -456,7 +456,7 @@ class TestResources:
             resources.ComponentResources._get_default_resource_limits
         )
         mock_get_serving_res_limits = mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=hard_limit_res,  # upper limit
         )
 
@@ -481,7 +481,7 @@ class TestResources:
             resources.ComponentResources._get_default_resource_limits
         )
         mock_get_serving_res_limits = mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=hard_limit_res,  # upper limit
         )
 
@@ -506,7 +506,7 @@ class TestResources:
             resources.ComponentResources._get_default_resource_limits
         )
         mock_get_serving_res_limits = mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=hard_limit_res,  # upper limit
         )
 
@@ -527,7 +527,7 @@ class TestResources:
         requests = resources.Resources(cores=1, memory=1024, gpus=0)
         limits = resources.Resources(cores=2, memory=2048, gpus=1)
         mock_get_serving_res_limits = mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=no_limit_res,  # upper limit
         )
 
@@ -543,7 +543,7 @@ class TestResources:
         requests = resources.Resources(cores=0, memory=1024, gpus=0)
         limits = resources.Resources(cores=2, memory=2048, gpus=1)
         mock_get_serving_res_limits = mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=no_limit_res,  # upper limit
         )
 
@@ -563,7 +563,7 @@ class TestResources:
         requests = resources.Resources(cores=1, memory=0, gpus=0)
         limits = resources.Resources(cores=2, memory=2048, gpus=1)
         mock_get_serving_res_limits = mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=no_limit_res,  # upper limit
         )
 
@@ -585,7 +585,7 @@ class TestResources:
         )  # 0 gpus is accepted
         limits = resources.Resources(cores=2, memory=2048, gpus=1)
         mock_get_serving_res_limits = mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=no_limit_res,  # upper limit
         )
 
@@ -606,7 +606,7 @@ class TestResources:
         requests = resources.Resources(cores=2, memory=1024, gpus=0)
         limits = resources.Resources(cores=1, memory=2048, gpus=1)
         mock_get_serving_res_limits = mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=no_limit_res,  # upper limit
         )
 
@@ -629,7 +629,7 @@ class TestResources:
         requests = resources.Resources(cores=1, memory=2048, gpus=0)
         limits = resources.Resources(cores=2, memory=1024, gpus=1)
         mock_get_serving_res_limits = mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=no_limit_res,  # upper limit
         )
 
@@ -652,7 +652,7 @@ class TestResources:
         requests = resources.Resources(cores=1, memory=1024, gpus=2)
         limits = resources.Resources(cores=2, memory=2048, gpus=1)
         mock_get_serving_res_limits = mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=no_limit_res,  # upper limit
         )
 
@@ -673,7 +673,7 @@ class TestResources:
         requests = resources.Resources(cores=1, memory=1024, gpus=0)
         limits = resources.Resources(cores=2, memory=2048, gpus=1)
         mock_get_serving_res_limits = mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=hard_limit_res,  # upper limit
         )
 
@@ -689,7 +689,7 @@ class TestResources:
         requests = resources.Resources(cores=2, memory=1024, gpus=0)
         limits = resources.Resources(cores=0, memory=2048, gpus=1)
         mock_get_serving_res_limits = mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=hard_limit_res,  # upper limit
         )
 
@@ -709,7 +709,7 @@ class TestResources:
         requests = resources.Resources(cores=2, memory=1024, gpus=0)
         limits = resources.Resources(cores=1, memory=0, gpus=1)
         mock_get_serving_res_limits = mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=hard_limit_res,  # upper limit
         )
 
@@ -727,7 +727,7 @@ class TestResources:
         requests = resources.Resources(cores=2, memory=1024, gpus=0)
         limits = resources.Resources(cores=1, memory=2048, gpus=-1)
         mock_get_serving_res_limits = mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=hard_limit_res,  # upper limit
         )
 
@@ -747,7 +747,7 @@ class TestResources:
         requests = resources.Resources(cores=2, memory=1024, gpus=0)
         limits = resources.Resources(cores=4, memory=2048, gpus=1)
         mock_get_serving_res_limits = mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=hard_limit_res,  # upper limit
         )
 
@@ -768,7 +768,7 @@ class TestResources:
         requests = resources.Resources(cores=2, memory=1024, gpus=0)
         limits = resources.Resources(cores=3, memory=4076, gpus=1)
         mock_get_serving_res_limits = mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=hard_limit_res,  # upper limit
         )
 
@@ -789,7 +789,7 @@ class TestResources:
         requests = resources.Resources(cores=2, memory=1024, gpus=0)
         limits = resources.Resources(cores=3, memory=2048, gpus=4)
         mock_get_serving_res_limits = mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=hard_limit_res,  # upper limit
         )
 
@@ -808,7 +808,7 @@ class TestResources:
 
     def test_from_response_json_predictor_resources(self, mocker, backend_fixtures):
         mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=SERVING_RESOURCE_LIMITS,
         )
         json = backend_fixtures["resources"][
@@ -831,7 +831,7 @@ class TestResources:
         self, mocker, backend_fixtures
     ):
         mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=SERVING_RESOURCE_LIMITS,
         )
         json = backend_fixtures["resources"][
@@ -854,7 +854,7 @@ class TestResources:
 
     def test_from_response_json_transformer_resources(self, mocker, backend_fixtures):
         mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=SERVING_RESOURCE_LIMITS,
         )
         json = backend_fixtures["resources"][
@@ -877,7 +877,7 @@ class TestResources:
         self, mocker, backend_fixtures
     ):
         mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=SERVING_RESOURCE_LIMITS,
         )
         json = backend_fixtures["resources"][
@@ -900,7 +900,7 @@ class TestResources:
         self, mocker, backend_fixtures
     ):
         mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=SERVING_RESOURCE_LIMITS,
         )
         mocker.patch(
