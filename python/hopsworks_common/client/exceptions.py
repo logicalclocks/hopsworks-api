@@ -118,18 +118,11 @@ class ExternalClientError(TypeError):
         super().__init__(message)
 
 
-class HopsworksClientError(TypeError):
-    """Raised when hopsworks internal client cannot be initialized due to missing arguments."""
+class InternalClientError(TypeError):
+    """Raised when hopsworks internal client is missing some necessary configuration."""
 
-    def __init__(self, missing_argument):
-        message = (
-            "{0} cannot be of type NoneType, {0} is a non-optional "
-            "argument to connect to hopsworks from an internal environment."
-        ).format(missing_argument)
+    def __init__(self, message: str) -> None:
         super().__init__(message)
-
-
-InternalClientError = HopsworksClientError
 
 
 class HopsworksSSLClientError(SSLError):
