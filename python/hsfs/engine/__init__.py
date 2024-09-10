@@ -24,10 +24,17 @@ from hsfs.engine import spark, spark_no_metastore
 
 
 _engine = None
+_engine_type = None
 
 
 def init(engine_type: str) -> None:
-    global _engine
+    global _engine, _engine_type
+    python_types = ["python", "training"]
+    if _engine_type != engine_type:
+        if engine_type in python_types and _engine_type in python_types:
+            _engine_type = engine_type
+        else:
+            stop()
     if not _engine:
         if engine_type == "spark":
             _engine = spark.Engine()
@@ -37,7 +44,7 @@ def init(engine_type: str) -> None:
             )
         elif engine_type == "spark-no-metastore":
             _engine = spark_no_metastore.Engine()
-        elif engine_type in ["python", "training"]:
+        elif engine_type in python_types:
             try:
                 from hsfs.engine import python
             except ImportError as err:
@@ -47,14 +54,14 @@ def init(engine_type: str) -> None:
                     "hsfs[python]`."
                 ) from err
             _engine = python.Engine()
+        if _engine:
+            _engine_type = engine_type
 
 
 def get_instance() -> (
     Union[spark.Engine, spark_no_metastore.Engine, TypeVar("python.Engine")]
 ):
-    global _engine
-    if not _engine:
-        init(hopsworks_common.connection._hsfs_engine_type)
+    init(hopsworks_common.connection._hsfs_engine_type)
     return _engine
 
 

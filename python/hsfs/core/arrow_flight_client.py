@@ -29,7 +29,7 @@ import pyarrow._flight
 import pyarrow.flight
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
-from hsfs import feature_group, util
+from hsfs import feature_group
 from hsfs.constructor import query
 from hsfs.core.variable_api import VariableApi
 from hsfs.storage_connector import StorageConnector
@@ -444,9 +444,7 @@ class ArrowFlightClient:
         self, feature_view_obj, training_dataset_obj, query_obj, arrow_flight_config
     ):
         training_dataset = {}
-        training_dataset["fs_name"] = util.strip_feature_store_suffix(
-            training_dataset_obj.feature_store_name
-        )
+        training_dataset["project_name"] = self._client._project_name
         training_dataset["fv_name"] = feature_view_obj.name
         training_dataset["fv_version"] = feature_view_obj.version
         training_dataset["tds_version"] = training_dataset_obj.version

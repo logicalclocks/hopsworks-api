@@ -38,7 +38,6 @@ if TYPE_CHECKING:
     import great_expectations
 
 import avro.schema
-import confluent_kafka
 import hsfs.expectation_suite
 import humps
 import numpy as np
@@ -80,6 +79,7 @@ from hsfs.core import (
 from hsfs.core import feature_monitoring_config as fmc
 from hsfs.core import feature_monitoring_result as fmr
 from hsfs.core.constants import (
+    HAS_CONFLUENT_KAFKA,
     HAS_GREAT_EXPECTATIONS,
 )
 from hsfs.core.job import Job
@@ -100,6 +100,9 @@ from hsfs.validation_report import ValidationReport
 
 if HAS_GREAT_EXPECTATIONS:
     import great_expectations
+
+if HAS_CONFLUENT_KAFKA:
+    import confluent_kafka
 
 
 _logger = logging.getLogger(__name__)
@@ -251,7 +254,7 @@ class FeatureGroupBase:
         include_primary_key: Optional[bool] = True,
         include_event_time: Optional[bool] = True,
     ) -> query.Query:
-        """Select all features in the feature group and return a query object.
+        """Select all features along with primary key and event time from the feature group and return a query object.
 
         The query can be used to construct joins of feature groups or create a
         feature view.
@@ -315,6 +318,111 @@ class FeatureGroupBase:
             return self.select_except([self.event_time])
         else:
             return self.select_except(self.primary_key + [self.event_time])
+
+    def select_features(
+        self,
+    ) -> query.Query:
+        """Select all the features in the feature group and return a query object.
+
+        Queries define the schema of Feature View objects which can be used to
+        create Training Datasets, read from the Online Feature Store, and more. They can
+        also be composed to create more complex queries using the `join` method.
+
+        !!! info
+        This method does not select the primary key and event time of the feature group.
+        Use `select_all` to include them.
+        Note that primary keys do not need to be included in the query to allow joining
+        on them.
+
+        !!! example
+            ```python
+            # connect to the Feature Store
+            fs = hopsworks.login().get_feature_store()
+
+            # Some dataframe to create the feature group with
+            # both an event time and a primary key column
+            my_df.head()
+            +------------+------------+------------+------------+
+            |    id      | feature_1  |    ...     |    ts      |
+            +------------+------------+------------+------------+
+            |     8      |     8      |            |    15      |
+            |     3      |     3      |    ...     |    6       |
+            |     1      |     1      |            |    18      |
+            +------------+------------+------------+------------+
+
+            # Create the Feature Group instances
+            fg1 = fs.create_feature_group(
+                    name = "fg1",
+                    version=1,
+                    primary_key=["id"],
+                    event_time="ts",
+                )
+
+            # Insert data to the feature group.
+            fg1.insert(my_df)
+
+            # select all features from `fg1` excluding primary key and event time
+            query = fg1.select_features()
+
+            # show first 3 rows
+            query.show(3)
+
+            # Output, no id or ts columns
+            +------------+------------+------------+
+            | feature_1  | feature_2  | feature_3  |
+            +------------+------------+------------+
+            |     8      |     7      |    15      |
+            |     3      |     1      |     6      |
+            |     1      |     2      |    18      |
+            +------------+------------+------------+
+            ```
+
+            !!! example
+            ```python
+            # connect to the Feature Store
+            fs = hopsworks.login().get_feature_store()
+
+            # Get the Feature Group from the previous example
+            fg1 = fs.get_feature_group("fg1", 1)
+
+            # Some dataframe to create another feature group
+            # with a primary key column
+            +------------+------------+------------+
+            |    id_2    | feature_6  | feature_7  |
+            +------------+------------+------------+
+            |     8      |     11     |            |
+            |     3      |     4      |    ...     |
+            |     1      |     9      |            |
+            +------------+------------+------------+
+
+            # join the two feature groups on their indexes, `id` and `id_2`
+            # but does not include them in the query
+            query = fg1.select_features().join(fg2.select_features(), left_on="id", right_on="id_2")
+
+            # show first 5 rows
+            query.show(3)
+
+            # Output
+            +------------+------------+------------+------------+------------+
+            | feature_1  | feature_2  | feature_3  | feature_6  | feature_7  |
+            +------------+------------+------------+------------+------------+
+            |     8      |     7      |    15      |    11      |    15      |
+            |     3      |     1      |     6      |     4      |     3      |
+            |     1      |     2      |    18      |     9      |    20      |
+            +------------+------------+------------+------------+------------+
+
+            ```
+
+        # Returns
+            `Query`. A query object with all features of the feature group.
+        """
+        query = self.select_except(self.primary_key + [self.event_time])
+        _logger.info(
+            f"Using {[f.name for f in query.features]} as features for the query."
+            "To include primary key and event time use `select_all`."
+        )
+
+        return query
 
     def select(self, features: List[Union[str, feature.Feature]]) -> query.Query:
         """Select a subset of features of the feature group and return a query object.

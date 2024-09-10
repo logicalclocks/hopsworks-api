@@ -365,6 +365,12 @@ class TestFeatureGroup:
         assert len(features) == 2
         assert set([f.name for f in features]) == {"f1", "f2"}
 
+    def test_select_features(self):
+        query = test_feature_group.select_features()
+        features = query.features
+        assert len(features) == 2
+        assert set([f.name for f in features]) == {"f1", "f2"}
+
     def test_materialization_job(self, mocker):
         mock_job = mocker.Mock()
         mock_job_api = mocker.patch(

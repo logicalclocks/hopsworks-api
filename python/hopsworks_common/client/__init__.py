@@ -136,6 +136,18 @@ def set_knative_domain(knative_domain):
     _knative_domain = knative_domain
 
 
+_connection = None
+
+
+def get_connection():
+    return _connection
+
+
+def set_connection(connection):
+    global _connection
+    _connection = connection
+
+
 def _is_external():
     global _client
     if _client is None:

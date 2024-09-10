@@ -25,9 +25,6 @@ import warnings
 from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar, Union
 
-from hsfs.core.feature_view_engine import FeatureViewEngine
-from hsfs.training_dataset_feature import TrainingDatasetFeature
-
 
 if TYPE_CHECKING:
     import great_expectations
@@ -1487,13 +1484,13 @@ class Engine:
         ],
         fg: fg_mod.FeatureGroup = None,
         td_features: List[str] = None,
-        td_predictions: List[TrainingDatasetFeature] = None,
+        td_predictions: List[training_dataset_feature.TrainingDatasetFeature] = None,
         td_col_name: Optional[str] = None,
         time_col_name: Optional[str] = None,
         model_col_name: Optional[str] = None,
         predictions: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
         training_dataset_version: Optional[int] = None,
-        hsml_model=None,
+        hsml_model: str = None,
         **kwargs,
     ):
         # do not take prediction separately because spark ml framework usually return feature together with the prediction
@@ -1513,11 +1510,7 @@ class Engine:
 
         # Add new columns to the DataFrame
         df = df.withColumn(td_col_name, lit(training_dataset_version).cast(LongType()))
-        if hsml_model is not None:
-            hsml_str = FeatureViewEngine.get_hsml_model_value(hsml_model)
-        else:
-            hsml_str = None
-        df = df.withColumn(model_col_name, lit(hsml_str).cast(StringType()))
+        df = df.withColumn(model_col_name, lit(hsml_model).cast(StringType()))
         now = datetime.now()
         df = df.withColumn(time_col_name, lit(now).cast(TimestampType()))
         df = df.withColumn("log_id", uuid_udf())
@@ -1526,9 +1519,9 @@ class Engine:
         return df.select(*[feat.name for feat in fg.features])
 
     @staticmethod
-    def read_feature_log(query):
+    def read_feature_log(query, time_col):
         df = query.read()
-        return df.drop("log_id", FeatureViewEngine._LOG_TIME)
+        return df.drop("log_id", time_col)
 
 
 class SchemaError(Exception):
