@@ -50,6 +50,7 @@ class RestAPIError(Exception):
                 error_object = {"errorMsg": error_object}
         except Exception:
             error_object = {}
+            self.error_code = None
         message = (
             "Metadata operation error: (url: {}). Server response: \n"
             "HTTP code: {}, HTTP reason: {}, body: {}, error code: {}, error msg: {}, user "
@@ -63,6 +64,8 @@ class RestAPIError(Exception):
                 error_object.get("usrMsg", ""),
             )
         )
+        if len(error_object) != 0:
+            self.error_code = error_object.get("errorCode", "")
         super().__init__(message)
         self.url = url
         self.response = response

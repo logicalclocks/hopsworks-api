@@ -407,7 +407,7 @@ class TestFeatureGroup:
         mock_response_job_not_found.status_code = 404
         mock_response_job_not_found.json.return_value = {"errorCode": 130009}
 
-        mock_response_not_found = mocker.Mock()
+        mock_response_not_found = mocker.MagicMock()
         mock_response_not_found.status_code = 404
 
         mock_job = mocker.Mock()
@@ -448,7 +448,7 @@ class TestFeatureGroup:
         # Arrange
         mocker.patch("time.sleep")
 
-        mock_response_not_found = mocker.Mock()
+        mock_response_not_found = mocker.MagicMock()
         mock_response_not_found.status_code = 404
 
         mock_job_api = mocker.patch(
