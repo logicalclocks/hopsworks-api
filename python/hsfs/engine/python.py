@@ -66,7 +66,6 @@ from hsfs import (
 from hsfs import storage_connector as sc
 from hsfs.constructor import query
 from hsfs.core import (
-    arrow_flight_client,
     dataset_api,
     feature_group_api,
     feature_view_api,
@@ -155,6 +154,8 @@ class Engine:
     def is_flyingduck_query_supported(
         self, query: "query.Query", read_options: Optional[Dict[str, Any]] = None
     ) -> bool:
+        from hsfs.core import arrow_flight_client
+
         return arrow_flight_client.is_query_supported(query, read_options or {})
 
     def _validate_dataframe_type(self, dataframe_type: str):
@@ -178,6 +179,8 @@ class Engine:
     ) -> Union[pd.DataFrame, pl.DataFrame]:
         self._validate_dataframe_type(dataframe_type)
         if isinstance(sql_query, dict) and "query_string" in sql_query:
+            from hsfs.core import arrow_flight_client
+
             result_df = util.run_with_loading_animation(
                 "Reading data from Hopsworks, using Hopsworks Feature Query Service",
                 arrow_flight_client.get_instance().read_query,
@@ -333,6 +336,8 @@ class Engine:
 
             for inode in inode_list:
                 if not self._is_metadata_file(inode.path):
+                    from hsfs.core import arrow_flight_client
+
                     if arrow_flight_client.is_data_format_supported(
                         data_format, read_options
                     ):
@@ -1054,8 +1059,16 @@ class Engine:
                 "Currently only query based training datasets are supported by the Python engine"
             )
 
+        try:
+            from hsfs.core import arrow_flight_client
+
+            arrow_flight_client_imported = True
+        except ImportError:
+            arrow_flight_client_imported = False
+
         if (
-            arrow_flight_client.is_query_supported(dataset, user_write_options)
+            arrow_flight_client_imported
+            and arrow_flight_client.is_query_supported(dataset, user_write_options)
             and len(training_dataset.splits) == 0
             and feature_view_obj
             and len(feature_view_obj.transformation_functions) == 0

@@ -37,7 +37,6 @@ from hsfs import (
 from hsfs.client import exceptions
 from hsfs.constructor.query import Query
 from hsfs.core import (
-    arrow_flight_client,
     feature_group_api,
     feature_group_engine,
     feature_view_engine,
@@ -1786,10 +1785,14 @@ class FeatureStore:
 
     def _disable_hopsworks_feature_query_service_client(self):
         """Disable Hopsworks feature query service for the current session. This behaviour is not persisted on reset."""
+        from hsfs.core import arrow_flight_client
+
         arrow_flight_client._disable_feature_query_service_client()
 
     def _reset_hopsworks_feature_query_service_client(self):
         """Reset Hopsworks feature query service for the current session."""
+        from hsfs.core import arrow_flight_client
+
         arrow_flight_client.close()
         arrow_flight_client.get_instance()
 
