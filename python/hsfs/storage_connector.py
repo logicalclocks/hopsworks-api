@@ -312,7 +312,7 @@ class S3Connector(StorageConnector):
     def bucket(self) -> Optional[str]:
         """Return the bucket for S3 connectors."""
         return self._bucket
-    
+
     @property
     def region(self) -> Optional[str]:
         """Return the region for S3 connectors."""
