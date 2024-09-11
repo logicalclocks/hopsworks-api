@@ -267,6 +267,7 @@ class S3Connector(StorageConnector):
         server_encryption_algorithm: Optional[str] = None,
         server_encryption_key: Optional[str] = None,
         bucket: Optional[str] = None,
+        region: Optional[str] = None,
         session_token: Optional[str] = None,
         iam_role: Optional[str] = None,
         arguments: Optional[Dict[str, Any]] = None,
@@ -280,6 +281,7 @@ class S3Connector(StorageConnector):
         self._server_encryption_algorithm = server_encryption_algorithm
         self._server_encryption_key = server_encryption_key
         self._bucket = bucket
+        self._region = region
         self._session_token = session_token
         self._iam_role = iam_role
         self._arguments = (
@@ -310,6 +312,11 @@ class S3Connector(StorageConnector):
     def bucket(self) -> Optional[str]:
         """Return the bucket for S3 connectors."""
         return self._bucket
+    
+    @property
+    def region(self) -> Optional[str]:
+        """Return the region for S3 connectors."""
+        return self._region
 
     @property
     def session_token(self) -> Optional[str]:
