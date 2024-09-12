@@ -504,6 +504,9 @@ class Engine:
                 + "environment with Spark Engine."
             )
 
+    def register_delta_temporary_table(*args, **kwargs):
+        pass
+
     def profile_by_spark(
         self,
         metadata_instance: Union[

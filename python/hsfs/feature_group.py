@@ -148,7 +148,7 @@ class FeatureGroupBase:
         self._name = name
         self.event_time = event_time
         self._online_enabled = online_enabled
-        self._location = location
+        self._location = location.replace("hopsfs://", "hdfs://")  if location else location  # TODO ken: revert it
         self._id = id
         self._subject = None
         self._online_topic_name = online_topic_name
@@ -166,7 +166,6 @@ class FeatureGroupBase:
             )
         else:
             self._storage_connector: "sc.StorageConnector" = storage_connector
-
         self._online_config = (
             OnlineConfig.from_response_json(online_config)
             if isinstance(online_config, dict)

@@ -369,6 +369,16 @@ class S3Connector(StorageConnector):
         """
         return engine.get_instance().setup_storage_connector(self, path)
 
+    def connector_options(self) -> Dict[str, Any]:
+        """Return options to be passed to an external S3 connector library"""
+        return {
+            "access_key": self.access_key,
+            "secret_key": self.secret_key,
+            "session_token": self.session_token,
+            "path": self.path,
+            "region": "us-east-2",
+        }
+
     def read(
         self,
         query: Optional[str] = None,
