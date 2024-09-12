@@ -81,12 +81,13 @@ from hsfs.core import (
 )
 from hsfs.core.constants import (
     HAS_AIOMYSQL,
-    HAS_ARROW,
     HAS_GREAT_EXPECTATIONS,
     HAS_PANDAS,
+    HAS_PYARROW,
     HAS_SQLALCHEMY,
 )
 from hsfs.core.feature_view_engine import FeatureViewEngine
+from hsfs.core.type_systems import PYARROW_HOPSWORKS_DTYPE_MAPPING
 from hsfs.core.vector_db_client import VectorDbClient
 from hsfs.decorators import uses_great_expectations
 from hsfs.feature_group import ExternalFeatureGroup, FeatureGroup
@@ -98,8 +99,6 @@ from hsfs.training_dataset_split import TrainingDatasetSplit
 if HAS_GREAT_EXPECTATIONS:
     import great_expectations
 
-if HAS_ARROW:
-    from hsfs.core.type_systems import PYARROW_HOPSWORKS_DTYPE_MAPPING
 if HAS_AIOMYSQL and HAS_SQLALCHEMY:
     from hsfs.core import util_sql
 
@@ -531,7 +530,10 @@ class Engine:
                 or pa.types.is_list(field.type)
                 or pa.types.is_large_list(field.type)
                 or pa.types.is_struct(field.type)
-            ) and PYARROW_HOPSWORKS_DTYPE_MAPPING[field.type] in ["timestamp", "date"]:
+            ) and PYARROW_HOPSWORKS_DTYPE_MAPPING.get(field.type, None) in [
+                "timestamp",
+                "date",
+            ]:
                 if isinstance(df, pl.DataFrame) or isinstance(
                     df, pl.dataframe.frame.DataFrame
                 ):
@@ -563,15 +565,21 @@ class Engine:
                 or pa.types.is_list(arrow_type)
                 or pa.types.is_large_list(arrow_type)
                 or pa.types.is_struct(arrow_type)
-                or PYARROW_HOPSWORKS_DTYPE_MAPPING[arrow_type]
+                or PYARROW_HOPSWORKS_DTYPE_MAPPING.get(arrow_type, None)
                 in ["timestamp", "date", "binary", "string"]
             ):
                 dataType = "String"
-            elif PYARROW_HOPSWORKS_DTYPE_MAPPING[arrow_type] in ["float", "double"]:
+            elif PYARROW_HOPSWORKS_DTYPE_MAPPING.get(arrow_type, None) in [
+                "float",
+                "double",
+            ]:
                 dataType = "Fractional"
-            elif PYARROW_HOPSWORKS_DTYPE_MAPPING[arrow_type] in ["int", "bigint"]:
+            elif PYARROW_HOPSWORKS_DTYPE_MAPPING.get(arrow_type, None) in [
+                "int",
+                "bigint",
+            ]:
                 dataType = "Integral"
-            elif PYARROW_HOPSWORKS_DTYPE_MAPPING[arrow_type] == "boolean":
+            elif PYARROW_HOPSWORKS_DTYPE_MAPPING.get(arrow_type, None) == "boolean":
                 dataType = "Boolean"
             else:
                 print(
@@ -1238,7 +1246,7 @@ class Engine:
             dataset, pl.dataframe.frame.DataFrame
         ):
             # Converting polars dataframe to pandas because currently we support only pandas UDF's as transformation functions.
-            if HAS_ARROW:
+            if HAS_PYARROW:
                 dataset = dataset.to_pandas(
                     use_pyarrow_extension_array=True
                 )  # Zero copy if pyarrow extension can be used.

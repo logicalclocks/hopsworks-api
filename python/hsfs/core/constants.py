@@ -16,7 +16,7 @@
 
 from hopsworks_common.core.constants import (
     HAS_AIOMYSQL,
-    HAS_ARROW,
+    HAS_PYARROW,
     HAS_AVRO,
     HAS_CONFLUENT_KAFKA,
     HAS_FAST_AVRO,
@@ -32,7 +32,7 @@ from hopsworks_common.core.constants import (
 
 __all__ = [
     "HAS_AIOMYSQL",
-    "HAS_ARROW",
+    "HAS_PYARROW",
     "HAS_AVRO",
     "HAS_CONFLUENT_KAFKA",
     "HAS_FAST_AVRO",
