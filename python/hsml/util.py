@@ -95,6 +95,7 @@ class NumpyEncoder(JSONEncoder):
 
 
 def set_model_class(model):
+    from hsml.llm.model import Model as LLMModel
     from hsml.model import Model as BaseModel
     from hsml.python.model import Model as PyModel
     from hsml.sklearn.model import Model as SkLearnModel
@@ -120,6 +121,8 @@ def set_model_class(model):
         return SkLearnModel(**model)
     elif framework == MODEL.FRAMEWORK_PYTHON:
         return PyModel(**model)
+    elif framework == MODEL.FRAMEWORK_LLM:
+        return LLMModel(**model)
     else:
         raise ValueError(
             "framework {} is not a supported framework".format(str(framework))
@@ -232,6 +235,8 @@ def validate_metrics(metrics):
 
 
 def get_predictor_for_model(model, **kwargs):
+    from hsml.llm.model import Model as LLMModel
+    from hsml.llm.predictor import Predictor as vLLMPredictor
     from hsml.model import Model as BaseModel
     from hsml.predictor import Predictor as BasePredictor
     from hsml.python.model import Model as PyModel
@@ -258,6 +263,8 @@ def get_predictor_for_model(model, **kwargs):
         return SkLearnPredictor(**kwargs)
     if type(model) is PyModel:
         return PyPredictor(**kwargs)
+    if type(model) is LLMModel:
+        return vLLMPredictor(**kwargs)
     if type(model) is BaseModel:
         return BasePredictor(  # python as default framework and model server
             model_framework=MODEL.FRAMEWORK_PYTHON,

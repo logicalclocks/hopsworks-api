@@ -340,6 +340,14 @@ class TestPredictor:
         # Assert
         assert "Predictor scripts are required" in str(e_info.value)
 
+    def test_validate_script_file_llm_none(self):
+        # Act
+        with pytest.raises(ValueError) as e_info:
+            _ = predictor.Predictor._validate_script_file(MODEL.FRAMEWORK_LLM, None)
+
+        # Assert
+        assert "Predictor scripts are required" in str(e_info.value)
+
     def test_validate_script_file_tf_script_file(self):
         # Act
         predictor.Predictor._validate_script_file(
@@ -359,6 +367,10 @@ class TestPredictor:
     def test_validate_script_file_py_script_file(self):
         # Act
         predictor.Predictor._validate_script_file(MODEL.FRAMEWORK_PYTHON, "script_file")
+
+    def test_validate_script_file_llm_script_file(self):
+        # Act
+        predictor.Predictor._validate_script_file(MODEL.FRAMEWORK_LLM, "script_file")
 
     # infer model server
 
@@ -389,6 +401,13 @@ class TestPredictor:
 
         # Assert
         assert ms == PREDICTOR.MODEL_SERVER_PYTHON
+
+    def test_infer_model_server_llm(self):
+        # Act
+        ms = predictor.Predictor._infer_model_server(MODEL.FRAMEWORK_LLM)
+
+        # Assert
+        assert ms == PREDICTOR.MODEL_SERVER_VLLM
 
     # default serving tool
 

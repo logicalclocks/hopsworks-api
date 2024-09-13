@@ -167,18 +167,22 @@ class Predictor(DeployableComponent):
 
     @classmethod
     def _validate_script_file(cls, model_framework, script_file):
-        if model_framework == MODEL.FRAMEWORK_PYTHON and script_file is None:
+        if script_file is None and (
+            model_framework == MODEL.FRAMEWORK_PYTHON
+            or model_framework == MODEL.FRAMEWORK_LLM
+        ):
             raise ValueError(
-                "Predictor scripts are required in deployments for custom Python models"
+                "Predictor scripts are required in deployments for custom Python models and LLMs."
             )
 
     @classmethod
     def _infer_model_server(cls, model_framework):
-        return (
-            PREDICTOR.MODEL_SERVER_TF_SERVING
-            if model_framework == MODEL.FRAMEWORK_TENSORFLOW
-            else PREDICTOR.MODEL_SERVER_PYTHON
-        )
+        if model_framework == MODEL.FRAMEWORK_TENSORFLOW:
+            return PREDICTOR.MODEL_SERVER_TF_SERVING
+        elif model_framework == MODEL.FRAMEWORK_LLM:
+            return PREDICTOR.MODEL_SERVER_VLLM
+        else:
+            return PREDICTOR.MODEL_SERVER_PYTHON
 
     @classmethod
     def _get_default_serving_tool(cls):

@@ -20,6 +20,7 @@ import humps
 from hopsworks_common import usage
 from hsml import util
 from hsml.core import model_api
+from hsml.llm import signature as llm_signature  # noqa: F401
 from hsml.python import signature as python_signature  # noqa: F401
 from hsml.sklearn import signature as sklearn_signature  # noqa: F401
 from hsml.tensorflow import signature as tensorflow_signature  # noqa: F401
@@ -49,11 +50,13 @@ class ModelRegistry:
         self._python = python_signature
         self._sklearn = sklearn_signature
         self._torch = torch_signature
+        self._llm = llm_signature
 
         tensorflow_signature._mr = self
         python_signature._mr = self
         sklearn_signature._mr = self
         torch_signature._mr = self
+        llm_signature._mr = self
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -190,6 +193,12 @@ class ModelRegistry:
         """Module for exporting a generic Python model."""
 
         return python_signature
+
+    @property
+    def llm(self):
+        """Module for exporting a Large Language Model."""
+
+        return llm_signature
 
     def __repr__(self):
         project_name = (
