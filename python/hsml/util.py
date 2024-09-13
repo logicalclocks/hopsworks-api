@@ -100,6 +100,7 @@ def set_model_class(model):
     from hsml.sklearn.model import Model as SkLearnModel
     from hsml.tensorflow.model import Model as TFModel
     from hsml.torch.model import Model as TorchModel
+    from hsml.llm.model import Model as LLMModel
 
     if "href" in model:
         _ = model.pop("href")
@@ -120,6 +121,8 @@ def set_model_class(model):
         return SkLearnModel(**model)
     elif framework == MODEL.FRAMEWORK_PYTHON:
         return PyModel(**model)
+    elif framework == MODEL.FRAMEWORK_LLM:
+        return LLMModel(**model)
     else:
         raise ValueError(
             "framework {} is not a supported framework".format(str(framework))
@@ -242,6 +245,8 @@ def get_predictor_for_model(model, **kwargs):
     from hsml.tensorflow.predictor import Predictor as TFPredictor
     from hsml.torch.model import Model as TorchModel
     from hsml.torch.predictor import Predictor as TorchPredictor
+    from hsml.llm.model import Model as LLMModel
+    from hsml.llm.predictor import Predictor as vLLMPredictor
 
     if not isinstance(model, BaseModel):
         raise ValueError(
@@ -258,6 +263,8 @@ def get_predictor_for_model(model, **kwargs):
         return SkLearnPredictor(**kwargs)
     if type(model) is PyModel:
         return PyPredictor(**kwargs)
+    if type(model) is LLMModel:
+        return vLLMPredictor(**kwargs)
     if type(model) is BaseModel:
         return BasePredictor(  # python as default framework and model server
             model_framework=MODEL.FRAMEWORK_PYTHON,
