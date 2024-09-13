@@ -493,7 +493,10 @@ class ServingEngine:
         inputs: Union[Dict, List[Dict]],
     ):
         # validate user-provided payload
-        self._validate_inference_payload(deployment_instance.api_protocol, data, inputs)
+        if deployment_instance.model_server != "VLLM":
+            self._validate_inference_payload(
+                deployment_instance.api_protocol, data, inputs
+            )
 
         # build inference payload based on API protocol
         payload = self._build_inference_payload(
