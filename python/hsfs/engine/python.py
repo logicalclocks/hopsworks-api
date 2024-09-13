@@ -1263,7 +1263,7 @@ class Engine:
         self,
         transformation_functions: List[transformation_function.TransformationFunction],
         dataset: Union[pd.DataFrame, pl.DataFrame],
-        inference_mode: bool = False,
+        online_inference: bool = False,
     ) -> Union[pd.DataFrame, pl.DataFrame]:
         """
         Apply transformation function to the dataframe.
@@ -1304,7 +1304,7 @@ class Engine:
 
             if (
                 hopsworks_udf.execution_mode.get_current_execution_mode(
-                    inference=inference_mode
+                    online=online_inference
                 )
                 == UDFExecutionMode.PANDAS
             ):
@@ -1334,7 +1334,7 @@ class Engine:
         # Raises
             `FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
-        udf = hopsworks_udf.get_udf(inference=False)
+        udf = hopsworks_udf.get_udf(online=False)
         if isinstance(dataframe, pd.DataFrame):
             if len(hopsworks_udf.return_types) > 1:
                 dataframe[hopsworks_udf.output_column_names] = dataframe.apply(
@@ -1398,7 +1398,7 @@ class Engine:
         """
         if len(hopsworks_udf.return_types) > 1:
             dataframe[hopsworks_udf.output_column_names] = hopsworks_udf.get_udf(
-                inference=False
+                online=False
             )(
                 *(
                     [
@@ -1409,7 +1409,7 @@ class Engine:
             )
         else:
             dataframe[hopsworks_udf.output_column_names[0]] = hopsworks_udf.get_udf(
-                inference=False
+                online=False
             )(
                 *(
                     [

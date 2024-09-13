@@ -1001,9 +1001,7 @@ class VectorServer:
         _logger.debug("Applying On-Demand transformation functions.")
         for tf in self._on_demand_transformation_functions:
             if (
-                tf.hopsworks_udf.execution_mode.get_current_execution_mode(
-                    inference=True
-                )
+                tf.hopsworks_udf.execution_mode.get_current_execution_mode(online=True)
                 == UDFExecutionMode.PANDAS
             ):
                 # Check if feature provided as request parameter if not get it from retrieved feature vector.
@@ -1028,13 +1026,11 @@ class VectorServer:
                     for feature in tf.hopsworks_udf.transformation_features
                 ]
 
-            on_demand_feature = tf.hopsworks_udf.get_udf(inference=True)(
+            on_demand_feature = tf.hopsworks_udf.get_udf(online=True)(
                 *features
             )  # Get only python compatible UDF irrespective of engine
             if (
-                tf.hopsworks_udf.execution_mode.get_current_execution_mode(
-                    inference=True
-                )
+                tf.hopsworks_udf.execution_mode.get_current_execution_mode(online=True)
                 == UDFExecutionMode.PANDAS
             ):
                 rows[on_demand_feature.name] = on_demand_feature.values[0]
@@ -1046,9 +1042,7 @@ class VectorServer:
         _logger.debug("Applying Model-Dependent transformation functions.")
         for tf in self.model_dependent_transformation_functions:
             if (
-                tf.hopsworks_udf.execution_mode.get_current_execution_mode(
-                    inference=True
-                )
+                tf.hopsworks_udf.execution_mode.get_current_execution_mode(online=True)
                 == UDFExecutionMode.PANDAS
             ):
                 features = [
@@ -1064,14 +1058,12 @@ class VectorServer:
                     rows[feature]
                     for feature in tf.hopsworks_udf.transformation_features
                 ]
-            transformed_result = tf.hopsworks_udf.get_udf(inference=True)(
+            transformed_result = tf.hopsworks_udf.get_udf(online=True)(
                 *features
             )  # Get only python compatible UDF irrespective of engine
 
             if (
-                tf.hopsworks_udf.execution_mode.get_current_execution_mode(
-                    inference=True
-                )
+                tf.hopsworks_udf.execution_mode.get_current_execution_mode(online=True)
                 == UDFExecutionMode.PANDAS
             ):
                 if isinstance(transformed_result, pd.Series):
