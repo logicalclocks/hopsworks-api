@@ -42,10 +42,10 @@ class UDFExecutionMode(Enum):
     PYTHON = "python"
     PANDAS = "pandas"
 
-    def get_current_execution_mode(self, inference):
-        if self == UDFExecutionMode.DEFAULT and inference:
+    def get_current_execution_mode(self, online):
+        if self == UDFExecutionMode.DEFAULT and online:
             return UDFExecutionMode.PYTHON
-        elif self == UDFExecutionMode.DEFAULT and not inference:
+        elif self == UDFExecutionMode.DEFAULT and not online:
             return UDFExecutionMode.PANDAS
         else:
             return self
@@ -697,7 +697,7 @@ def renaming_wrapper(*args):
             for _ in range(len(self.transformation_statistics.feature.unique_values))
         ]
 
-    def get_udf(self, inference: bool = False) -> Callable:
+    def get_udf(self, online: bool = False) -> Callable:
         """
         Function that checks the current engine type, execution type and returns the appropriate UDF.
 
@@ -719,10 +719,10 @@ def renaming_wrapper(*args):
         """
 
         if (
-            self.execution_mode.get_current_execution_mode(inference)
+            self.execution_mode.get_current_execution_mode(online)
             == UDFExecutionMode.PANDAS
         ):
-            if engine.get_type() in ["python", "training"] or inference:
+            if engine.get_type() in ["python", "training"] or online:
                 return self.pandas_udf_wrapper()
             else:
                 from pyspark.sql.functions import pandas_udf
@@ -732,10 +732,10 @@ def renaming_wrapper(*args):
                     returnType=self._create_pandas_udf_return_schema_from_list(),
                 )
         elif (
-            self.execution_mode.get_current_execution_mode(inference)
+            self.execution_mode.get_current_execution_mode(online)
             == UDFExecutionMode.PYTHON
         ):
-            if engine.get_type() in ["python", "training"] or inference:
+            if engine.get_type() in ["python", "training"] or online:
                 # Renaming into correct column names done within Python engine since a wrapper does not work for polars dataFrames.
                 return self.python_udf_wrapper(rename_outputs=False)
             else:

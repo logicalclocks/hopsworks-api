@@ -874,7 +874,7 @@ def test_function():
         pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
         python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
 
-        _ = test.get_udf(inference=False)
+        _ = test.get_udf(online=False)
 
         assert pandas_udf_mocker.call_count == 1
         assert python_udf_mocker.call_count == 0
@@ -893,7 +893,7 @@ def test_function():
         pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
         python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
 
-        _ = test.get_udf(inference=True)
+        _ = test.get_udf(online=True)
 
         assert pandas_udf_mocker.call_count == 0
         assert python_udf_mocker.call_count == 0
@@ -912,7 +912,7 @@ def test_function():
         pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
         python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
 
-        _ = test.get_udf(inference=False)
+        _ = test.get_udf(online=False)
 
         assert pandas_udf_mocker.call_count == 0
         assert python_udf_mocker.call_count == 1
@@ -931,7 +931,7 @@ def test_function():
         pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
         python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
 
-        _ = test.get_udf(inference=True)
+        _ = test.get_udf(online=True)
 
         assert pandas_udf_mocker.call_count == 0
         assert python_udf_mocker.call_count == 0
@@ -950,7 +950,7 @@ def test_function():
         pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
         python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
 
-        _ = test.get_udf(inference=False)
+        _ = test.get_udf(online=False)
 
         assert pandas_udf_mocker.call_count == 1
         assert python_udf_mocker.call_count == 0
@@ -969,7 +969,7 @@ def test_function():
         pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
         python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
 
-        _ = test.get_udf(inference=True)
+        _ = test.get_udf(online=True)
 
         assert pandas_udf_mocker.call_count == 0
         assert python_udf_mocker.call_count == 0
@@ -988,7 +988,7 @@ def test_function():
         pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
         python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
 
-        _ = test.get_udf(inference=False)
+        _ = test.get_udf(online=False)
 
         assert pandas_udf_mocker.call_count == 0
         assert python_udf_mocker.call_count == 0
@@ -1007,7 +1007,7 @@ def test_function():
         pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
         python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
 
-        _ = test.get_udf(inference=True)
+        _ = test.get_udf(online=True)
 
         assert pandas_udf_mocker.call_count == 0
         assert python_udf_mocker.call_count == 0
@@ -1026,7 +1026,7 @@ def test_function():
         pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
         python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
 
-        _ = test.get_udf(inference=False)
+        _ = test.get_udf(online=False)
 
         assert pandas_udf_mocker.call_count == 0
         assert python_udf_mocker.call_count == 0
@@ -1045,7 +1045,7 @@ def test_function():
         pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
         python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
 
-        _ = test.get_udf(inference=True)
+        _ = test.get_udf(online=True)
 
         assert pandas_udf_mocker.call_count == 0
         assert python_udf_mocker.call_count == 0
@@ -1064,7 +1064,7 @@ def test_function():
         pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
         python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
 
-        _ = test.get_udf(inference=False)
+        _ = test.get_udf(online=False)
 
         assert pandas_udf_mocker.call_count == 0
         assert python_udf_mocker.call_count == 0
@@ -1083,7 +1083,7 @@ def test_function():
         pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
         python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
 
-        _ = test.get_udf(inference=True)
+        _ = test.get_udf(online=True)
 
         assert pandas_udf_mocker.call_count == 0
         assert python_udf_mocker.call_count == 0
