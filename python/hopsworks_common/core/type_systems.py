@@ -26,8 +26,8 @@ from hopsworks_common.core.constants import (
     HAS_ARROW,
     HAS_PANDAS,
     HAS_POLARS,
-    polars_not_installed_message,
 )
+from hopsworks_common.decorators import uses_polars
 
 
 if TYPE_CHECKING:
@@ -200,12 +200,10 @@ def cast_pandas_column_to_offline_type(
             return feature_column  # handle gracefully, just return the column as-is
 
 
+@uses_polars
 def cast_polars_column_to_offline_type(
     feature_column: pl.Series, offline_type: str
 ) -> pl.Series:
-    if not HAS_POLARS:
-        raise ModuleNotFoundError(polars_not_installed_message)
-
     offline_type = offline_type.lower()
     if offline_type == "timestamp":
         # convert (if tz!=UTC) to utc, then make timezone unaware
@@ -240,10 +238,7 @@ def cast_column_to_offline_type(
 ) -> pd.Series:
     if isinstance(feature_column, pd.Series):
         return cast_pandas_column_to_offline_type(feature_column, offline_type.lower())
-    elif isinstance(feature_column, pl.Series):
-        if not HAS_POLARS:
-            raise ModuleNotFoundError(polars_not_installed_message)
-
+    elif HAS_POLARS and isinstance(feature_column, pl.Series):
         return cast_polars_column_to_offline_type(feature_column, offline_type.lower())
 
 

@@ -57,6 +57,7 @@ from botocore.response import StreamingBody
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
+from hopsworks_common.decorators import uses_great_expectations, uses_polars
 from hsfs import (
     feature,
     feature_view,
@@ -88,7 +89,6 @@ from hsfs.core.constants import (
     HAS_SQLALCHEMY,
 )
 from hsfs.core.vector_db_client import VectorDbClient
-from hsfs.decorators import uses_great_expectations
 from hsfs.feature_group import ExternalFeatureGroup, FeatureGroup
 from hsfs.training_dataset import TrainingDataset
 from hsfs.training_dataset_feature import TrainingDatasetFeature
@@ -285,6 +285,7 @@ class Engine:
                 )
             )
 
+    @uses_polars
     def _read_polars(
         self, data_format: Literal["csv", "tsv", "parquet"], obj: Any
     ) -> pl.DataFrame:
