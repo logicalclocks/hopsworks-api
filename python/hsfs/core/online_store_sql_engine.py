@@ -603,7 +603,9 @@ class OnlineStoreSqlClient:
             # Run the queries in parallel using asyncio.gather
             results = await asyncio.wait_for(
                 asyncio.gather(*tasks),
-                timeout=self.connection_options.get("query_timeout", 120),
+                timeout=self.connection_options.get("query_timeout", 120)
+                if self.connection_options
+                else 120,
             )
         except asyncio.CancelledError as e:
             _logger.error(f"Failed executing prepared statements: {e}")
