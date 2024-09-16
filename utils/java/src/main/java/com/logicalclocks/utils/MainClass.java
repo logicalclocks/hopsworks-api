@@ -121,8 +121,7 @@ public class MainClass {
         SparkEngine.getInstance().streamToHudiTable(streamFeatureGroup, writeOptions);
       }
       success = true;
-    }
-    catch (Exception e) {
+    } catch (Exception e) {
       e.printStackTrace();
     } finally {
       LOGGER.info("Closing spark session...");
@@ -146,5 +145,4 @@ public class MainClass {
     }
     System.exit(0);
   }
-}
 }
