@@ -85,7 +85,7 @@ dev-pandas1 = [
     "pandas<=1.5.3",
     "sqlalchemy<=1.4.48",
 ]
-dev = ["hopsworks[dev-no-opt,great-expectation,polars]"]
+dev = ["hopsworks[dev-no-opt,great-expectations,polars]"]
 polars=["polars>=0.20.18,<=0.21.0"]
 
 [build-system]
