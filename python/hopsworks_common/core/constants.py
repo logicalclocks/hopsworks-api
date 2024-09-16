@@ -49,9 +49,9 @@ HAS_NUMPY: bool = importlib.util.find_spec("numpy") is not None
 HAS_POLARS: bool = importlib.util.find_spec("polars") is not None
 polars_not_installed_message = (
     "Polars package not found. "
-    "If you want to use Polars with Hopsworks you can install the corresponding extras "
-    """`pip install hopsworks[polars]` or `pip install "hopsworks[polars]"` if using zsh. """
-    "You can also install polars directly in your environment e.g `pip install polars`. "
+    "If you want to use Polars with Hopsworks you can install the corresponding extra via "
+    """'`pip install "hopsworks[polars]"`. '"""
+    "You can also install polars directly in your environment with `pip install polars`. "
     "You will need to restart your kernel if applicable."
 )
 

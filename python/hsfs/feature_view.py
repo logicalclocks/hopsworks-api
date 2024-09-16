@@ -76,25 +76,22 @@ from hsfs.transformation_function import TransformationFunction, TransformationT
 from hsml.model import Model
 
 
+TrainingDatasetDataFrameTypes = Union[
+    pd.DataFrame,
+    TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
+    TypeVar("pyspark.RDD"),  # noqa: F821
+    np.ndarray,
+    List[List[Any]],
+]
+
 if HAS_POLARS:
     import polars as pl
 
     TrainingDatasetDataFrameTypes = Union[
-        pd.DataFrame,
-        TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
-        TypeVar("pyspark.RDD"),  # noqa: F821
-        np.ndarray,
-        List[List[Any]],
+        TrainingDatasetDataFrameTypes,
         pl.DataFrame,
     ]
-else:
-    TrainingDatasetDataFrameTypes = Union[
-        pd.DataFrame,
-        TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
-        TypeVar("pyspark.RDD"),  # noqa: F821
-        np.ndarray,
-        List[List[Any]],
-    ]
+
 
 SplineDataFrameTypes = Union[
     pd.DataFrame,
