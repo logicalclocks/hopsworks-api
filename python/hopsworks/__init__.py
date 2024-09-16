@@ -273,8 +273,8 @@ def login(
 
 def _handle_ssl_errors(ssl_e):
     raise HopsworksSSLClientError(
-        "Hopsworks certificate verification can be turned on by specifying hopsworks.login(hostname_verification=True) "
-        "or setting the environment variable HOPSWORKS_HOSTNAME_VERIFICATION='True'"
+        "Hopsworks certificate verification can be turned off by specifying hopsworks.login(hostname_verification=False) "
+        "or setting the environment variable HOPSWORKS_HOSTNAME_VERIFICATION='False'"
     ) from ssl_e
 
 
