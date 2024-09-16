@@ -764,7 +764,7 @@ def renaming_wrapper(*args):
             else None,
             "name": self.function_name,
             "featureNamePrefix": self._feature_name_prefix,
-            "executionMode": self.execution_mode.value,
+            "executionMode": self.execution_mode.value.upper(),
         }
 
     def json(self) -> str:
