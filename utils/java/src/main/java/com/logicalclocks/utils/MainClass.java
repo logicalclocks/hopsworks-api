@@ -121,17 +121,20 @@ public class MainClass {
         SparkEngine.getInstance().streamToHudiTable(streamFeatureGroup, writeOptions);
       }
       success = true;
-    } finally {
-      LOGGER.info("Closing spark session...");
-      try {
-        SparkEngine.getInstance().closeSparkSession();
-      } catch (Exception e) {
-        LOGGER.error("Error closing spark session", e);
-      }
-      if (!success) {
-        System.exit(1);
-      }
     }
+    catch (Exception e) {
+      e.printStackTrace();
+    } finally {
+        LOGGER.info("Closing spark session...");
+        try {
+          SparkEngine.getInstance().closeSparkSession();
+        } catch (Exception e) {
+          LOGGER.error("Error closing spark session", e);
+        }
+        if (!success) {
+          System.exit(1);
+        }
+      }
     System.exit(0);
   }
 }
