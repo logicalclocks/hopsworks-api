@@ -81,7 +81,7 @@ def login(
     project: str = None,
     api_key_value: str = None,
     api_key_file: str = None,
-    hostname_verification: bool = True,
+    hostname_verification: bool = False,
     trust_store_path: str = None,
 ) -> project.Project:
     """Connect to [Serverless Hopsworks](https://app.hopsworks.ai) by calling the `hopsworks.login()` function with no arguments.
@@ -273,8 +273,8 @@ def login(
 
 def _handle_ssl_errors(ssl_e):
     raise HopsworksSSLClientError(
-        "Hopsworks certificate verification can be turned off by specifying hopsworks.login(hostname_verification=False) "
-        "or setting the environment variable HOPSWORKS_HOSTNAME_VERIFICATION='False'"
+        "Hopsworks certificate verification can be turned on by specifying hopsworks.login(hostname_verification=True) "
+        "or setting the environment variable HOPSWORKS_HOSTNAME_VERIFICATION='True'"
     ) from ssl_e
 
 
