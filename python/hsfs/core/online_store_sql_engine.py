@@ -574,10 +574,6 @@ class OnlineStoreSqlClient:
             _logger.debug(f"Retrieved resultset: {resultset}. Closing cursor.")
             await cursor.close()
 
-        # close connection pool
-        self._connection_pool.close()
-        await self._connection_pool.wait_closed()
-
         return resultset
 
     async def _execute_prep_statements(
@@ -605,9 +601,17 @@ class OnlineStoreSqlClient:
                 for key in prepared_statements
             ]
             # Run the queries in parallel using asyncio.gather
-            results = await asyncio.gather(*tasks)
+            results = await asyncio.wait_for(
+                asyncio.gather(*tasks),
+                timeout=self.connection_options.get("query_timeout", 120)
+                if self.connection_options
+                else 120,
+            )
         except asyncio.CancelledError as e:
             _logger.error(f"Failed executing prepared statements: {e}")
+            raise e
+        except asyncio.TimeoutError as e:
+            _logger.error(f"Query timed out: {e}")
             raise e
 
         # Create a dict of results with the prepared statement index as key
