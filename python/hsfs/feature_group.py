@@ -42,8 +42,8 @@ import hsfs.expectation_suite
 import humps
 import numpy as np
 import pandas as pd
-import polars as pl
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
+from hopsworks_common.core.constants import HAS_POLARS
 from hsfs import (
     engine,
     feature,
@@ -103,6 +103,9 @@ if HAS_GREAT_EXPECTATIONS:
 
 if HAS_CONFLUENT_KAFKA:
     import confluent_kafka
+
+if HAS_POLARS:
+    import polars as pl
 
 
 _logger = logging.getLogger(__name__)
