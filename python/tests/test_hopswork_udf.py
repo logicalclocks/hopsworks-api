@@ -19,10 +19,54 @@ from datetime import date, datetime, time
 import pandas as pd
 import pytest
 from hsfs.client.exceptions import FeatureStoreException
-from hsfs.hopsworks_udf import HopsworksUdf, TransformationFeature, udf
+from hsfs.hopsworks_udf import (
+    HopsworksUdf,
+    TransformationFeature,
+    UDFExecutionMode,
+    udf,
+)
 
 
 class TestHopsworksUdf:
+    def test_udf_creation_invalid_execution_mode(self):
+        with pytest.raises(FeatureStoreException) as exception:
+
+            @udf(return_type=int, mode="invalid")
+            def test(feature):
+                pass
+
+        assert (
+            str(exception.value)
+            == "Ivalid execution mode `invalid` for UDF. Please use `default`, `python` or `pandas` instead."
+        )
+
+    def test_udf_creation_default_execution_mode(self):
+        @udf(return_type=int)
+        def test(feature):
+            pass
+
+        assert test.execution_mode == UDFExecutionMode.DEFAULT
+
+        @udf(return_type=int, mode="default")
+        def test1(feature):
+            pass
+
+        assert test1.execution_mode == UDFExecutionMode.DEFAULT
+
+    def test_udf_creation_python_execution_mode(self):
+        @udf(return_type=int, mode="python")
+        def test(feature):
+            pass
+
+        assert test.execution_mode == UDFExecutionMode.PYTHON
+
+    def test_udf_creation_pandas_execution_mode(self):
+        @udf(return_type=int, mode="pandas")
+        def test(feature):
+            pass
+
+        assert test.execution_mode == UDFExecutionMode.PANDAS
+
     def test_validate_and_convert_output_types_one_elements(self):
         assert HopsworksUdf._validate_and_convert_output_types([int]) == ["bigint"]
 
@@ -731,7 +775,7 @@ def test_function():
             == "`test_func_col1_0` bigint, `test_func_col1_1` double, `test_func_col1_2` string, `test_func_col1_3` date, `test_func_col1_4` timestamp, `test_func_col1_5` timestamp, `test_func_col1_6` boolean"
         )
 
-    def test_hopsworks_wrapper_single_output(self):
+    def test_pandas_udf_wrapper_single_output(self):
         test_dataframe = pd.DataFrame({"col1": [1, 2, 3, 4]})
 
         @udf(int)
@@ -739,14 +783,30 @@ def test_function():
             return col1 + 1
 
         test_func.output_column_names = ["test_func_col1_"]
-        renaming_wrapper_function = test_func.hopsworksUdf_wrapper()
+        renaming_wrapper_function = test_func.pandas_udf_wrapper()
 
         result = renaming_wrapper_function(test_dataframe["col1"])
 
         assert result.name == "test_func_col1_"
         assert result.values.tolist() == [2, 3, 4, 5]
 
-    def test_hopsworks_wrapper_multiple_output(self):
+    def test_python_udf_wrapper_single_output(self):
+        test_dataframe = pd.DataFrame({"col1": [1, 2, 3, 4]})
+
+        @udf(int)
+        def test_func(col1):
+            return col1 + 1
+
+        test_func.output_column_names = ["test_func_col1_"]
+        wrapper_function = test_func.python_udf_wrapper(rename_outputs=False)
+
+        result = test_dataframe.apply(
+            lambda x: wrapper_function(x["col1"]), axis=1, result_type="expand"
+        )
+
+        assert result.values.tolist() == [2, 3, 4, 5]
+
+    def test_pandas_udf_wrapper_multiple_output(self):
         @udf([int, float])
         def test_func(col1, col2):
             return pd.DataFrame({"out1": col1 + 1, "out2": col2 + 2})
@@ -755,7 +815,7 @@ def test_function():
             "test_func_col1_col2_0",
             "test_func_col1_col2_1",
         ]
-        renaming_wrapper_function = test_func.hopsworksUdf_wrapper()
+        renaming_wrapper_function = test_func.pandas_udf_wrapper()
 
         test_dataframe = pd.DataFrame(
             {"column1": [1, 2, 3, 4], "column2": [10, 20, 30, 40]}
@@ -767,6 +827,268 @@ def test_function():
 
         assert all(result.columns == ["test_func_col1_col2_0", "test_func_col1_col2_1"])
         assert result.values.tolist() == [[2, 12], [3, 22], [4, 32], [5, 42]]
+
+    def test_python_udf_wrapper_multiple_output(self):
+        @udf([int, float], mode="python")
+        def test_func(col1, col2):
+            return col1 + 1, col2 + 2
+
+        test_func.output_column_names = [
+            "test_func_col1_col2_0",
+            "test_func_col1_col2_1",
+        ]
+        wrapper_function = test_func.python_udf_wrapper(rename_outputs=False)
+
+        test_dataframe = pd.DataFrame(
+            {"column1": [1, 2, 3, 4], "column2": [10, 20, 30, 40]}
+        )
+
+        result = test_dataframe.apply(
+            lambda x: wrapper_function(x["column1"], x["column2"]),
+            axis=1,
+            result_type="expand",
+        )
+
+        assert result.values.tolist() == [[2, 12], [3, 22], [4, 32], [5, 42]]
+
+        renaming_wrapper_function = test_func.python_udf_wrapper(rename_outputs=True)
+
+        result = test_dataframe.apply(
+            lambda x: renaming_wrapper_function(x["column1"], x["column2"]),
+            axis=1,
+            result_type="expand",
+        )
+
+        assert all(result.columns == ["test_func_col1_col2_0", "test_func_col1_col2_1"])
+        assert result.values.tolist() == [[2, 12], [3, 22], [4, 32], [5, 42]]
+
+    def test_get_udf_spark_engine_default_mode_training(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+
+        @udf(return_type=int)
+        def test(feature):
+            pass
+
+        pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
+        python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
+        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
+        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+
+        _ = test.get_udf(online=False)
+
+        assert pandas_udf_mocker.call_count == 1
+        assert python_udf_mocker.call_count == 0
+        assert pandas_wrapper_mocker.call_count == 1
+        assert python_wrapper_mocker.call_count == 0
+
+    def test_get_udf_spark_engine_default_mode_inference(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+
+        @udf(return_type=int)
+        def test(feature):
+            pass
+
+        pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
+        python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
+        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
+        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+
+        _ = test.get_udf(online=True)
+
+        assert pandas_udf_mocker.call_count == 0
+        assert python_udf_mocker.call_count == 0
+        assert pandas_wrapper_mocker.call_count == 0
+        assert python_wrapper_mocker.call_count == 1
+
+    def test_get_udf_spark_engine_python_mode_training(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+
+        @udf(return_type=int, mode="python")
+        def test(feature):
+            pass
+
+        pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
+        python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
+        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
+        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+
+        _ = test.get_udf(online=False)
+
+        assert pandas_udf_mocker.call_count == 0
+        assert python_udf_mocker.call_count == 1
+        assert pandas_wrapper_mocker.call_count == 0
+        assert python_wrapper_mocker.call_count == 1
+
+    def test_get_udf_spark_engine_python_mode_inference(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+
+        @udf(return_type=int, mode="python")
+        def test(feature):
+            pass
+
+        pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
+        python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
+        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
+        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+
+        _ = test.get_udf(online=True)
+
+        assert pandas_udf_mocker.call_count == 0
+        assert python_udf_mocker.call_count == 0
+        assert pandas_wrapper_mocker.call_count == 0
+        assert python_wrapper_mocker.call_count == 1
+
+    def test_get_udf_spark_engine_pandas_mode_training(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+
+        @udf(return_type=int, mode="pandas")
+        def test(feature):
+            pass
+
+        pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
+        python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
+        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
+        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+
+        _ = test.get_udf(online=False)
+
+        assert pandas_udf_mocker.call_count == 1
+        assert python_udf_mocker.call_count == 0
+        assert pandas_wrapper_mocker.call_count == 1
+        assert python_wrapper_mocker.call_count == 0
+
+    def test_get_udf_spark_engine_pandas_mode_inference(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+
+        @udf(return_type=int, mode="pandas")
+        def test(feature):
+            pass
+
+        pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
+        python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
+        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
+        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+
+        _ = test.get_udf(online=True)
+
+        assert pandas_udf_mocker.call_count == 0
+        assert python_udf_mocker.call_count == 0
+        assert pandas_wrapper_mocker.call_count == 1
+        assert python_wrapper_mocker.call_count == 0
+
+    def test_get_udf_python_engine_default_mode_training(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        @udf(return_type=int)
+        def test(feature):
+            pass
+
+        pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
+        python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
+        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
+        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+
+        _ = test.get_udf(online=False)
+
+        assert pandas_udf_mocker.call_count == 0
+        assert python_udf_mocker.call_count == 0
+        assert pandas_wrapper_mocker.call_count == 1
+        assert python_wrapper_mocker.call_count == 0
+
+    def test_get_udf_python_engine_default_mode_inference(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        @udf(return_type=int)
+        def test(feature):
+            pass
+
+        pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
+        python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
+        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
+        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+
+        _ = test.get_udf(online=True)
+
+        assert pandas_udf_mocker.call_count == 0
+        assert python_udf_mocker.call_count == 0
+        assert pandas_wrapper_mocker.call_count == 0
+        assert python_wrapper_mocker.call_count == 1
+
+    def test_get_udf_python_engine_python_mode_training(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        @udf(return_type=int, mode="python")
+        def test(feature):
+            pass
+
+        pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
+        python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
+        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
+        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+
+        _ = test.get_udf(online=False)
+
+        assert pandas_udf_mocker.call_count == 0
+        assert python_udf_mocker.call_count == 0
+        assert pandas_wrapper_mocker.call_count == 0
+        assert python_wrapper_mocker.call_count == 1
+
+    def test_get_udf_python_engine_python_mode_inference(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        @udf(return_type=int, mode="python")
+        def test(feature):
+            pass
+
+        pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
+        python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
+        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
+        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+
+        _ = test.get_udf(online=True)
+
+        assert pandas_udf_mocker.call_count == 0
+        assert python_udf_mocker.call_count == 0
+        assert pandas_wrapper_mocker.call_count == 0
+        assert python_wrapper_mocker.call_count == 1
+
+    def test_get_udf_python_engine_pandas_mode_training(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        @udf(return_type=int, mode="pandas")
+        def test(feature):
+            pass
+
+        pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
+        python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
+        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
+        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+
+        _ = test.get_udf(online=False)
+
+        assert pandas_udf_mocker.call_count == 0
+        assert python_udf_mocker.call_count == 0
+        assert pandas_wrapper_mocker.call_count == 1
+        assert python_wrapper_mocker.call_count == 0
+
+    def test_get_udf_python_engine_pandas_mode_inference(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        @udf(return_type=int, mode="pandas")
+        def test(feature):
+            pass
+
+        pandas_udf_mocker = mocker.patch("pyspark.sql.functions.pandas_udf")
+        python_udf_mocker = mocker.patch("pyspark.sql.functions.udf")
+        pandas_wrapper_mocker = mocker.patch.object(test, "pandas_udf_wrapper")
+        python_wrapper_mocker = mocker.patch.object(test, "python_udf_wrapper")
+
+        _ = test.get_udf(online=True)
+
+        assert pandas_udf_mocker.call_count == 0
+        assert python_udf_mocker.call_count == 0
+        assert pandas_wrapper_mocker.call_count == 1
+        assert python_wrapper_mocker.call_count == 0
 
     def test_HopsworkUDf_call_one_argument(self):
         @udf(int)
