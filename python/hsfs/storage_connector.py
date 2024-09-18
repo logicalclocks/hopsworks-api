@@ -331,7 +331,7 @@ class S3Connector(StorageConnector):
     @property
     def path(self) -> Optional[str]:
         """If the connector refers to a path (e.g. S3) - return the path of the connector"""
-        return "s3://" + self._bucket
+        return "s3a://" + self._bucket
 
     @property
     def arguments(self) -> Optional[Dict[str, Any]]:
