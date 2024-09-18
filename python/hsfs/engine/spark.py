@@ -198,7 +198,7 @@ class Engine:
         elif isinstance(external_fg, fg_mod.FeatureGroup):
             external_dataset = external_fg.storage_connector.read(
                 None,
-                external_fg.timeTravelFormat,
+                external_fg.time_travel_format,
                 None,
                 external_fg.storage_connector._get_path(external_fg.path),
             )
