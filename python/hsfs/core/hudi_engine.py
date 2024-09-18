@@ -233,22 +233,23 @@ class HudiEngine:
     def reconcile_hudi_schema(
         self, save_empty_dataframe_callback, hudi_fg_alias, read_options
     ):
-        fg_table_name = hudi_fg_alias.feature_group._get_table_name()
-        if sorted(self._spark_session.table(hudi_fg_alias.alias).columns) != sorted(
-            self._spark_session.table(fg_table_name).columns
-        ):
-            full_fg = self._feature_group_api.get(
-                feature_store_id=hudi_fg_alias.feature_group._feature_store_id,
-                name=hudi_fg_alias.feature_group.name,
-                version=hudi_fg_alias.feature_group.version,
-            )
+        if (hudi_fg_alias._feature_group.storage_connector is None):
+            fg_table_name = hudi_fg_alias.feature_group._get_table_name()
+            if sorted(self._spark_session.table(hudi_fg_alias.alias).columns) != sorted(
+                self._spark_session.table(fg_table_name).columns
+            ):
+                full_fg = self._feature_group_api.get(
+                    feature_store_id=hudi_fg_alias.feature_group._feature_store_id,
+                    name=hudi_fg_alias.feature_group.name,
+                    version=hudi_fg_alias.feature_group.version,
+                )
 
-            save_empty_dataframe_callback(full_fg)
+                save_empty_dataframe_callback(full_fg)
 
-            self.register_temporary_table(
-                hudi_fg_alias,
-                read_options,
-            )
+                self.register_temporary_table(
+                    hudi_fg_alias,
+                    read_options,
+                )
 
     @staticmethod
     def _get_last_commit_metadata(spark_context, base_path):
