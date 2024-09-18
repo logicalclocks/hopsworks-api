@@ -188,11 +188,18 @@ class Engine:
         self._spark_session.sparkContext.setJobGroup(group_id, description)
 
     def register_external_temporary_table(self, external_fg, alias):
-        if not isinstance(external_fg, fg_mod.SpineGroup):
+        if isinstance(external_fg, fg_mod.ExternalFeatureGroup):
             external_dataset = external_fg.storage_connector.read(
                 external_fg.query,
                 external_fg.data_format,
                 external_fg.options,
+                external_fg.storage_connector._get_path(external_fg.path),
+            )
+        elif isinstance(external_fg, fg_mod.FeatureGroup):
+            external_dataset = external_fg.storage_connector.read(
+                None,
+                external_fg.timeTravelFormat,
+                None,
                 external_fg.storage_connector._get_path(external_fg.path),
             )
         else:
