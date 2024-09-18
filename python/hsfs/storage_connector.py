@@ -331,7 +331,7 @@ class S3Connector(StorageConnector):
     @property
     def path(self) -> Optional[str]:
         """If the connector refers to a path (e.g. S3) - return the path of the connector"""
-        return "s3a://" + self._bucket
+        return "s3://" + self._bucket
 
     @property
     def arguments(self) -> Optional[Dict[str, Any]]:
@@ -397,7 +397,7 @@ class S3Connector(StorageConnector):
             if options is not None
             else self.spark_options()
         )
-        if not path.startswith("s3a://"):
+        if not path.startswith("s3://"):
             path = self._get_path(path)
             print(
                 "Prepending default bucket specified on connector, final path: {}".format(
