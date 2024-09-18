@@ -14,20 +14,11 @@
 #   limitations under the License.
 #
 
-import base64
 import os
-import textwrap
-from pathlib import Path
 
 import requests
 from hopsworks_common.client import auth, exceptions
 from hopsworks_common.client.istio import base as istio
-
-
-try:
-    import jks
-except ImportError:
-    pass
 
 
 class Client(istio.Client):
