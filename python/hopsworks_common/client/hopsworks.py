@@ -20,6 +20,7 @@ from pathlib import Path
 import requests
 from hopsworks_common.client import auth, base
 
+
 class Client(base.Client):
     HOPSWORKS_HOSTNAME_VERIFICATION = "HOPSWORKS_HOSTNAME_VERIFICATION"
     DOMAIN_CA_TRUSTSTORE_PEM = "DOMAIN_CA_TRUSTSTORE_PEM"
