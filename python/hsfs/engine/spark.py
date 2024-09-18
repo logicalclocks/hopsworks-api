@@ -200,7 +200,7 @@ class Engine:
                 None,
                 external_fg.time_travel_format,
                 None,
-                external_fg.storage_connector._get_path(external_fg.path),
+                external_fg.storage_connector.prepare_spark(external_fg.path),
             )
         else:
             external_dataset = external_fg.dataframe
