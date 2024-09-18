@@ -111,7 +111,9 @@ class HudiEngine:
         if (self._feature_group.storage_connector is None):
             location = self._feature_group.location
         else:
-            location = self._feature_group.storage_connector.prepare_spark(self._feature_group.path)
+            location = self._feature_group.storage_connector.prepare_spark(
+                self._feature_group.storage_connector._get_path(self._feature_group.path)
+            )
 
         hudi_options = self._setup_hudi_write_opts(operation, write_options)
         dataset.write.format(HudiEngine.HUDI_SPARK_FORMAT).options(**hudi_options).mode(
