@@ -4453,11 +4453,11 @@ class TestSpark:
         # Act
         result = spark_engine._setup_s3_hadoop_conf(
             storage_connector=s3_connector,
-            path="s3_test_path",
+            path="s3://_test_path",
         )
 
         # Assert
-        assert result == "s3a_test_path"
+        assert result == "s3a://_test_path"
         assert (
             mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.call_count
             == 14
