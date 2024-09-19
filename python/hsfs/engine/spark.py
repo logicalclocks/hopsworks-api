@@ -193,7 +193,7 @@ class Engine:
                 external_fg.query,
                 external_fg.data_format,
                 external_fg.options,
-                external_fg.uri,
+                external_fg.get_uri(),
             )
         elif isinstance(external_fg, fg_mod.SpineGroup):
             external_dataset = external_fg.dataframe
@@ -202,7 +202,7 @@ class Engine:
                 None,
                 external_fg.time_travel_format,
                 None,
-                external_fg.uri,
+                external_fg.get_uri(),
             )
         if external_fg.location:
             self._spark_session.sparkContext.textFile(external_fg.location).collect()
@@ -1267,12 +1267,12 @@ class Engine:
             new_features_map[new_features.name] = lit("").cast(new_features.type)
 
         self._spark_session.read.format("delta").load(
-            feature_group.uri
+            feature_group.get_uri()
         ).withColumns(new_features_map).limit(0).write.format("delta").mode(
             "append"
         ).option("mergeSchema", "true").option(
             "spark.databricks.delta.schema.autoMerge.enabled", "true"
-        ).save(feature_group.uri)
+        ).save(feature_group.get_uri())
 
     def _apply_transformation_function(
         self,

@@ -2064,8 +2064,7 @@ class FeatureGroupBase:
     def storage_connector(self) -> "sc.StorageConnector":
         return self._storage_connector
 
-    @property
-    def uri(self) -> str:
+    def get_uri(self) -> str:
         """Location of data."""
         if (self.storage_connector is None):
             return self.location

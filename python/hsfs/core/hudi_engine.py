@@ -103,7 +103,7 @@ class HudiEngine:
         hudi_options = self._setup_hudi_read_opts(hudi_fg_alias, read_options)
         self._spark_session.read.format(self.HUDI_SPARK_FORMAT).options(
             **hudi_options
-        ).load(self._feature_group.uri).createOrReplaceTempView(
+        ).load(self._feature_group.get_uri()).createOrReplaceTempView(
             hudi_fg_alias.alias
         )
 
@@ -111,10 +111,10 @@ class HudiEngine:
         hudi_options = self._setup_hudi_write_opts(operation, write_options)
         dataset.write.format(HudiEngine.HUDI_SPARK_FORMAT).options(**hudi_options).mode(
             save_mode
-        ).save(self._feature_group.uri)
+        ).save(self._feature_group.get_uri())
 
         feature_group_commit = self._get_last_commit_metadata(
-            self._spark_context, self._feature_group.uri
+            self._spark_context, self._feature_group.get_uri()
         )
 
         return feature_group_commit
