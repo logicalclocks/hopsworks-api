@@ -100,10 +100,17 @@ class HudiEngine:
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
     def register_temporary_table(self, hudi_fg_alias, read_options):
+        if (self._feature_group.storage_connector is None):
+            location = self._feature_group.location
+        else:
+            location = self._feature_group.storage_connector.prepare_spark(
+                self._feature_group.storage_connector._get_path(self._feature_group.path)
+            )
+
         hudi_options = self._setup_hudi_read_opts(hudi_fg_alias, read_options)
         self._spark_session.read.format(self.HUDI_SPARK_FORMAT).options(
             **hudi_options
-        ).load(self._feature_group.location).createOrReplaceTempView(
+        ).load(location).createOrReplaceTempView(
             hudi_fg_alias.alias
         )
 
