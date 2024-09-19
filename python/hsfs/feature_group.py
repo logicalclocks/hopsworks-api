@@ -2069,9 +2069,10 @@ class FeatureGroupBase:
         if (self.storage_connector is None):
             return self.location
         else:
-            return self.storage_connector.prepare_spark(
-                self.storage_connector._get_path(self.path)
-            )
+            path = self.storage_connector._get_path(self.path)
+            if engine.get_type().startswith("spark"):
+                path = engine.get_instance().setup_storage_connector(self.storage_connector, path)
+            return path
 
     @property
     def topic_name(self) -> Optional[str]:
