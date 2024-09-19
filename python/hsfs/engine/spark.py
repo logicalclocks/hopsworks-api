@@ -1206,7 +1206,7 @@ class Engine:
         self._set_s3_hadoop_conf(
             storage_connector, f"fs.s3a.bucket.{storage_connector.bucket}"
         )
-        return path.replace("s3", "s3a", 1) if path is not None else None
+        return path.replace("s3://", "s3a://", 1) if path is not None else None
 
     def _set_s3_hadoop_conf(self, storage_connector, prefix):
         if storage_connector.access_key:
@@ -1245,8 +1245,6 @@ class Engine:
                 f"{prefix}.endpoint",
                 storage_connector.spark_options().get(FS_S3_ENDPOINT),
             )
-
-        return path.replace("s3://", "s3a://", 1) if path is not None else None
 
     def _setup_adls_hadoop_conf(self, storage_connector, path):
         for k, v in storage_connector.spark_options().items():
