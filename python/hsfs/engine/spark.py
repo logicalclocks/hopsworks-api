@@ -188,15 +188,22 @@ class Engine:
         self._spark_session.sparkContext.setJobGroup(group_id, description)
 
     def register_external_temporary_table(self, external_fg, alias):
-        if not isinstance(external_fg, fg_mod.SpineGroup):
+        if isinstance(external_fg, fg_mod.ExternalFeatureGroup):
             external_dataset = external_fg.storage_connector.read(
                 external_fg.query,
                 external_fg.data_format,
                 external_fg.options,
-                external_fg.storage_connector._get_path(external_fg.path),
+                external_fg.get_uri(),
             )
-        else:
+        elif isinstance(external_fg, fg_mod.SpineGroup):
             external_dataset = external_fg.dataframe
+        else:
+            external_dataset = external_fg.storage_connector.read(
+                None,
+                external_fg.time_travel_format,
+                None,
+                external_fg.get_uri(),
+            )
         if external_fg.location:
             self._spark_session.sparkContext.textFile(external_fg.location).collect()
 
@@ -213,13 +220,16 @@ class Engine:
             self._spark_context,
             self._spark_session,
         )
+
         hudi_engine_instance.register_temporary_table(
             hudi_fg_alias,
             read_options,
         )
-        hudi_engine_instance.reconcile_hudi_schema(
-            self.save_empty_dataframe, hudi_fg_alias, read_options
-        )
+
+        if (hudi_fg_alias._feature_group.storage_connector is None):
+            hudi_engine_instance.reconcile_hudi_schema(
+                self.save_empty_dataframe, hudi_fg_alias, read_options
+            )
 
     def register_delta_temporary_table(
         self, delta_fg_alias, feature_store_id, feature_store_name, read_options
@@ -1221,7 +1231,7 @@ class Engine:
                 FS_S3_ENDPOINT, storage_connector.spark_options().get(FS_S3_ENDPOINT)
             )
 
-        return path.replace("s3", "s3a", 1) if path is not None else None
+        return path.replace("s3://", "s3a://", 1) if path is not None else None
 
     def _setup_adls_hadoop_conf(self, storage_connector, path):
         for k, v in storage_connector.spark_options().items():
@@ -1257,12 +1267,12 @@ class Engine:
             new_features_map[new_features.name] = lit("").cast(new_features.type)
 
         self._spark_session.read.format("delta").load(
-            feature_group.location
+            feature_group.get_uri()
         ).withColumns(new_features_map).limit(0).write.format("delta").mode(
             "append"
         ).option("mergeSchema", "true").option(
             "spark.databricks.delta.schema.autoMerge.enabled", "true"
-        ).save(feature_group.location)
+        ).save(feature_group.get_uri())
 
     def _apply_transformation_function(
         self,

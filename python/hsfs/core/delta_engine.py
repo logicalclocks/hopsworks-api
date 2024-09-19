@@ -55,7 +55,7 @@ class DeltaEngine:
         delta_options = self._setup_delta_read_opts(delta_fg_alias, read_options)
         self._spark_session.read.format(self.DELTA_SPARK_FORMAT).options(
             **delta_options
-        ).load(self._feature_group.location).createOrReplaceTempView(
+        ).load(self._feature_group.get_uri()).createOrReplaceTempView(
             delta_fg_alias.alias
         )
 
@@ -86,14 +86,14 @@ class DeltaEngine:
 
     def delete_record(self, delete_df):
         if not DeltaTable.isDeltaTable(
-            self._spark_session, self._feature_group.location
+            self._spark_session, self._feature_group.get_uri()
         ):
             raise FeatureStoreException(
                 f"This is no data available in Feature group {self._feature_group.name}, or it not DELTA enabled "
             )
         else:
             fg_source_table = DeltaTable.forPath(
-                self._spark_session, self._feature_group.location
+                self._spark_session, self._feature_group.get_uri()
             )
 
             source_alias = (
@@ -109,7 +109,7 @@ class DeltaEngine:
             ).whenMatchedDelete().execute()
 
         fg_commit = self._get_last_commit_metadata(
-            self._spark_session, self._feature_group.location
+            self._spark_session, self._feature_group.get_uri()
         )
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
@@ -118,7 +118,7 @@ class DeltaEngine:
             write_options = {}
 
         if not DeltaTable.isDeltaTable(
-            self._spark_session, self._feature_group.location
+            self._spark_session, self._feature_group.get_uri()
         ):
             (
                 dataset.write.format(DeltaEngine.DELTA_SPARK_FORMAT)
@@ -129,11 +129,11 @@ class DeltaEngine:
                     else []
                 )
                 .mode("append")
-                .save(self._feature_group.location)
+                .save(self._feature_group.get_uri())
             )
         else:
             fg_source_table = DeltaTable.forPath(
-                self._spark_session, self._feature_group.location
+                self._spark_session, self._feature_group.get_uri()
             )
 
             source_alias = (
@@ -149,7 +149,7 @@ class DeltaEngine:
             ).whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
 
         return self._get_last_commit_metadata(
-            self._spark_session, self._feature_group.location
+            self._spark_session, self._feature_group.get_uri()
         )
 
     def _generate_merge_query(self, source_alias, updates_alias):

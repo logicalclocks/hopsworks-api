@@ -2064,6 +2064,16 @@ class FeatureGroupBase:
     def storage_connector(self) -> "sc.StorageConnector":
         return self._storage_connector
 
+    def get_uri(self) -> str:
+        """Location of data."""
+        if (self.storage_connector is None):
+            return self.location
+        else:
+            path = self.storage_connector._get_path(self.path)
+            if engine.get_type().startswith("spark"):
+                path = engine.get_instance().setup_storage_connector(self.storage_connector, path)
+            return path
+
     @property
     def topic_name(self) -> Optional[str]:
         """The topic used for feature group data ingestion."""
