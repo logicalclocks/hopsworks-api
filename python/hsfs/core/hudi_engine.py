@@ -144,6 +144,9 @@ class HudiEngine:
             else self._feature_group.primary_key[0]
         )
 
+        # dont enable hive sync when using managed FG
+        hive_sync = self._feature_group.storage_connector is None
+
         hudi_options = {
             self.HUDI_KEY_GENERATOR_OPT_KEY: self.HUDI_COMPLEX_KEY_GENERATOR_OPT_VAL,
             self.HUDI_PRECOMBINE_FIELD: pre_combine_key,
@@ -153,7 +156,7 @@ class HudiEngine:
             self.HIVE_PARTITION_EXTRACTOR_CLASS_OPT_KEY: self.DEFAULT_HIVE_PARTITION_EXTRACTOR_CLASS_OPT_VAL
             if len(partition_key) >= 1
             else self.HIVE_NON_PARTITION_EXTRACTOR_CLASS_OPT_VAL,
-            self.HUDI_HIVE_SYNC_ENABLE: "true",
+            self.HUDI_HIVE_SYNC_ENABLE: hive_sync,
             self.HUDI_HIVE_SYNC_MODE: self.HUDI_HIVE_SYNC_MODE_VAL,
             self.HUDI_HIVE_SYNC_DB: self._feature_store_name,
             self.HUDI_HIVE_SYNC_TABLE: table_name,
