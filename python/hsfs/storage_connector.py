@@ -397,7 +397,7 @@ class S3Connector(StorageConnector):
             if options is not None
             else self.spark_options()
         )
-        if not path.startswith("s3://"):
+        if not path.startswith(("s3://", "s3a://")):
             path = self._get_path(path)
             print(
                 "Prepending default bucket specified on connector, final path: {}".format(
