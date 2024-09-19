@@ -6,6 +6,7 @@ import argparse
 import json
 from datetime import datetime
 from typing import Any, Dict
+import traceback
 
 import fsspec.implementations.arrow as pfs
 
@@ -304,6 +305,9 @@ if __name__ == "__main__":
             run_feature_monitoring(job_conf)
 
         success = True
+    except Exception:
+        # Printing stack trace of exception so that logs are not lost.
+        print(traceback.format_exc())
     finally:
         if spark is not None:
             try:
