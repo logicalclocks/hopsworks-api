@@ -100,35 +100,21 @@ class HudiEngine:
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
     def register_temporary_table(self, hudi_fg_alias, read_options):
-        if (self._feature_group.storage_connector is None):
-            location = self._feature_group.location
-        else:
-            location = self._feature_group.storage_connector.prepare_spark(
-                self._feature_group.storage_connector._get_path(self._feature_group.path)
-            )
-
         hudi_options = self._setup_hudi_read_opts(hudi_fg_alias, read_options)
         self._spark_session.read.format(self.HUDI_SPARK_FORMAT).options(
             **hudi_options
-        ).load(location).createOrReplaceTempView(
+        ).load(self._feature_group.uri).createOrReplaceTempView(
             hudi_fg_alias.alias
         )
 
     def _write_hudi_dataset(self, dataset, save_mode, operation, write_options):
-        if (self._feature_group.storage_connector is None):
-            location = self._feature_group.location
-        else:
-            location = self._feature_group.storage_connector.prepare_spark(
-                self._feature_group.storage_connector._get_path(self._feature_group.path)
-            )
-
         hudi_options = self._setup_hudi_write_opts(operation, write_options)
         dataset.write.format(HudiEngine.HUDI_SPARK_FORMAT).options(**hudi_options).mode(
             save_mode
-        ).save(location)
+        ).save(self._feature_group.uri)
 
         feature_group_commit = self._get_last_commit_metadata(
-            self._spark_context, location
+            self._spark_context, self._feature_group.uri
         )
 
         return feature_group_commit
@@ -240,23 +226,22 @@ class HudiEngine:
     def reconcile_hudi_schema(
         self, save_empty_dataframe_callback, hudi_fg_alias, read_options
     ):
-        if (hudi_fg_alias._feature_group.storage_connector is None):
-            fg_table_name = hudi_fg_alias.feature_group._get_table_name()
-            if sorted(self._spark_session.table(hudi_fg_alias.alias).columns) != sorted(
-                self._spark_session.table(fg_table_name).columns
-            ):
-                full_fg = self._feature_group_api.get(
-                    feature_store_id=hudi_fg_alias.feature_group._feature_store_id,
-                    name=hudi_fg_alias.feature_group.name,
-                    version=hudi_fg_alias.feature_group.version,
-                )
+        fg_table_name = hudi_fg_alias.feature_group._get_table_name()
+        if sorted(self._spark_session.table(hudi_fg_alias.alias).columns) != sorted(
+            self._spark_session.table(fg_table_name).columns
+        ):
+            full_fg = self._feature_group_api.get(
+                feature_store_id=hudi_fg_alias.feature_group._feature_store_id,
+                name=hudi_fg_alias.feature_group.name,
+                version=hudi_fg_alias.feature_group.version,
+            )
 
-                save_empty_dataframe_callback(full_fg)
+            save_empty_dataframe_callback(full_fg)
 
-                self.register_temporary_table(
-                    hudi_fg_alias,
-                    read_options,
-                )
+            self.register_temporary_table(
+                hudi_fg_alias,
+                read_options,
+            )
 
     @staticmethod
     def _get_last_commit_metadata(spark_context, base_path):

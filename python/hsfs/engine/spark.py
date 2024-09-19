@@ -193,17 +193,19 @@ class Engine:
                 external_fg.query,
                 external_fg.data_format,
                 external_fg.options,
-                external_fg.storage_connector._get_path(external_fg.path),
+                external_fg.uri,
             )
-        elif isinstance(external_fg, fg_mod.FeatureGroup):
+        elif isinstance(external_fg, fg_mod.SpineGroup):
+            external_dataset = external_fg.dataframe
+        else:
             external_dataset = external_fg.storage_connector.read(
                 None,
                 external_fg.time_travel_format,
                 None,
-                external_fg.path,
+                external_fg.uri,
             )
-        else:
-            external_dataset = external_fg.dataframe
+        if external_fg.location:
+            self._spark_session.sparkContext.textFile(external_fg.location).collect()
 
         external_dataset.createOrReplaceTempView(alias)
         return external_dataset
@@ -218,13 +220,16 @@ class Engine:
             self._spark_context,
             self._spark_session,
         )
+
         hudi_engine_instance.register_temporary_table(
             hudi_fg_alias,
             read_options,
         )
-        hudi_engine_instance.reconcile_hudi_schema(
-            self.save_empty_dataframe, hudi_fg_alias, read_options
-        )
+
+        if (hudi_fg_alias._feature_group.storage_connector is None):
+            hudi_engine_instance.reconcile_hudi_schema(
+                self.save_empty_dataframe, hudi_fg_alias, read_options
+            )
 
     def register_delta_temporary_table(
         self, delta_fg_alias, feature_store_id, feature_store_name, read_options
@@ -1262,12 +1267,12 @@ class Engine:
             new_features_map[new_features.name] = lit("").cast(new_features.type)
 
         self._spark_session.read.format("delta").load(
-            feature_group.location
+            feature_group.uri
         ).withColumns(new_features_map).limit(0).write.format("delta").mode(
             "append"
         ).option("mergeSchema", "true").option(
             "spark.databricks.delta.schema.autoMerge.enabled", "true"
-        ).save(feature_group.location)
+        ).save(feature_group.uri)
 
     def _apply_transformation_function(
         self,
