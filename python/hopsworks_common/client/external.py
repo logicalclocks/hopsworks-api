@@ -76,9 +76,6 @@ class Client(base.Client):
         self._verify = self._get_verify(hostname_verification, trust_store_path)
         self._hostname_verification = hostname_verification
         self._hopsworks_ca_trust_store_path = trust_store_path
-        print(self._verify)
-        print(hostname_verification)
-        print(trust_store_path)
 
         self._cert_key = None
         self._cert_folder_base = cert_folder
