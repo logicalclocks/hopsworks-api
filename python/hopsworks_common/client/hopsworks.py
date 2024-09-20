@@ -50,7 +50,7 @@ class Client(base.Client):
         self._hostname_verification = os.environ.get(
             self.HOPSWORKS_HOSTNAME_VERIFICATION, "{}".format(hostname_verification)
         ).lower() in ("true", "1", "y", "yes")
-        self._hopsworks_ca_trust_store_path = self._get_ca_chain_path()
+        self._hopsworks_ca_trust_store_path = self._materialize_ca_chain()
 
         self._project_id = os.environ[self.PROJECT_ID]
         self._project_name = self._project_name()
@@ -67,9 +67,22 @@ class Client(base.Client):
 
         credentials = self._get_credentials(self._project_id)
 
-        self._write_pem_file(credentials["caChain"], self._get_ca_chain_path())
         self._write_pem_file(credentials["clientCert"], self._get_client_cert_path())
         self._write_pem_file(credentials["clientKey"], self._get_client_key_path())
+
+    def _materialize_ca_chain(self):
+        """Convert truststore from jks to pem and return the location"""
+        ca_chain_path = self._get_ca_chain_path()
+        if not ca_chain_path.exists():
+            keystore_pw = self._cert_key
+            ks = jks.KeyStore.load(
+                self._get_jks_key_store_path(), keystore_pw, try_decrypt_keys=True
+            )
+            ts = jks.KeyStore.load(
+                self._get_jks_trust_store_path(), keystore_pw, try_decrypt_keys=True
+            )
+            self._write_ca_chain(ks, ts, ca_chain_path)
+        return str(ca_chain_path)
 
     def _get_hopsworks_rest_endpoint(self):
         """Get the hopsworks REST endpoint for making requests to the REST API."""
