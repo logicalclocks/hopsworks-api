@@ -78,7 +78,7 @@ class Client(base.Client):
 
     def _materialize_ca_chain(self):
         """Convert truststore from jks to pem and return the location"""
-        ca_chain_path = self._get_ca_chain_path()
+        ca_chain_path = Path(self._get_ca_chain_path())
         if not ca_chain_path.exists():
             keystore_pw = self._cert_key
             ks = jks.KeyStore.load(
