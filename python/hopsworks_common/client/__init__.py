@@ -31,7 +31,7 @@ def init(
     port: Optional[int] = None,
     project: Optional[str] = None,
     engine: Optional[str] = None,
-    hostname_verification: Optional[bool] = False,
+    hostname_verification: Optional[bool] = None,
     trust_store_path: Optional[str] = None,
     cert_folder: Optional[str] = None,
     api_key_file: Optional[str] = None,
