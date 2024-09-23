@@ -38,7 +38,7 @@ from requests.exceptions import ConnectionError
 
 HOPSWORKS_PORT_DEFAULT = 443
 HOSTNAME_VERIFICATION_DEFAULT = os.environ.get(
-    "HOPSWORKS_HOSTNAME_VERIFICATION", "True"
+    "HOPSWORKS_HOSTNAME_VERIFICATION", "False"
 ).lower() in ("true", "1", "y", "yes")
 # alias for backwards compatibility:
 HOPSWORKS_HOSTNAME_VERIFICATION_DEFAULT = HOSTNAME_VERIFICATION_DEFAULT

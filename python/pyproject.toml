@@ -52,7 +52,6 @@ dependencies = [
     "fsspec",
     "retrying",
     "hopsworks_aiomysql[sa]==0.2.1",
-    "polars>=0.20.18,<=0.21.0",
     "opensearch-py>=1.1.0,<=2.4.2",
     "tqdm",
     "grpcio>=1.49.1,<2.0.0",         # ^1.49.1
@@ -86,7 +85,8 @@ dev-pandas1 = [
     "pandas<=1.5.3",
     "sqlalchemy<=1.4.48",
 ]
-dev = ["hopsworks[dev-no-opt,great-expectations]"]
+dev = ["hopsworks[dev-no-opt,great-expectations,polars]"]
+polars=["polars>=0.20.18,<=0.21.0"]
 
 [build-system]
 requires = ["setuptools", "wheel"]

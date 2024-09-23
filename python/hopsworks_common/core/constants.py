@@ -57,6 +57,13 @@ pyarrow_not_installed_message = (
 HAS_PANDAS: bool = importlib.util.find_spec("pandas") is not None
 HAS_NUMPY: bool = importlib.util.find_spec("numpy") is not None
 HAS_POLARS: bool = importlib.util.find_spec("polars") is not None
+polars_not_installed_message = (
+    "Polars package not found. "
+    "If you want to use Polars with Hopsworks you can install the corresponding extra via "
+    """'`pip install "hopsworks[polars]"`. '"""
+    "You can also install polars directly in your environment with `pip install polars`. "
+    "You will need to restart your kernel if applicable."
+)
 
 # SQL packages
 HAS_SQLALCHEMY: bool = importlib.util.find_spec("sqlalchemy") is not None

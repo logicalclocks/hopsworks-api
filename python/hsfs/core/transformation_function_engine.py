@@ -15,12 +15,15 @@
 #
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Set, TypeVar, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, TypeVar, Union
 
 import pandas as pd
-import polars as pl
 from hsfs import feature_view, statistics, training_dataset, transformation_function
 from hsfs.core import transformation_function_api
+
+
+if TYPE_CHECKING:
+    import polars as pl
 
 
 class TransformationFunctionEngine:

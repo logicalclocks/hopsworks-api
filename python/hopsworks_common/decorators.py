@@ -21,7 +21,9 @@ import os
 
 from hopsworks_common.core.constants import (
     HAS_GREAT_EXPECTATIONS,
+    HAS_POLARS,
     great_expectations_not_installed_message,
+    polars_not_installed_message,
 )
 
 
@@ -81,6 +83,16 @@ def uses_great_expectations(f):
     def g(*args, **kwds):
         if not HAS_GREAT_EXPECTATIONS:
             raise ModuleNotFoundError(great_expectations_not_installed_message)
+        return f(*args, **kwds)
+
+    return g
+
+
+def uses_polars(f):
+    @functools.wraps(f)
+    def g(*args, **kwds):
+        if not HAS_POLARS:
+            raise ModuleNotFoundError(polars_not_installed_message)
         return f(*args, **kwds)
 
     return g

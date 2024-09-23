@@ -26,11 +26,14 @@ from typing import Any, Dict, List, Optional, TypeVar, Union
 import humps
 import numpy as np
 import pandas as pd
-import polars as pl
 from hopsworks_common import client
+from hopsworks_common.core.constants import HAS_POLARS
 from hsfs import engine
 from hsfs.core import storage_connector_api
 
+
+if HAS_POLARS:
+    import polars as pl
 
 _logger = logging.getLogger(__name__)
 
