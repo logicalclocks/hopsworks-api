@@ -19,10 +19,10 @@ import datetime
 import warnings
 from typing import Any, Dict, List, Optional, TypeVar, Union
 
-import numpy as np
 import pandas as pd
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.core.constants import HAS_NUMPY
 from hsfs import (
     engine,
     feature_group,
@@ -44,6 +44,10 @@ from hsfs.core import (
 from hsfs.core.feature_logging import FeatureLogging
 from hsfs.feature_logger import FeatureLogger
 from hsfs.training_dataset_split import TrainingDatasetSplit
+
+
+if HAS_NUMPY:
+    import numpy as np
 
 
 class FeatureViewEngine:
@@ -1227,7 +1231,9 @@ class FeatureViewEngine:
                 model_col_name=FeatureViewEngine._HSML_MODEL,
                 predictions=predictions,
                 training_dataset_version=training_dataset_version,
-                hsml_model=self.get_hsml_model_value(hsml_model) if hsml_model else None,
+                hsml_model=self.get_hsml_model_value(hsml_model)
+                if hsml_model
+                else None,
             )
         else:
             return engine.get_instance().get_feature_logging_df(

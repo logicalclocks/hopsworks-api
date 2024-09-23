@@ -21,9 +21,9 @@ import warnings
 from typing import Any, Dict, List, Optional, TypeVar, Union
 
 import humps
-import numpy as np
 import pandas as pd
 import polars as pl
+from hopsworks_common.core.constants import HAS_NUMPY
 from hsfs import (
     expectation_suite,
     feature,
@@ -51,6 +51,10 @@ from hsfs.hopsworks_udf import HopsworksUdf
 from hsfs.online_config import OnlineConfig
 from hsfs.statistics_config import StatisticsConfig
 from hsfs.transformation_function import TransformationFunction
+
+
+if HAS_NUMPY:
+    import numpy as np
 
 
 @typechecked

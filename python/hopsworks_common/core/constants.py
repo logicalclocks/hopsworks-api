@@ -20,6 +20,13 @@ import importlib.util
 # Avro
 HAS_FAST_AVRO: bool = importlib.util.find_spec("fastavro") is not None
 HAS_AVRO: bool = importlib.util.find_spec("avro") is not None
+avro_not_installed_message = (
+    "Avro package not found. "
+    "If you want to use avro with Hopsworks you can install the corresponding extra via "
+    '`pip install "hopsworks[avro]"`. '
+    "You can also install avro directly in your environment with `pip install fastavro` or `pip install avro`. "
+    "You will need to restart your kernel if applicable."
+)
 
 # Confluent Kafka
 HAS_CONFLUENT_KAFKA: bool = importlib.util.find_spec("confluent_kafka") is not None
@@ -30,6 +37,7 @@ confluent_kafka_not_installed_message = (
     "You can also install confluent-kafka directly in your environment e.g `pip install confluent-kafka`. "
     "You will need to restart your kernel if applicable."
 )
+
 # Data Validation / Great Expectations
 HAS_GREAT_EXPECTATIONS: bool = (
     importlib.util.find_spec("great_expectations") is not None
@@ -45,7 +53,17 @@ initialise_expectation_suite_for_single_expectation_api_message = "Initialize Ex
 
 HAS_ARROW: bool = importlib.util.find_spec("pyarrow") is not None
 HAS_PANDAS: bool = importlib.util.find_spec("pandas") is not None
+
+# NumPy
 HAS_NUMPY: bool = importlib.util.find_spec("numpy") is not None
+numpy_not_installed_message = (
+    "Numpy package not found. "
+    "If you want to use numpy with Hopsworks you can install the corresponding extra via "
+    '`pip install "hopsworks[numpy]"`. '
+    "You can also install numpy directly in your environment with `pip install numpy`. "
+    "You will need to restart your kernel if applicable."
+)
+
 HAS_POLARS: bool = importlib.util.find_spec("polars") is not None
 
 # SQL packages

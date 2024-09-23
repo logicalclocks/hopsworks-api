@@ -31,13 +31,17 @@ if TYPE_CHECKING:
     from pyspark.rdd import RDD
     from pyspark.sql import DataFrame
 
-import numpy as np
 import pandas as pd
 import tzlocal
+from hopsworks_common.core.constants import HAS_NUMPY
 from hsfs.constructor import query
 
 # in case importing in %%local
 from hsfs.core.vector_db_client import VectorDbClient
+
+
+if HAS_NUMPY:
+    import numpy as np
 
 
 try:
@@ -258,9 +262,33 @@ class Engine:
 
     def convert_to_default_dataframe(self, dataframe):
         if isinstance(dataframe, list):
-            dataframe = np.array(dataframe)
+            #################### TODO TODO TODO TODO TODO ####################
+            if HAS_NUMPY:
+                dataframe = np.array(dataframe)
+            else:
+                try:
+                    dataframe[0][0]
+                except TypeError:
+                    raise TypeError(
+                        "Cannot convert a list that has less than two dimensions to a dataframe."
+                    ) from None
+                ok = False
+                try:
+                    dataframe[0][0][0]
+                except TypeError:
+                    ok = True
+                if not ok:
+                    raise TypeError(
+                        "Cannot convert a list that has more than two dimensions to a dataframe."
+                    ) from None
+                num_cols = len(dataframe[0])
+                dataframe_dict = {}
+                for n_col in list(range(num_cols)):
+                    col_name = "col_" + str(n_col)
+                    dataframe_dict[col_name] = dataframe[:, n_col]
+                dataframe = pd.DataFrame(dataframe_dict)
 
-        if isinstance(dataframe, np.ndarray):
+        if HAS_NUMPY and isinstance(dataframe, np.ndarray):
             if dataframe.ndim != 2:
                 raise TypeError(
                     "Cannot convert numpy array that do not have two dimensions to a dataframe. "
@@ -284,7 +312,7 @@ class Engine:
                 ):
                     # convert to utc timestamp
                     dataframe_copy[c] = dataframe_copy[c].dt.tz_convert(None)
-                if dataframe_copy[c].dtype == np.dtype("datetime64[ns]"):
+                if HAS_NUMPY and dataframe_copy[c].dtype == np.dtype("datetime64[ns]"):
                     # set the timezone to the client's timezone because that is
                     # what spark expects.
                     dataframe_copy[c] = dataframe_copy[c].dt.tz_localize(

@@ -33,10 +33,10 @@ from typing import (
 )
 
 import humps
-import numpy as np
 import pandas as pd
 import polars as pl
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.core.constants import HAS_NUMPY
 from hsfs import (
     feature_group,
     storage_connector,
@@ -74,6 +74,10 @@ from hsfs.statistics_config import StatisticsConfig
 from hsfs.training_dataset_split import TrainingDatasetSplit
 from hsfs.transformation_function import TransformationFunction, TransformationType
 from hsml.model import Model
+
+
+if HAS_NUMPY:
+    import numpy as np
 
 
 _logger = logging.getLogger(__name__)

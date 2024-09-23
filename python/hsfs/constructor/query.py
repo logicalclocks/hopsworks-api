@@ -21,9 +21,9 @@ from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 
 import humps
-import numpy as np
 import pandas as pd
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.core.constants import HAS_NUMPY
 from hsfs import engine, storage_connector, util
 from hsfs import feature_group as fg_mod
 from hsfs.constructor import join
@@ -32,6 +32,10 @@ from hsfs.constructor.fs_query import FsQuery
 from hsfs.core import arrow_flight_client, query_constructor_api, storage_connector_api
 from hsfs.decorators import typechecked
 from hsfs.feature import Feature
+
+
+if HAS_NUMPY:
+    import numpy as np
 
 
 @typechecked

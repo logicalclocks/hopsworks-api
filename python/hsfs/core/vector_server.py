@@ -25,10 +25,16 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Set, Tuple, Uni
 
 import avro.io
 import avro.schema
-import numpy as np
 import pandas as pd
 import polars as pl
 from hopsworks_common import client
+from hopsworks_common.core.constants import (
+    HAS_AVRO,
+    HAS_FAST_AVRO,
+    HAS_NUMPY,
+    avro_not_installed_message,
+    numpy_not_installed_message,
+)
 from hsfs import (
     feature_view,
     training_dataset,
@@ -48,13 +54,14 @@ from hsfs.core import (
 )
 
 
-HAS_FASTAVRO = False
-try:
-    from fastavro import schemaless_reader
+if HAS_NUMPY:
+    import numpy as np
 
-    HAS_FASTAVRO = True
-except ImportError:
+if HAS_FAST_AVRO:
+    from fastavro import schemaless_reader
+elif HAS_AVRO:
     from avro.io import BinaryDecoder
+
 
 _logger = logging.getLogger(__name__)
 
@@ -803,6 +810,8 @@ class VectorServer:
             return feature_vectorz
         elif return_type.lower() == "numpy" and not inference_helper:
             _logger.debug("Returning feature vector as numpy array")
+            if not HAS_NUMPY:
+                raise ModuleNotFoundError(numpy_not_installed_message)
             return np.array(feature_vectorz)
         # Only inference helper can return dict
         elif return_type.lower() == "dict" and inference_helper:
@@ -1076,7 +1085,7 @@ class VectorServer:
             _logger.debug(
                 f"Building complex feature decoders corresponding to {complex_feature_schemas}."
             )
-        if HAS_FASTAVRO:
+        if HAS_FAST_AVRO:
             _logger.debug("Using fastavro for deserialization.")
             return {
                 f_name: (
@@ -1100,6 +1109,8 @@ class VectorServer:
                 for (f_name, schema) in complex_feature_schemas.items()
             }
         else:
+            if not HAS_AVRO:
+                raise ModuleNotFoundError(avro_not_installed_message)
             _logger.debug("Fast Avro not found, using avro for deserialization.")
             return {
                 f_name: (

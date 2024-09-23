@@ -50,7 +50,6 @@ if TYPE_CHECKING:
 
 import boto3
 import hsfs
-import numpy as np
 import pandas as pd
 import polars as pl
 import pyarrow as pa
@@ -84,6 +83,7 @@ from hsfs.core.constants import (
     HAS_AIOMYSQL,
     HAS_ARROW,
     HAS_GREAT_EXPECTATIONS,
+    HAS_NUMPY,
     HAS_PANDAS,
     HAS_SQLALCHEMY,
 )
@@ -97,6 +97,9 @@ from hsfs.training_dataset_split import TrainingDatasetSplit
 
 if HAS_GREAT_EXPECTATIONS:
     import great_expectations
+
+if HAS_NUMPY:
+    import numpy as np
 
 if HAS_ARROW:
     from hsfs.core.type_systems import PYARROW_HOPSWORKS_DTYPE_MAPPING
@@ -1416,11 +1419,13 @@ class Engine:
     def _convert_feature_log_to_df(feature_log, cols) -> pd.DataFrame:
         if feature_log is None and cols:
             return pd.DataFrame(columns=cols)
-        if not (
-            isinstance(feature_log, (list, np.ndarray, pd.DataFrame, pl.DataFrame))
+        if not (isinstance(feature_log, (list, pd.DataFrame, pl.DataFrame))) or (
+            HAS_NUMPY and isinstance(feature_log, np.ndarray)
         ):
             raise ValueError(f"Type '{type(feature_log)}' not accepted")
-        if isinstance(feature_log, list) or isinstance(feature_log, np.ndarray):
+        if isinstance(feature_log, list) or (
+            HAS_NUMPY and isinstance(feature_log, np.ndarray)
+        ):
             Engine._validate_logging_list(feature_log, cols)
             return pd.DataFrame(feature_log, columns=cols)
         else:
@@ -1431,7 +1436,9 @@ class Engine:
 
     @staticmethod
     def _validate_logging_list(feature_log, cols):
-        if isinstance(feature_log[0], list) or isinstance(feature_log[0], np.ndarray):
+        if isinstance(feature_log[0], list) or (
+            HAS_NUMPY and isinstance(feature_log[0], np.ndarray)
+        ):
             provided_len = len(feature_log[0])
         else:
             provided_len = 1
