@@ -285,7 +285,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         if feature_group.time_travel_format == "DELTA":
             engine.get_instance().add_cols_to_delta_table(feature_group, new_features)
         else:
-            engine.get_instance().save_empty_dataframe(feature_group)
+            engine.get_instance().save_empty_dataframe(feature_group, new_features=new_features)
 
     def update_description(self, feature_group, description):
         """Updates the description of a feature group."""

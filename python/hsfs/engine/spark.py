@@ -219,10 +219,9 @@ class Engine:
             read_options,
         )
 
-        if (hudi_fg_alias._feature_group.storage_connector is None):
-            hudi_engine_instance.reconcile_hudi_schema(
-                self.save_empty_dataframe, hudi_fg_alias, read_options
-            )
+        hudi_engine_instance.reconcile_hudi_schema(
+            self.save_empty_dataframe, hudi_fg_alias, read_options
+        )
 
     def register_delta_temporary_table(
         self, delta_fg_alias, feature_store_id, feature_store_name, read_options
@@ -1250,13 +1249,22 @@ class Engine:
             return True
         return False
 
-    def save_empty_dataframe(self, feature_group):
-        fg_table_name = feature_group._get_table_name()
-        dataframe = self._spark_session.table(fg_table_name).limit(0)
+    def save_empty_dataframe(self, feature_group, new_features=None):
+        dataframe = self._spark_session.read.format("hudi").load(
+            feature_group.get_uri()
+        )
+
+        if (new_features is not None):
+            if isinstance(new_features, list):
+                for new_feature in new_features:
+                    dataframe = dataframe.withColumn(new_feature.name, lit("").cast(new_feature.type))
+            else:
+                dataframe = dataframe.withColumn(new_features.name, lit("").cast(new_features.type))
+
 
         self.save_dataframe(
             feature_group,
-            dataframe,
+            dataframe.limit(0),
             "upsert",
             feature_group.online_enabled,
             "offline",

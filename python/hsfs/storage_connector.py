@@ -134,6 +134,12 @@ class StorageConnector(ABC):
     def spark_options(self) -> None:
         pass
 
+    def prepare_spark(self, path: Optional[str] = None) -> Optional[str]:
+        _logger.info(
+            "This Storage Connector cannot be prepare for Spark."
+        )
+        return path
+
     def read(
         self,
         query: Optional[str] = None,

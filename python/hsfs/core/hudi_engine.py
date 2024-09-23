@@ -20,6 +20,10 @@ from hsfs.core import feature_group_api
 
 
 class HudiEngine:
+
+    HUDI_SPEC_FEATURE_NAMES = ["_hoodie_record_key", "_hoodie_partition_path",
+                               "_hoodie_commit_time", "_hoodie_file_name", "_hoodie_commit_seqno"]
+
     HUDI_SPARK_FORMAT = "org.apache.hudi"
     HUDI_TABLE_NAME = "hoodie.table.name"
     HUDI_TABLE_STORAGE_TYPE = "hoodie.datasource.write.storage.type"
@@ -229,9 +233,8 @@ class HudiEngine:
     def reconcile_hudi_schema(
         self, save_empty_dataframe_callback, hudi_fg_alias, read_options
     ):
-        fg_table_name = hudi_fg_alias.feature_group._get_table_name()
         if sorted(self._spark_session.table(hudi_fg_alias.alias).columns) != sorted(
-            self._spark_session.table(fg_table_name).columns
+            [feature.name for feature in hudi_fg_alias.feature_group._features] + self.HUDI_SPEC_FEATURE_NAMES
         ):
             full_fg = self._feature_group_api.get(
                 feature_store_id=hudi_fg_alias.feature_group._feature_store_id,

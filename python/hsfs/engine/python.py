@@ -1182,7 +1182,7 @@ class Engine:
         )
 
     def save_empty_dataframe(
-        self, feature_group: Union[FeatureGroup, ExternalFeatureGroup]
+        self, feature_group: Union[FeatureGroup, ExternalFeatureGroup], new_features=None
     ) -> None:
         """Wrapper around save_dataframe in order to provide no-op."""
         pass
