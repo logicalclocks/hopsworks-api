@@ -99,21 +99,16 @@ class FsQuery:
             Union[TypeVar("pyspark.sql.DataFrame"), TypeVar("pyspark.RDD")]
         ] = None,
     ) -> None:
-        if self._on_demand_fg_aliases is not None:
-            for external_fg_alias in self._on_demand_fg_aliases:
-                if type(external_fg_alias.on_demand_feature_group).__name__ == "SpineGroup":
-                    external_fg_alias.on_demand_feature_group.dataframe = spine
-                engine.get_instance().register_external_temporary_table(
-                    external_fg_alias.on_demand_feature_group,
-                    external_fg_alias.alias,
-                )
+        if self._on_demand_fg_aliases is None:
+            return
 
-        if self._hudi_cached_feature_groups is not None:
-            for external_fg_alias in self._hudi_cached_feature_groups:
-                engine.get_instance().register_external_temporary_table(
-                    external_fg_alias.feature_group,
-                    external_fg_alias.alias,
-                )
+        for external_fg_alias in self._on_demand_fg_aliases:
+            if type(external_fg_alias.on_demand_feature_group).__name__ == "SpineGroup":
+                external_fg_alias.on_demand_feature_group.dataframe = spine
+            engine.get_instance().register_external_temporary_table(
+                external_fg_alias.on_demand_feature_group,
+                external_fg_alias.alias,
+            )
 
     def register_hudi_tables(
         self,

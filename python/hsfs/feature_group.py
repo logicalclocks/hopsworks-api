@@ -2074,7 +2074,7 @@ class FeatureGroupBase:
         else:
             path = self.storage_connector._get_path(self.path)
             if engine.get_type().startswith("spark"):
-                path = engine.get_instance().setup_storage_connector(self.storage_connector, path)
+                path = self.storage_connector.prepare_spark(path)
             return path
 
     @property
