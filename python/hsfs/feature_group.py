@@ -3554,7 +3554,9 @@ class FeatureGroup(FeatureGroupBase):
             "topicName": self.topic_name,
             "notificationTopicName": self.notification_topic_name,
             "deprecated": self.deprecated,
-            "transformationFunctions": self._transformation_functions,
+            "transformationFunctions": [
+                tf.to_dict() for tf in self._transformation_functions
+            ],
         }
         if self._online_config:
             fg_meta_dict["onlineConfig"] = self._online_config.to_dict()
