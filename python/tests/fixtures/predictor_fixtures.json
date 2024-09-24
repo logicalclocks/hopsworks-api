@@ -43,7 +43,8 @@
           },
           "environment_dto": {
             "name": "misc-inference-pipeline"
-          }
+          },
+          "project_namespace": "test"
         }
       ]
     }
@@ -98,7 +99,8 @@
           },
           "environment_dto": {
             "name": "misc-inference-pipeline"
-          }
+          },
+          "project_namespace": "test"
         },
         {
           "id": 2,
@@ -140,7 +142,8 @@
           },
           "environment_dto": {
             "name": "misc-inference-pipeline"
-          }
+          },
+          "project_namespace": "test"
         }
       ]
     }
