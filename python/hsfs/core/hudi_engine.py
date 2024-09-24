@@ -112,13 +112,15 @@ class HudiEngine:
         )
 
     def _write_hudi_dataset(self, dataset, save_mode, operation, write_options):
+        uri = self._feature_group.get_uri()
+
         hudi_options = self._setup_hudi_write_opts(operation, write_options)
         dataset.write.format(HudiEngine.HUDI_SPARK_FORMAT).options(**hudi_options).mode(
             save_mode
-        ).save(self._feature_group.get_uri())
+        ).save(uri)
 
         feature_group_commit = self._get_last_commit_metadata(
-            self._spark_context, self._feature_group.get_uri()
+            self._spark_context, uri
         )
 
         return feature_group_commit

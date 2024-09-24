@@ -85,15 +85,17 @@ class DeltaEngine:
         return delta_options
 
     def delete_record(self, delete_df):
+        uri = self._feature_group.get_uri()
+
         if not DeltaTable.isDeltaTable(
-            self._spark_session, self._feature_group.get_uri()
+            self._spark_session, uri
         ):
             raise FeatureStoreException(
                 f"This is no data available in Feature group {self._feature_group.name}, or it not DELTA enabled "
             )
         else:
             fg_source_table = DeltaTable.forPath(
-                self._spark_session, self._feature_group.get_uri()
+                self._spark_session, uri
             )
 
             source_alias = (
@@ -109,16 +111,18 @@ class DeltaEngine:
             ).whenMatchedDelete().execute()
 
         fg_commit = self._get_last_commit_metadata(
-            self._spark_session, self._feature_group.get_uri()
+            self._spark_session, uri
         )
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
     def _write_delta_dataset(self, dataset, write_options):
+        uri = self._feature_group.get_uri()
+
         if write_options is None:
             write_options = {}
 
         if not DeltaTable.isDeltaTable(
-            self._spark_session, self._feature_group.get_uri()
+            self._spark_session, uri
         ):
             (
                 dataset.write.format(DeltaEngine.DELTA_SPARK_FORMAT)
@@ -129,11 +133,11 @@ class DeltaEngine:
                     else []
                 )
                 .mode("append")
-                .save(self._feature_group.get_uri())
+                .save(uri)
             )
         else:
             fg_source_table = DeltaTable.forPath(
-                self._spark_session, self._feature_group.get_uri()
+                self._spark_session, uri
             )
 
             source_alias = (
@@ -149,7 +153,7 @@ class DeltaEngine:
             ).whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
 
         return self._get_last_commit_metadata(
-            self._spark_session, self._feature_group.get_uri()
+            self._spark_session, uri
         )
 
     def _generate_merge_query(self, source_alias, updates_alias):

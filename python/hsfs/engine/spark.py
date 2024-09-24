@@ -1273,9 +1273,9 @@ class Engine:
         )
 
     def add_cols_to_delta_table(self, feature_group, new_features):
-        dataframe = self._spark_session.read.format("delta").load(
-            feature_group.get_uri()
-        )
+        uri = self._feature_group.get_uri()
+
+        dataframe = self._spark_session.read.format("delta").load(uri)
 
         if (new_features is not None):
             if isinstance(new_features, list):
@@ -1288,7 +1288,7 @@ class Engine:
             "append"
         ).option("mergeSchema", "true").option(
             "spark.databricks.delta.schema.autoMerge.enabled", "true"
-        ).save(feature_group.get_uri())
+        ).save(uri)
 
     def _apply_transformation_function(
         self,
