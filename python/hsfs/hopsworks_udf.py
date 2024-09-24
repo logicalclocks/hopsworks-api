@@ -657,7 +657,7 @@ def renaming_wrapper(*args):
                 dropped_feature.strip()
                 for dropped_feature in json_decamelized["dropped_argument_names"]
             ]
-            if "dropped_argument_names" in json_decamelized
+            if json_decamelized.get("dropped_argument_names", None)
             else None
         )
         transformation_function_argument_names = (
@@ -667,7 +667,7 @@ def renaming_wrapper(*args):
                     "transformation_function_argument_names"
                 ]
             ]
-            if "transformation_function_argument_names" in json_decamelized
+            if json_decamelized.get("transformation_function_argument_names", None)
             else None
         )
         statistics_features = (
@@ -675,7 +675,7 @@ def renaming_wrapper(*args):
                 feature.strip()
                 for feature in json_decamelized["statistics_argument_names"]
             ]
-            if "statistics_argument_names" in json_decamelized
+            if json_decamelized.get("statistics_argument_names", None)
             else None
         )
 
