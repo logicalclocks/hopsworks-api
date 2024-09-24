@@ -23,6 +23,12 @@ import warnings
 from functools import wraps
 from typing import Any, Dict, Optional, Union
 
+from hopsworks_common.core.constants import HAS_PYARROW, pyarrow_not_installed_message
+
+
+if not HAS_PYARROW:
+    raise ModuleNotFoundError(pyarrow_not_installed_message)
+
 import pyarrow
 import pyarrow._flight
 import pyarrow.flight

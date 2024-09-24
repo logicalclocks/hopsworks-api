@@ -29,7 +29,7 @@ from hsfs import feature_group as fg_mod
 from hsfs.constructor import join
 from hsfs.constructor.filter import Filter, Logic
 from hsfs.constructor.fs_query import FsQuery
-from hsfs.core import arrow_flight_client, query_constructor_api, storage_connector_api
+from hsfs.core import query_constructor_api, storage_connector_api
 from hsfs.decorators import typechecked
 from hsfs.feature import Feature
 
@@ -101,6 +101,8 @@ class Query:
             online_conn = None
 
             if engine.get_instance().is_flyingduck_query_supported(self, read_options):
+                from hsfs.core import arrow_flight_client
+
                 sql_query = self._to_string(fs_query, online, asof=True)
                 sql_query = arrow_flight_client.get_instance().create_query_object(
                     self, sql_query, fs_query.on_demand_fg_aliases
