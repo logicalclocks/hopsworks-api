@@ -315,7 +315,7 @@ class HopsworksUdf:
         except FileNotFoundError:
             module_imports = [""]
             warnings.warn(
-                "Cannot extract imported dependencies for the function module. Please make sure to import all dependencies for the UDF inside the function.",
+                "Cannot extract imported dependencies for the UDF from the module in which it is defined. Please make sure to import all dependencies for the UDF inside the function.",
                 stacklevel=2,
             )
 
