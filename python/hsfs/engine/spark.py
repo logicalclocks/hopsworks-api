@@ -1257,9 +1257,9 @@ class Engine:
         if (new_features is not None):
             if isinstance(new_features, list):
                 for new_feature in new_features:
-                    dataframe = dataframe.withColumn(new_feature.name, lit("").cast(new_feature.type))
+                    dataframe = dataframe.withColumn(new_feature.name, lit(None).cast(new_feature.type))
             else:
-                dataframe = dataframe.withColumn(new_features.name, lit("").cast(new_features.type))
+                dataframe = dataframe.withColumn(new_features.name, lit(None).cast(new_features.type))
 
 
         self.save_dataframe(
