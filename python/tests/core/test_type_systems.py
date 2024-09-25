@@ -17,10 +17,10 @@ import datetime
 
 import pytest
 from hsfs.core import type_systems
-from hsfs.core.constants import HAS_ARROW, HAS_PANDAS
+from hsfs.core.constants import HAS_PANDAS, HAS_PYARROW
 
 
-if HAS_ARROW:
+if HAS_PYARROW:
     import pyarrow as pa
 
 if HAS_PANDAS:
@@ -32,7 +32,7 @@ if HAS_PANDAS:
 
 class TestTypeSystems:
     @pytest.mark.skipif(
-        not HAS_ARROW or not HAS_PANDAS, reason="Arrow or Pandas are not installed"
+        not HAS_PYARROW or not HAS_PANDAS, reason="Arrow or Pandas are not installed"
     )
     def test_infer_type_pyarrow_list(self):
         # Act

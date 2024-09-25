@@ -67,7 +67,6 @@ from hsfs import (
 from hsfs import storage_connector as sc
 from hsfs.constructor import query
 from hsfs.core import (
-    arrow_flight_client,
     dataset_api,
     feature_group_api,
     feature_view_api,
@@ -83,11 +82,12 @@ from hsfs.core import (
 )
 from hsfs.core.constants import (
     HAS_AIOMYSQL,
-    HAS_ARROW,
     HAS_GREAT_EXPECTATIONS,
     HAS_PANDAS,
+    HAS_PYARROW,
     HAS_SQLALCHEMY,
 )
+from hsfs.core.type_systems import PYARROW_HOPSWORKS_DTYPE_MAPPING
 from hsfs.core.vector_db_client import VectorDbClient
 from hsfs.feature_group import ExternalFeatureGroup, FeatureGroup
 from hsfs.training_dataset import TrainingDataset
@@ -98,8 +98,6 @@ from hsfs.training_dataset_split import TrainingDatasetSplit
 if HAS_GREAT_EXPECTATIONS:
     import great_expectations
 
-if HAS_ARROW:
-    from hsfs.core.type_systems import PYARROW_HOPSWORKS_DTYPE_MAPPING
 if HAS_AIOMYSQL and HAS_SQLALCHEMY:
     from hsfs.core import util_sql
 
@@ -157,6 +155,8 @@ class Engine:
     def is_flyingduck_query_supported(
         self, query: "query.Query", read_options: Optional[Dict[str, Any]] = None
     ) -> bool:
+        from hsfs.core import arrow_flight_client
+
         return arrow_flight_client.is_query_supported(query, read_options or {})
 
     def _validate_dataframe_type(self, dataframe_type: str):
@@ -180,6 +180,8 @@ class Engine:
     ) -> Union[pd.DataFrame, pl.DataFrame]:
         self._validate_dataframe_type(dataframe_type)
         if isinstance(sql_query, dict) and "query_string" in sql_query:
+            from hsfs.core import arrow_flight_client
+
             result_df = util.run_with_loading_animation(
                 "Reading data from Hopsworks, using Hopsworks Feature Query Service",
                 arrow_flight_client.get_instance().read_query,
@@ -342,6 +344,8 @@ class Engine:
 
             for inode in inode_list:
                 if not self._is_metadata_file(inode.path):
+                    from hsfs.core import arrow_flight_client
+
                     if arrow_flight_client.is_data_format_supported(
                         data_format, read_options
                     ):
@@ -539,7 +543,10 @@ class Engine:
                 or pa.types.is_list(field.type)
                 or pa.types.is_large_list(field.type)
                 or pa.types.is_struct(field.type)
-            ) and PYARROW_HOPSWORKS_DTYPE_MAPPING[field.type] in ["timestamp", "date"]:
+            ) and PYARROW_HOPSWORKS_DTYPE_MAPPING.get(field.type, None) in [
+                "timestamp",
+                "date",
+            ]:
                 if HAS_POLARS and (
                     isinstance(df, pl.DataFrame)
                     or isinstance(df, pl.dataframe.frame.DataFrame)
@@ -573,15 +580,21 @@ class Engine:
                 or pa.types.is_list(arrow_type)
                 or pa.types.is_large_list(arrow_type)
                 or pa.types.is_struct(arrow_type)
-                or PYARROW_HOPSWORKS_DTYPE_MAPPING[arrow_type]
+                or PYARROW_HOPSWORKS_DTYPE_MAPPING.get(arrow_type, None)
                 in ["timestamp", "date", "binary", "string"]
             ):
                 dataType = "String"
-            elif PYARROW_HOPSWORKS_DTYPE_MAPPING[arrow_type] in ["float", "double"]:
+            elif PYARROW_HOPSWORKS_DTYPE_MAPPING.get(arrow_type, None) in [
+                "float",
+                "double",
+            ]:
                 dataType = "Fractional"
-            elif PYARROW_HOPSWORKS_DTYPE_MAPPING[arrow_type] in ["int", "bigint"]:
+            elif PYARROW_HOPSWORKS_DTYPE_MAPPING.get(arrow_type, None) in [
+                "int",
+                "bigint",
+            ]:
                 dataType = "Integral"
-            elif PYARROW_HOPSWORKS_DTYPE_MAPPING[arrow_type] == "boolean":
+            elif PYARROW_HOPSWORKS_DTYPE_MAPPING.get(arrow_type, None) == "boolean":
                 dataType = "Boolean"
             else:
                 print(
@@ -1077,8 +1090,16 @@ class Engine:
                 "Currently only query based training datasets are supported by the Python engine"
             )
 
+        try:
+            from hsfs.core import arrow_flight_client
+
+            arrow_flight_client_imported = True
+        except ImportError:
+            arrow_flight_client_imported = False
+
         if (
-            arrow_flight_client.is_query_supported(dataset, user_write_options)
+            arrow_flight_client_imported
+            and arrow_flight_client.is_query_supported(dataset, user_write_options)
             and len(training_dataset.splits) == 0
             and feature_view_obj
             and len(feature_view_obj.transformation_functions) == 0
@@ -1251,7 +1272,7 @@ class Engine:
             or isinstance(dataset, pl.dataframe.frame.DataFrame)
         ):
             # Converting polars dataframe to pandas because currently we support only pandas UDF's as transformation functions.
-            if HAS_ARROW:
+            if HAS_PYARROW:
                 dataset = dataset.to_pandas(
                     use_pyarrow_extension_array=True
                 )  # Zero copy if pyarrow extension can be used.

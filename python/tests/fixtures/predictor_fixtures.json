@@ -42,8 +42,9 @@
             "name": "topic"
           },
           "environment_dto": {
-            "name": "misc-inference-pipeline"
-          }
+            "name": "pandas-inference-pipeline"
+          },
+          "project_namespace": "test"
         }
       ]
     }
@@ -97,8 +98,9 @@
             "name": "topic"
           },
           "environment_dto": {
-            "name": "misc-inference-pipeline"
-          }
+            "name": "pandas-inference-pipeline"
+          },
+          "project_namespace": "test"
         },
         {
           "id": 2,
@@ -139,8 +141,9 @@
             "name": "topic"
           },
           "environment_dto": {
-            "name": "misc-inference-pipeline"
-          }
+            "name": "pandas-inference-pipeline"
+          },
+          "project_namespace": "test"
         }
       ]
     }
@@ -252,7 +255,7 @@
         "name": "topic"
       },
       "environment_dto": {
-        "name": "misc-inference-pipeline"
+        "name": "pandas-inference-pipeline"
       }
     }
   },
@@ -297,7 +300,7 @@
         "name": "topic"
       },
       "environment_dto": {
-        "name": "misc-inference-pipeline"
+        "name": "pandas-inference-pipeline"
       }
     }
   },
@@ -335,7 +338,7 @@
         "name": "topic"
       },
       "environment_dto": {
-        "name": "misc-inference-pipeline"
+        "name": "pandas-inference-pipeline"
       }
     }
   },
@@ -380,7 +383,7 @@
         "name": "topic"
       },
       "environment_dto": {
-        "name": "misc-inference-pipeline"
+        "name": "pandas-inference-pipeline"
       }
     }
   },

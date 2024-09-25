@@ -23,9 +23,9 @@ from typing import TYPE_CHECKING, Literal, Union
 
 import pytz
 from hopsworks_common.core.constants import (
-    HAS_ARROW,
     HAS_PANDAS,
     HAS_POLARS,
+    HAS_PYARROW,
 )
 from hopsworks_common.decorators import uses_polars
 
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     import pandas as pd
     import polars as pl
 
-if HAS_ARROW:
+if HAS_PYARROW:
     import pyarrow as pa
 
     # Decimal types are currently not supported

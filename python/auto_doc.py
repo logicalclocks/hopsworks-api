@@ -40,7 +40,7 @@ PAGES = {
         "udf": ["hopsworks.udf"],
     },
     "api/connection.md": {
-        "connection_create": ["hopsworks.connection.Connection.connection"],
+        "connection": ["hopsworks.connection.Connection.connection"],
         "connection_properties": keras_autodoc.get_properties(
             "hopsworks.connection.Connection"
         ),
@@ -61,7 +61,10 @@ PAGES = {
         "job_get": ["hopsworks.core.job_api.JobApi.get_job"],
         "job_get_all": ["hopsworks.core.job_api.JobApi.get_jobs"],
         "job_properties": keras_autodoc.get_properties("hopsworks.job.Job"),
-        "job_config": ["hopsworks.core.job_api.JobApi.get_configuration"],
+        "job_config": [
+            "hopsworks.core.job_api.JobApi.get_configuration",
+            "hopsworks_common.core.job_configuration.JobConfiguration",
+        ],
         "job_methods": keras_autodoc.get_methods(
             "hopsworks.job.Job", exclude=["from_response_json", "json"]
         ),
@@ -189,13 +192,6 @@ PAGES = {
         "opensearch_methods": keras_autodoc.get_methods(
             "hopsworks.core.opensearch_api.OpenSearchApi"
         ),
-    },
-    "api/connection_api.md": {
-        "connection": ["hsfs.connection.Connection"],
-        "connection_properties": keras_autodoc.get_properties(
-            "hsfs.connection.Connection"
-        ),
-        "connection_methods": keras_autodoc.get_methods("hsfs.connection.Connection"),
     },
     "api/spine_group_api.md": {
         "fg": ["hsfs.feature_group.SpineGroup"],
@@ -413,14 +409,6 @@ PAGES = {
             "hsfs.validation_report.ValidationReport"
         ),
     },
-    "api/job.md": {
-        "job_configuration": ["hsfs.core.job_configuration.JobConfiguration"],
-        "job": ["hsfs.core.job.Job"],
-        "job_methods": [
-            "hsfs.core.job.Job.get_state",
-            "hsfs.core.job.Job.get_final_state",
-        ],
-    },
     "api/query_api.md": {
         "query_methods": keras_autodoc.get_methods(
             "hsfs.constructor.query.Query",
@@ -550,13 +538,6 @@ PAGES = {
         "similarity_function_type": ["hsfs.embedding.SimilarityFunctionType"],
     },
     # Model registry
-    "connection_api.md": {
-        "connection": ["hsml.connection.Connection"],
-        "connection_properties": keras_autodoc.get_properties(
-            "hsml.connection.Connection", exclude=["trust_store_path"]
-        ),
-        "connection_methods": keras_autodoc.get_methods("hsml.connection.Connection"),
-    },
     "model-registry/model_registry_api.md": {
         "mr_get": ["hsml.connection.Connection.get_model_registry"],
         "mr_modules": keras_autodoc.get_properties(

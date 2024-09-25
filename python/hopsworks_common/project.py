@@ -51,6 +51,7 @@ class Project:
         services=None,
         datasets=None,
         creation_status=None,
+        project_namespace=None,
         **kwargs,
     ):
         self._id = project_id
@@ -67,6 +68,7 @@ class Project:
         self._git_api = git_api.GitApi()
         self._dataset_api = dataset_api.DatasetApi()
         self._environment_api = environment_api.EnvironmentApi()
+        self._project_namespace = project_namespace
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -100,6 +102,11 @@ class Project:
     def created(self):
         """Timestamp when the project was created"""
         return self._created
+
+    @property
+    def project_namespace(self):
+        """Kubernetes namespace used by project"""
+        return self._project_namespace
 
     def get_feature_store(
         self, name: Optional[str] = None, engine: Optional[str] = None
