@@ -308,7 +308,7 @@ class Predictor(DeployableComponent):
             "servingTool": self._serving_tool,
             "predictor": self._script_file,
             "apiProtocol": self._api_protocol,
-            "project_namespace": self._project_namespace,
+            "projectNamespace": self._project_namespace,
         }
         if self.environment is not None:
             json = {**json, **{"environmentDTO": {"name": self._environment}}}
