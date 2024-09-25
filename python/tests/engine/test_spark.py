@@ -174,43 +174,6 @@ class TestSpark:
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
         mock_sc_read = mocker.patch("hsfs.storage_connector.JdbcConnector.read")
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
-        )
-
-        spark_engine = spark.Engine()
-
-        jdbc_connector = storage_connector.JdbcConnector(
-            id=1,
-            name="test_connector",
-            featurestore_id=1,
-            connection_string="",
-            arguments="",
-        )
-
-        external_fg = feature_group.ExternalFeatureGroup(
-            storage_connector=jdbc_connector, id=10
-        )
-
-        # Act
-        spark_engine.register_external_temporary_table(
-            external_fg=external_fg,
-            alias=None,
-        )
-
-        # Assert
-        assert (
-            mock_pyspark_getOrCreate.return_value.sparkContext.textFile.call_count == 0
-        )
-        assert mock_sc_read.return_value.createOrReplaceTempView.call_count == 1
-
-    def test_register_external_temporary_table_external_fg_location(self, mocker):
-        # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
-        mock_sc_read = mocker.patch("hsfs.storage_connector.JdbcConnector.read")
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
-        )
 
         spark_engine = spark.Engine()
 
@@ -233,9 +196,6 @@ class TestSpark:
         )
 
         # Assert
-        assert (
-            mock_pyspark_getOrCreate.return_value.sparkContext.textFile.call_count == 1
-        )
         assert mock_sc_read.return_value.createOrReplaceTempView.call_count == 1
 
     def test_register_hudi_temporary_table(self, mocker):

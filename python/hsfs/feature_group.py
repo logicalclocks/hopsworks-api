@@ -2067,15 +2067,11 @@ class FeatureGroupBase:
     def storage_connector(self) -> "sc.StorageConnector":
         return self._storage_connector
 
-    def get_uri(self) -> str:
-        """Location of data."""
-        if (self.storage_connector is None):
-            return self.location
-        else:
-            path = self.storage_connector._get_path(self.path)
-            if engine.get_type().startswith("spark"):
-                path = self.storage_connector.prepare_spark(path)
-            return path
+    def prepare_spark_location(self) -> str:
+        location = self.location
+        if (self.storage_connector is not None):
+            location = self.storage_connector.prepare_spark(location)
+        return location
 
     @property
     def topic_name(self) -> Optional[str]:

@@ -104,23 +104,25 @@ class HudiEngine:
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
     def register_temporary_table(self, hudi_fg_alias, read_options):
+        location = self._feature_group.prepare_spark_location()
+
         hudi_options = self._setup_hudi_read_opts(hudi_fg_alias, read_options)
         self._spark_session.read.format(self.HUDI_SPARK_FORMAT).options(
             **hudi_options
-        ).load(self._feature_group.get_uri()).createOrReplaceTempView(
+        ).load(location).createOrReplaceTempView(
             hudi_fg_alias.alias
         )
 
     def _write_hudi_dataset(self, dataset, save_mode, operation, write_options):
-        uri = self._feature_group.get_uri()
+        location = self._feature_group.prepare_spark_location()
 
         hudi_options = self._setup_hudi_write_opts(operation, write_options)
         dataset.write.format(HudiEngine.HUDI_SPARK_FORMAT).options(**hudi_options).mode(
             save_mode
-        ).save(uri)
+        ).save(location)
 
         feature_group_commit = self._get_last_commit_metadata(
-            self._spark_context, uri
+            self._spark_context, location
         )
 
         return feature_group_commit

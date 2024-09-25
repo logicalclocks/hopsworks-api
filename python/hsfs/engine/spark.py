@@ -193,12 +193,10 @@ class Engine:
                 external_fg.query,
                 external_fg.data_format,
                 external_fg.options,
-                external_fg.get_uri(),
+                external_fg.prepare_spark_location(),
             )
         else:
             external_dataset = external_fg.dataframe
-        if external_fg.location:
-            self._spark_session.sparkContext.textFile(external_fg.location).collect()
 
         external_dataset.createOrReplaceTempView(alias)
         return external_dataset
@@ -1250,9 +1248,9 @@ class Engine:
         return False
 
     def save_empty_dataframe(self, feature_group, new_features=None):
-        dataframe = self._spark_session.read.format("hudi").load(
-            feature_group.get_uri()
-        )
+        location = feature_group.prepare_spark_location()
+
+        dataframe = self._spark_session.read.format("hudi").load(location)
 
         if (new_features is not None):
             if isinstance(new_features, list):
@@ -1273,9 +1271,9 @@ class Engine:
         )
 
     def add_cols_to_delta_table(self, feature_group, new_features):
-        uri = self._feature_group.get_uri()
+        location = feature_group.prepare_spark_location()
 
-        dataframe = self._spark_session.read.format("delta").load(uri)
+        dataframe = self._spark_session.read.format("delta").load(location)
 
         if (new_features is not None):
             if isinstance(new_features, list):
@@ -1288,7 +1286,7 @@ class Engine:
             "append"
         ).option("mergeSchema", "true").option(
             "spark.databricks.delta.schema.autoMerge.enabled", "true"
-        ).save(uri)
+        ).save(location)
 
     def _apply_transformation_function(
         self,
