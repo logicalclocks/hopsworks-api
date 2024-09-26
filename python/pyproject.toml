@@ -41,6 +41,7 @@ dependencies = [
     "requests",
     "furl",
     "boto3",
+    "pandas<2.2.0",
     "pyjks",
     "mock",
     "avro==1.11.3",
@@ -59,7 +60,6 @@ dependencies = [
 [project.optional-dependencies]
 python = [
     "numpy<2",
-    "pandas<2.2.0",
     "pyarrow>=10.0",
     "confluent-kafka<=2.3.0",
     "fastavro>=1.4.11,<=1.8.4",
