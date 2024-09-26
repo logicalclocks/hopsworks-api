@@ -36,7 +36,7 @@
 
 We follow a few best practices for writing the Python documentation:
 
-1. Use the google docstring style:
+1. Use the Google docstring style:
 
    ```python
    """[One Line Summary]
@@ -72,16 +72,17 @@ We use `mkdocs` together with `mike` ([for versioning](https://github.com/jimpor
 **Background about `mike`:**
 `mike` builds the documentation and commits it as a new directory to the gh-pages branch. Each directory corresponds to one version of the documentation. Additionally, `mike` maintains a json in the root of gh-pages with the mappings of versions/aliases for each of the directories available. With aliases you can define extra names like `dev` or `latest`, to indicate stable and unstable releases.
 
-1. Install Hopsworks with `dev-docs` extras:
+1. Install Hopsworks with `requirements-docs.txt`:
 
    ```bash
-   pip install -e ".[dev-docs]"
+   pip install -r requirements-docs.txt
+   pip install -e "python[dev]"
    ```
 
 2. To build the docs, first run the auto doc script:
 
    ```bash
-   python auto_doc.py
+   python python/auto_doc.py
    ```
 
 ##### Option 1: Build only current version of docs

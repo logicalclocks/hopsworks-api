@@ -36,9 +36,8 @@ import avro.schema
 import hsfs.expectation_suite
 import humps
 import pandas as pd
-import polars as pl
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
-from hopsworks_common.core.constants import HAS_NUMPY
+from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import (
     engine,
     feature,
@@ -101,6 +100,9 @@ if HAS_CONFLUENT_KAFKA:
 
 if HAS_NUMPY:
     import numpy as np
+
+if HAS_POLARS:
+    import polars as pl
 
 
 _logger = logging.getLogger(__name__)
@@ -3549,7 +3551,9 @@ class FeatureGroup(FeatureGroupBase):
             "topicName": self.topic_name,
             "notificationTopicName": self.notification_topic_name,
             "deprecated": self.deprecated,
-            "transformationFunctions": self._transformation_functions,
+            "transformationFunctions": [
+                tf.to_dict() for tf in self._transformation_functions
+            ],
         }
         if self._online_config:
             fg_meta_dict["onlineConfig"] = self._online_config.to_dict()

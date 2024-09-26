@@ -26,14 +26,15 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Set, Tuple, Uni
 import avro.io
 import avro.schema
 import pandas as pd
-import polars as pl
 from hopsworks_common import client
 from hopsworks_common.core.constants import (
     HAS_AVRO,
     HAS_FAST_AVRO,
     HAS_NUMPY,
+    HAS_POLARS,
     avro_not_installed_message,
     numpy_not_installed_message,
+    polars_not_installed_message,
 )
 from hsfs import (
     feature_view,
@@ -62,6 +63,8 @@ if HAS_FAST_AVRO:
 elif HAS_AVRO:
     from avro.io import BinaryDecoder
 
+if HAS_POLARS:
+    import polars as pl
 
 _logger = logging.getLogger(__name__)
 
@@ -597,7 +600,7 @@ class VectorServer:
             return_type = "pandas"
             feature_vectors = feature_vectors.to_dict(orient="records")
 
-        elif isinstance(feature_vectors, pl.DataFrame):
+        elif HAS_POLARS and isinstance(feature_vectors, pl.DataFrame):
             return_type = "polars"
             feature_vectors = feature_vectors.to_pandas()
             feature_vectors = feature_vectors.to_dict(orient="records")
@@ -832,6 +835,8 @@ class VectorServer:
                 return pandas_df
         elif return_type.lower() == "polars":
             _logger.debug("Returning feature vector as polars dataframe")
+            if not HAS_POLARS:
+                raise ModuleNotFoundError(polars_not_installed_message)
             return pl.DataFrame(
                 feature_vectorz if batch else [feature_vectorz],
                 schema=column_names if not inference_helper else None,

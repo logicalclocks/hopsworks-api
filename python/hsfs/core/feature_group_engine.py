@@ -259,7 +259,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             read_options,
         )
 
-    def _update_features_metadata(self, feature_group, features):
+    def _update_features_metadata(self, feature_group: fg.FeatureGroup, features):
         # perform changes on copy in case the update fails, so we don't leave
         # the user object in corrupted state
         copy_feature_group = fg.FeatureGroup.from_response_json(feature_group.to_dict())

@@ -33,7 +33,6 @@ from hsfs import (
 from hsfs.client import exceptions
 from hsfs.constructor.filter import Filter, Logic
 from hsfs.core import (
-    arrow_flight_client,
     feature_view_api,
     query_constructor_api,
     statistics_engine,
@@ -1013,7 +1012,17 @@ class FeatureViewEngine:
 
     def _check_feature_group_accessibility(self, feature_view_obj):
         if engine.get_type() == "python":
-            if arrow_flight_client.get_instance().is_enabled():
+            try:
+                from hsfs.core import arrow_flight_client
+
+                arrow_flight_client_imported = True
+            except ImportError:
+                arrow_flight_client_imported = False
+
+            if (
+                arrow_flight_client_imported
+                and arrow_flight_client.get_instance().is_enabled()
+            ):
                 if not arrow_flight_client.supports(
                     feature_view_obj.query.featuregroups
                 ):

@@ -34,9 +34,8 @@ from typing import (
 
 import humps
 import pandas as pd
-import polars as pl
 from hopsworks_common.client.exceptions import FeatureStoreException
-from hopsworks_common.core.constants import HAS_NUMPY
+from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import (
     feature_group,
     storage_connector,
@@ -88,8 +87,16 @@ TrainingDatasetDataFrameTypes = Union[
     TypeVar("pyspark.RDD"),  # noqa: F821
     np.ndarray,
     List[List[Any]],
-    pl.DataFrame,
 ]
+
+if HAS_POLARS:
+    import polars as pl
+
+    TrainingDatasetDataFrameTypes = Union[
+        TrainingDatasetDataFrameTypes,
+        pl.DataFrame,
+    ]
+
 
 SplineDataFrameTypes = Union[
     pd.DataFrame,
@@ -99,6 +106,9 @@ SplineDataFrameTypes = Union[
     List[List[Any]],
     TypeVar("SplineGroup"),  # noqa: F821
 ]
+
+
+_logger = logging.getLogger(__name__)
 
 
 @typechecked
