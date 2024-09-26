@@ -101,7 +101,7 @@ if HAS_GREAT_EXPECTATIONS:
 if HAS_NUMPY:
     import numpy as np
 
-if HAS_ARROW:
+if HAS_PYARROW:
     from hsfs.core.type_systems import PYARROW_HOPSWORKS_DTYPE_MAPPING
 
 if HAS_AIOMYSQL and HAS_SQLALCHEMY:
