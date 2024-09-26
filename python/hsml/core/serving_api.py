@@ -291,7 +291,9 @@ class ServingApi:
             # the channel, which will be reused in all following calls on the same deployment object.
             # The gRPC channel is freed when calling deployment.stop()
             print("Initializing gRPC channel...")
-            deployment_instance._grpc_channel = self._create_grpc_channel(deployment_instance)
+            deployment_instance._grpc_channel = self._create_grpc_channel(
+                deployment_instance
+            )
         # build an infer request
         request = InferRequest(
             infer_inputs=data,
