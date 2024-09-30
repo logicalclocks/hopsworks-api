@@ -158,6 +158,15 @@ class DeltaEngine:
             self._spark_session, location
         )
 
+    def vacuum(self, retention_hours):
+        location = self._feature_group.prepare_spark_location()
+
+        delta_table = DeltaTable.forPath(self._spark_session, location)
+
+        # Vacuum the table
+        # https://docs.delta.io/1.0.1/api/python/index.html#delta.tables.DeltaTable.vacuum
+        delta_table.vacuum(retention_hours)
+
     def _generate_merge_query(self, source_alias, updates_alias):
         merge_query_list = []
         primary_key = self._feature_group.primary_key

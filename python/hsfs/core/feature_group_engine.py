@@ -246,6 +246,20 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             )
             return hudi_engine_instance.delete_record(delete_df, write_options)
 
+    @staticmethod
+    def clean(feature_group, write_options):
+        if feature_group.time_travel_format == "DELTA":
+            delta_engine_instance = delta_engine.DeltaEngine(
+                feature_group.feature_store_id,
+                feature_group.feature_store_name,
+                feature_group,
+                engine.get_instance()._spark_session,
+                engine.get_instance()._spark_context,
+            )
+            return delta_engine_instance.vacuum(write_options.get("retention_hours", None))
+        else:
+            return None
+
     def sql(self, query, feature_store_name, dataframe_type, online, read_options):
         if online and self._online_conn is None:
             self._online_conn = self._storage_connector_api.get_online_connector(

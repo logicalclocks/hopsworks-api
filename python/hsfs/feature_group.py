@@ -3277,6 +3277,30 @@ class FeatureGroup(FeatureGroupBase):
         """
         self._feature_group_engine.commit_delete(self, delete_df, write_options or {})
 
+    def clean(
+        self,
+        write_options: Optional[Dict[Any, Any]] = None,
+    ) -> None:
+        """ Clean up old files. This method can only be used on feature groups stored as DELTA.
+
+        !!! example
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            # get the Feature Group instance
+            fg = fs.get_or_create_feature_group(...)
+
+            commit_details = fg.clean(write_options = {"retention_hours": 100})
+
+        # Arguments
+            write_options: User provided write options. Defaults to `{}`.
+
+        # Raises
+            `hsfs.client.exceptions.RestAPIError`.
+        """
+        self._feature_group_engine.clean(self, write_options or {})
+
     def as_of(
         self,
         wallclock_time: Optional[Union[str, int, datetime, date]] = None,
