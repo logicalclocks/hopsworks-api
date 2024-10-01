@@ -578,7 +578,7 @@ def _serialize_featuregroup_connector(fg, query, on_demand_fg_aliases):
         connector["type"] = fg.storage_connector.type
         connector["options"] = fg.storage_connector.connector_options()
         if fg.storage_connector.type == StorageConnector.S3:
-            connector["path"] = fg.location
+            connector["options"]["path"] = fg.location
         connector["query"] = ""
         if query._left_feature_group == fg:
             connector["filters"] = _serialize_filter_expression(
