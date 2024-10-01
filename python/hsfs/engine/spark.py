@@ -25,9 +25,6 @@ import warnings
 from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar, Union
 
-from hsfs.core.feature_view_engine import FeatureViewEngine
-from hsfs.training_dataset_feature import TrainingDatasetFeature
-
 
 if TYPE_CHECKING:
     import great_expectations
@@ -1191,40 +1188,53 @@ class Engine:
             return path
 
     def _setup_s3_hadoop_conf(self, storage_connector, path):
-        FS_S3_ENDPOINT = "fs.s3a.endpoint"
+        # For legacy behaviour set the S3 values at global level
+        self._set_s3_hadoop_conf(storage_connector, "fs.s3a")
+
+        # Set credentials at bucket level as well to allow users to use multiple
+        # storage connector in the same application.
+        self._set_s3_hadoop_conf(
+            storage_connector, f"fs.s3a.bucket.{storage_connector.bucket}"
+        )
+        return path.replace("s3", "s3a", 1) if path is not None else None
+
+    def _set_s3_hadoop_conf(self, storage_connector, prefix):
         if storage_connector.access_key:
             self._spark_context._jsc.hadoopConfiguration().set(
-                "fs.s3a.access.key", storage_connector.access_key
+                f"{prefix}.access.key", storage_connector.access_key
             )
         if storage_connector.secret_key:
             self._spark_context._jsc.hadoopConfiguration().set(
-                "fs.s3a.secret.key", storage_connector.secret_key
+                f"{prefix}.secret.key", storage_connector.secret_key
             )
         if storage_connector.server_encryption_algorithm:
             self._spark_context._jsc.hadoopConfiguration().set(
-                "fs.s3a.server-side-encryption-algorithm",
+                f"{prefix}.server-side-encryption-algorithm",
                 storage_connector.server_encryption_algorithm,
             )
         if storage_connector.server_encryption_key:
             self._spark_context._jsc.hadoopConfiguration().set(
-                "fs.s3a.server-side-encryption-key",
+                f"{prefix}.server-side-encryption-key",
                 storage_connector.server_encryption_key,
             )
         if storage_connector.session_token:
+            print(f"session token set for {prefix}")
             self._spark_context._jsc.hadoopConfiguration().set(
-                "fs.s3a.aws.credentials.provider",
+                f"{prefix}.aws.credentials.provider",
                 "org.apache.hadoop.fs.s3a.TemporaryAWSCredentialsProvider",
             )
             self._spark_context._jsc.hadoopConfiguration().set(
-                "fs.s3a.session.token",
+                f"{prefix}.session.token",
                 storage_connector.session_token,
             )
+
+        # This is the name of the property as expected from the user, without the bucket name.
+        FS_S3_ENDPOINT = "fs.s3a.endpoint"
         if FS_S3_ENDPOINT in storage_connector.arguments:
             self._spark_context._jsc.hadoopConfiguration().set(
-                FS_S3_ENDPOINT, storage_connector.spark_options().get(FS_S3_ENDPOINT)
+                f"{prefix}.endpoint",
+                storage_connector.spark_options().get(FS_S3_ENDPOINT),
             )
-
-        return path.replace("s3", "s3a", 1) if path is not None else None
 
     def _setup_adls_hadoop_conf(self, storage_connector, path):
         for k, v in storage_connector.spark_options().items():
@@ -1487,13 +1497,13 @@ class Engine:
         ],
         fg: fg_mod.FeatureGroup = None,
         td_features: List[str] = None,
-        td_predictions: List[TrainingDatasetFeature] = None,
+        td_predictions: List[training_dataset_feature.TrainingDatasetFeature] = None,
         td_col_name: Optional[str] = None,
         time_col_name: Optional[str] = None,
         model_col_name: Optional[str] = None,
         predictions: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
         training_dataset_version: Optional[int] = None,
-        hsml_model=None,
+        hsml_model: str = None,
         **kwargs,
     ):
         # do not take prediction separately because spark ml framework usually return feature together with the prediction
@@ -1513,11 +1523,7 @@ class Engine:
 
         # Add new columns to the DataFrame
         df = df.withColumn(td_col_name, lit(training_dataset_version).cast(LongType()))
-        if hsml_model is not None:
-            hsml_str = FeatureViewEngine.get_hsml_model_value(hsml_model)
-        else:
-            hsml_str = None
-        df = df.withColumn(model_col_name, lit(hsml_str).cast(StringType()))
+        df = df.withColumn(model_col_name, lit(hsml_model).cast(StringType()))
         now = datetime.now()
         df = df.withColumn(time_col_name, lit(now).cast(TimestampType()))
         df = df.withColumn("log_id", uuid_udf())
@@ -1526,9 +1532,9 @@ class Engine:
         return df.select(*[feat.name for feat in fg.features])
 
     @staticmethod
-    def read_feature_log(query):
+    def read_feature_log(query, time_col):
         df = query.read()
-        return df.drop("log_id", FeatureViewEngine._LOG_TIME)
+        return df.drop("log_id", time_col)
 
 
 class SchemaError(Exception):

@@ -1,6 +1,6 @@
 # Jobs API
 
-## Handle 
+## Handle
 
 {{job_api_handle}}
 

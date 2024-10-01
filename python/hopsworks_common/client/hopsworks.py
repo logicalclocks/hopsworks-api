@@ -56,7 +56,7 @@ class Client(base.Client):
         self._hostname_verification = os.environ.get(
             self.HOPSWORKS_HOSTNAME_VERIFICATION, "{}".format(hostname_verification)
         ).lower() in ("true", "1", "y", "yes")
-        self._hopsworks_ca_trust_store_path = self._get_trust_store_path()
+        self._hopsworks_ca_trust_store_path = self._materialize_ca_chain()
 
         self._project_id = os.environ[self.PROJECT_ID]
         self._project_name = self._project_name()
@@ -73,17 +73,12 @@ class Client(base.Client):
 
         credentials = self._get_credentials(self._project_id)
 
-        self._write_pem_file(credentials["caChain"], self._get_ca_chain_path())
         self._write_pem_file(credentials["clientCert"], self._get_client_cert_path())
         self._write_pem_file(credentials["clientKey"], self._get_client_key_path())
 
-    def _get_hopsworks_rest_endpoint(self):
-        """Get the hopsworks REST endpoint for making requests to the REST API."""
-        return os.environ[self.REST_ENDPOINT]
-
-    def _get_trust_store_path(self):
+    def _materialize_ca_chain(self):
         """Convert truststore from jks to pem and return the location"""
-        ca_chain_path = Path(self.PEM_CA_CHAIN)
+        ca_chain_path = Path(self._get_ca_chain_path())
         if not ca_chain_path.exists():
             keystore_pw = self._cert_key
             ks = jks.KeyStore.load(
@@ -94,6 +89,10 @@ class Client(base.Client):
             )
             self._write_ca_chain(ks, ts, ca_chain_path)
         return str(ca_chain_path)
+
+    def _get_hopsworks_rest_endpoint(self):
+        """Get the hopsworks REST endpoint for making requests to the REST API."""
+        return os.environ[self.REST_ENDPOINT]
 
     def _get_ca_chain_path(self) -> str:
         return os.path.join("/tmp", "ca_chain.pem")

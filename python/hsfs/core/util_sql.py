@@ -100,6 +100,9 @@ async def create_async_engine(
         else:
             hostname = url.host
 
+    if options is None:
+        options = {}
+
     # create a aiomysql connection pool
     pool = await async_create_engine(
         host=hostname,
@@ -108,12 +111,9 @@ async def create_async_engine(
         password=online_options["password"],
         db=url.database,
         loop=loop,
-        minsize=(
-            options.get("minsize", default_min_size) if options else default_min_size
-        ),
-        maxsize=(
-            options.get("maxsize", default_min_size) if options else default_min_size
-        ),
-        pool_recycle=(options.get("pool_recycle", -1) if options else -1),
+        minsize=options.get("minsize", default_min_size),
+        maxsize=options.get("maxsize", default_min_size),
+        pool_recycle=options.get("pool_recycle", -1),
+        autocommit=options.get("autocommit", True),
     )
     return pool

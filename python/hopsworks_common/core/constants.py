@@ -25,28 +25,45 @@ HAS_AVRO: bool = importlib.util.find_spec("avro") is not None
 HAS_CONFLUENT_KAFKA: bool = importlib.util.find_spec("confluent_kafka") is not None
 confluent_kafka_not_installed_message = (
     "Confluent Kafka package not found. "
-    "If you want to use Kafka with Hopsworks you can install the corresponding extras "
-    """`pip install hopsworks[python]` or `pip install "hopsworks[python]"` if using zsh. """
-    "You can also install confluent-kafka directly in your environment e.g `pip install confluent-kafka`. "
+    "If you want to use Kafka with Hopsworks you can install the corresponding extras via "
+    '`pip install "hopsworks[python]"`. '
+    "You can also install confluent-kafka directly in your environment with `pip install confluent-kafka`. "
     "You will need to restart your kernel if applicable."
 )
+
 # Data Validation / Great Expectations
 HAS_GREAT_EXPECTATIONS: bool = (
     importlib.util.find_spec("great_expectations") is not None
 )
 great_expectations_not_installed_message = (
     "Great Expectations package not found. "
-    "If you want to use data validation with Hopsworks you can install the corresponding extras "
-    """`pip install hopsworks[great_expectations]` or `pip install "hopsworks[great_expectations]"` if using zsh. """
-    "You can also install great-expectations directly in your environment e.g `pip install great-expectations`. "
+    "If you want to use data validation with Hopsworks you can install the corresponding extras via "
+    '`pip install "hopsworks[great_expectations]"`. '
+    "You can also install great-expectations directly in your environment with `pip install great-expectations`. "
     "You will need to restart your kernel if applicable."
 )
 initialise_expectation_suite_for_single_expectation_api_message = "Initialize Expectation Suite by attaching to a Feature Group to enable single expectation API"
 
-HAS_ARROW: bool = importlib.util.find_spec("pyarrow") is not None
+# Pyarrow
+HAS_PYARROW: bool = importlib.util.find_spec("pyarrow") is not None
+pyarrow_not_installed_message = (
+    "Pyarrow package not found. "
+    "If you want to use Apache Arrow with Hopsworks you can install the corresponding extras via "
+    '`pip install "hopsworks[python]"`. '
+    "You can also install pyarrow directly in your environment with `pip install pyarrow`. "
+    "You will need to restart your kernel if applicable."
+)
+
 HAS_PANDAS: bool = importlib.util.find_spec("pandas") is not None
 HAS_NUMPY: bool = importlib.util.find_spec("numpy") is not None
 HAS_POLARS: bool = importlib.util.find_spec("polars") is not None
+polars_not_installed_message = (
+    "Polars package not found. "
+    "If you want to use Polars with Hopsworks you can install the corresponding extra via "
+    """'`pip install "hopsworks[polars]"`. '"""
+    "You can also install polars directly in your environment with `pip install polars`. "
+    "You will need to restart your kernel if applicable."
+)
 
 # SQL packages
 HAS_SQLALCHEMY: bool = importlib.util.find_spec("sqlalchemy") is not None

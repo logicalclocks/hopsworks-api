@@ -227,7 +227,7 @@ class TransformationFunction:
             "id": self._id,
             "version": self._version,
             "featurestoreId": self._featurestore_id,
-            "hopsworksUdf": self._hopsworks_udf,
+            "hopsworksUdf": self._hopsworks_udf.to_dict(),
         }
 
     def _get_output_column_names(self) -> str:

@@ -31,7 +31,7 @@ class TestConnection:
         # adding / removing / updating tests, if necessary.
         assert HOSTS.APP_HOST == "c.app.hopsworks.ai"
         assert HOPSWORKS_PORT_DEFAULT == 443
-        assert HOSTNAME_VERIFICATION_DEFAULT
+        assert HOSTNAME_VERIFICATION_DEFAULT is False
 
     # constructor
 
