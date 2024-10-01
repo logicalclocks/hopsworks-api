@@ -148,7 +148,7 @@ class FeatureGroupBase:
         self._name = name
         self.event_time = event_time
         self._online_enabled = online_enabled
-        self._location = location.replace("hopsfs://", "hdfs://")  if location else location  # TODO ken: revert it
+        self._location = location
         self._id = id
         self._subject = None
         self._online_topic_name = online_topic_name
