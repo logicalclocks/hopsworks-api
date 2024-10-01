@@ -376,7 +376,7 @@ class S3Connector(StorageConnector):
             "secret_key": self.secret_key,
             "session_token": self.session_token,
             "path": self.path,
-            "region": "us-east-2",
+            "region": self.region,
         }
 
     def read(
