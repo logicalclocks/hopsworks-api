@@ -375,7 +375,6 @@ class S3Connector(StorageConnector):
             "access_key": self.access_key,
             "secret_key": self.secret_key,
             "session_token": self.session_token,
-            "path": self.path,
             "region": self.region,
         }
 
