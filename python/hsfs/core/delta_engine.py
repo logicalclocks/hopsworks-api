@@ -52,10 +52,12 @@ class DeltaEngine:
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
     def register_temporary_table(self, delta_fg_alias, read_options):
+        location = self._feature_group.prepare_spark_location()
+
         delta_options = self._setup_delta_read_opts(delta_fg_alias, read_options)
         self._spark_session.read.format(self.DELTA_SPARK_FORMAT).options(
             **delta_options
-        ).load(self._feature_group.location).createOrReplaceTempView(
+        ).load(location).createOrReplaceTempView(
             delta_fg_alias.alias
         )
 
@@ -85,15 +87,17 @@ class DeltaEngine:
         return delta_options
 
     def delete_record(self, delete_df):
+        location = self._feature_group.prepare_spark_location()
+
         if not DeltaTable.isDeltaTable(
-            self._spark_session, self._feature_group.location
+            self._spark_session, location
         ):
             raise FeatureStoreException(
                 f"This is no data available in Feature group {self._feature_group.name}, or it not DELTA enabled "
             )
         else:
             fg_source_table = DeltaTable.forPath(
-                self._spark_session, self._feature_group.location
+                self._spark_session, location
             )
 
             source_alias = (
@@ -109,16 +113,18 @@ class DeltaEngine:
             ).whenMatchedDelete().execute()
 
         fg_commit = self._get_last_commit_metadata(
-            self._spark_session, self._feature_group.location
+            self._spark_session, location
         )
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
     def _write_delta_dataset(self, dataset, write_options):
+        location = self._feature_group.prepare_spark_location()
+
         if write_options is None:
             write_options = {}
 
         if not DeltaTable.isDeltaTable(
-            self._spark_session, self._feature_group.location
+            self._spark_session, location
         ):
             (
                 dataset.write.format(DeltaEngine.DELTA_SPARK_FORMAT)
@@ -129,11 +135,11 @@ class DeltaEngine:
                     else []
                 )
                 .mode("append")
-                .save(self._feature_group.location)
+                .save(location)
             )
         else:
             fg_source_table = DeltaTable.forPath(
-                self._spark_session, self._feature_group.location
+                self._spark_session, location
             )
 
             source_alias = (
@@ -149,8 +155,17 @@ class DeltaEngine:
             ).whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
 
         return self._get_last_commit_metadata(
-            self._spark_session, self._feature_group.location
+            self._spark_session, location
         )
+
+    def vacuum(self, retention_hours):
+        location = self._feature_group.prepare_spark_location()
+
+        delta_table = DeltaTable.forPath(self._spark_session, location)
+
+        # Vacuum the table
+        # https://docs.delta.io/1.0.1/api/python/index.html#delta.tables.DeltaTable.vacuum
+        delta_table.vacuum(retention_hours)
 
     def _generate_merge_query(self, source_alias, updates_alias):
         merge_query_list = []
