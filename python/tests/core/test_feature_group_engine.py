@@ -551,7 +551,7 @@ class TestFeatureGroupEngine:
 
         # Assert
         assert mock_hudi_engine.return_value.vacuum.call_count == 1
-    
+
     def test_clean_hudi(self, mocker):
         # Arrange
         feature_store_id = 99
