@@ -166,7 +166,6 @@ class FeatureGroupBase:
             )
         else:
             self._storage_connector: "sc.StorageConnector" = storage_connector
-
         self._online_config = (
             OnlineConfig.from_response_json(online_config)
             if isinstance(online_config, dict)
