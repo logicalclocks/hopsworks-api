@@ -23,8 +23,6 @@ from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any, Callable, Dict, List, Literal, Optional, Set, Tuple, Union
 
-import avro.io
-import avro.schema
 import pandas as pd
 from hopsworks_common import client
 from hopsworks_common.core.constants import (
@@ -60,7 +58,9 @@ if HAS_NUMPY:
 
 if HAS_FAST_AVRO:
     from fastavro import schemaless_reader
-elif HAS_AVRO:
+if HAS_AVRO:
+    import avro.io
+    import avro.schema
     from avro.io import BinaryDecoder
 
 if HAS_POLARS:
@@ -1072,6 +1072,9 @@ class VectorServer:
             - deserialization of complex features from the online feature store
             - conversion of string or int timestamps to datetime objects
         """
+        if not HAS_AVRO:
+            raise ModuleNotFoundError(avro_not_installed_message)
+
         complex_feature_schemas = {
             f.name: avro.io.DatumReader(
                 avro.schema.parse(
@@ -1114,8 +1117,6 @@ class VectorServer:
                 for (f_name, schema) in complex_feature_schemas.items()
             }
         else:
-            if not HAS_AVRO:
-                raise ModuleNotFoundError(avro_not_installed_message)
             _logger.debug("Fast Avro not found, using avro for deserialization.")
             return {
                 f_name: (

@@ -317,6 +317,14 @@ class Engine:
             )
         )
 
+    @staticmethod
+    def utc_disguised_as_local(dt):
+        local_tz = tzlocal.get_localzone()
+        utc = timezone.utc
+        if not dt.tzinfo:
+            dt = dt.replace(tzinfo=utc)
+        return dt.astimezone(utc).replace(tzinfo=local_tz)
+
     def convert_list_to_spark_dataframe(self, dataframe):
         if HAS_NUMPY:
             return self.convert_numpy_to_spark_dataframe(np.array(dataframe))
@@ -342,7 +350,11 @@ class Engine:
                 c = "col_" + str(n_col)
                 dataframe_dict[c] = [dataframe[i][n_col] for i in range(len(dataframe))]
             return self.convert_pandas_to_spark_dataframe(pd.DataFrame(dataframe_dict))
-        # We have neither numpy nor pandas, so there is no need to transform timestamps
+        for i in range(len(dataframe)):
+            dataframe[i] = [
+                self.utc_disguised_as_local(d) if isinstance(d, datetime) else d
+                for d in dataframe[i]
+            ]
         return self._spark_session.createDataFrame(
             dataframe, ["col_" + str(n) for n in range(num_cols)]
         )
@@ -361,13 +373,12 @@ class Engine:
                 dataframe_dict[c] = dataframe[:, n_col]
             return self.convert_pandas_to_spark_dataframe(pd.DataFrame(dataframe_dict))
         # convert timestamps to current timezone
-        local_tz = tzlocal.get_localzone()
         for n_col in range(num_cols):
             if dataframe[:, n_col].dtype == np.dtype("datetime64[ns]"):
                 # set the timezone to the client's timezone because that is
                 # what spark expects.
-                dataframe[:, n_col] = dataframe[:, n_col].map(
-                    lambda d: local_tz.fromutc(d.item().astimezone(local_tz))
+                dataframe[:, n_col] = np.array(
+                    [self.utc_disguised_as_local(d.item()) for d in dataframe[:, n_col]]
                 )
         return self._spark_session.createDataFrame(
             dataframe.tolist(), ["col_" + str(n) for n in range(num_cols)]
