@@ -24,13 +24,15 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, TypeVar, Union
 
 import humps
-import numpy as np
 import pandas as pd
 from hopsworks_common import client
-from hopsworks_common.core.constants import HAS_POLARS
+from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import engine
 from hsfs.core import storage_connector_api
 
+
+if HAS_NUMPY:
+    import numpy as np
 
 if HAS_POLARS:
     import polars as pl

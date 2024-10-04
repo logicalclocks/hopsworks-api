@@ -19,10 +19,10 @@ import warnings
 from typing import Any, Dict, List, Optional, Set, TypeVar, Union
 
 import humps
-import numpy as np
 import pandas as pd
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import RestAPIError
+from hopsworks_common.core.constants import HAS_NUMPY
 from hsfs import engine, training_dataset_feature, util
 from hsfs.constructor import filter, query
 from hsfs.core import (
@@ -34,6 +34,10 @@ from hsfs.core import (
 from hsfs.statistics_config import StatisticsConfig
 from hsfs.storage_connector import HopsFSConnector, StorageConnector
 from hsfs.training_dataset_split import TrainingDatasetSplit
+
+
+if HAS_NUMPY:
+    import numpy as np
 
 
 class TrainingDatasetBase:

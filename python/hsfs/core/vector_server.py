@@ -23,14 +23,15 @@ from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any, Callable, Dict, List, Literal, Optional, Set, Tuple, Union
 
-import avro.io
-import avro.schema
-import numpy as np
 import pandas as pd
 from hopsworks_common import client
 from hopsworks_common.core.constants import (
+    HAS_AVRO,
     HAS_FAST_AVRO,
+    HAS_NUMPY,
     HAS_POLARS,
+    avro_not_installed_message,
+    numpy_not_installed_message,
     polars_not_installed_message,
 )
 from hsfs import (
@@ -52,9 +53,14 @@ from hsfs.core import (
 )
 
 
+if HAS_NUMPY:
+    import numpy as np
+
 if HAS_FAST_AVRO:
     from fastavro import schemaless_reader
-else:
+if HAS_AVRO:
+    import avro.io
+    import avro.schema
     from avro.io import BinaryDecoder
 
 if HAS_POLARS:
@@ -807,6 +813,8 @@ class VectorServer:
             return feature_vectorz
         elif return_type.lower() == "numpy" and not inference_helper:
             _logger.debug("Returning feature vector as numpy array")
+            if not HAS_NUMPY:
+                raise ModuleNotFoundError(numpy_not_installed_message)
             return np.array(feature_vectorz)
         # Only inference helper can return dict
         elif return_type.lower() == "dict" and inference_helper:
@@ -1064,6 +1072,9 @@ class VectorServer:
             - deserialization of complex features from the online feature store
             - conversion of string or int timestamps to datetime objects
         """
+        if not HAS_AVRO:
+            raise ModuleNotFoundError(avro_not_installed_message)
+
         complex_feature_schemas = {
             f.name: avro.io.DatumReader(
                 avro.schema.parse(

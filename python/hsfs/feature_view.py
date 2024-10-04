@@ -33,10 +33,9 @@ from typing import (
 )
 
 import humps
-import numpy as np
 import pandas as pd
 from hopsworks_common.client.exceptions import FeatureStoreException
-from hopsworks_common.core.constants import HAS_POLARS
+from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import (
     feature_group,
     storage_connector,
@@ -75,6 +74,12 @@ from hsfs.training_dataset_split import TrainingDatasetSplit
 from hsfs.transformation_function import TransformationFunction, TransformationType
 from hsml.model import Model
 
+
+if HAS_NUMPY:
+    import numpy as np
+
+
+_logger = logging.getLogger(__name__)
 
 TrainingDatasetDataFrameTypes = Union[
     pd.DataFrame,

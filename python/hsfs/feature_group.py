@@ -22,7 +22,6 @@ import time
 import warnings
 from datetime import date, datetime
 from typing import (
-    TYPE_CHECKING,
     Any,
     Dict,
     List,
@@ -33,17 +32,12 @@ from typing import (
     Union,
 )
 
-
-if TYPE_CHECKING:
-    import great_expectations
-
 import avro.schema
 import hsfs.expectation_suite
 import humps
-import numpy as np
 import pandas as pd
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
-from hopsworks_common.core.constants import HAS_POLARS
+from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import (
     engine,
     feature,
@@ -103,6 +97,9 @@ if HAS_GREAT_EXPECTATIONS:
 
 if HAS_CONFLUENT_KAFKA:
     import confluent_kafka
+
+if HAS_NUMPY:
+    import numpy as np
 
 if HAS_POLARS:
     import polars as pl

@@ -31,13 +31,17 @@ if TYPE_CHECKING:
     from pyspark.rdd import RDD
     from pyspark.sql import DataFrame
 
-import numpy as np
 import pandas as pd
 import tzlocal
+from hopsworks_common.core.constants import HAS_NUMPY, HAS_PANDAS
 from hsfs.constructor import query
 
 # in case importing in %%local
 from hsfs.core.vector_db_client import VectorDbClient
+
+
+if HAS_NUMPY:
+    import numpy as np
 
 
 try:
@@ -258,39 +262,11 @@ class Engine:
 
     def convert_to_default_dataframe(self, dataframe):
         if isinstance(dataframe, list):
-            dataframe = np.array(dataframe)
-
-        if isinstance(dataframe, np.ndarray):
-            if dataframe.ndim != 2:
-                raise TypeError(
-                    "Cannot convert numpy array that do not have two dimensions to a dataframe. "
-                    "The number of dimensions are: {}".format(dataframe.ndim)
-                )
-            num_cols = dataframe.shape[1]
-            dataframe_dict = {}
-            for n_col in list(range(num_cols)):
-                col_name = "col_" + str(n_col)
-                dataframe_dict[col_name] = dataframe[:, n_col]
-            dataframe = pd.DataFrame(dataframe_dict)
-
-        if isinstance(dataframe, pd.DataFrame):
-            # convert timestamps to current timezone
-            local_tz = tzlocal.get_localzone()
-            # make shallow copy so the original df does not get changed
-            dataframe_copy = dataframe.copy(deep=False)
-            for c in dataframe_copy.columns:
-                if isinstance(
-                    dataframe_copy[c].dtype, pd.core.dtypes.dtypes.DatetimeTZDtype
-                ):
-                    # convert to utc timestamp
-                    dataframe_copy[c] = dataframe_copy[c].dt.tz_convert(None)
-                if dataframe_copy[c].dtype == np.dtype("datetime64[ns]"):
-                    # set the timezone to the client's timezone because that is
-                    # what spark expects.
-                    dataframe_copy[c] = dataframe_copy[c].dt.tz_localize(
-                        str(local_tz), ambiguous="infer", nonexistent="shift_forward"
-                    )
-            dataframe = self._spark_session.createDataFrame(dataframe_copy)
+            dataframe = self.convert_list_to_spark_dataframe(dataframe)
+        elif HAS_NUMPY and isinstance(dataframe, np.ndarray):
+            dataframe = self.convert_numpy_to_spark_dataframe(dataframe)
+        elif HAS_PANDAS and isinstance(dataframe, pd.DataFrame):
+            dataframe = self.convert_pandas_to_spark_dataframe(dataframe)
         elif isinstance(dataframe, RDD):
             dataframe = dataframe.toDF()
 
@@ -340,6 +316,92 @@ class Engine:
                 type(dataframe)
             )
         )
+
+    @staticmethod
+    def utc_disguised_as_local(dt):
+        local_tz = tzlocal.get_localzone()
+        utc = timezone.utc
+        if not dt.tzinfo:
+            dt = dt.replace(tzinfo=utc)
+        return dt.astimezone(utc).replace(tzinfo=local_tz)
+
+    def convert_list_to_spark_dataframe(self, dataframe):
+        if HAS_NUMPY:
+            return self.convert_numpy_to_spark_dataframe(np.array(dataframe))
+        try:
+            dataframe[0][0]
+        except TypeError:
+            raise TypeError(
+                "Cannot convert a list that has less than two dimensions to a dataframe."
+            ) from None
+        ok = False
+        try:
+            dataframe[0][0][0]
+        except TypeError:
+            ok = True
+        if not ok:
+            raise TypeError(
+                "Cannot convert a list that has more than two dimensions to a dataframe."
+            ) from None
+        num_cols = len(dataframe[0])
+        if HAS_PANDAS:
+            dataframe_dict = {}
+            for n_col in range(num_cols):
+                c = "col_" + str(n_col)
+                dataframe_dict[c] = [dataframe[i][n_col] for i in range(len(dataframe))]
+            return self.convert_pandas_to_spark_dataframe(pd.DataFrame(dataframe_dict))
+        for i in range(len(dataframe)):
+            dataframe[i] = [
+                self.utc_disguised_as_local(d) if isinstance(d, datetime) else d
+                for d in dataframe[i]
+            ]
+        return self._spark_session.createDataFrame(
+            dataframe, ["col_" + str(n) for n in range(num_cols)]
+        )
+
+    def convert_numpy_to_spark_dataframe(self, dataframe):
+        if dataframe.ndim != 2:
+            raise TypeError(
+                "Cannot convert numpy array that do not have two dimensions to a dataframe. "
+                "The number of dimensions are: {}".format(dataframe.ndim)
+            )
+        num_cols = dataframe.shape[1]
+        if HAS_PANDAS:
+            dataframe_dict = {}
+            for n_col in range(num_cols):
+                c = "col_" + str(n_col)
+                dataframe_dict[c] = dataframe[:, n_col]
+            return self.convert_pandas_to_spark_dataframe(pd.DataFrame(dataframe_dict))
+        # convert timestamps to current timezone
+        for n_col in range(num_cols):
+            if dataframe[:, n_col].dtype == np.dtype("datetime64[ns]"):
+                # set the timezone to the client's timezone because that is
+                # what spark expects.
+                dataframe[:, n_col] = np.array(
+                    [self.utc_disguised_as_local(d.item()) for d in dataframe[:, n_col]]
+                )
+        return self._spark_session.createDataFrame(
+            dataframe.tolist(), ["col_" + str(n) for n in range(num_cols)]
+        )
+
+    def convert_pandas_to_spark_dataframe(self, dataframe):
+        # convert timestamps to current timezone
+        local_tz = tzlocal.get_localzone()
+        # make shallow copy so the original df does not get changed
+        dataframe_copy = dataframe.copy(deep=False)
+        for c in dataframe_copy.columns:
+            if isinstance(
+                dataframe_copy[c].dtype, pd.core.dtypes.dtypes.DatetimeTZDtype
+            ):
+                # convert to utc timestamp
+                dataframe_copy[c] = dataframe_copy[c].dt.tz_convert(None)
+            if HAS_NUMPY and dataframe_copy[c].dtype == np.dtype("datetime64[ns]"):
+                # set the timezone to the client's timezone because that is
+                # what spark expects.
+                dataframe_copy[c] = dataframe_copy[c].dt.tz_localize(
+                    str(local_tz), ambiguous="infer", nonexistent="shift_forward"
+                )
+        return self._spark_session.createDataFrame(dataframe_copy)
 
     def save_dataframe(
         self,
