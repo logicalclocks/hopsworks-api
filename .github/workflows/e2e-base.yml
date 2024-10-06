@@ -1,0 +1,30 @@
+name: Basic e2e tests
+
+on: pull_request
+
+jobs:
+    e2e_quick:
+        runs-on: hopsworks-python-api-runner
+        steps:
+            - name: Checkout hopsworks-api SDK
+              uses: actions/checkout@v4
+
+            - name: Setup python # This step also takes care of caching dependencies
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.12"
+                  cache: "pip"
+            
+            - name: Install python dependencies and sdk
+              run: pip install -e ./python[python,great-expectations,polars]
+
+            - name: Checkout loadtest project
+              uses: actions/checkout@v4
+              with:
+                  repository: 'logicalclocks/loadtest'
+                  ref: 'main'
+
+            - name: Runs only e2e tests suite
+              run: |
+                cd loadtest/tests
+                ./run_e2e_on_runner.sh

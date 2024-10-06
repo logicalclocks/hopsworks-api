@@ -1,0 +1,55 @@
+name: e2e-on-demand
+
+on:
+  workflow_dispatch:
+    inputs:
+      logical_fork:
+        description: 'Loadtest fork with updated e2e tests'
+        required: true
+        default: 'logicalclocks/loadtest'
+      loadtest_branch:
+        description: 'Branch to run e2e tests on'
+        required: true
+        default: 'main'
+      hopsworks_api_fork:
+        description: 'Hopsworks API fork with updated client'
+        required: true
+        default: 'logicalclocks/hopsworks-api'
+      hopsworks_api_branch:
+        description: 'Branch to run e2e tests on'
+        required: true
+        default: 'main'
+      test_list:
+        description: 'Use a registered marker to run a subset of tests or set to "custom" to use the test_list.txt. Default to "all" to run all the workflow tests'
+        required: true
+        default: 'all'
+
+jobs:
+    on-demand-e2e:
+        runs-on: hopsworks-python-api-runner
+        steps:
+            - name: Checkout hopsworks-api SDK
+              uses: actions/checkout@v4
+              with:
+                  repository: ${{ github.event.inputs.hopsworks_api_fork }}
+                  ref: ${{ github.event.inputs.hopsworks_api_branch }}
+
+            - name: Setup python # This step also takes care of caching dependencies
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.12"
+                  cache: "pip"
+            
+            - name: Install python dependencies and sdk
+              run: pip install -e ./python[python,great-expectations,polars]
+
+            - name: Checkout loadtest project
+              uses: actions/checkout@v4
+              with:
+                  repository: ${{ github.event.inputs.logical_fork }}
+                  ref: ${{ github.event.inputs.loadtest_branch }}
+
+            - name: Runs only e2e tests suite
+              run: |
+                cd loadtest/tests
+                ./run_e2e_on_runner.sh ${{ github.event.inputs.test_list }}
