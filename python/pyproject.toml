@@ -86,6 +86,13 @@ dev-pandas1 = [
     "sqlalchemy<=1.4.48",
 ]
 dev = ["hopsworks[dev-no-opt,great-expectations,polars]"]
+loadtest = [
+    "hopsworks[dev]",   
+    "Faker==9.9.1",
+    "pytest-xdist[setproctitle]",
+    "junitparser",
+    "pytest-html",
+]
 polars=[
     "polars>=0.20.18,<=0.21.0",
     "pyarrow>=10.0",
