@@ -95,12 +95,12 @@ class NumpyEncoder(JSONEncoder):
 
 
 def set_model_class(model):
+    from hsml.llm.model import Model as LLMModel
     from hsml.model import Model as BaseModel
     from hsml.python.model import Model as PyModel
     from hsml.sklearn.model import Model as SkLearnModel
     from hsml.tensorflow.model import Model as TFModel
     from hsml.torch.model import Model as TorchModel
-    from hsml.llm.model import Model as LLMModel
 
     if "href" in model:
         _ = model.pop("href")
@@ -235,6 +235,8 @@ def validate_metrics(metrics):
 
 
 def get_predictor_for_model(model, **kwargs):
+    from hsml.llm.model import Model as LLMModel
+    from hsml.llm.predictor import Predictor as vLLMPredictor
     from hsml.model import Model as BaseModel
     from hsml.predictor import Predictor as BasePredictor
     from hsml.python.model import Model as PyModel
@@ -245,8 +247,6 @@ def get_predictor_for_model(model, **kwargs):
     from hsml.tensorflow.predictor import Predictor as TFPredictor
     from hsml.torch.model import Model as TorchModel
     from hsml.torch.predictor import Predictor as TorchPredictor
-    from hsml.llm.model import Model as LLMModel
-    from hsml.llm.predictor import Predictor as vLLMPredictor
 
     if not isinstance(model, BaseModel):
         raise ValueError(
