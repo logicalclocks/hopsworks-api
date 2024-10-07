@@ -34,6 +34,7 @@ jobs:
               with:
                   repository: ${{ github.event.inputs.hopsworks_api_fork }}
                   ref: ${{ github.event.inputs.hopsworks_api_branch }}
+                  path: hopsworks-api
 
             - name: Setup python # This step also takes care of caching dependencies
               uses: actions/setup-python@v5
@@ -50,6 +51,7 @@ jobs:
                   repository: ${{ github.event.inputs.logical_fork }}
                   ref: ${{ github.event.inputs.loadtest_branch }}
                   token: ${{ secrets.PAT_LOADTEST }}
+                  path: loadtest
 
             - name: Runs only e2e tests suite
               run: |

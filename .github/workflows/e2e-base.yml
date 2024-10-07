@@ -8,6 +8,8 @@ jobs:
         steps:
             - name: Checkout hopsworks-api SDK
               uses: actions/checkout@v4
+              with:
+                  path: hopsworks-api
 
             - name: Install gcc to compile avro and twofish
               run: sudo apt-get install -y gcc
@@ -26,6 +28,8 @@ jobs:
               with:
                   repository: 'vatj/loadtest'
                   ref: 'draft-e2e-script-staging'
+                  token: ${{ secrets.PAT_LOADTEST }}
+                  path: loadtest
 
             - name: Runs only e2e tests suite
               run: |
