@@ -136,7 +136,7 @@ class StorageConnector(ABC):
 
     def prepare_spark(self, path: Optional[str] = None) -> Optional[str]:
         _logger.info(
-            "This Storage Connector cannot be prepare for Spark."
+            "This Storage Connector cannot be prepared for Spark."
         )
         return path
 
