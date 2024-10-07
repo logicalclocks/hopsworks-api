@@ -26,7 +26,7 @@ on:
 
 jobs:
     on-demand-e2e:
-        runs-on: hopsworks-python-api-runner
+        runs-on: ghrunner-hopsworks-api-vatj
         steps:
             - name: Checkout hopsworks-api SDK
               uses: actions/checkout@v4

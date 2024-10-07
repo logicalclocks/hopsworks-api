@@ -4,7 +4,7 @@ on: pull_request
 
 jobs:
     e2e_quick:
-        runs-on: hopsworks-python-api-runner
+        runs-on: ghrunner-hopsworks-api-vatj
         steps:
             - name: Checkout hopsworks-api SDK
               uses: actions/checkout@v4
