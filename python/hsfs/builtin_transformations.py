@@ -14,7 +14,8 @@
 #   limitations under the License.
 #
 
-import numpy as np
+import math
+
 import pandas as pd
 from hsfs.hopsworks_udf import udf
 from hsfs.transformation_statistics import TransformationStatistics
@@ -49,7 +50,7 @@ def label_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Serie
     # Unknown categories not present in training dataset are encoded as -1.
     return pd.Series(
         [
-            value_to_index.get(data, -1) if not pd.isna(data) else np.nan
+            value_to_index.get(data, -1) if not pd.isna(data) else math.nan
             for data in feature
         ]
     )

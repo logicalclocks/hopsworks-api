@@ -19,10 +19,10 @@ import datetime
 import warnings
 from typing import Any, Dict, List, Optional, TypeVar, Union
 
-import numpy as np
 import pandas as pd
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.core.constants import HAS_NUMPY
 from hsfs import (
     engine,
     feature_group,
@@ -33,7 +33,6 @@ from hsfs import (
 from hsfs.client import exceptions
 from hsfs.constructor.filter import Filter, Logic
 from hsfs.core import (
-    arrow_flight_client,
     feature_view_api,
     query_constructor_api,
     statistics_engine,
@@ -44,6 +43,10 @@ from hsfs.core import (
 from hsfs.core.feature_logging import FeatureLogging
 from hsfs.feature_logger import FeatureLogger
 from hsfs.training_dataset_split import TrainingDatasetSplit
+
+
+if HAS_NUMPY:
+    import numpy as np
 
 
 class FeatureViewEngine:
@@ -190,7 +193,9 @@ class FeatureViewEngine:
             return self._feature_view_api.delete_by_name(name)
 
     def get_training_dataset_schema(
-        self, feature_view: feature_view.FeatureView, training_dataset_version: Optional[int] = None
+        self,
+        feature_view: feature_view.FeatureView,
+        training_dataset_version: Optional[int] = None,
     ):
         """
         Function that returns the schema of the training dataset generated using the feature view.
@@ -849,7 +854,9 @@ class FeatureViewEngine:
 
         return td
 
-    def _get_training_datasets_metadata(self, feature_view_obj: feature_view.FeatureView):
+    def _get_training_datasets_metadata(
+        self, feature_view_obj: feature_view.FeatureView
+    ):
         tds = self._feature_view_api.get_training_datasets(
             feature_view_obj.name, feature_view_obj.version
         )
@@ -1005,7 +1012,17 @@ class FeatureViewEngine:
 
     def _check_feature_group_accessibility(self, feature_view_obj):
         if engine.get_type() == "python":
-            if arrow_flight_client.get_instance().is_enabled():
+            try:
+                from hsfs.core import arrow_flight_client
+
+                arrow_flight_client_imported = True
+            except ImportError:
+                arrow_flight_client_imported = False
+
+            if (
+                arrow_flight_client_imported
+                and arrow_flight_client.get_instance().is_enabled()
+            ):
                 if not arrow_flight_client.supports(
                     feature_view_obj.query.featuregroups
                 ):
@@ -1114,8 +1131,7 @@ class FeatureViewEngine:
             pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
         ] = None,
         transformed_features: Union[
-            pd.DataFrame, list[list], np.ndarray, TypeVar(
-                "pyspark.sql.DataFrame")
+            pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
         ] = None,
         predictions: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
         write_options: Optional[Dict[str, Any]] = None,
@@ -1133,39 +1149,53 @@ class FeatureViewEngine:
             default_write_options.update(write_options)
         results = []
         if logger:
-            logger.log(**{
-                key: (self._get_feature_logging_data(
-                    features_rows=features,
-                    feature_logging=feature_logging,
-                    transformed=transformed,
-                    fv=fv,
-                    predictions=predictions,
-                    training_dataset_version=training_dataset_version,
-                    hsml_model=hsml_model,
-                    return_list=True,
-                ) if features else None)
-                for transformed, key, features in [
-                    (False, "untransformed_features", untransformed_features), (True, "transformed_features", transformed_features)]
-            }
+            logger.log(
+                **{
+                    key: (
+                        self._get_feature_logging_data(
+                            features_rows=features,
+                            feature_logging=feature_logging,
+                            transformed=transformed,
+                            fv=fv,
+                            predictions=predictions,
+                            training_dataset_version=training_dataset_version,
+                            hsml_model=hsml_model,
+                            return_list=True,
+                        )
+                        if features
+                        else None
+                    )
+                    for transformed, key, features in [
+                        (False, "untransformed_features", untransformed_features),
+                        (True, "transformed_features", transformed_features),
+                    ]
+                }
             )
 
         else:
-            for transformed, features in [(False, untransformed_features), (True, transformed_features)]:
+            for transformed, features in [
+                (False, untransformed_features),
+                (True, transformed_features),
+            ]:
                 fg = feature_logging.get_feature_group(transformed)
                 if features is None:
                     continue
-                results.append(fg.insert(self._get_feature_logging_data(
-                    features_rows=features,
-                    feature_logging=feature_logging,
-                    transformed=transformed,
-                    fv=fv,
-                    predictions=predictions,
-                    training_dataset_version=training_dataset_version,
-                    hsml_model=hsml_model,
-                    return_list=False,
-                ), write_options=default_write_options))
+                results.append(
+                    fg.insert(
+                        self._get_feature_logging_data(
+                            features_rows=features,
+                            feature_logging=feature_logging,
+                            transformed=transformed,
+                            fv=fv,
+                            predictions=predictions,
+                            training_dataset_version=training_dataset_version,
+                            hsml_model=hsml_model,
+                            return_list=False,
+                        ),
+                        write_options=default_write_options,
+                    )
+                )
         return results
-
 
     def _get_feature_logging_data(
         self,
@@ -1210,7 +1240,9 @@ class FeatureViewEngine:
                 model_col_name=FeatureViewEngine._HSML_MODEL,
                 predictions=predictions,
                 training_dataset_version=training_dataset_version,
-                hsml_model=hsml_model,
+                hsml_model=self.get_hsml_model_value(hsml_model)
+                if hsml_model
+                else None,
             )
         else:
             return engine.get_instance().get_feature_logging_df(
@@ -1223,9 +1255,10 @@ class FeatureViewEngine:
                 model_col_name=FeatureViewEngine._HSML_MODEL,
                 predictions=predictions,
                 training_dataset_version=training_dataset_version,
-                hsml_model=self.get_hsml_model_value(hsml_model) if hsml_model else None,
+                hsml_model=self.get_hsml_model_value(hsml_model)
+                if hsml_model
+                else None,
             )
-
 
     def read_feature_logs(
         self,

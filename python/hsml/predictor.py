@@ -63,6 +63,7 @@ class Predictor(DeployableComponent):
         creator: Optional[str] = None,
         api_protocol: Optional[str] = INFERENCE_ENDPOINTS.API_PROTOCOL_REST,
         environment: Optional[str] = None,
+        project_namespace: str = None,
         **kwargs,
     ):
         serving_tool = (
@@ -99,6 +100,7 @@ class Predictor(DeployableComponent):
         self._validate_script_file(self._model_framework, self._script_file)
         self._api_protocol = api_protocol
         self._environment = environment
+        self._project_namespace = project_namespace
 
     def deploy(self):
         """Create a deployment for this predictor and persists it in the Model Serving.
@@ -279,6 +281,7 @@ class Predictor(DeployableComponent):
         if "environment_dto" in json_decamelized:
             environment = json_decamelized.pop("environment_dto")
             kwargs["environment"] = environment["name"]
+        kwargs["project_namespace"] = json_decamelized.pop("project_namespace")
         return kwargs
 
     def update_from_response_json(self, json_dict):
@@ -306,6 +309,7 @@ class Predictor(DeployableComponent):
             "servingTool": self._serving_tool,
             "predictor": self._script_file,
             "apiProtocol": self._api_protocol,
+            "projectNamespace": self._project_namespace,
         }
         if self.environment is not None:
             json = {**json, **{"environmentDTO": {"name": self._environment}}}
@@ -478,6 +482,15 @@ class Predictor(DeployableComponent):
     @environment.setter
     def environment(self, environment):
         self._environment = environment
+
+    @property
+    def project_namespace(self):
+        """Kubernetes project namespace"""
+        return self._project_namespace
+
+    @project_namespace.setter
+    def project_namespace(self, project_namespace):
+        self._project_namespace = project_namespace
 
     def __repr__(self):
         desc = (

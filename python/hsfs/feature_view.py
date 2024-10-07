@@ -33,10 +33,9 @@ from typing import (
 )
 
 import humps
-import numpy as np
 import pandas as pd
-import polars as pl
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import (
     feature_group,
     storage_connector,
@@ -76,6 +75,10 @@ from hsfs.transformation_function import TransformationFunction, TransformationT
 from hsml.model import Model
 
 
+if HAS_NUMPY:
+    import numpy as np
+
+
 _logger = logging.getLogger(__name__)
 
 TrainingDatasetDataFrameTypes = Union[
@@ -84,8 +87,16 @@ TrainingDatasetDataFrameTypes = Union[
     TypeVar("pyspark.RDD"),  # noqa: F821
     np.ndarray,
     List[List[Any]],
-    pl.DataFrame,
 ]
+
+if HAS_POLARS:
+    import polars as pl
+
+    TrainingDatasetDataFrameTypes = Union[
+        TrainingDatasetDataFrameTypes,
+        pl.DataFrame,
+    ]
+
 
 SplineDataFrameTypes = Union[
     pd.DataFrame,
@@ -95,6 +106,9 @@ SplineDataFrameTypes = Union[
     List[List[Any]],
     TypeVar("SplineGroup"),  # noqa: F821
 ]
+
+
+_logger = logging.getLogger(__name__)
 
 
 @typechecked
@@ -3596,8 +3610,7 @@ class FeatureView:
         ] = None,
         predictions: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
         transformed_features: Union[
-            pd.DataFrame, list[list], np.ndarray, TypeVar(
-                "pyspark.sql.DataFrame")
+            pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
         ] = None,
         write_options: Optional[Dict[str, Any]] = None,
         training_dataset_version: Optional[int] = None,
@@ -3660,7 +3673,7 @@ class FeatureView:
                 or self.get_last_accessed_training_dataset()
             ),
             hsml_model=model,
-            logger=self._feature_logger
+            logger=self._feature_logger,
         )
 
     def get_log_timeline(

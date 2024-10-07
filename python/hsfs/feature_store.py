@@ -21,9 +21,8 @@ import warnings
 from typing import Any, Dict, List, Optional, TypeVar, Union
 
 import humps
-import numpy as np
 import pandas as pd
-import polars as pl
+from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import (
     expectation_suite,
     feature,
@@ -37,7 +36,6 @@ from hsfs import (
 from hsfs.client import exceptions
 from hsfs.constructor.query import Query
 from hsfs.core import (
-    arrow_flight_client,
     feature_group_api,
     feature_group_engine,
     feature_view_engine,
@@ -51,6 +49,13 @@ from hsfs.hopsworks_udf import HopsworksUdf
 from hsfs.online_config import OnlineConfig
 from hsfs.statistics_config import StatisticsConfig
 from hsfs.transformation_function import TransformationFunction
+
+
+if HAS_NUMPY:
+    import numpy as np
+
+if HAS_POLARS:
+    import polars as pl
 
 
 @typechecked
@@ -1786,10 +1791,14 @@ class FeatureStore:
 
     def _disable_hopsworks_feature_query_service_client(self):
         """Disable Hopsworks feature query service for the current session. This behaviour is not persisted on reset."""
+        from hsfs.core import arrow_flight_client
+
         arrow_flight_client._disable_feature_query_service_client()
 
     def _reset_hopsworks_feature_query_service_client(self):
         """Reset Hopsworks feature query service for the current session."""
+        from hsfs.core import arrow_flight_client
+
         arrow_flight_client.close()
         arrow_flight_client.get_instance()
 

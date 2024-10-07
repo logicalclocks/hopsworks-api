@@ -365,6 +365,12 @@ class TestFeatureGroup:
         assert len(features) == 2
         assert set([f.name for f in features]) == {"f1", "f2"}
 
+    def test_select_features(self):
+        query = test_feature_group.select_features()
+        features = query.features
+        assert len(features) == 2
+        assert set([f.name for f in features]) == {"f1", "f2"}
+
     def test_materialization_job(self, mocker):
         mock_job = mocker.Mock()
         mock_job_api = mocker.patch(
@@ -401,7 +407,7 @@ class TestFeatureGroup:
         mock_response_job_not_found.status_code = 404
         mock_response_job_not_found.json.return_value = {"errorCode": 130009}
 
-        mock_response_not_found = mocker.Mock()
+        mock_response_not_found = mocker.MagicMock()
         mock_response_not_found.status_code = 404
 
         mock_job = mocker.Mock()
@@ -442,7 +448,7 @@ class TestFeatureGroup:
         # Arrange
         mocker.patch("time.sleep")
 
-        mock_response_not_found = mocker.Mock()
+        mock_response_not_found = mocker.MagicMock()
         mock_response_not_found.status_code = 404
 
         mock_job_api = mocker.patch(

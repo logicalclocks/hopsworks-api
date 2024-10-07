@@ -20,13 +20,16 @@ from datetime import datetime, timezone
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Callable, Dict, Literal, Optional, Tuple, Union
 
-import numpy as np
 import pandas as pd
 from hopsworks_common import client
+from hopsworks_common.core.constants import HAS_NUMPY
 from hsfs.core import storage_connector_api
 from hsfs.core.constants import HAS_AVRO, HAS_CONFLUENT_KAFKA, HAS_FAST_AVRO
 from tqdm import tqdm
 
+
+if HAS_NUMPY:
+    import numpy as np
 
 if HAS_CONFLUENT_KAFKA:
     from confluent_kafka import Consumer, KafkaError, Producer, TopicPartition
@@ -202,7 +205,7 @@ def encode_row(complex_feature_writers, writer, row):
     if isinstance(row, dict):
         for k in row.keys():
             # for avro to be able to serialize them, they need to be python data types
-            if isinstance(row[k], np.ndarray):
+            if HAS_NUMPY and isinstance(row[k], np.ndarray):
                 row[k] = row[k].tolist()
             if isinstance(row[k], pd.Timestamp):
                 row[k] = row[k].to_pydatetime()

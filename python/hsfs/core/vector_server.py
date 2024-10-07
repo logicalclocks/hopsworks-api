@@ -23,12 +23,17 @@ from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any, Callable, Dict, List, Literal, Optional, Set, Tuple, Union
 
-import avro.io
-import avro.schema
-import numpy as np
 import pandas as pd
-import polars as pl
 from hopsworks_common import client
+from hopsworks_common.core.constants import (
+    HAS_AVRO,
+    HAS_FAST_AVRO,
+    HAS_NUMPY,
+    HAS_POLARS,
+    avro_not_installed_message,
+    numpy_not_installed_message,
+    polars_not_installed_message,
+)
 from hsfs import (
     feature_view,
     training_dataset,
@@ -48,13 +53,18 @@ from hsfs.core import (
 )
 
 
-HAS_FASTAVRO = False
-try:
-    from fastavro import schemaless_reader
+if HAS_NUMPY:
+    import numpy as np
 
-    HAS_FASTAVRO = True
-except ImportError:
+if HAS_FAST_AVRO:
+    from fastavro import schemaless_reader
+if HAS_AVRO:
+    import avro.io
+    import avro.schema
     from avro.io import BinaryDecoder
+
+if HAS_POLARS:
+    import polars as pl
 
 _logger = logging.getLogger(__name__)
 
@@ -590,7 +600,7 @@ class VectorServer:
             return_type = "pandas"
             feature_vectors = feature_vectors.to_dict(orient="records")
 
-        elif isinstance(feature_vectors, pl.DataFrame):
+        elif HAS_POLARS and isinstance(feature_vectors, pl.DataFrame):
             return_type = "polars"
             feature_vectors = feature_vectors.to_pandas()
             feature_vectors = feature_vectors.to_dict(orient="records")
@@ -803,6 +813,8 @@ class VectorServer:
             return feature_vectorz
         elif return_type.lower() == "numpy" and not inference_helper:
             _logger.debug("Returning feature vector as numpy array")
+            if not HAS_NUMPY:
+                raise ModuleNotFoundError(numpy_not_installed_message)
             return np.array(feature_vectorz)
         # Only inference helper can return dict
         elif return_type.lower() == "dict" and inference_helper:
@@ -823,6 +835,8 @@ class VectorServer:
                 return pandas_df
         elif return_type.lower() == "polars":
             _logger.debug("Returning feature vector as polars dataframe")
+            if not HAS_POLARS:
+                raise ModuleNotFoundError(polars_not_installed_message)
             return pl.DataFrame(
                 feature_vectorz if batch else [feature_vectorz],
                 schema=column_names if not inference_helper else None,
@@ -1058,6 +1072,9 @@ class VectorServer:
             - deserialization of complex features from the online feature store
             - conversion of string or int timestamps to datetime objects
         """
+        if not HAS_AVRO:
+            raise ModuleNotFoundError(avro_not_installed_message)
+
         complex_feature_schemas = {
             f.name: avro.io.DatumReader(
                 avro.schema.parse(
@@ -1076,7 +1093,7 @@ class VectorServer:
             _logger.debug(
                 f"Building complex feature decoders corresponding to {complex_feature_schemas}."
             )
-        if HAS_FASTAVRO:
+        if HAS_FAST_AVRO:
             _logger.debug("Using fastavro for deserialization.")
             return {
                 f_name: (

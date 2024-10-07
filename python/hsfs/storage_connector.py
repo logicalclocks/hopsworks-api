@@ -24,13 +24,18 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, TypeVar, Union
 
 import humps
-import numpy as np
 import pandas as pd
-import polars as pl
 from hopsworks_common import client
+from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import engine
 from hsfs.core import storage_connector_api
 
+
+if HAS_NUMPY:
+    import numpy as np
+
+if HAS_POLARS:
+    import polars as pl
 
 _logger = logging.getLogger(__name__)
 
@@ -1572,9 +1577,8 @@ class BigQueryConnector(StorageConnector):
         """Return options to be passed to an external BigQuery connector library"""
         props = {
             "key_path": self._key_path,
-            "project_id": self._query_project,
+            "project_id": self._parent_project,
             "dataset_id": self._dataset,
-            "parent_project": self._parent_project,
         }
         return props
 

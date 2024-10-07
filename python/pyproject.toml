@@ -42,7 +42,6 @@ dependencies = [
     "furl",
     "boto3",
     "pandas<2.2.0",
-    "numpy<2",
     "pyjks",
     "mock",
     "avro==1.11.3",
@@ -52,7 +51,6 @@ dependencies = [
     "fsspec",
     "retrying",
     "hopsworks_aiomysql[sa]==0.2.1",
-    "polars>=0.20.18,<=0.21.0",
     "opensearch-py>=1.1.0,<=2.4.2",
     "tqdm",
     "grpcio>=1.49.1,<2.0.0",         # ^1.49.1
@@ -61,6 +59,7 @@ dependencies = [
 
 [project.optional-dependencies]
 python = [
+    "numpy<2",
     "pyarrow>=10.0",
     "confluent-kafka<=2.3.0",
     "fastavro>=1.4.11,<=1.8.4",
@@ -86,7 +85,11 @@ dev-pandas1 = [
     "pandas<=1.5.3",
     "sqlalchemy<=1.4.48",
 ]
-dev = ["hopsworks[dev-no-opt,great-expectations]"]
+dev = ["hopsworks[dev-no-opt,great-expectations,polars]"]
+polars=[
+    "polars>=0.20.18,<=0.21.0",
+    "pyarrow>=10.0",
+]
 
 [build-system]
 requires = ["setuptools", "wheel"]

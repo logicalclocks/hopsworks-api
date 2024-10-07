@@ -260,7 +260,7 @@ class ServingApi:
                 path_params = self._get_istio_inference_path(deployment_instance)
                 # - add host header
                 headers["host"] = self._get_inference_request_host_header(
-                    _client._project_name,
+                    deployment_instance.project_namespace,
                     deployment_instance.name,
                     client.get_knative_domain(),
                 )
@@ -292,7 +292,7 @@ class ServingApi:
             # The gRPC channel is freed when calling deployment.stop()
             print("Initializing gRPC channel...")
             deployment_instance._grpc_channel = self._create_grpc_channel(
-                deployment_instance.name
+                deployment_instance
             )
         # build an infer request
         request = InferRequest(
@@ -308,11 +308,11 @@ class ServingApi:
         # extract infer outputs
         return infer_response.outputs
 
-    def _create_grpc_channel(self, deployment_name: str):
+    def _create_grpc_channel(self, deployment_instance):
         _client = client.istio.get_instance()
         service_hostname = self._get_inference_request_host_header(
-            _client._project_name,
-            deployment_name,
+            deployment_instance.project_namespace,
+            deployment_instance.name,
             client.get_knative_domain(),
         )
         return _client._create_grpc_channel(service_hostname)
@@ -405,11 +405,9 @@ class ServingApi:
         )
 
     def _get_inference_request_host_header(
-        self, project_name: str, deployment_name: str, domain: str
+        self, project_namespace: str, deployment_name: str, domain: str
     ):
-        return "{}.{}.{}".format(
-            deployment_name, project_name.replace("_", "-"), domain
-        ).lower()
+        return "{}.{}.{}".format(deployment_name, project_namespace, domain).lower()
 
     def _get_hopsworks_inference_path(self, project_id: int, deployment_instance):
         return [

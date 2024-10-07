@@ -37,10 +37,12 @@ class Deployment:
         predictor,
         name: Optional[str] = None,
         description: Optional[str] = None,
+        project_namespace: str = None,
         **kwargs,
     ):
         self._predictor = predictor
         self._description = description
+        self._project_namespace = project_namespace
 
         if self._predictor is None:
             raise ModelServingException("A predictor is required")
@@ -474,6 +476,15 @@ class Deployment:
     @environment.setter
     def environment(self, environment: str):
         self._predictor.environment = environment
+
+    @property
+    def project_namespace(self):
+        """Name of inference environment"""
+        return self._predictor.project_namespace
+
+    @project_namespace.setter
+    def project_namespace(self, project_namespace: str):
+        self._predictor.project_namespace = project_namespace
 
     def __repr__(self):
         desc = (
