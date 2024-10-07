@@ -31,7 +31,7 @@ jobs:
             
             - name: Install python dependencies and sdk
               run: | 
-                pip install -r 'hopsworks[loadtest] @ ${{ github.workspace }}/hopsworks-api/python'
+                pip install 'hopsworks[loadtest] @ ${{ github.workspace }}/hopsworks-api/python'
 
             - name: Runs only e2e tests suite
               env:
