@@ -38,6 +38,7 @@ class TestConstants:
             "FRAMEWORK_TORCH": "TORCH",
             "FRAMEWORK_PYTHON": "PYTHON",
             "FRAMEWORK_SKLEARN": "SKLEARN",
+            "FRAMEWORK_LLM": "LLM",
         }
 
         # Assert
@@ -193,6 +194,7 @@ class TestConstants:
         model_servers = {
             "MODEL_SERVER_PYTHON": "PYTHON",
             "MODEL_SERVER_TF_SERVING": "TENSORFLOW_SERVING",
+            "MODEL_SERVER_VLLM": "VLLM"
         }
 
         # Assert

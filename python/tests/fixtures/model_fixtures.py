@@ -17,6 +17,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+from hsml.llm.model import Model as LLMModel
 from hsml.model import Model as BaseModel
 from hsml.python.model import Model as PythonModel
 from hsml.sklearn.model import Model as SklearnModel
@@ -29,12 +30,14 @@ MODEL_PYTHON_ID = 1
 MODEL_SKLEARN_ID = 2
 MODEL_TENSORFLOW_ID = 3
 MODEL_TORCH_ID = 4
+MODEL_LLM_ID = 5
 
 MODEL_BASE_NAME = "basemodel"
 MODEL_PYTHON_NAME = "pythonmodel"
 MODEL_SKLEARN_NAME = "sklearnmodel"
 MODEL_TENSORFLOW_NAME = "tensorflowmodel"
 MODEL_TORCH_NAME = "torchmodel"
+MODEL_LLM_NAME = "llmmodel"
 
 # models
 
@@ -62,6 +65,10 @@ def model_tensorflow():
 @pytest.fixture
 def model_torch():
     return TorchModel(MODEL_TORCH_ID, MODEL_TORCH_NAME)
+
+@pytest.fixture
+def model_llm():
+    return LLMModel(MODEL_LLM_ID, MODEL_LLM_NAME)
 
 
 # input example
