@@ -10,6 +10,14 @@ jobs:
               uses: actions/checkout@v4
               with:
                 path: ${{ github.workspace }}/hopsworks-api 
+            
+            - name: Checkout loadtest project
+              uses: actions/checkout@v4
+              with:
+                  repository: 'vatj/loadtest'
+                  ref: 'draft-e2e-script-staging'
+                  token: ${{ secrets.PAT_LOADTEST }}
+                  path: ${{github.workspace}}/loadtest
                     
 
             - name: Install gcc to compile avro and twofish
@@ -22,15 +30,9 @@ jobs:
                   cache: "pip"
             
             - name: Install python dependencies and sdk
-              run: pip install -e 'hopsworks-api/python[python,great-expectations,polars]'
-
-            - name: Checkout loadtest project
-              uses: actions/checkout@v4
-              with:
-                  repository: 'vatj/loadtest'
-                  ref: 'draft-e2e-script-staging'
-                  token: ${{ secrets.PAT_LOADTEST }}
-                  path: ${{github.workspace}}/loadtest
+              run: | 
+                pip install -e 'hopsworks-api/python[python,great-expectations,polars]'
+                pip install -r ${{github.workspace}}/loadtest/tests/requirements.txt
 
             - name: Runs only e2e tests suite
               run: |
