@@ -35,6 +35,8 @@ jobs:
                 pip install -r ${{github.workspace}}/loadtest/tests/requirements.txt
 
             - name: Runs only e2e tests suite
+              env:
+                MARKER: 'python_quick_e2e'
               run: |
                 cd ${{github.workspace}}/loadtest/tests
-                ./run_e2e_on_runner.sh
+                ./run_e2e_on_runner.sh $MARKER
