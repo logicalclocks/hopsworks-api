@@ -24,8 +24,8 @@ jobs:
             - name: Checkout loadtest project
               uses: actions/checkout@v4
               with:
-                  repository: 'logicalclocks/loadtest'
-                  ref: 'main'
+                  repository: 'vatj/loadtest'
+                  ref: 'draft-e2e-script-staging'
 
             - name: Runs only e2e tests suite
               run: |
