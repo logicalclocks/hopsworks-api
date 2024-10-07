@@ -6,7 +6,7 @@ on:
       logical_fork:
         description: 'Loadtest fork with updated e2e tests'
         required: true
-        default: 'logicalclocks/loadtest'
+        default: 'vatj/loadtest'
       loadtest_branch:
         description: 'Branch to run e2e tests on'
         required: true
@@ -14,7 +14,7 @@ on:
       hopsworks_api_fork:
         description: 'Hopsworks API fork with updated client'
         required: true
-        default: 'logicalclocks/hopsworks-api'
+        default: 'vatj/hopsworks-api'
       hopsworks_api_branch:
         description: 'Branch to run e2e tests on'
         required: true
@@ -26,6 +26,7 @@ on:
 
 jobs:
     on-demand-e2e:
+        name: On-demand e2e tests
         runs-on: ghrunner-hopsworks-api-vatj
         steps:
             - name: Checkout hopsworks-api SDK

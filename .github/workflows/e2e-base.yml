@@ -9,6 +9,9 @@ jobs:
             - name: Checkout hopsworks-api SDK
               uses: actions/checkout@v4
 
+            - name: Install gcc to compile avro and twofish
+              run: sudo apt-get install gcc
+
             - name: Setup python # This step also takes care of caching dependencies
               uses: actions/setup-python@v5
               with:
