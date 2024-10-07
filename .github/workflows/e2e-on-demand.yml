@@ -49,6 +49,7 @@ jobs:
               with:
                   repository: ${{ github.event.inputs.logical_fork }}
                   ref: ${{ github.event.inputs.loadtest_branch }}
+                  token: ${{ secrets.PAT_LOADTEST }}
 
             - name: Runs only e2e tests suite
               run: |
