@@ -547,7 +547,7 @@ class TestFeatureGroupEngine:
         )
 
         # Act
-        fg_engine.clean(feature_group=fg, write_options={})
+        fg_engine.delta_vacuum(feature_group=fg, retention_hours=200)
 
         # Assert
         assert mock_hudi_engine.return_value.vacuum.call_count == 1
@@ -571,7 +571,7 @@ class TestFeatureGroupEngine:
         )
 
         # Act
-        fg_engine.clean(feature_group=fg, write_options={})
+        fg_engine.delta_vacuum(feature_group=fg, retention_hours=200)
 
     def test_sql(self, mocker):
         # Arrange
