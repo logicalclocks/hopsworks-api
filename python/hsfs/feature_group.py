@@ -3291,7 +3291,7 @@ class FeatureGroup(FeatureGroupBase):
             # get the Feature Group instance
             fg = fs.get_or_create_feature_group(...)
 
-            commit_details = fg.delta_vacuum(retention_hours = 100)
+            commit_details = fg.delta_vacuum(retention_hours = 168)
 
         # Arguments
             retention_hours: User provided retention period. The default retention threshold for the files is 7 days.
