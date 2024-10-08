@@ -18,20 +18,10 @@ jobs:
                   ref: 'draft-e2e-script-staging'
                   token: ${{ secrets.PAT_LOADTEST }}
                   path: ${{github.workspace}}/loadtest
-                    
-
-            - name: Install gcc to compile avro and twofish
-              run: sudo apt-get install -y gcc
-
-            - name: Setup python # This step also takes care of caching dependencies
-              uses: actions/setup-python@v5
-              with:
-                  python-version: "3.12"
-                  cache: "pip"
             
             - name: Install python dependencies and sdk
               run: | 
-                pip install 'hopsworks[loadtest] @ ${{ github.workspace }}/hopsworks-api/python'
+                pipx install --no-deps -e 'hopsworks @ ${{ github.workspace }}/hopsworks-api/python'
 
             - name: Runs only e2e tests suite
               env:
