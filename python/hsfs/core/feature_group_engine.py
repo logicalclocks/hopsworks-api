@@ -247,7 +247,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             return hudi_engine_instance.delete_record(delete_df, write_options)
 
     @staticmethod
-    def clean(feature_group, write_options):
+    def delta_vacuum(feature_group, retention_hours):
         if feature_group.time_travel_format == "DELTA":
             delta_engine_instance = delta_engine.DeltaEngine(
                 feature_group.feature_store_id,
@@ -256,7 +256,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 engine.get_instance()._spark_session,
                 engine.get_instance()._spark_context,
             )
-            return delta_engine_instance.vacuum(write_options.get("retention_hours", None))
+            return delta_engine_instance.vacuum(retention_hours)
         else:
             return None
 

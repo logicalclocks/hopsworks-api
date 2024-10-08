@@ -3276,11 +3276,12 @@ class FeatureGroup(FeatureGroupBase):
         """
         self._feature_group_engine.commit_delete(self, delete_df, write_options or {})
 
-    def clean(
+    def delta_vacuum(
         self,
-        write_options: Optional[Dict[Any, Any]] = None,
+        retention_hours: int = None,
     ) -> None:
-        """ Clean up old files. This method can only be used on feature groups stored as DELTA.
+        """ Vacuum files that are no longer referenced by a Delta table and are older than the retention threshold.
+        This method can only be used on feature groups stored as DELTA.
 
         !!! example
             ```python
@@ -3290,15 +3291,15 @@ class FeatureGroup(FeatureGroupBase):
             # get the Feature Group instance
             fg = fs.get_or_create_feature_group(...)
 
-            commit_details = fg.clean(write_options = {"retention_hours": 100})
+            commit_details = fg.delta_vacuum(retention_hours = 100)
 
         # Arguments
-            write_options: User provided write options. Defaults to `{}`.
+            retention_hours: User provided retention period. The default retention threshold for the files is 7 days.
 
         # Raises
             `hsfs.client.exceptions.RestAPIError`.
         """
-        self._feature_group_engine.clean(self, write_options or {})
+        self._feature_group_engine.delta_vacuum(self, retention_hours)
 
     def as_of(
         self,
