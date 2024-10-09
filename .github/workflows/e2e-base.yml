@@ -21,7 +21,7 @@ jobs:
             
             - name: Install python dependencies and sdk
               run: | 
-                pipx install --no-deps -e 'hopsworks @ ${{ github.workspace }}/hopsworks-api/python'
+                pipx install -e 'hopsworks @ ${{ github.workspace }}/hopsworks-api/python'
 
             - name: Runs only e2e tests suite
               env:
