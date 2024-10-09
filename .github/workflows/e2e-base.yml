@@ -25,10 +25,17 @@ jobs:
                   token: ${{ secrets.PAT_LOADTEST }}
                   path: loadtest
             
-            - name: Install python dependencies and sdk
+            - name: Install latest client SDK
               run: | 
-                sleep 120
-                pipx install ${{github.workspace}}/hopsworks-api/python
+                echo $VENV_PATH
+                source $VENV_PATH/bin/activate
+                pip uninstall -y hopsworks
+                pip install ${{github.workspace}}/hopsworks-api/python
+            
+            - name: List dependencies
+              run: |
+                source $VENV_PATH/bin/activate
+                pip freeze
 
             - name: Runs only e2e tests suite
               env:
