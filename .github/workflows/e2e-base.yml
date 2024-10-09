@@ -6,6 +6,11 @@ jobs:
     e2e_quick:
         runs-on: ghrunner-hopsworks-api-vatj
         steps:
+            - run: |
+                echo "Workspace is ${{ github.workspace }}"
+                pwd
+                ls -lha
+
             - name: Checkout hopsworks-api SDK
               uses: actions/checkout@v4
               with:
@@ -21,7 +26,7 @@ jobs:
             
             - name: Install python dependencies and sdk
               run: | 
-                pipx install -e 'hopsworks @ ${{ github.workspace }}/hopsworks-api/python'
+                pipx install -e 'hopsworks @ ./python'
 
             - name: Runs only e2e tests suite
               env:
