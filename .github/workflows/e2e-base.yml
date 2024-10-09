@@ -26,7 +26,8 @@ jobs:
                   path: loadtest
             
             - name: Install latest client SDK
-              run: | 
+              run: |
+                source ~/.bashrc
                 echo $VENV_PATH
                 source $VENV_PATH/bin/activate
                 pip uninstall -y hopsworks
