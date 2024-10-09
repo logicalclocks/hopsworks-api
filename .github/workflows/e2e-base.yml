@@ -5,12 +5,9 @@ on: pull_request
 jobs:
     e2e_quick:
         runs-on: ghrunner-hopsworks-api-vatj
+        env:
+            VENV_PATH: /home/runner/envs/.venv
         steps:
-            - run: |
-                echo "Workspace is ${{ github.workspace }}"
-                pwd
-                ls -lha
-
             - name: Checkout hopsworks-api SDK
               uses: actions/checkout@v4
               with:
@@ -27,7 +24,6 @@ jobs:
             
             - name: Install latest client SDK
               run: |
-                source ~/.bashrc
                 echo $VENV_PATH
                 source $VENV_PATH/bin/activate
                 pip uninstall -y hopsworks
