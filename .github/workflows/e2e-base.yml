@@ -9,7 +9,7 @@ jobs:
             - name: Checkout hopsworks-api SDK
               uses: actions/checkout@v4
               with:
-                path: ${{ github.workspace }}/hopsworks-api 
+                path: ${{ github.workspace }}
             
             - name: Checkout loadtest project
               uses: actions/checkout@v4
@@ -17,7 +17,7 @@ jobs:
                   repository: 'vatj/loadtest'
                   ref: 'draft-e2e-script-staging'
                   token: ${{ secrets.PAT_LOADTEST }}
-                  path: ${{github.workspace}}/loadtest
+                  path: ${{github.workspace}}
             
             - name: Install python dependencies and sdk
               run: | 
