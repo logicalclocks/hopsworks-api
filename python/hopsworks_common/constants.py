@@ -163,6 +163,8 @@ class MODEL:
 
 class MODEL_REGISTRY:
     HOPSFS_MOUNT_PREFIX = "/hopsfs/"
+    ARTIFACTS_DIR_NAME = "Artifacts"
+    MODEL_FILES_DIR_NAME = "Files"
 
 
 class MODEL_SERVING:

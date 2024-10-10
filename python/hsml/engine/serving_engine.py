@@ -19,7 +19,7 @@ import time
 import uuid
 from typing import Dict, List, Union
 
-from hsml import util
+from hsml import util, constants
 from hsml.client.exceptions import ModelServingException, RestAPIError
 from hsml.client.istio.utils.infer_type import InferInput
 from hsml.constants import (
@@ -322,7 +322,7 @@ class ServingEngine:
             str(uuid.uuid4()),
             deployment_instance.model_name,
             str(deployment_instance.model_version),
-            "Artifacts",
+            constants.MODEL_REGISTRY.ARTIFACTS_DIR_NAME,
         )
         to_artifact_version_path = (
             to_artifacts_path + "/" + str(deployment_instance.artifact_version)
