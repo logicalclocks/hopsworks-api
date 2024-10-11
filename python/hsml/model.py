@@ -22,7 +22,7 @@ from typing import Any, Dict, Optional, Union
 
 import humps
 from hopsworks_common import usage
-from hsml import client, util, constants
+from hsml import client, constants, util
 from hsml.constants import ARTIFACT_VERSION
 from hsml.constants import INFERENCE_ENDPOINTS as IE
 from hsml.core import explicit_provenance
@@ -544,11 +544,14 @@ class Model:
     def version_path(self):
         """path of the model including version folder. Resolves to /Projects/{project_name}/Models/{name}/{version}"""
         return "{}/{}".format(self.model_path, str(self.version))
-    
+
     @property
-    def files_path(self):
+    def model_files_path(self):
         """path of the model files including version and files folder. Resolves to /Projects/{project_name}/Models/{name}/{version}/Files"""
-        return "{}/{}/{}".format(self.model_path, str(self.version), constants.MODEL_REGISTRY.MODEL_FILES_DIR_NAME)
+        return "{}/{}".format(
+            self.version_path,
+            constants.MODEL_REGISTRY.MODEL_FILES_DIR_NAME,
+        )
 
     @property
     def shared_registry_project_name(self):
