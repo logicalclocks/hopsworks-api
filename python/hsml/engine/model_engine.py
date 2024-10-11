@@ -156,7 +156,9 @@ class ModelEngine:
 
             if path_attr.get("dir", False):
                 # otherwise, make a recursive call for the folder
-                if basename == constants.MODEL_REGISTRY.ARTIFACTS_DIR_NAME:
+                if (
+                    basename == constants.MODEL_SERVING.ARTIFACTS_DIR_NAME
+                ):  # TODO: Not needed anymore
                     continue  # skip Artifacts subfolder
                 local_folder_path = os.path.join(to_local_path, basename)
                 os.mkdir(local_folder_path)
@@ -447,7 +449,7 @@ class ModelEngine:
             )
 
         try:
-            from_hdfs_model_path = model_instance.files_path
+            from_hdfs_model_path = model_instance.model_files_path
             if from_hdfs_model_path.startswith("hdfs:/"):
                 projects_index = from_hdfs_model_path.find("/Projects", 0)
                 from_hdfs_model_path = from_hdfs_model_path[projects_index:]
