@@ -475,9 +475,7 @@ class Engine:
         write_options = kafka_engine.get_kafka_config(
             feature_group.feature_store_id, write_options, engine="spark"
         )
-        serialized_df = self._online_fg_to_avro(
-            feature_group, self._encode_complex_features(feature_group, dataframe)
-        )
+        serialized_df = self._serialize_to_avro(feature_group, dataframe)
 
         project_id = str(feature_group.feature_store.project_id)
         feature_group_id = str(feature_group._id)
@@ -570,9 +568,7 @@ class Engine:
             feature_group.feature_store_id, write_options, engine="spark"
         )
 
-        serialized_df = self._online_fg_to_avro(
-            feature_group, self._encode_complex_features(feature_group, dataframe)
-        )
+        serialized_df = self._serialize_to_avro(feature_group, dataframe)
 
         project_id = str(feature_group.feature_store.project_id).encode("utf8")
         feature_group_id = str(feature_group._id).encode("utf8")
@@ -592,13 +588,13 @@ class Engine:
             "topic", feature_group._online_topic_name
         ).save()
 
-    def _encode_complex_features(
+    def _serialize_to_avro(
         self,
         feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
         dataframe: Union[RDD, DataFrame],
     ):
         """Encodes all complex type features to binary using their avro type as schema."""
-        return dataframe.select(
+        encoded_dataframe = dataframe.select(
             [
                 field["name"]
                 if field["name"] not in feature_group.get_complex_features()
@@ -609,15 +605,10 @@ class Engine:
             ]
         )
 
-    def _online_fg_to_avro(
-        self,
-        feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
-        dataframe: Union[DataFrame, RDD],
-    ):
         """Packs all features into named struct to be serialized to single avro/binary
         column. And packs primary key into arry to be serialized for partitioning.
         """
-        return dataframe.select(
+        return encoded_dataframe.select(
             [
                 # be aware: primary_key array should always be sorted
                 to_avro(
@@ -639,6 +630,30 @@ class Engine:
                 ).alias("value"),
             ]
         )
+    
+    def _deserialize_from_avro(
+            self,
+            feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
+            dataframe: Union[RDD, DataFrame],
+        ):
+            """
+            Deserializes 'value' column from binary using avro schema and unpacks it into columns.
+            """
+            decoded_dataframe = dataframe.select(
+                from_avro("value", feature_group._get_encoded_avro_schema()).alias("value")
+            ).select(col("value.*"))
+            
+            """Decodes all complex type features from binary using their avro type as schema."""
+            return decoded_dataframe.select(
+                [
+                    field["name"]
+                    if field["name"] not in feature_group.get_complex_features()
+                    else from_avro(
+                        field["name"], feature_group._get_feature_avro_schema(field["name"])
+                    ).alias(field["name"])
+                    for field in json.loads(feature_group.avro_schema)["fields"]
+                ]
+            )
 
     def get_training_data(
         self,
