@@ -251,14 +251,14 @@ class ModelEngine:
                 from_hdfs_model_path=model_path.replace(
                     constants.MODEL_REGISTRY.HOPSFS_MOUNT_PREFIX, ""
                 ),
-                to_model_files_path=model_instance.files_path,
+                to_model_files_path=model_instance.model_files_path,
                 keep_original_files=keep_original_files,
                 update_upload_progress=update_upload_progress,
             )
         else:
             self._upload_local_model(
                 from_local_model_path=model_path,
-                to_model_files_path=model_instance.files_path,
+                to_model_files_path=model_instance.model_files_path,
                 update_upload_progress=update_upload_progress,
                 upload_configuration=upload_configuration,
             )
@@ -367,7 +367,7 @@ class ModelEngine:
                 if step["id"] == 0:
                     # Create folders
                     self._engine.mkdir(model_instance.version_path)
-                    self._engine.mkdir(model_instance.files_path)
+                    self._engine.mkdir(model_instance.model_files_path)
                 if step["id"] == 1:
 
                     def update_upload_progress(n_dirs=0, n_files=0, step=step):
@@ -404,7 +404,7 @@ class ModelEngine:
                     ):  # check hdfs relative and absolute
                         self._copy_or_move_hopsfs_model(
                             from_hdfs_model_path=model_path,
-                            to_model_files_path=model_instance.files_path,
+                            to_model_files_path=model_instance.model_files_path,
                             keep_original_files=keep_original_files,
                             update_upload_progress=update_upload_progress,
                         )
