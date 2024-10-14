@@ -259,7 +259,7 @@ def delta_vacuum_fg(spark: SparkSession, job_conf: Dict[Any, Any]) -> None:
 
     entity.delta_vacuum()
 
-def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any]) -> None:
+def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], initial_check_point_string: str) -> None:
     """
     Run materialization job on a feature group.
     """
@@ -276,6 +276,7 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any]) ->
         spark.read.format("kafka")
         .options(**read_options)
         .option("subscribe", entity._online_topic_name)
+        .option("startingOffsets", _build_starting_offsets(initial_check_point_string)) \
         .load()
     )
 
@@ -285,6 +286,20 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any]) ->
     entity.stream = False # to make sure we dont write to kafka
     entity.insert(deserialized_df)
 
+def _build_starting_offsets(initial_check_point_string: str):
+    if not initial_check_point_string:
+        return ""
+
+    # Split the input string into the topic and partition-offset pairs
+    topic, offsets = initial_check_point_string.split(',', 1)
+    
+    # Split the offsets and build a dictionary from them
+    offsets_dict = {partition: int(offset) for partition, offset in (pair.split(':') for pair in offsets.split(','))}
+    
+    # Create the final dictionary structure
+    result = {topic: offsets_dict}
+    
+    return json.dumps(result)
 
 if __name__ == "__main__":
     # Setup spark first so it fails faster in case of args errors
@@ -325,6 +340,12 @@ if __name__ == "__main__":
         help="Job start time",
     )
 
+    parser.add_argument(
+        "-initialCheckPointString",
+        type=str,
+        help="Kafka offset to start consuming from",
+    )
+
     args = parser.parse_args()
     job_conf = read_job_conf(args.path)
 
@@ -347,7 +368,7 @@ if __name__ == "__main__":
         elif args.op == "delta_vacuum_fg":
             delta_vacuum_fg(spark, job_conf)
         elif args.op == "offline_fg_materialization":
-            offline_fg_materialization(spark, job_conf)
+            offline_fg_materialization(spark, job_conf, args.initialCheckPointString)
 
         success = True
     except Exception:
