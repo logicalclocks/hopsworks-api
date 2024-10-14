@@ -13,6 +13,7 @@ import fsspec.implementations.arrow as pfs
 hopsfs = pfs.HadoopFileSystem("default", user=os.environ["HADOOP_USER_NAME"])
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructField, StructType, _parse_datatype_string
+from pyspark.sql.functions import max
 
 import hopsworks
 
@@ -272,19 +273,49 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
         entity.feature_store_id, {}, engine="spark"
     )
 
+    # get offsets
+    offset_location = entity.location + "_offsets"
+    try:
+        if initial_check_point_string:
+            offset_string = json.dumps(_build_starting_offsets(initial_check_point_string))
+        else:
+            offset_string = spark.read.json(offset_location).toJSON().first()
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        # if all else fails read from the beggining
+        initial_check_point_string = kafka_engine.kafka_get_offsets(
+            topic_name=entity._online_topic_name,
+            feature_store_id=entity.feature_store_id,
+            high=False,
+        )
+        offset_string = json.dumps(_build_starting_offsets(initial_check_point_string))
+
+    # read kafka topic
     df = (
         spark.read.format("kafka")
         .options(**read_options)
         .option("subscribe", entity._online_topic_name)
-        .option("startingOffsets", _build_starting_offsets(initial_check_point_string)) \
+        .option("startingOffsets", offset_string)
+        .limit(5000000)
         .load()
     )
 
     # deserialize dataframe so that it can be properly saved
     deserialized_df = engine.get_instance()._deserialize_from_avro(entity, df)
 
+    # insert data
     entity.stream = False # to make sure we dont write to kafka
     entity.insert(deserialized_df)
+
+    # update offsets
+    df_offsets = df.groupBy('partition').agg(max('offset').alias('offset')).collect()
+    offset_dict = json.loads(offset_string)
+    for offset_row in df_offsets:
+        offset_dict[f"{entity._online_topic_name}"][f"{offset_row.partition}"] = offset_row.offset
+
+    # save offsets
+    offset_df = spark.createDataFrame([offset_dict])
+    offset_df.write.mode("overwrite").json(offset_location)
 
 def _build_starting_offsets(initial_check_point_string: str):
     if not initial_check_point_string:
@@ -299,7 +330,7 @@ def _build_starting_offsets(initial_check_point_string: str):
     # Create the final dictionary structure
     result = {topic: offsets_dict}
     
-    return json.dumps(result)
+    return result
 
 if __name__ == "__main__":
     # Setup spark first so it fails faster in case of args errors

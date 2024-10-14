@@ -1401,7 +1401,7 @@ class Engine:
             now = datetime.now(timezone.utc)
             feature_group.materialization_job.run(
                 args=feature_group.materialization_job.config.get("defaultArgs", "")
-                + initial_check_point,
+                + (f" -initialCheckPointString {initial_check_point}" if initial_check_point else ""),
                 await_termination=offline_write_options.get("wait_for_job", False),
             )
             offline_backfill_every_hr = offline_write_options.pop(
