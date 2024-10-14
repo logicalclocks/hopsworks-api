@@ -13,7 +13,7 @@ import fsspec.implementations.arrow as pfs
 hopsfs = pfs.HadoopFileSystem("default", user=os.environ["HADOOP_USER_NAME"])
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructField, StructType, _parse_datatype_string
-from pyspark.sql.functions import max
+from pyspark.sql.functions import max, expr
 
 import hopsworks
 
@@ -299,6 +299,10 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
         .limit(5000000)
         .load()
     )
+
+    # filter only the necassary entries
+    df = df.filter(expr("CAST(filter(headers, header -> header.key = 'featureGroupId')[0].value AS STRING)") == str(entity._id))
+    df = df.filter(expr("CAST(filter(headers, header -> header.key = 'subjectId')[0].value AS STRING)") == str(entity.subject["id"]))
 
     # deserialize dataframe so that it can be properly saved
     deserialized_df = engine.get_instance()._deserialize_from_avro(entity, df)
