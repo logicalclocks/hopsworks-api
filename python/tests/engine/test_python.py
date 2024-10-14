@@ -3349,6 +3349,10 @@ class TestPython:
         assert result["plus_one_tf_name_"][0] == 2
         assert result["plus_one_tf_name_"][1] == 3
 
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
     def test_apply_transformation_function_polars_udf_python_mode(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
@@ -3390,6 +3394,10 @@ class TestPython:
         assert result["plus_one_tf_name_"][0] == 2
         assert result["plus_one_tf_name_"][1] == 3
 
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
     def test_apply_transformation_function_polars_udf_pandas_mode(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
