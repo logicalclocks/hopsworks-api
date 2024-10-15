@@ -630,7 +630,7 @@ class Engine:
                 ).alias("value"),
             ]
         )
-    
+
     def _deserialize_from_avro(
             self,
             feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
@@ -642,7 +642,7 @@ class Engine:
             decoded_dataframe = dataframe.select(
                 from_avro("value", feature_group._get_encoded_avro_schema()).alias("value")
             ).select(col("value.*"))
-            
+
             """Decodes all complex type features from binary using their avro type as schema."""
             return decoded_dataframe.select(
                 [
