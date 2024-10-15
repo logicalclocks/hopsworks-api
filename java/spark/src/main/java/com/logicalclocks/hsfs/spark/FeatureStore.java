@@ -404,7 +404,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
   public StreamFeatureGroup getOrCreateStreamFeatureGroup(String name, Integer version)
       throws IOException, FeatureStoreException {
     return featureGroupEngine.getOrCreateStreamFeatureGroup(this, name, version, null,
-        null, null, null, false, null, null, null);
+        null, null, null, false, TimeTravelFormat.HUDI, null, null, null);
   }
 
   /**
@@ -438,7 +438,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
                                                           boolean onlineEnabled, String eventTime)
       throws IOException, FeatureStoreException {
     return featureGroupEngine.getOrCreateStreamFeatureGroup(this, name, version, null,
-        primaryKeys, null, null, onlineEnabled, null, eventTime, null);
+        primaryKeys, null, null, onlineEnabled, TimeTravelFormat.HUDI, null, eventTime, null);
   }
 
   /**
@@ -477,7 +477,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
 
 
     return featureGroupEngine.getOrCreateStreamFeatureGroup(this, name, version, null,
-        primaryKeys, partitionKeys, null, onlineEnabled, null, eventTime, null);
+        primaryKeys, partitionKeys, null, onlineEnabled, TimeTravelFormat.HUDI, null, eventTime, null);
   }
 
   /**
@@ -506,6 +506,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
    *                          the first primary key of the feature group will be used as hudi precombine key.
    * @param onlineEnabled Define whether the feature group should be made available also in the online feature store
    *                      for low latency access.
+   * @param timeTravelFormat Format used for time travel, defaults to `"HUDI"`.
    * @param statisticsConfig  A configuration object, to generally enable descriptive statistics computation for
    *                          this feature group, `"correlations`" to turn on feature correlation  computation,
    *                          `"histograms"` to compute feature value frequencies and `"exact_uniqueness"` to compute
@@ -523,13 +524,14 @@ public class FeatureStore extends FeatureStoreBase<Query> {
   public StreamFeatureGroup getOrCreateStreamFeatureGroup(String name, Integer version, String description,
                                                           List<String> primaryKeys, List<String> partitionKeys,
                                                           String hudiPrecombineKey, boolean onlineEnabled,
-                                                          StatisticsConfig statisticsConfig, String eventTime,
-                                                          OnlineConfig onlineConfig)
+                                                          TimeTravelFormat timeTravelFormat,
+                                                          StatisticsConfig statisticsConfig,
+                                                          String eventTime, OnlineConfig onlineConfig)
       throws IOException, FeatureStoreException {
 
     return featureGroupEngine.getOrCreateStreamFeatureGroup(this, name, version, description,
-        primaryKeys, partitionKeys, hudiPrecombineKey, onlineEnabled, statisticsConfig, eventTime,
-        onlineConfig);
+        primaryKeys, partitionKeys, hudiPrecombineKey, onlineEnabled, timeTravelFormat,
+        statisticsConfig, eventTime, onlineConfig);
   }
 
   /**
