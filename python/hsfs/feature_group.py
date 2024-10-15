@@ -2332,14 +2332,14 @@ class FeatureGroup(FeatureGroupBase):
             self.partition_key = partition_key
             if (
                 time_travel_format is not None
-                and time_travel_format.upper() == "HUDI"
+                and time_travel_format.upper() == "HUDI" or time_travel_format is None
                 and self._features
             ):
                 self._hudi_precombine_key = (
                     util.autofix_feature_name(hudi_precombine_key)
                     if hudi_precombine_key is not None
                     and self._time_travel_format is not None
-                    and self._time_travel_format == "HUDI"
+                    and self._time_travel_format == "HUDI" or time_travel_format is None
                     else None
                 )
             else:
