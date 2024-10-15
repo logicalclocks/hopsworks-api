@@ -2225,7 +2225,7 @@ class FeatureGroup(FeatureGroupBase):
         features: Optional[List[Union["feature.Feature", Dict[str, Any]]]] = None,
         location: Optional[str] = None,
         online_enabled: bool = False,
-        time_travel_format: Optional[str] = "HUDI",
+        time_travel_format: Optional[str] = None,
         statistics_config: Optional[Union["StatisticsConfig", Dict[str, Any]]] = None,
         online_topic_name: Optional[str] = None,
         topic_name: Optional[str] = None,
@@ -2333,8 +2333,8 @@ class FeatureGroup(FeatureGroupBase):
             self._hudi_precombine_key = (
                 util.autofix_feature_name(hudi_precombine_key)
                 if hudi_precombine_key is not None
-                and self._time_travel_format is not None
-                and self._time_travel_format == "HUDI"
+                and (self._time_travel_format is None
+                or self._time_travel_format == "HUDI")
                 else None
             )
             self.statistics_config = statistics_config
