@@ -1431,7 +1431,7 @@ class Engine:
             # provide the initial_check_point as it will reduce the read amplification of materialization job
             feature_group.materialization_job.run(
                 args=feature_group.materialization_job.config.get("defaultArgs", "")
-                + initial_check_point,
+                + (f" -initialCheckPointString {initial_check_point}" if initial_check_point else ""),
                 await_termination=offline_write_options.get("wait_for_job", False),
             )
         return feature_group.materialization_job
