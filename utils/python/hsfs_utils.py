@@ -286,6 +286,7 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
         initial_check_point_string = kafka_engine.kafka_get_offsets(
             topic_name=entity._online_topic_name,
             feature_store_id=entity.feature_store_id,
+            offline_write_options={},
             high=False,
         )
         offset_string = json.dumps(_build_starting_offsets(initial_check_point_string))
@@ -316,11 +317,11 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
     df_offsets = df.groupBy('partition').agg(max('offset').alias('offset')).collect()
     offset_dict = json.loads(offset_string)
     for offset_row in df_offsets:
-        offset_dict[f"{entity._online_topic_name}"][f"{offset_row.partition}"] = offset_row.offset
+        offset_dict[f"{entity._online_topic_name}"][f"{offset_row.partition}"] = offset_row.offset + 1
 
     # save offsets
     offset_df = spark.createDataFrame([offset_dict])
-    offset_df.write.mode("overwrite").json(offset_location)
+    offset_df.coalesce(1).write.mode("overwrite").json(offset_location)
 
 def _build_starting_offsets(initial_check_point_string: str):
     if not initial_check_point_string:
