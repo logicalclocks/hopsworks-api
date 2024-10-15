@@ -69,7 +69,7 @@ jobs:
           distribution: "adopt"
 
       - name: Set Timezone
-        run: sudo timedatectl set-timezone UTC && sudo echo UTC > /etc/timezone
+        run: sudo timedatectl set-timezone UTC && echo UTC | sudo tee /etc/timezone
 
       - uses: actions/checkout@v4
       - name: Copy README
@@ -102,7 +102,7 @@ jobs:
           distribution: "adopt"
 
       - name: Set Timezone
-        run: sudo timedatectl set-timezone UTC && sudo echo UTC > /etc/timezone
+        run: sudo timedatectl set-timezone UTC && echo UTC | sudo tee /etc/timezone
 
       - uses: actions/checkout@v4
       - name: Copy README
@@ -132,7 +132,7 @@ jobs:
           distribution: "adopt"
 
       - name: Set Timezone
-        run: sudo timedatectl set-timezone UTC && sudo echo UTC > /etc/timezone
+        run: sudo timedatectl set-timezone UTC && echo UTC | sudo tee /etc/timezone
 
       - uses: actions/checkout@v4
       - name: Copy README
@@ -165,7 +165,7 @@ jobs:
           distribution: "adopt"
 
       - name: Set Timezone
-        run: sudo timedatectl set-timezone Europe/Amsterdam && sudo echo Europe/Amsterdam > /etc/timezone
+        run: sudo timedatectl set-timezone Europe/Amsterdam && echo Europe/Amsterdam | sudo tee /etc/timezone
 
       - uses: actions/checkout@v4
       - name: Copy README
