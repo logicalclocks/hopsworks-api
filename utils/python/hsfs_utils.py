@@ -247,6 +247,18 @@ def run_feature_monitoring(job_conf: Dict[str, str]) -> None:
         raise e
 
 
+def delta_vacuum_fg(spark: SparkSession, job_conf: Dict[Any, Any]) -> None:
+    """
+    Run delta vacuum on a feature group.
+    """
+    feature_store = job_conf.pop("feature_store")
+    fs = get_feature_store_handle(feature_store)
+
+    entity = fs.get_feature_group(name=job_conf["name"], version=job_conf["version"])
+
+    entity.delta_vacuum()
+
+
 if __name__ == "__main__":
     # Setup spark first so it fails faster in case of args errors
     # Otherwise the resource manager will wait until the spark application master
@@ -265,6 +277,7 @@ if __name__ == "__main__":
             "ge_validate",
             "import_fg",
             "run_feature_monitoring",
+            "delta_vacuum_fg",
         ],
         help="Operation type",
     )
@@ -303,6 +316,8 @@ if __name__ == "__main__":
             import_fg(job_conf)
         elif args.op == "run_feature_monitoring":
             run_feature_monitoring(job_conf)
+        elif args.op == "delta_vacuum_fg":
+            delta_vacuum_fg(spark, job_conf)
 
         success = True
     except Exception:
