@@ -62,18 +62,18 @@ jobs:
         python-version: ["3.8", "3.9", "3.10"]
 
     steps:
+      - name: Set up JDK 8
+        uses: actions/setup-java@v3
+        with:
+          java-version: "8"
+          distribution: "adopt"
+
       - name: Set Timezone
         run: sudo timedatectl set-timezone UTC
 
       - uses: actions/checkout@v4
       - name: Copy README
         run: cp README.md python/
-
-      - name: Set up JDK 8
-        uses: actions/setup-java@v3
-        with:
-          java-version: "8"
-          distribution: "adopt"
 
       - uses: actions/setup-python@v5
         name: Setup Python
@@ -95,18 +95,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Set up JDK 8
+        uses: actions/setup-java@v3
+        with:
+          java-version: "8"
+          distribution: "adopt"
+
       - name: Set Timezone
         run: sudo timedatectl set-timezone UTC
 
       - uses: actions/checkout@v4
       - name: Copy README
         run: cp README.md python/
-
-      - name: Set up JDK 8
-        uses: actions/setup-java@v3
-        with:
-          java-version: "8"
-          distribution: "adopt"
 
       - uses: actions/setup-python@v5
         name: Setup Python
@@ -125,18 +125,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Set up JDK 8
+        uses: actions/setup-java@v3
+        with:
+          java-version: "8"
+          distribution: "adopt"
+
       - name: Set Timezone
         run: sudo timedatectl set-timezone UTC
 
       - uses: actions/checkout@v4
       - name: Copy README
         run: cp README.md python/
-
-      - name: Set up JDK 8
-        uses: actions/setup-java@v3
-        with:
-          java-version: "8"
-          distribution: "adopt"
 
       - uses: actions/setup-python@v4
         name: Setup Python
@@ -158,18 +158,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Set up JDK 8
+        uses: actions/setup-java@v3
+        with:
+          java-version: "8"
+          distribution: "adopt"
+
       - name: Set Timezone
         run: sudo timedatectl set-timezone Europe/Amsterdam
 
       - uses: actions/checkout@v4
       - name: Copy README
         run: cp README.md python/
-
-      - name: Set up JDK 8
-        uses: actions/setup-java@v3
-        with:
-          java-version: "8"
-          distribution: "adopt"
 
       - uses: actions/setup-python@v5
         name: Setup Python
