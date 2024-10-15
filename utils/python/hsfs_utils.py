@@ -296,8 +296,9 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
         .options(**read_options)
         .option("subscribe", entity._online_topic_name)
         .option("startingOffsets", offset_string)
-        .limit(5000000)
+        .option("includeHeaders", "true")
         .load()
+        .limit(5000000)
     )
 
     # filter only the necassary entries
