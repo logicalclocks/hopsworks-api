@@ -1473,9 +1473,9 @@ class Engine:
     def _convert_feature_log_to_df(feature_log, cols) -> pd.DataFrame:
         if feature_log is None and cols:
             return pd.DataFrame(columns=cols)
-        if not (isinstance(feature_log, (list, pd.DataFrame, pl.DataFrame))) or (
+        if not (isinstance(feature_log, (list, pd.DataFrame, pl.DataFrame)) or (
             HAS_NUMPY and isinstance(feature_log, np.ndarray)
-        ):
+        )):
             raise ValueError(f"Type '{type(feature_log)}' not accepted")
         if isinstance(feature_log, list) or (
             HAS_NUMPY and isinstance(feature_log, np.ndarray)
