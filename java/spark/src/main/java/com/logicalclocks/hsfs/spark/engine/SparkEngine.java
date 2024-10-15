@@ -219,6 +219,10 @@ public class SparkEngine extends EngineBase {
             ? onDemandFeatureGroup.getDataFormat().toString() : null, getOnDemandOptions(onDemandFeatureGroup),
         onDemandFeatureGroup.getStorageConnector().getPath(onDemandFeatureGroup.getPath()));
 
+    if (!Strings.isNullOrEmpty(onDemandFeatureGroup.getLocation())) {
+      sparkSession.sparkContext().textFile(onDemandFeatureGroup.getLocation(), 0).collect();
+    }
+
     dataset.createOrReplaceTempView(alias);
     return dataset;
   }

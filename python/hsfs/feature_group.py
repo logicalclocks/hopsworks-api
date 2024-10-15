@@ -137,8 +137,6 @@ class FeatureGroupBase:
                 Dict[str, Any],
             ]
         ] = None,
-        storage_connector: Union[sc.StorageConnector, Dict[str, Any]] = None,
-        path: Optional[str] = None,
         **kwargs,
     ) -> None:
         self._version = version
@@ -155,14 +153,7 @@ class FeatureGroupBase:
         self._feature_store_id = featurestore_id
         self._feature_store = None
         self._variable_api: VariableApi = VariableApi()
-        self._path = path
 
-        if storage_connector is not None and isinstance(storage_connector, dict):
-            self._storage_connector = sc.StorageConnector.from_response_json(
-                storage_connector
-            )
-        else:
-            self._storage_connector: "sc.StorageConnector" = storage_connector
         self._online_config = (
             OnlineConfig.from_response_json(online_config)
             if isinstance(online_config, dict)
@@ -2056,20 +2047,6 @@ class FeatureGroupBase:
         self._online_enabled = online_enabled
 
     @property
-    def path(self) -> Optional[str]:
-        return self._path
-
-    @property
-    def storage_connector(self) -> "sc.StorageConnector":
-        return self._storage_connector
-
-    def prepare_spark_location(self) -> str:
-        location = self.location
-        if (self.storage_connector is not None):
-            location = self.storage_connector.prepare_spark(location)
-        return location
-
-    @property
     def topic_name(self) -> Optional[str]:
         """The topic used for feature group data ingestion."""
         return self._topic_name
@@ -2255,8 +2232,6 @@ class FeatureGroup(FeatureGroupBase):
             ]
         ] = None,
         offline_backfill_every_hr: Optional[Union[str, int]] = None,
-        storage_connector: Union[sc.StorageConnector, Dict[str, Any]] = None,
-        path: Optional[str] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -2274,8 +2249,6 @@ class FeatureGroup(FeatureGroupBase):
             notification_topic_name=notification_topic_name,
             deprecated=deprecated,
             online_config=online_config,
-            storage_connector=storage_connector,
-            path=path,
         )
         self._feature_store_name: Optional[str] = featurestore_name
         self._description: Optional[str] = description
@@ -3273,31 +3246,6 @@ class FeatureGroup(FeatureGroupBase):
         """
         self._feature_group_engine.commit_delete(self, delete_df, write_options or {})
 
-    def delta_vacuum(
-        self,
-        retention_hours: int = None,
-    ) -> None:
-        """ Vacuum files that are no longer referenced by a Delta table and are older than the retention threshold.
-        This method can only be used on feature groups stored as DELTA.
-
-        !!! example
-            ```python
-            # connect to the Feature Store
-            fs = ...
-
-            # get the Feature Group instance
-            fg = fs.get_or_create_feature_group(...)
-
-            commit_details = fg.delta_vacuum(retention_hours = 168)
-
-        # Arguments
-            retention_hours: User provided retention period. The default retention threshold for the files is 7 days.
-
-        # Raises
-            `hsfs.client.exceptions.RestAPIError`.
-        """
-        self._feature_group_engine.delta_vacuum(self, retention_hours)
-
     def as_of(
         self,
         wallclock_time: Optional[Union[str, int, datetime, date]] = None,
@@ -3606,7 +3554,6 @@ class FeatureGroup(FeatureGroupBase):
             "transformationFunctions": [
                 tf.to_dict() for tf in self._transformation_functions
             ],
-            "path": self._path,
         }
         if self._online_config:
             fg_meta_dict["onlineConfig"] = self._online_config.to_dict()
@@ -3614,8 +3561,6 @@ class FeatureGroup(FeatureGroupBase):
             fg_meta_dict["embeddingIndex"] = self.embedding_index.to_dict()
         if self._stream:
             fg_meta_dict["deltaStreamerJobConf"] = self._deltastreamer_jobconf
-        if self._storage_connector:
-            fg_meta_dict["storageConnector"] = self._storage_connector.to_dict()
         return fg_meta_dict
 
     def _get_table_name(self) -> str:
@@ -3853,8 +3798,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
             notification_topic_name=notification_topic_name,
             deprecated=deprecated,
             online_config=online_config,
-            storage_connector=storage_connector,
-            path=path,
         )
 
         self._feature_store_name = featurestore_name
@@ -3863,6 +3806,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         self._creator = user.User.from_response_json(creator)
         self._query = query
         self._data_format = data_format.upper() if data_format else None
+        self._path = path
 
         self._features = [
             feature.Feature.from_response_json(feat) if isinstance(feat, dict) else feat
@@ -3903,6 +3847,12 @@ class ExternalFeatureGroup(FeatureGroupBase):
             self._features = features
             self._options = options or {}
 
+        if storage_connector is not None and isinstance(storage_connector, dict):
+            self._storage_connector = sc.StorageConnector.from_response_json(
+                storage_connector
+            )
+        else:
+            self._storage_connector: "sc.StorageConnector" = storage_connector
         self._vector_db_client: Optional["VectorDbClient"] = None
         self._href: Optional[str] = href
 
@@ -4293,8 +4243,16 @@ class ExternalFeatureGroup(FeatureGroupBase):
         return self._data_format
 
     @property
+    def path(self) -> Optional[str]:
+        return self._path
+
+    @property
     def options(self) -> Optional[Dict[str, Any]]:
         return self._options
+
+    @property
+    def storage_connector(self) -> "sc.StorageConnector":
+        return self._storage_connector
 
     @property
     def creator(self) -> Optional["user.User"]:

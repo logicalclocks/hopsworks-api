@@ -31,7 +31,6 @@ import com.logicalclocks.hsfs.JobConfiguration;
 import com.logicalclocks.hsfs.OnlineConfig;
 import com.logicalclocks.hsfs.StatisticsConfig;
 import com.logicalclocks.hsfs.Storage;
-import com.logicalclocks.hsfs.StorageConnector;
 import com.logicalclocks.hsfs.TimeTravelFormat;
 import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.metadata.Statistics;
@@ -65,8 +64,7 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
                       String description, List<String> primaryKeys, List<String> partitionKeys,
                       String hudiPrecombineKey, boolean onlineEnabled, TimeTravelFormat timeTravelFormat,
                       List<Feature> features, StatisticsConfig statisticsConfig, String onlineTopicName,
-                      String topicName, String notificationTopicName, String eventTime, OnlineConfig onlineConfig,
-                      StorageConnector storageConnector, String path) {
+                      String topicName, String notificationTopicName, String eventTime, OnlineConfig onlineConfig) {
     this();
     this.featureStore = featureStore;
     this.name = name;
@@ -87,8 +85,6 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
     this.notificationTopicName = notificationTopicName;
     this.eventTime = eventTime;
     this.onlineConfig = onlineConfig;
-    this.storageConnector = storageConnector;
-    this.path = path;
   }
 
   public FeatureGroup() {

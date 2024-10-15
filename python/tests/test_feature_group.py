@@ -32,7 +32,7 @@ from hsfs import (
 )
 from hsfs.client.exceptions import FeatureStoreException, RestAPIError
 from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
-from hsfs.engine import python, spark
+from hsfs.engine import python
 from hsfs.transformation_function import TransformationType
 
 
@@ -908,50 +908,3 @@ class TestExternalFeatureGroup:
         assert (
             fg.expectation_suite.expectation_suite_name == "test_expectation_suite_name"
         )
-
-    def test_prepare_spark_location(self, mocker, backend_fixtures):
-        # Arrange
-        engine = spark.Engine()
-        engine_instance = mocker.patch("hsfs.engine.get_instance", return_value=engine)
-        json = backend_fixtures["feature_group"]["get_basic_info"]["response"]
-        fg = feature_group.FeatureGroup.from_response_json(json)
-        fg._location = f"{fg.name}_{fg.version}"
-
-        # Act
-        path = fg.prepare_spark_location()
-
-        # Assert
-        assert fg.location == path
-        engine_instance.assert_not_called()
-
-    def test_prepare_spark_location_with_s3_connector(self, mocker, backend_fixtures):
-        # Arrange
-        engine = spark.Engine()
-        engine_instance = mocker.patch("hsfs.engine.get_instance", return_value=engine)
-        json = backend_fixtures["feature_group"]["get_basic_info"]["response"]
-        fg = feature_group.FeatureGroup.from_response_json(json)
-        fg._location = f"{fg.name}_{fg.version}"
-        fg._storage_connector = storage_connector.S3Connector(id=1, name="s3_conn", featurestore_id=fg.feature_store_id)
-
-        # Act
-        path = fg.prepare_spark_location()
-
-        # Assert
-        assert fg.location == path
-        engine_instance.assert_called_once()
-
-    def test_prepare_spark_location_with_s3_connector_python(self, mocker, backend_fixtures):
-        # Arrange
-        engine = python.Engine()
-        engine_instance = mocker.patch("hsfs.engine.get_instance", return_value=engine)
-        json = backend_fixtures["feature_group"]["get_basic_info"]["response"]
-        fg = feature_group.FeatureGroup.from_response_json(json)
-        fg._location = f"{fg.name}_{fg.version}"
-        fg._storage_connector = storage_connector.S3Connector(id=1, name="s3_conn", featurestore_id=fg.feature_store_id)
-
-        # Act
-        with pytest.raises(AttributeError):
-            fg.prepare_spark_location()
-
-        # Assert
-        engine_instance.assert_called_once()

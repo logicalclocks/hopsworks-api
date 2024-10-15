@@ -197,10 +197,12 @@ class Engine:
                 external_fg.query,
                 external_fg.data_format,
                 external_fg.options,
-                external_fg.prepare_spark_location(),
+                external_fg.storage_connector._get_path(external_fg.path),
             )
         else:
             external_dataset = external_fg.dataframe
+        if external_fg.location:
+            self._spark_session.sparkContext.textFile(external_fg.location).collect()
 
         external_dataset.createOrReplaceTempView(alias)
         return external_dataset
@@ -215,12 +217,10 @@ class Engine:
             self._spark_context,
             self._spark_session,
         )
-
         hudi_engine_instance.register_temporary_table(
             hudi_fg_alias,
             read_options,
         )
-
         hudi_engine_instance.reconcile_hudi_schema(
             self.save_empty_dataframe, hudi_fg_alias, read_options
         )
@@ -1258,7 +1258,7 @@ class Engine:
         self._set_s3_hadoop_conf(
             storage_connector, f"fs.s3a.bucket.{storage_connector.bucket}"
         )
-        return path.replace("s3://", "s3a://", 1) if path is not None else None
+        return path.replace("s3", "s3a", 1) if path is not None else None
 
     def _set_s3_hadoop_conf(self, storage_connector, prefix):
         if storage_connector.access_key:
@@ -1309,22 +1309,13 @@ class Engine:
             return True
         return False
 
-    def save_empty_dataframe(self, feature_group, new_features=None):
-        location = feature_group.prepare_spark_location()
-
-        dataframe = self._spark_session.read.format("hudi").load(location)
-
-        if (new_features is not None):
-            if isinstance(new_features, list):
-                for new_feature in new_features:
-                    dataframe = dataframe.withColumn(new_feature.name, lit(None).cast(new_feature.type))
-            else:
-                dataframe = dataframe.withColumn(new_features.name, lit(None).cast(new_features.type))
-
+    def save_empty_dataframe(self, feature_group):
+        fg_table_name = feature_group._get_table_name()
+        dataframe = self._spark_session.table(fg_table_name).limit(0)
 
         self.save_dataframe(
             feature_group,
-            dataframe.limit(0),
+            dataframe,
             "upsert",
             feature_group.online_enabled,
             "offline",
@@ -1333,22 +1324,20 @@ class Engine:
         )
 
     def add_cols_to_delta_table(self, feature_group, new_features):
-        location = feature_group.prepare_spark_location()
+        new_features_map = {}
+        if isinstance(new_features, list):
+            for new_feature in new_features:
+                new_features_map[new_feature.name] = lit("").cast(new_feature.type)
+        else:
+            new_features_map[new_features.name] = lit("").cast(new_features.type)
 
-        dataframe = self._spark_session.read.format("delta").load(location)
-
-        if (new_features is not None):
-            if isinstance(new_features, list):
-                for new_feature in new_features:
-                    dataframe = dataframe.withColumn(new_feature.name, lit("").cast(new_feature.type))
-            else:
-                dataframe = dataframe.withColumn(new_features.name, lit("").cast(new_features.type))
-
-        dataframe.limit(0).write.format("delta").mode(
+        self._spark_session.read.format("delta").load(
+            feature_group.location
+        ).withColumns(new_features_map).limit(0).write.format("delta").mode(
             "append"
         ).option("mergeSchema", "true").option(
             "spark.databricks.delta.schema.autoMerge.enabled", "true"
-        ).save(location)
+        ).save(feature_group.location)
 
     def _apply_transformation_function(
         self,

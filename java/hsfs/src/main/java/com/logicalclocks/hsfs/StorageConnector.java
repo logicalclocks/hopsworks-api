@@ -125,9 +125,6 @@ public abstract class StorageConnector {
     protected String bucket;
 
     @Getter @Setter
-    protected String region;
-
-    @Getter @Setter
     protected String sessionToken;
 
     @Getter @Setter
