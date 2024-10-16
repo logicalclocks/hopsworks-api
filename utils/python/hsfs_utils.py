@@ -274,7 +274,7 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
     )
 
     # get offsets
-    offset_location = entity.location + "_offsets"
+    offset_location = entity.prepare_spark_location() + "/kafka_offsets"
     try:
         if initial_check_point_string:
             offset_string = json.dumps(_build_starting_offsets(initial_check_point_string))
