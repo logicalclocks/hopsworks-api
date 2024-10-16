@@ -40,7 +40,7 @@ from hsfs.engine import spark
 from hsfs.hopsworks_udf import udf
 from hsfs.training_dataset_feature import TrainingDatasetFeature
 from hsfs.transformation_function import TransformationType
-from pyspark.sql import DataFrame
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.types import (
     ArrayType,
     BinaryType,
@@ -1711,7 +1711,9 @@ class TestSpark:
 
     def test_serialize_to_avro(self, mocker):
         # Arrange
-        mocker.patch("pyspark.sql.avro.functions.to_avro")
+        SparkSession.builder \
+            .config("spark.jars.packages", "org.apache.spark:spark-avro_2.12:3.1.1") \
+            .getOrCreate()
 
         spark_engine = spark.Engine()
 
@@ -1757,7 +1759,9 @@ class TestSpark:
 
     def test_deserialize_from_avro(self, mocker):
         # Arrange
-        mocker.patch("pyspark.sql.avro.functions.from_avro")
+        SparkSession.builder \
+            .config("spark.jars.packages", "org.apache.spark:spark-avro_2.12:3.1.1") \
+            .getOrCreate()
 
         spark_engine = spark.Engine()
 
@@ -1801,6 +1805,9 @@ class TestSpark:
 
     def test_serialize_deserialize_avro(self, mocker):
         # Arrange
+        SparkSession.builder \
+            .config("spark.jars.packages", "org.apache.spark:spark-avro_2.12:3.1.1") \
+            .getOrCreate()
         spark_engine = spark.Engine()
 
         now = datetime.datetime.now()
@@ -1835,32 +1842,20 @@ class TestSpark:
         }
 
         # Act
-        with pytest.raises(
-            TypeError
-        ) as e_info:  # todo look into this (to_avro from_avro has to be mocked)
-            spark_engine._serialize_to_avro(
-                feature_group=fg,
-                dataframe=df,
-            )
-            '''
-            serialized_df = spark_engine._serialize_to_avro(
-                feature_group=fg,
-                dataframe=df,
-            )
+        serialized_df = spark_engine._serialize_to_avro(
+            feature_group=fg,
+            dataframe=df,
+        )
 
-            deserialized_df = spark_engine._deserialize_from_avro(
-                feature_group=fg,
-                dataframe=serialized_df,
-            )
-            '''
+        deserialized_df = spark_engine._deserialize_from_avro(
+            feature_group=fg,
+            dataframe=serialized_df,
+        )
 
         # Assert
-        assert str(e_info.value) == "'JavaPackage' object is not callable"
-        ''' when to_avro/from_avro issue is resolved uncomment this line (it ensures that encoded df can be properly decoded)
         assert serialized_df.schema.json() == '{"fields":[{"metadata":{},"name":"key","nullable":false,"type":"binary"},{"metadata":{},"name":"value","nullable":false,"type":"binary"}],"type":"struct"}'
         assert df.schema == deserialized_df.schema
         assert df.collect() == deserialized_df.collect()
-        '''
 
     def test_get_training_data(self, mocker):
         # Arrange
