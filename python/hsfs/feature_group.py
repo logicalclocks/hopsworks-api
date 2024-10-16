@@ -22,7 +22,6 @@ import time
 import warnings
 from datetime import date, datetime
 from typing import (
-    TYPE_CHECKING,
     Any,
     Dict,
     List,
@@ -33,18 +32,12 @@ from typing import (
     Union,
 )
 
-
-if TYPE_CHECKING:
-    import great_expectations
-
 import avro.schema
-import confluent_kafka
 import hsfs.expectation_suite
 import humps
-import numpy as np
 import pandas as pd
-import polars as pl
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
+from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import (
     engine,
     feature,
@@ -80,6 +73,7 @@ from hsfs.core import (
 from hsfs.core import feature_monitoring_config as fmc
 from hsfs.core import feature_monitoring_result as fmr
 from hsfs.core.constants import (
+    HAS_CONFLUENT_KAFKA,
     HAS_GREAT_EXPECTATIONS,
 )
 from hsfs.core.job import Job
@@ -100,6 +94,15 @@ from hsfs.validation_report import ValidationReport
 
 if HAS_GREAT_EXPECTATIONS:
     import great_expectations
+
+if HAS_CONFLUENT_KAFKA:
+    import confluent_kafka
+
+if HAS_NUMPY:
+    import numpy as np
+
+if HAS_POLARS:
+    import polars as pl
 
 
 _logger = logging.getLogger(__name__)
@@ -134,6 +137,8 @@ class FeatureGroupBase:
                 Dict[str, Any],
             ]
         ] = None,
+        storage_connector: Union[sc.StorageConnector, Dict[str, Any]] = None,
+        path: Optional[str] = None,
         **kwargs,
     ) -> None:
         self._version = version
@@ -150,7 +155,14 @@ class FeatureGroupBase:
         self._feature_store_id = featurestore_id
         self._feature_store = None
         self._variable_api: VariableApi = VariableApi()
+        self._path = path
 
+        if storage_connector is not None and isinstance(storage_connector, dict):
+            self._storage_connector = sc.StorageConnector.from_response_json(
+                storage_connector
+            )
+        else:
+            self._storage_connector: "sc.StorageConnector" = storage_connector
         self._online_config = (
             OnlineConfig.from_response_json(online_config)
             if isinstance(online_config, dict)
@@ -251,7 +263,7 @@ class FeatureGroupBase:
         include_primary_key: Optional[bool] = True,
         include_event_time: Optional[bool] = True,
     ) -> query.Query:
-        """Select all features in the feature group and return a query object.
+        """Select all features along with primary key and event time from the feature group and return a query object.
 
         The query can be used to construct joins of feature groups or create a
         feature view.
@@ -315,6 +327,111 @@ class FeatureGroupBase:
             return self.select_except([self.event_time])
         else:
             return self.select_except(self.primary_key + [self.event_time])
+
+    def select_features(
+        self,
+    ) -> query.Query:
+        """Select all the features in the feature group and return a query object.
+
+        Queries define the schema of Feature View objects which can be used to
+        create Training Datasets, read from the Online Feature Store, and more. They can
+        also be composed to create more complex queries using the `join` method.
+
+        !!! info
+        This method does not select the primary key and event time of the feature group.
+        Use `select_all` to include them.
+        Note that primary keys do not need to be included in the query to allow joining
+        on them.
+
+        !!! example
+            ```python
+            # connect to the Feature Store
+            fs = hopsworks.login().get_feature_store()
+
+            # Some dataframe to create the feature group with
+            # both an event time and a primary key column
+            my_df.head()
+            +------------+------------+------------+------------+
+            |    id      | feature_1  |    ...     |    ts      |
+            +------------+------------+------------+------------+
+            |     8      |     8      |            |    15      |
+            |     3      |     3      |    ...     |    6       |
+            |     1      |     1      |            |    18      |
+            +------------+------------+------------+------------+
+
+            # Create the Feature Group instances
+            fg1 = fs.create_feature_group(
+                    name = "fg1",
+                    version=1,
+                    primary_key=["id"],
+                    event_time="ts",
+                )
+
+            # Insert data to the feature group.
+            fg1.insert(my_df)
+
+            # select all features from `fg1` excluding primary key and event time
+            query = fg1.select_features()
+
+            # show first 3 rows
+            query.show(3)
+
+            # Output, no id or ts columns
+            +------------+------------+------------+
+            | feature_1  | feature_2  | feature_3  |
+            +------------+------------+------------+
+            |     8      |     7      |    15      |
+            |     3      |     1      |     6      |
+            |     1      |     2      |    18      |
+            +------------+------------+------------+
+            ```
+
+            !!! example
+            ```python
+            # connect to the Feature Store
+            fs = hopsworks.login().get_feature_store()
+
+            # Get the Feature Group from the previous example
+            fg1 = fs.get_feature_group("fg1", 1)
+
+            # Some dataframe to create another feature group
+            # with a primary key column
+            +------------+------------+------------+
+            |    id_2    | feature_6  | feature_7  |
+            +------------+------------+------------+
+            |     8      |     11     |            |
+            |     3      |     4      |    ...     |
+            |     1      |     9      |            |
+            +------------+------------+------------+
+
+            # join the two feature groups on their indexes, `id` and `id_2`
+            # but does not include them in the query
+            query = fg1.select_features().join(fg2.select_features(), left_on="id", right_on="id_2")
+
+            # show first 5 rows
+            query.show(3)
+
+            # Output
+            +------------+------------+------------+------------+------------+
+            | feature_1  | feature_2  | feature_3  | feature_6  | feature_7  |
+            +------------+------------+------------+------------+------------+
+            |     8      |     7      |    15      |    11      |    15      |
+            |     3      |     1      |     6      |     4      |     3      |
+            |     1      |     2      |    18      |     9      |    20      |
+            +------------+------------+------------+------------+------------+
+
+            ```
+
+        # Returns
+            `Query`. A query object with all features of the feature group.
+        """
+        query = self.select_except(self.primary_key + [self.event_time])
+        _logger.info(
+            f"Using {[f.name for f in query.features]} as features for the query."
+            "To include primary key and event time use `select_all`."
+        )
+
+        return query
 
     def select(self, features: List[Union[str, feature.Feature]]) -> query.Query:
         """Select a subset of features of the feature group and return a query object.
@@ -1939,6 +2056,20 @@ class FeatureGroupBase:
         self._online_enabled = online_enabled
 
     @property
+    def path(self) -> Optional[str]:
+        return self._path
+
+    @property
+    def storage_connector(self) -> "sc.StorageConnector":
+        return self._storage_connector
+
+    def prepare_spark_location(self) -> str:
+        location = self.location
+        if (self.storage_connector is not None):
+            location = self.storage_connector.prepare_spark(location)
+        return location
+
+    @property
     def topic_name(self) -> Optional[str]:
         """The topic used for feature group data ingestion."""
         return self._topic_name
@@ -2123,7 +2254,9 @@ class FeatureGroup(FeatureGroupBase):
                 Dict[str, Any],
             ]
         ] = None,
-        offline_backfill_every: Optional[Union[str, int]] = None,
+        offline_backfill_every_hr: Optional[Union[str, int]] = None,
+        storage_connector: Union[sc.StorageConnector, Dict[str, Any]] = None,
+        path: Optional[str] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -2141,6 +2274,8 @@ class FeatureGroup(FeatureGroupBase):
             notification_topic_name=notification_topic_name,
             deprecated=deprecated,
             online_config=online_config,
+            storage_connector=storage_connector,
+            path=path,
         )
         self._feature_store_name: Optional[str] = featurestore_name
         self._description: Optional[str] = description
@@ -2185,7 +2320,7 @@ class FeatureGroup(FeatureGroupBase):
                 self._hudi_precombine_key: Optional[str] = None
 
             self.statistics_config = statistics_config
-            self._offline_backfill_every = None
+            self._offline_backfill_every_hr = None
 
         else:
             # initialized by user
@@ -2216,7 +2351,7 @@ class FeatureGroup(FeatureGroupBase):
                 else None
             )
             self.statistics_config = statistics_config
-            self._offline_backfill_every = offline_backfill_every
+            self._offline_backfill_every_hr = offline_backfill_every_hr
 
         self._feature_group_engine: "feature_group_engine.FeatureGroupEngine" = (
             feature_group_engine.FeatureGroupEngine(featurestore_id)
@@ -2799,8 +2934,8 @@ class FeatureGroup(FeatureGroupBase):
             write_options = {}
         if "wait_for_job" not in write_options:
             write_options["wait_for_job"] = wait
-        if not self._id and self._offline_backfill_every is not None:
-            write_options["offline_backfill_every"] = self._offline_backfill_every
+        if not self._id and self._offline_backfill_every_hr is not None:
+            write_options["offline_backfill_every_hr"] = self._offline_backfill_every_hr
 
         job, ge_report = self._feature_group_engine.insert(
             self,
@@ -3138,6 +3273,31 @@ class FeatureGroup(FeatureGroupBase):
         """
         self._feature_group_engine.commit_delete(self, delete_df, write_options or {})
 
+    def delta_vacuum(
+        self,
+        retention_hours: int = None,
+    ) -> None:
+        """ Vacuum files that are no longer referenced by a Delta table and are older than the retention threshold.
+        This method can only be used on feature groups stored as DELTA.
+
+        !!! example
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            # get the Feature Group instance
+            fg = fs.get_or_create_feature_group(...)
+
+            commit_details = fg.delta_vacuum(retention_hours = 168)
+
+        # Arguments
+            retention_hours: User provided retention period. The default retention threshold for the files is 7 days.
+
+        # Raises
+            `hsfs.client.exceptions.RestAPIError`.
+        """
+        self._feature_group_engine.delta_vacuum(self, retention_hours)
+
     def as_of(
         self,
         wallclock_time: Optional[Union[str, int, datetime, date]] = None,
@@ -3443,7 +3603,10 @@ class FeatureGroup(FeatureGroupBase):
             "topicName": self.topic_name,
             "notificationTopicName": self.notification_topic_name,
             "deprecated": self.deprecated,
-            "transformationFunctions": self._transformation_functions,
+            "transformationFunctions": [
+                tf.to_dict() for tf in self._transformation_functions
+            ],
+            "path": self._path,
         }
         if self._online_config:
             fg_meta_dict["onlineConfig"] = self._online_config.to_dict()
@@ -3451,6 +3614,8 @@ class FeatureGroup(FeatureGroupBase):
             fg_meta_dict["embeddingIndex"] = self.embedding_index.to_dict()
         if self._stream:
             fg_meta_dict["deltaStreamerJobConf"] = self._deltastreamer_jobconf
+        if self._storage_connector:
+            fg_meta_dict["storageConnector"] = self._storage_connector.to_dict()
         return fg_meta_dict
 
     def _get_table_name(self) -> str:
@@ -3593,7 +3758,7 @@ class FeatureGroup(FeatureGroupBase):
         self._transformation_functions = transformation_functions
 
     @property
-    def offline_backfill_every(self) -> Optional[Union[int, str]]:
+    def offline_backfill_every_hr(self) -> Optional[Union[int, str]]:
         """On Feature Group creation, used to set scheduled run of the materialisation job."""
         if self.id:
             job = self.materialization_job
@@ -3610,11 +3775,11 @@ class FeatureGroup(FeatureGroupBase):
                 )
                 return None
         else:
-            return self._offline_backfill_every
+            return self._offline_backfill_every_hr
 
-    @offline_backfill_every.setter
-    def offline_backfill_every(
-        self, new_offline_backfill_every: Optional[Union[int, str]]
+    @offline_backfill_every_hr.setter
+    def offline_backfill_every_hr(
+        self, new_offline_backfill_every_hr: Optional[Union[int, str]]
     ) -> None:
         if self.id:
             raise FeatureStoreException(
@@ -3622,7 +3787,7 @@ class FeatureGroup(FeatureGroupBase):
                 "Use `job = fg.materialization_job` to get the full job object and edit the schedule"
             )
         else:
-            self._offline_backfill_every = new_offline_backfill_every
+            self._offline_backfill_every_hr = new_offline_backfill_every_hr
 
 
 @typechecked
@@ -3688,6 +3853,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
             notification_topic_name=notification_topic_name,
             deprecated=deprecated,
             online_config=online_config,
+            storage_connector=storage_connector,
+            path=path,
         )
 
         self._feature_store_name = featurestore_name
@@ -3696,7 +3863,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
         self._creator = user.User.from_response_json(creator)
         self._query = query
         self._data_format = data_format.upper() if data_format else None
-        self._path = path
 
         self._features = [
             feature.Feature.from_response_json(feat) if isinstance(feat, dict) else feat
@@ -3737,12 +3903,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
             self._features = features
             self._options = options or {}
 
-        if storage_connector is not None and isinstance(storage_connector, dict):
-            self._storage_connector = sc.StorageConnector.from_response_json(
-                storage_connector
-            )
-        else:
-            self._storage_connector: "sc.StorageConnector" = storage_connector
         self._vector_db_client: Optional["VectorDbClient"] = None
         self._href: Optional[str] = href
 
@@ -4133,16 +4293,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
         return self._data_format
 
     @property
-    def path(self) -> Optional[str]:
-        return self._path
-
-    @property
     def options(self) -> Optional[Dict[str, Any]]:
         return self._options
-
-    @property
-    def storage_connector(self) -> "sc.StorageConnector":
-        return self._storage_connector
 
     @property
     def creator(self) -> Optional["user.User"]:

@@ -17,10 +17,14 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 
-import numpy as np
 import pandas as pd
+from hopsworks_common.core.constants import HAS_NUMPY
 from hsfs.core.job import Job
 from hsfs.validation_report import ValidationReport
+
+
+if HAS_NUMPY:
+    import numpy as np
 
 
 class FeatureGroupWriter:
@@ -55,7 +59,7 @@ class FeatureGroupWriter:
             operation=operation,
             storage=storage,
             write_options={"start_offline_materialization": False, **write_options},
-            validation_options={"fetch_expectation_suite": False, **validation_options}
+            validation_options={"fetch_expectation_suite": False, **validation_options},
         )
 
     def __exit__(self, exc_type, exc_value, exc_tb):

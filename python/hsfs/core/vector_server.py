@@ -23,12 +23,17 @@ from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any, Callable, Dict, List, Literal, Optional, Set, Tuple, Union
 
-import avro.io
-import avro.schema
-import numpy as np
 import pandas as pd
-import polars as pl
 from hopsworks_common import client
+from hopsworks_common.core.constants import (
+    HAS_AVRO,
+    HAS_FAST_AVRO,
+    HAS_NUMPY,
+    HAS_POLARS,
+    avro_not_installed_message,
+    numpy_not_installed_message,
+    polars_not_installed_message,
+)
 from hsfs import (
     feature_view,
     training_dataset,
@@ -46,15 +51,21 @@ from hsfs.core import (
 from hsfs.core import (
     transformation_function_engine as tf_engine_mod,
 )
+from hsfs.hopsworks_udf import UDFExecutionMode
 
 
-HAS_FASTAVRO = False
-try:
+if HAS_NUMPY:
+    import numpy as np
+
+if HAS_FAST_AVRO:
     from fastavro import schemaless_reader
-
-    HAS_FASTAVRO = True
-except ImportError:
+if HAS_AVRO:
+    import avro.io
+    import avro.schema
     from avro.io import BinaryDecoder
+
+if HAS_POLARS:
+    import polars as pl
 
 _logger = logging.getLogger(__name__)
 
@@ -546,8 +557,7 @@ class VectorServer:
                 "1. There is no match in the given entry."
                 " Please check if the entry exists in the online feature store"
                 " or provide the feature as passed_feature. "
-                f"2. Required entries [{', '.join(self.required_serving_keys)}] or "
-                f"[{', '.join(set(sk.feature_name for sk in self._serving_keys))}] are not provided."
+                f"2. Required entries [{', '.join(self.required_serving_keys)}] are not provided."
             )
 
         if len(self.return_feature_value_handlers) > 0:
@@ -590,7 +600,7 @@ class VectorServer:
             return_type = "pandas"
             feature_vectors = feature_vectors.to_dict(orient="records")
 
-        elif isinstance(feature_vectors, pl.DataFrame):
+        elif HAS_POLARS and isinstance(feature_vectors, pl.DataFrame):
             return_type = "polars"
             feature_vectors = feature_vectors.to_pandas()
             feature_vectors = feature_vectors.to_dict(orient="records")
@@ -803,6 +813,8 @@ class VectorServer:
             return feature_vectorz
         elif return_type.lower() == "numpy" and not inference_helper:
             _logger.debug("Returning feature vector as numpy array")
+            if not HAS_NUMPY:
+                raise ModuleNotFoundError(numpy_not_installed_message)
             return np.array(feature_vectorz)
         # Only inference helper can return dict
         elif return_type.lower() == "dict" and inference_helper:
@@ -823,6 +835,8 @@ class VectorServer:
                 return pandas_df
         elif return_type.lower() == "polars":
             _logger.debug("Returning feature vector as polars dataframe")
+            if not HAS_POLARS:
+                raise ModuleNotFoundError(polars_not_installed_message)
             return pl.DataFrame(
                 feature_vectorz if batch else [feature_vectorz],
                 schema=column_names if not inference_helper else None,
@@ -986,43 +1000,83 @@ class VectorServer:
     ) -> dict:
         _logger.debug("Applying On-Demand transformation functions.")
         for tf in self._on_demand_transformation_functions:
-            # Check if feature provided as request parameter if not get it from retrieved feature vector.
-            features = [
-                pd.Series(request_parameter[feature])
-                if feature in request_parameter.keys()
-                else (
-                    pd.Series(
-                        rows[feature]
-                        if (not isinstance(rows[feature], pd.Series))
-                        else rows[feature]
+            if (
+                tf.hopsworks_udf.execution_mode.get_current_execution_mode(online=True)
+                == UDFExecutionMode.PANDAS
+            ):
+                # Check if feature provided as request parameter if not get it from retrieved feature vector.
+                features = [
+                    pd.Series(request_parameter[feature])
+                    if feature in request_parameter.keys()
+                    else (
+                        pd.Series(
+                            rows[feature]
+                            if (not isinstance(rows[feature], pd.Series))
+                            else rows[feature]
+                        )
                     )
-                )
-                for feature in tf.hopsworks_udf.transformation_features
-            ]
-            on_demand_feature = tf.hopsworks_udf.get_udf(force_python_udf=True)(
+                    for feature in tf.hopsworks_udf.transformation_features
+                ]
+            else:
+                # No need to cast to pandas Series for Python UDF's
+                features = [
+                    request_parameter[feature]
+                    if feature in request_parameter.keys()
+                    else rows[feature]
+                    for feature in tf.hopsworks_udf.transformation_features
+                ]
+
+            on_demand_feature = tf.hopsworks_udf.get_udf(online=True)(
                 *features
             )  # Get only python compatible UDF irrespective of engine
-
-            rows[on_demand_feature.name] = on_demand_feature.values[0]
+            if (
+                tf.hopsworks_udf.execution_mode.get_current_execution_mode(online=True)
+                == UDFExecutionMode.PANDAS
+            ):
+                rows[on_demand_feature.name] = on_demand_feature.values[0]
+            else:
+                rows[tf.output_column_names[0]] = on_demand_feature
         return rows
 
     def apply_model_dependent_transformations(self, rows: Union[dict, pd.DataFrame]):
         _logger.debug("Applying Model-Dependent transformation functions.")
         for tf in self.model_dependent_transformation_functions:
-            features = [
-                pd.Series(rows[feature])
-                if (not isinstance(rows[feature], pd.Series))
-                else rows[feature]
-                for feature in tf.hopsworks_udf.transformation_features
-            ]
-            transformed_result = tf.hopsworks_udf.get_udf(force_python_udf=True)(
+            if (
+                tf.hopsworks_udf.execution_mode.get_current_execution_mode(online=True)
+                == UDFExecutionMode.PANDAS
+            ):
+                features = [
+                    pd.Series(rows[feature])
+                    if (not isinstance(rows[feature], pd.Series))
+                    else rows[feature]
+                    for feature in tf.hopsworks_udf.transformation_features
+                ]
+            else:
+                # No need to cast to pandas Series for Python UDF's
+                # print("executing as python udfs")
+                features = [
+                    rows[feature]
+                    for feature in tf.hopsworks_udf.transformation_features
+                ]
+            transformed_result = tf.hopsworks_udf.get_udf(online=True)(
                 *features
             )  # Get only python compatible UDF irrespective of engine
-            if isinstance(transformed_result, pd.Series):
-                rows[transformed_result.name] = transformed_result.values[0]
+
+            if (
+                tf.hopsworks_udf.execution_mode.get_current_execution_mode(online=True)
+                == UDFExecutionMode.PANDAS
+            ):
+                if isinstance(transformed_result, pd.Series):
+                    rows[transformed_result.name] = transformed_result.values[0]
+                else:
+                    for col in transformed_result:
+                        rows[col] = transformed_result[col].values[0]
             else:
-                for col in transformed_result:
-                    rows[col] = transformed_result[col].values[0]
+                if isinstance(transformed_result, tuple):
+                    for index, result in enumerate(transformed_result):
+                        rows[tf.output_column_names[index]] = result
+                else:
+                    rows[tf.output_column_names[0]] = transformed_result
         return rows
 
     def apply_transformation(
@@ -1058,6 +1112,9 @@ class VectorServer:
             - deserialization of complex features from the online feature store
             - conversion of string or int timestamps to datetime objects
         """
+        if not HAS_AVRO:
+            raise ModuleNotFoundError(avro_not_installed_message)
+
         complex_feature_schemas = {
             f.name: avro.io.DatumReader(
                 avro.schema.parse(
@@ -1076,7 +1133,7 @@ class VectorServer:
             _logger.debug(
                 f"Building complex feature decoders corresponding to {complex_feature_schemas}."
             )
-        if HAS_FASTAVRO:
+        if HAS_FAST_AVRO:
             _logger.debug("Using fastavro for deserialization.")
             return {
                 f_name: (
@@ -1459,7 +1516,6 @@ class VectorServer:
         if not self._valid_serving_keys or len(self._valid_serving_keys) == 0:
             self._valid_serving_keys = set(
                 [sk.required_serving_key for sk in self.serving_keys]
-                + [sk.feature_name for sk in self.serving_keys]
             )
         return self._valid_serving_keys
 

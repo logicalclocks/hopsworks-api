@@ -50,6 +50,7 @@ class RestAPIError(Exception):
                 error_object = {"errorMsg": error_object}
         except Exception:
             error_object = {}
+            self.error_code = None
         message = (
             "Metadata operation error: (url: {}). Server response: \n"
             "HTTP code: {}, HTTP reason: {}, body: {}, error code: {}, error msg: {}, user "
@@ -63,6 +64,8 @@ class RestAPIError(Exception):
                 error_object.get("usrMsg", ""),
             )
         )
+        if len(error_object) != 0:
+            self.error_code = error_object.get("errorCode", "")
         super().__init__(message)
         self.url = url
         self.response = response
@@ -117,21 +120,20 @@ class ExternalClientError(TypeError):
         ).format(missing_argument)
         super().__init__(message)
 
-class HopsworksClientError(TypeError):
-    """Raised when hopsworks internal client cannot be initialized due to missing arguments."""
 
-    def __init__(self, missing_argument):
-        message = (
-            "{0} cannot be of type NoneType, {0} is a non-optional "
-            "argument to connect to hopsworks from an internal environment."
-        ).format(missing_argument)
+class InternalClientError(TypeError):
+    """Raised when hopsworks internal client is missing some necessary configuration."""
+
+    def __init__(self, message: str) -> None:
         super().__init__(message)
+
 
 class HopsworksSSLClientError(SSLError):
     """Raised when the client connection fails with SSL related errors."""
 
     def __init__(self, message: str) -> None:
         super().__init__(message)
+
 
 class GitException(Exception):
     """Generic git exception"""

@@ -14,10 +14,14 @@
 #   limitations under the License.
 #
 
+from __future__ import annotations
+
 import logging
 import os
 import time
 import uuid
+from datetime import datetime
+from typing import Optional
 
 from hopsworks_common.client.exceptions import JobExecutionException, RestAPIError
 from hopsworks_common.core import dataset_api, execution_api
@@ -88,15 +92,24 @@ class ExecutionEngine:
                     raise e
         return download_path
 
-    def wait_until_finished(self, job, execution):
-        """Wait until execution reaches terminal state
-        :param execution: job of the execution
-        :type execution: Job
-        :param execution: execution to monitor
-        :type execution: Execution
-        :return: The final Execution object
-        :rtype: str, str
+    def wait_until_finished(self, job, execution, timeout: Optional[float] = None):
+        """Wait until execution terminates.
+
+        # Arguments
+            job: job of the execution
+            execution: execution to monitor
+            timeout: the maximum waiting time in seconds, if `None` the waiting time is unbounded; defaults to `None`. Note: the actual waiting time may be bigger by approximately 3 seconds.
+        # Returns
+            `Optional[Execution]`: The final execution or `None` if the timeout is exceeded.
+        # Raises
+            `RestAPIError`.
         """
+        start_time = datetime.now()
+
+        def passed():
+            return (datetime.now() - start_time).total_seconds()
+
+        MAX_LAG = 3.0
 
         is_yarn_job = job.job_type is not None and (
             job.job_type.lower() == "spark"
@@ -107,6 +120,10 @@ class ExecutionEngine:
         updated_execution = self._execution_api._get(job, execution.id)
         execution_state = None
         while updated_execution.success is None:
+            if timeout and timeout <= passed() + MAX_LAG:
+                self._log.info("The waiting timeout was exceeded.")
+                return updated_execution
+            time.sleep(MAX_LAG)
             updated_execution = self._execution_api._get(job, execution.id)
             if execution_state != updated_execution.state:
                 if is_yarn_job:
@@ -122,27 +139,28 @@ class ExecutionEngine:
                         )
                     )
             execution_state = updated_execution.state
-            time.sleep(3)
 
         # wait for log files to be aggregated, max 6 minutes
-        await_time = 120
+        await_time = 6 * 60.0
         log_aggregation_files_exist = self._dataset_api.exists(
             updated_execution.stdout_path
         ) and self._dataset_api.exists(updated_execution.stderr_path)
         log_aggregation_files_exist_already = log_aggregation_files_exist
         self._log.info("Waiting for log aggregation to finish.")
         while not log_aggregation_files_exist and await_time >= 0:
+            if timeout and timeout <= passed() + MAX_LAG:
+                break
+            await_time -= MAX_LAG
+            time.sleep(MAX_LAG)
             updated_execution = self._execution_api._get(job, execution.id)
 
             log_aggregation_files_exist = self._dataset_api.exists(
                 updated_execution.stdout_path
             ) and self._dataset_api.exists(updated_execution.stderr_path)
 
-            await_time -= 1
-            time.sleep(3)
-
         if not log_aggregation_files_exist_already:
-            time.sleep(5)  # Helps for log aggregation to flush to filesystem
+            if not timeout or timeout > passed() + 5:
+                time.sleep(5)  # Helps for log aggregation to flush to filesystem
 
         if is_yarn_job and not updated_execution.success:
             self._log.error(

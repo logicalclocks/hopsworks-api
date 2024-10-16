@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 
-from hopsworks_common import client, tag
+from hopsworks_common import client, tag, usage
 
 
 class TagsApi:
@@ -33,6 +33,7 @@ class TagsApi:
         self._feature_store_id = feature_store_id
         self._entity_type = entity_type
 
+    @usage.method_logger
     def add(self, metadata_instance, name, value, training_dataset_version=None):
         """Attach a name/value tag to a training dataset or feature group.
 
@@ -55,6 +56,7 @@ class TagsApi:
         json_value = json.dumps(value)
         _client._send_request("PUT", path_params, headers=headers, data=json_value)
 
+    @usage.method_logger
     def delete(self, metadata_instance, name, training_dataset_version=None):
         """Delete a tag from a training dataset or feature group.
 
@@ -73,6 +75,7 @@ class TagsApi:
 
         _client._send_request("DELETE", path_params)
 
+    @usage.method_logger
     def get(self, metadata_instance, name: str = None, training_dataset_version=None):
         """Get the tags of a training dataset or feature group.
 
@@ -99,6 +102,7 @@ class TagsApi:
             )
         }
 
+    @usage.method_logger
     def get_path(self, metadata_instance, training_dataset_version=None):
         _client = client.get_instance()
         if hasattr(metadata_instance, "training_data"):

@@ -22,12 +22,12 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import humps
-from hopsworks import execution as execution_mod
+from hopsworks_common import execution as execution_mod
 from hopsworks_common import user as user_mod
 from hopsworks_common import util
+from hopsworks_common.core.constants import HAS_GREAT_EXPECTATIONS
 from hsfs import expectation_suite as es_mod
 from hsfs import validation_report as vr_mod
-from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
 
 
 if TYPE_CHECKING or HAS_GREAT_EXPECTATIONS:

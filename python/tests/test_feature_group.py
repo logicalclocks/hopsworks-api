@@ -32,7 +32,7 @@ from hsfs import (
 )
 from hsfs.client.exceptions import FeatureStoreException, RestAPIError
 from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
-from hsfs.engine import python
+from hsfs.engine import python, spark
 from hsfs.transformation_function import TransformationType
 
 
@@ -365,6 +365,12 @@ class TestFeatureGroup:
         assert len(features) == 2
         assert set([f.name for f in features]) == {"f1", "f2"}
 
+    def test_select_features(self):
+        query = test_feature_group.select_features()
+        features = query.features
+        assert len(features) == 2
+        assert set([f.name for f in features]) == {"f1", "f2"}
+
     def test_materialization_job(self, mocker):
         mock_job = mocker.Mock()
         mock_job_api = mocker.patch(
@@ -401,7 +407,7 @@ class TestFeatureGroup:
         mock_response_job_not_found.status_code = 404
         mock_response_job_not_found.json.return_value = {"errorCode": 130009}
 
-        mock_response_not_found = mocker.Mock()
+        mock_response_not_found = mocker.MagicMock()
         mock_response_not_found.status_code = 404
 
         mock_job = mocker.Mock()
@@ -442,7 +448,7 @@ class TestFeatureGroup:
         # Arrange
         mocker.patch("time.sleep")
 
-        mock_response_not_found = mocker.Mock()
+        mock_response_not_found = mocker.MagicMock()
         mock_response_not_found.status_code = 404
 
         mock_job_api = mocker.patch(
@@ -902,3 +908,50 @@ class TestExternalFeatureGroup:
         assert (
             fg.expectation_suite.expectation_suite_name == "test_expectation_suite_name"
         )
+
+    def test_prepare_spark_location(self, mocker, backend_fixtures):
+        # Arrange
+        engine = spark.Engine()
+        engine_instance = mocker.patch("hsfs.engine.get_instance", return_value=engine)
+        json = backend_fixtures["feature_group"]["get_basic_info"]["response"]
+        fg = feature_group.FeatureGroup.from_response_json(json)
+        fg._location = f"{fg.name}_{fg.version}"
+
+        # Act
+        path = fg.prepare_spark_location()
+
+        # Assert
+        assert fg.location == path
+        engine_instance.assert_not_called()
+
+    def test_prepare_spark_location_with_s3_connector(self, mocker, backend_fixtures):
+        # Arrange
+        engine = spark.Engine()
+        engine_instance = mocker.patch("hsfs.engine.get_instance", return_value=engine)
+        json = backend_fixtures["feature_group"]["get_basic_info"]["response"]
+        fg = feature_group.FeatureGroup.from_response_json(json)
+        fg._location = f"{fg.name}_{fg.version}"
+        fg._storage_connector = storage_connector.S3Connector(id=1, name="s3_conn", featurestore_id=fg.feature_store_id)
+
+        # Act
+        path = fg.prepare_spark_location()
+
+        # Assert
+        assert fg.location == path
+        engine_instance.assert_called_once()
+
+    def test_prepare_spark_location_with_s3_connector_python(self, mocker, backend_fixtures):
+        # Arrange
+        engine = python.Engine()
+        engine_instance = mocker.patch("hsfs.engine.get_instance", return_value=engine)
+        json = backend_fixtures["feature_group"]["get_basic_info"]["response"]
+        fg = feature_group.FeatureGroup.from_response_json(json)
+        fg._location = f"{fg.name}_{fg.version}"
+        fg._storage_connector = storage_connector.S3Connector(id=1, name="s3_conn", featurestore_id=fg.feature_store_id)
+
+        # Act
+        with pytest.raises(AttributeError):
+            fg.prepare_spark_location()
+
+        # Assert
+        engine_instance.assert_called_once()

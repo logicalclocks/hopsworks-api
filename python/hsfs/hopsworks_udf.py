@@ -22,7 +22,8 @@ import re
 import warnings
 from dataclasses import dataclass
 from datetime import date, datetime, time
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from enum import Enum
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import humps
 from hopsworks_common.client.exceptions import FeatureStoreException
@@ -32,8 +33,37 @@ from hsfs.decorators import typechecked
 from hsfs.transformation_statistics import TransformationStatistics
 
 
+class UDFExecutionMode(Enum):
+    """
+    Class that store the possible execution types of UDF's.
+    """
+
+    DEFAULT = "default"
+    PYTHON = "python"
+    PANDAS = "pandas"
+
+    def get_current_execution_mode(self, online):
+        if self == UDFExecutionMode.DEFAULT and online:
+            return UDFExecutionMode.PYTHON
+        elif self == UDFExecutionMode.DEFAULT and not online:
+            return UDFExecutionMode.PANDAS
+        else:
+            return self
+
+    @staticmethod
+    def from_string(execution_mode: str):
+        try:
+            return UDFExecutionMode[execution_mode.upper()]
+        except KeyError as e:
+            raise FeatureStoreException(
+                f"Ivalid execution mode `{execution_mode}` for UDF. Please use `default`, `python` or `pandas` instead."
+            ) from e
+
+
 def udf(
-    return_type: Union[List[type], type], drop: Optional[Union[str, List[str]]] = None
+    return_type: Union[List[type], type],
+    drop: Optional[Union[str, List[str]]] = None,
+    mode: Literal["default", "python", "pandas"] = "default",
 ) -> "HopsworksUdf":
     """
     Create an User Defined Function that can be and used within the Hopsworks Feature Store to create transformation functions.
@@ -67,7 +97,10 @@ def udf(
 
     def wrapper(func: Callable) -> HopsworksUdf:
         udf = HopsworksUdf(
-            func=func, return_types=return_type, dropped_argument_names=drop
+            func=func,
+            return_types=return_type,
+            dropped_argument_names=drop,
+            execution_mode=UDFExecutionMode.from_string(mode),
         )
         return udf
 
@@ -131,6 +164,7 @@ class HopsworksUdf:
         self,
         func: Union[Callable, str],
         return_types: Union[List[type], type, List[str], str],
+        execution_mode: UDFExecutionMode,
         name: Optional[str] = None,
         transformation_features: Optional[List[TransformationFeature]] = None,
         transformation_function_argument_names: Optional[
@@ -143,6 +177,8 @@ class HopsworksUdf:
         self._return_types: List[str] = HopsworksUdf._validate_and_convert_output_types(
             return_types
         )
+
+        self._execution_mode: UDFExecutionMode = execution_mode
 
         self._feature_name_prefix: Optional[str] = (
             feature_name_prefix  # Prefix to be added to feature names
@@ -315,7 +351,7 @@ class HopsworksUdf:
         except FileNotFoundError:
             module_imports = [""]
             warnings.warn(
-                "Cannot extract imported dependencies for the function module. Please make sure to import all dependencies for the UDF inside the function.",
+                "Cannot extract imported dependencies for the UDF from the module in which it is defined. Please make sure to import all dependencies for the UDF inside the function.",
                 stacklevel=2,
             )
 
@@ -455,7 +491,81 @@ class HopsworksUdf:
         else:
             return self.return_types[0]
 
-    def hopsworksUdf_wrapper(self) -> Callable:
+    def python_udf_wrapper(self, rename_outputs) -> Callable:
+        """
+        Function that creates a dynamic wrapper function for the defined udf. The wrapper function would be used to specify column names, in spark engines and to localize timezones.
+
+        The renames is done so that the column names match the schema expected by spark when multiple columns are returned in a spark udf.
+        The wrapper function would be available in the main scope of the program.
+
+        # Returns
+            `Callable`: A wrapper function that renames outputs of the User defined function into specified output column names.
+        """
+        # Check if any output is of date time type.
+        date_time_output_index = [
+            ind for ind, ele in enumerate(self.return_types) if ele == "timestamp"
+        ]
+
+        # Function that converts the timestamp to localized timezone
+        convert_timstamp_function = (
+            "from datetime import datetime, timezone\n"
+            + "import tzlocal\n"
+            + "def convert_timezone(date_time_obj : datetime):\n"
+            + "   current_timezone = tzlocal.get_localzone()\n"
+            + "   if date_time_obj and isinstance(date_time_obj, datetime):\n"
+            + "      if date_time_obj.tzinfo is None:\n"
+            + "      # if timestamp is timezone unaware, make sure it's localized to the system's timezone.\n"
+            + "      # otherwise, spark will implicitly convert it to the system's timezone.\n"
+            + "         return date_time_obj.replace(tzinfo=current_timezone)\n"
+            + "      else:\n"
+            + "         return date_time_obj.astimezone(timezone.utc).replace(tzinfo=current_timezone)\n"
+            + "   else:\n"
+            + "      return None\n"
+        )
+
+        # Start wrapper function generation
+        code = (
+            self._module_imports
+            + "\n"
+            + (convert_timstamp_function + "\n" if date_time_output_index else "\n")
+            + "def wrapper(*args):\n"
+            + f"   {self._formatted_function_source}\n"
+            + f"   transformed_features = {self.function_name}(*args)\n"
+        )
+        if len(self.return_types) > 1:
+            # If date time columns are there convert make sure that they are localized.
+            if date_time_output_index:
+                code += (
+                    "   transformed_features = list(transformed_features)\n"
+                    "   for index in _date_time_output_index:\n"
+                    + "      transformed_features[index] = convert_timezone(transformed_features[index])"
+                )
+            if rename_outputs:
+                # Use a dictionary to rename output to correct column names. This must be for the udf's to be executable in spark.
+                code += "   return dict(zip(_output_col_names, transformed_features))"
+            else:
+                code += "   return transformed_features"
+        else:
+            if date_time_output_index:
+                code += (
+                    "   transformed_features = convert_timezone(transformed_features)\n"
+                )
+            code += "   return transformed_features"
+
+        # Inject required parameter to scope
+        scope = __import__("__main__").__dict__.copy()
+        if self.transformation_statistics is not None:
+            scope.update({"statistics": self.transformation_statistics})
+        scope.update({"_output_col_names": self.output_column_names})
+        scope.update({"_date_time_output_index": date_time_output_index})
+
+        # executing code
+        exec(code, scope)
+
+        # returning executed function object
+        return eval("wrapper", scope)
+
+    def pandas_udf_wrapper(self) -> Callable:
         """
         Function that creates a dynamic wrapper function for the defined udf that renames the columns output by the UDF into specified column names.
 
@@ -465,6 +575,12 @@ class HopsworksUdf:
         # Returns
             `Callable`: A wrapper function that renames outputs of the User defined function into specified output column names.
         """
+
+        date_time_output_columns = [
+            self.output_column_names[ind]
+            for ind, ele in enumerate(self.return_types)
+            if ele == "timestamp"
+        ]
 
         # Function to make transformation function time safe. Defined as a string because it has to be dynamically injected into scope to be executed by spark
         convert_timstamp_function = """def convert_timezone(date_time_col : pd.Series):
@@ -476,7 +592,7 @@ class HopsworksUdf:
             return date_time_col.dt.tz_localize(str(current_timezone))
         else:
             # convert to utc, then localize to system's timezone
-            return date_time_col.dt.tz_localize(None).dt.tz_localize(str(current_timezone))"""
+            return date_time_col.dt.tz_convert('UTC').dt.tz_localize(None).dt.tz_localize(str(current_timezone))"""
 
         # Defining wrapper function that renames the column names to specific names
         if len(self.return_types) > 1:
@@ -488,8 +604,10 @@ class HopsworksUdf:
 def renaming_wrapper(*args):
     {self._formatted_function_source}
     df = {self.function_name}(*args)
-    df = df.rename(columns = {{df.columns[i]: _output_col_names[i] for i in range(len(df.columns))}})
-    for col in df:
+    if isinstance(df, tuple):
+        df = pd.concat(df, axis=1)
+    df.columns = _output_col_names
+    for col in _date_time_output_columns:
         if pd.api.types.is_datetime64_any_dtype(df[col]):
             df[col] = convert_timezone(df[col])
     return df"""
@@ -504,8 +622,10 @@ def renaming_wrapper(*args):
     {self._formatted_function_source}
     df = {self.function_name}(*args)
     df = df.rename(_output_col_names[0])
-    if pd.api.types.is_datetime64_any_dtype(df):
-        df = convert_timezone(df)
+    if _date_time_output_columns:
+        # Set correct type is column is not of datetime type
+        if pd.api.types.is_datetime64_any_dtype(df):
+            df = convert_timezone(df)
     return df"""
             )
 
@@ -516,6 +636,7 @@ def renaming_wrapper(*args):
         if self.transformation_statistics is not None:
             scope.update({"statistics": self.transformation_statistics})
         scope.update({"_output_col_names": self.output_column_names})
+        scope.update({"_date_time_output_columns": date_time_output_columns})
         # executing code
         exec(code, scope)
 
@@ -576,29 +697,54 @@ def renaming_wrapper(*args):
             for _ in range(len(self.transformation_statistics.feature.unique_values))
         ]
 
-    def get_udf(self, force_python_udf: bool = False) -> Callable:
+    def get_udf(self, online: bool = False) -> Callable:
         """
-        Function that checks the current engine type and returns the appropriate UDF.
+        Function that checks the current engine type, execution type and returns the appropriate UDF.
 
-        In the spark engine the UDF is returned as a pandas UDF.
-        While in the python engine the UDF is returned as python function.
+        If the execution mode is : "default":
+            - In the `spark` engine : During inference a spark udf is returned otherwise a spark pandas_udf is returned.
+            - In the `python` engine : During inference a python udf is returned otherwise a pandas udf is returned.
+        If the execution mode is : "pandas":
+            - In the `spark` engine : Always returns a spark pandas udf.
+            - In the `python` engine : Always returns a pandas udf.
+        If the execution mode is : "python":
+            - In the `spark` engine : Always returns a spark udf.
+            - In the `python` engine : Always returns a python udf.
 
         # Arguments
-            force_python_udf: `bool`. Force return a python compatible udf irrespective of engine.
+            inference: `bool`. Specify if udf required for online inference.
 
         # Returns
             `Callable`: Pandas UDF in the spark engine otherwise returns a python function for the UDF.
         """
 
-        if engine.get_type() in ["python", "training"] or force_python_udf:
-            return self.hopsworksUdf_wrapper()
-        else:
-            from pyspark.sql.functions import pandas_udf
+        if (
+            self.execution_mode.get_current_execution_mode(online)
+            == UDFExecutionMode.PANDAS
+        ):
+            if engine.get_type() in ["python", "training"] or online:
+                return self.pandas_udf_wrapper()
+            else:
+                from pyspark.sql.functions import pandas_udf
 
-            return pandas_udf(
-                f=self.hopsworksUdf_wrapper(),
-                returnType=self._create_pandas_udf_return_schema_from_list(),
-            )
+                return pandas_udf(
+                    f=self.pandas_udf_wrapper(),
+                    returnType=self._create_pandas_udf_return_schema_from_list(),
+                )
+        elif (
+            self.execution_mode.get_current_execution_mode(online)
+            == UDFExecutionMode.PYTHON
+        ):
+            if engine.get_type() in ["python", "training"] or online:
+                # Renaming into correct column names done within Python engine since a wrapper does not work for polars dataFrames.
+                return self.python_udf_wrapper(rename_outputs=False)
+            else:
+                from pyspark.sql.functions import udf as pyspark_udf
+
+                return pyspark_udf(
+                    f=self.python_udf_wrapper(rename_outputs=True),
+                    returnType=self._create_pandas_udf_return_schema_from_list(),
+                )
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -618,6 +764,7 @@ def renaming_wrapper(*args):
             else None,
             "name": self.function_name,
             "featureNamePrefix": self._feature_name_prefix,
+            "executionMode": self.execution_mode.value.upper(),
         }
 
     def json(self) -> str:
@@ -657,7 +804,7 @@ def renaming_wrapper(*args):
                 dropped_feature.strip()
                 for dropped_feature in json_decamelized["dropped_argument_names"]
             ]
-            if "dropped_argument_names" in json_decamelized
+            if json_decamelized.get("dropped_argument_names", None)
             else None
         )
         transformation_function_argument_names = (
@@ -667,7 +814,7 @@ def renaming_wrapper(*args):
                     "transformation_function_argument_names"
                 ]
             ]
-            if "transformation_function_argument_names" in json_decamelized
+            if json_decamelized.get("transformation_function_argument_names", None)
             else None
         )
         statistics_features = (
@@ -675,7 +822,7 @@ def renaming_wrapper(*args):
                 feature.strip()
                 for feature in json_decamelized["statistics_argument_names"]
             ]
-            if "statistics_argument_names" in json_decamelized
+            if json_decamelized.get("statistics_argument_names", None)
             else None
         )
 
@@ -720,6 +867,9 @@ def renaming_wrapper(*args):
             dropped_feature_names=dropped_feature_names,
             feature_name_prefix=feature_name_prefix,
             transformation_function_argument_names=transformation_function_argument_names,
+            execution_mode=UDFExecutionMode.from_string(
+                json_decamelized["execution_mode"]
+            ),
         )
 
         # Set transformation features if already set.
@@ -822,6 +972,10 @@ def renaming_wrapper(*args):
             ]
         else:
             return self._dropped_features
+
+    @property
+    def execution_mode(self) -> UDFExecutionMode:
+        return self._execution_mode
 
     @dropped_features.setter
     def dropped_features(self, features: List[str]) -> None:

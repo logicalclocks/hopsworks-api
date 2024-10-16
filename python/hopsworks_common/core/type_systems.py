@@ -22,7 +22,12 @@ import decimal
 from typing import TYPE_CHECKING, Literal, Union
 
 import pytz
-from hopsworks_common.core.constants import HAS_ARROW, HAS_PANDAS, HAS_POLARS
+from hopsworks_common.core.constants import (
+    HAS_PANDAS,
+    HAS_POLARS,
+    HAS_PYARROW,
+)
+from hopsworks_common.decorators import uses_polars
 
 
 if TYPE_CHECKING:
@@ -30,7 +35,7 @@ if TYPE_CHECKING:
     import pandas as pd
     import polars as pl
 
-if HAS_ARROW:
+if HAS_PYARROW:
     import pyarrow as pa
 
     # Decimal types are currently not supported
@@ -195,6 +200,7 @@ def cast_pandas_column_to_offline_type(
             return feature_column  # handle gracefully, just return the column as-is
 
 
+@uses_polars
 def cast_polars_column_to_offline_type(
     feature_column: pl.Series, offline_type: str
 ) -> pl.Series:
@@ -232,7 +238,7 @@ def cast_column_to_offline_type(
 ) -> pd.Series:
     if isinstance(feature_column, pd.Series):
         return cast_pandas_column_to_offline_type(feature_column, offline_type.lower())
-    elif isinstance(feature_column, pl.Series):
+    elif HAS_POLARS and isinstance(feature_column, pl.Series):
         return cast_polars_column_to_offline_type(feature_column, offline_type.lower())
 
 

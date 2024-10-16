@@ -14,11 +14,19 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.connection import (
-    Connection,
-)
+from abc import ABC, abstractmethod
+from typing import Dict, List, Optional, TypeVar
 
 
-__all__ = [
-    "Connection",
-]
+class FeatureLogger(ABC):
+    @abstractmethod
+    def log(
+        self,
+        untransformed_features: Optional[List[Dict]] = None,
+        transformed_features: Optional[List[Dict]] = None,
+    ):
+        pass
+
+    @abstractmethod
+    def init(self, feature_view: TypeVar("hsfs.feature_view.FeatureView")) -> None:
+        pass

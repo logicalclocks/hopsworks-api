@@ -19,11 +19,10 @@ from datetime import date, datetime
 import hopsworks_common
 import numpy as np
 import pandas as pd
-import polars as pl
 import pyarrow as pa
 import pytest
+from hopsworks_common.core.constants import HAS_POLARS
 from hsfs import (
-    engine,
     feature,
     feature_group,
     feature_view,
@@ -40,10 +39,14 @@ from hsfs.engine import python
 from hsfs.expectation_suite import ExpectationSuite
 from hsfs.hopsworks_udf import udf
 from hsfs.training_dataset_feature import TrainingDatasetFeature
-from polars.testing import assert_frame_equal as polars_assert_frame_equal
 
 
-engine._engine_type = "python"
+if HAS_POLARS:
+    import polars as pl
+    from polars.testing import assert_frame_equal as polars_assert_frame_equal
+
+
+hopsworks_common.connection._hsfs_engine_type = "python"
 
 
 class TestPython:
@@ -253,6 +256,10 @@ class TestPython:
         assert isinstance(dataframe, pd.DataFrame)
         assert len(dataframe) == 0
 
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
     def test_read_hopsfs_connector_empty_dataframe_polars(self, mocker):
         # Arrange
 
@@ -404,6 +411,10 @@ class TestPython:
         assert mock_pandas_read_csv.call_count == 0
         assert mock_pandas_read_parquet.call_count == 0
 
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
     def test_read_polars_csv(self, mocker):
         # Arrange
         mock_pandas_read_csv = mocker.patch("polars.read_csv")
@@ -418,6 +429,10 @@ class TestPython:
         assert mock_pandas_read_csv.call_count == 1
         assert mock_pandas_read_parquet.call_count == 0
 
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
     def test_read_polars_tsv(self, mocker):
         # Arrange
         mock_pandas_read_csv = mocker.patch("polars.read_csv")
@@ -432,6 +447,10 @@ class TestPython:
         assert mock_pandas_read_csv.call_count == 1
         assert mock_pandas_read_parquet.call_count == 0
 
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
     def test_read_polars_parquet(self, mocker):
         # Arrange
         mock_pandas_read_csv = mocker.patch("polars.read_csv")
@@ -449,6 +468,10 @@ class TestPython:
         assert mock_pandas_read_csv.call_count == 0
         assert mock_pandas_read_parquet.call_count == 1
 
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
     def test_read_polars_other(self, mocker):
         # Arrange
         mock_pandas_read_csv = mocker.patch("polars.read_csv")
@@ -886,6 +909,10 @@ class TestPython:
         )
         assert mock_python_engine_convert_pandas_statistics.call_count == 3
 
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
     def test_profile_polars(self, mocker):
         # Arrange
         mock_python_engine_convert_pandas_statistics = mocker.patch(
@@ -924,6 +951,10 @@ class TestPython:
         )
         assert mock_python_engine_convert_pandas_statistics.call_count == 3
 
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
     def test_profile_polars_with_null_column(self, mocker):
         # Arrange
         mock_python_engine_convert_pandas_statistics = mocker.patch(
@@ -1262,6 +1293,10 @@ class TestPython:
             "Feature names are sanitized to use underscore '_' in the feature store."
         )
 
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
     def test_convert_to_default_dataframe_polars(self, mocker):
         # Arrange
         mock_warnings = mocker.patch("warnings.warn")
@@ -1328,6 +1363,10 @@ class TestPython:
         assert result[0].name == "col1"
         assert result[1].name == "col2"
 
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
     def test_parse_schema_feature_group_polars(self, mocker):
         # Arrange
         mocker.patch("hsfs.core.type_systems.convert_pandas_dtype_to_offline_type")
@@ -1649,6 +1688,10 @@ class TestPython:
         assert isinstance(result_df, pd.DataFrame)
         assert result_df_split is None
 
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
     def test_split_labels_dataframe_type_polars(self):
         # Arrange
         python_engine = python.Engine()
@@ -1744,6 +1787,10 @@ class TestPython:
         assert isinstance(result_df, pd.DataFrame)
         assert isinstance(result_df_split, pd.Series)
 
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
     def test_split_labels_labels_dataframe_type_polars(self):
         # Arrange
         python_engine = python.Engine()
@@ -2417,6 +2464,10 @@ class TestPython:
         # Assert
         assert str(result) == "   col1  col2\n0     1     3\n1     2     4"
 
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
     def test_return_dataframe_type_polars(self):
         # Arrange
         python_engine = python.Engine()
@@ -2551,10 +2602,10 @@ class TestPython:
         # Assert
         assert result == file
 
-    def test_apply_transformation_function_pandas(self, mocker):
+    def test_apply_transformation_function_udf_default_mode(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "python"
+        hopsworks_common.connection._hsfs_engine_type = "python"
         python_engine = python.Engine()
 
         @udf(int)
@@ -2591,10 +2642,92 @@ class TestPython:
         assert result["plus_one_tf_name_"][0] == 2
         assert result["plus_one_tf_name_"][1] == 3
 
-    def test_apply_transformation_function_multiple_output(self, mocker):
+    def test_apply_transformation_function_udf_pandas_mode(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "python"
+        hopsworks_common.connection._hsfs_engine_type = "python"
+        python_engine = python.Engine()
+
+        @udf(int, mode="pandas")
+        def plus_one(col1):
+            return col1 + 1
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("id"), feature.Feature("tf_name")],
+            id=11,
+            stream=False,
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg.select_all(),
+            featurestore_id=99,
+            transformation_functions=[plus_one("tf_name")],
+        )
+
+        df = pd.DataFrame(data={"tf_name": [1, 2]})
+
+        # Act
+        result = python_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions, dataset=df
+        )
+
+        # Assert
+        assert len(result["plus_one_tf_name_"]) == 2
+        assert result["plus_one_tf_name_"][0] == 2
+        assert result["plus_one_tf_name_"][1] == 3
+
+    def test_apply_transformation_function_udf_python_mode(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "python"
+        python_engine = python.Engine()
+
+        @udf(int, mode="python")
+        def plus_one(col1):
+            return col1 + 1
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("id"), feature.Feature("tf_name")],
+            id=11,
+            stream=False,
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg.select_all(),
+            featurestore_id=99,
+            transformation_functions=[plus_one("tf_name")],
+        )
+
+        df = pd.DataFrame(data={"tf_name": [1, 2]})
+
+        # Act
+        result = python_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions, dataset=df
+        )
+
+        # Assert
+        assert len(result["plus_one_tf_name_"]) == 2
+        assert result["plus_one_tf_name_"][0] == 2
+        assert result["plus_one_tf_name_"][1] == 3
+
+    def test_apply_transformation_function_multiple_output_udf_default_mode(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "python"
         python_engine = python.Engine()
 
         @udf([int, int], drop=["col1"])
@@ -2634,11 +2767,103 @@ class TestPython:
         assert result["plus_two_col1_1"][0] == 3
         assert result["plus_two_col1_1"][1] == 4
 
-    def test_apply_transformation_function_multiple_input_output(self, mocker):
+    def test_apply_transformation_function_multiple_output_udf_python_mode(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "python"
+        python_engine = python.Engine()
+
+        @udf([int, int], drop=["col1"], mode="python")
+        def plus_two(col1):
+            return col1 + 1, col1 + 2
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("id"), feature.Feature("tf_name")],
+            id=11,
+            stream=False,
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg.select_all(),
+            featurestore_id=99,
+            transformation_functions=[plus_two],
+        )
+
+        df = pd.DataFrame(data={"col1": [1, 2], "col2": [10, 11]})
+
+        # Act
+        result = python_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions, dataset=df
+        )
+
+        # Assert
+        assert all(result.columns == ["col2", "plus_two_col1_0", "plus_two_col1_1"])
+        assert len(result) == 2
+        assert result["plus_two_col1_0"][0] == 2
+        assert result["plus_two_col1_0"][1] == 3
+        assert result["plus_two_col1_1"][0] == 3
+        assert result["plus_two_col1_1"][1] == 4
+
+    def test_apply_transformation_function_multiple_output_udf_pandas_mode(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "python"
+        python_engine = python.Engine()
+
+        @udf([int, int], drop=["col1"], mode="pandas")
+        def plus_two(col1):
+            return pd.DataFrame({"new_col1": col1 + 1, "new_col2": col1 + 2})
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("id"), feature.Feature("tf_name")],
+            id=11,
+            stream=False,
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg.select_all(),
+            featurestore_id=99,
+            transformation_functions=[plus_two],
+        )
+
+        df = pd.DataFrame(data={"col1": [1, 2], "col2": [10, 11]})
+
+        # Act
+        result = python_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions, dataset=df
+        )
+
+        # Assert
+        assert all(result.columns == ["col2", "plus_two_col1_0", "plus_two_col1_1"])
+        assert len(result) == 2
+        assert result["plus_two_col1_0"][0] == 2
+        assert result["plus_two_col1_0"][1] == 3
+        assert result["plus_two_col1_1"][0] == 3
+        assert result["plus_two_col1_1"][1] == 4
+
+    def test_apply_transformation_function_multiple_input_output_udf_default_mode(
+        self, mocker
+    ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
 
-        engine._engine_type = "python"
+        hopsworks_common.connection._hsfs_engine_type = "python"
         python_engine = python.Engine()
 
         @udf([int, int])
@@ -2685,11 +2910,119 @@ class TestPython:
         assert result["plus_two_col1_col2_1"][0] == 12
         assert result["plus_two_col1_col2_1"][1] == 13
 
-    def test_apply_transformation_function_multiple_input_output_drop_all(self, mocker):
+    def test_apply_transformation_function_multiple_input_output_udf_pandas_mode(
+        self, mocker
+    ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
 
-        engine._engine_type = "python"
+        hopsworks_common.connection._hsfs_engine_type = "python"
+        python_engine = python.Engine()
+
+        @udf([int, int], mode="pandas")
+        def plus_two(col1, col2):
+            return pd.DataFrame({"new_col1": col1 + 1, "new_col2": col2 + 2})
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("id"), feature.Feature("tf_name")],
+            id=11,
+            stream=False,
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg.select_all(),
+            featurestore_id=99,
+            transformation_functions=[plus_two],
+        )
+
+        df = pd.DataFrame(data={"col1": [1, 2], "col2": [10, 11]})
+
+        # Act
+        result = python_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions, dataset=df
+        )
+
+        # Assert
+        assert all(
+            result.columns
+            == ["col1", "col2", "plus_two_col1_col2_0", "plus_two_col1_col2_1"]
+        )
+        assert len(result) == 2
+        assert result["col1"][0] == 1
+        assert result["col1"][1] == 2
+        assert result["col2"][0] == 10
+        assert result["col2"][1] == 11
+        assert result["plus_two_col1_col2_0"][0] == 2
+        assert result["plus_two_col1_col2_0"][1] == 3
+        assert result["plus_two_col1_col2_1"][0] == 12
+        assert result["plus_two_col1_col2_1"][1] == 13
+
+    def test_apply_transformation_function_multiple_input_output_udf_python_mode(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+
+        hopsworks_common.connection._hsfs_engine_type = "python"
+        python_engine = python.Engine()
+
+        @udf([int, int], mode="python")
+        def plus_two(col1, col2):
+            return col1 + 1, col2 + 2
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("id"), feature.Feature("tf_name")],
+            id=11,
+            stream=False,
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg.select_all(),
+            featurestore_id=99,
+            transformation_functions=[plus_two],
+        )
+
+        df = pd.DataFrame(data={"col1": [1, 2], "col2": [10, 11]})
+
+        # Act
+        result = python_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions, dataset=df
+        )
+
+        # Assert
+        assert all(
+            result.columns
+            == ["col1", "col2", "plus_two_col1_col2_0", "plus_two_col1_col2_1"]
+        )
+        assert len(result) == 2
+        assert result["col1"][0] == 1
+        assert result["col1"][1] == 2
+        assert result["col2"][0] == 10
+        assert result["col2"][1] == 11
+        assert result["plus_two_col1_col2_0"][0] == 2
+        assert result["plus_two_col1_col2_0"][1] == 3
+        assert result["plus_two_col1_col2_1"][0] == 12
+        assert result["plus_two_col1_col2_1"][1] == 13
+
+    def test_apply_transformation_function_multiple_input_output_drop_all_udf_default_mode(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+
+        hopsworks_common.connection._hsfs_engine_type = "python"
         python_engine = python.Engine()
 
         @udf([int, int], drop=["col1", "col2"])
@@ -2729,13 +3062,105 @@ class TestPython:
         assert result["plus_two_col1_col2_1"][0] == 12
         assert result["plus_two_col1_col2_1"][1] == 13
 
-    def test_apply_transformation_function_multiple_input_output_drop_some(
+    def test_apply_transformation_function_multiple_input_output_drop_all_udf_python_mode(
         self, mocker
     ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
 
-        engine._engine_type = "python"
+        hopsworks_common.connection._hsfs_engine_type = "python"
+        python_engine = python.Engine()
+
+        @udf([int, int], drop=["col1", "col2"], mode="python")
+        def plus_two(col1, col2):
+            return col1 + 1, col2 + 2
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("id"), feature.Feature("tf_name")],
+            id=11,
+            stream=False,
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg.select_all(),
+            featurestore_id=99,
+            transformation_functions=[plus_two],
+        )
+
+        df = pd.DataFrame(data={"col1": [1, 2], "col2": [10, 11]})
+
+        # Act
+        result = python_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions, dataset=df
+        )
+
+        # Assert
+        assert all(result.columns == ["plus_two_col1_col2_0", "plus_two_col1_col2_1"])
+        assert len(result) == 2
+        assert result["plus_two_col1_col2_0"][0] == 2
+        assert result["plus_two_col1_col2_0"][1] == 3
+        assert result["plus_two_col1_col2_1"][0] == 12
+        assert result["plus_two_col1_col2_1"][1] == 13
+
+    def test_apply_transformation_function_multiple_input_output_drop_all_udf_pandas_mode(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+
+        hopsworks_common.connection._hsfs_engine_type = "python"
+        python_engine = python.Engine()
+
+        @udf([int, int], drop=["col1", "col2"], mode="pandas")
+        def plus_two(col1, col2):
+            return pd.DataFrame({"new_col1": col1 + 1, "new_col2": col2 + 2})
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("id"), feature.Feature("tf_name")],
+            id=11,
+            stream=False,
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg.select_all(),
+            featurestore_id=99,
+            transformation_functions=[plus_two],
+        )
+
+        df = pd.DataFrame(data={"col1": [1, 2], "col2": [10, 11]})
+
+        # Act
+        result = python_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions, dataset=df
+        )
+
+        # Assert
+        assert all(result.columns == ["plus_two_col1_col2_0", "plus_two_col1_col2_1"])
+        assert len(result) == 2
+        assert result["plus_two_col1_col2_0"][0] == 2
+        assert result["plus_two_col1_col2_0"][1] == 3
+        assert result["plus_two_col1_col2_1"][0] == 12
+        assert result["plus_two_col1_col2_1"][1] == 13
+
+    def test_apply_transformation_function_multiple_input_output_drop_some_udf_default_mode(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+
+        hopsworks_common.connection._hsfs_engine_type = "python"
         python_engine = python.Engine()
 
         @udf([int, int], drop=["col1"])
@@ -2779,14 +3204,208 @@ class TestPython:
         assert result["plus_two_col1_col2_1"][0] == 12
         assert result["plus_two_col1_col2_1"][1] == 13
 
-    def test_apply_transformation_function_polars(self, mocker):
+    def test_apply_transformation_function_multiple_input_output_drop_some_udf_python_mode(
+        self, mocker
+    ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
 
-        engine._engine_type = "python"
+        hopsworks_common.connection._hsfs_engine_type = "python"
+        python_engine = python.Engine()
+
+        @udf([int, int], drop=["col1"], mode="python")
+        def plus_two(col1, col2):
+            return col1 + 1, col2 + 2
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("id"), feature.Feature("tf_name")],
+            id=11,
+            stream=False,
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg.select_all(),
+            featurestore_id=99,
+            transformation_functions=[plus_two],
+        )
+
+        df = pd.DataFrame(data={"col1": [1, 2], "col2": [10, 11]})
+
+        # Act
+        result = python_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions, dataset=df
+        )
+
+        # Assert
+        assert all(
+            result.columns == ["col2", "plus_two_col1_col2_0", "plus_two_col1_col2_1"]
+        )
+        assert len(result) == 2
+        assert result["col2"][0] == 10
+        assert result["col2"][1] == 11
+        assert result["plus_two_col1_col2_0"][0] == 2
+        assert result["plus_two_col1_col2_0"][1] == 3
+        assert result["plus_two_col1_col2_1"][0] == 12
+        assert result["plus_two_col1_col2_1"][1] == 13
+
+    def test_apply_transformation_function_multiple_input_output_drop_some_udf_pandas_mode(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+
+        hopsworks_common.connection._hsfs_engine_type = "python"
+        python_engine = python.Engine()
+
+        @udf([int, int], drop=["col1"], mode="pandas")
+        def plus_two(col1, col2):
+            return pd.DataFrame({"new_col1": col1 + 1, "new_col2": col2 + 2})
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("id"), feature.Feature("tf_name")],
+            id=11,
+            stream=False,
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg.select_all(),
+            featurestore_id=99,
+            transformation_functions=[plus_two],
+        )
+
+        df = pd.DataFrame(data={"col1": [1, 2], "col2": [10, 11]})
+
+        # Act
+        result = python_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions, dataset=df
+        )
+
+        # Assert
+        assert all(
+            result.columns == ["col2", "plus_two_col1_col2_0", "plus_two_col1_col2_1"]
+        )
+        assert len(result) == 2
+        assert result["col2"][0] == 10
+        assert result["col2"][1] == 11
+        assert result["plus_two_col1_col2_0"][0] == 2
+        assert result["plus_two_col1_col2_0"][1] == 3
+        assert result["plus_two_col1_col2_1"][0] == 12
+        assert result["plus_two_col1_col2_1"][1] == 13
+
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
+    def test_apply_transformation_function_polars_udf_default_mode(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+
+        hopsworks_common.connection._hsfs_engine_type = "python"
         python_engine = python.Engine()
 
         @udf(int)
+        def plus_one(col1):
+            return col1 + 1
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("id"), feature.Feature("tf_name")],
+            id=11,
+            stream=False,
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg.select_all(),
+            featurestore_id=99,
+            transformation_functions=[plus_one("tf_name")],
+        )
+
+        df = pl.DataFrame(data={"tf_name": [1, 2]})
+
+        # Act
+        result = python_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions, dataset=df
+        )
+
+        # Assert
+        assert len(result["plus_one_tf_name_"]) == 2
+        assert result["plus_one_tf_name_"][0] == 2
+        assert result["plus_one_tf_name_"][1] == 3
+
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
+    def test_apply_transformation_function_polars_udf_python_mode(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+
+        hopsworks_common.connection._hsfs_engine_type = "python"
+        python_engine = python.Engine()
+
+        @udf(int, mode="python")
+        def plus_one(col1):
+            return col1 + 1
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("id"), feature.Feature("tf_name")],
+            id=11,
+            stream=False,
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg.select_all(),
+            featurestore_id=99,
+            transformation_functions=[plus_one("tf_name")],
+        )
+
+        df = pl.DataFrame(data={"tf_name": [1, 2]})
+
+        # Act
+        result = python_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions, dataset=df
+        )
+
+        # Assert
+        assert len(result["plus_one_tf_name_"]) == 2
+        assert result["plus_one_tf_name_"][0] == 2
+        assert result["plus_one_tf_name_"][1] == 3
+
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
+    def test_apply_transformation_function_polars_udf_pandas_mode(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+
+        hopsworks_common.connection._hsfs_engine_type = "python"
+        python_engine = python.Engine()
+
+        @udf(int, mode="pandas")
         def plus_one(col1):
             return col1 + 1
 

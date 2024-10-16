@@ -19,7 +19,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from furl import furl
-from hopsworks_common import client
+from hopsworks_common import client, usage
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.variable_api import VariableApi
 
@@ -63,6 +63,7 @@ class OpenSearchApi:
                 )
             return f"https://rest.elastic.service.{service_discovery_domain}:9200"
 
+    @usage.method_logger
     def get_project_index(self, index: str) -> str:
         """
         This helper method prefixes the supplied index name with the project name to avoid index name clashes.
@@ -76,6 +77,7 @@ class OpenSearchApi:
         _client = client.get_instance()
         return (_client._project_name + "_" + index).lower()
 
+    @usage.method_logger
     def get_default_py_config(self) -> Dict[str, Any]:
         """
         Get the required opensearch configuration to setup a connection using the *opensearch-py* library.

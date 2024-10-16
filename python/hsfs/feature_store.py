@@ -21,9 +21,8 @@ import warnings
 from typing import Any, Dict, List, Optional, TypeVar, Union
 
 import humps
-import numpy as np
 import pandas as pd
-import polars as pl
+from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import (
     expectation_suite,
     feature,
@@ -37,7 +36,6 @@ from hsfs import (
 from hsfs.client import exceptions
 from hsfs.constructor.query import Query
 from hsfs.core import (
-    arrow_flight_client,
     feature_group_api,
     feature_group_engine,
     feature_view_engine,
@@ -51,6 +49,13 @@ from hsfs.hopsworks_udf import HopsworksUdf
 from hsfs.online_config import OnlineConfig
 from hsfs.statistics_config import StatisticsConfig
 from hsfs.transformation_function import TransformationFunction
+
+
+if HAS_NUMPY:
+    import numpy as np
+
+if HAS_POLARS:
+    import polars as pl
 
 
 @typechecked
@@ -520,7 +525,9 @@ class FeatureStore:
                 Dict[str, Any],
             ]
         ] = None,
-        offline_backfill_every: Optional[Union[int, str]] = None,
+        offline_backfill_every_hr: Optional[Union[int, str]] = None,
+        storage_connector: Union[storage_connector.StorageConnector, Dict[str, Any]] = None,
+        path: Optional[str] = None,
     ) -> feature_group.FeatureGroup:
         """Create a feature group metadata object.
 
@@ -621,10 +628,14 @@ class FeatureStore:
                 It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
                 Defaults to `None`, no transformations.
             online_config: Optionally, define configuration which is used to configure online table.
-            offline_backfill_every: Optional. If specified, the materialization job will be scheduled to run
+            offline_backfill_every_hr: Optional. If specified, the materialization job will be scheduled to run
                 periodically. The value can be either an integer representing the number of hours between each run
                 or a string representing a cron expression. Set the value to None to avoid scheduling the materialization
                 job. Defaults to None (i.e no scheduling).
+            storage_connector: the storage connector used to establish connectivity
+                with the data source.
+            path: The location within the scope of the storage connector, from where to read
+                the data for the external feature group
 
         # Returns
             `FeatureGroup`. The feature group metadata object.
@@ -651,7 +662,9 @@ class FeatureStore:
             notification_topic_name=notification_topic_name,
             transformation_functions=transformation_functions,
             online_config=online_config,
-            offline_backfill_every=offline_backfill_every,
+            offline_backfill_every_hr=offline_backfill_every_hr,
+            storage_connector=storage_connector,
+            path=path,
         )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -685,7 +698,9 @@ class FeatureStore:
             List[Union[TransformationFunction, HopsworksUdf]]
         ] = None,
         online_config: Optional[Union[OnlineConfig, Dict[str, Any]]] = None,
-        offline_backfill_every: Optional[Union[int, str]] = None,
+        offline_backfill_every_hr: Optional[Union[int, str]] = None,
+        storage_connector: Union[storage_connector.StorageConnector, Dict[str, Any]] = None,
+        path: Optional[str] = None,
     ) -> Union[
         feature_group.FeatureGroup,
         feature_group.ExternalFeatureGroup,
@@ -776,10 +791,14 @@ class FeatureStore:
                 It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
                 Defaults to `None`, no transformations.
             online_config: Optionally, define configuration which is used to configure online table.
-            offline_backfill_every: Optional. If specified, the materialization job will be scheduled to run
+            offline_backfill_every_hr: Optional. If specified, the materialization job will be scheduled to run
                 periodically. The value can be either an integer representing the number of hours between each run
                 or a string representing a cron expression. Set the value to None to avoid scheduling the materialization
                 job. Defaults to None (i.e no automatic scheduling). Applies only on Feature Group creation.
+            storage_connector: the storage connector used to establish connectivity
+                with the data source.
+            path: The location within the scope of the storage connector, from where to read
+                the data for the external feature group
 
         # Returns
             `FeatureGroup`. The feature group metadata object.
@@ -815,7 +834,9 @@ class FeatureStore:
                     notification_topic_name=notification_topic_name,
                     transformation_functions=transformation_functions,
                     online_config=online_config,
-                    offline_backfill_every=offline_backfill_every,
+                    offline_backfill_every_hr=offline_backfill_every_hr,
+                    storage_connector=storage_connector,
+                    path=path,
                 )
                 feature_group_object.feature_store = self
                 return feature_group_object
@@ -858,7 +879,7 @@ class FeatureStore:
 
         # Arguments
             name: Name of the external feature group to create.
-            storage_connector: the storage connector to use to establish connectivity
+            storage_connector: the storage connector used to establish connectivity
                 with the data source.
             query: A string containing a SQL query valid for the target data source.
                 the query will be used to pull data from the data sources when the
@@ -1015,7 +1036,7 @@ class FeatureStore:
 
         # Arguments
             name: Name of the external feature group to create.
-            storage_connector: the storage connector to use to establish connectivity
+            storage_connector: the storage connector used to establish connectivity
                 with the data source.
             query: A string containing a SQL query valid for the target data source.
                 the query will be used to pull data from the data sources when the
@@ -1786,10 +1807,14 @@ class FeatureStore:
 
     def _disable_hopsworks_feature_query_service_client(self):
         """Disable Hopsworks feature query service for the current session. This behaviour is not persisted on reset."""
+        from hsfs.core import arrow_flight_client
+
         arrow_flight_client._disable_feature_query_service_client()
 
     def _reset_hopsworks_feature_query_service_client(self):
         """Reset Hopsworks feature query service for the current session."""
+        from hsfs.core import arrow_flight_client
+
         arrow_flight_client.close()
         arrow_flight_client.get_instance()
 

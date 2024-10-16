@@ -20,7 +20,6 @@ from hsml.connection import (
     Connection,
 )
 from hsml.constants import HOSTS
-from hsml.core import model_api, model_registry_api, model_serving_api
 
 
 class TestConnection:
@@ -32,7 +31,7 @@ class TestConnection:
         # adding / removing / updating tests, if necessary.
         assert HOSTS.APP_HOST == "c.app.hopsworks.ai"
         assert HOPSWORKS_PORT_DEFAULT == 443
-        assert HOSTNAME_VERIFICATION_DEFAULT
+        assert HOSTNAME_VERIFICATION_DEFAULT is False
 
     # constructor
 
@@ -44,15 +43,6 @@ class TestConnection:
         mock_connection = MockConnection()
         mock_connection.connect = mocker.MagicMock()
         mock_connection.init = Connection.__init__
-        mock_model_api_init = mocker.patch(
-            "hsml.core.model_api.ModelApi.__init__", return_value=None
-        )
-        mock_model_registry_api = mocker.patch(
-            "hsml.core.model_registry_api.ModelRegistryApi.__init__", return_value=None
-        )
-        mock_model_serving_api = mocker.patch(
-            "hsml.core.model_serving_api.ModelServingApi.__init__", return_value=None
-        )
 
         # Act
         mock_connection.init(mock_connection)
@@ -65,17 +55,7 @@ class TestConnection:
         assert mock_connection._trust_store_path is None
         assert mock_connection._api_key_file is None
         assert mock_connection._api_key_value is None
-        assert isinstance(mock_connection._model_api, model_api.ModelApi)
-        assert isinstance(
-            mock_connection._model_registry_api, model_registry_api.ModelRegistryApi
-        )
-        assert isinstance(
-            mock_connection._model_serving_api, model_serving_api.ModelServingApi
-        )
         assert not mock_connection._connected
-        mock_model_api_init.assert_called_once()
-        mock_model_registry_api.assert_called_once()
-        mock_model_serving_api.assert_called_once()
         mock_connection.connect.assert_called_once()
 
     def test_constructor(self, mocker):
@@ -86,15 +66,6 @@ class TestConnection:
         mock_connection = MockConnection()
         mock_connection.connect = mocker.MagicMock()
         mock_connection.init = Connection.__init__
-        mock_model_api_init = mocker.patch(
-            "hsml.core.model_api.ModelApi.__init__", return_value=None
-        )
-        mock_model_registry_api = mocker.patch(
-            "hsml.core.model_registry_api.ModelRegistryApi.__init__", return_value=None
-        )
-        mock_model_serving_api = mocker.patch(
-            "hsml.core.model_serving_api.ModelServingApi.__init__", return_value=None
-        )
 
         # Act
         mock_connection.init(
@@ -116,17 +87,7 @@ class TestConnection:
         assert mock_connection._trust_store_path == "ts_path"
         assert mock_connection._api_key_file == "ak_file"
         assert mock_connection._api_key_value == "ak_value"
-        assert isinstance(mock_connection._model_api, model_api.ModelApi)
-        assert isinstance(
-            mock_connection._model_registry_api, model_registry_api.ModelRegistryApi
-        )
-        assert isinstance(
-            mock_connection._model_serving_api, model_serving_api.ModelServingApi
-        )
         assert not mock_connection._connected
-        mock_model_api_init.assert_called_once()
-        mock_model_registry_api.assert_called_once()
-        mock_model_serving_api.assert_called_once()
         mock_connection.connect.assert_called_once()
 
     # handlers

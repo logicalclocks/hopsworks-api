@@ -15,11 +15,11 @@
 #
 from __future__ import annotations
 
+import hopsworks_common
 import numpy
 import pandas as pd
 import pytest
 from hsfs import (
-    engine,
     expectation_suite,
     feature,
     feature_group,
@@ -59,7 +59,7 @@ from pyspark.sql.types import (
 )
 
 
-engine._engine_type = "spark"
+hopsworks_common.connection._hsfs_engine_type = "spark"
 
 
 class TestSpark:
@@ -174,43 +174,6 @@ class TestSpark:
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
         mock_sc_read = mocker.patch("hsfs.storage_connector.JdbcConnector.read")
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
-        )
-
-        spark_engine = spark.Engine()
-
-        jdbc_connector = storage_connector.JdbcConnector(
-            id=1,
-            name="test_connector",
-            featurestore_id=1,
-            connection_string="",
-            arguments="",
-        )
-
-        external_fg = feature_group.ExternalFeatureGroup(
-            storage_connector=jdbc_connector, id=10
-        )
-
-        # Act
-        spark_engine.register_external_temporary_table(
-            external_fg=external_fg,
-            alias=None,
-        )
-
-        # Assert
-        assert (
-            mock_pyspark_getOrCreate.return_value.sparkContext.textFile.call_count == 0
-        )
-        assert mock_sc_read.return_value.createOrReplaceTempView.call_count == 1
-
-    def test_register_external_temporary_table_external_fg_location(self, mocker):
-        # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
-        mock_sc_read = mocker.patch("hsfs.storage_connector.JdbcConnector.read")
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
-        )
 
         spark_engine = spark.Engine()
 
@@ -233,9 +196,6 @@ class TestSpark:
         )
 
         # Assert
-        assert (
-            mock_pyspark_getOrCreate.return_value.sparkContext.textFile.call_count == 1
-        )
         assert mock_sc_read.return_value.createOrReplaceTempView.call_count == 1
 
     def test_register_hudi_temporary_table(self, mocker):
@@ -4372,7 +4332,7 @@ class TestSpark:
         assert mock_spark_engine_setup_adls_hadoop_conf.call_count == 0
         assert mock_spark_engine_setup_gcp_hadoop_conf.call_count == 0
 
-    def test_setup_s3_hadoop_conf(self, mocker):
+    def test_setup_s3_hadoop_conf_legacy(self, mocker):
         # Arrange
         mock_pyspark_getOrCreate = mocker.patch(
             "pyspark.sql.session.SparkSession.builder.getOrCreate"
@@ -4384,6 +4344,7 @@ class TestSpark:
             id=1,
             name="test_connector",
             featurestore_id=99,
+            bucket="bucket-name",
             access_key="1",
             secret_key="2",
             server_encryption_algorithm="3",
@@ -4395,14 +4356,14 @@ class TestSpark:
         # Act
         result = spark_engine._setup_s3_hadoop_conf(
             storage_connector=s3_connector,
-            path="s3_test_path",
+            path="s3://_test_path",
         )
 
         # Assert
-        assert result == "s3a_test_path"
+        assert result == "s3a://_test_path"
         assert (
             mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.call_count
-            == 7
+            == 14
         )
         mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.access.key", s3_connector.access_key
@@ -4426,6 +4387,65 @@ class TestSpark:
         )
         mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.endpoint", s3_connector.arguments.get("fs.s3a.endpoint")
+        )
+
+    def test_setup_s3_hadoop_conf_bucket_scope(self, mocker):
+        # Arrange
+        mock_pyspark_getOrCreate = mocker.patch(
+            "pyspark.sql.session.SparkSession.builder.getOrCreate"
+        )
+
+        spark_engine = spark.Engine()
+
+        s3_connector = storage_connector.S3Connector(
+            id=1,
+            name="test_connector",
+            featurestore_id=99,
+            bucket="bucket-name",
+            access_key="1",
+            secret_key="2",
+            server_encryption_algorithm="3",
+            server_encryption_key="4",
+            session_token="5",
+            arguments=[{"name": "fs.s3a.endpoint", "value": "testEndpoint"}],
+        )
+
+        # Act
+        result = spark_engine._setup_s3_hadoop_conf(
+            storage_connector=s3_connector,
+            path="s3://_test_path",
+        )
+
+        # Assert
+        assert result == "s3a://_test_path"
+        assert (
+            mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.call_count
+            == 14
+        )
+        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+            "fs.s3a.bucket.bucket-name.access.key", s3_connector.access_key
+        )
+        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+            "fs.s3a.bucket.bucket-name.secret.key", s3_connector.secret_key
+        )
+        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+            "fs.s3a.bucket.bucket-name.server-side-encryption-algorithm",
+            s3_connector.server_encryption_algorithm,
+        )
+        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+            "fs.s3a.bucket.bucket-name.server-side-encryption-key",
+            s3_connector.server_encryption_key,
+        )
+        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+            "fs.s3a.bucket.bucket-name.aws.credentials.provider",
+            "org.apache.hadoop.fs.s3a.TemporaryAWSCredentialsProvider",
+        )
+        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+            "fs.s3a.bucket.bucket-name.session.token", s3_connector.session_token
+        )
+        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+            "fs.s3a.bucket.bucket-name.endpoint",
+            s3_connector.arguments.get("fs.s3a.endpoint"),
         )
 
     def test_setup_adls_hadoop_conf(self, mocker):
@@ -4499,7 +4519,9 @@ class TestSpark:
         mock_spark_engine_save_dataframe = mocker.patch(
             "hsfs.engine.spark.Engine.save_dataframe"
         )
-        mock_spark_table = mocker.patch("pyspark.sql.session.SparkSession.table")
+        mock_spark_read = mocker.patch("pyspark.sql.SparkSession.read")
+        mock_format = mocker.Mock()
+        mock_spark_read.format.return_value = mock_format
 
         # Arrange
         spark_engine = spark.Engine()
@@ -4519,12 +4541,12 @@ class TestSpark:
 
         # Assert
         assert mock_spark_engine_save_dataframe.call_count == 1
-        assert mock_spark_table.call_count == 1
+        assert mock_spark_read.format.call_count == 1
 
-    def test_apply_transformation_function_single_output(self, mocker):
+    def test_apply_transformation_function_single_output_udf_default_mode(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "spark"
+        hopsworks_common.connection._hsfs_engine_type = "spark"
         spark_engine = spark.Engine()
 
         @udf(int, drop=["col1"])
@@ -4582,10 +4604,134 @@ class TestSpark:
         assert result.schema == expected_spark_df.schema
         assert result.collect() == expected_spark_df.collect()
 
-    def test_apply_transformation_function_multiple_output(self, mocker):
+    def test_apply_transformation_function_single_output_udf_python_mode(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "spark"
+        hopsworks_common.connection._hsfs_engine_type = "spark"
+        spark_engine = spark.Engine()
+
+        @udf(int, drop=["col1"], mode="python")
+        def plus_one(col1):
+            return col1 + 1
+
+        tf = transformation_function.TransformationFunction(
+            99,
+            hopsworks_udf=plus_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        f = feature.Feature(name="col_0", type=IntegerType(), index=0)
+        f1 = feature.Feature(name="col_1", type=StringType(), index=1)
+        f2 = feature.Feature(name="col_2", type=BooleanType(), index=1)
+        features = [f, f1, f2]
+        fg1 = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=features,
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="test",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            transformation_functions=[tf("col_0")],
+        )
+
+        d = {"col_0": [1, 2], "col_1": ["test_1", "test_2"], "col_2": [True, False]}
+        df = pd.DataFrame(data=d)
+
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
+        expected_df = pd.DataFrame(
+            data={
+                "col_1": ["test_1", "test_2"],
+                "col_2": [True, False],
+                "plus_one_col_0_": [2, 3],
+            }
+        )  # todo why it doesnt return int?
+
+        expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
+
+        # Act
+        result = spark_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions,
+            dataset=spark_df,
+        )
+        # Assert
+        assert result.schema == expected_spark_df.schema
+        assert result.collect() == expected_spark_df.collect()
+
+    def test_apply_transformation_function_single_output_udf_pandas_mode(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "spark"
+        spark_engine = spark.Engine()
+
+        @udf(int, drop=["col1"], mode="pandas")
+        def plus_one(col1):
+            return col1 + 1
+
+        tf = transformation_function.TransformationFunction(
+            99,
+            hopsworks_udf=plus_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        f = feature.Feature(name="col_0", type=IntegerType(), index=0)
+        f1 = feature.Feature(name="col_1", type=StringType(), index=1)
+        f2 = feature.Feature(name="col_2", type=BooleanType(), index=1)
+        features = [f, f1, f2]
+        fg1 = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=features,
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="test",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            transformation_functions=[tf("col_0")],
+        )
+
+        d = {"col_0": [1, 2], "col_1": ["test_1", "test_2"], "col_2": [True, False]}
+        df = pd.DataFrame(data=d)
+
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
+        expected_df = pd.DataFrame(
+            data={
+                "col_1": ["test_1", "test_2"],
+                "col_2": [True, False],
+                "plus_one_col_0_": [2, 3],
+            }
+        )  # todo why it doesnt return int?
+
+        expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
+
+        # Act
+        result = spark_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions,
+            dataset=spark_df,
+        )
+        # Assert
+        assert result.schema == expected_spark_df.schema
+        assert result.collect() == expected_spark_df.collect()
+
+    def test_apply_transformation_function_multiple_output_udf_default_mode(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "spark"
         spark_engine = spark.Engine()
 
         @udf([int, int], drop=["col1"])
@@ -4644,10 +4790,140 @@ class TestSpark:
         assert result.schema == expected_spark_df.schema
         assert result.collect() == expected_spark_df.collect()
 
-    def test_apply_transformation_function_multiple_input_output(self, mocker):
+    def test_apply_transformation_function_multiple_output_udf_pandas_mode(
+        self, mocker
+    ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "spark"
+        hopsworks_common.connection._hsfs_engine_type = "spark"
+        spark_engine = spark.Engine()
+
+        @udf([int, int], drop=["col1"], mode="pandas")
+        def plus_two(col1):
+            return pd.DataFrame({"new_col1": col1 + 1, "new_col2": col1 + 2})
+
+        tf = transformation_function.TransformationFunction(
+            99,
+            hopsworks_udf=plus_two,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        f = feature.Feature(name="col_0", type=IntegerType(), index=0)
+        f1 = feature.Feature(name="col_1", type=StringType(), index=1)
+        f2 = feature.Feature(name="col_2", type=BooleanType(), index=1)
+        features = [f, f1, f2]
+        fg1 = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=features,
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="test",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            transformation_functions=[tf("col_0")],
+        )
+
+        d = {"col_0": [1, 2], "col_1": ["test_1", "test_2"], "col_2": [True, False]}
+        df = pd.DataFrame(data=d)
+
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
+        expected_df = pd.DataFrame(
+            data={
+                "col_1": ["test_1", "test_2"],
+                "col_2": [True, False],
+                "plus_two_col_0_0": [2, 3],
+                "plus_two_col_0_1": [3, 4],
+            }
+        )  # todo why it doesnt return int?
+
+        expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
+
+        # Act
+        result = spark_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions,
+            dataset=spark_df,
+        )
+        # Assert
+        assert result.schema == expected_spark_df.schema
+        assert result.collect() == expected_spark_df.collect()
+
+    def test_apply_transformation_function_multiple_output_udf_python_mode(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "spark"
+        spark_engine = spark.Engine()
+
+        @udf([int, int], drop=["col1"], mode="python")
+        def plus_two(col1):
+            return col1 + 1, col1 + 2
+
+        tf = transformation_function.TransformationFunction(
+            99,
+            hopsworks_udf=plus_two,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        f = feature.Feature(name="col_0", type=IntegerType(), index=0)
+        f1 = feature.Feature(name="col_1", type=StringType(), index=1)
+        f2 = feature.Feature(name="col_2", type=BooleanType(), index=1)
+        features = [f, f1, f2]
+        fg1 = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=features,
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="test",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            transformation_functions=[tf("col_0")],
+        )
+
+        d = {"col_0": [1, 2], "col_1": ["test_1", "test_2"], "col_2": [True, False]}
+        df = pd.DataFrame(data=d)
+
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
+        expected_df = pd.DataFrame(
+            data={
+                "col_1": ["test_1", "test_2"],
+                "col_2": [True, False],
+                "plus_two_col_0_0": [2, 3],
+                "plus_two_col_0_1": [3, 4],
+            }
+        )  # todo why it doesnt return int?
+
+        expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
+
+        # Act
+        result = spark_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions,
+            dataset=spark_df,
+        )
+        # Assert
+        assert result.schema == expected_spark_df.schema
+        assert result.collect() == expected_spark_df.collect()
+
+    def test_apply_transformation_function_multiple_input_output_udf_default_mode(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "spark"
         spark_engine = spark.Engine()
 
         @udf([int, int])
@@ -4707,12 +4983,142 @@ class TestSpark:
         assert result.schema == expected_spark_df.schema
         assert result.collect() == expected_spark_df.collect()
 
-    def test_apply_transformation_function_multiple_input_output_drop_some(
+    def test_apply_transformation_function_multiple_input_output_udf_python_mode(
         self, mocker
     ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "spark"
+        hopsworks_common.connection._hsfs_engine_type = "spark"
+        spark_engine = spark.Engine()
+
+        @udf([int, int], mode="python")
+        def test(col1, col2):
+            return col1 + 1, col2 + 2
+
+        tf = transformation_function.TransformationFunction(
+            99,
+            hopsworks_udf=test,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        f = feature.Feature(name="col_0", type=IntegerType(), index=0)
+        f1 = feature.Feature(name="col_1", type=StringType(), index=1)
+        f2 = feature.Feature(name="col_2", type=IntegerType(), index=1)
+        features = [f, f1, f2]
+        fg1 = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=features,
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="test",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            transformation_functions=[tf("col_0", "col_2")],
+        )
+
+        d = {"col_0": [1, 2], "col_1": ["test_1", "test_2"], "col_2": [10, 11]}
+        df = pd.DataFrame(data=d)
+
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
+        expected_df = pd.DataFrame(
+            data={
+                "col_0": [1, 2],
+                "col_1": ["test_1", "test_2"],
+                "col_2": [10, 11],
+                "test_col_0_col_2_0": [2, 3],
+                "test_col_0_col_2_1": [12, 13],
+            }
+        )
+
+        expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
+
+        # Act
+        result = spark_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions,
+            dataset=spark_df,
+        )
+        # Assert
+        assert result.schema == expected_spark_df.schema
+        assert result.collect() == expected_spark_df.collect()
+
+    def test_apply_transformation_function_multiple_input_output_udf_pandas_mode(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "spark"
+        spark_engine = spark.Engine()
+
+        @udf([int, int], mode="pandas")
+        def test(col1, col2):
+            return pd.DataFrame({"new_col1": col1 + 1, "new_col2": col2 + 2})
+
+        tf = transformation_function.TransformationFunction(
+            99,
+            hopsworks_udf=test,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        f = feature.Feature(name="col_0", type=IntegerType(), index=0)
+        f1 = feature.Feature(name="col_1", type=StringType(), index=1)
+        f2 = feature.Feature(name="col_2", type=IntegerType(), index=1)
+        features = [f, f1, f2]
+        fg1 = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=features,
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="test",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            transformation_functions=[tf("col_0", "col_2")],
+        )
+
+        d = {"col_0": [1, 2], "col_1": ["test_1", "test_2"], "col_2": [10, 11]}
+        df = pd.DataFrame(data=d)
+
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
+        expected_df = pd.DataFrame(
+            data={
+                "col_0": [1, 2],
+                "col_1": ["test_1", "test_2"],
+                "col_2": [10, 11],
+                "test_col_0_col_2_0": [2, 3],
+                "test_col_0_col_2_1": [12, 13],
+            }
+        )
+
+        expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
+
+        # Act
+        result = spark_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions,
+            dataset=spark_df,
+        )
+        # Assert
+        assert result.schema == expected_spark_df.schema
+        assert result.collect() == expected_spark_df.collect()
+
+    def test_apply_transformation_function_multiple_input_output_drop_some_udf_default_mode(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "spark"
         spark_engine = spark.Engine()
 
         @udf([int, int], drop=["col1"])
@@ -4771,15 +5177,271 @@ class TestSpark:
         assert result.schema == expected_spark_df.schema
         assert result.collect() == expected_spark_df.collect()
 
-    def test_apply_transformation_function_multiple_input_output_drop_all(self, mocker):
+    def test_apply_transformation_function_multiple_input_output_drop_some_udf_pandas_mode(
+        self, mocker
+    ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        engine._engine_type = "spark"
+        hopsworks_common.connection._hsfs_engine_type = "spark"
+        spark_engine = spark.Engine()
+
+        @udf([int, int], drop=["col1"], mode="pandas")
+        def test(col1, col2):
+            return pd.DataFrame({"new_col1": col1 + 1, "new_col2": col2 + 2})
+
+        tf = transformation_function.TransformationFunction(
+            99,
+            hopsworks_udf=test,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        f = feature.Feature(name="col_0", type=IntegerType(), index=0)
+        f1 = feature.Feature(name="col_1", type=StringType(), index=1)
+        f2 = feature.Feature(name="col_2", type=IntegerType(), index=1)
+        features = [f, f1, f2]
+        fg1 = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=features,
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="test",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            transformation_functions=[tf("col_0", "col_2")],
+        )
+
+        d = {"col_0": [1, 2], "col_1": ["test_1", "test_2"], "col_2": [10, 11]}
+        df = pd.DataFrame(data=d)
+
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
+        expected_df = pd.DataFrame(
+            data={
+                "col_1": ["test_1", "test_2"],
+                "col_2": [10, 11],
+                "test_col_0_col_2_0": [2, 3],
+                "test_col_0_col_2_1": [12, 13],
+            }
+        )
+
+        expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
+
+        # Act
+        result = spark_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions,
+            dataset=spark_df,
+        )
+        # Assert
+        assert result.schema == expected_spark_df.schema
+        assert result.collect() == expected_spark_df.collect()
+
+    def test_apply_transformation_function_multiple_input_output_drop_some_udf_python_mode(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "spark"
+        spark_engine = spark.Engine()
+
+        @udf([int, int], drop=["col1"], mode="python")
+        def test(col1, col2):
+            return col1 + 1, col2 + 2
+
+        tf = transformation_function.TransformationFunction(
+            99,
+            hopsworks_udf=test,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        f = feature.Feature(name="col_0", type=IntegerType(), index=0)
+        f1 = feature.Feature(name="col_1", type=StringType(), index=1)
+        f2 = feature.Feature(name="col_2", type=IntegerType(), index=1)
+        features = [f, f1, f2]
+        fg1 = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=features,
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="test",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            transformation_functions=[tf("col_0", "col_2")],
+        )
+
+        d = {"col_0": [1, 2], "col_1": ["test_1", "test_2"], "col_2": [10, 11]}
+        df = pd.DataFrame(data=d)
+
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
+        expected_df = pd.DataFrame(
+            data={
+                "col_1": ["test_1", "test_2"],
+                "col_2": [10, 11],
+                "test_col_0_col_2_0": [2, 3],
+                "test_col_0_col_2_1": [12, 13],
+            }
+        )
+
+        expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
+
+        # Act
+        result = spark_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions,
+            dataset=spark_df,
+        )
+        # Assert
+        assert result.schema == expected_spark_df.schema
+        assert result.collect() == expected_spark_df.collect()
+
+    def test_apply_transformation_function_multiple_input_output_drop_all_udf_default_mode(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "spark"
         spark_engine = spark.Engine()
 
         @udf([int, int], drop=["col1", "col2"])
         def test(col1, col2):
             return pd.DataFrame({"new_col1": col1 + 1, "new_col2": col2 + 2})
+
+        tf = transformation_function.TransformationFunction(
+            99,
+            hopsworks_udf=test,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        f = feature.Feature(name="col_0", type=IntegerType(), index=0)
+        f1 = feature.Feature(name="col_1", type=StringType(), index=1)
+        f2 = feature.Feature(name="col_2", type=IntegerType(), index=1)
+        features = [f, f1, f2]
+        fg1 = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=features,
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="test",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            transformation_functions=[tf("col_0", "col_2")],
+        )
+
+        d = {"col_0": [1, 2], "col_1": ["test_1", "test_2"], "col_2": [10, 11]}
+        df = pd.DataFrame(data=d)
+
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
+        expected_df = pd.DataFrame(
+            data={
+                "col_1": ["test_1", "test_2"],
+                "test_col_0_col_2_0": [2, 3],
+                "test_col_0_col_2_1": [12, 13],
+            }
+        )  # todo why it doesnt return int?
+
+        expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
+
+        # Act
+        result = spark_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions,
+            dataset=spark_df,
+        )
+        # Assert
+        assert result.schema == expected_spark_df.schema
+        assert result.collect() == expected_spark_df.collect()
+
+    def test_apply_transformation_function_multiple_input_output_drop_all_udf_pandas_mode(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "spark"
+        spark_engine = spark.Engine()
+
+        @udf([int, int], drop=["col1", "col2"], mode="pandas")
+        def test(col1, col2):
+            return pd.DataFrame({"new_col1": col1 + 1, "new_col2": col2 + 2})
+
+        tf = transformation_function.TransformationFunction(
+            99,
+            hopsworks_udf=test,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        f = feature.Feature(name="col_0", type=IntegerType(), index=0)
+        f1 = feature.Feature(name="col_1", type=StringType(), index=1)
+        f2 = feature.Feature(name="col_2", type=IntegerType(), index=1)
+        features = [f, f1, f2]
+        fg1 = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=features,
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="test",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            transformation_functions=[tf("col_0", "col_2")],
+        )
+
+        d = {"col_0": [1, 2], "col_1": ["test_1", "test_2"], "col_2": [10, 11]}
+        df = pd.DataFrame(data=d)
+
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
+        expected_df = pd.DataFrame(
+            data={
+                "col_1": ["test_1", "test_2"],
+                "test_col_0_col_2_0": [2, 3],
+                "test_col_0_col_2_1": [12, 13],
+            }
+        )  # todo why it doesnt return int?
+
+        expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
+
+        # Act
+        result = spark_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions,
+            dataset=spark_df,
+        )
+        # Assert
+        assert result.schema == expected_spark_df.schema
+        assert result.collect() == expected_spark_df.collect()
+
+    def test_apply_transformation_function_multiple_input_output_drop_all_udf_python_mode(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "spark"
+        spark_engine = spark.Engine()
+
+        @udf([int, int], drop=["col1", "col2"], mode="python")
+        def test(col1, col2):
+            return col1 + 1, col2 + 2
 
         tf = transformation_function.TransformationFunction(
             99,

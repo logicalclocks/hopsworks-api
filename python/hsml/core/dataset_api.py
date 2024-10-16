@@ -14,12 +14,15 @@
 #   limitations under the License.
 #
 
+from __future__ import annotations
+
 import copy
 import json
 import math
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
+from typing import Literal, Optional, Union
 
 from hsml import client, tag
 from hsml.client.exceptions import RestAPIError
@@ -343,24 +346,23 @@ class DatasetApi:
 
     def _archive(
         self,
-        remote_path,
-        destination_path=None,
-        block=False,
-        timeout=120,
-        action="unzip",
+        remote_path: str,
+        destination_path: Optional[str] = None,
+        block: bool = False,
+        timeout: Optional[int] = 120,
+        action: Union[Literal["unzip"], Literal["zip"]] = "unzip",
     ):
         """Internal (de)compression logic.
 
-        :param remote_path: path to file or directory to unzip
-        :type remote_path: str
-        :param destination_path: path to upload the zip
-        :type destination_path: str
-        :param block: if the operation should be blocking until complete
-        :type block: bool
-        :param timeout: timeout if the operation is blocking
-        :type timeout: int
-        :param action: zip or unzip
-        :type action: str
+        # Arguments
+            remote_path: path to file or directory to unzip.
+            destination_path: path to upload the zip, defaults to None; is used only if action is zip.
+            block: if the operation should be blocking until complete, defaults to False.
+            timeout: timeout in seconds for the blocking, defaults to 120; if None, the blocking is unbounded.
+            action: zip or unzip, defaults to unzip.
+
+        # Returns
+            `bool`: whether the operation completed in the specified timeout; if non-blocking, always returns True.
         """
 
         _client = client.get_instance()
@@ -378,74 +380,79 @@ class DatasetApi:
             "POST", path_params, headers=headers, query_params=query_params
         )
 
-        if block is True:
-            # Wait for zip file to appear. When it does, check that parent dir zipState is not set to CHOWNING
-            count = 0
-            while count < timeout:
-                if action == "zip":
-                    zip_path = remote_path + ".zip"
-                    # Get the status of the zipped file
-                    if destination_path is None:
-                        zip_exists = self.path_exists(zip_path)
-                    else:
-                        zip_exists = self.path_exists(
-                            destination_path + "/" + os.path.split(zip_path)[1]
-                        )
-                    # Get the zipState of the directory being zipped
-                    dir_status = self.get(remote_path)
-                    zip_state = (
-                        dir_status["zipState"] if "zipState" in dir_status else None
-                    )
-                    if zip_exists and zip_state == "NONE":
-                        return
-                    else:
-                        time.sleep(1)
-                elif action == "unzip":
-                    # Get the status of the unzipped dir
-                    unzipped_dir_exists = self.path_exists(
-                        remote_path[: remote_path.index(".")]
-                    )
-                    # Get the zipState of the zip being extracted
-                    dir_status = self.get(remote_path)
-                    zip_state = (
-                        dir_status["zipState"] if "zipState" in dir_status else None
-                    )
-                    if unzipped_dir_exists and zip_state == "NONE":
-                        return
-                    else:
-                        time.sleep(1)
-                count += 1
-            raise Exception(
-                "Timeout of {} seconds exceeded while {} {}.".format(
-                    timeout, action, remote_path
-                )
-            )
+        if not block:
+            # the call is successful at this point if we don't want to block
+            return True
 
-    def unzip(self, remote_path, block=False, timeout=120):
+        # Wait for zip file to appear. When it does, check that parent dir zipState is not set to CHOWNING
+        count = 0
+        while timeout is None:
+            if action == "zip":
+                zip_path = remote_path + ".zip"
+                # Get the status of the zipped file
+                if destination_path is None:
+                    zip_exists = self.path_exists(zip_path)
+                else:
+                    zip_exists = self.path_exists(
+                        destination_path + "/" + os.path.split(zip_path)[1]
+                    )
+                # Get the zipState of the directory being zipped
+                dir_status = self.get(remote_path)
+                zip_state = dir_status["zipState"] if "zipState" in dir_status else None
+                if zip_exists and zip_state == "NONE":
+                    return True
+            elif action == "unzip":
+                # Get the status of the unzipped dir
+                unzipped_dir_exists = self.path_exists(
+                    remote_path[: remote_path.index(".")]
+                )
+                # Get the zipState of the zip being extracted
+                dir_status = self.get(remote_path)
+                zip_state = dir_status["zipState"] if "zipState" in dir_status else None
+                if unzipped_dir_exists and zip_state == "NONE":
+                    return True
+            time.sleep(1)
+            count += 1
+            if count >= timeout:
+                self._log.info(
+                    f"Timeout of {timeout} seconds exceeded while {action} {remote_path}."
+                )
+                return False
+
+    def unzip(
+        self, remote_path: str, block: bool = False, timeout: Optional[int] = 120
+    ):
         """Unzip an archive in the dataset.
 
-        :param remote_path: path to file or directory to unzip
-        :type remote_path: str
-        :param block: if the operation should be blocking until complete
-        :type block: bool
-        :param timeout: timeout if the operation is blocking
-        :type timeout: int
-        """
-        self._archive(remote_path, block=block, timeout=timeout, action="unzip")
+        # Arguments
+            remote_path: path to file or directory to unzip.
+            block: if the operation should be blocking until complete, defaults to False.
+            timeout: timeout in seconds for the blocking, defaults to 120; if None, the blocking is unbounded.
 
-    def zip(self, remote_path, destination_path=None, block=False, timeout=120):
+        # Returns
+            `bool`: whether the operation completed in the specified timeout; if non-blocking, always returns True.
+        """
+        return self._archive(remote_path, block=block, timeout=timeout, action="unzip")
+
+    def zip(
+        self,
+        remote_path: str,
+        destination_path: Optional[str] = None,
+        block: bool = False,
+        timeout: Optional[int] = 120,
+    ):
         """Zip a file or directory in the dataset.
 
-        :param remote_path: path to file or directory to zip
-        :type remote_path: str
-        :param destination_path: path to upload the zip
-        :type destination_path: str
-        :param block: if the operation should be blocking until complete
-        :type block: bool
-        :param timeout: timeout if the operation is blocking
-        :type timeout: int
+        # Arguments
+            remote_path: path to file or directory to unzip.
+            destination_path: path to upload the zip, defaults to None.
+            block: if the operation should be blocking until complete, defaults to False.
+            timeout: timeout in seconds for the blocking, defaults to 120; if None, the blocking is unbounded.
+
+        # Returns
+            `bool`: whether the operation completed in the specified timeout; if non-blocking, always returns True.
         """
-        self._archive(
+        return self._archive(
             remote_path,
             destination_path=destination_path,
             block=block,

@@ -15,6 +15,7 @@
 
 from typing import Dict, List, Optional, Union
 
+from hopsworks_common import usage
 from hsml import client, util
 from hsml import predictor as predictor_mod
 from hsml.client.exceptions import ModelServingException
@@ -37,10 +38,12 @@ class Deployment:
         predictor,
         name: Optional[str] = None,
         description: Optional[str] = None,
+        project_namespace: str = None,
         **kwargs,
     ):
         self._predictor = predictor
         self._description = description
+        self._project_namespace = project_namespace
 
         if self._predictor is None:
             raise ModelServingException("A predictor is required")
@@ -63,6 +66,7 @@ class Deployment:
         self._grpc_channel = None
         self._model_registry_id = None
 
+    @usage.method_logger
     def save(self, await_update: Optional[int] = 60):
         """Persist this deployment including the predictor and metadata to Model Serving.
 
@@ -74,6 +78,7 @@ class Deployment:
 
         self._serving_engine.save(self, await_update)
 
+    @usage.method_logger
     def start(self, await_running: Optional[int] = 60):
         """Start the deployment
 
@@ -85,6 +90,7 @@ class Deployment:
 
         self._serving_engine.start(self, await_status=await_running)
 
+    @usage.method_logger
     def stop(self, await_stopped: Optional[int] = 60):
         """Stop the deployment
 
@@ -96,6 +102,7 @@ class Deployment:
 
         self._serving_engine.stop(self, await_status=await_stopped)
 
+    @usage.method_logger
     def delete(self, force=False):
         """Delete the deployment
 
@@ -211,6 +218,7 @@ class Deployment:
             self.model_name, self.model_version, self.model_registry_id
         )
 
+    @usage.method_logger
     def download_artifact(self):
         """Download the model artifact served by the deployment"""
 
@@ -469,6 +477,15 @@ class Deployment:
     @environment.setter
     def environment(self, environment: str):
         self._predictor.environment = environment
+
+    @property
+    def project_namespace(self):
+        """Name of inference environment"""
+        return self._predictor.project_namespace
+
+    @project_namespace.setter
+    def project_namespace(self, project_namespace: str):
+        self._predictor.project_namespace = project_namespace
 
     def __repr__(self):
         desc = (

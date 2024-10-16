@@ -21,6 +21,7 @@ import warnings
 from typing import Any, Dict, Optional, Union
 
 import humps
+from hopsworks_common import usage
 from hsml import client, util
 from hsml.constants import ARTIFACT_VERSION
 from hsml.constants import INFERENCE_ENDPOINTS as IE
@@ -106,6 +107,7 @@ class Model:
                     stacklevel=1,
                 )
 
+    @usage.method_logger
     def save(
         self,
         model_path,
@@ -137,6 +139,7 @@ class Model:
             upload_configuration=upload_configuration,
         )
 
+    @usage.method_logger
     def download(self):
         """Download the model files.
 
@@ -145,6 +148,7 @@ class Model:
         """
         return self._model_engine.download(model_instance=self)
 
+    @usage.method_logger
     def delete(self):
         """Delete the model
 
@@ -157,6 +161,7 @@ class Model:
         """
         self._model_engine.delete(model_instance=self)
 
+    @usage.method_logger
     def deploy(
         self,
         name: Optional[str] = None,
@@ -226,6 +231,7 @@ class Model:
 
         return predictor.deploy()
 
+    @usage.method_logger
     def set_tag(self, name: str, value: Union[str, dict]):
         """Attach a tag to a model.
 
@@ -241,6 +247,7 @@ class Model:
 
         self._model_engine.set_tag(model_instance=self, name=name, value=value)
 
+    @usage.method_logger
     def delete_tag(self, name: str):
         """Delete a tag attached to a model.
 

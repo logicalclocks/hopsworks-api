@@ -23,18 +23,28 @@ import warnings
 from functools import wraps
 from typing import Any, Dict, Optional, Union
 
-import polars as pl
+from hopsworks_common.core.constants import HAS_PYARROW, pyarrow_not_installed_message
+
+
+if not HAS_PYARROW:
+    raise ModuleNotFoundError(pyarrow_not_installed_message)
+
 import pyarrow
 import pyarrow._flight
 import pyarrow.flight
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
-from hsfs import feature_group, util
+from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
+from hsfs import feature_group
 from hsfs.constructor import query
 from hsfs.core.variable_api import VariableApi
 from hsfs.storage_connector import StorageConnector
 from pyarrow.flight import FlightServerError
 from retrying import retry
+
+
+if HAS_POLARS:
+    import polars as pl
 
 
 _logger = logging.getLogger(__name__)
@@ -114,7 +124,13 @@ def _is_query_supported_rec(query: query.Query):
         and query._left_feature_group.storage_connector.type
         in ArrowFlightClient.SUPPORTED_EXTERNAL_CONNECTORS
     )
-    supported = hudi_no_time_travel or supported_connector
+    delta_s3 = (
+        isinstance(query._left_feature_group, feature_group.FeatureGroup)
+        and query._left_feature_group.time_travel_format == "DELTA"
+        and query._left_feature_group.storage_connector
+        and query._left_feature_group.storage_connector.type == StorageConnector.S3
+    )
+    supported = hudi_no_time_travel or supported_connector or delta_s3
     for j in query._joins:
         supported &= _is_query_supported_rec(j._query)
     return supported
@@ -397,6 +413,8 @@ class ArrowFlightClient:
         reader = self._connection.do_get(info.endpoints[0].ticket, options)
         _logger.debug("Dataset fetched. Converting to dataframe %s.", dataframe_type)
         if dataframe_type.lower() == "polars":
+            if not HAS_POLARS:
+                raise ModuleNotFoundError(polars_not_installed_message)
             return pl.from_arrow(reader.read_all())
         else:
             return reader.read_pandas()
@@ -444,9 +462,7 @@ class ArrowFlightClient:
         self, feature_view_obj, training_dataset_obj, query_obj, arrow_flight_config
     ):
         training_dataset = {}
-        training_dataset["fs_name"] = util.strip_feature_store_suffix(
-            training_dataset_obj.feature_store_name
-        )
+        training_dataset["project_name"] = self._client._project_name
         training_dataset["fv_name"] = feature_view_obj.name
         training_dataset["fv_version"] = feature_view_obj.version
         training_dataset["tds_version"] = training_dataset_obj.version
@@ -539,6 +555,7 @@ class ArrowFlightClient:
 def _serialize_featuregroup_connector(fg, query, on_demand_fg_aliases):
     connector = {}
     if isinstance(fg, feature_group.ExternalFeatureGroup):
+        connector["time_travel_type"] = None
         connector["type"] = fg.storage_connector.type
         connector["options"] = fg.storage_connector.connector_options()
         connector["query"] = fg.query[:-1] if fg.query.endswith(";") else fg.query
@@ -556,8 +573,25 @@ def _serialize_featuregroup_connector(fg, query, on_demand_fg_aliases):
                     connector["filters"] = _serialize_filter_expression(
                         join_obj._query._filter, join_obj._query, True
                     )
+    elif fg.time_travel_format == "DELTA":
+        connector["time_travel_type"] = "delta"
+        connector["type"] = fg.storage_connector.type
+        connector["options"] = fg.storage_connector.connector_options()
+        if fg.storage_connector.type == StorageConnector.S3:
+            connector["options"]["path"] = fg.location
+        connector["query"] = ""
+        if query._left_feature_group == fg:
+            connector["filters"] = _serialize_filter_expression(
+                query._filter, query, True
+            )
+        else:
+            for join_obj in query._joins:
+                if join_obj._query._left_feature_group == fg:
+                    connector["filters"] = _serialize_filter_expression(
+                        join_obj._query._filter, join_obj._query, True
+                    )
     else:
-        connector["type"] = "hudi"
+        connector["time_travel_type"] = "hudi"
     return connector
 
 

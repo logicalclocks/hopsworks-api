@@ -17,7 +17,7 @@
 import json
 
 import humps
-from hopsworks_common import util
+from hopsworks_common import usage, util
 from hopsworks_common.core import kafka_api
 
 
@@ -73,6 +73,7 @@ class KafkaSchema:
         """Schema definition"""
         return self._schema
 
+    @usage.method_logger
     def delete(self):
         """Delete the schema
         !!! danger "Potentially dangerous operation"

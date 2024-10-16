@@ -19,10 +19,10 @@ from __future__ import annotations
 import json
 import warnings
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Literal, Optional
 
 import humps
-from hopsworks_common import client, util
+from hopsworks_common import client, usage, util
 from hopsworks_common.client.exceptions import JobException
 from hopsworks_common.core import execution_api, job_api
 from hopsworks_common.engine import execution_engine
@@ -139,6 +139,7 @@ class Job:
         """Configuration for the job"""
         return self._config
 
+    @usage.method_logger
     def run(self, args: str = None, await_termination: bool = True):
         """Run the job.
 
@@ -235,6 +236,7 @@ class Job:
         """
         return self._execution_api._get_all(self)
 
+    @usage.method_logger
     def save(self):
         """Save the job.
 
@@ -249,6 +251,7 @@ class Job:
         """
         return self._job_api._update_job(self.name, self.config)
 
+    @usage.method_logger
     def delete(self):
         """Delete the job
         !!! danger "Potentially dangerous operation"
@@ -257,7 +260,6 @@ class Job:
             `RestAPIError`.
         """
         self._job_api._delete(self)
-
 
     def _is_materialization_running(self, args: str) -> bool:
         if self.name.endswith("offline_fg_materialization") or self.name.endswith(
@@ -283,7 +285,7 @@ class Job:
                 return True
         return False
 
-    def _wait_for_job(self, await_termination=True):
+    def _wait_for_job(self, await_termination=True, timeout: Optional[float] = None):
         # If the user passed the wait_for_job option consider it,
         # otherwise use the default True
         if await_termination:
@@ -292,8 +294,9 @@ class Job:
                 execution = executions[0]
             else:
                 return
-            self._execution_engine.wait_until_finished(job=self, execution=execution)
-
+            self._execution_engine.wait_until_finished(
+                job=self, execution=execution, timeout=timeout
+            )
 
     def schedule(
         self,
@@ -335,11 +338,13 @@ class Job:
         )
         return self._job_schedule
 
+    @usage.method_logger
     def unschedule(self):
         """Unschedule the exceution of a Job"""
         self._job_api._delete_schedule_job(self._name)
         self._job_schedule = None
 
+    @usage.method_logger
     def resume_schedule(self):
         """Resumes the schedule of a Job execution"""
         if self._job_schedule is None:
@@ -354,6 +359,7 @@ class Job:
         )
         return self._update_schedule(job_schedule)
 
+    @usage.method_logger
     def pause_schedule(self):
         """Pauses the schedule of a Job execution"""
         if self._job_schedule is None:

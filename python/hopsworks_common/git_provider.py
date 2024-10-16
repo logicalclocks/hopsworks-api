@@ -17,7 +17,7 @@
 import json
 
 import humps
-from hopsworks_common import util
+from hopsworks_common import usage, util
 from hopsworks_common.core import git_provider_api
 
 
@@ -60,6 +60,7 @@ class GitProvider:
         """Name of the provider, can be GitHub, GitLab or BitBucket"""
         return self._git_provider
 
+    @usage.method_logger
     def delete(self):
         """Remove the git provider configuration.
 

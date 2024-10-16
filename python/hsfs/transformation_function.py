@@ -227,7 +227,7 @@ class TransformationFunction:
             "id": self._id,
             "version": self._version,
             "featurestoreId": self._featurestore_id,
-            "hopsworksUdf": self._hopsworks_udf,
+            "hopsworksUdf": self._hopsworks_udf.to_dict(),
         }
 
     def _get_output_column_names(self) -> str:
@@ -237,6 +237,25 @@ class TransformationFunction:
         # Returns
             `List[str]`: List of feature names for the transformed columns
         """
+        # If function name matches the name of an input feature and the transformation function only returns one output feature then
+        # then the transformed output feature would have the same name as the input feature. i.e the input feature will get overwritten.
+        if (
+            len(self._hopsworks_udf.return_types) == 1
+            and any(
+                [
+                    self.hopsworks_udf.function_name
+                    == transformation_feature.feature_name
+                    for transformation_feature in self.hopsworks_udf._transformation_features
+                ]
+            )
+            and (
+                not self.hopsworks_udf.dropped_features
+                or self.hopsworks_udf.function_name
+                not in self.hopsworks_udf.dropped_features
+            )
+        ):
+            return [self.hopsworks_udf.function_name]
+
         if self.transformation_type == TransformationType.MODEL_DEPENDENT:
             _BASE_COLUMN_NAME = f'{self._hopsworks_udf.function_name}_{"_".join(self._hopsworks_udf.transformation_features)}_'
             if len(self._hopsworks_udf.return_types) > 1:

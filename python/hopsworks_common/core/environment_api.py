@@ -17,7 +17,7 @@
 import json
 from typing import List, Optional
 
-from hopsworks_common import client, environment
+from hopsworks_common import client, environment, usage
 from hopsworks_common.engine import environment_engine
 
 
@@ -25,6 +25,7 @@ class EnvironmentApi:
     def __init__(self):
         self._environment_engine = environment_engine.EnvironmentEngine()
 
+    @usage.method_logger
     def create_environment(
         self,
         name: str,
@@ -80,6 +81,7 @@ class EnvironmentApi:
 
         return env
 
+    @usage.method_logger
     def get_environments(self) -> List[environment.Environment]:
         """
         Get all available python environments in the project
@@ -95,6 +97,7 @@ class EnvironmentApi:
             )
         )
 
+    @usage.method_logger
     def get_environment(self, name: str) -> environment.Environment:
         """Get handle for the Python environment for the project
 

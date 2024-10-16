@@ -25,22 +25,23 @@ import warnings
 from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar, Union
 
-from hsfs.core.feature_view_engine import FeatureViewEngine
-from hsfs.training_dataset_feature import TrainingDatasetFeature
-
 
 if TYPE_CHECKING:
     import great_expectations
     from pyspark.rdd import RDD
     from pyspark.sql import DataFrame
 
-import numpy as np
 import pandas as pd
 import tzlocal
+from hopsworks_common.core.constants import HAS_NUMPY, HAS_PANDAS
 from hsfs.constructor import query
 
 # in case importing in %%local
 from hsfs.core.vector_db_client import VectorDbClient
+
+
+if HAS_NUMPY:
+    import numpy as np
 
 
 try:
@@ -196,12 +197,10 @@ class Engine:
                 external_fg.query,
                 external_fg.data_format,
                 external_fg.options,
-                external_fg.storage_connector._get_path(external_fg.path),
+                external_fg.prepare_spark_location(),
             )
         else:
             external_dataset = external_fg.dataframe
-        if external_fg.location:
-            self._spark_session.sparkContext.textFile(external_fg.location).collect()
 
         external_dataset.createOrReplaceTempView(alias)
         return external_dataset
@@ -216,10 +215,12 @@ class Engine:
             self._spark_context,
             self._spark_session,
         )
+
         hudi_engine_instance.register_temporary_table(
             hudi_fg_alias,
             read_options,
         )
+
         hudi_engine_instance.reconcile_hudi_schema(
             self.save_empty_dataframe, hudi_fg_alias, read_options
         )
@@ -261,39 +262,11 @@ class Engine:
 
     def convert_to_default_dataframe(self, dataframe):
         if isinstance(dataframe, list):
-            dataframe = np.array(dataframe)
-
-        if isinstance(dataframe, np.ndarray):
-            if dataframe.ndim != 2:
-                raise TypeError(
-                    "Cannot convert numpy array that do not have two dimensions to a dataframe. "
-                    "The number of dimensions are: {}".format(dataframe.ndim)
-                )
-            num_cols = dataframe.shape[1]
-            dataframe_dict = {}
-            for n_col in list(range(num_cols)):
-                col_name = "col_" + str(n_col)
-                dataframe_dict[col_name] = dataframe[:, n_col]
-            dataframe = pd.DataFrame(dataframe_dict)
-
-        if isinstance(dataframe, pd.DataFrame):
-            # convert timestamps to current timezone
-            local_tz = tzlocal.get_localzone()
-            # make shallow copy so the original df does not get changed
-            dataframe_copy = dataframe.copy(deep=False)
-            for c in dataframe_copy.columns:
-                if isinstance(
-                    dataframe_copy[c].dtype, pd.core.dtypes.dtypes.DatetimeTZDtype
-                ):
-                    # convert to utc timestamp
-                    dataframe_copy[c] = dataframe_copy[c].dt.tz_convert(None)
-                if dataframe_copy[c].dtype == np.dtype("datetime64[ns]"):
-                    # set the timezone to the client's timezone because that is
-                    # what spark expects.
-                    dataframe_copy[c] = dataframe_copy[c].dt.tz_localize(
-                        str(local_tz), ambiguous="infer", nonexistent="shift_forward"
-                    )
-            dataframe = self._spark_session.createDataFrame(dataframe_copy)
+            dataframe = self.convert_list_to_spark_dataframe(dataframe)
+        elif HAS_NUMPY and isinstance(dataframe, np.ndarray):
+            dataframe = self.convert_numpy_to_spark_dataframe(dataframe)
+        elif HAS_PANDAS and isinstance(dataframe, pd.DataFrame):
+            dataframe = self.convert_pandas_to_spark_dataframe(dataframe)
         elif isinstance(dataframe, RDD):
             dataframe = dataframe.toDF()
 
@@ -343,6 +316,92 @@ class Engine:
                 type(dataframe)
             )
         )
+
+    @staticmethod
+    def utc_disguised_as_local(dt):
+        local_tz = tzlocal.get_localzone()
+        utc = timezone.utc
+        if not dt.tzinfo:
+            dt = dt.replace(tzinfo=utc)
+        return dt.astimezone(utc).replace(tzinfo=local_tz)
+
+    def convert_list_to_spark_dataframe(self, dataframe):
+        if HAS_NUMPY:
+            return self.convert_numpy_to_spark_dataframe(np.array(dataframe))
+        try:
+            dataframe[0][0]
+        except TypeError:
+            raise TypeError(
+                "Cannot convert a list that has less than two dimensions to a dataframe."
+            ) from None
+        ok = False
+        try:
+            dataframe[0][0][0]
+        except TypeError:
+            ok = True
+        if not ok:
+            raise TypeError(
+                "Cannot convert a list that has more than two dimensions to a dataframe."
+            ) from None
+        num_cols = len(dataframe[0])
+        if HAS_PANDAS:
+            dataframe_dict = {}
+            for n_col in range(num_cols):
+                c = "col_" + str(n_col)
+                dataframe_dict[c] = [dataframe[i][n_col] for i in range(len(dataframe))]
+            return self.convert_pandas_to_spark_dataframe(pd.DataFrame(dataframe_dict))
+        for i in range(len(dataframe)):
+            dataframe[i] = [
+                self.utc_disguised_as_local(d) if isinstance(d, datetime) else d
+                for d in dataframe[i]
+            ]
+        return self._spark_session.createDataFrame(
+            dataframe, ["col_" + str(n) for n in range(num_cols)]
+        )
+
+    def convert_numpy_to_spark_dataframe(self, dataframe):
+        if dataframe.ndim != 2:
+            raise TypeError(
+                "Cannot convert numpy array that do not have two dimensions to a dataframe. "
+                "The number of dimensions are: {}".format(dataframe.ndim)
+            )
+        num_cols = dataframe.shape[1]
+        if HAS_PANDAS:
+            dataframe_dict = {}
+            for n_col in range(num_cols):
+                c = "col_" + str(n_col)
+                dataframe_dict[c] = dataframe[:, n_col]
+            return self.convert_pandas_to_spark_dataframe(pd.DataFrame(dataframe_dict))
+        # convert timestamps to current timezone
+        for n_col in range(num_cols):
+            if dataframe[:, n_col].dtype == np.dtype("datetime64[ns]"):
+                # set the timezone to the client's timezone because that is
+                # what spark expects.
+                dataframe[:, n_col] = np.array(
+                    [self.utc_disguised_as_local(d.item()) for d in dataframe[:, n_col]]
+                )
+        return self._spark_session.createDataFrame(
+            dataframe.tolist(), ["col_" + str(n) for n in range(num_cols)]
+        )
+
+    def convert_pandas_to_spark_dataframe(self, dataframe):
+        # convert timestamps to current timezone
+        local_tz = tzlocal.get_localzone()
+        # make shallow copy so the original df does not get changed
+        dataframe_copy = dataframe.copy(deep=False)
+        for c in dataframe_copy.columns:
+            if isinstance(
+                dataframe_copy[c].dtype, pd.core.dtypes.dtypes.DatetimeTZDtype
+            ):
+                # convert to utc timestamp
+                dataframe_copy[c] = dataframe_copy[c].dt.tz_convert(None)
+            if HAS_NUMPY and dataframe_copy[c].dtype == np.dtype("datetime64[ns]"):
+                # set the timezone to the client's timezone because that is
+                # what spark expects.
+                dataframe_copy[c] = dataframe_copy[c].dt.tz_localize(
+                    str(local_tz), ambiguous="infer", nonexistent="shift_forward"
+                )
+        return self._spark_session.createDataFrame(dataframe_copy)
 
     def save_dataframe(
         self,
@@ -1191,40 +1250,53 @@ class Engine:
             return path
 
     def _setup_s3_hadoop_conf(self, storage_connector, path):
-        FS_S3_ENDPOINT = "fs.s3a.endpoint"
+        # For legacy behaviour set the S3 values at global level
+        self._set_s3_hadoop_conf(storage_connector, "fs.s3a")
+
+        # Set credentials at bucket level as well to allow users to use multiple
+        # storage connector in the same application.
+        self._set_s3_hadoop_conf(
+            storage_connector, f"fs.s3a.bucket.{storage_connector.bucket}"
+        )
+        return path.replace("s3://", "s3a://", 1) if path is not None else None
+
+    def _set_s3_hadoop_conf(self, storage_connector, prefix):
         if storage_connector.access_key:
             self._spark_context._jsc.hadoopConfiguration().set(
-                "fs.s3a.access.key", storage_connector.access_key
+                f"{prefix}.access.key", storage_connector.access_key
             )
         if storage_connector.secret_key:
             self._spark_context._jsc.hadoopConfiguration().set(
-                "fs.s3a.secret.key", storage_connector.secret_key
+                f"{prefix}.secret.key", storage_connector.secret_key
             )
         if storage_connector.server_encryption_algorithm:
             self._spark_context._jsc.hadoopConfiguration().set(
-                "fs.s3a.server-side-encryption-algorithm",
+                f"{prefix}.server-side-encryption-algorithm",
                 storage_connector.server_encryption_algorithm,
             )
         if storage_connector.server_encryption_key:
             self._spark_context._jsc.hadoopConfiguration().set(
-                "fs.s3a.server-side-encryption-key",
+                f"{prefix}.server-side-encryption-key",
                 storage_connector.server_encryption_key,
             )
         if storage_connector.session_token:
+            print(f"session token set for {prefix}")
             self._spark_context._jsc.hadoopConfiguration().set(
-                "fs.s3a.aws.credentials.provider",
+                f"{prefix}.aws.credentials.provider",
                 "org.apache.hadoop.fs.s3a.TemporaryAWSCredentialsProvider",
             )
             self._spark_context._jsc.hadoopConfiguration().set(
-                "fs.s3a.session.token",
+                f"{prefix}.session.token",
                 storage_connector.session_token,
             )
+
+        # This is the name of the property as expected from the user, without the bucket name.
+        FS_S3_ENDPOINT = "fs.s3a.endpoint"
         if FS_S3_ENDPOINT in storage_connector.arguments:
             self._spark_context._jsc.hadoopConfiguration().set(
-                FS_S3_ENDPOINT, storage_connector.spark_options().get(FS_S3_ENDPOINT)
+                f"{prefix}.endpoint",
+                storage_connector.spark_options().get(FS_S3_ENDPOINT),
             )
-
-        return path.replace("s3", "s3a", 1) if path is not None else None
 
     def _setup_adls_hadoop_conf(self, storage_connector, path):
         for k, v in storage_connector.spark_options().items():
@@ -1237,13 +1309,22 @@ class Engine:
             return True
         return False
 
-    def save_empty_dataframe(self, feature_group):
-        fg_table_name = feature_group._get_table_name()
-        dataframe = self._spark_session.table(fg_table_name).limit(0)
+    def save_empty_dataframe(self, feature_group, new_features=None):
+        location = feature_group.prepare_spark_location()
+
+        dataframe = self._spark_session.read.format("hudi").load(location)
+
+        if (new_features is not None):
+            if isinstance(new_features, list):
+                for new_feature in new_features:
+                    dataframe = dataframe.withColumn(new_feature.name, lit(None).cast(new_feature.type))
+            else:
+                dataframe = dataframe.withColumn(new_features.name, lit(None).cast(new_features.type))
+
 
         self.save_dataframe(
             feature_group,
-            dataframe,
+            dataframe.limit(0),
             "upsert",
             feature_group.online_enabled,
             "offline",
@@ -1252,20 +1333,22 @@ class Engine:
         )
 
     def add_cols_to_delta_table(self, feature_group, new_features):
-        new_features_map = {}
-        if isinstance(new_features, list):
-            for new_feature in new_features:
-                new_features_map[new_feature.name] = lit("").cast(new_feature.type)
-        else:
-            new_features_map[new_features.name] = lit("").cast(new_features.type)
+        location = feature_group.prepare_spark_location()
 
-        self._spark_session.read.format("delta").load(
-            feature_group.location
-        ).withColumns(new_features_map).limit(0).write.format("delta").mode(
+        dataframe = self._spark_session.read.format("delta").load(location)
+
+        if (new_features is not None):
+            if isinstance(new_features, list):
+                for new_feature in new_features:
+                    dataframe = dataframe.withColumn(new_feature.name, lit("").cast(new_feature.type))
+            else:
+                dataframe = dataframe.withColumn(new_features.name, lit("").cast(new_features.type))
+
+        dataframe.limit(0).write.format("delta").mode(
             "append"
         ).option("mergeSchema", "true").option(
             "spark.databricks.delta.schema.autoMerge.enabled", "true"
-        ).save(feature_group.location)
+        ).save(location)
 
     def _apply_transformation_function(
         self,
@@ -1299,7 +1382,13 @@ class Engine:
                     f"Features {missing_features} specified in the transformation function '{hopsworks_udf.function_name}' are not present in the feature view. Please specify the feature required correctly."
                 )
             if tf.hopsworks_udf.dropped_features:
-                dropped_features.update(tf.hopsworks_udf.dropped_features)
+                dropped_features.update(hopsworks_udf.dropped_features)
+
+            # Add to dropped features if the feature need to overwritten to avoid ambiguous columns.
+            if len(hopsworks_udf.return_types) == 1 and (
+                hopsworks_udf.function_name == hopsworks_udf.output_column_names[0]
+            ):
+                dropped_features.update(hopsworks_udf.output_column_names)
 
             pandas_udf = hopsworks_udf.get_udf()
             output_col_name = hopsworks_udf.output_column_names[0]
@@ -1487,13 +1576,13 @@ class Engine:
         ],
         fg: fg_mod.FeatureGroup = None,
         td_features: List[str] = None,
-        td_predictions: List[TrainingDatasetFeature] = None,
+        td_predictions: List[training_dataset_feature.TrainingDatasetFeature] = None,
         td_col_name: Optional[str] = None,
         time_col_name: Optional[str] = None,
         model_col_name: Optional[str] = None,
         predictions: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
         training_dataset_version: Optional[int] = None,
-        hsml_model=None,
+        hsml_model: str = None,
         **kwargs,
     ):
         # do not take prediction separately because spark ml framework usually return feature together with the prediction
@@ -1513,11 +1602,7 @@ class Engine:
 
         # Add new columns to the DataFrame
         df = df.withColumn(td_col_name, lit(training_dataset_version).cast(LongType()))
-        if hsml_model is not None:
-            hsml_str = FeatureViewEngine.get_hsml_model_value(hsml_model)
-        else:
-            hsml_str = None
-        df = df.withColumn(model_col_name, lit(hsml_str).cast(StringType()))
+        df = df.withColumn(model_col_name, lit(hsml_model).cast(StringType()))
         now = datetime.now()
         df = df.withColumn(time_col_name, lit(now).cast(TimestampType()))
         df = df.withColumn("log_id", uuid_udf())
@@ -1526,9 +1611,9 @@ class Engine:
         return df.select(*[feat.name for feat in fg.features])
 
     @staticmethod
-    def read_feature_log(query):
+    def read_feature_log(query, time_col):
         df = query.read()
-        return df.drop("log_id", FeatureViewEngine._LOG_TIME)
+        return df.drop("log_id", time_col)
 
 
 class SchemaError(Exception):

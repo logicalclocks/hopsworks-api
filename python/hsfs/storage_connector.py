@@ -24,13 +24,18 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, TypeVar, Union
 
 import humps
-import numpy as np
 import pandas as pd
-import polars as pl
 from hopsworks_common import client
+from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import engine
 from hsfs.core import storage_connector_api
 
+
+if HAS_NUMPY:
+    import numpy as np
+
+if HAS_POLARS:
+    import polars as pl
 
 _logger = logging.getLogger(__name__)
 
@@ -130,6 +135,12 @@ class StorageConnector(ABC):
     @abstractmethod
     def spark_options(self) -> None:
         pass
+
+    def prepare_spark(self, path: Optional[str] = None) -> Optional[str]:
+        _logger.info(
+            "This Storage Connector cannot be prepared for Spark."
+        )
+        return path
 
     def read(
         self,
@@ -267,6 +278,7 @@ class S3Connector(StorageConnector):
         server_encryption_algorithm: Optional[str] = None,
         server_encryption_key: Optional[str] = None,
         bucket: Optional[str] = None,
+        region: Optional[str] = None,
         session_token: Optional[str] = None,
         iam_role: Optional[str] = None,
         arguments: Optional[Dict[str, Any]] = None,
@@ -280,6 +292,7 @@ class S3Connector(StorageConnector):
         self._server_encryption_algorithm = server_encryption_algorithm
         self._server_encryption_key = server_encryption_key
         self._bucket = bucket
+        self._region = region
         self._session_token = session_token
         self._iam_role = iam_role
         self._arguments = (
@@ -310,6 +323,11 @@ class S3Connector(StorageConnector):
     def bucket(self) -> Optional[str]:
         """Return the bucket for S3 connectors."""
         return self._bucket
+
+    @property
+    def region(self) -> Optional[str]:
+        """Return the region for S3 connectors."""
+        return self._region
 
     @property
     def session_token(self) -> Optional[str]:
@@ -353,6 +371,19 @@ class S3Connector(StorageConnector):
         """
         return engine.get_instance().setup_storage_connector(self, path)
 
+    def connector_options(self) -> Dict[str, Any]:
+        """Return options to be passed to an external S3 connector library"""
+        self.refetch()
+        options = {
+            "access_key": self.access_key,
+            "secret_key": self.secret_key,
+            "session_token": self.session_token,
+            "region": self.region,
+        }
+        if self.arguments.get("fs.s3a.endpoint"):
+            options["endpoint"] = self.arguments.get("fs.s3a.endpoint")
+        return options
+
     def read(
         self,
         query: Optional[str] = None,
@@ -390,7 +421,7 @@ class S3Connector(StorageConnector):
             if options is not None
             else self.spark_options()
         )
-        if not path.startswith("s3://"):
+        if not path.startswith(("s3://", "s3a://")):
             path = self._get_path(path)
             print(
                 "Prepending default bucket specified on connector, final path: {}".format(
@@ -1572,9 +1603,8 @@ class BigQueryConnector(StorageConnector):
         """Return options to be passed to an external BigQuery connector library"""
         props = {
             "key_path": self._key_path,
-            "project_id": self._query_project,
+            "project_id": self._parent_project,
             "dataset_id": self._dataset,
-            "parent_project": self._parent_project,
         }
         return props
 

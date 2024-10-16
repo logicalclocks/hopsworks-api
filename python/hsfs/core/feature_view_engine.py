@@ -19,10 +19,10 @@ import datetime
 import warnings
 from typing import Any, Dict, List, Optional, TypeVar, Union
 
-import numpy as np
 import pandas as pd
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.core.constants import HAS_NUMPY
 from hsfs import (
     engine,
     feature_group,
@@ -33,16 +33,20 @@ from hsfs import (
 from hsfs.client import exceptions
 from hsfs.constructor.filter import Filter, Logic
 from hsfs.core import (
-    arrow_flight_client,
     feature_view_api,
     query_constructor_api,
     statistics_engine,
     tags_api,
     training_dataset_engine,
+    transformation_function_engine,
 )
 from hsfs.core.feature_logging import FeatureLogging
-from hsfs.feature_view import FeatureView
+from hsfs.feature_logger import FeatureLogger
 from hsfs.training_dataset_split import TrainingDatasetSplit
+
+
+if HAS_NUMPY:
+    import numpy as np
 
 
 class FeatureViewEngine:
@@ -65,6 +69,11 @@ class FeatureViewEngine:
         )
         self._training_dataset_engine = training_dataset_engine.TrainingDatasetEngine(
             feature_store_id
+        )
+        self._transformation_function_engine = (
+            transformation_function_engine.TransformationFunctionEngine(
+                feature_store_id
+            )
         )
         self._query_constructor_api = query_constructor_api.QueryConstructorApi()
 
@@ -183,6 +192,111 @@ class FeatureViewEngine:
         else:
             return self._feature_view_api.delete_by_name(name)
 
+    def get_training_dataset_schema(
+        self,
+        feature_view: feature_view.FeatureView,
+        training_dataset_version: Optional[int] = None,
+    ):
+        """
+        Function that returns the schema of the training dataset generated using the feature view.
+
+        # Arguments
+            feature_view: `FeatureView`. The feature view for which the schema is to be generated.
+            training_dataset_version: `int`. Specifies the version of the training dataset for which the schema should be generated.
+                By default, this is set to None. However, if the `one_hot_encoder` transformation function is used, the training dataset version must be provided.
+                This is because the schema will then depend on the statistics of the training data used.
+
+        # Returns
+            `List[training_dataset_feature.TrainingDatasetFeature]`: List of training dataset features objects.
+
+        # Raises
+            `ValueError` if the  training dataset version provided cannot be found.
+        """
+
+        if not feature_view.transformation_functions:
+            # Return the features in the feature view if the no transformation functions in the feature view.
+            return feature_view.features
+        else:
+            transformed_features = []
+            transformed_labels = []
+            dropped_features = set()
+
+            # Statistics only required for computing schema if one-hot-encoder in the transformation functions
+            statistics_required = any(
+                [
+                    tf.hopsworks_udf.function_name == "one_hot_encoder"
+                    for tf in feature_view.transformation_functions
+                ]
+            )
+
+            if statistics_required:
+                if not training_dataset_version:
+                    raise FeatureStoreException(
+                        "The feature view includes the one_hot_encoder transformation function. As a result, the schema of the generated training dataset depends on its statistics. Please specify the version of the training dataset for which the schema should be generated."
+                    )
+
+                # Get transformation functions with correct statistics based on training dataset version.
+                transformation_functions = self._transformation_function_engine.get_ready_to_use_transformation_fns(
+                    feature_view=feature_view,
+                    training_dataset_version=training_dataset_version,
+                )
+            else:
+                transformation_functions = feature_view.transformation_functions
+
+            # Getting all dropped features
+            for tf in transformation_functions:
+                if tf.hopsworks_udf.dropped_features:
+                    dropped_features.update(tf.hopsworks_udf.dropped_features)
+
+            # Creating list of features not dropped after transformations
+            transformed_features = [
+                feature
+                for feature in feature_view.features
+                if feature.name not in dropped_features and not feature.label
+            ]
+
+            # Creating list of labels not dropped after transformations
+            transformed_labels = [
+                feature
+                for feature in feature_view.features
+                if feature.name not in dropped_features and feature.label
+            ]
+
+            for tf in transformation_functions:
+                # create transformed labels if a transformation functions take a labels as input.
+                if any(
+                    label in tf.hopsworks_udf.transformation_features
+                    for label in feature_view.labels
+                ):
+                    transformed_labels.extend(
+                        [
+                            training_dataset_feature.TrainingDatasetFeature(
+                                name=transformed_label_name,
+                                type=output_type,
+                                label=True,
+                            )
+                            for transformed_label_name, output_type in zip(
+                                tf.output_column_names, tf.hopsworks_udf.return_types
+                            )
+                        ]
+                    )
+                # create transformed features if a transformation functions take a no labels as input.
+                else:
+                    transformed_features.extend(
+                        [
+                            training_dataset_feature.TrainingDatasetFeature(
+                                name=transformed_feature_name,
+                                type=output_type,
+                                label=False,
+                            )
+                            for transformed_feature_name, output_type in zip(
+                                tf.output_column_names, tf.hopsworks_udf.return_types
+                            )
+                        ]
+                    )
+
+            return transformed_features + transformed_labels
+
     def get_batch_query(
         self,
         feature_view_obj,
@@ -296,7 +410,7 @@ class FeatureViewEngine:
 
     def get_training_data(
         self,
-        feature_view_obj,
+        feature_view_obj: feature_view.FeatureView,
         read_options=None,
         splits=None,
         training_dataset_obj=None,
@@ -388,12 +502,34 @@ class FeatureViewEngine:
                 feature_view_obj, td_updated, split_df
             )
 
+        # Getting transformed label names
+        transformed_labels = [
+            feature.name
+            for feature in self.get_training_dataset_schema(
+                feature_view=feature_view_obj,
+                training_dataset_version=td_updated.version,
+            )
+            if feature.label
+        ]
+
+        # Updating labels based if transformation functions are attached to the feature view.
+        labels = (
+            transformed_labels
+            if feature_view_obj.transformation_functions
+            else feature_view_obj.labels
+        )
+
+        # Set training dataset schema after training dataset has been generated
+        td_updated.schema = self.get_training_dataset_schema(
+            feature_view=feature_view_obj, training_dataset_version=td_updated.version
+        )
+
         # split df into features and labels df
         if td_updated.splits:
             for split in td_updated.splits:
                 split_name = split.name
                 split_df[split_name] = engine.get_instance().split_labels(
-                    split_df[split_name], feature_view_obj.labels, dataframe_type
+                    split_df[split_name], labels, dataframe_type
                 )
             feature_dfs = []
             label_dfs = []
@@ -403,7 +539,7 @@ class FeatureViewEngine:
             return td_updated, feature_dfs + label_dfs
         else:
             split_df = engine.get_instance().split_labels(
-                split_df, feature_view_obj.labels, dataframe_type
+                split_df, labels, dataframe_type
             )
             return td_updated, split_df
 
@@ -461,6 +597,11 @@ class FeatureViewEngine:
             user_write_options,
             training_dataset_obj=training_dataset_obj,
             spine=spine,
+        )
+        # Set training dataset schema after training dataset has been generated
+        training_dataset_obj.schema = self.get_training_dataset_schema(
+            feature_view=feature_view_obj,
+            training_dataset_version=training_dataset_obj.version,
         )
         return training_dataset_obj, td_job
 
@@ -652,6 +793,12 @@ class FeatureViewEngine:
             feature_view_obj=feature_view_obj,
         )
 
+        # Set training dataset schema after training dataset has been generated
+        training_dataset_obj.schema = self.get_training_dataset_schema(
+            feature_view=feature_view_obj,
+            training_dataset_version=training_dataset_obj.version,
+        )
+
         if engine.get_type().startswith("spark"):
             # if spark engine, read td and compute stats
             if training_dataset_obj.splits:
@@ -699,22 +846,23 @@ class FeatureViewEngine:
                 )
 
     def _get_training_dataset_metadata(
-        self, feature_view_obj, training_dataset_version
+        self, feature_view_obj: feature_view.FeatureView, training_dataset_version
     ):
         td = self._feature_view_api.get_training_dataset_by_version(
             feature_view_obj.name, feature_view_obj.version, training_dataset_version
         )
-        # schema needs to be set for writing training data or feature serving
-        td.schema = feature_view_obj.schema
+
         return td
 
-    def _get_training_datasets_metadata(self, feature_view_obj):
+    def _get_training_datasets_metadata(
+        self, feature_view_obj: feature_view.FeatureView
+    ):
         tds = self._feature_view_api.get_training_datasets(
             feature_view_obj.name, feature_view_obj.version
         )
         # schema needs to be set for writing training data or feature serving
         for td in tds:
-            td.schema = feature_view_obj.schema
+            td.schema = feature_view_obj.get_training_dataset_schema(td.version)
         return tds
 
     def get_training_datasets(self, feature_view_obj):
@@ -727,8 +875,6 @@ class FeatureViewEngine:
         td = self._feature_view_api.create_training_dataset(
             feature_view_obj.name, feature_view_obj.version, training_dataset_obj
         )
-        td.schema = feature_view_obj.schema
-        td.transformation_functions = feature_view_obj.transformation_functions
         return td
 
     def delete_training_data(self, feature_view_obj, training_data_version=None):
@@ -866,7 +1012,17 @@ class FeatureViewEngine:
 
     def _check_feature_group_accessibility(self, feature_view_obj):
         if engine.get_type() == "python":
-            if arrow_flight_client.get_instance().is_enabled():
+            try:
+                from hsfs.core import arrow_flight_client
+
+                arrow_flight_client_imported = True
+            except ImportError:
+                arrow_flight_client_imported = False
+
+            if (
+                arrow_flight_client_imported
+                and arrow_flight_client.get_instance().is_enabled()
+            ):
                 if not arrow_flight_client.supports(
                     feature_view_obj.query.featuregroups
                 ):
@@ -969,30 +1125,102 @@ class FeatureViewEngine:
 
     def log_features(
         self,
-        fv: FeatureView,
+        fv: feature_view.FeatureView,
         feature_logging: FeatureLogging,
-        features_rows: Union[
+        untransformed_features: Union[
             pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
-        ],
+        ] = None,
+        transformed_features: Union[
+            pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
+        ] = None,
         predictions: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
-        transformed: Optional[bool] = False,
         write_options: Optional[Dict[str, Any]] = None,
         training_dataset_version: Optional[int] = None,
         hsml_model=None,
+        logger: FeatureLogger = None,
     ):
+        if untransformed_features is None and transformed_features is None:
+            return
+
         default_write_options = {
             "start_offline_materialization": False,
         }
         if write_options:
             default_write_options.update(write_options)
+        results = []
+        if logger:
+            logger.log(
+                **{
+                    key: (
+                        self._get_feature_logging_data(
+                            features_rows=features,
+                            feature_logging=feature_logging,
+                            transformed=transformed,
+                            fv=fv,
+                            predictions=predictions,
+                            training_dataset_version=training_dataset_version,
+                            hsml_model=hsml_model,
+                            return_list=True,
+                        )
+                        if features
+                        else None
+                    )
+                    for transformed, key, features in [
+                        (False, "untransformed_features", untransformed_features),
+                        (True, "transformed_features", transformed_features),
+                    ]
+                }
+            )
+
+        else:
+            for transformed, features in [
+                (False, untransformed_features),
+                (True, transformed_features),
+            ]:
+                fg = feature_logging.get_feature_group(transformed)
+                if features is None:
+                    continue
+                results.append(
+                    fg.insert(
+                        self._get_feature_logging_data(
+                            features_rows=features,
+                            feature_logging=feature_logging,
+                            transformed=transformed,
+                            fv=fv,
+                            predictions=predictions,
+                            training_dataset_version=training_dataset_version,
+                            hsml_model=hsml_model,
+                            return_list=False,
+                        ),
+                        write_options=default_write_options,
+                    )
+                )
+        return results
+
+    def _get_feature_logging_data(
+        self,
+        features_rows,
+        feature_logging,
+        transformed,
+        fv,
+        predictions,
+        training_dataset_version,
+        hsml_model,
+        return_list=False,
+    ):
         fg = feature_logging.get_feature_group(transformed)
-        td_predictions = [feature for feature in fv.features if feature.label]
+        training_dataset_schema = fv.get_training_dataset_schema(
+            training_dataset_version=training_dataset_version
+        )
+        td_predictions = [
+            feature for feature in training_dataset_schema if feature.label
+        ]
         td_predictions_names = set([feature.name for feature in td_predictions])
         if transformed:
             td_features = [
-                feature_name
-                for feature_name in fv.transformed_features
-                if feature_name not in td_predictions_names
+                feature.name
+                for feature in training_dataset_schema
+                if feature.name not in td_predictions_names
             ]
         else:
             td_features = [
@@ -1000,19 +1228,37 @@ class FeatureViewEngine:
                 for feature in fv.features
                 if feature.name not in td_predictions_names
             ]
-        df = engine.get_instance().get_feature_logging_df(
-            features_rows,
-            fg=fg,
-            td_features=td_features,
-            td_predictions=td_predictions,
-            td_col_name=FeatureViewEngine._LOG_TD_VERSION,
-            time_col_name=FeatureViewEngine._LOG_TIME,
-            model_col_name=FeatureViewEngine._HSML_MODEL,
-            predictions=predictions,
-            training_dataset_version=training_dataset_version,
-            hsml_model=hsml_model,
-        )
-        return fg.insert(df, write_options=default_write_options)
+
+        if return_list:
+            return engine.get_instance().get_feature_logging_list(
+                features_rows,
+                fg=fg,
+                td_features=td_features,
+                td_predictions=td_predictions,
+                td_col_name=FeatureViewEngine._LOG_TD_VERSION,
+                time_col_name=FeatureViewEngine._LOG_TIME,
+                model_col_name=FeatureViewEngine._HSML_MODEL,
+                predictions=predictions,
+                training_dataset_version=training_dataset_version,
+                hsml_model=self.get_hsml_model_value(hsml_model)
+                if hsml_model
+                else None,
+            )
+        else:
+            return engine.get_instance().get_feature_logging_df(
+                features_rows,
+                fg=fg,
+                td_features=td_features,
+                td_predictions=td_predictions,
+                td_col_name=FeatureViewEngine._LOG_TD_VERSION,
+                time_col_name=FeatureViewEngine._LOG_TIME,
+                model_col_name=FeatureViewEngine._HSML_MODEL,
+                predictions=predictions,
+                training_dataset_version=training_dataset_version,
+                hsml_model=self.get_hsml_model_value(hsml_model)
+                if hsml_model
+                else None,
+            )
 
     def read_feature_logs(
         self,
@@ -1049,7 +1295,7 @@ class FeatureViewEngine:
             query = query.filter(
                 self._convert_to_log_fg_filter(fg, fv, filter, fv_feat_name_map)
             )
-        return engine.get_instance().read_feature_log(query)
+        return engine.get_instance().read_feature_log(query, self._LOG_TIME)
 
     @staticmethod
     def get_hsml_model_value(hsml_model):

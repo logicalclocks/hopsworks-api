@@ -32,6 +32,7 @@ from hopsworks.client.exceptions import (
 from hopsworks.connection import Connection
 from hopsworks.core import project_api, secret_api
 from hopsworks.decorators import NoHopsworksConnectionError
+from hopsworks_common import usage
 from requests.exceptions import SSLError
 
 
@@ -80,7 +81,7 @@ def login(
     project: str = None,
     api_key_value: str = None,
     api_key_file: str = None,
-    hostname_verification: bool = True,
+    hostname_verification: bool = False,
     trust_store_path: str = None,
 ) -> project.Project:
     """Connect to [Serverless Hopsworks](https://app.hopsworks.ai) by calling the `hopsworks.login()` function with no arguments.
@@ -317,7 +318,7 @@ def _get_cached_api_key_path():
 
 def _prompt_project(valid_connection, project, is_app):
     if project is None:
-        saas_projects = valid_connection.get_projects()
+        saas_projects = valid_connection._project_api._get_projects()
         if len(saas_projects) == 0:
             if is_app:
                 raise ProjectException("Could not find any project")
@@ -354,7 +355,7 @@ def _prompt_project(valid_connection, project, is_app):
                         )
     else:
         try:
-            return valid_connection.get_project(project)
+            return valid_connection._project_api._get_project(project)
         except RestAPIError as x:
             raise ProjectException("Could not find project {}".format(project)) from x
 
@@ -476,3 +477,11 @@ def _set_active_project(project):
     _client = client.get_instance()
     if _client._is_external():
         _client.provide_project(project.name)
+
+
+def disable_usage_logging():
+    usage.disable()
+
+
+def get_sdk_info():
+    return usage.get_env()
