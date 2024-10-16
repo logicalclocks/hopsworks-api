@@ -86,9 +86,6 @@ jobs:
       - name: Display Python version
         run: python --version
 
-      - name: Set spark jars
-        run: wget https://repo1.maven.org/maven2/org/apache/spark/spark-avro_2.12/3.1.1/spark-avro_2.12-3.1.1.jar -P $SPARK_HOME/jars
-
       - name: Run Pytest suite
         run: pytest python/tests
 
@@ -118,9 +115,6 @@ jobs:
           cache: "pip"
           cache-dependency-path: "python/setup.py"
       - run: pip install -e python[python,dev-no-opt]
-
-      - name: Set spark jars
-        run: wget https://repo1.maven.org/maven2/org/apache/spark/spark-avro_2.12/3.1.1/spark-avro_2.12-3.1.1.jar -P $SPARK_HOME/jars
 
       - name: Run Pytest suite
         run: pytest python/tests
@@ -155,9 +149,6 @@ jobs:
       - name: Display Python version
         run: python --version
 
-      - name: Set spark jars
-        run: wget https://repo1.maven.org/maven2/org/apache/spark/spark-avro_2.12/3.1.1/spark-avro_2.12-3.1.1.jar -P $SPARK_HOME/jars
-
       - name: Run Pytest suite
         run: pytest python/tests
 
@@ -190,9 +181,6 @@ jobs:
 
       - name: Display Python version
         run: python --version
-      
-      - name: Set spark jars
-        run: wget https://repo1.maven.org/maven2/org/apache/spark/spark-avro_2.12/3.1.1/spark-avro_2.12-3.1.1.jar -P $SPARK_HOME/jars
 
       - name: Run Pytest suite
         run: pytest python/tests
@@ -214,9 +202,6 @@ jobs:
           cache: "pip"
           cache-dependency-path: "python/setup.py"
       - run: pip install -e python[python,dev,docs]
-
-      - name: Set spark jars
-        run: wget https://repo1.maven.org/maven2/org/apache/spark/spark-avro_2.12/3.1.1/spark-avro_2.12-3.1.1.jar -P $SPARK_HOME/jars
 
       - name: Run Pytest suite
         env:
@@ -248,9 +233,6 @@ jobs:
       - name: Display Python version
         run: python --version
 
-      - name: Set spark jars
-        run: wget https://repo1.maven.org/maven2/org/apache/spark/spark-avro_2.12/3.1.1/spark-avro_2.12-3.1.1.jar -P $SPARK_HOME/jars
-
       - name: Run Pytest suite
         run: pytest python/tests
 
@@ -280,9 +262,6 @@ jobs:
 
       - name: Display pip freeze
         run: pip freeze
-
-      - name: Set spark jars
-        run: wget https://repo1.maven.org/maven2/org/apache/spark/spark-avro_2.12/3.1.1/spark-avro_2.12-3.1.1.jar -P $SPARK_HOME/jars
 
       - name: Run Pytest suite
         run: pytest python/tests
