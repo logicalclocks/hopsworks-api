@@ -1713,13 +1713,6 @@ class TestSpark:
         # Arrange
         spark_engine = spark.Engine()
 
-        spark_engine._spark_session.stop()
-
-        spark_engine._spark_session = SparkSession.builder \
-            .master("local[*]") \
-            .config("spark.jars.packages", "org.apache.spark:spark-avro_2.12:3.1.1") \
-            .getOrCreate()
-
         now = datetime.datetime.now()
 
         fg_data = []
@@ -1764,13 +1757,6 @@ class TestSpark:
         # Arrange
         spark_engine = spark.Engine()
 
-        spark_engine._spark_session.stop()
-
-        spark_engine._spark_session = SparkSession.builder \
-            .master("local[*]") \
-            .config("spark.jars.packages", "org.apache.spark:spark-avro_2.12:3.1.1") \
-            .getOrCreate()
-
         data = []
         data.append((b"2121", b"21212121"))
         data.append((b"1212", b"12121212"))
@@ -1812,13 +1798,6 @@ class TestSpark:
     def test_serialize_deserialize_avro(self, mocker):
         # Arrange
         spark_engine = spark.Engine()
-
-        spark_engine._spark_session.stop()
-
-        spark_engine._spark_session = SparkSession.builder \
-            .master("local[*]") \
-            .config("spark.jars.packages", "org.apache.spark:spark-avro_2.12:3.1.1") \
-            .getOrCreate()
 
         now = datetime.datetime.now()
 
