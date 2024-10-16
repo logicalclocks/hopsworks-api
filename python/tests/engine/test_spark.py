@@ -1716,6 +1716,7 @@ class TestSpark:
         spark_engine._spark_session.stop()
 
         spark_engine._spark_session = SparkSession.builder \
+            .master("local[*]") \
             .config("spark.jars.packages", "org.apache.spark:spark-avro_2.12:3.1.1") \
             .getOrCreate()
 
@@ -1766,6 +1767,7 @@ class TestSpark:
         spark_engine._spark_session.stop()
 
         spark_engine._spark_session = SparkSession.builder \
+            .master("local[*]") \
             .config("spark.jars.packages", "org.apache.spark:spark-avro_2.12:3.1.1") \
             .getOrCreate()
 
@@ -1814,6 +1816,7 @@ class TestSpark:
         spark_engine._spark_session.stop()
 
         spark_engine._spark_session = SparkSession.builder \
+            .master("local[*]") \
             .config("spark.jars.packages", "org.apache.spark:spark-avro_2.12:3.1.1") \
             .getOrCreate()
 
@@ -1828,7 +1831,7 @@ class TestSpark:
 
         features = [
             feature.Feature(name="account_id", type="str"),
-            feature.Feature(name="last_played_games", type="xx"),
+            feature.Feature(name="last_played_games", type="array"),
             feature.Feature(name="event_time", type="timestamp"),
         ]
 
