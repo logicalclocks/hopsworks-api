@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import datetime
+
 import hopsworks_common
 import numpy
 import pandas as pd
@@ -1756,7 +1757,7 @@ class TestSpark:
 
         # Assert
         assert serialized_df.schema.json() == '{"fields":[{"metadata":{},"name":"key","nullable":false,"type":"binary"},{"metadata":{},"name":"value","nullable":false,"type":"binary"}],"type":"struct"}'
-        assert df.schema == deserialized_df.schema 
+        assert df.schema == deserialized_df.schema
         assert df.collect() == deserialized_df.collect()
 
     def test_get_training_data(self, mocker):
