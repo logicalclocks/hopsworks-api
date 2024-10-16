@@ -15,6 +15,7 @@
 #
 from __future__ import annotations
 
+import datetime
 import hopsworks_common
 import numpy
 import pandas as pd
@@ -1707,21 +1708,24 @@ class TestSpark:
             == 1
         )
 
-    def test_serialize_to_avro(self, mocker):
+    def test_serialize_deserialize_avro(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch(
-            "hsfs.feature_group.FeatureGroup.get_complex_features",
-            return_value=["col_1"],
-        )
-        mocker.patch("hsfs.feature_group.FeatureGroup._get_feature_avro_schema")
-
         spark_engine = spark.Engine()
 
-        d = {"col_0": ["test_1", "test_2"], "col_1": ["test_1", "test_2"]}
-        df = pd.DataFrame(data=d)
+        now = datetime.datetime.now()
 
-        spark_df = spark_engine._spark_session.createDataFrame(df)
+        fg_data = []
+        fg_data.append(("ekarson", ["GRAVITY RUSH 2", "KING'S QUEST"], pd.Timestamp(now.timestamp())))
+        fg_data.append(("ratmilkdrinker", ["NBA 2K", "CALL OF DUTY"], pd.Timestamp(now.timestamp())))
+        pandas_df = pd.DataFrame(fg_data, columns =["account_id", "last_played_games", "event_time"])
+
+        df = spark_engine._spark_session.createDataFrame(pandas_df)
+
+        features = [
+            feature.Feature(name="account_id", type="str"),
+            feature.Feature(name="last_played_games", type="xx"),
+            feature.Feature(name="event_time", type="timestamp"),
+        ]
 
         fg = feature_group.FeatureGroup(
             name="test",
@@ -1730,22 +1734,30 @@ class TestSpark:
             primary_key=[],
             partition_key=[],
             id=10,
+            features=features,
         )
-        fg._subject = {"schema": '{"fields": [{"name": "col_0"}]}'}
-
-        expected = pd.DataFrame(data={"col_0": ["test_1", "test_2"]})
+        fg._subject = {
+            'id': 1025,
+            'subject': 'fg_1',
+            'version': 1,
+            'schema': '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]},{"name":"event_time","type":["null",{"type":"long","logicalType":"timestamp-micros"}]}]}'
+        }
 
         # Act
-        result = spark_engine._serialize_to_avro(
+        serialized_df = spark_engine._serialize_to_avro(
             feature_group=fg,
-            dataframe=spark_df,
+            dataframe=df,
+        )
+
+        deserialized_df = spark_engine._deserialize_from_avro(
+            feature_group=fg,
+            dataframe=serialized_df,
         )
 
         # Assert
-        result_df = result.toPandas()
-        assert list(result_df) == list(expected)
-        for column in list(result_df):
-            assert result_df[column].equals(expected[column])
+        assert serialized_df.schema.json() == '{"fields":[{"metadata":{},"name":"key","nullable":false,"type":"binary"},{"metadata":{},"name":"value","nullable":false,"type":"binary"}],"type":"struct"}'
+        assert df.schema == deserialized_df.schema 
+        assert df.collect() == deserialized_df.collect()
 
     def test_get_training_data(self, mocker):
         # Arrange
