@@ -15,8 +15,6 @@
 #
 from __future__ import annotations
 
-import datetime
-
 import hopsworks_common
 import numpy
 import pandas as pd
@@ -1717,19 +1715,16 @@ class TestSpark:
         mock_to_avro = mocker.patch('hsfs.engine.spark.to_avro')
         mock_to_avro.return_value = lit(b'111')
 
-        now = datetime.datetime.now()
-
         fg_data = []
-        fg_data.append(("ekarson", ["GRAVITY RUSH 2", "KING'S QUEST"], pd.Timestamp(now.timestamp())))
-        fg_data.append(("ratmilkdrinker", ["NBA 2K", "CALL OF DUTY"], pd.Timestamp(now.timestamp())))
-        pandas_df = pd.DataFrame(fg_data, columns =["account_id", "last_played_games", "event_time"])
+        fg_data.append(("ekarson", ["GRAVITY RUSH 2", "KING'S QUEST"]))
+        fg_data.append(("ratmilkdrinker", ["NBA 2K", "CALL OF DUTY"]))
+        pandas_df = pd.DataFrame(fg_data, columns =["account_id", "last_played_games"])
 
         df = spark_engine._spark_session.createDataFrame(pandas_df)
 
         features = [
             feature.Feature(name="account_id", type="str"),
             feature.Feature(name="last_played_games", type="array"),
-            feature.Feature(name="event_time", type="timestamp"),
         ]
 
         fg = feature_group.FeatureGroup(
@@ -1745,7 +1740,7 @@ class TestSpark:
             'id': 1025,
             'subject': 'fg_1',
             'version': 1,
-            'schema': '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]},{"name":"event_time","type":["null",{"type":"long","logicalType":"timestamp-micros"}]}]}'
+            'schema': '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]}]}'
         }
 
         # Act
