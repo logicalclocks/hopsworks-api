@@ -1838,6 +1838,11 @@ class TestSpark:
         with pytest.raises(
             TypeError
         ) as e_info:  # todo look into this (to_avro from_avro has to be mocked)
+            spark_engine._serialize_to_avro(
+                feature_group=fg,
+                dataframe=df,
+            )
+            '''
             serialized_df = spark_engine._serialize_to_avro(
                 feature_group=fg,
                 dataframe=df,
@@ -1847,6 +1852,7 @@ class TestSpark:
                 feature_group=fg,
                 dataframe=serialized_df,
             )
+            '''
 
         # Assert
         assert str(e_info.value) == "'JavaPackage' object is not callable"
