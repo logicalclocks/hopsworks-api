@@ -40,7 +40,7 @@ from hsfs.engine import spark
 from hsfs.hopsworks_udf import udf
 from hsfs.training_dataset_feature import TrainingDatasetFeature
 from hsfs.transformation_function import TransformationType
-from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import DataFrame
 from pyspark.sql.types import (
     ArrayType,
     BinaryType,
