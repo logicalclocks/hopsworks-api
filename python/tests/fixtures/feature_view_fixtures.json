@@ -694,7 +694,8 @@
               "name": "add_mean_fs",
               "outputTypes":["double"],
               "transformationFeatures":["data"],
-              "statisticsArgumentNames":["data1"]
+              "statisticsArgumentNames":["data1"],
+              "executionMode":"default"
             }
           },
           {
@@ -705,7 +706,8 @@
               "sourceCode": "\n@udf(float)\ndef add_one_fs(data1 : pd.Series):\n    return data1 + 1\n",
               "name": "add_one_fs",
               "outputTypes":["double"],
-              "transformationFeatures":["col1"]
+              "transformationFeatures":["col1"],
+              "executionMode":"default"
             }
           }
       ],
@@ -935,7 +937,8 @@
                 "outputTypes":["double"],
                 "transformationFeatures":["data"],
                 "statisticsArgumentNames":["data1"],
-                "dropped_argument_names":["data1"]
+                "dropped_argument_names":["data1"],
+                "executionMode":"default"
               }
             },
             {
@@ -947,7 +950,8 @@
                 "name": "add_one_fs",
                 "outputTypes":["double"],
                 "transformationFeatures":["col1"],
-                "dropped_argument_names":["data1"]
+                "dropped_argument_names":["data1"],
+                "executionMode":"default"
               }
             }
         ],
