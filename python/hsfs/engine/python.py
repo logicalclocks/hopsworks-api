@@ -1218,6 +1218,10 @@ class Engine:
         """Wrapper around save_dataframe in order to provide no-op."""
         pass
 
+    def add_cols_to_delta_table(self, feature_group: FeatureGroup, new_features) -> None:
+        """Wrapper around add_cols_to_delta_table in order to provide no-op."""
+        pass
+
     def _get_app_options(
         self, user_write_options: Optional[Dict[str, Any]] = None
     ) -> ingestion_job_conf.IngestionJobConf:
