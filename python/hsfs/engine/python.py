@@ -1212,12 +1212,8 @@ class Engine:
             "Stream ingestion is not available on Python environments, because it requires Spark as engine."
         )
 
-    def save_empty_dataframe(self, feature_group: Union[FeatureGroup, ExternalFeatureGroup]) -> None:
-        """Wrapper around save_dataframe in order to provide no-op."""
-        pass
-
-    def add_cols_to_delta_table(self, feature_group: FeatureGroup) -> None:
-        """Wrapper around add_cols_to_delta_table in order to provide no-op."""
+    def update_table_schema(self, feature_group: Union[FeatureGroup, ExternalFeatureGroup]) -> None:
+        """Wrapper around update_table_schema in order to provide no-op."""
         pass
 
     def _get_app_options(

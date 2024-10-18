@@ -203,6 +203,7 @@ class TestSpark:
         # Arrange
         mock_hudi_engine = mocker.patch("hsfs.core.hudi_engine.HudiEngine")
         mocker.patch("hsfs.feature_group.FeatureGroup.from_response_json")
+        mock_reconcile_schema = mocker.patch("hsfs.engine.spark.Engine.reconcile_schema")
 
         spark_engine = spark.Engine()
 
@@ -220,6 +221,31 @@ class TestSpark:
 
         # Assert
         assert mock_hudi_engine.return_value.register_temporary_table.call_count == 1
+        assert mock_reconcile_schema.call_count == 1
+
+    def test_register_delta_temporary_table(self, mocker):
+        # Arrange
+        mock_delta_engine = mocker.patch("hsfs.core.delta_engine.DeltaEngine")
+        mocker.patch("hsfs.feature_group.FeatureGroup.from_response_json")
+        mock_reconcile_schema = mocker.patch("hsfs.engine.spark.Engine.reconcile_schema")
+
+        spark_engine = spark.Engine()
+
+        hudi_fg_alias = hudi_feature_group_alias.HudiFeatureGroupAlias(
+            feature_group=None, alias=None
+        )
+
+        # Act
+        spark_engine.register_delta_temporary_table(
+            delta_fg_alias=hudi_fg_alias,
+            feature_store_id=None,
+            feature_store_name=None,
+            read_options=None,
+        )
+
+        # Assert
+        assert mock_delta_engine.return_value.register_temporary_table.call_count == 1
+        assert mock_reconcile_schema.call_count == 1
 
     def test_return_dataframe_type_default(self, mocker):
         # Arrange
@@ -4540,7 +4566,7 @@ class TestSpark:
         # Assert
         assert result is True
 
-    def test_save_empty_dataframe(self, mocker):
+    def test_update_table_schema_hudi(self, mocker):
         # Arrange
         mock_spark_engine_save_dataframe = mocker.patch(
             "hsfs.engine.spark.Engine.save_dataframe"
@@ -4560,13 +4586,40 @@ class TestSpark:
             partition_key=[],
             id=10,
             featurestore_name="test_featurestore",
+            time_travel_format="HUDI",
         )
 
         # Act
-        spark_engine.save_empty_dataframe(feature_group=fg)
+        spark_engine.update_table_schema(feature_group=fg)
 
         # Assert
         assert mock_spark_engine_save_dataframe.call_count == 1
+        assert mock_spark_read.format.call_count == 1
+
+    def test_update_table_schema_delta(self, mocker):
+        # Arrange
+        mock_spark_read = mocker.patch("pyspark.sql.SparkSession.read")
+        mock_format = mocker.Mock()
+        mock_spark_read.format.return_value = mock_format
+
+        # Arrange
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            featurestore_name="test_featurestore",
+            time_travel_format="DELTA",
+        )
+
+        # Act
+        spark_engine.update_table_schema(feature_group=fg)
+
+        # Assert
         assert mock_spark_read.format.call_count == 1
 
     def test_apply_transformation_function_single_output_udf_default_mode(self, mocker):

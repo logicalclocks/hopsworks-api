@@ -221,8 +221,8 @@ class Engine:
             read_options,
         )
 
-        hudi_engine_instance.reconcile_hudi_schema(
-            self.save_empty_dataframe, hudi_fg_alias, read_options
+        self.reconcile_schema(
+            hudi_fg_alias, read_options, hudi_engine_instance
         )
 
     def register_delta_temporary_table(
@@ -240,6 +240,30 @@ class Engine:
             delta_fg_alias,
             read_options,
         )
+
+        self.reconcile_schema(
+            delta_fg_alias, read_options, delta_engine_instance
+        )
+
+    def reconcile_schema(
+        self, fg_alias, read_options, engine_instance
+    ):
+        if sorted(self._spark_session.table(fg_alias.alias).columns) != sorted(
+            [feature.name for feature in fg_alias.feature_group._features] +
+            self.HUDI_SPEC_FEATURE_NAMES if fg_alias.feature_group.time_travel_format == "HUDI" else []
+        ):
+            full_fg = self._feature_group_api.get(
+                feature_store_id=fg_alias.feature_group._feature_store_id,
+                name=fg_alias.feature_group.name,
+                version=fg_alias.feature_group.version,
+            )
+
+            self.update_table_schema(full_fg)
+
+            engine_instance.register_temporary_table(
+                fg_alias,
+                read_options,
+            )
 
     def _return_dataframe_type(self, dataframe, dataframe_type):
         if dataframe_type.lower() in ["default", "spark"]:
@@ -1324,7 +1348,13 @@ class Engine:
             return True
         return False
 
-    def save_empty_dataframe(self, feature_group):
+    def update_table_schema(self, feature_group):
+        if feature_group.time_travel_format == "DELTA":
+            self._add_cols_to_delta_table(feature_group)
+        else:
+            self._save_empty_dataframe(feature_group)
+
+    def _save_empty_dataframe(self, feature_group):
         location = feature_group.prepare_spark_location()
 
         dataframe = self._spark_session.read.format("hudi").load(location)
@@ -1343,7 +1373,7 @@ class Engine:
             {},
         )
 
-    def add_cols_to_delta_table(self, feature_group):
+    def _add_cols_to_delta_table(self, feature_group):
         location = feature_group.prepare_spark_location()
 
         dataframe = self._spark_session.read.format("delta").load(location)
