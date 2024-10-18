@@ -1324,18 +1324,14 @@ class Engine:
             return True
         return False
 
-    def save_empty_dataframe(self, feature_group, new_features=None):
+    def save_empty_dataframe(self, feature_group):
         location = feature_group.prepare_spark_location()
 
         dataframe = self._spark_session.read.format("hudi").load(location)
 
-        if (new_features is not None):
-            if isinstance(new_features, list):
-                for new_feature in new_features:
-                    dataframe = dataframe.withColumn(new_feature.name, lit(None).cast(new_feature.type))
-            else:
-                dataframe = dataframe.withColumn(new_features.name, lit(None).cast(new_features.type))
-
+        for feature in feature_group.features:
+            if feature.name not in dataframe.columns:
+                dataframe = dataframe.withColumn(feature.name, lit(None).cast(feature.type))
 
         self.save_dataframe(
             feature_group,
@@ -1347,17 +1343,14 @@ class Engine:
             {},
         )
 
-    def add_cols_to_delta_table(self, feature_group, new_features):
+    def add_cols_to_delta_table(self, feature_group):
         location = feature_group.prepare_spark_location()
 
         dataframe = self._spark_session.read.format("delta").load(location)
 
-        if (new_features is not None):
-            if isinstance(new_features, list):
-                for new_feature in new_features:
-                    dataframe = dataframe.withColumn(new_feature.name, lit("").cast(new_feature.type))
-            else:
-                dataframe = dataframe.withColumn(new_features.name, lit("").cast(new_features.type))
+        for feature in feature_group.features:
+            if feature.name not in dataframe.columns:
+                dataframe = dataframe.withColumn(feature.name, lit(None).cast(feature.type))
 
         dataframe.limit(0).write.format("delta").mode(
             "append"
