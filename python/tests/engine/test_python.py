@@ -2565,12 +2565,12 @@ class TestPython:
             == "Stream ingestion is not available on Python environments, because it requires Spark as engine."
         )
 
-    def test_save_empty_dataframe(self):
+    def test_update_table_schema(self):
         # Arrange
         python_engine = python.Engine()
 
         # Act
-        result = python_engine.save_empty_dataframe(feature_group=None)
+        result = python_engine.update_table_schema(feature_group=None)
 
         # Assert
         assert result is None
@@ -3526,7 +3526,7 @@ class TestPython:
         mocker.patch("hsfs.util.get_job_url")
         mocker.patch(
             "hsfs.core.kafka_engine.kafka_get_offsets",
-            return_value=" tests_offsets",
+            return_value="tests_offsets",
         )
         mocker.patch(
             "hsfs.core.job_api.JobApi.last_execution",
@@ -3568,7 +3568,7 @@ class TestPython:
         # Assert
         assert mock_python_engine_kafka_produce.call_count == 4
         job_mock.run.assert_called_once_with(
-            args="defaults tests_offsets",
+            args="defaults -initialCheckPointString tests_offsets",
             await_termination=False,
         )
 
@@ -3584,7 +3584,7 @@ class TestPython:
         mocker.patch("hsfs.util.get_job_url")
         mocker.patch(
             "hsfs.core.kafka_engine.kafka_get_offsets",
-            return_value=" tests_offsets",
+            return_value="tests_offsets",
         )
 
         mocker.patch("hopsworks_common.client.get_instance")
@@ -3625,7 +3625,7 @@ class TestPython:
         # Assert
         assert mock_python_engine_kafka_produce.call_count == 4
         job_mock.run.assert_called_once_with(
-            args="defaults tests_offsets",
+            args="defaults -initialCheckPointString tests_offsets",
             await_termination=False,
         )
 
@@ -3641,7 +3641,7 @@ class TestPython:
         mocker.patch("hsfs.util.get_job_url")
         mocker.patch(
             "hsfs.core.kafka_engine.kafka_get_offsets",
-            side_effect=["", " tests_offsets"],
+            side_effect=["", "tests_offsets"],
         )
 
         mocker.patch("hopsworks_common.client.get_instance")
@@ -3679,7 +3679,7 @@ class TestPython:
         # Assert
         assert mock_python_engine_kafka_produce.call_count == 4
         job_mock.run.assert_called_once_with(
-            args="defaults tests_offsets",
+            args="defaults -initialCheckPointString tests_offsets",
             await_termination=False,
         )
 

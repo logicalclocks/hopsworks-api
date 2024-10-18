@@ -1212,10 +1212,8 @@ class Engine:
             "Stream ingestion is not available on Python environments, because it requires Spark as engine."
         )
 
-    def save_empty_dataframe(
-        self, feature_group: Union[FeatureGroup, ExternalFeatureGroup], new_features=None
-    ) -> None:
-        """Wrapper around save_dataframe in order to provide no-op."""
+    def update_table_schema(self, feature_group: Union[FeatureGroup, ExternalFeatureGroup]) -> None:
+        """Wrapper around update_table_schema in order to provide no-op."""
         pass
 
     def _get_app_options(
@@ -1510,7 +1508,7 @@ class Engine:
             now = datetime.now(timezone.utc)
             feature_group.materialization_job.run(
                 args=feature_group.materialization_job.config.get("defaultArgs", "")
-                + initial_check_point,
+                + (f" -initialCheckPointString {initial_check_point}" if initial_check_point else ""),
                 await_termination=offline_write_options.get("wait_for_job", False),
             )
             offline_backfill_every_hr = offline_write_options.pop(
@@ -1540,7 +1538,7 @@ class Engine:
             # provide the initial_check_point as it will reduce the read amplification of materialization job
             feature_group.materialization_job.run(
                 args=feature_group.materialization_job.config.get("defaultArgs", "")
-                + initial_check_point,
+                + (f" -initialCheckPointString {initial_check_point}" if initial_check_point else ""),
                 await_termination=offline_write_options.get("wait_for_job", False),
             )
         return feature_group.materialization_job
