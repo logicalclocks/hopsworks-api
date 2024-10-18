@@ -35,6 +35,7 @@ import pandas as pd
 import tzlocal
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_PANDAS
 from hsfs.constructor import query
+from hsfs.core import feature_group_api
 
 # in case importing in %%local
 from hsfs.core.vector_db_client import VectorDbClient
@@ -252,7 +253,7 @@ class Engine:
             [feature.name for feature in fg_alias.feature_group._features] +
             self.HUDI_SPEC_FEATURE_NAMES if fg_alias.feature_group.time_travel_format == "HUDI" else []
         ):
-            full_fg = self._feature_group_api.get(
+            full_fg = feature_group_api.FeatureGroupApi().get(
                 feature_store_id=fg_alias.feature_group._feature_store_id,
                 name=fg_alias.feature_group.name,
                 version=fg_alias.feature_group.version,
