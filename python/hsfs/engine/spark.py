@@ -1329,9 +1329,9 @@ class Engine:
 
         dataframe = self._spark_session.read.format("hudi").load(location)
 
-        for feature in feature_group.features:
-            if feature.name not in dataframe.columns:
-                dataframe = dataframe.withColumn(feature.name, lit(None).cast(feature.type))
+        for _feature in feature_group.features:
+            if _feature.name not in dataframe.columns:
+                dataframe = dataframe.withColumn(_feature.name, lit(None).cast(_feature.type))
 
         self.save_dataframe(
             feature_group,
@@ -1348,9 +1348,9 @@ class Engine:
 
         dataframe = self._spark_session.read.format("delta").load(location)
 
-        for feature in feature_group.features:
-            if feature.name not in dataframe.columns:
-                dataframe = dataframe.withColumn(feature.name, lit(None).cast(feature.type))
+        for _feature in feature_group.features:
+            if _feature.name not in dataframe.columns:
+                dataframe = dataframe.withColumn(_feature.name, lit(None).cast(_feature.type))
 
         dataframe.limit(0).write.format("delta").mode(
             "append"
