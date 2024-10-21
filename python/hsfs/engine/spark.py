@@ -415,14 +415,6 @@ class Engine:
         validation_id=None,
     ):
         try:
-            # Currently on-demand transformation functions not supported in external feature groups.
-            if (
-                not isinstance(feature_group, fg_mod.ExternalFeatureGroup)
-                and feature_group.transformation_functions
-            ):
-                dataframe = self._apply_transformation_function(
-                    feature_group.transformation_functions, dataframe
-                )
             if (
                 isinstance(feature_group, fg_mod.ExternalFeatureGroup)
                 and feature_group.online_enabled
@@ -467,11 +459,6 @@ class Engine:
         checkpoint_dir: Optional[str],
         write_options: Optional[Dict[str, Any]],
     ):
-        if feature_group.transformation_functions:
-            dataframe = self._apply_transformation_function(
-                feature_group.transformation_functions, dataframe
-            )
-
         write_options = kafka_engine.get_kafka_config(
             feature_group.feature_store_id, write_options, engine="spark"
         )
@@ -1314,13 +1301,16 @@ class Engine:
 
         dataframe = self._spark_session.read.format("hudi").load(location)
 
-        if (new_features is not None):
+        if new_features is not None:
             if isinstance(new_features, list):
                 for new_feature in new_features:
-                    dataframe = dataframe.withColumn(new_feature.name, lit(None).cast(new_feature.type))
+                    dataframe = dataframe.withColumn(
+                        new_feature.name, lit(None).cast(new_feature.type)
+                    )
             else:
-                dataframe = dataframe.withColumn(new_features.name, lit(None).cast(new_features.type))
-
+                dataframe = dataframe.withColumn(
+                    new_features.name, lit(None).cast(new_features.type)
+                )
 
         self.save_dataframe(
             feature_group,
@@ -1337,18 +1327,22 @@ class Engine:
 
         dataframe = self._spark_session.read.format("delta").load(location)
 
-        if (new_features is not None):
+        if new_features is not None:
             if isinstance(new_features, list):
                 for new_feature in new_features:
-                    dataframe = dataframe.withColumn(new_feature.name, lit("").cast(new_feature.type))
+                    dataframe = dataframe.withColumn(
+                        new_feature.name, lit("").cast(new_feature.type)
+                    )
             else:
-                dataframe = dataframe.withColumn(new_features.name, lit("").cast(new_features.type))
+                dataframe = dataframe.withColumn(
+                    new_features.name, lit("").cast(new_features.type)
+                )
 
-        dataframe.limit(0).write.format("delta").mode(
-            "append"
-        ).option("mergeSchema", "true").option(
-            "spark.databricks.delta.schema.autoMerge.enabled", "true"
-        ).save(location)
+        dataframe.limit(0).write.format("delta").mode("append").option(
+            "mergeSchema", "true"
+        ).option("spark.databricks.delta.schema.autoMerge.enabled", "true").save(
+            location
+        )
 
     def _apply_transformation_function(
         self,

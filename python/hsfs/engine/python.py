@@ -808,15 +808,6 @@ class Engine:
         online_write_options: Dict[str, Any],
         validation_id: Optional[int] = None,
     ) -> Optional[job.Job]:
-        # Currently on-demand transformation functions not supported in external feature groups.
-        if (
-            not isinstance(feature_group, ExternalFeatureGroup)
-            and feature_group.transformation_functions
-        ):
-            dataframe = self._apply_transformation_function(
-                feature_group.transformation_functions, dataframe
-            )
-
         if (
             hasattr(feature_group, "EXTERNAL_FEATURE_GROUP")
             and feature_group.online_enabled

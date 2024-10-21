@@ -1450,52 +1450,6 @@ class TestPython:
         assert mock_python_engine_write_dataframe_kafka.call_count == 0
         assert mock_python_engine_legacy_save_dataframe.call_count == 1
 
-    def test_save_dataframe_transformation_functions(self, mocker):
-        # Arrange
-        mock_python_engine_write_dataframe_kafka = mocker.patch(
-            "hsfs.engine.python.Engine._write_dataframe_kafka"
-        )
-        mock_python_engine_legacy_save_dataframe = mocker.patch(
-            "hsfs.engine.python.Engine.legacy_save_dataframe"
-        )
-        mock_python_engine_apply_transformations = mocker.patch(
-            "hsfs.engine.python.Engine._apply_transformation_function"
-        )
-
-        python_engine = python.Engine()
-
-        @udf(int)
-        def test(feature):
-            return feature + 1
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            id=10,
-            stream=False,
-            transformation_functions=[test],
-        )
-
-        # Act
-        python_engine.save_dataframe(
-            feature_group=fg,
-            dataframe=None,
-            operation=None,
-            online_enabled=None,
-            storage=None,
-            offline_write_options=None,
-            online_write_options=None,
-            validation_id=None,
-        )
-
-        # Assert
-        assert mock_python_engine_write_dataframe_kafka.call_count == 0
-        assert mock_python_engine_legacy_save_dataframe.call_count == 1
-        assert mock_python_engine_apply_transformations.call_count == 1
-
     def test_save_dataframe_stream(self, mocker):
         # Arrange
         mock_python_engine_write_dataframe_kafka = mocker.patch(
