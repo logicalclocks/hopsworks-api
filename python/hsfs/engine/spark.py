@@ -251,7 +251,7 @@ class Engine:
     ):
         if sorted(self._spark_session.table(fg_alias.alias).columns) != sorted(
             [feature.name for feature in fg_alias.feature_group._features] +
-            self.HUDI_SPEC_FEATURE_NAMES if fg_alias.feature_group.time_travel_format == "HUDI" else []
+            hudi_engine.HudiEngine.HUDI_SPEC_FEATURE_NAMES if fg_alias.feature_group.time_travel_format == "HUDI" else []
         ):
             full_fg = feature_group_api.FeatureGroupApi().get(
                 feature_store_id=fg_alias.feature_group._feature_store_id,

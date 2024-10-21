@@ -323,6 +323,18 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
     offset_df = spark.createDataFrame([offset_dict])
     offset_df.coalesce(1).write.mode("overwrite").json(offset_location)
 
+def update_table_schema_fg(spark: SparkSession, job_conf: Dict[Any, Any]) -> None:
+    """
+    Run table schema update job on a feature group.
+    """
+    feature_store = job_conf.pop("feature_store")
+    fs = get_feature_store_handle(feature_store)
+
+    entity = fs.get_feature_group(name=job_conf["name"], version=job_conf["version"])
+
+    entity.stream = False
+    engine.get_instance().update_table_schema(entity)
+
 def _build_starting_offsets(initial_check_point_string: str):
     if not initial_check_point_string:
         return ""
@@ -358,6 +370,7 @@ if __name__ == "__main__":
             "run_feature_monitoring",
             "delta_vacuum_fg",
             "offline_fg_materialization",
+            "update_table_schema_fg",
         ],
         help="Operation type",
     )
@@ -406,6 +419,8 @@ if __name__ == "__main__":
             delta_vacuum_fg(spark, job_conf)
         elif args.op == "offline_fg_materialization":
             offline_fg_materialization(spark, job_conf, args.initialCheckPointString)
+        elif args.op == "update_table_schema_fg":
+            update_table_schema_fg(spark, job_conf)
 
         success = True
     except Exception:

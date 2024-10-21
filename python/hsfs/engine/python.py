@@ -1213,8 +1213,10 @@ class Engine:
         )
 
     def update_table_schema(self, feature_group: Union[FeatureGroup, ExternalFeatureGroup]) -> None:
-        """Wrapper around update_table_schema in order to provide no-op."""
-        pass
+        _job = self._feature_group_api.update_table_schema(feature_group)
+        _job._wait_for_job(
+            await_termination=True
+        )
 
     def _get_app_options(
         self, user_write_options: Optional[Dict[str, Any]] = None

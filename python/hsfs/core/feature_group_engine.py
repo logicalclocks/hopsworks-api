@@ -249,6 +249,8 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
     @staticmethod
     def delta_vacuum(feature_group, retention_hours):
         if feature_group.time_travel_format == "DELTA":
+            # TODO: This should change, DeltaEngine and HudiEngine always assumes spark client!
+            # Cannot properly manage what should happen when using python.
             delta_engine_instance = delta_engine.DeltaEngine(
                 feature_group.feature_store_id,
                 feature_group.feature_store_name,

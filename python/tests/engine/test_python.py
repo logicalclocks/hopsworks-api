@@ -2565,15 +2565,22 @@ class TestPython:
             == "Stream ingestion is not available on Python environments, because it requires Spark as engine."
         )
 
-    def test_update_table_schema(self):
+    def test_update_table_schema(self, mocker):
         # Arrange
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+
         python_engine = python.Engine()
+
+        mock_fg_api.return_value.update_table_schema.return_value.job = job.Job(
+            1, "test_job", None, None, None, None
+        )
 
         # Act
         result = python_engine.update_table_schema(feature_group=None)
 
         # Assert
         assert result is None
+        assert mock_fg_api.return_value.update_table_schema.call_count == 1
 
     def test_get_app_options(self, mocker):
         # Arrange
