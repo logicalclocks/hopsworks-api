@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import List
+from typing import List, Union
 
 from hsfs import engine, feature, util
 from hsfs import feature_group as fg
@@ -67,7 +67,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
     def save(
         self,
-        feature_group,
+        feature_group: Union[fg.FeatureGroup, fg.ExternalFeatureGroup],
         feature_dataframe,
         write_options,
         validation_options: dict = None,
@@ -80,6 +80,16 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_group=feature_group, features=dataframe_features
             )
         )
+
+        # Currently on-demand transformation functions not supported in external feature groups.
+        if (
+            not isinstance(feature_group, fg.ExternalFeatureGroup)
+            and feature_group.transformation_functions
+        ):
+            feature_dataframe = engine.get_instance()._apply_transformation_function(
+                feature_group.transformation_functions, feature_dataframe
+            )
+
         util.validate_embedding_feature_type(
             feature_group.embedding_index, dataframe_features
         )
@@ -119,7 +129,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
     def insert(
         self,
-        feature_group,
+        feature_group: Union[fg.FeatureGroup, fg.ExternalFeatureGroup],
         feature_dataframe,
         overwrite,
         operation,
@@ -132,6 +142,16 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group.time_travel_format,
             features=feature_group.features,
         )
+
+        # Currently on-demand transformation functions not supported in external feature groups.
+        if (
+            not isinstance(feature_group, fg.ExternalFeatureGroup)
+            and feature_group.transformation_functions
+        ):
+            feature_dataframe = engine.get_instance()._apply_transformation_function(
+                feature_group.transformation_functions, feature_dataframe
+            )
+
         dataframe_features = (
             self._update_feature_group_schema_on_demand_transformations(
                 feature_group=feature_group, features=dataframe_features
@@ -299,7 +319,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         if feature_group.time_travel_format == "DELTA":
             engine.get_instance().add_cols_to_delta_table(feature_group, new_features)
         else:
-            engine.get_instance().save_empty_dataframe(feature_group, new_features=new_features)
+            engine.get_instance().save_empty_dataframe(
+                feature_group, new_features=new_features
+            )
 
     def update_description(self, feature_group, description):
         """Updates the description of a feature group."""
@@ -326,7 +348,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
     def insert_stream(
         self,
-        feature_group,
+        feature_group: Union[fg.FeatureGroup, fg.ExternalFeatureGroup],
         dataframe,
         query_name,
         output_mode,
@@ -349,6 +371,12 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_group=feature_group, features=dataframe_features
             )
         )
+
+        if feature_group.transformation_functions:
+            dataframe = engine.get_instance()._apply_transformation_function(
+                feature_group.transformation_functions, dataframe
+            )
+
         util.validate_embedding_feature_type(
             feature_group.embedding_index, dataframe_features
         )
