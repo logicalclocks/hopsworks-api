@@ -290,6 +290,7 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
             high=False,
         )
         offset_string = json.dumps(_build_starting_offsets(initial_check_point_string))
+    print(f"startingOffsets: {offset_string}")
 
     # read kafka topic
     df = (
