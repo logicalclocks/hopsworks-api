@@ -6,7 +6,7 @@ jobs:
     e2e_quick:
         runs-on: ghrunner-hopsworks-api-vatj
         env:
-            VENV_PATH: /home/runner/envs/.venv
+            CONDA_PATH: /home/runner/_prep/anaconda/envs/workflows/bin
         steps:
             - name: Checkout hopsworks-api SDK
               uses: actions/checkout@v4
@@ -24,14 +24,11 @@ jobs:
             
             - name: Install latest client SDK
               run: |
-                echo $VENV_PATH
-                source $VENV_PATH/bin/activate
+                conda activate workflows
+                which python
+                which pip
                 pip uninstall -y hopsworks
-                pip install ${{github.workspace}}/hopsworks-api/python
-            
-            - name: List dependencies
-              run: |
-                source $VENV_PATH/bin/activate
+                pip install ${{github.workspace}}/hopsworks-api/python --upgrade-strategy eager
                 pip freeze
 
             - name: Runs only e2e tests suite
