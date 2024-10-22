@@ -17,8 +17,8 @@ import json
 from typing import Optional
 
 import humps
-from hsml import util
-from hsml.constants import INFERENCE_BATCHER
+from hopsworks_common import util
+from hopsworks_common.constants import INFERENCE_BATCHER
 
 
 class InferenceBatcher:
@@ -84,7 +84,7 @@ class InferenceBatcher:
         return self
 
     def json(self):
-        return json.dumps(self, cls=util.MLEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
         json = {"batchingEnabled": self._enabled}

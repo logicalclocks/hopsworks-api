@@ -17,8 +17,8 @@ import json
 from typing import Optional, Union
 
 import humps
-from hsml import client, deployment, util
-from hsml.constants import (
+from hopsworks_common import client, util
+from hopsworks_common.constants import (
     ARTIFACT_VERSION,
     INFERENCE_ENDPOINTS,
     MODEL,
@@ -26,6 +26,7 @@ from hsml.constants import (
     RESOURCES,
     Default,
 )
+from hsml import deployment
 from hsml.deployable_component import DeployableComponent
 from hsml.inference_batcher import InferenceBatcher
 from hsml.inference_logger import InferenceLogger
@@ -290,7 +291,7 @@ class Predictor(DeployableComponent):
         return self
 
     def json(self):
-        return json.dumps(self, cls=util.MLEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
         json = {

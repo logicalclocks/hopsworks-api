@@ -271,6 +271,7 @@ class TestPredictor:
         self._mock_serving_variables(
             mocker, SERVING_NUM_INSTANCES_NO_LIMIT, is_saas_connection=False
         )
+        mocker.patch("hopsworks_common.client.get_instance")
 
         # Act
         st = predictor.Predictor._validate_serving_tool(PREDICTOR.SERVING_TOOL_DEFAULT)
@@ -283,6 +284,7 @@ class TestPredictor:
         self._mock_serving_variables(
             mocker, SERVING_NUM_INSTANCES_NO_LIMIT, is_saas_connection=False
         )
+        mocker.patch("hopsworks_common.client.get_instance")
 
         # Act
         with pytest.raises(ValueError) as e_info:
@@ -296,6 +298,7 @@ class TestPredictor:
         self._mock_serving_variables(
             mocker, SERVING_NUM_INSTANCES_NO_LIMIT, is_saas_connection=True
         )
+        mocker.patch("hopsworks_common.client.get_instance")
 
         # Act
         st = predictor.Predictor._validate_serving_tool(PREDICTOR.SERVING_TOOL_KSERVE)
@@ -308,6 +311,7 @@ class TestPredictor:
         self._mock_serving_variables(
             mocker, SERVING_NUM_INSTANCES_NO_LIMIT, is_saas_connection=True
         )
+        mocker.patch("hopsworks_common.client.get_instance")
 
         # Act
         with pytest.raises(ValueError) as e_info:
@@ -593,7 +597,9 @@ class TestPredictor:
             pass
 
         mock_get_predictor_for_model = mocker.patch(
-            "hsml.util.get_predictor_for_model", return_value=True, spec=spec
+            "hopsworks_common.util.get_predictor_for_model",
+            return_value=True,
+            spec=spec,
         )
 
         class MockModel:
@@ -694,16 +700,22 @@ class TestPredictor:
         is_kserve_installed=True,
     ):
         mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=SERVING_RESOURCE_LIMITS,
         )
         mocker.patch(
-            "hsml.client.get_serving_num_instances_limits", return_value=num_instances
+            "hopsworks_common.client.get_serving_num_instances_limits",
+            return_value=num_instances,
         )
         mocker.patch(
-            "hsml.client.is_scale_to_zero_required", return_value=force_scale_to_zero
+            "hopsworks_common.client.is_scale_to_zero_required",
+            return_value=force_scale_to_zero,
         )
-        mocker.patch("hsml.client.is_saas_connection", return_value=is_saas_connection)
         mocker.patch(
-            "hsml.client.is_kserve_installed", return_value=is_kserve_installed
+            "hopsworks_common.client.is_saas_connection",
+            return_value=is_saas_connection,
+        )
+        mocker.patch(
+            "hopsworks_common.client.is_kserve_installed",
+            return_value=is_kserve_installed,
         )

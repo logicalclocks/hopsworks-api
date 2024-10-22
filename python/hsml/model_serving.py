@@ -17,10 +17,9 @@
 import os
 from typing import Optional, Union
 
-from hopsworks_common import usage
-from hsml import util
-from hsml.constants import ARTIFACT_VERSION, PREDICTOR_STATE
-from hsml.constants import INFERENCE_ENDPOINTS as IE
+from hopsworks_common import usage, util
+from hopsworks_common.constants import ARTIFACT_VERSION, PREDICTOR_STATE
+from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hsml.core import serving_api
 from hsml.deployment import Deployment
 from hsml.inference_batcher import InferenceBatcher

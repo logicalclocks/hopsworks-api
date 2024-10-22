@@ -15,8 +15,7 @@
 
 from typing import Dict, List, Optional, Union
 
-from hopsworks_common import usage
-from hsml import client, util
+from hopsworks_common import client, usage, util
 from hsml import predictor as predictor_mod
 from hsml.client.exceptions import ModelServingException
 from hsml.client.istio.utils.infer_type import InferInput

@@ -16,8 +16,8 @@
 from typing import Optional, Union
 
 import humps
-from hsml import client, util
-from hsml.constants import RESOURCES, Default
+from hopsworks_common import client, util
+from hopsworks_common.constants import RESOURCES, Default
 from hsml.deployable_component import DeployableComponent
 from hsml.resources import TransformerResources
 

@@ -17,9 +17,9 @@ import json
 from typing import Optional, Union
 
 import humps
-from hsml import util
-from hsml.constants import DEFAULT, INFERENCE_LOGGER, Default
-from hsml.kafka_topic import KafkaTopic
+from hopsworks_common import util
+from hopsworks_common.constants import DEFAULT, INFERENCE_LOGGER, Default
+from hopsworks_common.kafka_topic import KafkaTopic
 
 
 class InferenceLogger:
@@ -94,7 +94,7 @@ class InferenceLogger:
         return self
 
     def json(self):
-        return json.dumps(self, cls=util.MLEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
         json = {"inferenceLogging": self._mode}

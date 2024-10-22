@@ -298,12 +298,14 @@ class TestTransformer:
 
     def _mock_serving_variables(self, mocker, num_instances, force_scale_to_zero=False):
         mocker.patch(
-            "hsml.client.get_serving_resource_limits",
+            "hopsworks_common.client.get_serving_resource_limits",
             return_value=SERVING_RESOURCE_LIMITS,
         )
         mocker.patch(
-            "hsml.client.get_serving_num_instances_limits", return_value=num_instances
+            "hopsworks_common.client.get_serving_num_instances_limits",
+            return_value=num_instances,
         )
         mocker.patch(
-            "hsml.client.is_scale_to_zero_required", return_value=force_scale_to_zero
+            "hopsworks_common.client.is_scale_to_zero_required",
+            return_value=force_scale_to_zero,
         )

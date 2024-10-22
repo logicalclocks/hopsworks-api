@@ -16,7 +16,7 @@
 from datetime import datetime
 
 import humps
-from hsml import util
+from hopsworks_common import util
 
 
 class DeployableComponentLogs:

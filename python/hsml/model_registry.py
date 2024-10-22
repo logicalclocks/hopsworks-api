@@ -17,8 +17,7 @@
 import warnings
 
 import humps
-from hopsworks_common import usage
-from hsml import util
+from hopsworks_common import usage, util
 from hsml.core import model_api
 from hsml.python import signature as python_signature  # noqa: F401
 from hsml.sklearn import signature as sklearn_signature  # noqa: F401
