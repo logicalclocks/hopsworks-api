@@ -27,7 +27,7 @@ jobs:
                 cd hopsworks-api
                 export GITHUB_SHORT_SHA=$(git rev-parse --short "$GITHUB_SHA")
                 echo "GITHUB_SHORT_SHA=$GITHUB_SHORT_SHA" >> $GITHUB_ENV
-                echo $GITHUB_SHORT_SHA
+                echo "sha: $GITHUB_SHORT_SHA"
                 cp README.md ./python/
                 $CONDA_ENV_PATH/pip uninstall -y hopsworks
                 $CONDA_ENV_PATH/pip install "./python[python,polars,great-expectations]" --upgrade-strategy eager
@@ -55,4 +55,5 @@ jobs:
                 HELPERS_PATH=${{github.workspace}}/loadtest/tests
                 export PYTHONPATH=$HELPERS_PATH:$PYTHONPATH
                 cd ${{github.workspace}}/loadtest/tests
+                echo "Running e2e tests with marker $MARKER"
                 ./run_e2e_on_runner.sh $MARKER
