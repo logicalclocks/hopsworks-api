@@ -1289,9 +1289,19 @@ class Engine:
                 dataset.columns
             )
             if missing_features:
-                raise FeatureStoreException(
-                    f"Features {missing_features} specified in the transformation function '{hopsworks_udf.function_name}' are not present in the feature view. Please specify the feature required correctly."
-                )
+                if (
+                    tf.transformation_type
+                    == transformation_function.TransformationType.ON_DEMAND
+                ):
+                    # On-demand transformation are applied using the python/spark engine during insertion, the transformation while retrieving feature vectors are performed in the vector_server.
+                    raise FeatureStoreException(
+                        f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the on-demand transformation function '{hopsworks_udf.function_name}' are not present in the dataframe being inserted into the feature group. "
+                        + "Please verify that the correct feature names are used in the transformation function and that these features exist in the dataframe being inserted."
+                    )
+                else:
+                    raise FeatureStoreException(
+                        f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the model-dependent transformation function '{hopsworks_udf.function_name}' are not present in the feature view. Please verify that the correct features are specified in the transformation function."
+                    )
             if tf.hopsworks_udf.dropped_features:
                 dropped_features.update(tf.hopsworks_udf.dropped_features)
 
