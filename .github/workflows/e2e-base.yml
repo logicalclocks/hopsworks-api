@@ -11,6 +11,7 @@ jobs:
             - name: Checkout hopsworks-api SDK
               uses: actions/checkout@v4
               with:
+                  path: hopsworks-api
                   ref: ${{ github.event.pull_request.head.sha }}
             
             - name: Checkout loadtest project
