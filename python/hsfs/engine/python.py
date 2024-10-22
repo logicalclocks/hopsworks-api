@@ -1213,7 +1213,9 @@ class Engine:
         )
 
     def save_empty_dataframe(
-        self, feature_group: Union[FeatureGroup, ExternalFeatureGroup], new_features=None
+        self,
+        feature_group: Union[FeatureGroup, ExternalFeatureGroup],
+        new_features=None,
     ) -> None:
         """Wrapper around save_dataframe in order to provide no-op."""
         pass
@@ -1406,7 +1408,9 @@ class Engine:
                         for feature in hopsworks_udf.transformation_features
                     ]
                 )
-            )
+            ).set_index(
+                dataframe.index
+            )  # Index is set to the input dataframe index so that pandas would merge the new columns without reordering them.
         else:
             dataframe[hopsworks_udf.output_column_names[0]] = hopsworks_udf.get_udf(
                 online=False
@@ -1417,9 +1421,11 @@ class Engine:
                         for feature in hopsworks_udf.transformation_features
                     ]
                 )
-            )
+            ).set_axis(
+                dataframe.index
+            )  # Index is set to the input dataframe index so that pandas would merge the new column without reordering it.
             if hopsworks_udf.output_column_names[0] in dataframe.columns:
-                # Overwriting features so reordering dataframe to move overwritten column to the end of the dataframe
+                # Overwriting features also reordering dataframe to move overwritten column to the end of the dataframe
                 cols = dataframe.columns.tolist()
                 cols.append(cols.pop(cols.index(hopsworks_udf.output_column_names[0])))
                 dataframe = dataframe[cols]
@@ -1582,9 +1588,10 @@ class Engine:
     def _convert_feature_log_to_df(feature_log, cols) -> pd.DataFrame:
         if feature_log is None and cols:
             return pd.DataFrame(columns=cols)
-        if not (isinstance(feature_log, (list, pd.DataFrame, pl.DataFrame)) or (
-            HAS_NUMPY and isinstance(feature_log, np.ndarray)
-        )):
+        if not (
+            isinstance(feature_log, (list, pd.DataFrame, pl.DataFrame))
+            or (HAS_NUMPY and isinstance(feature_log, np.ndarray))
+        ):
             raise ValueError(f"Type '{type(feature_log)}' not accepted")
         if isinstance(feature_log, list) or (
             HAS_NUMPY and isinstance(feature_log, np.ndarray)
