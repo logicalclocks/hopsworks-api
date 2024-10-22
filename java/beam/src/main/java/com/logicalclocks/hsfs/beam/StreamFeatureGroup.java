@@ -17,6 +17,14 @@
 
 package com.logicalclocks.hsfs.beam;
 
+import java.io.IOException;
+import java.text.ParseException;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.apache.beam.sdk.values.PCollection;
+
 import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.FeatureStoreException;
@@ -26,19 +34,14 @@ import com.logicalclocks.hsfs.OnlineConfig;
 import com.logicalclocks.hsfs.StatisticsConfig;
 import com.logicalclocks.hsfs.Storage;
 import com.logicalclocks.hsfs.StorageConnector;
-import com.logicalclocks.hsfs.beam.engine.FeatureGroupEngine;
+import com.logicalclocks.hsfs.TimeTravelFormat;
 import com.logicalclocks.hsfs.beam.engine.BeamProducer;
+import com.logicalclocks.hsfs.beam.engine.FeatureGroupEngine;
 import com.logicalclocks.hsfs.constructor.QueryBase;
 import com.logicalclocks.hsfs.metadata.Statistics;
+
 import lombok.Builder;
 import lombok.NonNull;
-import org.apache.beam.sdk.values.PCollection;
-
-import java.io.IOException;
-import java.text.ParseException;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 public class StreamFeatureGroup extends FeatureGroupBase<PCollection<Object>> {
 
@@ -48,8 +51,9 @@ public class StreamFeatureGroup extends FeatureGroupBase<PCollection<Object>> {
   @Builder
   public StreamFeatureGroup(FeatureStore featureStore, @NonNull String name, Integer version, String description,
       List<String> primaryKeys, List<String> partitionKeys, String hudiPrecombineKey,
-      boolean onlineEnabled, List<Feature> features, StatisticsConfig statisticsConfig, String onlineTopicName,
-      String eventTime, OnlineConfig onlineConfig, StorageConnector storageConnector, String path) {
+      boolean onlineEnabled, TimeTravelFormat timeTravelFormat, List<Feature> features,
+      StatisticsConfig statisticsConfig, String onlineTopicName, String eventTime,
+      OnlineConfig onlineConfig, StorageConnector storageConnector, String path) {
     this();
     this.featureStore = featureStore;
     this.name = name;
@@ -61,6 +65,7 @@ public class StreamFeatureGroup extends FeatureGroupBase<PCollection<Object>> {
       ? partitionKeys.stream().map(String::toLowerCase).collect(Collectors.toList()) : null;
     this.hudiPrecombineKey = hudiPrecombineKey != null ? hudiPrecombineKey.toLowerCase() : null;
     this.onlineEnabled = onlineEnabled;
+    this.timeTravelFormat = timeTravelFormat != null ? timeTravelFormat : TimeTravelFormat.HUDI;
     this.features = features;
     this.statisticsConfig = statisticsConfig != null ? statisticsConfig : new StatisticsConfig();
     this.onlineTopicName = onlineTopicName;

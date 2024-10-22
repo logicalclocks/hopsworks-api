@@ -122,8 +122,8 @@ public abstract class FeatureStoreBase<T2 extends QueryBase> {
   public abstract Object getOrCreateStreamFeatureGroup(String name, Integer version, String description,
                                                 List<String> primaryKeys, List<String> partitionKeys,
                                                 String hudiPrecombineKey, boolean onlineEnabled,
-                                                StatisticsConfig statisticsConfig, String eventTime,
-                                                OnlineConfig onlineConfig)
+                                                TimeTravelFormat timeTravelFormat, StatisticsConfig statisticsConfig,
+                                                String eventTime, OnlineConfig onlineConfig)
       throws IOException, FeatureStoreException;
 
   public abstract Object  createExternalFeatureGroup();
