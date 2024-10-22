@@ -43,7 +43,7 @@ jobs:
                 HELPERS_PATH=${{github.workspace}}/loadtest/tests
                 export PYTHONPATH=$HELPERS_PATH:$PYTHONPATH
                 $CONDA_ENV_PATH/python tests/setup_project.py
-                
+
             - name: Runs only e2e tests suite
               env:
                 MARKER: python_quick_e2e
@@ -56,4 +56,5 @@ jobs:
                 HELPERS_PATH=${{github.workspace}}/loadtest/tests
                 export PYTHONPATH=$HELPERS_PATH:$PYTHONPATH
                 cd ${{github.workspace}}/loadtest/tests
+                echo "Running e2e tests with marker $MARKER"
                 ./run_e2e_on_runner.sh $MARKER
