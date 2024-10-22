@@ -11,7 +11,6 @@ jobs:
             - name: Checkout hopsworks-api SDK
               uses: actions/checkout@v4
               with:
-                  path: hopsworks-api
                   ref: ${{ github.event.pull_request.head.sha }}
             
             - name: Checkout loadtest project
@@ -24,14 +23,12 @@ jobs:
             
             - name: Install latest client SDK
               run: |
-                sleep 1000
-                cd hopsworks-api/python
+                cd hopsworks-api
                 export GITHUB_SHORT_SHA=$(git rev-parse --short "$GITHUB_SHA")
                 echo "GITHUB_SHORT_SHA=$GITHUB_SHORT_SHA" >> $GITHUB_ENV
-                which python
-                which pip
-                pip uninstall -y hopsworks
-                pip install ${{github.workspace}}/hopsworks-api/python --upgrade-strategy eager
+                cp README.md ./python/
+                $PYTHON_PATH/pip uninstall -y hopsworks
+                $PYTHON_PATH/pip install "./python[python,polars,great-expectations]" --upgrade-strategy eager
                 pip freeze
 
             - name: Setup project
@@ -41,7 +38,7 @@ jobs:
                 FIXTURES_PATH: '/tmp/fixtures.json'
               run: |
                 cd ${{github.workspace}}/loadtest
-                python tests/setup_project.py
+                $PYTHON_PATH/python tests/setup_project.py
                 cat $FIXTURES_PATH
 
             - name: Runs only e2e tests suite
