@@ -132,6 +132,14 @@ public abstract class FeatureGroupBase<T> {
   @Setter
   protected OnlineConfig onlineConfig;
 
+  @Getter
+  @Setter
+  protected StorageConnector storageConnector;
+
+  @Getter
+  @Setter
+  protected String path;
+
   @JsonIgnore
   // These are only used in the client. In the server they are aggregated in the `features` field
   protected List<String> partitionKeys;
