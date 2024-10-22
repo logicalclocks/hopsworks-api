@@ -35,22 +35,21 @@ jobs:
 
             - name: Setup project
               env:
-                HOPSWORKS_DOMAIN: 'hopsworks.glassfish.service.consul'
-                HOPSWORKS_PORT: '8182'
-                FIXTURES_PATH: '/tmp/fixtures.json'
+                HOPSWORKS_DOMAIN: hopsworks.glassfish.service.consul
+                HOPSWORKS_PORT: 8182
+                FIXTURES_PATH: /tmp/fixtures.json
               run: |
-                sleep 5
+                sleep 10
                 cd ${{github.workspace}}/loadtest
                 HELPERS_PATH=${{github.workspace}}/loadtest/tests
                 export PYTHONPATH=$HELPERS_PATH:$PYTHONPATH
-                sleep 300
                 $CONDA_ENV_PATH/python tests/setup_project.py
                 cat $FIXTURES_PATH
 
             - name: Runs only e2e tests suite
               env:
-                MARKER: 'python_quick_e2e'
-                FIXTURES_PATH: '/tmp/fixtures.json'
+                MARKER: python_quick_e2e
+                FIXTURES_PATH: /tmp/fixtures.json
                 USE_LOADTEST_PROJECT_FIXTURE: true
               run: |
                 cat $FIXTURES_PATH
