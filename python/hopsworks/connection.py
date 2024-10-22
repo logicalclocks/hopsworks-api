@@ -211,7 +211,8 @@ class Connection:
             warnings.warn(
                 "The installed hopsworks client version {0} may not be compatible with the connected Hopsworks backend version {1}. \nTo ensure compatibility please install the latest bug fix release matching the minor version of your backend ({2}) by running 'pip install hopsworks=={2}.*'".format(
                     client_version, backend_version, major_minor_backend
-                )
+                ),
+                stacklevel=1,
             )
             sys.stderr.flush()
 
