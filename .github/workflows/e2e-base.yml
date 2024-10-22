@@ -40,7 +40,7 @@ jobs:
                 FIXTURES_PATH: '/tmp/fixtures.json'
               run: |
                 cd ${{github.workspace}}/loadtest
-                HELPERS_PATH=${{github.workspace}}/loadtest/tests/helpers
+                HELPERS_PATH=${{github.workspace}}/loadtest/tests/
                 export PYTHONPATH=$HELPERS_PATH:$PYTHONPATH
                 $CONDA_ENV_PATH/python tests/setup_project.py
                 cat $FIXTURES_PATH
@@ -52,7 +52,7 @@ jobs:
                 USE_LOADTEST_PROJECT_FIXTURE: true
               run: |
                 cat $FIXTURES_PATH
-                HELPERS_PATH=${{github.workspace}}/loadtest/tests/helpers
+                HELPERS_PATH=${{github.workspace}}/loadtest/tests/
                 export PYTHONPATH=$HELPERS_PATH:$PYTHONPATH
                 cd ${{github.workspace}}/loadtest/tests
                 ./run_e2e_on_runner.sh $MARKER
