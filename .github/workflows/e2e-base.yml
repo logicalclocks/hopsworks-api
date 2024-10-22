@@ -24,7 +24,6 @@ jobs:
             
             - name: Install latest client SDK
               run: |
-                conda activate workflows
                 export GITHUB_SHORT_SHA=$(git rev-parse --short "$GITHUB_SHA")
                 echo "GITHUB_SHORT_SHA=$GITHUB_SHORT_SHA" >> $GITHUB_ENV
                 which python
@@ -40,7 +39,6 @@ jobs:
                 FIXTURES_PATH: '/tmp/fixtures.json'
               run: |
                 cd ${{github.workspace}}/loadtest
-                conda activate workflows
                 python tests/setup_project.py
                 cat $FIXTURES_PATH
 
