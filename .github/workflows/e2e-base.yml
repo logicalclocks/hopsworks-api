@@ -27,6 +27,7 @@ jobs:
                 cd hopsworks-api
                 export GITHUB_SHORT_SHA=$(git rev-parse --short "$GITHUB_SHA")
                 echo "GITHUB_SHORT_SHA=$GITHUB_SHORT_SHA" >> $GITHUB_ENV
+                echo $GITHUB_SHORT_SHA
                 cp README.md ./python/
                 $CONDA_ENV_PATH/pip uninstall -y hopsworks
                 $CONDA_ENV_PATH/pip install "./python[python,polars,great-expectations]" --upgrade-strategy eager
