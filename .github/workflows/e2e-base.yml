@@ -42,7 +42,6 @@ jobs:
                 cd ${{github.workspace}}/loadtest
                 HELPERS_PATH=${{github.workspace}}/loadtest/tests/helpers
                 export PYTHONPATH=$HELPERS_PATH:$PYTHONPATH
-                sleep 1500
                 $CONDA_ENV_PATH/python tests/setup_project.py
                 cat $FIXTURES_PATH
 
@@ -52,7 +51,6 @@ jobs:
                 FIXTURES_PATH: '/tmp/fixtures.json'
                 USE_LOADTEST_PROJECT_FIXTURE: true
               run: |
-                sleep 5
                 cat $FIXTURES_PATH
                 HELPERS_PATH=${{github.workspace}}/loadtest/tests/helpers
                 export PYTHONPATH=$HELPERS_PATH:$PYTHONPATH
