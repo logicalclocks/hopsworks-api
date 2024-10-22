@@ -27,8 +27,8 @@ jobs:
                 export GITHUB_SHORT_SHA=$(git rev-parse --short "$GITHUB_SHA")
                 echo "GITHUB_SHORT_SHA=$GITHUB_SHORT_SHA" >> $GITHUB_ENV
                 cp README.md ./python/
-                $PYTHON_PATH/pip uninstall -y hopsworks
-                $PYTHON_PATH/pip install "./python[python,polars,great-expectations]" --upgrade-strategy eager
+                $CONDA_ENV_PATH/pip uninstall -y hopsworks
+                $CONDA_ENV_PATH/pip install "./python[python,polars,great-expectations]" --upgrade-strategy eager
                 pip freeze
 
             - name: Setup project
@@ -38,7 +38,9 @@ jobs:
                 FIXTURES_PATH: '/tmp/fixtures.json'
               run: |
                 cd ${{github.workspace}}/loadtest
-                $PYTHON_PATH/python tests/setup_project.py
+                HELPERS_PATH=${{github.workspace}}/loadtest/tests/helpers
+                export PYTHONPATH=$HELPERS_PATH:$PYTHONPATH
+                $CONDA_ENV_PATH/python tests/setup_project.py
                 cat $FIXTURES_PATH
 
             - name: Runs only e2e tests suite
@@ -48,5 +50,7 @@ jobs:
                 USE_LOADTEST_PROJECT_FIXTURE: true
               run: |
                 cat $FIXTURES_PATH
+                HELPERS_PATH=${{github.workspace}}/loadtest/tests/helpers
+                export PYTHONPATH=$HELPERS_PATH:$PYTHONPATH
                 cd ${{github.workspace}}/loadtest/tests
                 ./run_e2e_on_runner.sh $MARKER
