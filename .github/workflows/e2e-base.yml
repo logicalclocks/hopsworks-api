@@ -24,6 +24,8 @@ jobs:
             
             - name: Install latest client SDK
               run: |
+                sleep 1000
+                cd hopsworks-api/python
                 export GITHUB_SHORT_SHA=$(git rev-parse --short "$GITHUB_SHA")
                 echo "GITHUB_SHORT_SHA=$GITHUB_SHORT_SHA" >> $GITHUB_ENV
                 which python
