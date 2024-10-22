@@ -39,7 +39,6 @@ jobs:
                 HOPSWORKS_PORT: 8182
                 FIXTURES_PATH: /tmp/fixtures.json
               run: |
-                sleep 10
                 cd ${{github.workspace}}/loadtest
                 HELPERS_PATH=${{github.workspace}}/loadtest/tests
                 export PYTHONPATH=$HELPERS_PATH:$PYTHONPATH
