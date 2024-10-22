@@ -16,14 +16,15 @@
 
 import os
 import re
-import warnings
 import sys
+import warnings
+import weakref
 
-from requests.exceptions import ConnectionError
-
-from hopsworks.decorators import connected, not_connected
 from hopsworks import client, version
 from hopsworks.core import project_api, secret_api, variable_api
+from hopsworks.decorators import connected, not_connected
+from requests.exceptions import ConnectionError
+
 
 HOPSWORKS_PORT_DEFAULT = 443
 HOSTNAME_VERIFICATION_DEFAULT = True
@@ -210,7 +211,8 @@ class Connection:
             warnings.warn(
                 "The installed hopsworks client version {0} may not be compatible with the connected Hopsworks backend version {1}. \nTo ensure compatibility please install the latest bug fix release matching the minor version of your backend ({2}) by running 'pip install hopsworks=={2}.*'".format(
                     client_version, backend_version, major_minor_backend
-                )
+                ),
+                stacklevel=1,
             )
             sys.stderr.flush()
 
@@ -241,6 +243,7 @@ class Connection:
         """
         client.stop()
         self._connected = True
+        finalizer = weakref.finalize(self, self.close)
         try:
             # init client
             if client.base.Client.REST_ENDPOINT not in os.environ:
@@ -263,6 +266,7 @@ class Connection:
             self._variable_api = variable_api.VariableApi()
         except (TypeError, ConnectionError):
             self._connected = False
+            finalizer.detach()
             raise
         print(
             "Connected. Call `.close()` to terminate connection gracefully.",
@@ -278,7 +282,7 @@ class Connection:
         This will clean up any materialized certificates on the local file system of
         external environments such as AWS SageMaker.
 
-        Usage is recommended but optional.
+        Usage is optional.
         """
         from hsfs import client as hsfs_client
         from hsfs import engine as hsfs_engine
@@ -298,6 +302,9 @@ class Connection:
             hsml_client.stop()
         except:  # noqa: E722
             pass
+
+        if not self._connected:
+            return  # the connection is already closed
 
         client.stop()
         self._connected = False
