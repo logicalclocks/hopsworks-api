@@ -42,6 +42,7 @@ jobs:
                 cd ${{github.workspace}}/loadtest
                 HELPERS_PATH=${{github.workspace}}/loadtest/tests/helpers
                 export PYTHONPATH=$HELPERS_PATH:$PYTHONPATH
+                sleep 1000
                 $CONDA_ENV_PATH/python tests/setup_project.py
                 cat $FIXTURES_PATH
 
