@@ -458,7 +458,7 @@ class FeatureStore:
                 For spark engine: Dictionary of read options for Spark.
                 For python engine:
                 If running queries on the online feature store, users can provide an entry `{'external': True}`,
-                this instructs the library to use the `host` parameter in the [`hsfs.connection()`](connection_api.md#connection) to establish the connection to the online feature store.
+                this instructs the library to use the `host` parameter in the [`hopsworks.login()`](login.md#login) to establish the connection to the online feature store.
                 If not set, or set to False, the online feature store storage connector is used which relies on
                 the private ip.
                 Defaults to `{}`.
