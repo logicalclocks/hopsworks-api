@@ -61,10 +61,11 @@ class DatasetApi:
         """Upload a file to the Hopsworks filesystem.
 
         ```python
+        import hopsworks
 
-        conn = hsml.connection(project="my-project")
+        project = hopsworks.login(project="my-project")
 
-        dataset_api = conn.get_dataset_api()
+        dataset_api = project.get_dataset_api()
 
         uploaded_file_path = dataset_api.upload("my_local_file.txt", "Resources")
 
