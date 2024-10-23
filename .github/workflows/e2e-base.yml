@@ -53,7 +53,7 @@ jobs:
                 USE_LOADTEST_API_KEY_FIXTURE: true
                 HOPSWORKS_DOMAIN: stagingv4.devnet.hops.works
                 HOPSWORKS_PORT: 443
-                PARALLEL_TESTS: 8
+                PARALLEL_TESTS: 5
               run: |
                 echo "Running e2e tests with clusterFirstWithHostNet"
                 HELPERS_PATH=${{github.workspace}}/loadtest/tests
