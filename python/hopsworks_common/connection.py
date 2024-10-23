@@ -21,6 +21,7 @@ import os
 import re
 import sys
 import warnings
+import weakref
 from typing import Any, Optional
 
 from hopsworks_common import client, usage, util, version
@@ -351,6 +352,7 @@ class Connection:
         """
         client.stop()
         self._connected = True
+        finalizer = weakref.finalize(self, self.close)
         try:
             # determine engine, needed to init client
             if (self._engine is not None and self._engine.lower() == "spark") or (
@@ -413,6 +415,7 @@ class Connection:
             self._provide_project()
         except (TypeError, ConnectionError):
             self._connected = False
+            finalizer.detach()
             raise
 
         self._check_compatibility()
@@ -446,7 +449,7 @@ class Connection:
         This will clean up any materialized certificates on the local file system of
         external environments such as AWS SageMaker.
 
-        Usage is recommended but optional.
+        Usage is optional.
 
         !!! example
             ```python
@@ -455,6 +458,9 @@ class Connection:
             conn.close()
             ```
         """
+        if not self._connected:
+            return  # the connection is already closed
+
         from hsfs import engine
 
         if OpenSearchClientSingleton._instance:
