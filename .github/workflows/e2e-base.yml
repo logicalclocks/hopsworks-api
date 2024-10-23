@@ -35,8 +35,8 @@ jobs:
 
             - name: Setup project
               env:
-                HOPSWORKS_DOMAIN: hopsworks.glassfish.service.consul
-                HOPSWORKS_PORT: 8182
+                HOPSWORKS_DOMAIN: stagingv4.devnet.hops.works
+                HOPSWORKS_PORT: 443
                 FIXTURES_PATH: /tmp/fixtures.json
               run: |
                 cd ${{github.workspace}}/loadtest
@@ -49,8 +49,8 @@ jobs:
                 MARKER: python_quick_e2e
                 FIXTURES_PATH: /tmp/fixtures.json
                 USE_LOADTEST_PROJECT_FIXTURE: true
-                HOPSWORKS_DOMAIN: hopsworks.glassfish.service.consul
-                HOPSWORKS_PORT: 8182
+                HOPSWORKS_DOMAIN: stagingv4.devnet.hops.works
+                HOPSWORKS_PORT: 443
               run: |
                 # export REST_ENDPOINT=https://$HOPSWORKS_DOMAIN:$HOPSWORKS_PORT
                 # echo "REST_ENDPOINT=$REST_ENDPOINT"
