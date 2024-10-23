@@ -52,6 +52,8 @@ jobs:
                 HOPSWORKS_DOMAIN: stagingv4.devnet.hops.works
                 HOPSWORKS_PORT: 443
               run: |
+                curl -k 10.87.41.30:443
+                sleep 200
                 HELPERS_PATH=${{github.workspace}}/loadtest/tests
                 export PYTHONPATH=$HELPERS_PATH:$PYTHONPATH
                 cd ${{github.workspace}}/loadtest/tests
