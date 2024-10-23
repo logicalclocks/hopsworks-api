@@ -52,7 +52,7 @@ jobs:
                 HOPSWORKS_DOMAIN: hopsworks.glassfish.service.consul
                 HOPSWORKS_PORT: 8182
               run: |
-                export REST_ENDPOINT=https://$HOPSWORKS_DOMAIN:$HOPSWORKS_PORT/hopsworks-api/api
+                export REST_ENDPOINT=https://$HOPSWORKS_DOMAIN:$HOPSWORKS_PORT
                 echo "REST_ENDPOINT=$REST_ENDPOINT"
                 HELPERS_PATH=${{github.workspace}}/loadtest/tests
                 export PYTHONPATH=$HELPERS_PATH:$PYTHONPATH
