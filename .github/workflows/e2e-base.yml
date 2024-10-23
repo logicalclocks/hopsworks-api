@@ -55,7 +55,7 @@ jobs:
                 HOPSWORKS_PORT: 443
                 PARALLEL_TESTS: 8
               run: |
-                echo "Running e2e tests with calico BGP"
+                echo "Running e2e tests with clusterFirstWithHostNet"
                 HELPERS_PATH=${{github.workspace}}/loadtest/tests
                 export PYTHONPATH=$HELPERS_PATH:$PYTHONPATH
                 cd ${{github.workspace}}/loadtest/tests
