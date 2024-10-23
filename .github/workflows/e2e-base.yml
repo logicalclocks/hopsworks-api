@@ -46,7 +46,7 @@ jobs:
                 echo "Setting up project"
                 $CONDA_ENV_PATH/python tests/setup_project.py
 
-            - name: Runs only e2e tests suite
+            - name: Runs only e2e tests suite for commit ${{ env.GITHUB_SHORT_SHA }}
               env:
                 MARKER: python_quick_e2e
                 FIXTURES_PATH: /tmp/fixtures.json
