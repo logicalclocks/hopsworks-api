@@ -52,7 +52,7 @@ jobs:
                 USE_LOADTEST_PROJECT_FIXTURE: true
                 HOPSWORKS_DOMAIN: stagingv4.devnet.hops.works
                 HOPSWORKS_PORT: 443
-                PARALLEL_TESTS: 10
+                PARALLEL_TESTS: 8
               run: |
                 HELPERS_PATH=${{github.workspace}}/loadtest/tests
                 export PYTHONPATH=$HELPERS_PATH:$PYTHONPATH
