@@ -69,7 +69,7 @@ warnings.formatwarning = hw_formatwarning
 __all__ = ["connection", "udf"]
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format="%(asctime)s %(levelname)s: %(message)s",
     stream=sys.stdout,
 )
