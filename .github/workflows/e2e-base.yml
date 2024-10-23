@@ -43,6 +43,7 @@ jobs:
                 cd ${{github.workspace}}/loadtest
                 HELPERS_PATH=${{github.workspace}}/loadtest/tests
                 export PYTHONPATH=$HELPERS_PATH:$PYTHONPATH
+                echo "Setting up project"
                 $CONDA_ENV_PATH/python tests/setup_project.py
 
             - name: Runs only e2e tests suite
