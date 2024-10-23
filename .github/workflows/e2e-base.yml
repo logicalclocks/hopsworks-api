@@ -31,6 +31,7 @@ jobs:
                 cp README.md ./python/
                 $CONDA_ENV_PATH/pip uninstall -y hopsworks
                 $CONDA_ENV_PATH/pip install "./python[python,polars,great-expectations]" --upgrade-strategy eager
+                $CONDA_ENV_PATH/pip install rich
                 pip freeze
 
             - name: Setup project
