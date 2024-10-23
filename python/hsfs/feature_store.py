@@ -526,6 +526,8 @@ class FeatureStore:
             ]
         ] = None,
         offline_backfill_every_hr: Optional[Union[int, str]] = None,
+        storage_connector: Union[storage_connector.StorageConnector, Dict[str, Any]] = None,
+        path: Optional[str] = None,
     ) -> feature_group.FeatureGroup:
         """Create a feature group metadata object.
 
@@ -630,6 +632,10 @@ class FeatureStore:
                 periodically. The value can be either an integer representing the number of hours between each run
                 or a string representing a cron expression. Set the value to None to avoid scheduling the materialization
                 job. Defaults to None (i.e no scheduling).
+            storage_connector: the storage connector used to establish connectivity
+                with the data source.
+            path: The location within the scope of the storage connector, from where to read
+                the data for the external feature group
 
         # Returns
             `FeatureGroup`. The feature group metadata object.
@@ -657,6 +663,8 @@ class FeatureStore:
             transformation_functions=transformation_functions,
             online_config=online_config,
             offline_backfill_every_hr=offline_backfill_every_hr,
+            storage_connector=storage_connector,
+            path=path,
         )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -691,6 +699,8 @@ class FeatureStore:
         ] = None,
         online_config: Optional[Union[OnlineConfig, Dict[str, Any]]] = None,
         offline_backfill_every_hr: Optional[Union[int, str]] = None,
+        storage_connector: Union[storage_connector.StorageConnector, Dict[str, Any]] = None,
+        path: Optional[str] = None,
     ) -> Union[
         feature_group.FeatureGroup,
         feature_group.ExternalFeatureGroup,
@@ -785,6 +795,10 @@ class FeatureStore:
                 periodically. The value can be either an integer representing the number of hours between each run
                 or a string representing a cron expression. Set the value to None to avoid scheduling the materialization
                 job. Defaults to None (i.e no automatic scheduling). Applies only on Feature Group creation.
+            storage_connector: the storage connector used to establish connectivity
+                with the data source.
+            path: The location within the scope of the storage connector, from where to read
+                the data for the external feature group
 
         # Returns
             `FeatureGroup`. The feature group metadata object.
@@ -821,6 +835,8 @@ class FeatureStore:
                     transformation_functions=transformation_functions,
                     online_config=online_config,
                     offline_backfill_every_hr=offline_backfill_every_hr,
+                    storage_connector=storage_connector,
+                    path=path,
                 )
                 feature_group_object.feature_store = self
                 return feature_group_object
@@ -863,7 +879,7 @@ class FeatureStore:
 
         # Arguments
             name: Name of the external feature group to create.
-            storage_connector: the storage connector to use to establish connectivity
+            storage_connector: the storage connector used to establish connectivity
                 with the data source.
             query: A string containing a SQL query valid for the target data source.
                 the query will be used to pull data from the data sources when the
@@ -1020,7 +1036,7 @@ class FeatureStore:
 
         # Arguments
             name: Name of the external feature group to create.
-            storage_connector: the storage connector to use to establish connectivity
+            storage_connector: the storage connector used to establish connectivity
                 with the data source.
             query: A string containing a SQL query valid for the target data source.
                 the query will be used to pull data from the data sources when the
