@@ -57,5 +57,4 @@ jobs:
                 HELPERS_PATH=${{github.workspace}}/loadtest/tests
                 export PYTHONPATH=$HELPERS_PATH:$PYTHONPATH
                 cd ${{github.workspace}}/loadtest/tests
-                echo "Running e2e tests with marker $MARKER"
                 ./run_e2e_on_runner.sh $MARKER
