@@ -52,8 +52,7 @@ jobs:
                 HOPSWORKS_DOMAIN: stagingv4.devnet.hops.works
                 HOPSWORKS_PORT: 443
               run: |
-                # export REST_ENDPOINT=https://$HOPSWORKS_DOMAIN:$HOPSWORKS_PORT
-                # echo "REST_ENDPOINT=$REST_ENDPOINT"
+                curl -k 10.87.41.6:5005
                 HELPERS_PATH=${{github.workspace}}/loadtest/tests
                 export PYTHONPATH=$HELPERS_PATH:$PYTHONPATH
                 cd ${{github.workspace}}/loadtest/tests
