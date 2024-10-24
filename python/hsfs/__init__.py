@@ -20,12 +20,12 @@ import warnings
 
 from hopsworks_common import (
     usage,
-    util,
     version,
 )
 from hopsworks_common.connection import (
     Connection,
 )
+from hsfs import util
 
 
 # Setting polars skip cpu flag to suppress CPU false positive warning messages printed while importing hsfs
