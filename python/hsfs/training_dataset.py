@@ -1007,7 +1007,7 @@ class TrainingDataset(TrainingDatasetBase):
                 initialised for retrieving serving vectors as a batch.
             external: boolean, optional. If set to True, the connection to the
                 online feature store is established using the same host as
-                for the `host` parameter in the [`hsfs.connection()`](connection_api.md#connection) method.
+                for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
                 If set to False, the online feature store storage connector is used
                 which relies on the private IP. Defaults to True if connection to Hopsworks is established from
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
@@ -1024,7 +1024,7 @@ class TrainingDataset(TrainingDatasetBase):
                 serving application.
             external: boolean, optional. If set to True, the connection to the
                 online feature store is established using the same host as
-                for the `host` parameter in the [`hsfs.connection()`](connection_api.md#connection) method.
+                for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
                 If set to False, the online feature store storage connector is used
                 which relies on the private IP. Defaults to True if connection to Hopsworks is established from
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
@@ -1046,7 +1046,7 @@ class TrainingDataset(TrainingDatasetBase):
                 serving application.
             external: boolean, optional. If set to True, the connection to the
                 online feature store is established using the same host as
-                for the `host` parameter in the [`hsfs.connection()`](connection_api.md#connection) method.
+                for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
                 If set to False, the online feature store storage connector is used
                 which relies on the private IP. Defaults to True if connection to Hopsworks is established from
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.

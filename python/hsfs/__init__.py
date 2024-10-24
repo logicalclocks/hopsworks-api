@@ -18,18 +18,18 @@ from __future__ import annotations
 import os
 import warnings
 
+from hopsworks_common import (
+    usage,
+    version,
+)
+from hopsworks_common.connection import (
+    Connection,
+)
+from hsfs import util
+
 
 # Setting polars skip cpu flag to suppress CPU false positive warning messages printed while importing hsfs
 os.environ["POLARS_SKIP_CPU_CHECK"] = "1"
-
-from hsfs import (  # noqa: E402,  Module level import not at top of file because os.environ must be set before importing hsfs
-    usage,
-    util,
-    version,
-)
-from hsfs.connection import (  # noqa: E402,  Module level import not at top of file because os.environ must be set before importing hsfs
-    Connection,
-)
 
 
 __version__ = version.__version__

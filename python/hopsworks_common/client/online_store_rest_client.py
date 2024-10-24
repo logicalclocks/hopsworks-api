@@ -305,7 +305,7 @@ class OnlineStoreRestClientSingleton:
         assert (
             client.get_instance() is not None and client.get_instance()._connected
         ), """Hopsworks Client is not connected. Please connect to Hopsworks cluster
-            via hopsworks.login or hsfs.connection before initialising the Online Store REST Client.
+            via hopsworks.login before initialising the Online Store REST Client.
             """
         _logger.debug("Hopsworks connection is active.")
 
