@@ -22,7 +22,7 @@ from typing import Any, Dict, Optional, Union
 
 import humps
 from hopsworks_common import usage
-from hsml import client, util
+from hsml import client, constants, util
 from hsml.constants import ARTIFACT_VERSION
 from hsml.constants import INFERENCE_ENDPOINTS as IE
 from hsml.core import explicit_provenance
@@ -140,13 +140,15 @@ class Model:
         )
 
     @usage.method_logger
-    def download(self):
+    def download(self, local_path=None):
         """Download the model files.
 
+        # Arguments
+            local_path: path where to download the model files in the local filesystem
         # Returns
             `str`: Absolute path to local folder containing the model files.
         """
-        return self._model_engine.download(model_instance=self)
+        return self._model_engine.download(model_instance=self, local_path=local_path)
 
     @usage.method_logger
     def delete(self):
@@ -544,6 +546,14 @@ class Model:
     def version_path(self):
         """path of the model including version folder. Resolves to /Projects/{project_name}/Models/{name}/{version}"""
         return "{}/{}".format(self.model_path, str(self.version))
+
+    @property
+    def model_files_path(self):
+        """path of the model files including version and files folder. Resolves to /Projects/{project_name}/Models/{name}/{version}/Files"""
+        return "{}/{}".format(
+            self.version_path,
+            constants.MODEL_REGISTRY.MODEL_FILES_DIR_NAME,
+        )
 
     @property
     def shared_registry_project_name(self):
