@@ -140,13 +140,15 @@ class Model:
         )
 
     @usage.method_logger
-    def download(self):
+    def download(self, local_path=None):
         """Download the model files.
 
+        # Arguments
+            local_path: path where to download the model files in the local filesystem
         # Returns
             `str`: Absolute path to local folder containing the model files.
         """
-        return self._model_engine.download(model_instance=self)
+        return self._model_engine.download(model_instance=self, local_path=local_path)
 
     @usage.method_logger
     def delete(self):

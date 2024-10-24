@@ -434,12 +434,13 @@ class ModelEngine:
 
         return model_instance
 
-    def download(self, model_instance):
-        model_name_path = os.path.join(
-            tempfile.gettempdir(), str(uuid.uuid4()), model_instance._name
-        )
-        model_version_path = model_name_path + "/" + str(model_instance._version)
-        os.makedirs(model_version_path)
+    def download(self, model_instance, local_path=None):
+        if local_path is None:
+            local_path = os.path.join(
+                tempfile.gettempdir(), str(uuid.uuid4()), model_instance._name
+            )
+            local_path = local_path + "/" + str(model_instance._version)
+        os.makedirs(local_path, exist_ok=True)
 
         def update_download_progress(n_dirs, n_files, done=False):
             print(
@@ -456,13 +457,13 @@ class ModelEngine:
 
             self._download_model_from_hopsfs(
                 from_hdfs_model_path=from_hdfs_model_path,
-                to_local_path=model_version_path,
+                to_local_path=local_path,
                 update_download_progress=update_download_progress,
             )
         except BaseException as be:
             raise be
 
-        return model_version_path
+        return local_path
 
     def read_file(self, model_instance, resource):
         hdfs_resource_path = self._build_resource_path(
