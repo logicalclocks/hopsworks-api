@@ -266,7 +266,9 @@ class TestModel:
         m.download()
 
         # Assert
-        mock_model_engine_download.assert_called_once_with(model_instance=m)
+        mock_model_engine_download.assert_called_once_with(
+            model_instance=m, local_path=None
+        )
 
     # tags
 
