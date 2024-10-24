@@ -62,8 +62,14 @@ jobs:
         python-version: ["3.8", "3.9", "3.10"]
 
     steps:
+      - name: Set up JDK 8
+        uses: actions/setup-java@v3
+        with:
+          java-version: "8"
+          distribution: "adopt"
+
       - name: Set Timezone
-        run: sudo timedatectl set-timezone UTC
+        run: sudo timedatectl set-timezone UTC && echo UTC | sudo tee /etc/timezone
 
       - uses: actions/checkout@v4
       - name: Copy README
@@ -89,8 +95,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Set up JDK 8
+        uses: actions/setup-java@v3
+        with:
+          java-version: "8"
+          distribution: "adopt"
+
       - name: Set Timezone
-        run: sudo timedatectl set-timezone UTC
+        run: sudo timedatectl set-timezone UTC && echo UTC | sudo tee /etc/timezone
 
       - uses: actions/checkout@v4
       - name: Copy README
@@ -113,8 +125,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Set up JDK 8
+        uses: actions/setup-java@v3
+        with:
+          java-version: "8"
+          distribution: "adopt"
+
       - name: Set Timezone
-        run: sudo timedatectl set-timezone UTC
+        run: sudo timedatectl set-timezone UTC && echo UTC | sudo tee /etc/timezone
 
       - uses: actions/checkout@v4
       - name: Copy README
@@ -140,8 +158,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Set up JDK 8
+        uses: actions/setup-java@v3
+        with:
+          java-version: "8"
+          distribution: "adopt"
+
       - name: Set Timezone
-        run: sudo timedatectl set-timezone Europe/Amsterdam
+        run: sudo timedatectl set-timezone Europe/Amsterdam && echo Europe/Amsterdam | sudo tee /etc/timezone
 
       - uses: actions/checkout@v4
       - name: Copy README

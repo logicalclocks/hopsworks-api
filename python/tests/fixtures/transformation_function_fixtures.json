@@ -9,7 +9,8 @@
         "name": "add_one_fs",
         "outputTypes":["double"],
         "transformationFeatures":["col1"],
-        "dropped_argument_names":["data1"]
+        "dropped_argument_names":["data1"],
+        "executionMode":"default"
       }
     }
   },
@@ -24,7 +25,8 @@
         "outputTypes":["double"],
         "transformationFeatures":["data"],
         "statisticsArgumentNames":["data1"],
-        "dropped_argument_names":["data1"]
+        "dropped_argument_names":["data1"],
+        "executionMode":"default"
       }
     }
   },
@@ -39,7 +41,8 @@
         "outputTypes":["string"],
         "transformationFeatures":["feature1", "feature2", "feature3"],
         "statisticsArgumentNames":["data1", "data2"],
-        "dropped_argument_names":["data1", "data2", "data3"]
+        "dropped_argument_names":["data1", "data2", "data3"],
+        "executionMode":"default"
       }
     }
   },
@@ -54,7 +57,8 @@
         "outputTypes":["string", "double"],
         "transformationFeatures":["feature1", "feature2", "feature3"],
         "statisticsArgumentNames":["data1", "data2"],
-        "dropped_argument_names":["data1", "data2", "data3"]
+        "dropped_argument_names":["data1", "data2", "data3"],
+        "executionMode":"default"
       }
     }
   },
@@ -72,7 +76,8 @@
             "outputTypes":["double"],
             "transformationFeatures":["data"],
             "statisticsArgumentNames":["data1"],
-            "dropped_argument_names":["data1"]
+            "dropped_argument_names":["data1"],
+            "executionMode":"default"
           }
         },
         {
@@ -84,7 +89,8 @@
             "name": "add_one_fs",
             "outputTypes":["double"],
             "transformationFeatures":["col1"],
-            "dropped_argument_names":["data1"]
+            "dropped_argument_names":["data1"],
+            "executionMode":"default"
           }
         }
       ]
@@ -104,7 +110,8 @@
             "outputTypes":["double"],
             "transformationFeatures":["data"],
             "statisticsArgumentNames":["data1"],
-            "dropped_argument_names":["data1"]
+            "dropped_argument_names":["data1"],
+            "executionMode":"default"
           }
         }
       ]

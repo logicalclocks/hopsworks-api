@@ -197,7 +197,7 @@ class Engine:
                 external_fg.query,
                 external_fg.data_format,
                 external_fg.options,
-                external_fg.prepare_spark_location(),
+                external_fg.storage_connector._get_path(external_fg.path), # cant rely on location since this method can be used before FG is saved
             )
         else:
             external_dataset = external_fg.dataframe
@@ -1382,7 +1382,13 @@ class Engine:
                     f"Features {missing_features} specified in the transformation function '{hopsworks_udf.function_name}' are not present in the feature view. Please specify the feature required correctly."
                 )
             if tf.hopsworks_udf.dropped_features:
-                dropped_features.update(tf.hopsworks_udf.dropped_features)
+                dropped_features.update(hopsworks_udf.dropped_features)
+
+            # Add to dropped features if the feature need to overwritten to avoid ambiguous columns.
+            if len(hopsworks_udf.return_types) == 1 and (
+                hopsworks_udf.function_name == hopsworks_udf.output_column_names[0]
+            ):
+                dropped_features.update(hopsworks_udf.output_column_names)
 
             pandas_udf = hopsworks_udf.get_udf()
             output_col_name = hopsworks_udf.output_column_names[0]
