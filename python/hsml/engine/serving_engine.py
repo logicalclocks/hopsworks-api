@@ -365,7 +365,7 @@ class ServingEngine:
         )
         update_download_progress(n_dirs=n_dirs, n_files=n_files, done=True)
 
-    def download_artifact_files(self, deployment_instance):
+    def download_artifact_files(self, deployment_instance, local_path=None):
         if deployment_instance.id is None:
             raise ModelServingException(
                 "Deployment is not created yet. To create the deployment use `.save()`"
@@ -377,15 +377,16 @@ class ServingEngine:
                  Download the model files by using `model.download()`"
             )
 
-        artifact_files_path = os.path.join(
-            tempfile.gettempdir(),
-            str(uuid.uuid4()),
-            deployment_instance.model_name,
-            str(deployment_instance.model_version),
-            constants.MODEL_SERVING.ARTIFACTS_DIR_NAME,
-            str(deployment_instance.artifact_version),
-        )
-        os.makedirs(artifact_files_path)
+        if local_path is None:
+            local_path = os.path.join(
+                tempfile.gettempdir(),
+                str(uuid.uuid4()),
+                deployment_instance.model_name,
+                str(deployment_instance.model_version),
+                constants.MODEL_SERVING.ARTIFACTS_DIR_NAME,
+                str(deployment_instance.artifact_version),
+            )
+        os.makedirs(local_path, exist_ok=True)
 
         def update_download_progress(n_dirs, n_files, done=False):
             print(
@@ -402,13 +403,13 @@ class ServingEngine:
 
             self._download_files_from_hopsfs(
                 from_hdfs_path=from_hdfs_path,
-                to_local_path=artifact_files_path,
+                to_local_path=local_path,
                 update_download_progress=update_download_progress,
             )
         except BaseException as be:
             raise be
 
-        return artifact_files_path
+        return local_path
 
     def create(self, deployment_instance):
         try:
