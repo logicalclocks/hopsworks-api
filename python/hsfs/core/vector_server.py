@@ -1323,6 +1323,15 @@ class VectorServer:
                 passed_feature_names = passed_feature_names.union(
                     vector_db_features.keys()
                 )
+            if self._on_demand_feature_names and len(self._on_demand_feature_names) > 0:
+                # Remove on-demand features from validation check as they would be computed.
+                _logger.debug(
+                    "_on_demand_feature_names for pre-fetch missing : %s",
+                    vector_db_features,
+                )
+                passed_feature_names = passed_feature_names.union(
+                    self._on_demand_feature_names
+                )
             neither_fetched_nor_passed = fetched_features.difference(
                 passed_feature_names
             )
