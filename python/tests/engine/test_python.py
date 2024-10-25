@@ -3410,6 +3410,88 @@ class TestPython:
         assert 2 in result
         assert 3 in result
 
+    def test_apply_transformation_function_missing_feature_on_demand_transformations(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "python"
+        python_engine = python.Engine()
+
+        @udf(int)
+        def add_one(col1):
+            return col1 + 1
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("id"), feature.Feature("tf_name")],
+            transformation_functions=[add_one("missing_col1")],
+            id=11,
+            stream=False,
+        )
+
+        df = pd.DataFrame(data={"tf_name": [1, 2]})
+
+        # Act
+        with pytest.raises(exceptions.FeatureStoreException) as exception:
+            python_engine._apply_transformation_function(
+                transformation_functions=fg.transformation_functions, dataset=df
+            )
+        print(str(exception.value))
+        assert (
+            str(exception.value)
+            == "The following feature(s): `missing_col1`, specified in the on-demand transformation function 'add_one' are not present in the dataframe being inserted into the feature group. "
+            "Please verify that the correct feature names are used in the transformation function and that these features exist in the dataframe being inserted."
+        )
+
+    def test_apply_transformation_function_missing_feature_model_dependent_transformations(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "python"
+        python_engine = python.Engine()
+
+        @udf(int)
+        def add_one(col1):
+            return col1 + 1
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("id"), feature.Feature("tf_name")],
+            id=11,
+            stream=False,
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg.select_all(),
+            featurestore_id=99,
+            transformation_functions=[add_one("missing_col1")],
+        )
+
+        df = pd.DataFrame(data={"tf_name": [1, 2]})
+
+        # Act
+        with pytest.raises(exceptions.FeatureStoreException) as exception:
+            python_engine._apply_transformation_function(
+                transformation_functions=fv.transformation_functions, dataset=df
+            )
+        print(str(exception.value))
+        assert (
+            str(exception.value)
+            == "The following feature(s): `missing_col1`, specified in the model-dependent transformation function 'add_one' are not present in the feature view. "
+            "Please verify that the correct features are specified in the transformation function."
+        )
+
     def test_materialization_kafka(self, mocker):
         # Arrange
         mocker.patch("hsfs.core.kafka_engine.get_kafka_config", return_value={})
