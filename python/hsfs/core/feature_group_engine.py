@@ -82,13 +82,18 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         )
 
         # Currently on-demand transformation functions not supported in external feature groups.
-        if (
-            not isinstance(feature_group, fg.ExternalFeatureGroup)
-            and feature_group.transformation_functions
-        ):
-            feature_dataframe = engine.get_instance()._apply_transformation_function(
-                feature_group.transformation_functions, feature_dataframe
-            )
+        if feature_group.transformation_functions:
+            if not isinstance(feature_group, fg.ExternalFeatureGroup):
+                feature_dataframe = (
+                    engine.get_instance()._apply_transformation_function(
+                        feature_group.transformation_functions, feature_dataframe
+                    )
+                )
+            else:
+                warnings.warn(
+                    "On-Demand features were not created because On-Demand Transformations are not supported for External Feature Groups.",
+                    stacklevel=1,
+                )
 
         util.validate_embedding_feature_type(
             feature_group.embedding_index, dataframe_features
