@@ -7,10 +7,9 @@ import numpy as np
 import pandas as pd
 
 from locust.runners import MasterRunner, LocalRunner
-import hsfs
 
-from hsfs import client
 from hsfs.client.exceptions import RestAPIError
+import hopsworks
 
 
 class HopsworksClient:
@@ -21,14 +20,14 @@ class HopsworksClient:
             environment.runner, (MasterRunner, LocalRunner)
         ):
             print(self.hopsworks_config)
-        self.connection = hsfs.connection(
+        self.project = hopsworks.login(
             project=self.hopsworks_config.get("project", "test"),
             host=self.hopsworks_config.get("host", "localhost"),
             port=self.hopsworks_config.get("port", 443),
             api_key_file=".api_key",
-            engine="python",
+            # engine="python",
         )
-        self.fs = self.connection.get_feature_store()
+        self.fs = self.project.get_feature_store(engine="python")
 
         # test settings
         self.external = self.hopsworks_config.get("external", False)
@@ -59,6 +58,8 @@ class HopsworksClient:
         return locust_fg
 
     def get_or_create_fv(self, fg=None):
+        if fg is None:
+            fg = self.get_or_create_fg()
         try:
             return self.fs.get_feature_view("locust_fv", version=1)
         except RestAPIError:
@@ -69,8 +70,8 @@ class HopsworksClient:
             )
 
     def close(self):
-        if client._client is not None:
-            self.connection.close()
+        if self.project is not None:
+            hopsworks.logout()
 
     def generate_insert_df(self, rows, schema_repetitions):
         data = {"ip": range(0, rows)}
