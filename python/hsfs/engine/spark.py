@@ -415,14 +415,6 @@ class Engine:
         validation_id=None,
     ):
         try:
-            # Currently on-demand transformation functions not supported in external feature groups.
-            if (
-                not isinstance(feature_group, fg_mod.ExternalFeatureGroup)
-                and feature_group.transformation_functions
-            ):
-                dataframe = self._apply_transformation_function(
-                    feature_group.transformation_functions, dataframe
-                )
             if (
                 isinstance(feature_group, fg_mod.ExternalFeatureGroup)
                 and feature_group.online_enabled
@@ -467,11 +459,6 @@ class Engine:
         checkpoint_dir: Optional[str],
         write_options: Optional[Dict[str, Any]],
     ):
-        if feature_group.transformation_functions:
-            dataframe = self._apply_transformation_function(
-                feature_group.transformation_functions, dataframe
-            )
-
         write_options = kafka_engine.get_kafka_config(
             feature_group.feature_store_id, write_options, engine="spark"
         )
@@ -1314,13 +1301,16 @@ class Engine:
 
         dataframe = self._spark_session.read.format("hudi").load(location)
 
-        if (new_features is not None):
+        if new_features is not None:
             if isinstance(new_features, list):
                 for new_feature in new_features:
-                    dataframe = dataframe.withColumn(new_feature.name, lit(None).cast(new_feature.type))
+                    dataframe = dataframe.withColumn(
+                        new_feature.name, lit(None).cast(new_feature.type)
+                    )
             else:
-                dataframe = dataframe.withColumn(new_features.name, lit(None).cast(new_features.type))
-
+                dataframe = dataframe.withColumn(
+                    new_features.name, lit(None).cast(new_features.type)
+                )
 
         self.save_dataframe(
             feature_group,
@@ -1337,18 +1327,22 @@ class Engine:
 
         dataframe = self._spark_session.read.format("delta").load(location)
 
-        if (new_features is not None):
+        if new_features is not None:
             if isinstance(new_features, list):
                 for new_feature in new_features:
-                    dataframe = dataframe.withColumn(new_feature.name, lit("").cast(new_feature.type))
+                    dataframe = dataframe.withColumn(
+                        new_feature.name, lit("").cast(new_feature.type)
+                    )
             else:
-                dataframe = dataframe.withColumn(new_features.name, lit("").cast(new_features.type))
+                dataframe = dataframe.withColumn(
+                    new_features.name, lit("").cast(new_features.type)
+                )
 
-        dataframe.limit(0).write.format("delta").mode(
-            "append"
-        ).option("mergeSchema", "true").option(
-            "spark.databricks.delta.schema.autoMerge.enabled", "true"
-        ).save(location)
+        dataframe.limit(0).write.format("delta").mode("append").option(
+            "mergeSchema", "true"
+        ).option("spark.databricks.delta.schema.autoMerge.enabled", "true").save(
+            location
+        )
 
     def _apply_transformation_function(
         self,
@@ -1378,9 +1372,19 @@ class Engine:
             )
 
             if missing_features:
-                raise FeatureStoreException(
-                    f"Features {missing_features} specified in the transformation function '{hopsworks_udf.function_name}' are not present in the feature view. Please specify the feature required correctly."
-                )
+                if (
+                    tf.transformation_type
+                    == transformation_function.TransformationType.ON_DEMAND
+                ):
+                    # On-demand transformation are applied using the python/spark engine during insertion, the transformation while retrieving feature vectors are performed in the vector_server.
+                    raise FeatureStoreException(
+                        f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the on-demand transformation function '{hopsworks_udf.function_name}' are not present in the dataframe being inserted into the feature group. "
+                        + "Please verify that the correct feature names are used in the transformation function and that these features exist in the dataframe being inserted."
+                    )
+                else:
+                    raise FeatureStoreException(
+                        f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the model-dependent transformation function '{hopsworks_udf.function_name}' are not present in the feature view. Please verify that the correct features are specified in the transformation function."
+                    )
             if tf.hopsworks_udf.dropped_features:
                 dropped_features.update(hopsworks_udf.dropped_features)
 
