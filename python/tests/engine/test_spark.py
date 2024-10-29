@@ -632,51 +632,6 @@ class TestSpark:
         assert mock_spark_engine_save_online_dataframe.call_count == 0
         assert mock_spark_engine_save_offline_dataframe.call_count == 1
 
-    def test_save_dataframe_transformations(self, mocker):
-        # Arrange
-        mock_spark_engine_save_online_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_online_dataframe"
-        )
-        mock_spark_engine_save_offline_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_offline_dataframe"
-        )
-        mock_spark_engine_apply_transformations = mocker.patch(
-            "hsfs.engine.spark.Engine._apply_transformation_function"
-        )
-
-        spark_engine = spark.Engine()
-
-        @udf(int)
-        def test(feature):
-            return feature + 1
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            id=10,
-            transformation_functions=[test],
-        )
-
-        # Act
-        spark_engine.save_dataframe(
-            feature_group=fg,
-            dataframe=None,
-            operation=None,
-            online_enabled=None,
-            storage=None,
-            offline_write_options=None,
-            online_write_options=None,
-            validation_id=None,
-        )
-
-        # Assert
-        assert mock_spark_engine_save_online_dataframe.call_count == 0
-        assert mock_spark_engine_save_offline_dataframe.call_count == 1
-        assert mock_spark_engine_apply_transformations.call_count == 1
-
     def test_save_dataframe_storage_offline(self, mocker):
         # Arrange
         mock_spark_engine_save_online_dataframe = mocker.patch(

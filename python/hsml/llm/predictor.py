@@ -1,5 +1,5 @@
 #
-#   Copyright 2022 Logical Clocks AB
+#   Copyright 2024 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -14,4 +14,15 @@
 #   limitations under the License.
 #
 
-__version__ = "4.2.0.dev1"
+from hsml.constants import MODEL, PREDICTOR
+from hsml.predictor import Predictor
+
+
+class Predictor(Predictor):
+    """Configuration for a predictor running with the vLLM backend"""
+
+    def __init__(self, **kwargs):
+        kwargs["model_framework"] = MODEL.FRAMEWORK_LLM
+        kwargs["model_server"] = PREDICTOR.MODEL_SERVER_VLLM
+
+        super().__init__(**kwargs)

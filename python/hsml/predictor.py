@@ -17,7 +17,7 @@ import json
 from typing import Optional, Union
 
 import humps
-from hsml import client, deployment, util
+from hsml import client, constants, deployment, util
 from hsml.constants import (
     ARTIFACT_VERSION,
     INFERENCE_ENDPOINTS,
@@ -167,18 +167,22 @@ class Predictor(DeployableComponent):
 
     @classmethod
     def _validate_script_file(cls, model_framework, script_file):
-        if model_framework == MODEL.FRAMEWORK_PYTHON and script_file is None:
+        if script_file is None and (
+            model_framework == MODEL.FRAMEWORK_PYTHON
+            or model_framework == MODEL.FRAMEWORK_LLM
+        ):
             raise ValueError(
-                "Predictor scripts are required in deployments for custom Python models"
+                "Predictor scripts are required in deployments for custom Python models and LLMs."
             )
 
     @classmethod
     def _infer_model_server(cls, model_framework):
-        return (
-            PREDICTOR.MODEL_SERVER_TF_SERVING
-            if model_framework == MODEL.FRAMEWORK_TENSORFLOW
-            else PREDICTOR.MODEL_SERVER_PYTHON
-        )
+        if model_framework == MODEL.FRAMEWORK_TENSORFLOW:
+            return PREDICTOR.MODEL_SERVER_TF_SERVING
+        elif model_framework == MODEL.FRAMEWORK_LLM:
+            return PREDICTOR.MODEL_SERVER_VLLM
+        else:
+            return PREDICTOR.MODEL_SERVER_PYTHON
 
     @classmethod
     def _get_default_serving_tool(cls):
@@ -392,8 +396,18 @@ class Predictor(DeployableComponent):
         self._artifact_version = artifact_version
 
     @property
+    def artifact_files_path(self):
+        return "{}/{}/{}/{}".format(
+            self._model_path,
+            str(self._model_version),
+            constants.MODEL_SERVING.ARTIFACTS_DIR_NAME,
+            str(self._artifact_version),
+        )
+
+    @property
     def artifact_path(self):
         """Path of the model artifact deployed by the predictor. Resolves to /Projects/{project_name}/Models/{name}/{version}/Artifacts/{artifact_version}/{name}_{version}_{artifact_version}.zip"""
+        # TODO: Deprecated
         artifact_name = "{}_{}_{}.zip".format(
             self._model_name, str(self._model_version), str(self._artifact_version)
         )

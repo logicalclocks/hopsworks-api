@@ -808,15 +808,6 @@ class Engine:
         online_write_options: Dict[str, Any],
         validation_id: Optional[int] = None,
     ) -> Optional[job.Job]:
-        # Currently on-demand transformation functions not supported in external feature groups.
-        if (
-            not isinstance(feature_group, ExternalFeatureGroup)
-            and feature_group.transformation_functions
-        ):
-            dataframe = self._apply_transformation_function(
-                feature_group.transformation_functions, dataframe
-            )
-
         if (
             hasattr(feature_group, "EXTERNAL_FEATURE_GROUP")
             and feature_group.online_enabled
@@ -1296,9 +1287,19 @@ class Engine:
                 dataset.columns
             )
             if missing_features:
-                raise FeatureStoreException(
-                    f"Features {missing_features} specified in the transformation function '{hopsworks_udf.function_name}' are not present in the feature view. Please specify the feature required correctly."
-                )
+                if (
+                    tf.transformation_type
+                    == transformation_function.TransformationType.ON_DEMAND
+                ):
+                    # On-demand transformation are applied using the python/spark engine during insertion, the transformation while retrieving feature vectors are performed in the vector_server.
+                    raise FeatureStoreException(
+                        f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the on-demand transformation function '{hopsworks_udf.function_name}' are not present in the dataframe being inserted into the feature group. "
+                        + "Please verify that the correct feature names are used in the transformation function and that these features exist in the dataframe being inserted."
+                    )
+                else:
+                    raise FeatureStoreException(
+                        f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the model-dependent transformation function '{hopsworks_udf.function_name}' are not present in the feature view. Please verify that the correct features are specified in the transformation function."
+                    )
             if tf.hopsworks_udf.dropped_features:
                 dropped_features.update(tf.hopsworks_udf.dropped_features)
 
@@ -1406,7 +1407,9 @@ class Engine:
                         for feature in hopsworks_udf.transformation_features
                     ]
                 )
-            )
+            ).set_index(
+                dataframe.index
+            )  # Index is set to the input dataframe index so that pandas would merge the new columns without reordering them.
         else:
             dataframe[hopsworks_udf.output_column_names[0]] = hopsworks_udf.get_udf(
                 online=False
@@ -1417,9 +1420,11 @@ class Engine:
                         for feature in hopsworks_udf.transformation_features
                     ]
                 )
-            )
+            ).set_axis(
+                dataframe.index
+            )  # Index is set to the input dataframe index so that pandas would merge the new column without reordering it.
             if hopsworks_udf.output_column_names[0] in dataframe.columns:
-                # Overwriting features so reordering dataframe to move overwritten column to the end of the dataframe
+                # Overwriting features also reordering dataframe to move overwritten column to the end of the dataframe
                 cols = dataframe.columns.tolist()
                 cols.append(cols.pop(cols.index(hopsworks_udf.output_column_names[0])))
                 dataframe = dataframe[cols]
@@ -1582,9 +1587,10 @@ class Engine:
     def _convert_feature_log_to_df(feature_log, cols) -> pd.DataFrame:
         if feature_log is None and cols:
             return pd.DataFrame(columns=cols)
-        if not (isinstance(feature_log, (list, pd.DataFrame, pl.DataFrame)) or (
-            HAS_NUMPY and isinstance(feature_log, np.ndarray)
-        )):
+        if not (
+            isinstance(feature_log, (list, pd.DataFrame, pl.DataFrame))
+            or (HAS_NUMPY and isinstance(feature_log, np.ndarray))
+        ):
             raise ValueError(f"Type '{type(feature_log)}' not accepted")
         if isinstance(feature_log, list) or (
             HAS_NUMPY and isinstance(feature_log, np.ndarray)

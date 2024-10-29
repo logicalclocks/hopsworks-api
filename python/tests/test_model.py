@@ -138,6 +138,19 @@ class TestModel:
         # Assert
         self.assert_model(mocker, m, json, MODEL.FRAMEWORK_TORCH)
 
+    def test_constructor_llm(self, mocker, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["model"]["get_llm"]["response"]["items"][0]
+        m_json = copy.deepcopy(json)
+        id = m_json.pop("id")
+        name = m_json.pop("name")
+
+        # Act
+        m = model.Model(id=id, name=name, **m_json)
+
+        # Assert
+        self.assert_model(mocker, m, json, MODEL.FRAMEWORK_LLM)
+
     # save
 
     def test_save(self, mocker, backend_fixtures):
@@ -253,7 +266,9 @@ class TestModel:
         m.download()
 
         # Assert
-        mock_model_engine_download.assert_called_once_with(model_instance=m)
+        mock_model_engine_download.assert_called_once_with(
+            model_instance=m, local_path=None
+        )
 
     # tags
 

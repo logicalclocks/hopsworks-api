@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import List
+from typing import List, Union
 
 from hsfs import engine, feature, util
 from hsfs import feature_group as fg
@@ -67,7 +67,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
     def save(
         self,
-        feature_group,
+        feature_group: Union[fg.FeatureGroup, fg.ExternalFeatureGroup],
         feature_dataframe,
         write_options,
         validation_options: dict = None,
@@ -80,6 +80,21 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_group=feature_group, features=dataframe_features
             )
         )
+
+        # Currently on-demand transformation functions not supported in external feature groups.
+        if feature_group.transformation_functions:
+            if not isinstance(feature_group, fg.ExternalFeatureGroup):
+                feature_dataframe = (
+                    engine.get_instance()._apply_transformation_function(
+                        feature_group.transformation_functions, feature_dataframe
+                    )
+                )
+            else:
+                warnings.warn(
+                    "On-Demand features were not created because On-Demand Transformations are not supported for External Feature Groups.",
+                    stacklevel=1,
+                )
+
         util.validate_embedding_feature_type(
             feature_group.embedding_index, dataframe_features
         )
@@ -119,7 +134,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
     def insert(
         self,
-        feature_group,
+        feature_group: Union[fg.FeatureGroup, fg.ExternalFeatureGroup],
         feature_dataframe,
         overwrite,
         operation,
@@ -132,6 +147,16 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group.time_travel_format,
             features=feature_group.features,
         )
+
+        # Currently on-demand transformation functions not supported in external feature groups.
+        if (
+            not isinstance(feature_group, fg.ExternalFeatureGroup)
+            and feature_group.transformation_functions
+        ):
+            feature_dataframe = engine.get_instance()._apply_transformation_function(
+                feature_group.transformation_functions, feature_dataframe
+            )
+
         dataframe_features = (
             self._update_feature_group_schema_on_demand_transformations(
                 feature_group=feature_group, features=dataframe_features
@@ -325,7 +350,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
     def insert_stream(
         self,
-        feature_group,
+        feature_group: Union[fg.FeatureGroup, fg.ExternalFeatureGroup],
         dataframe,
         query_name,
         output_mode,
@@ -348,6 +373,12 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_group=feature_group, features=dataframe_features
             )
         )
+
+        if feature_group.transformation_functions:
+            dataframe = engine.get_instance()._apply_transformation_function(
+                feature_group.transformation_functions, dataframe
+            )
+
         util.validate_embedding_feature_type(
             feature_group.embedding_index, dataframe_features
         )

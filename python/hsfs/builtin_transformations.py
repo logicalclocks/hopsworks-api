@@ -43,7 +43,7 @@ def robust_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Serie
     )
 
 
-@udf(int, drop=["feature"])
+@udf(int, drop=["feature"], mode="pandas")
 def label_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
     unique_data = sorted([value for value in statistics.feature.unique_values])
     value_to_index = {value: index for index, value in enumerate(unique_data)}
@@ -56,7 +56,7 @@ def label_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Serie
     )
 
 
-@udf(bool, drop=["feature"])
+@udf(bool, drop=["feature"], mode="pandas")
 def one_hot_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
     unique_data = [value for value in statistics.feature.unique_values]
 
