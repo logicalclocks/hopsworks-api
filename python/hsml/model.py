@@ -29,11 +29,11 @@ from hsml.core import explicit_provenance
 from hsml.engine import model_engine
 from hsml.inference_batcher import InferenceBatcher
 from hsml.inference_logger import InferenceLogger
+from hsml.model_schema import ModelSchema
 from hsml.predictor import Predictor
 from hsml.resources import PredictorResources
-from hsml.transformer import Transformer
-from hsml.model_schema import ModelSchema
 from hsml.schema import Schema
+from hsml.transformer import Transformer
 
 
 _logger = logging.getLogger(__name__)
@@ -97,17 +97,18 @@ class Model:
         self._model_engine = model_engine.ModelEngine()
         self._feature_view = feature_view
         self._training_dataset_version = training_dataset_version
-        if (    self._training_dataset is not None and
-                self._training_dataset._version != self._training_dataset_version):
+        if (
+            self._training_dataset is not None
+            and self._training_dataset._version != self._training_dataset_version
+        ):
             if self._training_dataset_version is not None:
                 warnings.warn(
-                    "Training dataset's version and the provided training_dataset_version do not match"+
-                    " - training dataset's version will be used",
+                    "Training dataset's version and the provided training_dataset_version do not match"
+                    + " - training dataset's version will be used",
                     util.ProvenanceWarning,
                     stacklevel=1,
                 )
             self._training_dataset_version = self._training_dataset._version
-
 
     @usage.method_logger
     def save(
@@ -145,20 +146,20 @@ class Model:
                     stacklevel=1,
                 )
         if self._model_schema is None:
-            if (self._feature_view is not None
-                and self._training_dataset_version is not None):
-                if self._training_dataset:
-                    all_features = self._training_dataset.schema
-                else:
-                    td_meta = self._feature_view._feature_view_engine._get_training_dataset_metadata(
-                        feature_view_obj = self._feature_view,
-                        training_dataset_version = self._training_dataset_version
-                    )
-                    all_features = td_meta.schema
+            if (
+                self._feature_view is not None
+                and self._training_dataset_version is not None
+            ):
+                all_features = self._feature_view.get_training_dataset_schema(
+                    self._training_dataset_version
+                )
                 features, labels = [], []
                 for feature in all_features:
                     (labels if feature.label else features).append(feature.to_dict())
-                self._model_schema = ModelSchema(input_schema = Schema(features), output_schema = Schema(labels))
+                self._model_schema = ModelSchema(
+                    input_schema=Schema(features) if features else None,
+                    output_schema=Schema(labels) if labels else None,
+                )
             else:
                 warnings.warn(
                     "Model schema cannot not be inferred without both the feature view and the training dataset version.",
@@ -382,6 +383,7 @@ class Model:
     @classmethod
     def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
+        print(json_decamelized)
         if "count" in json_decamelized:
             if json_decamelized["count"] == 0:
                 return []
