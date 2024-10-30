@@ -22,7 +22,7 @@ import sys
 import tempfile
 import warnings
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, Union
 
 from hopsworks import client, constants, project, version
 from hopsworks.client.exceptions import (
@@ -84,7 +84,7 @@ def login(
     api_key_file: str = None,
     hostname_verification: bool = False,
     trust_store_path: str = None,
-    engine: Optional[Literal["spark"], Literal["python"], Literal["training"]] = None,
+    engine: Union[None, Literal["spark"], Literal["python"], Literal["training"]] = None,
 ) -> project.Project:
     """Connect to [Serverless Hopsworks](https://app.hopsworks.ai) by calling the `hopsworks.login()` function with no arguments.
 
