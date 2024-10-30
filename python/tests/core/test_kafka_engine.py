@@ -340,7 +340,7 @@ class TestKafkaEngine:
         )
 
         # Assert
-        assert result == f" -initialCheckPointString {topic_name},0:11"
+        assert result == f"{topic_name},0:11"
 
     def test_kafka_get_offsets_low(self, mocker):
         # Arrange
@@ -372,7 +372,7 @@ class TestKafkaEngine:
         )
 
         # Assert
-        assert result == f" -initialCheckPointString {topic_name},0:0"
+        assert result == f"{topic_name},0:0"
 
     def test_kafka_get_offsets_no_topic(self, mocker):
         # Arrange
