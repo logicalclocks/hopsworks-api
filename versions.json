@@ -8,11 +8,16 @@
     ]
   },
   {
-    "version": "4.0.0-RC0",
-    "title": "4.0.0-RC0",
+    "version": "4.0.0-RC1",
+    "title": "4.0.0-RC1",
     "aliases": [
       "4.0"
     ]
+  },
+  {
+    "version": "4.0.0-RC0",
+    "title": "4.0.0-RC0",
+    "aliases": []
   },
   {
     "version": "3.9.0-RC0",
