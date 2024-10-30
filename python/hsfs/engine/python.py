@@ -808,15 +808,6 @@ class Engine:
         online_write_options: Dict[str, Any],
         validation_id: Optional[int] = None,
     ) -> Optional[job.Job]:
-        # Currently on-demand transformation functions not supported in external feature groups.
-        if (
-            not isinstance(feature_group, ExternalFeatureGroup)
-            and feature_group.transformation_functions
-        ):
-            dataframe = self._apply_transformation_function(
-                feature_group.transformation_functions, dataframe
-            )
-
         if (
             hasattr(feature_group, "EXTERNAL_FEATURE_GROUP")
             and feature_group.online_enabled
@@ -1212,13 +1203,11 @@ class Engine:
             "Stream ingestion is not available on Python environments, because it requires Spark as engine."
         )
 
-    def save_empty_dataframe(
-        self,
-        feature_group: Union[FeatureGroup, ExternalFeatureGroup],
-        new_features=None,
-    ) -> None:
-        """Wrapper around save_dataframe in order to provide no-op."""
-        pass
+    def update_table_schema(self, feature_group: Union[FeatureGroup, ExternalFeatureGroup]) -> None:
+        _job = self._feature_group_api.update_table_schema(feature_group)
+        _job._wait_for_job(
+            await_termination=True
+        )
 
     def _get_app_options(
         self, user_write_options: Optional[Dict[str, Any]] = None
@@ -1298,9 +1287,19 @@ class Engine:
                 dataset.columns
             )
             if missing_features:
-                raise FeatureStoreException(
-                    f"Features {missing_features} specified in the transformation function '{hopsworks_udf.function_name}' are not present in the feature view. Please specify the feature required correctly."
-                )
+                if (
+                    tf.transformation_type
+                    == transformation_function.TransformationType.ON_DEMAND
+                ):
+                    # On-demand transformation are applied using the python/spark engine during insertion, the transformation while retrieving feature vectors are performed in the vector_server.
+                    raise FeatureStoreException(
+                        f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the on-demand transformation function '{hopsworks_udf.function_name}' are not present in the dataframe being inserted into the feature group. "
+                        + "Please verify that the correct feature names are used in the transformation function and that these features exist in the dataframe being inserted."
+                    )
+                else:
+                    raise FeatureStoreException(
+                        f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the model-dependent transformation function '{hopsworks_udf.function_name}' are not present in the feature view. Please verify that the correct features are specified in the transformation function."
+                    )
             if tf.hopsworks_udf.dropped_features:
                 dropped_features.update(tf.hopsworks_udf.dropped_features)
 
@@ -1516,7 +1515,7 @@ class Engine:
             now = datetime.now(timezone.utc)
             feature_group.materialization_job.run(
                 args=feature_group.materialization_job.config.get("defaultArgs", "")
-                + initial_check_point,
+                + (f" -initialCheckPointString {initial_check_point}" if initial_check_point else ""),
                 await_termination=offline_write_options.get("wait_for_job", False),
             )
             offline_backfill_every_hr = offline_write_options.pop(
@@ -1546,7 +1545,7 @@ class Engine:
             # provide the initial_check_point as it will reduce the read amplification of materialization job
             feature_group.materialization_job.run(
                 args=feature_group.materialization_job.config.get("defaultArgs", "")
-                + initial_check_point,
+                + (f" -initialCheckPointString {initial_check_point}" if initial_check_point else ""),
                 await_termination=offline_write_options.get("wait_for_job", False),
             )
         return feature_group.materialization_job

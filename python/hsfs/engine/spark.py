@@ -35,6 +35,7 @@ import pandas as pd
 import tzlocal
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_PANDAS
 from hsfs.constructor import query
+from hsfs.core import feature_group_api
 
 # in case importing in %%local
 from hsfs.core.vector_db_client import VectorDbClient
@@ -221,8 +222,8 @@ class Engine:
             read_options,
         )
 
-        hudi_engine_instance.reconcile_hudi_schema(
-            self.save_empty_dataframe, hudi_fg_alias, read_options
+        self.reconcile_schema(
+            hudi_fg_alias, read_options, hudi_engine_instance
         )
 
     def register_delta_temporary_table(
@@ -240,6 +241,30 @@ class Engine:
             delta_fg_alias,
             read_options,
         )
+
+        self.reconcile_schema(
+            delta_fg_alias, read_options, delta_engine_instance
+        )
+
+    def reconcile_schema(
+        self, fg_alias, read_options, engine_instance
+    ):
+        if sorted(self._spark_session.table(fg_alias.alias).columns) != sorted(
+            [feature.name for feature in fg_alias.feature_group._features] +
+            hudi_engine.HudiEngine.HUDI_SPEC_FEATURE_NAMES if fg_alias.feature_group.time_travel_format == "HUDI" else []
+        ):
+            full_fg = feature_group_api.FeatureGroupApi().get(
+                feature_store_id=fg_alias.feature_group._feature_store_id,
+                name=fg_alias.feature_group.name,
+                version=fg_alias.feature_group.version,
+            )
+
+            self.update_table_schema(full_fg)
+
+            engine_instance.register_temporary_table(
+                fg_alias,
+                read_options,
+            )
 
     def _return_dataframe_type(self, dataframe, dataframe_type):
         if dataframe_type.lower() in ["default", "spark"]:
@@ -415,14 +440,6 @@ class Engine:
         validation_id=None,
     ):
         try:
-            # Currently on-demand transformation functions not supported in external feature groups.
-            if (
-                not isinstance(feature_group, fg_mod.ExternalFeatureGroup)
-                and feature_group.transformation_functions
-            ):
-                dataframe = self._apply_transformation_function(
-                    feature_group.transformation_functions, dataframe
-                )
             if (
                 isinstance(feature_group, fg_mod.ExternalFeatureGroup)
                 and feature_group.online_enabled
@@ -467,17 +484,10 @@ class Engine:
         checkpoint_dir: Optional[str],
         write_options: Optional[Dict[str, Any]],
     ):
-        if feature_group.transformation_functions:
-            dataframe = self._apply_transformation_function(
-                feature_group.transformation_functions, dataframe
-            )
-
         write_options = kafka_engine.get_kafka_config(
             feature_group.feature_store_id, write_options, engine="spark"
         )
-        serialized_df = self._online_fg_to_avro(
-            feature_group, self._encode_complex_features(feature_group, dataframe)
-        )
+        serialized_df = self._serialize_to_avro(feature_group, dataframe)
 
         project_id = str(feature_group.feature_store.project_id)
         feature_group_id = str(feature_group._id)
@@ -570,9 +580,7 @@ class Engine:
             feature_group.feature_store_id, write_options, engine="spark"
         )
 
-        serialized_df = self._online_fg_to_avro(
-            feature_group, self._encode_complex_features(feature_group, dataframe)
-        )
+        serialized_df = self._serialize_to_avro(feature_group, dataframe)
 
         project_id = str(feature_group.feature_store.project_id).encode("utf8")
         feature_group_id = str(feature_group._id).encode("utf8")
@@ -592,13 +600,13 @@ class Engine:
             "topic", feature_group._online_topic_name
         ).save()
 
-    def _encode_complex_features(
+    def _serialize_to_avro(
         self,
         feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
         dataframe: Union[RDD, DataFrame],
     ):
         """Encodes all complex type features to binary using their avro type as schema."""
-        return dataframe.select(
+        encoded_dataframe = dataframe.select(
             [
                 field["name"]
                 if field["name"] not in feature_group.get_complex_features()
@@ -609,15 +617,10 @@ class Engine:
             ]
         )
 
-    def _online_fg_to_avro(
-        self,
-        feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
-        dataframe: Union[DataFrame, RDD],
-    ):
         """Packs all features into named struct to be serialized to single avro/binary
         column. And packs primary key into arry to be serialized for partitioning.
         """
-        return dataframe.select(
+        return encoded_dataframe.select(
             [
                 # be aware: primary_key array should always be sorted
                 to_avro(
@@ -639,6 +642,30 @@ class Engine:
                 ).alias("value"),
             ]
         )
+
+    def _deserialize_from_avro(
+            self,
+            feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
+            dataframe: Union[RDD, DataFrame],
+        ):
+            """
+            Deserializes 'value' column from binary using avro schema and unpacks it into columns.
+            """
+            decoded_dataframe = dataframe.select(
+                from_avro("value", feature_group._get_encoded_avro_schema()).alias("value")
+            ).select(col("value.*"))
+
+            """Decodes all complex type features from binary using their avro type as schema."""
+            return decoded_dataframe.select(
+                [
+                    field["name"]
+                    if field["name"] not in feature_group.get_complex_features()
+                    else from_avro(
+                        field["name"], feature_group._get_feature_avro_schema(field["name"])
+                    ).alias(field["name"])
+                    for field in json.loads(feature_group.avro_schema)["fields"]
+                ]
+            )
 
     def get_training_data(
         self,
@@ -1309,18 +1336,20 @@ class Engine:
             return True
         return False
 
-    def save_empty_dataframe(self, feature_group, new_features=None):
+    def update_table_schema(self, feature_group):
+        if feature_group.time_travel_format == "DELTA":
+            self._add_cols_to_delta_table(feature_group)
+        else:
+            self._save_empty_dataframe(feature_group)
+
+    def _save_empty_dataframe(self, feature_group):
         location = feature_group.prepare_spark_location()
 
         dataframe = self._spark_session.read.format("hudi").load(location)
 
-        if (new_features is not None):
-            if isinstance(new_features, list):
-                for new_feature in new_features:
-                    dataframe = dataframe.withColumn(new_feature.name, lit(None).cast(new_feature.type))
-            else:
-                dataframe = dataframe.withColumn(new_features.name, lit(None).cast(new_features.type))
-
+        for _feature in feature_group.features:
+            if _feature.name not in dataframe.columns:
+                dataframe = dataframe.withColumn(_feature.name, lit(None).cast(_feature.type))
 
         self.save_dataframe(
             feature_group,
@@ -1332,23 +1361,20 @@ class Engine:
             {},
         )
 
-    def add_cols_to_delta_table(self, feature_group, new_features):
+    def _add_cols_to_delta_table(self, feature_group):
         location = feature_group.prepare_spark_location()
 
         dataframe = self._spark_session.read.format("delta").load(location)
 
-        if (new_features is not None):
-            if isinstance(new_features, list):
-                for new_feature in new_features:
-                    dataframe = dataframe.withColumn(new_feature.name, lit("").cast(new_feature.type))
-            else:
-                dataframe = dataframe.withColumn(new_features.name, lit("").cast(new_features.type))
+        for _feature in feature_group.features:
+            if _feature.name not in dataframe.columns:
+                dataframe = dataframe.withColumn(_feature.name, lit(None).cast(_feature.type))
 
-        dataframe.limit(0).write.format("delta").mode(
-            "append"
-        ).option("mergeSchema", "true").option(
-            "spark.databricks.delta.schema.autoMerge.enabled", "true"
-        ).save(location)
+        dataframe.limit(0).write.format("delta").mode("append").option(
+            "mergeSchema", "true"
+        ).option("spark.databricks.delta.schema.autoMerge.enabled", "true").save(
+            location
+        )
 
     def _apply_transformation_function(
         self,
@@ -1378,9 +1404,19 @@ class Engine:
             )
 
             if missing_features:
-                raise FeatureStoreException(
-                    f"Features {missing_features} specified in the transformation function '{hopsworks_udf.function_name}' are not present in the feature view. Please specify the feature required correctly."
-                )
+                if (
+                    tf.transformation_type
+                    == transformation_function.TransformationType.ON_DEMAND
+                ):
+                    # On-demand transformation are applied using the python/spark engine during insertion, the transformation while retrieving feature vectors are performed in the vector_server.
+                    raise FeatureStoreException(
+                        f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the on-demand transformation function '{hopsworks_udf.function_name}' are not present in the dataframe being inserted into the feature group. "
+                        + "Please verify that the correct feature names are used in the transformation function and that these features exist in the dataframe being inserted."
+                    )
+                else:
+                    raise FeatureStoreException(
+                        f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the model-dependent transformation function '{hopsworks_udf.function_name}' are not present in the feature view. Please verify that the correct features are specified in the transformation function."
+                    )
             if tf.hopsworks_udf.dropped_features:
                 dropped_features.update(hopsworks_udf.dropped_features)
 
