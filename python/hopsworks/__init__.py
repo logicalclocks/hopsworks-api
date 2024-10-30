@@ -126,7 +126,7 @@ def login(
         trust_store_path: Path on the file system containing the Hopsworks certificates
         engine: Which engine to use, `"spark"`, `"python"` or `"training"`. Defaults to `None`,
             which initializes the engine to Spark if the environment provides Spark, for
-            example on Hopsworks and Databricks, or falls back on Hive in Python if Spark is not
+            example on Hopsworks and Databricks, or falls back to Python if Spark is not
             available, e.g. on local Python environments or AWS SageMaker. This option
             allows you to override this behaviour. `"training"` engine is useful when only
             feature store metadata is needed, for example training dataset location and label
