@@ -151,7 +151,6 @@ class Connection:
     def get_feature_store(
         self,
         name: Optional[str] = None,
-        engine: Optional[str] = None,
     ):  # -> feature_store.FeatureStore
         # the typing is commented out due to circular dependency, it breaks auto_doc.py
         """Get a reference to a feature store to perform operations on.
@@ -161,13 +160,6 @@ class Connection:
 
         # Arguments
             name: The name of the feature store, defaults to `None`.
-            engine: Which engine to use, `"spark"`, `"python"` or `"training"`. Defaults to `None`,
-            which initializes the engine to Spark if the environment provides Spark, for
-            example on Hopsworks and Databricks, or falls back to Python if Spark is not
-            available, e.g. on local Python environments or AWS SageMaker. This option
-            allows you to override this behaviour. `"training"` engine is useful when only
-            feature store metadata is needed, for example training dataset location and label
-            information when Hopsworks training experiment is conducted.
 
         # Returns
             `FeatureStore`. A feature store handle object to perform operations on.
@@ -175,9 +167,6 @@ class Connection:
         # Ensure the engine is initialized and of right type
         from hsfs import engine as hsfs_engine
 
-        if engine:
-            global _hsfs_engine_type
-            _hsfs_engine_type = engine
         hsfs_engine.get_instance()
 
         if not name:
