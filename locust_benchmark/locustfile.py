@@ -3,7 +3,7 @@ import random
 from common.hopsworks_client import HopsworksClient
 from common.stop_watch import stopwatch
 from locust import HttpUser, User, task, constant, events
-from locust.runners import MasterRunner, LocalRunner
+from locust.runners import MasterRunner
 from urllib3 import PoolManager
 import nest_asyncio
 
@@ -11,12 +11,8 @@ import nest_asyncio
 @events.init.add_listener
 def on_locust_init(environment, **kwargs):
     print("Locust process init")
-
-    if isinstance(environment.runner, (MasterRunner, LocalRunner)):
-        # create feature view
-        environment.hopsworks_client = HopsworksClient(environment)
-        fg = environment.hopsworks_client.get_or_create_fg()
-        environment.hopsworks_client.get_or_create_fv(fg)
+    environment.hopsworks_client = HopsworksClient(environment)
+    environment.hopsworks_client.get_or_create_fg()
 
 
 @events.quitting.add_listener
@@ -66,10 +62,9 @@ class MySQLFeatureVectorLookup(User):
 
     def __init__(self, environment):
         super().__init__(environment)
-        self.client = self.environment.hopsworks_client
+        self.client = environment.hopsworks_client
 
     def on_start(self):
-        print("Init user")
         self.fv = self.client.get_or_create_fv()
         self.fv.init_serving(external=self.client.external)
         nest_asyncio.apply()
