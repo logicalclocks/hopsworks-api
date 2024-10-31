@@ -6,5 +6,5 @@
 
     <groupId>com.logicalclocks</groupId>
     <artifactId>hopsworks</artifactId>
-    <version>3.9.0-RC0</version>
+    <version>3.9.0-RC3</version>
 </project>
