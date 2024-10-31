@@ -56,7 +56,6 @@ class Model:
         program=None,
         user_full_name=None,
         model_schema=None,
-        training_dataset=None,
         input_example=None,
         framework=None,
         model_registry_id=None,
@@ -86,7 +85,6 @@ class Model:
         self._input_example = input_example
         self._framework = framework
         self._model_schema = model_schema
-        self._training_dataset = training_dataset
 
         # This is needed for update_from_response_json function to not overwrite name of the shared registry this model originates from
         if not hasattr(self, "_shared_registry_project_name"):
@@ -97,18 +95,6 @@ class Model:
         self._model_engine = model_engine.ModelEngine()
         self._feature_view = feature_view
         self._training_dataset_version = training_dataset_version
-        if (
-            self._training_dataset is not None
-            and self._training_dataset._version != self._training_dataset_version
-        ):
-            if self._training_dataset_version is not None:
-                warnings.warn(
-                    "Training dataset's version and the provided training_dataset_version do not match"
-                    + " - training dataset's version will be used",
-                    util.ProvenanceWarning,
-                    stacklevel=1,
-                )
-            self._training_dataset_version = self._training_dataset._version
 
     @usage.method_logger
     def save(
@@ -383,7 +369,6 @@ class Model:
     @classmethod
     def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
-        print(json_decamelized)
         if "count" in json_decamelized:
             if json_decamelized["count"] == 0:
                 return []
@@ -412,7 +397,6 @@ class Model:
             "inputExample": self._input_example,
             "framework": self._framework,
             "metrics": self._training_metrics,
-            "trainingDataset": self._training_dataset,
             "environment": self._environment,
             "program": self._program,
             "featureView": util.feature_view_to_json(self._feature_view),
@@ -546,15 +530,6 @@ class Model:
     @model_schema.setter
     def model_schema(self, model_schema):
         self._model_schema = model_schema
-
-    @property
-    def training_dataset(self):
-        """training_dataset of the model."""
-        return self._training_dataset
-
-    @training_dataset.setter
-    def training_dataset(self, training_dataset):
-        self._training_dataset = training_dataset
 
     @property
     def project_name(self):
