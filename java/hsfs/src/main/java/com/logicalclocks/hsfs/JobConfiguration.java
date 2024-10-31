@@ -69,4 +69,8 @@ public class JobConfiguration {
   @Getter
   @Setter
   private String environmentName;
+
+  @Getter
+  @Setter
+  private int yarnMaxAppAttempts;
 }

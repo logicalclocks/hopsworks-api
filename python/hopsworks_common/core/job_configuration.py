@@ -35,6 +35,7 @@ class JobConfiguration:
         dynamic_min_executors=1,
         dynamic_max_executors=2,
         environment_name="spark-feature-pipeline",
+        yarn_max_app_attempts=1,
         **kwargs,
     ):
         self._driver_memory = driver_memory
@@ -46,6 +47,7 @@ class JobConfiguration:
         self._dynamic_min_executors = dynamic_min_executors
         self._dynamic_max_executors = dynamic_max_executors
         self._environment_name = environment_name
+        self._yarn_max_app_attempts = yarn_max_app_attempts
 
     def to_dict(self):
         return {
@@ -58,6 +60,7 @@ class JobConfiguration:
             "spark.dynamicAllocation.minExecutors": self._dynamic_min_executors,
             "spark.dynamicAllocation.maxExecutors": self._dynamic_max_executors,
             "environmentName": self._environment_name,
+            "spark.yarn.maxAppAttempts": self._yarn_max_app_attempts,
             "type": JobConfiguration.DTO_TYPE,
         }
 
