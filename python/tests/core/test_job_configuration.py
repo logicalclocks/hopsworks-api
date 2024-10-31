@@ -37,6 +37,7 @@ class TestJobConfiguration:
             "spark.dynamicAllocation.minExecutors": 1,
             "spark.dynamicAllocation.maxExecutors": 2,
             "environmentName": "spark-feature-pipeline",
+            "spark.yarn.maxAppAttempts": 1,
             "type": job_configuration.JobConfiguration.DTO_TYPE,
         }
         assert expected_dict == result_dict
