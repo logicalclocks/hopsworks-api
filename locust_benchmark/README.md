@@ -87,6 +87,7 @@ echo "[YOUR KEY]" > .api_key
 - `schema_repetitions`: This controls the number of features for the lookup. One schema repetition will result in 10 features plus primary key. Five repetitions will result in 50 features plus primary key.
 - `recreate_feature_group`: This controls if the previous feature group should be dropped and recreated. Set this to true when rerunning the benchmark with different size of rows or schema repetitions.
 - `batch_size`: This is relevant for the actual benchmark and controls how many feature vectors are looked up in the batch benchmark.
+- `tablespace`: (Optional) If set creates a feature group using on-disk data.
 
 3. Create the feature group
 

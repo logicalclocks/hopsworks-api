@@ -1,0 +1,8 @@
+[
+    {
+        "name": "hopsworks/locust-hsfs",
+        "version": "env:VERSION",
+        "dockerFile": "locust_benchmark/Dockerfile",
+        "canUseCache": "true"
+    }
+]
