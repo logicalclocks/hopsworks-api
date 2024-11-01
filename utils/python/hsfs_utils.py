@@ -312,7 +312,7 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
 
     # insert data
     entity.stream = False # to make sure we dont write to kafka
-    entity.insert(deserialized_df)
+    entity.insert(deserialized_df, storage="offline")
 
     # update offsets
     df_offsets = df.groupBy('partition').agg(max('offset').alias('offset')).collect()
