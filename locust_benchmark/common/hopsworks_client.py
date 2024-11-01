@@ -38,6 +38,7 @@ class HopsworksClient:
             "recreate_feature_group", False
         )
         self.batch_size = self.hopsworks_config.get("batch_size", 100)
+        self.tablespace = self.hopsworks_config.get("tablespace", None)
 
     def get_or_create_fg(self):
         locust_fg = self.fs.get_or_create_feature_group(
@@ -46,6 +47,7 @@ class HopsworksClient:
             primary_key=["ip"],
             online_enabled=True,
             stream=True,
+            online_config={'table_space': self.tablespace} if self.tablespace else None
         )
         return locust_fg
 
