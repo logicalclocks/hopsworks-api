@@ -17,6 +17,7 @@ nav:
   - Setup and Installation: https://docs.hopsworks.ai/
   - Administration: https://docs.hopsworks.ai/
   - API<div class="dropdown"><button class="dropbtn"> API </button> <div id="myDropdown" class="dropdown-content"> <a id="hopsworks_api_link" href="https://docs.hopsworks.ai/hopsworks-api/latest">Python API</a> <a id="hsfs_javadoc_link" href="https://docs.hopsworks.ai/hopsworks-api/latest/javadoc">Feature Store JavaDoc</a> </div></div>:
+    - Login: generated/api/login.md
     - Platform API:
       - Connection: generated/api/connection.md
       - Datasets: generated/api/datasets.md
@@ -29,7 +30,6 @@ nav:
       - Jobs: generated/api/jobs.md
       - KafkaSchema: generated/api/kafka_schema.md
       - KafkaTopic: generated/api/kafka_topic.md
-      - Login: generated/api/login.md
       - OpenSearch: generated/api/opensearch.md
       - Projects: generated/api/projects.md
       - Secrets: generated/api/secrets.md
