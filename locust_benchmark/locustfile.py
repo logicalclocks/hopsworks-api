@@ -3,7 +3,7 @@ import random
 from common.hopsworks_client import HopsworksClient
 from common.stop_watch import stopwatch
 from locust import HttpUser, User, task, constant, events
-from locust.runners import MasterRunner, LocalRunner
+from locust.runners import MasterRunner
 from urllib3 import PoolManager
 import nest_asyncio
 
@@ -11,12 +11,8 @@ import nest_asyncio
 @events.init.add_listener
 def on_locust_init(environment, **kwargs):
     print("Locust process init")
-
-    if isinstance(environment.runner, (MasterRunner, LocalRunner)):
-        # create feature view
-        environment.hopsworks_client = HopsworksClient(environment)
-        fg = environment.hopsworks_client.get_or_create_fg()
-        environment.hopsworks_client.get_or_create_fv(fg)
+    environment.hopsworks_client = HopsworksClient(environment)
+    environment.hopsworks_client.get_or_create_fg()
 
 
 @events.quitting.add_listener
@@ -61,27 +57,21 @@ class RESTFeatureVectorLookup(HttpUser):
 
 
 class MySQLFeatureVectorLookup(User):
-    wait_time = constant(0)
-    weight = 5
-    # fixed_count = 1
+    wait_time = constant(0.001)
+    weight = 2
 
     def __init__(self, environment):
         super().__init__(environment)
-        self.env = environment
-        self.client = HopsworksClient(environment)
-        self.fv = self.client.get_or_create_fv()
+        self.client = environment.hopsworks_client
 
     def on_start(self):
-        print("Init user")
+        self.fv = self.client.get_or_create_fv()
         self.fv.init_serving(external=self.client.external)
         nest_asyncio.apply()
 
-    def on_stop(self):
-        print("Closing user")
-
     @task
     def get_feature_vector(self):
-        self._get_feature_vector({"ip": random.randint(0, self.client.rows - 1)})
+        return self._get_feature_vector({"ip": random.randint(0, self.client.rows - 1)})
 
     @stopwatch
     def _get_feature_vector(self, pk):
@@ -89,14 +79,12 @@ class MySQLFeatureVectorLookup(User):
 
 
 class MySQLFeatureVectorBatchLookup(User):
-    wait_time = constant(0)
+    wait_time = constant(0.001)
     weight = 1
-    # fixed_count = 1
 
     def __init__(self, environment):
         super().__init__(environment)
-        self.env = environment
-        self.client = HopsworksClient(environment)
+        self.client = environment.hopsworks_client
         self.fv = self.client.get_or_create_fv()
 
     def on_start(self):
@@ -104,16 +92,13 @@ class MySQLFeatureVectorBatchLookup(User):
         self.fv.init_serving(external=self.client.external)
         nest_asyncio.apply()
 
-    def on_stop(self):
-        print("Closing user")
-
     @task
     def get_feature_vector_batch(self):
         pks = [
             {"ip": random.randint(0, self.client.rows - 1)}
             for i in range(self.client.batch_size)
         ]
-        self._get_feature_vectors(pks)
+        return self._get_feature_vectors(pks)
 
     @stopwatch
     def _get_feature_vectors(self, pk):
