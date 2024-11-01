@@ -24,6 +24,7 @@ class HopsworksClient:
             host=self.hopsworks_config.get("host", "localhost"),
             port=self.hopsworks_config.get("port", 443),
             api_key_file=".api_key",
+            engine="python",
         )
         self.fs = self.project.get_feature_store()
 
