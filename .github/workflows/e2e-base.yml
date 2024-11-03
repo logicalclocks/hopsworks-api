@@ -6,7 +6,7 @@ jobs:
     e2e_quick:
         runs-on: ghrunner-loadtest-4.0
         env:
-            CONDA_PATH: /home/runner/_prep/anaconda/envs/workflows/bin
+            CONDA_ENV_PATH: /home/runner/_prep/anaconda/envs/workflows/bin
         steps:
             - name: Checkout hopsworks-api SDK
               uses: actions/checkout@v4
