@@ -44,6 +44,7 @@ jobs:
                 HELPERS_PATH=${{github.workspace}}/loadtest/tests
                 export PYTHONPATH=$HELPERS_PATH:$PYTHONPATH
                 echo "Setting up project"
+                echo "HOPSWORKS_DOMAIN=$HOPSWORKS_DOMAIN"
                 $CONDA_ENV_PATH/python tests/setup_project.py
 
             - name: Runs only e2e tests suite for commit ${{ env.GITHUB_SHORT_SHA }}
