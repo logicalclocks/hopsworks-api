@@ -4,7 +4,7 @@ on: pull_request
 
 jobs:
     e2e_quick:
-        runs-on: ghrunner-hopsworks-api-vatj
+        runs-on: ghrunner-loadtest-4.0
         env:
             CONDA_PATH: /home/runner/_prep/anaconda/envs/workflows/bin
         steps:
@@ -36,7 +36,7 @@ jobs:
 
             - name: Setup project
               env:
-                HOPSWORKS_DOMAIN: stagingv4.devnet.hops.works
+                HOPSWORKS_DOMAIN: stagingv40.devnet.hops.works
                 HOPSWORKS_PORT: 443
                 FIXTURES_PATH: /tmp/fixtures.json
               run: |
@@ -51,9 +51,9 @@ jobs:
                 MARKER: python_quick_e2e
                 FIXTURES_PATH: /tmp/fixtures.json
                 USE_LOADTEST_API_KEY_FIXTURE: true
-                HOPSWORKS_DOMAIN: stagingv4.devnet.hops.works
+                HOPSWORKS_DOMAIN: stagingv40.devnet.hops.works
                 HOPSWORKS_PORT: 443
-                PARALLEL_TESTS: 5
+                PARALLEL_TESTS: 3
               run: |
                 echo "Running e2e tests with clusterFirstWithHostNet"
                 HELPERS_PATH=${{github.workspace}}/loadtest/tests
