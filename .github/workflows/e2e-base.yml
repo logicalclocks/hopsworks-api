@@ -4,7 +4,7 @@ on: pull_request
 
 jobs:
     e2e_quick:
-        runs-on: ghrunner-loadtest-4.0
+        runs-on: ${{ contains(github.event.pull_request.labels.*.name, '4.1') && 'ghrunner-loadtest-4.1' || contains(github.event.pull_request.labels.*.name, '4.0') && 'ghrunner-loadtest-4.0' || 'ghrunner-loadtest-4.0' }}
         env:
             CONDA_ENV_PATH: /home/runner/_prep/anaconda/envs/workflows/bin
         steps:
