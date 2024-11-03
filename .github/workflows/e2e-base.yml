@@ -36,8 +36,8 @@ jobs:
 
             - name: Setup project
               env:
-                HOPSWORKS_DOMAIN: stagingv40.devnet.hops.works
-                HOPSWORKS_PORT: 443
+                HOPSWORKS_DOMAIN: hopsworks.glassfish.service.consul
+                HOPSWORKS_PORT: 8182
                 FIXTURES_PATH: /tmp/fixtures.json
               run: |
                 cd ${{github.workspace}}/loadtest
@@ -52,8 +52,8 @@ jobs:
                 MARKER: python_quick_e2e
                 FIXTURES_PATH: /tmp/fixtures.json
                 USE_LOADTEST_API_KEY_FIXTURE: true
-                HOPSWORKS_DOMAIN: stagingv40.devnet.hops.works
-                HOPSWORKS_PORT: 443
+                HOPSWORKS_DOMAIN: hopsworks.glassfish.service.consul
+                HOPSWORKS_PORT: 8182
                 PARALLEL_TESTS: 3
               run: |
                 echo "Running e2e tests with clusterFirstWithHostNet"
