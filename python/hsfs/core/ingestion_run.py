@@ -15,9 +15,11 @@
 #
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, Optional
 
 import humps
+from hopsworks_common import util
 
 
 class IngestionRun:
@@ -50,6 +52,9 @@ class IngestionRun:
             "startingOffsets": self._starting_offsets,
             "endingOffsets": self._ending_offsets,
         }
+
+    def json(self):
+        return json.dumps(self, cls=util.Encoder)
 
     @property
     def id(self) -> int:
