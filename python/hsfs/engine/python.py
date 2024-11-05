@@ -78,6 +78,7 @@ from hsfs.core import (
     training_dataset_api,
     training_dataset_job_conf,
     transformation_function_engine,
+    ingestion_run,
 )
 from hsfs.core.constants import (
     HAS_AIOMYSQL,
@@ -1494,6 +1495,21 @@ class Engine:
             producer.flush()
             progress_bar.close()
 
+            ending_check_point = kafka_engine.kafka_get_offsets(
+                topic_name=feature_group._online_topic_name,
+                feature_store_id=feature_group.feature_store_id,
+                offline_write_options=offline_write_options,
+                high=True,
+            )
+
+            self._feature_group_api.save_ingestion_run(
+                feature_group,
+                ingestion_run.IngestionRun(
+                    starting_offsets=initial_check_point,
+                    ending_offsets=ending_check_point
+                )
+            )
+
         # start materialization job if not an external feature group, otherwise return None
         if isinstance(feature_group, ExternalFeatureGroup):
             return None
@@ -1510,7 +1526,7 @@ class Engine:
                 topic_name=feature_group._online_topic_name,
                 feature_store_id=feature_group.feature_store_id,
                 offline_write_options=offline_write_options,
-                high=True,
+                high=False,
             )
             now = datetime.now(timezone.utc)
             feature_group.materialization_job.run(

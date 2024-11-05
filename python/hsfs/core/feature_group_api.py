@@ -26,6 +26,7 @@ from hsfs.core import (
     ingestion_job,
     ingestion_job_conf,
     job,
+    ingestion_run,
 )
 
 
@@ -612,6 +613,27 @@ class FeatureGroupApi:
             links_json,
             explicit_provenance.Links.Direction.DOWNSTREAM,
             explicit_provenance.Links.Type.FEATURE_GROUP,
+        )
+    
+    def save_ingestion_run(
+        self,
+        feature_group_instance: fg_mod.FeatureGroup,
+        ingestion_run: ingestion_run.IngestionRun,
+    ):
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            feature_group_instance.feature_store_id,
+            "featuregroups",
+            feature_group_instance.id,
+            "ingestionrun",
+        ]
+
+        headers = {"content-type": "application/json"}
+        return _client._send_request(
+            "POST", path_params, headers=headers, data=ingestion_run.json(),
         )
 
     def _check_features(self, feature_group_instance) -> None:
