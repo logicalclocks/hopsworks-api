@@ -25,8 +25,8 @@ from hsfs.core import (
     explicit_provenance,
     ingestion_job,
     ingestion_job_conf,
-    job,
     ingestion_run,
+    job,
 )
 
 
@@ -614,7 +614,7 @@ class FeatureGroupApi:
             explicit_provenance.Links.Direction.DOWNSTREAM,
             explicit_provenance.Links.Type.FEATURE_GROUP,
         )
-    
+
     def save_ingestion_run(
         self,
         feature_group_instance: fg_mod.FeatureGroup,

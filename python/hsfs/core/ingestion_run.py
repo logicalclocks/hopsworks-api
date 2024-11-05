@@ -50,7 +50,7 @@ class IngestionRun:
             "startingOffsets": self._starting_offsets,
             "endingOffsets": self._ending_offsets,
         }
-    
+
     @property
     def id(self) -> int:
         return self._id

@@ -70,6 +70,7 @@ from hsfs.core import (
     feature_group_api,
     feature_view_api,
     ingestion_job_conf,
+    ingestion_run,
     job,
     job_api,
     kafka_engine,
@@ -78,7 +79,6 @@ from hsfs.core import (
     training_dataset_api,
     training_dataset_job_conf,
     transformation_function_engine,
-    ingestion_run,
 )
 from hsfs.core.constants import (
     HAS_AIOMYSQL,
