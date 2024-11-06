@@ -1,0 +1,64 @@
+name: Basic e2e tests
+
+on: pull_request
+
+jobs:
+    e2e_quick:
+        runs-on: 'ghrunner-loadtest-4.0'
+        env:
+            CONDA_ENV_PATH: /home/runner/_prep/anaconda/envs/workflows/bin
+        steps:
+            - name: Checkout hopsworks-api SDK
+              uses: actions/checkout@v4
+              with:
+                  path: hopsworks-api
+                  ref: ${{ github.event.pull_request.head.sha }}
+            
+            - name: Checkout loadtest project
+              uses: actions/checkout@v4
+              with:
+                  repository: 'vatj/loadtest'
+                  ref: 'draft-e2e-script-staging'
+                  token: ${{ secrets.PAT_LOADTEST }}
+                  path: loadtest
+            
+            - name: Install latest client SDK
+              run: |
+                cd hopsworks-api
+                export GITHUB_SHORT_SHA=$(git rev-parse --short "$GITHUB_SHA")
+                echo "GITHUB_SHORT_SHA=$GITHUB_SHORT_SHA" >> $GITHUB_ENV
+                echo "sha: $GITHUB_SHORT_SHA"
+                cp README.md ./python/
+                $CONDA_ENV_PATH/pip uninstall -y hopsworks
+                $CONDA_ENV_PATH/pip install "./python[python,polars,great-expectations]" --upgrade-strategy eager
+                $CONDA_ENV_PATH/pip install pytest-reportlog
+                pip freeze
+
+            - name: Setup project loadtest_${{ env.GITHUB_SHORT_SHA }} with user u${{ env.GITHUB_SHORT_SHA }}
+              env:
+                HOPSWORKS_DOMAIN: hopsworks.glassfish.service.consul
+                HOPSWORKS_PORT: 8182
+                FIXTURES_PATH: /tmp/fixtures.json
+              run: |
+                cd ${{github.workspace}}/loadtest
+                HELPERS_PATH=${{github.workspace}}/loadtest/tests
+                export PYTHONPATH=$HELPERS_PATH:$PYTHONPATH
+                $CONDA_ENV_PATH/python tests/setup_project.py
+                # Display the project credentials as step summary for easy access
+                cat /tmp/fixtures.json >> $GITHUB_STEP_SUMMARY
+
+            - name: Runs only e2e tests suite for commit ${{ env.GITHUB_SHORT_SHA }}
+              env:
+                MARKER: python_quick_e2e
+                FIXTURES_PATH: /tmp/fixtures.json
+                USE_LOADTEST_API_KEY_FIXTURE: true
+                HOPSWORKS_DOMAIN: hopsworks.glassfish.service.consul
+                HOPSWORKS_PORT: 8182
+                PARALLEL_TESTS: 6
+              run: |
+                HELPERS_PATH=${{github.workspace}}/loadtest/tests
+                export PYTHONPATH=$HELPERS_PATH:$PYTHONPATH
+                cd ${{github.workspace}}/loadtest/tests
+                ./run_e2e_on_runner.sh $MARKER
+                cat /tmp/summary.log
+                cat /tmp/summary.md >> $GITHUB_STEP_SUMMARY
