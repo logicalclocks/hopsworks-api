@@ -22,7 +22,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "hsfs[python]==3.9.0rc3",
+    "hsfs[python]==3.9.0rc4",
     "hsml==3.9.0rc0",
     "pyhumps==1.6.1",
     "requests",
