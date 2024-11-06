@@ -29,8 +29,10 @@ from hsml.core import explicit_provenance
 from hsml.engine import model_engine
 from hsml.inference_batcher import InferenceBatcher
 from hsml.inference_logger import InferenceLogger
+from hsml.model_schema import ModelSchema
 from hsml.predictor import Predictor
 from hsml.resources import PredictorResources
+from hsml.schema import Schema
 from hsml.transformer import Transformer
 
 
@@ -54,7 +56,6 @@ class Model:
         program=None,
         user_full_name=None,
         model_schema=None,
-        training_dataset=None,
         input_example=None,
         framework=None,
         model_registry_id=None,
@@ -84,7 +85,6 @@ class Model:
         self._input_example = input_example
         self._framework = framework
         self._model_schema = model_schema
-        self._training_dataset = training_dataset
 
         # This is needed for update_from_response_json function to not overwrite name of the shared registry this model originates from
         if not hasattr(self, "_shared_registry_project_name"):
@@ -95,17 +95,6 @@ class Model:
         self._model_engine = model_engine.ModelEngine()
         self._feature_view = feature_view
         self._training_dataset_version = training_dataset_version
-        if training_dataset_version is None and feature_view is not None:
-            if feature_view.get_last_accessed_training_dataset() is not None:
-                self._training_dataset_version = (
-                    feature_view.get_last_accessed_training_dataset()
-                )
-            else:
-                warnings.warn(
-                    "Provenance cached data - feature view provided, but training dataset version is missing",
-                    util.ProvenanceWarning,
-                    stacklevel=1,
-                )
 
     @usage.method_logger
     def save(
@@ -131,6 +120,39 @@ class Model:
         # Returns
             `Model`: The model metadata object.
         """
+        if self._training_dataset_version is None and self._feature_view is not None:
+            if self._feature_view.get_last_accessed_training_dataset() is not None:
+                self._training_dataset_version = (
+                    self._feature_view.get_last_accessed_training_dataset()
+                )
+            else:
+                warnings.warn(
+                    "Provenance cached data - feature view provided, but training dataset version is missing",
+                    util.ProvenanceWarning,
+                    stacklevel=1,
+                )
+        if self._model_schema is None:
+            if (
+                self._feature_view is not None
+                and self._training_dataset_version is not None
+            ):
+                all_features = self._feature_view.get_training_dataset_schema(
+                    self._training_dataset_version
+                )
+                features, labels = [], []
+                for feature in all_features:
+                    (labels if feature.label else features).append(feature.to_dict())
+                self._model_schema = ModelSchema(
+                    input_schema=Schema(features) if features else None,
+                    output_schema=Schema(labels) if labels else None,
+                )
+            else:
+                warnings.warn(
+                    "Model schema cannot not be inferred without both the feature view and the training dataset version.",
+                    util.ProvenanceWarning,
+                    stacklevel=1,
+                )
+
         return self._model_engine.save(
             model_instance=self,
             model_path=model_path,
@@ -375,7 +397,6 @@ class Model:
             "inputExample": self._input_example,
             "framework": self._framework,
             "metrics": self._training_metrics,
-            "trainingDataset": self._training_dataset,
             "environment": self._environment,
             "program": self._program,
             "featureView": util.feature_view_to_json(self._feature_view),
@@ -509,15 +530,6 @@ class Model:
     @model_schema.setter
     def model_schema(self, model_schema):
         self._model_schema = model_schema
-
-    @property
-    def training_dataset(self):
-        """training_dataset of the model."""
-        return self._training_dataset
-
-    @training_dataset.setter
-    def training_dataset(self, training_dataset):
-        self._training_dataset = training_dataset
 
     @property
     def project_name(self):

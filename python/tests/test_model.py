@@ -372,7 +372,6 @@ class TestModel:
         assert m.project_name == m_json["project_name"]
         assert m.training_metrics == m_json["metrics"]
         assert m._user_full_name == m_json["user_full_name"]
-        assert m.training_dataset == m_json["training_dataset"]
         assert m.model_registry_id == m_json["model_registry_id"]
 
         if model_framework is None:
