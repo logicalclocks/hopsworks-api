@@ -33,7 +33,7 @@ from hsfs import (
 from hsfs.client import exceptions
 from hsfs.constructor import query
 from hsfs.constructor.hudi_feature_group_alias import HudiFeatureGroupAlias
-from hsfs.core import inode, job, ingestion_run
+from hsfs.core import inode, job
 from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
 from hsfs.engine import python
 from hsfs.expectation_suite import ExpectationSuite
