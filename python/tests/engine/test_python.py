@@ -33,7 +33,7 @@ from hsfs import (
 from hsfs.client import exceptions
 from hsfs.constructor import query
 from hsfs.constructor.hudi_feature_group_alias import HudiFeatureGroupAlias
-from hsfs.core import inode, job
+from hsfs.core import inode, job, ingestion_run
 from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
 from hsfs.engine import python
 from hsfs.expectation_suite import ExpectationSuite
@@ -3746,3 +3746,66 @@ class TestPython:
         fg._materialization_job = job_mock
 
         assert fg.materialization_job.config == {"defaultArgs": "defaults"}
+
+    def test_materialization_ingestion_run(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.core.kafka_engine.get_kafka_config", return_value={})
+        mocker.patch("hsfs.feature_group.FeatureGroup._get_encoded_avro_schema")
+        mocker.patch("hsfs.core.kafka_engine.get_encoder_func")
+        mocker.patch("hsfs.core.kafka_engine.encode_complex_features")
+        mock_python_engine_kafka_produce = mocker.patch(
+            "hsfs.core.kafka_engine.kafka_produce"
+        )
+        mocker.patch("hsfs.util.get_job_url")
+        mocker.patch(
+            "hsfs.core.kafka_engine.kafka_get_offsets",
+            side_effect=["tests_offsets1", "tests_offsets2"],
+        )
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mocker.patch(
+            "hsfs.core.job_api.JobApi.last_execution",
+            return_value=[],
+        )
+
+        mocker.patch("hopsworks_common.client.get_instance")
+
+        python_engine = python.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            stream=False,
+            time_travel_format="HUDI",
+        )
+
+        mocker.patch.object(fg, "commit_details", return_value={"commit1": 1})
+
+        fg._online_topic_name = "test_topic"
+        job_mock = mocker.MagicMock()
+        job_mock.config = {"defaultArgs": "defaults"}
+        fg._materialization_job = job_mock
+
+        df = pd.DataFrame(data={"col1": [1, 2, 2, 3]})
+
+        # Act
+        python_engine._write_dataframe_kafka(
+            feature_group=fg,
+            dataframe=df,
+            offline_write_options={"start_offline_materialization": True},
+        )
+
+        # Assert
+        assert mock_fg_api.return_value.save_ingestion_run.call_count == 1
+        args, _ = mock_fg_api.return_value.save_ingestion_run.call_args
+        assert args[0] == fg
+        assert args[1].starting_offsets == "tests_offsets1"
+        assert args[1].ending_offsets == "tests_offsets2"
+        assert mock_python_engine_kafka_produce.call_count == 4
+        job_mock.run.assert_called_once_with(
+            args="defaults -initialCheckPointString tests_offsets1",
+            await_termination=False,
+        )
