@@ -473,6 +473,7 @@ class Engine:
         except Exception as e:
             raise FeatureStoreException(e).with_traceback(e.__traceback__) from e
 
+    @kafka_engine.run_kafka_ingestion(True)
     def save_stream_dataframe(
         self,
         feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
@@ -575,6 +576,7 @@ class Engine:
                 feature_group.partition_key if feature_group.partition_key else []
             ).saveAsTable(feature_group._get_table_name())
 
+    @kafka_engine.run_kafka_ingestion()
     def _save_online_dataframe(self, feature_group, dataframe, write_options):
         write_options = kafka_engine.get_kafka_config(
             feature_group.feature_store_id, write_options, engine="spark"

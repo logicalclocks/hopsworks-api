@@ -70,7 +70,6 @@ from hsfs.core import (
     feature_group_api,
     feature_view_api,
     ingestion_job_conf,
-    ingestion_run,
     job,
     job_api,
     kafka_engine,
@@ -1437,6 +1436,7 @@ class Engine:
     ) -> np.ndarray:
         return feature_dataframe[feature_name].unique()
 
+    @kafka_engine.run_kafka_ingestion()
     def _write_dataframe_kafka(
         self,
         feature_group: Union[FeatureGroup, ExternalFeatureGroup],
@@ -1494,21 +1494,6 @@ class Engine:
         if not feature_group._multi_part_insert:
             producer.flush()
             progress_bar.close()
-
-            ending_check_point = kafka_engine.kafka_get_offsets(
-                topic_name=feature_group._online_topic_name,
-                feature_store_id=feature_group.feature_store_id,
-                offline_write_options=offline_write_options,
-                high=True,
-            )
-
-            self._feature_group_api.save_ingestion_run(
-                feature_group,
-                ingestion_run.IngestionRun(
-                    starting_offsets=initial_check_point,
-                    ending_offsets=ending_check_point
-                )
-            )
 
         # start materialization job if not an external feature group, otherwise return None
         if isinstance(feature_group, ExternalFeatureGroup):

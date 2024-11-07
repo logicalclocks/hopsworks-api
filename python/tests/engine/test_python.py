@@ -3684,7 +3684,7 @@ class TestPython:
         mocker.patch("hsfs.util.get_job_url")
         mocker.patch(
             "hsfs.core.kafka_engine.kafka_get_offsets",
-            side_effect=["", "", "tests_offsets"],
+            side_effect=["", "", "tests_offsets", "tests_offsets"],
         )
 
         mocker.patch("hopsworks_common.client.get_instance")
@@ -3759,7 +3759,7 @@ class TestPython:
         mocker.patch("hsfs.util.get_job_url")
         mocker.patch(
             "hsfs.core.kafka_engine.kafka_get_offsets",
-            side_effect=["tests_offsets1", "tests_offsets2"],
+            side_effect=["tests_offsets1", "tests_offsets1", "tests_offsets2"],
         )
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
         mocker.patch(
