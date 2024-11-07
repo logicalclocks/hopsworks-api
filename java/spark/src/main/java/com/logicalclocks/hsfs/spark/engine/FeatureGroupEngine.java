@@ -27,6 +27,7 @@ import com.logicalclocks.hsfs.OnlineConfig;
 import com.logicalclocks.hsfs.Storage;
 import com.logicalclocks.hsfs.TimeTravelFormat;
 import com.logicalclocks.hsfs.engine.FeatureGroupEngineBase;
+import com.logicalclocks.hsfs.engine.KafkaEngine;
 import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.StatisticsConfig;
 import com.logicalclocks.hsfs.spark.ExternalFeatureGroup;
@@ -50,9 +51,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeoutException;
 
-public class FeatureGroupEngine  extends FeatureGroupEngineBase {
+public class FeatureGroupEngine extends FeatureGroupEngineBase {
 
   private HudiEngine hudiEngine = new HudiEngine();
+
+  public FeatureGroupEngine() {
+  }
 
   /**
    * Create the metadata and write the data to the online/offline feature store.
@@ -132,8 +136,10 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
       featureGroupApi.deleteContent(featureGroup);
     }
 
-    saveDataframe(featureGroup, featureData, storage, operation,
-        writeOptions, SparkEngine.getInstance().getKafkaConfig(featureGroup, writeOptions), validationId);
+    saveDataframe(featureGroup, featureData, storage, operation, writeOptions,
+        new KafkaEngine(SparkEngine.getInstance()).getKafkaConfig(featureGroup, writeOptions,
+            KafkaEngine.ConfigType.SPARK),
+        validationId);
   }
 
   public void insert(StreamFeatureGroup streamFeatureGroup, Dataset<Row> featureData,
@@ -155,7 +161,8 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
     }
     SparkEngine.getInstance().writeOnlineDataframe(streamFeatureGroup, featureData,
         streamFeatureGroup.getOnlineTopicName(),
-        SparkEngine.getInstance().getKafkaConfig(streamFeatureGroup, writeOptions));
+        new KafkaEngine(SparkEngine.getInstance()).getKafkaConfig(streamFeatureGroup, writeOptions,
+            KafkaEngine.ConfigType.SPARK));
   }
 
   public void insert(ExternalFeatureGroup externalFeatureGroup, Dataset<Row> featureData,
@@ -174,7 +181,8 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
 
     SparkEngine.getInstance().writeOnlineDataframe(externalFeatureGroup, featureData,
         externalFeatureGroup.getOnlineTopicName(),
-        SparkEngine.getInstance().getKafkaConfig(externalFeatureGroup, writeOptions));
+        new KafkaEngine(SparkEngine.getInstance()).getKafkaConfig(externalFeatureGroup, writeOptions,
+            KafkaEngine.ConfigType.SPARK));
   }
 
   @Deprecated
@@ -197,7 +205,8 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
     StreamingQuery streamingQuery = SparkEngine.getInstance().writeStreamDataframe(featureGroup,
         SparkEngine.getInstance().convertToDefaultDataframe(featureData), queryName,
         outputMode, awaitTermination, timeout, checkpointLocation,
-        SparkEngine.getInstance().getKafkaConfig(featureGroup, writeOptions));
+        new KafkaEngine(SparkEngine.getInstance()).getKafkaConfig(featureGroup, writeOptions,
+            KafkaEngine.ConfigType.SPARK));
 
     return streamingQuery;
   }
@@ -219,7 +228,8 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
 
     return SparkEngine.getInstance().writeStreamDataframe(streamFeatureGroup,
         SparkEngine.getInstance().sanitizeFeatureNames(featureData), queryName, outputMode, awaitTermination, timeout,
-        checkpointLocation, SparkEngine.getInstance().getKafkaConfig(streamFeatureGroup, writeOptions));
+        checkpointLocation, new KafkaEngine(SparkEngine.getInstance()).getKafkaConfig(streamFeatureGroup, writeOptions,
+            KafkaEngine.ConfigType.SPARK));
   }
 
   public void saveDataframe(FeatureGroup featureGroup, Dataset<Row> dataset, Storage storage,

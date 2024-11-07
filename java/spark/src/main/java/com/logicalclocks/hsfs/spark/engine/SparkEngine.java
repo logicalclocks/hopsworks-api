@@ -26,7 +26,6 @@ import com.google.common.collect.Maps;
 import com.logicalclocks.hsfs.engine.EngineBase;
 import com.logicalclocks.hsfs.metadata.DatasetApi;
 import com.logicalclocks.hsfs.metadata.HopsworksExternalClient;
-import com.logicalclocks.hsfs.metadata.HopsworksInternalClient;
 import com.logicalclocks.hsfs.spark.constructor.Query;
 import com.logicalclocks.hsfs.spark.engine.hudi.HudiEngine;
 import com.logicalclocks.hsfs.DataFormat;
@@ -38,6 +37,7 @@ import com.logicalclocks.hsfs.StorageConnector;
 import com.logicalclocks.hsfs.TimeTravelFormat;
 import com.logicalclocks.hsfs.constructor.FeatureGroupAlias;
 import com.logicalclocks.hsfs.engine.FeatureGroupUtils;
+import com.logicalclocks.hsfs.engine.KafkaEngine;
 import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.metadata.HopsworksClient;
 import com.logicalclocks.hsfs.metadata.OnDemandOptions;
@@ -124,6 +124,7 @@ public class SparkEngine extends EngineBase {
 
   private final StorageConnectorUtils storageConnectorUtils = new StorageConnectorUtils();
   private FeatureGroupUtils featureGroupUtils = new FeatureGroupUtils();
+  private final KafkaEngine kafkaEngine;
 
   private static SparkEngine INSTANCE = null;
 
@@ -155,6 +156,8 @@ public class SparkEngine extends EngineBase {
     // force Spark to fallback to using the Hive Serde to read Hudi COPY_ON_WRITE tables
     sparkSession.conf().set("spark.sql.hive.convertMetastoreParquet", "false");
     sparkSession.conf().set("spark.sql.session.timeZone", "UTC");
+
+    kafkaEngine = new KafkaEngine(this);
   }
 
   public void validateSparkConfiguration() throws FeatureStoreException {
@@ -789,7 +792,7 @@ public class SparkEngine extends EngineBase {
 
   public void streamToHudiTable(StreamFeatureGroup streamFeatureGroup, Map<String, String> writeOptions)
       throws Exception {
-    writeOptions = getKafkaConfig(streamFeatureGroup, writeOptions);
+    writeOptions = kafkaEngine.getKafkaConfig(streamFeatureGroup, writeOptions, KafkaEngine.ConfigType.SPARK);
     hudiEngine.streamToHoodieTable(sparkSession, streamFeatureGroup, writeOptions);
   }
 
@@ -936,26 +939,6 @@ public class SparkEngine extends EngineBase {
     }
 
     return fileName;
-  }
-
-  @Override
-  public Map<String, String> getKafkaConfig(FeatureGroupBase featureGroup, Map<String, String> writeOptions)
-      throws FeatureStoreException, IOException {
-    boolean external = !(System.getProperties().containsKey(HopsworksInternalClient.REST_ENDPOINT_SYS)
-        || (writeOptions != null
-        && Boolean.parseBoolean(writeOptions.getOrDefault("internal_kafka", "false"))));
-
-    StorageConnector.KafkaConnector storageConnector =
-        storageConnectorApi.getKafkaStorageConnector(featureGroup.getFeatureStore(), external);
-    storageConnector.setSslTruststoreLocation(addFile(storageConnector.getSslTruststoreLocation()));
-    storageConnector.setSslKeystoreLocation(addFile(storageConnector.getSslKeystoreLocation()));
-
-    Map<String, String> config = storageConnector.sparkOptions();
-
-    if (writeOptions != null) {
-      config.putAll(writeOptions);
-    }
-    return config;
   }
 
   public Dataset<Row> readStream(StorageConnector storageConnector, String dataFormat, String messageFormat,

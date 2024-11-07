@@ -17,23 +17,15 @@
 
 package com.logicalclocks.hsfs.engine;
 
-import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.FeatureStoreException;
-import com.logicalclocks.hsfs.metadata.StorageConnectorApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.Map;
 
 public abstract class EngineBase {
 
   protected static final Logger LOGGER = LoggerFactory.getLogger(EngineBase.class);
 
-  public StorageConnectorApi storageConnectorApi = new StorageConnectorApi();
-
   public abstract String addFile(String filePath) throws IOException, FeatureStoreException;
-
-  public abstract Map<String, String> getKafkaConfig(FeatureGroupBase featureGroup, Map<String, String> writeOptions)
-      throws FeatureStoreException, IOException;
 }

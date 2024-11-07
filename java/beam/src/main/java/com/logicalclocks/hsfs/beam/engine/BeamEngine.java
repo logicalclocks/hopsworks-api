@@ -18,14 +18,12 @@
 package com.logicalclocks.hsfs.beam.engine;
 
 import com.google.common.base.Strings;
-import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.FeatureStoreException;
-import com.logicalclocks.hsfs.StorageConnector;
 import com.logicalclocks.hsfs.beam.StreamFeatureGroup;
 import com.logicalclocks.hsfs.metadata.DatasetApi;
 import com.logicalclocks.hsfs.engine.EngineBase;
 import com.logicalclocks.hsfs.engine.FeatureGroupUtils;
-import com.logicalclocks.hsfs.metadata.HopsworksInternalClient;
+import com.logicalclocks.hsfs.engine.KafkaEngine;
 import org.apache.avro.Schema;
 
 import java.io.FileOutputStream;
@@ -35,7 +33,9 @@ import java.util.Map;
 
 public class BeamEngine extends EngineBase {
   private static BeamEngine INSTANCE = null;
+
   private FeatureGroupUtils featureGroupUtils = new FeatureGroupUtils();
+  private final KafkaEngine kafkaEngine;
 
   public static synchronized BeamEngine getInstance() throws FeatureStoreException {
     if (INSTANCE == null) {
@@ -45,6 +45,7 @@ public class BeamEngine extends EngineBase {
   }
 
   private BeamEngine() throws FeatureStoreException {
+    kafkaEngine = new KafkaEngine(this);
   }
 
   public BeamProducer insertStream(StreamFeatureGroup streamFeatureGroup, Map<String, String> writeOptions)
@@ -57,7 +58,7 @@ public class BeamEngine extends EngineBase {
     Schema deserializedEncodedSchema = new Schema.Parser().parse(streamFeatureGroup.getEncodedAvroSchema());
 
     return new BeamProducer(streamFeatureGroup.getOnlineTopicName(),
-      getKafkaConfig(streamFeatureGroup, writeOptions),
+      kafkaEngine.getKafkaConfig(streamFeatureGroup, writeOptions, KafkaEngine.ConfigType.KAFKA),
       streamFeatureGroup.getDeserializedAvroSchema(), deserializedEncodedSchema, complexFeatureSchemas,
       streamFeatureGroup.getPrimaryKeys(), streamFeatureGroup);
   }
@@ -76,25 +77,5 @@ public class BeamEngine extends EngineBase {
       outputStream.write(DatasetApi.readContent(filePath, featureGroupUtils.getDatasetType(filePath)));
     }
     return targetPath;
-  }
-
-  @Override
-  public Map<String, String> getKafkaConfig(FeatureGroupBase featureGroup, Map<String, String> writeOptions)
-      throws FeatureStoreException, IOException {
-    boolean external = !(System.getProperties().containsKey(HopsworksInternalClient.REST_ENDPOINT_SYS)
-        || (writeOptions != null
-        && Boolean.parseBoolean(writeOptions.getOrDefault("internal_kafka", "false"))));
-
-    StorageConnector.KafkaConnector storageConnector =
-        storageConnectorApi.getKafkaStorageConnector(featureGroup.getFeatureStore(), external);
-    storageConnector.setSslTruststoreLocation(addFile(storageConnector.getSslTruststoreLocation()));
-    storageConnector.setSslKeystoreLocation(addFile(storageConnector.getSslKeystoreLocation()));
-
-    Map<String, String> config = storageConnector.kafkaOptions();
-
-    if (writeOptions != null) {
-      config.putAll(writeOptions);
-    }
-    return config;
   }
 }
