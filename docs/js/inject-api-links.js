@@ -1,16 +1,17 @@
 window.addEventListener("DOMContentLoaded", function () {
     var windowPathNameSplits = window.location.pathname.split("/");
-    var majorVersionRegex = new RegExp("(\\d+[.]\\d+)")
+    var majorVersionRegex = new RegExp("(\\d+[.]\\d+)");
     var latestRegex = new RegExp("latest");
-    if (majorVersionRegex.test(windowPathNameSplits[1])) { // On landing page docs.hopsworks.api/3.0 - URL contains major version
+    if (majorVersionRegex.test(windowPathNameSplits[1])) { // On landing page docs.hopsworks.api/4.0 - URL contains major version
         // Version API dropdown
         document.getElementById("hopsworks_api_link").href = "https://docs.hopsworks.ai/hopsworks-api/" + windowPathNameSplits[1] + "/generated/api/login/";
-    } else { // on docs.hopsworks.api/feature-store-api/3.0 / docs.hopsworks.api/hopsworks-api/3.0 / docs.hopsworks.api/machine-learning-api/3.0
+        document.getElementById("hsfs_javadoc_link").href = "https://docs.hopsworks.ai/hopsworks-api/" + windowPathNameSplits[1] + "/javadoc";
+    } else { // on / docs.hopsworks.api/hopsworks-api/4.0
         if (latestRegex.test(windowPathNameSplits[2]) || latestRegex.test(windowPathNameSplits[1])) {
-          var majorVersion = "latest";
+            var majorVersion = "latest";
         } else {
-          var apiVersion = windowPathNameSplits[2];
-          var majorVersion = apiVersion.match(majorVersionRegex)[0];
+            var apiVersion = windowPathNameSplits[2];
+            var majorVersion = apiVersion.match(majorVersionRegex)[0];
         }
         // Version main navigation
         document.getElementsByClassName("md-tabs__link")[0].href = "https://docs.hopsworks.ai/" + majorVersion;
@@ -22,6 +23,6 @@ window.addEventListener("DOMContentLoaded", function () {
         document.getElementsByClassName("md-tabs__link")[6].href = "https://docs.hopsworks.ai/" + majorVersion + "/admin/";
         // Version API dropdown
         document.getElementById("hopsworks_api_link").href = "https://docs.hopsworks.ai/hopsworks-api/" + majorVersion + "/generated/api/login/";
-        document.getElementById("hsfs_javadoc_link").href = "https://docs.hopsworks.ai/feature-store-api/" + majorVersion + "/javadoc";
+        document.getElementById("hsfs_javadoc_link").href = "https://docs.hopsworks.ai/hopsworks-api/" + majorVersion + "/javadoc";
     }
 });
