@@ -25,6 +25,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.logicalclocks.hsfs.engine.EngineBase;
 import com.logicalclocks.hsfs.metadata.DatasetApi;
+import com.logicalclocks.hsfs.metadata.FeatureGroupApi;
 import com.logicalclocks.hsfs.metadata.HopsworksExternalClient;
 import com.logicalclocks.hsfs.spark.constructor.Query;
 import com.logicalclocks.hsfs.spark.engine.hudi.HudiEngine;
@@ -32,6 +33,7 @@ import com.logicalclocks.hsfs.DataFormat;
 import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.HudiOperationType;
+import com.logicalclocks.hsfs.IngestionRun;
 import com.logicalclocks.hsfs.Split;
 import com.logicalclocks.hsfs.StorageConnector;
 import com.logicalclocks.hsfs.TimeTravelFormat;
@@ -71,6 +73,10 @@ import org.apache.spark.sql.streaming.DataStreamReader;
 import org.apache.spark.sql.streaming.DataStreamWriter;
 import org.apache.spark.sql.streaming.StreamingQuery;
 import org.apache.spark.sql.streaming.StreamingQueryException;
+import org.apache.spark.sql.streaming.StreamingQueryListener;
+import org.apache.spark.sql.streaming.StreamingQueryListener.QueryProgressEvent;
+import org.apache.spark.sql.streaming.StreamingQueryListener.QueryStartedEvent;
+import org.apache.spark.sql.streaming.StreamingQueryListener.QueryTerminatedEvent;
 import org.apache.spark.sql.types.ArrayType;
 import org.apache.spark.sql.types.BinaryType;
 import org.apache.spark.sql.types.BooleanType;
@@ -124,6 +130,7 @@ public class SparkEngine extends EngineBase {
 
   private final StorageConnectorUtils storageConnectorUtils = new StorageConnectorUtils();
   private FeatureGroupUtils featureGroupUtils = new FeatureGroupUtils();
+  protected FeatureGroupApi featureGroupApi = new FeatureGroupApi();
   private final KafkaEngine kafkaEngine;
 
   private static SparkEngine INSTANCE = null;
@@ -542,6 +549,8 @@ public class SparkEngine extends EngineBase {
     byte[] featureGroupId = String.valueOf(featureGroupBase.getId()).getBytes(StandardCharsets.UTF_8);
     byte[] subjectId = String.valueOf(featureGroupBase.getSubject().getId()).getBytes(StandardCharsets.UTF_8);
 
+    String startingCheckPoint = kafkaEngine.kafkaGetOffsets(featureGroupBase, writeOptions, true);
+
     onlineFeatureGroupToAvro(featureGroupBase, encodeComplexFeatures(featureGroupBase, dataset))
         .withColumn("headers", array(
             struct(
@@ -562,6 +571,10 @@ public class SparkEngine extends EngineBase {
         .options(writeOptions)
         .option("topic", onlineTopicName)
         .save();
+
+    String endingCheckPoint = kafkaEngine.kafkaGetOffsets(featureGroupBase, writeOptions, true);
+
+    featureGroupApi.saveIngestionRun(featureGroupBase, new IngestionRun(startingCheckPoint, endingCheckPoint));
   }
 
   public <S> StreamingQuery writeStreamDataframe(FeatureGroupBase featureGroupBase, Dataset<Row> dataset,
@@ -573,6 +586,8 @@ public class SparkEngine extends EngineBase {
         .getBytes(StandardCharsets.UTF_8);
     byte[] featureGroupId = String.valueOf(featureGroupBase.getId()).getBytes(StandardCharsets.UTF_8);
     byte[] subjectId = String.valueOf(featureGroupBase.getSubject().getId()).getBytes(StandardCharsets.UTF_8);
+
+    String startingCheckPoint = kafkaEngine.kafkaGetOffsets(featureGroupBase, writeOptions, true);
 
     queryName = makeQueryName(queryName, featureGroupBase);
     DataStreamWriter<Row> writer =
@@ -606,6 +621,27 @@ public class SparkEngine extends EngineBase {
     if (awaitTermination) {
       query.awaitTermination(timeout);
     }
+
+    sparkSession.streams().addListener(new StreamingQueryListener() {
+        @Override
+        public void onQueryStarted(QueryStartedEvent queryStarted) {
+        }
+
+        @Override
+        public void onQueryProgress(QueryProgressEvent queryProgress) {
+        }
+
+        @Override
+        public void onQueryTerminated(QueryTerminatedEvent queryTerminated) {
+          try {
+            String endingCheckPoint = kafkaEngine.kafkaGetOffsets(featureGroupBase, writeOptions, true);
+            featureGroupApi.saveIngestionRun(featureGroupBase, new IngestionRun(startingCheckPoint, endingCheckPoint));
+          } catch (Exception e) {
+            e.printStackTrace();
+          }
+        }
+    });
+
     return query;
   }
 

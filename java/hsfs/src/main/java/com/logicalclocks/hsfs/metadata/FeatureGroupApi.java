@@ -24,6 +24,7 @@ import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.FeatureGroupCommit;
 import com.logicalclocks.hsfs.FeatureStoreBase;
 import com.logicalclocks.hsfs.FeatureStoreException;
+import com.logicalclocks.hsfs.IngestionRun;
 import com.logicalclocks.hsfs.JobConfiguration;
 import org.apache.http.client.methods.HttpDelete;
 import org.apache.http.client.methods.HttpGet;
@@ -48,6 +49,8 @@ public class FeatureGroupApi {
   public static final String FEATURE_GROUP_COMMIT_PATH = FEATURE_GROUP_ID_PATH
       + "/commits{?filter_by,sort_by,offset,limit}";
   public static final String FEATURE_GROUP_CLEAR_PATH = FEATURE_GROUP_ID_PATH + "/clear";
+  public static final String FEATURE_GROUP_INGESTION_RUN = FEATURE_GROUP_ID_PATH
+      + "/ingestionrun";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(FeatureGroupApi.class);
 
@@ -295,6 +298,25 @@ public class FeatureGroupApi {
     }
 
     return featureGroup;
+  }
+
+  public void saveIngestionRun(FeatureGroupBase featureGroupBase, IngestionRun ingestionRun)
+      throws FeatureStoreException, IOException {
+    HopsworksClient hopsworksClient = HopsworksClient.getInstance();
+    String pathTemplate = HopsworksClient.PROJECT_PATH
+        + FeatureStoreApi.FEATURE_STORE_PATH
+        + FEATURE_GROUP_INGESTION_RUN;
+
+    String uri = UriTemplate.fromTemplate(pathTemplate)
+        .set("projectId", hopsworksClient.getProject().getProjectId())
+        .set("fsId", featureGroupBase.getFeatureStore().getId())
+        .expand();
+
+    HttpPost postRequest = new HttpPost(uri);
+    postRequest.setHeader(HttpHeaders.CONTENT_TYPE, "application/json");
+    postRequest.setEntity(hopsworksClient.buildStringEntity(ingestionRun));
+
+    hopsworksClient.handleRequest(postRequest);
   }
 
   private <T extends FeatureGroupBase> void checkFeatures(T fg) {
