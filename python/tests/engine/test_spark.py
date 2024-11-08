@@ -19,6 +19,7 @@ import hopsworks_common
 import numpy
 import pandas as pd
 import pytest
+from confluent_kafka.admin import TopicMetadata
 from hsfs import (
     expectation_suite,
     feature,
@@ -887,6 +888,15 @@ class TestSpark:
         fg.feature_store.project_id = project_id
 
         mock_common_client_get_instance.return_value._project_name = "test_project_name"
+        mock_common_client_get_instance.return_value._write_pem.return_value = ("ca_chain_path", "client_cert_path", "client_key_path")
+
+        topic_mock = mocker.MagicMock()
+        topic_name = "test_topic"
+        topic_metadata = TopicMetadata()
+        topic_mock.topics = {topic_name: topic_metadata}
+        consumer = mocker.MagicMock()
+        consumer.list_topics = mocker.MagicMock(return_value=topic_mock)
+        mock_core_kafka_engine_consumer = mocker.patch("hsfs.core.kafka_engine.Consumer", return_value=consumer)
 
         # Act
         spark_engine.save_stream_dataframe(
@@ -902,369 +912,21 @@ class TestSpark:
 
         # Assert
         assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.call_args[0][0]
-            == "headers"
+            consumer.list_topics.call_count
+            == 2
         )
         assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.call_args[
-                0
-            ][0]
-            == "test_mode"
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.call_args[
-                0
-            ][0]
-            == "kafka"
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
-                0
-            ][0]
-            == "checkpointLocation"
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
-                0
-            ][1]
-            == f"/Projects/test_project_name/Resources/{self._get_spark_query_name(project_id, fg)}-checkpoint"
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.call_args[
-                1
-            ]
+            mock_core_kafka_engine_consumer.call_args_list[0][0][0]
             == {
-                "kafka.bootstrap.servers": "test_bootstrap_servers",
-                "kafka.security.protocol": "test_security_protocol",
-                "kafka.ssl.endpoint.identification.algorithm": "test_ssl_endpoint_identification_algorithm",
-                "kafka.ssl.key.password": "test_ssl_key_password",
-                "kafka.ssl.keystore.location": "result_from_add_file",
-                "kafka.ssl.keystore.password": "test_ssl_keystore_password",
-                "kafka.ssl.truststore.location": "result_from_add_file",
-                "kafka.ssl.truststore.password": "test_ssl_truststore_password",
-                "kafka.test_option_name": "test_option_value",
-                "test_name": "test_value",
+                'bootstrap.servers': 'test_bootstrap_servers',
+                'group.id': 'hsfs_consumer_group',
+                'security.protocol': 'test_security_protocol',
+                'ssl.ca.location': 'ca_chain_path',
+                'ssl.certificate.location': 'client_cert_path',
+                'ssl.endpoint.identification.algorithm': 'test_ssl_endpoint_identification_algorithm',
+                'ssl.key.location': 'client_key_path'
             }
         )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
-                0
-            ][0]
-            == "topic"
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
-                0
-            ][1]
-            == "test_online_topic_name"
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.call_args[
-                0
-            ][0]
-            == self._get_spark_query_name(project_id, fg)
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.return_value.start.return_value.awaitTermination.call_count
-            == 0
-        )
-
-    def test_save_stream_dataframe_query_name(self, mocker, backend_fixtures):
-        # Arrange
-        mock_common_client_get_instance = mocker.patch(
-            "hopsworks_common.client.get_instance"
-        )
-        mocker.patch("hopsworks_common.client._is_external", return_value=False)
-        mock_spark_engine_serialize_to_avro = mocker.patch(
-            "hsfs.engine.spark.Engine._serialize_to_avro"
-        )
-
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mock_engine_get_instance.return_value.add_file.return_value = (
-            "result_from_add_file"
-        )
-
-        mock_storage_connector_api = mocker.patch(
-            "hsfs.core.storage_connector_api.StorageConnectorApi"
-        )
-        json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
-        sc = storage_connector.StorageConnector.from_response_json(json)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
-
-        spark_engine = spark.Engine()
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            id=10,
-            online_topic_name="test_online_topic_name",
-        )
-        fg.feature_store = mocker.Mock()
-
-        mock_common_client_get_instance.return_value._project_name = "test_project_name"
-
-        # Act
-        spark_engine.save_stream_dataframe(
-            feature_group=fg,
-            dataframe=None,
-            query_name="test_query_name",
-            output_mode="test_mode",
-            await_termination=None,
-            timeout=None,
-            checkpoint_dir=None,
-            write_options={"test_name": "test_value"},
-        )
-
-        # Assert
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.call_args[0][0]
-            == "headers"
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.call_args[
-                0
-            ][0]
-            == "test_mode"
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.call_args[
-                0
-            ][0]
-            == "kafka"
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
-                0
-            ][0]
-            == "checkpointLocation"
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
-                0
-            ][1]
-            == "/Projects/test_project_name/Resources/test_query_name-checkpoint"
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.call_args[
-                1
-            ]
-            == {
-                "kafka.bootstrap.servers": "test_bootstrap_servers",
-                "kafka.security.protocol": "test_security_protocol",
-                "kafka.ssl.endpoint.identification.algorithm": "test_ssl_endpoint_identification_algorithm",
-                "kafka.ssl.key.password": "test_ssl_key_password",
-                "kafka.ssl.keystore.location": "result_from_add_file",
-                "kafka.ssl.keystore.password": "test_ssl_keystore_password",
-                "kafka.ssl.truststore.location": "result_from_add_file",
-                "kafka.ssl.truststore.password": "test_ssl_truststore_password",
-                "kafka.test_option_name": "test_option_value",
-                "test_name": "test_value",
-            }
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
-                0
-            ][0]
-            == "topic"
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
-                0
-            ][1]
-            == "test_online_topic_name"
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.call_args[
-                0
-            ][0]
-            == "test_query_name"
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.return_value.start.return_value.awaitTermination.call_count
-            == 0
-        )
-
-    def _get_spark_query_name(self, project_id, feature_group):
-        return (
-            f"insert_stream_{project_id}_{feature_group.id}"
-            f"_{feature_group.name}_{feature_group.version}_onlinefs"
-        )
-
-    def test_save_stream_dataframe_checkpoint_dir(self, mocker, backend_fixtures):
-        # Arrange
-        mock_common_client_get_instance = mocker.patch(
-            "hopsworks_common.client.get_instance"
-        )
-        mocker.patch("hopsworks_common.client._is_external", return_value=False)
-        mock_spark_engine_serialize_to_avro = mocker.patch(
-            "hsfs.engine.spark.Engine._serialize_to_avro"
-        )
-
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mock_engine_get_instance.return_value.add_file.return_value = (
-            "result_from_add_file"
-        )
-
-        mock_storage_connector_api = mocker.patch(
-            "hsfs.core.storage_connector_api.StorageConnectorApi"
-        )
-        json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
-        sc = storage_connector.StorageConnector.from_response_json(json)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
-
-        spark_engine = spark.Engine()
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            id=10,
-            online_topic_name="test_online_topic_name",
-        )
-        fg.feature_store = mocker.Mock()
-        project_id = 1
-        fg.feature_store.project_id = project_id
-
-        mock_common_client_get_instance.return_value._project_name = "test_project_name"
-
-        # Act
-        spark_engine.save_stream_dataframe(
-            feature_group=fg,
-            dataframe=None,
-            query_name=None,
-            output_mode="test_mode",
-            await_termination=None,
-            timeout=None,
-            checkpoint_dir="test_checkpoint_dir",
-            write_options={"test_name": "test_value"},
-        )
-
-        # Assert
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.call_args[0][0]
-            == "headers"
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.call_args[
-                0
-            ][0]
-            == "test_mode"
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.call_args[
-                0
-            ][0]
-            == "kafka"
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
-                0
-            ][0]
-            == "checkpointLocation"
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
-                0
-            ][1]
-            == "test_checkpoint_dir"
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.call_args[
-                1
-            ]
-            == {
-                "kafka.bootstrap.servers": "test_bootstrap_servers",
-                "kafka.security.protocol": "test_security_protocol",
-                "kafka.ssl.endpoint.identification.algorithm": "test_ssl_endpoint_identification_algorithm",
-                "kafka.ssl.key.password": "test_ssl_key_password",
-                "kafka.ssl.keystore.location": "result_from_add_file",
-                "kafka.ssl.keystore.password": "test_ssl_keystore_password",
-                "kafka.ssl.truststore.location": "result_from_add_file",
-                "kafka.ssl.truststore.password": "test_ssl_truststore_password",
-                "kafka.test_option_name": "test_option_value",
-                "test_name": "test_value",
-            }
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
-                0
-            ][0]
-            == "topic"
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
-                0
-            ][1]
-            == "test_online_topic_name"
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.call_args[
-                0
-            ][0]
-            == self._get_spark_query_name(project_id, fg)
-        )
-        assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.return_value.start.return_value.awaitTermination.call_count
-            == 0
-        )
-
-    def test_save_stream_dataframe_await_termination(self, mocker, backend_fixtures):
-        # Arrange
-        mock_common_client_get_instance = mocker.patch(
-            "hopsworks_common.client.get_instance"
-        )
-        mocker.patch("hopsworks_common.client._is_external", return_value=False)
-        mock_spark_engine_serialize_to_avro = mocker.patch(
-            "hsfs.engine.spark.Engine._serialize_to_avro"
-        )
-
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mock_engine_get_instance.return_value.add_file.return_value = (
-            "result_from_add_file"
-        )
-
-        mock_storage_connector_api = mocker.patch(
-            "hsfs.core.storage_connector_api.StorageConnectorApi"
-        )
-        json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
-        sc = storage_connector.StorageConnector.from_response_json(json)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
-
-        spark_engine = spark.Engine()
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            id=10,
-            online_topic_name="test_online_topic_name",
-        )
-        fg.feature_store = mocker.Mock()
-        project_id = 1
-        fg.feature_store.project_id = project_id
-
-        mock_common_client_get_instance.return_value._project_name = "test_project_name"
-
-        # Act
-        spark_engine.save_stream_dataframe(
-            feature_group=fg,
-            dataframe=None,
-            query_name=None,
-            output_mode="test_mode",
-            await_termination=True,
-            timeout=123,
-            checkpoint_dir=None,
-            write_options={"test_name": "test_value"},
-        )
-
-        # Assert
         assert (
             mock_spark_engine_serialize_to_avro.return_value.withColumn.call_args[0][0]
             == "headers"
@@ -1332,10 +994,448 @@ class TestSpark:
             mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.return_value.start.return_value.awaitTermination.call_count
             == 1
         )
+
+    def test_save_stream_dataframe_query_name(self, mocker, backend_fixtures):
+        # Arrange
+        mock_common_client_get_instance = mocker.patch(
+            "hopsworks_common.client.get_instance"
+        )
+        mocker.patch("hopsworks_common.client._is_external", return_value=False)
+        mock_spark_engine_serialize_to_avro = mocker.patch(
+            "hsfs.engine.spark.Engine._serialize_to_avro"
+        )
+
+        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance.return_value.add_file.return_value = (
+            "result_from_add_file"
+        )
+
+        mock_storage_connector_api = mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi"
+        )
+        json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            online_topic_name="test_online_topic_name",
+        )
+        fg.feature_store = mocker.Mock()
+
+        mock_common_client_get_instance.return_value._project_name = "test_project_name"
+        mock_common_client_get_instance.return_value._write_pem.return_value = ("ca_chain_path", "client_cert_path", "client_key_path")
+
+        topic_mock = mocker.MagicMock()
+        topic_name = "test_topic"
+        topic_metadata = TopicMetadata()
+        topic_mock.topics = {topic_name: topic_metadata}
+        consumer = mocker.MagicMock()
+        consumer.list_topics = mocker.MagicMock(return_value=topic_mock)
+        mock_core_kafka_engine_consumer = mocker.patch("hsfs.core.kafka_engine.Consumer", return_value=consumer)
+
+        # Act
+        spark_engine.save_stream_dataframe(
+            feature_group=fg,
+            dataframe=None,
+            query_name="test_query_name",
+            output_mode="test_mode",
+            await_termination=None,
+            timeout=None,
+            checkpoint_dir=None,
+            write_options={"test_name": "test_value"},
+        )
+
+        # Assert
         assert (
-            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.return_value.start.return_value.awaitTermination.call_args[
+            consumer.list_topics.call_count
+            == 2
+        )
+        assert (
+            mock_core_kafka_engine_consumer.call_args_list[0][0][0]
+            == {
+                'bootstrap.servers': 'test_bootstrap_servers',
+                'group.id': 'hsfs_consumer_group',
+                'security.protocol': 'test_security_protocol',
+                'ssl.ca.location': 'ca_chain_path',
+                'ssl.certificate.location': 'client_cert_path',
+                'ssl.endpoint.identification.algorithm': 'test_ssl_endpoint_identification_algorithm',
+                'ssl.key.location': 'client_key_path'
+            }
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.call_args[0][0]
+            == "headers"
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.call_args[
                 0
             ][0]
+            == "test_mode"
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.call_args[
+                0
+            ][0]
+            == "kafka"
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
+                0
+            ][0]
+            == "checkpointLocation"
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
+                0
+            ][1]
+            == "/Projects/test_project_name/Resources/test_query_name-checkpoint"
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.call_args[
+                1
+            ]
+            == {
+                "kafka.bootstrap.servers": "test_bootstrap_servers",
+                "kafka.security.protocol": "test_security_protocol",
+                "kafka.ssl.endpoint.identification.algorithm": "test_ssl_endpoint_identification_algorithm",
+                "kafka.ssl.key.password": "test_ssl_key_password",
+                "kafka.ssl.keystore.location": "result_from_add_file",
+                "kafka.ssl.keystore.password": "test_ssl_keystore_password",
+                "kafka.ssl.truststore.location": "result_from_add_file",
+                "kafka.ssl.truststore.password": "test_ssl_truststore_password",
+                "kafka.test_option_name": "test_option_value",
+                "test_name": "test_value",
+            }
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
+                0
+            ][0]
+            == "topic"
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
+                0
+            ][1]
+            == "test_online_topic_name"
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.call_args[
+                0
+            ][0]
+            == "test_query_name"
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.return_value.start.return_value.awaitTermination.call_count
+            == 1
+        )
+
+    def _get_spark_query_name(self, project_id, feature_group):
+        return (
+            f"insert_stream_{project_id}_{feature_group.id}"
+            f"_{feature_group.name}_{feature_group.version}_onlinefs"
+        )
+
+    def test_save_stream_dataframe_checkpoint_dir(self, mocker, backend_fixtures):
+        # Arrange
+        mock_common_client_get_instance = mocker.patch(
+            "hopsworks_common.client.get_instance"
+        )
+        mocker.patch("hopsworks_common.client._is_external", return_value=False)
+        mock_spark_engine_serialize_to_avro = mocker.patch(
+            "hsfs.engine.spark.Engine._serialize_to_avro"
+        )
+
+        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance.return_value.add_file.return_value = (
+            "result_from_add_file"
+        )
+
+        mock_storage_connector_api = mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi"
+        )
+        json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            online_topic_name="test_online_topic_name",
+        )
+        fg.feature_store = mocker.Mock()
+        project_id = 1
+        fg.feature_store.project_id = project_id
+
+        mock_common_client_get_instance.return_value._project_name = "test_project_name"
+        mock_common_client_get_instance.return_value._write_pem.return_value = ("ca_chain_path", "client_cert_path", "client_key_path")
+
+        topic_mock = mocker.MagicMock()
+        topic_name = "test_topic"
+        topic_metadata = TopicMetadata()
+        topic_mock.topics = {topic_name: topic_metadata}
+        consumer = mocker.MagicMock()
+        consumer.list_topics = mocker.MagicMock(return_value=topic_mock)
+        mock_core_kafka_engine_consumer = mocker.patch("hsfs.core.kafka_engine.Consumer", return_value=consumer)
+
+        # Act
+        spark_engine.save_stream_dataframe(
+            feature_group=fg,
+            dataframe=None,
+            query_name=None,
+            output_mode="test_mode",
+            await_termination=None,
+            timeout=None,
+            checkpoint_dir="test_checkpoint_dir",
+            write_options={"test_name": "test_value"},
+        )
+
+        # Assert
+        assert (
+            consumer.list_topics.call_count
+            == 2
+        )
+        assert (
+            mock_core_kafka_engine_consumer.call_args_list[0][0][0]
+            == {
+                'bootstrap.servers': 'test_bootstrap_servers',
+                'group.id': 'hsfs_consumer_group',
+                'security.protocol': 'test_security_protocol',
+                'ssl.ca.location': 'ca_chain_path',
+                'ssl.certificate.location': 'client_cert_path',
+                'ssl.endpoint.identification.algorithm': 'test_ssl_endpoint_identification_algorithm',
+                'ssl.key.location': 'client_key_path'
+            }
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.call_args[0][0]
+            == "headers"
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.call_args[
+                0
+            ][0]
+            == "test_mode"
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.call_args[
+                0
+            ][0]
+            == "kafka"
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
+                0
+            ][0]
+            == "checkpointLocation"
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
+                0
+            ][1]
+            == "test_checkpoint_dir"
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.call_args[
+                1
+            ]
+            == {
+                "kafka.bootstrap.servers": "test_bootstrap_servers",
+                "kafka.security.protocol": "test_security_protocol",
+                "kafka.ssl.endpoint.identification.algorithm": "test_ssl_endpoint_identification_algorithm",
+                "kafka.ssl.key.password": "test_ssl_key_password",
+                "kafka.ssl.keystore.location": "result_from_add_file",
+                "kafka.ssl.keystore.password": "test_ssl_keystore_password",
+                "kafka.ssl.truststore.location": "result_from_add_file",
+                "kafka.ssl.truststore.password": "test_ssl_truststore_password",
+                "kafka.test_option_name": "test_option_value",
+                "test_name": "test_value",
+            }
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
+                0
+            ][0]
+            == "topic"
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
+                0
+            ][1]
+            == "test_online_topic_name"
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.call_args[
+                0
+            ][0]
+            == self._get_spark_query_name(project_id, fg)
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.return_value.start.return_value.awaitTermination.call_count
+            == 1
+        )
+
+    def test_save_stream_dataframe_await_termination(self, mocker, backend_fixtures):
+        # Arrange
+        mock_common_client_get_instance = mocker.patch(
+            "hopsworks_common.client.get_instance"
+        )
+        mocker.patch("hopsworks_common.client._is_external", return_value=False)
+        mock_spark_engine_serialize_to_avro = mocker.patch(
+            "hsfs.engine.spark.Engine._serialize_to_avro"
+        )
+
+        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance.return_value.add_file.return_value = (
+            "result_from_add_file"
+        )
+
+        mock_storage_connector_api = mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi"
+        )
+        json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            online_topic_name="test_online_topic_name",
+        )
+        fg.feature_store = mocker.Mock()
+        project_id = 1
+        fg.feature_store.project_id = project_id
+
+        mock_common_client_get_instance.return_value._project_name = "test_project_name"
+        mock_common_client_get_instance.return_value._write_pem.return_value = ("ca_chain_path", "client_cert_path", "client_key_path")
+
+        topic_mock = mocker.MagicMock()
+        topic_name = "test_topic"
+        topic_metadata = TopicMetadata()
+        topic_mock.topics = {topic_name: topic_metadata}
+        consumer = mocker.MagicMock()
+        consumer.list_topics = mocker.MagicMock(return_value=topic_mock)
+        mock_core_kafka_engine_consumer = mocker.patch("hsfs.core.kafka_engine.Consumer", return_value=consumer)
+
+        # Act
+        spark_engine.save_stream_dataframe(
+            feature_group=fg,
+            dataframe=None,
+            query_name=None,
+            output_mode="test_mode",
+            await_termination=True,
+            timeout=123,
+            checkpoint_dir=None,
+            write_options={"test_name": "test_value"},
+        )
+
+        # Assert
+        assert (
+            consumer.list_topics.call_count
+            == 2
+        )
+        assert (
+            mock_core_kafka_engine_consumer.call_args_list[0][0][0]
+            == {
+                'bootstrap.servers': 'test_bootstrap_servers',
+                'group.id': 'hsfs_consumer_group',
+                'security.protocol': 'test_security_protocol',
+                'ssl.ca.location': 'ca_chain_path',
+                'ssl.certificate.location': 'client_cert_path',
+                'ssl.endpoint.identification.algorithm': 'test_ssl_endpoint_identification_algorithm',
+                'ssl.key.location': 'client_key_path'
+            }
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.call_args[0][0]
+            == "headers"
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.call_args[
+                0
+            ][0]
+            == "test_mode"
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.call_args[
+                0
+            ][0]
+            == "kafka"
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
+                0
+            ][0]
+            == "checkpointLocation"
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
+                0
+            ][1]
+            == f"/Projects/test_project_name/Resources/{self._get_spark_query_name(project_id, fg)}-checkpoint"
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.call_args[
+                1
+            ]
+            == {
+                "kafka.bootstrap.servers": "test_bootstrap_servers",
+                "kafka.security.protocol": "test_security_protocol",
+                "kafka.ssl.endpoint.identification.algorithm": "test_ssl_endpoint_identification_algorithm",
+                "kafka.ssl.key.password": "test_ssl_key_password",
+                "kafka.ssl.keystore.location": "result_from_add_file",
+                "kafka.ssl.keystore.password": "test_ssl_keystore_password",
+                "kafka.ssl.truststore.location": "result_from_add_file",
+                "kafka.ssl.truststore.password": "test_ssl_truststore_password",
+                "kafka.test_option_name": "test_option_value",
+                "test_name": "test_value",
+            }
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
+                0
+            ][0]
+            == "topic"
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
+                0
+            ][1]
+            == "test_online_topic_name"
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.call_args[
+                0
+            ][0]
+            == self._get_spark_query_name(project_id, fg)
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.return_value.start.return_value.awaitTermination.call_count
+            == 2
+        )
+        assert (
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.return_value.start.return_value.awaitTermination.call_args_list[
+                0][0][0]
             == 123
         )
 
@@ -1474,7 +1574,9 @@ class TestSpark:
 
     def test_save_online_dataframe(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mock_common_client_get_instance = mocker.patch(
+            "hopsworks_common.client.get_instance"
+        )
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
         mock_spark_engine_serialize_to_avro = mocker.patch(
             "hsfs.engine.spark.Engine._serialize_to_avro"
@@ -1505,6 +1607,16 @@ class TestSpark:
         )
         fg.feature_store = mocker.Mock()
 
+        mock_common_client_get_instance.return_value._write_pem.return_value = ("ca_chain_path", "client_cert_path", "client_key_path")
+
+        topic_mock = mocker.MagicMock()
+        topic_name = "test_topic"
+        topic_metadata = TopicMetadata()
+        topic_mock.topics = {topic_name: topic_metadata}
+        consumer = mocker.MagicMock()
+        consumer.list_topics = mocker.MagicMock(return_value=topic_mock)
+        mock_core_kafka_engine_consumer = mocker.patch("hsfs.core.kafka_engine.Consumer", return_value=consumer)
+
         # Act
         spark_engine._save_online_dataframe(
             feature_group=fg,
@@ -1513,6 +1625,22 @@ class TestSpark:
         )
 
         # Assert
+        assert (
+            consumer.list_topics.call_count
+            == 2
+        )
+        assert (
+            mock_core_kafka_engine_consumer.call_args_list[0][0][0]
+            == {
+                'bootstrap.servers': 'test_bootstrap_servers',
+                'group.id': 'hsfs_consumer_group',
+                'security.protocol': 'test_security_protocol',
+                'ssl.ca.location': 'ca_chain_path',
+                'ssl.certificate.location': 'client_cert_path',
+                'ssl.endpoint.identification.algorithm': 'test_ssl_endpoint_identification_algorithm',
+                'ssl.key.location': 'client_key_path'
+            }
+        )
         assert mock_spark_engine_serialize_to_avro.call_count == 1
         assert (
             mock_spark_engine_serialize_to_avro.return_value.withColumn.call_args[0][0]
