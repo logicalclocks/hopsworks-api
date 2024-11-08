@@ -32,11 +32,17 @@ class IngestionRun:
         id: Optional[int] = None,
         starting_offsets: str = None,
         ending_offsets: str = None,
+        current_offsets: str = None,
+        total_entries: int = None,
+        remaining_entries: int = None,
         **kwargs,
     ):
         self._id = id
         self._starting_offsets = starting_offsets
         self._ending_offsets = ending_offsets
+        self._current_offsets = current_offsets
+        self._total_entries = total_entries
+        self._remaining_entries = remaining_entries
 
     @classmethod
     def from_response_json(cls, json_dict: Dict[str, Any]) -> "IngestionRun":
@@ -75,3 +81,15 @@ class IngestionRun:
     @ending_offsets.setter
     def ending_offsets(self, ending_offsets: str) -> None:
         self._ending_offsets = ending_offsets
+
+    @property
+    def current_offsets(self) -> str:
+        return self._current_offsets
+    
+    @property
+    def total_entries(self) -> int:
+        return self._total_entries
+    
+    @property
+    def remaining_entries(self) -> int:
+        return self._remaining_entries

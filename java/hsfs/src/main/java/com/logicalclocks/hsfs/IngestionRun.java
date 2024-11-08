@@ -38,6 +38,15 @@ public class IngestionRun {
   @Setter
   private String endingOffsets;
 
+  @Getter
+  private String currentOffsets;
+
+  @Getter
+  private Integer totalEntries;
+
+  @Getter
+  private Integer remainingEntries;
+
   public IngestionRun(String startingOffsets, String endingOffsets) {
     this.startingOffsets = startingOffsets;
     this.endingOffsets = endingOffsets;
