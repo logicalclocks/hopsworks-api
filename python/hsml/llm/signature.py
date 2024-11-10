@@ -56,6 +56,8 @@ def create_model(
             `""`.
         input_example: Optionally an input example that represents a single input for the model, defaults to `None`.
         model_schema: Optionally a model schema for the model inputs and/or outputs.
+        feature_view: Optionally a feature view object returned by querying the feature store. If the feature view is not provided, the model will not have access to provenance.
+        training_dataset_version: Optionally a training dataset version. If training dataset version is not provided, but the feature view is provided, the training dataset version used will be the last accessed training dataset of the feature view, within the code/notebook that reads the feature view and training dataset and then creates the model.
 
     # Returns
         `Model`. The model metadata object.
