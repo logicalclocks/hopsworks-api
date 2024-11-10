@@ -17,69 +17,69 @@ nav:
   - Setup and Installation: https://docs.hopsworks.ai/
   - Administration: https://docs.hopsworks.ai/
   - API<div class="dropdown"><button class="dropbtn"> API </button> <div id="myDropdown" class="dropdown-content"> <a id="hopsworks_api_link" href="https://docs.hopsworks.ai/hopsworks-api/latest">Python API</a> <a id="hsfs_javadoc_link" href="https://docs.hopsworks.ai/hopsworks-api/latest/javadoc">Feature Store JavaDoc</a> </div></div>:
+    - Login: generated/api/login.md
     - Platform API:
-      - Login: generated/api/login.md
       - Connection: generated/api/connection.md
-      - Projects: generated/api/projects.md
-      - Jobs: generated/api/jobs.md
+      - Datasets: generated/api/datasets.md
+      - Environment: generated/api/environment.md
       - Executions: generated/api/executions.md
       - FlinkCluster: generated/api/flink_cluster.md
-      - Environment: generated/api/environment.md
-      - GitRepo: generated/api/git_repo.md
       - GitProvider: generated/api/git_provider.md
       - GitRemote: generated/api/git_remote.md
-      - Datasets: generated/api/datasets.md
-      - KafkaTopic: generated/api/kafka_topic.md
+      - GitRepo: generated/api/git_repo.md
+      - Jobs: generated/api/jobs.md
       - KafkaSchema: generated/api/kafka_schema.md
-      - Secrets: generated/api/secrets.md
+      - KafkaTopic: generated/api/kafka_topic.md
       - OpenSearch: generated/api/opensearch.md
+      - Projects: generated/api/projects.md
+      - Secrets: generated/api/secrets.md
     - Feature Store API:
-      - ExpectationSuite: generated/api/expectation_suite_api.md
-      - FeatureStore: generated/api/feature_store_api.md
-      - FeatureGroup: generated/api/feature_group_api.md
-      - ExternalFeatureGroup: generated/api/external_feature_group_api.md
-      - SpineGroup: generated/api/spine_group_api.md
-      - FeatureView: generated/api/feature_view_api.md
-      - TrainingDataset: generated/api/training_dataset_api.md
-      - Storage Connector: generated/api/storage_connector_api.md
-      - Feature: generated/api/feature_api.md
-      - Query: generated/api/query_api.md
-      - Transformation Functions:
-        - UDF: generated/api/udf.md
-        - HopsworksUDF: generated/api/hopsworks_udf.md
-        - TransformationFunction: generated/api/transformation_functions_api.md
-        - Transformation Statistics:
-          - TransformationStatistics: generated/api/transformation_statistics.md
-          - FeatureTransformationStatistics: generated/api/feature_transformation_statistics.md
-      - ValidationReport: generated/api/validation_report_api.md
-      - Provenance Links: generated/api/links.md
-      - Statistics:
-          - Statistics: generated/api/statistics_api.md
-          - Split Statistics: generated/api/split_statistics_api.md
-          - Feature descriptive statistics: generated/api/feature_descriptive_statistics_api.md
-      - Feature Monitoring:
-          - Configuration: generated/api/feature_monitoring_config_api.md
-          - Result: generated/api/feature_monitoring_result_api.md
-          - Window: generated/api/feature_monitoring_window_config_api.md
       - Embedding:
-          - EmbeddingIndex: generated/api/embedding_index_api.md
-          - EmbeddingFeature: generated/api/embedding_feature_api.md
-          - SimilarityFunctionType: generated/api/similarity_function_type_api.md
+        - EmbeddingFeature: generated/api/embedding_feature_api.md
+        - EmbeddingIndex: generated/api/embedding_index_api.md
+        - SimilarityFunctionType: generated/api/similarity_function_type_api.md
+      - ExpectationSuite: generated/api/expectation_suite_api.md
+      - ExternalFeatureGroup: generated/api/external_feature_group_api.md
+      - Feature: generated/api/feature_api.md
+      - Feature Monitoring:
+        - Configuration: generated/api/feature_monitoring_config_api.md
+        - Result: generated/api/feature_monitoring_result_api.md
+        - Window: generated/api/feature_monitoring_window_config_api.md
+      - FeatureGroup: generated/api/feature_group_api.md
+      - FeatureStore: generated/api/feature_store_api.md
+      - FeatureView: generated/api/feature_view_api.md
+      - Provenance Links: generated/api/links.md
+      - Query: generated/api/query_api.md
+      - SpineGroup: generated/api/spine_group_api.md
+      - Statistics:
+        - Feature descriptive statistics: generated/api/feature_descriptive_statistics_api.md
+        - Split Statistics: generated/api/split_statistics_api.md
+        - Statistics: generated/api/statistics_api.md
+      - Storage Connector: generated/api/storage_connector_api.md
+      - TrainingDataset: generated/api/training_dataset_api.md
+      - Transformation Functions:
+        - HopsworksUDF: generated/api/hopsworks_udf.md
+        - Transformation Statistics:
+          - FeatureTransformationStatistics: generated/api/feature_transformation_statistics.md
+          - TransformationStatistics: generated/api/transformation_statistics.md
+        - TransformationFunction: generated/api/transformation_functions_api.md
+        - UDF: generated/api/udf.md
+      - ValidationReport: generated/api/validation_report_api.md
     - Machine Learning API:
       - Model Registry:
-        - Model Registry: generated/model-registry/model_registry_api.md
         - Model: generated/model-registry/model_api.md
+        - Model Registry: generated/model-registry/model_registry_api.md
         - Model Schema: generated/model-registry/model_schema_api.md
       - Model Serving:
-        - Model Serving: generated/model-serving/model_serving_api.md
         - Deployment: generated/model-serving/deployment_api.md
         - Deployment state: generated/model-serving/predictor_state_api.md
         - Deployment state condition: generated/model-serving/predictor_state_condition_api.md
-        - Predictor: generated/model-serving/predictor_api.md
-        - Transformer: generated/model-serving/transformer_api.md
-        - Inference Logger: generated/model-serving/inference_logger_api.md
         - Inference Batcher: generated/model-serving/inference_batcher_api.md
+        - Inference Logger: generated/model-serving/inference_logger_api.md
+        - Model Serving: generated/model-serving/model_serving_api.md
+        - Predictor: generated/model-serving/predictor_api.md
         - Resources: generated/model-serving/resources_api.md
+        - Transformer: generated/model-serving/transformer_api.md
     # Added to allow navigation using the side drawer
     - Feature Store JavaDoc: https://docs.hopsworks.ai/feature-store-javadoc/latest/
     - Contributing: CONTRIBUTING.md

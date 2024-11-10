@@ -7,10 +7,8 @@ import numpy as np
 import pandas as pd
 
 from locust.runners import MasterRunner, LocalRunner
-import hsfs
 
-from hsfs import client
-from hsfs.client.exceptions import RestAPIError
+import hopsworks
 
 
 class HopsworksClient:
@@ -21,14 +19,14 @@ class HopsworksClient:
             environment.runner, (MasterRunner, LocalRunner)
         ):
             print(self.hopsworks_config)
-        self.connection = hsfs.connection(
+        self.project = hopsworks.login(
             project=self.hopsworks_config.get("project", "test"),
             host=self.hopsworks_config.get("host", "localhost"),
             port=self.hopsworks_config.get("port", 443),
             api_key_file=".api_key",
             engine="python",
         )
-        self.fs = self.connection.get_feature_store()
+        self.fs = self.project.get_feature_store()
 
         # test settings
         self.external = self.hopsworks_config.get("external", False)
@@ -38,6 +36,7 @@ class HopsworksClient:
             "recreate_feature_group", False
         )
         self.batch_size = self.hopsworks_config.get("batch_size", 100)
+        self.tablespace = self.hopsworks_config.get("tablespace", None)
 
     def get_or_create_fg(self):
         locust_fg = self.fs.get_or_create_feature_group(
@@ -46,6 +45,7 @@ class HopsworksClient:
             primary_key=["ip"],
             online_enabled=True,
             stream=True,
+            online_config={'table_space': self.tablespace} if self.tablespace else None
         )
         return locust_fg
 
@@ -59,18 +59,15 @@ class HopsworksClient:
         return locust_fg
 
     def get_or_create_fv(self, fg=None):
-        try:
-            return self.fs.get_feature_view("locust_fv", version=1)
-        except RestAPIError:
-            return self.fs.create_feature_view(
-                name="locust_fv",
-                query=fg.select_all(),
-                version=1,
-            )
+        if fg is None:
+            fg = self.get_or_create_fg()
+        return self.fs.get_or_create_feature_view(
+            name="locust_fv", version=1, query=fg.select_all()
+        )
 
     def close(self):
-        if client._client is not None:
-            self.connection.close()
+        if self.project is not None:
+            hopsworks.logout()
 
     def generate_insert_df(self, rows, schema_repetitions):
         data = {"ip": range(0, rows)}
