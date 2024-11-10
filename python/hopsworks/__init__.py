@@ -22,6 +22,7 @@ import sys
 import tempfile
 import warnings
 from pathlib import Path
+from typing import Literal, Union
 
 from hopsworks import client, constants, project, version
 from hopsworks.client.exceptions import (
@@ -83,6 +84,7 @@ def login(
     api_key_file: str = None,
     hostname_verification: bool = False,
     trust_store_path: str = None,
+    engine: Union[None, Literal["spark"], Literal["python"], Literal["training"]] = None,
 ) -> project.Project:
     """Connect to [Serverless Hopsworks](https://app.hopsworks.ai) by calling the `hopsworks.login()` function with no arguments.
 
@@ -122,6 +124,13 @@ def login(
         api_key_file: Path to file wih Api Key
         hostname_verification: Whether to verify Hopsworks' certificate
         trust_store_path: Path on the file system containing the Hopsworks certificates
+        engine: Which engine to use, `"spark"`, `"python"` or `"training"`. Defaults to `None`,
+            which initializes the engine to Spark if the environment provides Spark, for
+            example on Hopsworks and Databricks, or falls back to Python if Spark is not
+            available, e.g. on local Python environments or AWS SageMaker. This option
+            allows you to override this behaviour. `"training"` engine is useful when only
+            feature store metadata is needed, for example training dataset location and label
+            information when Hopsworks training experiment is conducted.
     # Returns
         `Project`: The Project object to perform operations on
     # Raises
@@ -138,7 +147,7 @@ def login(
 
     # If inside hopsworks, just return the current project for now
     if "REST_ENDPOINT" in os.environ:
-        _hw_connection = _hw_connection(hostname_verification=hostname_verification)
+        _hw_connection = _hw_connection(hostname_verification=hostname_verification, engine=engine)
         _connected_project = _hw_connection.get_project()
         _initialize_module_apis()
         print("\nLogged in to project, explore it here " + _connected_project.get_url())
@@ -207,6 +216,7 @@ def login(
             _hw_connection = _hw_connection(
                 host=host,
                 port=port,
+                engine=engine,
                 api_key_file=api_key_path,
                 hostname_verification=hostname_verification,
                 trust_store_path=trust_store_path,
@@ -246,6 +256,7 @@ def login(
         _hw_connection = _hw_connection(
             host=host,
             port=port,
+            engine=engine,
             api_key_value=api_key,
             hostname_verification=hostname_verification,
             trust_store_path=trust_store_path,
