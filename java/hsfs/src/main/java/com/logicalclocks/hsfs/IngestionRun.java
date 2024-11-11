@@ -17,6 +17,8 @@
 
 package com.logicalclocks.hsfs;
 
+import com.logicalclocks.hsfs.metadata.RestDto;
+
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -24,7 +26,7 @@ import lombok.Setter;
 
 @NoArgsConstructor
 @AllArgsConstructor
-public class IngestionRun {
+public class IngestionRun extends RestDto<IngestionRun> {
 
   @Getter
   @Setter

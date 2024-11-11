@@ -50,7 +50,7 @@ public class FeatureGroupApi {
       + "/commits{?filter_by,sort_by,offset,limit}";
   public static final String FEATURE_GROUP_CLEAR_PATH = FEATURE_GROUP_ID_PATH + "/clear";
   public static final String FEATURE_GROUP_INGESTION_RUN = FEATURE_GROUP_ID_PATH
-      + "/ingestionrun";
+      + "/ingestionrun{?filter_by,sort_by,offset,limit}";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(FeatureGroupApi.class);
 
@@ -310,13 +310,36 @@ public class FeatureGroupApi {
     String uri = UriTemplate.fromTemplate(pathTemplate)
         .set("projectId", hopsworksClient.getProject().getProjectId())
         .set("fsId", featureGroupBase.getFeatureStore().getId())
+        .set("fgId", featureGroupBase.getId())
         .expand();
 
     HttpPost postRequest = new HttpPost(uri);
-    postRequest.setHeader(HttpHeaders.CONTENT_TYPE, "application/json");
     postRequest.setEntity(hopsworksClient.buildStringEntity(ingestionRun));
-
     hopsworksClient.handleRequest(postRequest);
+  }
+
+  public IngestionRun getIngestionRun(FeatureGroupBase featureGroupBase,  Map<String, String> queryParams)
+      throws IOException, FeatureStoreException {
+    HopsworksClient hopsworksClient = HopsworksClient.getInstance();
+    String pathTemplate = HopsworksClient.PROJECT_PATH
+        + FeatureStoreApi.FEATURE_STORE_PATH
+        + FEATURE_GROUP_INGESTION_RUN;
+
+    UriTemplate uriTemplate = UriTemplate.fromTemplate(pathTemplate)
+        .set("projectId", hopsworksClient.getProject().getProjectId())
+        .set("fsId", featureGroupBase.getFeatureStore().getId())
+        .set("fgId", featureGroupBase.getId());
+      
+    if (queryParams != null) {
+      for (Map.Entry<String, String> entry: queryParams.entrySet()) {
+        uriTemplate.set(entry.getKey(), entry.getValue());
+      }
+    }
+
+    String uri = uriTemplate.expand();
+
+    LOGGER.info("Sending metadata request: " + uri);
+    return hopsworksClient.handleRequest(new HttpGet(uri), IngestionRun.class);
   }
 
   private <T extends FeatureGroupBase> void checkFeatures(T fg) {

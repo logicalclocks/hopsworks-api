@@ -634,7 +634,7 @@ class FeatureGroupApi:
         return _client._send_request(
             "POST", path_params, data=ingestion_run.json(),
         )
-    
+
     def get_ingestion_run(
         self,
         feature_group_instance: fg_mod.FeatureGroup,

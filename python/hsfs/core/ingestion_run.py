@@ -48,7 +48,7 @@ class IngestionRun:
     def from_response_json(cls, json_dict: Dict[str, Any]) -> "IngestionRun":
         if json_dict is None:
             return None
-        
+
         json_decamelized: dict = humps.decamelize(json_dict)
 
         if json_decamelized["count"] == 1:
@@ -89,11 +89,11 @@ class IngestionRun:
     @property
     def current_offsets(self) -> str:
         return self._current_offsets
-    
+
     @property
     def total_entries(self) -> int:
         return self._total_entries
-    
+
     @property
     def remaining_entries(self) -> int:
         return self._remaining_entries
