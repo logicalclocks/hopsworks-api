@@ -21,7 +21,6 @@ from typing import Any, Dict, Optional
 
 import humps
 from hopsworks_common import util
-from hsfs.core.feature_group_api import FeatureGroupApi
 from hsfs.feature_group import FeatureGroupBase
 from tqdm.auto import tqdm
 
@@ -65,6 +64,8 @@ class IngestionRun:
             return None
 
     def refresh(self):
+        from hsfs.core.feature_group_api import FeatureGroupApi
+
         ingestion_run = FeatureGroupApi().get_ingestion_run(
             self.feature_group,
             query_params={"filter_by": f"ID:{self.id}"}
