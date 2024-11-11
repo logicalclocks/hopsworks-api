@@ -21,7 +21,6 @@ from typing import Any, Dict, Optional
 
 import humps
 from hopsworks_common import util
-from hsfs.feature_group import FeatureGroupBase
 from tqdm.auto import tqdm
 
 
@@ -103,11 +102,11 @@ class IngestionRun:
         self._ending_offsets = ending_offsets
 
     @property
-    def feature_group(self) -> FeatureGroupBase:
+    def feature_group(self) -> "FeatureGroupBase":
         return self._feature_group
 
     @feature_group.setter
-    def feature_group(self, feature_group: FeatureGroupBase) -> None:
+    def feature_group(self, feature_group: "FeatureGroupBase") -> None:
         self._feature_group = feature_group
 
     @property
