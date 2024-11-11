@@ -631,8 +631,9 @@ class FeatureGroupApi:
             "ingestionrun",
         ]
 
+        headers = {"content-type": "application/json"}
         return _client._send_request(
-            "POST", path_params, data=ingestion_run.json(),
+            "POST", path_params, headers=headers, data=ingestion_run.json(),
         )
 
     def get_ingestion_run(
