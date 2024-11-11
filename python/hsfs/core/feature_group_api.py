@@ -632,9 +632,11 @@ class FeatureGroupApi:
         ]
 
         headers = {"content-type": "application/json"}
-        return _client._send_request(
-            "POST", path_params, headers=headers, data=ingestion_run.json(),
+        ingestion_run = ingestion_run.IngestionRun.from_response_json(
+            _client._send_request("POST", path_params, headers=headers, data=ingestion_run.json())
         )
+        ingestion_run.feature_group = feature_group_instance
+        return ingestion_run
 
     def get_ingestion_run(
         self,
@@ -652,9 +654,11 @@ class FeatureGroupApi:
             "ingestionrun",
         ]
 
-        return ingestion_run.IngestionRun.from_response_json(
+        ingestion_run = ingestion_run.IngestionRun.from_response_json(
             _client._send_request("GET", path_params, query_params)
         )
+        ingestion_run.feature_group = feature_group_instance
+        return ingestion_run
 
     def _check_features(self, feature_group_instance) -> None:
         if not feature_group_instance._features:

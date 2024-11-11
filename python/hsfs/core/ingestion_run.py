@@ -16,10 +16,14 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any, Dict, Optional
 
 import humps
 from hopsworks_common import util
+from hsfs.core.feature_group_api import FeatureGroupApi
+from hsfs.feature_group import FeatureGroupBase
+from tqdm.auto import tqdm
 
 
 class IngestionRun:
@@ -51,10 +55,21 @@ class IngestionRun:
 
         json_decamelized: dict = humps.decamelize(json_dict)
 
-        if json_decamelized["count"] == 1:
+        if "count" not in json_decamelized:
+            return cls(**json_decamelized)
+        elif json_decamelized["count"] == 1:
             return cls(**json_decamelized["items"][0])
-        else:
+        elif json_decamelized["count"] > 1:
             return [cls(**item) for item in json_decamelized["items"]]
+        else:
+            return None
+
+    def refresh(self):
+        ingestion_run = FeatureGroupApi().get_ingestion_run(
+            self.feature_group,
+            query_params={"filter_by": f"ID:{self.id}"}
+        )
+        self.__dict__.update(ingestion_run.__dict__)
 
     def to_dict(self):
         return {
@@ -87,6 +102,14 @@ class IngestionRun:
         self._ending_offsets = ending_offsets
 
     @property
+    def feature_group(self) -> FeatureGroupBase:
+        return self._feature_group
+
+    @feature_group.setter
+    def feature_group(self, feature_group: FeatureGroupBase) -> None:
+        self._feature_group = feature_group
+
+    @property
     def current_offsets(self) -> str:
         return self._current_offsets
 
@@ -97,3 +120,19 @@ class IngestionRun:
     @property
     def remaining_entries(self) -> int:
         return self._remaining_entries
+
+    def wait_for_completion(self):
+        with open(tqdm(total=self.total_entries,
+                       bar_format="{desc}: {percentage:.2f}% |{bar}| Rows {n_fmt}/{total_fmt} | Elapsed Time: {elapsed} | Remaining Time: {remaining}",
+                       desc="Ingestion run progress",
+                       mininterval=1)) as progress_bar:
+            while True:
+                progress_bar.n = self.total_entries - self.remaining_entries
+                progress_bar.refresh()
+
+                if self.remaining_entries <= 0:
+                    break
+
+                time.sleep(1)
+
+                self.refresh()
