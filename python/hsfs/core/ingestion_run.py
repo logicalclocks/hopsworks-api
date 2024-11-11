@@ -102,11 +102,11 @@ class IngestionRun:
         self._ending_offsets = ending_offsets
 
     @property
-    def feature_group(self) -> "FeatureGroupBase":
+    def feature_group(self):
         return self._feature_group
 
     @feature_group.setter
-    def feature_group(self, feature_group: "FeatureGroupBase") -> None:
+    def feature_group(self, feature_group) -> None:
         self._feature_group = feature_group
 
     @property
