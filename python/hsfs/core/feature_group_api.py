@@ -631,9 +631,28 @@ class FeatureGroupApi:
             "ingestionrun",
         ]
 
-        headers = {"content-type": "application/json"}
         return _client._send_request(
-            "POST", path_params, headers=headers, data=ingestion_run.json(),
+            "POST", path_params, data=ingestion_run.json(),
+        )
+    
+    def get_ingestion_run(
+        self,
+        feature_group_instance: fg_mod.FeatureGroup,
+        query_params: dict = {"id": "latest"},
+    ):
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            feature_group_instance.feature_store_id,
+            "featuregroups",
+            feature_group_instance.id,
+            "ingestionrun",
+        ]
+
+        return ingestion_run.IngestionRun.from_response_json(
+            _client._send_request("GET", path_params, query_params)
         )
 
     def _check_features(self, feature_group_instance) -> None:

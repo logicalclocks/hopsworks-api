@@ -48,9 +48,13 @@ class IngestionRun:
     def from_response_json(cls, json_dict: Dict[str, Any]) -> "IngestionRun":
         if json_dict is None:
             return None
+        
+        json_decamelized: dict = humps.decamelize(json_dict)
 
-        json_decamelized = humps.decamelize(json_dict)
-        return cls(**json_decamelized)
+        if json_decamelized["count"] == 1:
+            return cls(**json_decamelized["items"][0])
+        else:
+            return [cls(**item) for item in json_decamelized["items"]]
 
     def to_dict(self):
         return {
