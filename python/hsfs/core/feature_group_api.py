@@ -638,7 +638,7 @@ class FeatureGroupApi:
     def get_ingestion_run(
         self,
         feature_group_instance: fg_mod.FeatureGroup,
-        query_params: dict = {"id": "latest"},
+        query_params: None,
     ):
         _client = client.get_instance()
         path_params = [
