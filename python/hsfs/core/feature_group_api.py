@@ -618,7 +618,7 @@ class FeatureGroupApi:
     def save_ingestion_run(
         self,
         feature_group_instance: fg_mod.FeatureGroup,
-        ingestion_run: ingestion_run.IngestionRun,
+        ingestion_run_instance: ingestion_run.IngestionRun,
     ):
         _client = client.get_instance()
         path_params = [
@@ -632,11 +632,11 @@ class FeatureGroupApi:
         ]
 
         headers = {"content-type": "application/json"}
-        ingestion_run = ingestion_run.IngestionRun.from_response_json(
-            _client._send_request("POST", path_params, headers=headers, data=ingestion_run.json())
+        ingestion_run_instance = ingestion_run.IngestionRun.from_response_json(
+            _client._send_request("POST", path_params, headers=headers, data=ingestion_run_instance.json())
         )
-        ingestion_run.feature_group = feature_group_instance
-        return ingestion_run
+        ingestion_run_instance.feature_group = feature_group_instance
+        return ingestion_run_instance
 
     def get_ingestion_run(
         self,
@@ -654,11 +654,11 @@ class FeatureGroupApi:
             "ingestionrun",
         ]
 
-        ingestion_run = ingestion_run.IngestionRun.from_response_json(
+        ingestion_run_instance = ingestion_run.IngestionRun.from_response_json(
             _client._send_request("GET", path_params, query_params)
         )
-        ingestion_run.feature_group = feature_group_instance
-        return ingestion_run
+        ingestion_run_instance.feature_group = feature_group_instance
+        return ingestion_run_instance
 
     def _check_features(self, feature_group_instance) -> None:
         if not feature_group_instance._features:
