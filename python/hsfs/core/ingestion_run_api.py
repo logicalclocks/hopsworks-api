@@ -39,11 +39,7 @@ class IngestionRunApi:
         ]
 
         headers = {"content-type": "application/json"}
-        ingestion_run_instance = ingestion_run.IngestionRun.from_response_json(
-            _client._send_request("POST", path_params, headers=headers, data=ingestion_run_instance.json())
-        )
-        ingestion_run_instance.feature_group = feature_group_instance
-        return ingestion_run_instance
+        _client._send_request("POST", path_params, headers=headers, data=ingestion_run_instance.json())
 
     def get_ingestion_run(
         self,
