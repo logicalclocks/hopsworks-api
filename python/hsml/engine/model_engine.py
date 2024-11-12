@@ -213,7 +213,7 @@ class ModelEngine:
                 # we need to replace the local path prefix with the hdfs path prefix (i.e., /srv/hops/....../root with /Projects/.../)
                 remote_base_path = root.replace(
                     from_local_model_path, to_model_files_path
-                )
+                ).replace(os.sep, "/")
                 for d_name in dirs:
                     self._engine.mkdir(remote_base_path + "/" + d_name)
                     n_dirs += 1
