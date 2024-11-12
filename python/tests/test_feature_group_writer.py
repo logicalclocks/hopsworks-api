@@ -21,6 +21,7 @@ from hsfs.engine import python
 class TestFeatureGroupWriter:
     def test_fg_writer_context_manager(self, mocker, dataframe_fixture_basic):
         mock_insert = mocker.patch("hsfs.feature_group.FeatureGroup.insert")
+        mock_save_ingestion_run = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi.save_ingestion_run")
 
         fg = feature_group.FeatureGroup(
             name="test",
@@ -45,12 +46,14 @@ class TestFeatureGroupWriter:
             validation_options={"fetch_expectation_suite": False},
         )
         assert fg._multi_part_insert is False
+        assert mock_save_ingestion_run.call_count == 0
 
     def test_fg_writer_cache_management(self, mocker, dataframe_fixture_basic):
         engine = python.Engine()
         mocker.patch("hsfs.engine.get_instance", return_value=engine)
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.core.kafka_engine.kafka_get_offsets", return_value="")
+        mock_save_ingestion_run = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi.save_ingestion_run")
         producer, feature_writers, writer_m = (
             mocker.MagicMock(),
             mocker.MagicMock(),
@@ -104,12 +107,14 @@ class TestFeatureGroupWriter:
         assert fg._feature_writers is None
         assert fg._kafka_headers is None
         assert fg._writer is None
+        assert mock_save_ingestion_run.call_count == 0
 
     def test_fg_writer_without_context_manager(self, mocker, dataframe_fixture_basic):
         engine = python.Engine()
         mocker.patch("hsfs.engine.get_instance", return_value=engine)
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.core.kafka_engine.kafka_get_offsets", return_value="")
+        mock_save_ingestion_run = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi.save_ingestion_run")
         producer, feature_writers, writer_m = (
             mocker.MagicMock(),
             mocker.MagicMock(),
@@ -161,3 +166,4 @@ class TestFeatureGroupWriter:
         assert fg._feature_writers is None
         assert fg._kafka_headers is None
         assert fg._writer is None
+        assert mock_save_ingestion_run.call_count == 0

@@ -122,10 +122,10 @@ class IngestionRun:
         return self._remaining_entries
 
     def wait_for_completion(self):
-        with open(tqdm(total=self.total_entries,
-                       bar_format="{desc}: {percentage:.2f}% |{bar}| Rows {n_fmt}/{total_fmt} | Elapsed Time: {elapsed} | Remaining Time: {remaining}",
-                       desc="Ingestion run progress",
-                       mininterval=1)) as progress_bar:
+        with tqdm(total=self.total_entries,
+                  bar_format="{desc}: {percentage:.2f}% |{bar}| Rows {n_fmt}/{total_fmt} | Elapsed Time: {elapsed} | Remaining Time: {remaining}",
+                  desc="Ingestion run progress",
+                  mininterval=1) as progress_bar:
             while True:
                 progress_bar.n = self.total_entries - self.remaining_entries
                 progress_bar.refresh()

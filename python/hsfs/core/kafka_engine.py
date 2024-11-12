@@ -312,12 +312,13 @@ def run_kafka_ingestion(stream=False):
 
             result = func(instance, feature_group, *args, **kwargs)
 
-            if stream:
-                # Start the monitoring thread
-                monitor_thread = Thread(target=wait_for_query, args=(result, on_finished))
-                monitor_thread.start()
-            else:
-                on_finished()
+            if not feature_group._multi_part_insert:
+                if stream:
+                    # Start the monitoring thread
+                    monitor_thread = Thread(target=wait_for_query, args=(result, on_finished))
+                    monitor_thread.start()
+                else:
+                    on_finished()
 
             return result
         return wrapper

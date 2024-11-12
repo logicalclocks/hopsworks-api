@@ -33,6 +33,7 @@ class TestPythonWriter:
         avro_schema_mock = mocker.patch(
             "hsfs.feature_group.FeatureGroup._get_encoded_avro_schema"
         )
+        mock_save_ingestion_run = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi.save_ingestion_run")
         avro_schema = (
             '{"type":"record","name":"test_fg","namespace":"test_featurestore.db","fields":'
             '[{"name":"primary_key","type":["null","long"]},{"name":"event_date","type":'
@@ -113,3 +114,4 @@ class TestPythonWriter:
         }
 
         assert reference_record == record
+        assert mock_save_ingestion_run.call_count == 1
