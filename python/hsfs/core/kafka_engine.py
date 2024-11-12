@@ -17,15 +17,13 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from functools import wraps
 from io import BytesIO
-from threading import Thread
 from typing import TYPE_CHECKING, Any, Callable, Dict, Literal, Optional, Tuple, Union
 
 import pandas as pd
 from hopsworks_common import client
 from hopsworks_common.core.constants import HAS_NUMPY
-from hsfs.core import feature_group_api, ingestion_run, storage_connector_api
+from hsfs.core import storage_connector_api
 from hsfs.core.constants import HAS_AVRO, HAS_CONFLUENT_KAFKA, HAS_FAST_AVRO
 from tqdm import tqdm
 
@@ -275,51 +273,3 @@ def build_ack_callback_and_optional_progress_bar(
             progress_bar.update()
 
     return acked, progress_bar
-
-def run_kafka_ingestion(stream=False):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(instance, feature_group, *args, **kwargs):
-
-            def wait_for_query(query, callback):
-                # Wait for the query to terminate
-                query.awaitTermination()
-                # Once the query is done, run the callback function
-                callback()
-
-            def on_finished():
-                ending_check_point = kafka_get_offsets(
-                    topic_name=feature_group._online_topic_name,
-                    feature_store_id=feature_group.feature_store_id,
-                    offline_write_options={},
-                    high=True,
-                )
-
-                feature_group_api.FeatureGroupApi().save_ingestion_run(
-                    feature_group,
-                    ingestion_run.IngestionRun(
-                        starting_offsets=starting_check_point,
-                        ending_offsets=ending_check_point
-                    )
-                )
-
-            starting_check_point = kafka_get_offsets(
-                topic_name=feature_group._online_topic_name,
-                feature_store_id=feature_group.feature_store_id,
-                offline_write_options={},
-                high=True,
-            )
-
-            result = func(instance, feature_group, *args, **kwargs)
-
-            if not feature_group._multi_part_insert:
-                if stream:
-                    # Start the monitoring thread
-                    monitor_thread = Thread(target=wait_for_query, args=(result, on_finished))
-                    monitor_thread.start()
-                else:
-                    on_finished()
-
-            return result
-        return wrapper
-    return decorator

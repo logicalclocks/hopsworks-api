@@ -30,12 +30,13 @@ if TYPE_CHECKING:
     import great_expectations
     from pyspark.rdd import RDD
     from pyspark.sql import DataFrame
+from threading import Thread
 
 import pandas as pd
 import tzlocal
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_PANDAS
 from hsfs.constructor import query
-from hsfs.core import feature_group_api
+from hsfs.core import feature_group_api, ingestion_run
 
 # in case importing in %%local
 from hsfs.core.vector_db_client import VectorDbClient
@@ -473,7 +474,6 @@ class Engine:
         except Exception as e:
             raise FeatureStoreException(e).with_traceback(e.__traceback__) from e
 
-    @kafka_engine.run_kafka_ingestion(True)
     def save_stream_dataframe(
         self,
         feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
@@ -493,6 +493,13 @@ class Engine:
         project_id = str(feature_group.feature_store.project_id)
         feature_group_id = str(feature_group._id)
         subject_id = str(feature_group.subject["id"]).encode("utf8")
+
+        starting_check_point = kafka_engine.kafka_get_offsets(
+            topic_name=feature_group._online_topic_name,
+            feature_store_id=feature_group.feature_store_id,
+            offline_write_options={},
+            high=True,
+        )
 
         if query_name is None:
             query_name = (
@@ -538,6 +545,31 @@ class Engine:
         if await_termination:
             query.awaitTermination(timeout)
 
+        def wait_for_query(query, callback):
+            # Wait for the query to terminate
+            query.awaitTermination()
+            # Once the query is done, run the callback function
+            callback()
+
+        def on_finished():
+            ending_check_point = kafka_engine.kafka_get_offsets(
+                topic_name=feature_group._online_topic_name,
+                feature_store_id=feature_group.feature_store_id,
+                offline_write_options={},
+                high=True,
+            )
+
+            feature_group_api.FeatureGroupApi().save_ingestion_run(
+                feature_group,
+                ingestion_run.IngestionRun(
+                    starting_offsets=starting_check_point,
+                    ending_offsets=ending_check_point
+                )
+            )
+
+        monitor_thread = Thread(target=wait_for_query, args=(query, on_finished))
+        monitor_thread.start()
+
         return query
 
     def _save_offline_dataframe(
@@ -576,10 +608,16 @@ class Engine:
                 feature_group.partition_key if feature_group.partition_key else []
             ).saveAsTable(feature_group._get_table_name())
 
-    @kafka_engine.run_kafka_ingestion()
     def _save_online_dataframe(self, feature_group, dataframe, write_options):
         write_options = kafka_engine.get_kafka_config(
             feature_group.feature_store_id, write_options, engine="spark"
+        )
+
+        starting_check_point = kafka_engine.kafka_get_offsets(
+            topic_name=feature_group._online_topic_name,
+            feature_store_id=feature_group.feature_store_id,
+            offline_write_options={},
+            high=True,
         )
 
         serialized_df = self._serialize_to_avro(feature_group, dataframe)
@@ -601,6 +639,21 @@ class Engine:
         ).write.format(self.KAFKA_FORMAT).options(**write_options).option(
             "topic", feature_group._online_topic_name
         ).save()
+
+        ending_check_point = kafka_engine.kafka_get_offsets(
+            topic_name=feature_group._online_topic_name,
+            feature_store_id=feature_group.feature_store_id,
+            offline_write_options={},
+            high=True,
+        )
+
+        feature_group_api.FeatureGroupApi().save_ingestion_run(
+            feature_group,
+            ingestion_run.IngestionRun(
+                starting_offsets=starting_check_point,
+                ending_offsets=ending_check_point
+            )
+        )
 
     def _serialize_to_avro(
         self,

@@ -123,8 +123,8 @@ class IngestionRun:
 
     def wait_for_completion(self):
         with tqdm(total=self.total_entries,
-                  bar_format="{desc}: {percentage:.2f}% |{bar}| Rows {n_fmt}/{total_fmt} | Elapsed Time: {elapsed} | Remaining Time: {remaining}",
-                  desc="Ingestion run progress",
+                  bar_format="{desc}: {percentage:.2f}% |{bar}| Rows {n_fmt}/{total_fmt}",
+                  desc="Data processing progress",
                   mininterval=1) as progress_bar:
             while True:
                 progress_bar.n = self.total_entries - self.remaining_entries
