@@ -64,6 +64,8 @@ from hsfs.core import (
     feature_monitoring_result_engine,
     feature_store_api,
     great_expectation_engine,
+    ingestion_run,
+    ingestion_run_api,
     job_api,
     spine_group_engine,
     statistics_engine,
@@ -1798,6 +1800,9 @@ class FeatureGroupBase:
                 self._feature_store_id
             )
         return self._feature_store
+
+    def get_latest_ingestion_run(self) -> ingestion_run.IngestionRun:
+        return ingestion_run_api.IngestionRunApi().get_ingestion_run(self, query_params={"filter_by": "LATEST"})
 
     @feature_store.setter
     def feature_store(self, feature_store: feature_store_mod.FeatureStore) -> None:

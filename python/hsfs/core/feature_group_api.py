@@ -25,7 +25,6 @@ from hsfs.core import (
     explicit_provenance,
     ingestion_job,
     ingestion_job_conf,
-    ingestion_run,
     job,
 )
 
@@ -614,51 +613,6 @@ class FeatureGroupApi:
             explicit_provenance.Links.Direction.DOWNSTREAM,
             explicit_provenance.Links.Type.FEATURE_GROUP,
         )
-
-    def save_ingestion_run(
-        self,
-        feature_group_instance: fg_mod.FeatureGroup,
-        ingestion_run_instance: ingestion_run.IngestionRun,
-    ):
-        _client = client.get_instance()
-        path_params = [
-            "project",
-            _client._project_id,
-            "featurestores",
-            feature_group_instance.feature_store_id,
-            "featuregroups",
-            feature_group_instance.id,
-            "ingestionrun",
-        ]
-
-        headers = {"content-type": "application/json"}
-        ingestion_run_instance = ingestion_run.IngestionRun.from_response_json(
-            _client._send_request("POST", path_params, headers=headers, data=ingestion_run_instance.json())
-        )
-        ingestion_run_instance.feature_group = feature_group_instance
-        return ingestion_run_instance
-
-    def get_ingestion_run(
-        self,
-        feature_group_instance: fg_mod.FeatureGroup,
-        query_params: None,
-    ):
-        _client = client.get_instance()
-        path_params = [
-            "project",
-            _client._project_id,
-            "featurestores",
-            feature_group_instance.feature_store_id,
-            "featuregroups",
-            feature_group_instance.id,
-            "ingestionrun",
-        ]
-
-        ingestion_run_instance = ingestion_run.IngestionRun.from_response_json(
-            _client._send_request("GET", path_params, query_params)
-        )
-        ingestion_run_instance.feature_group = feature_group_instance
-        return ingestion_run_instance
 
     def _check_features(self, feature_group_instance) -> None:
         if not feature_group_instance._features:

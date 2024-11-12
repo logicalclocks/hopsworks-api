@@ -63,9 +63,9 @@ class IngestionRun:
             return None
 
     def refresh(self):
-        from hsfs.core.feature_group_api import FeatureGroupApi
+        from hsfs.core.ingestion_run_api import IngestionRunApi
 
-        ingestion_run = FeatureGroupApi().get_ingestion_run(
+        ingestion_run = IngestionRunApi().get_ingestion_run(
             self.feature_group,
             query_params={"filter_by": f"ID:{self.id}"}
         )

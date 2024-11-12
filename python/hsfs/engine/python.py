@@ -71,6 +71,7 @@ from hsfs.core import (
     feature_view_api,
     ingestion_job_conf,
     ingestion_run,
+    ingestion_run_api,
     job,
     job_api,
     kafka_engine,
@@ -1503,7 +1504,7 @@ class Engine:
                 high=True,
             )
 
-            feature_group_api.FeatureGroupApi().save_ingestion_run(
+            ingestion_run_api.IngestionRunApi().save_ingestion_run(
                 feature_group,
                 ingestion_run.IngestionRun(
                     starting_offsets=initial_check_point,
