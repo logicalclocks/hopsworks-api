@@ -261,6 +261,7 @@ class FeatureGroupBase:
     def select_all(
         self,
         include_primary_key: Optional[bool] = True,
+        include_foreign_key: Optional[bool] = True,
         include_event_time: Optional[bool] = True,
     ) -> query.Query:
         """Select all features along with primary key and event time from the feature group and return a query object.
@@ -314,7 +315,7 @@ class FeatureGroupBase:
         # Returns
             `Query`. A query object with all features of the feature group.
         """
-        if include_event_time and include_primary_key:
+        if include_event_time and include_primary_key and include_foreign_key:
             return query.Query(
                 left_feature_group=self,
                 left_features=self._features,
@@ -322,11 +323,13 @@ class FeatureGroupBase:
                 feature_store_id=self._feature_store_id,
             )
         elif include_event_time:
-            return self.select_except(self.primary_key)
+            return self.select_except(self.primary_key + self.foreign_key)
         elif include_primary_key:
-            return self.select_except([self.event_time])
-        else:
+            return self.select_except(self.foreign_key + [self.event_time])
+        elif include_foreign_key:
             return self.select_except(self.primary_key + [self.event_time])
+        else:
+            return self.select_except(self.primary_key + self.foreign_key + [self.event_time])
 
     def select_features(
         self,
@@ -425,7 +428,7 @@ class FeatureGroupBase:
         # Returns
             `Query`. A query object with all features of the feature group.
         """
-        query = self.select_except(self.primary_key + [self.event_time])
+        query = self.select_except(self.primary_key + self.foreign_key + [self.event_time])
         _logger.info(
             f"Using {[f.name for f in query.features]} as features for the query."
             "To include primary key and event time use `select_all`."
@@ -2216,6 +2219,7 @@ class FeatureGroup(FeatureGroupBase):
         description: Optional[str] = "",
         partition_key: Optional[List[str]] = None,
         primary_key: Optional[List[str]] = None,
+        foreign_key: Optional[List[str]] = None,
         hudi_precombine_key: Optional[str] = None,
         featurestore_name: Optional[str] = None,
         embedding_index: Optional["EmbeddingIndex"] = None,
@@ -2302,6 +2306,9 @@ class FeatureGroup(FeatureGroupBase):
             self.primary_key: List[str] = [
                 feat.name for feat in self._features if feat.primary is True
             ]
+            self.foreign_key: List[str] = [
+                feat.name for feat in self._features if feat.foreign is True
+            ]
             self._partition_key: List[str] = [
                 feat.name for feat in self._features if feat.partition is True
             ]
@@ -2329,6 +2336,7 @@ class FeatureGroup(FeatureGroupBase):
                 self._stream = True
 
             self.primary_key = primary_key
+            self.foreign_key = foreign_key
             self.partition_key = partition_key
             self._hudi_precombine_key = (
                 util.autofix_feature_name(hudi_precombine_key)
@@ -3793,6 +3801,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         version: Optional[int] = None,
         description: Optional[str] = None,
         primary_key: Optional[List[str]] = None,
+        foreign_key: Optional[List[str]] = None,
         featurestore_id: Optional[int] = None,
         featurestore_name: Optional[str] = None,
         created: Optional[str] = None,
@@ -3877,6 +3886,11 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 if self._features
                 else []
             )
+            self.foreign_key = (
+                [feat.name for feat in self._features if feat.foreign is True]
+                if self._features
+                else []
+            )
             self.statistics_config = statistics_config
 
             self._options = (
@@ -3886,6 +3900,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
             )
         else:
             self.primary_key = primary_key
+            self.foreign_key = foreign_key
             self.statistics_config = statistics_config
             self._features = features
             self._options = options or {}
@@ -4319,6 +4334,7 @@ class SpineGroup(FeatureGroupBase):
         version: Optional[int] = None,
         description: Optional[str] = None,
         primary_key: Optional[List[str]] = None,
+        foreign_key: Optional[List[str]] = None,
         featurestore_id: Optional[int] = None,
         featurestore_name: Optional[str] = None,
         created: Optional[str] = None,
@@ -4396,8 +4412,14 @@ class SpineGroup(FeatureGroupBase):
                 if self._features
                 else []
             )
+            self.foreign_key = (
+                [feat.name for feat in self._features if feat.foreign is True]
+                if self._features
+                else []
+            )
         else:
             self.primary_key = primary_key
+            self.foreign_key = foreign_key
             self._features = features
 
         self._href = href

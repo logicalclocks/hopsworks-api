@@ -1471,9 +1471,9 @@ class FeatureView:
             td,
             write_options or {},
             spine=spine,
-            primary_keys=kwargs.get("primary_keys") or primary_key,
-            event_time=event_time,
-            training_helper_columns=training_helper_columns,
+            #primary_keys=kwargs.get("primary_keys") or primary_key,
+            #event_time=event_time,
+            #training_helper_columns=training_helper_columns,
         )
         warnings.warn(
             "Incremented version to `{}`.".format(td.version),
@@ -1759,9 +1759,9 @@ class FeatureView:
             td,
             write_options or {},
             spine=spine,
-            primary_keys=kwargs.get("primary_keys") or primary_key,
-            event_time=event_time,
-            training_helper_columns=training_helper_columns,
+            #primary_keys=kwargs.get("primary_keys") or primary_key,
+            #event_time=event_time,
+            #training_helper_columns=training_helper_columns,
         )
         warnings.warn(
             "Incremented version to `{}`.".format(td.version),
@@ -2043,9 +2043,9 @@ class FeatureView:
             td,
             write_options or {},
             spine=spine,
-            primary_keys=kwargs.get("primary_keys") or primary_key,
-            event_time=event_time,
-            training_helper_columns=training_helper_columns,
+            #primary_keys=kwargs.get("primary_keys") or primary_key,
+            #event_time=event_time,
+            #training_helper_columns=training_helper_columns,
         )
         warnings.warn(
             "Incremented version to `{}`.".format(td.version),
