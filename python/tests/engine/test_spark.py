@@ -15,12 +15,12 @@
 #
 from __future__ import annotations
 
+from unittest.mock import call
+
 import hopsworks_common
 import numpy
 import pandas as pd
 import pytest
-from unittest.mock import call
-
 from hsfs import (
     expectation_suite,
     feature,
@@ -205,7 +205,9 @@ class TestSpark:
         # Arrange
         mock_hudi_engine = mocker.patch("hsfs.core.hudi_engine.HudiEngine")
         mocker.patch("hsfs.feature_group.FeatureGroup.from_response_json")
-        mock_reconcile_schema = mocker.patch("hsfs.engine.spark.Engine.reconcile_schema")
+        mock_reconcile_schema = mocker.patch(
+            "hsfs.engine.spark.Engine.reconcile_schema"
+        )
 
         spark_engine = spark.Engine()
 
@@ -229,7 +231,9 @@ class TestSpark:
         # Arrange
         mock_delta_engine = mocker.patch("hsfs.core.delta_engine.DeltaEngine")
         mocker.patch("hsfs.feature_group.FeatureGroup.from_response_json")
-        mock_reconcile_schema = mocker.patch("hsfs.engine.spark.Engine.reconcile_schema")
+        mock_reconcile_schema = mocker.patch(
+            "hsfs.engine.spark.Engine.reconcile_schema"
+        )
 
         spark_engine = spark.Engine()
 
@@ -1564,13 +1568,13 @@ class TestSpark:
         # Arrange
         spark_engine = spark.Engine()
 
-        mock_to_avro = mocker.patch('hsfs.engine.spark.to_avro')
-        mock_to_avro.return_value = lit(b'111')
+        mock_to_avro = mocker.patch("hsfs.engine.spark.to_avro")
+        mock_to_avro.return_value = lit(b"111")
 
         fg_data = []
         fg_data.append(("ekarson", ["GRAVITY RUSH 2", "KING'S QUEST"]))
         fg_data.append(("ratmilkdrinker", ["NBA 2K", "CALL OF DUTY"]))
-        pandas_df = pd.DataFrame(fg_data, columns =["account_id", "last_played_games"])
+        pandas_df = pd.DataFrame(fg_data, columns=["account_id", "last_played_games"])
 
         df = spark_engine._spark_session.createDataFrame(pandas_df)
 
@@ -1589,10 +1593,10 @@ class TestSpark:
             features=features,
         )
         fg._subject = {
-            'id': 1025,
-            'subject': 'fg_1',
-            'version': 1,
-            'schema': '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]}]}'
+            "id": 1025,
+            "subject": "fg_1",
+            "version": 1,
+            "schema": '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]}]}',
         }
 
         # Act
@@ -1602,9 +1606,12 @@ class TestSpark:
         )
 
         # Assert
-        assert serialized_df.schema.json() == '{"fields":[{"metadata":{},"name":"key","nullable":false,"type":"binary"},{"metadata":{},"name":"value","nullable":false,"type":"binary"}],"type":"struct"}'
+        assert (
+            serialized_df.schema.json()
+            == '{"fields":[{"metadata":{},"name":"key","nullable":false,"type":"binary"},{"metadata":{},"name":"value","nullable":false,"type":"binary"}],"type":"struct"}'
+        )
 
-    ''' Need spark to run these tests properly
+    """ Need spark to run these tests properly
     def test_deserialize_from_avro(self, mocker):
         # Arrange
         spark_engine = spark.Engine()
@@ -1697,7 +1704,7 @@ class TestSpark:
         assert serialized_df.schema.json() == '{"fields":[{"metadata":{},"name":"key","nullable":false,"type":"binary"},{"metadata":{},"name":"value","nullable":false,"type":"binary"}],"type":"struct"}'
         assert df.schema == deserialized_df.schema
         assert df.collect() == deserialized_df.collect()
-    '''
+    """
 
     def test_get_training_data(self, mocker):
         # Arrange
