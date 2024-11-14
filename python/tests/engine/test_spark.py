@@ -15,6 +15,8 @@
 #
 from __future__ import annotations
 
+from unittest.mock import call
+
 import hopsworks_common
 import numpy
 import pandas as pd
@@ -203,7 +205,9 @@ class TestSpark:
         # Arrange
         mock_hudi_engine = mocker.patch("hsfs.core.hudi_engine.HudiEngine")
         mocker.patch("hsfs.feature_group.FeatureGroup.from_response_json")
-        mock_reconcile_schema = mocker.patch("hsfs.engine.spark.Engine.reconcile_schema")
+        mock_reconcile_schema = mocker.patch(
+            "hsfs.engine.spark.Engine.reconcile_schema"
+        )
 
         spark_engine = spark.Engine()
 
@@ -227,7 +231,9 @@ class TestSpark:
         # Arrange
         mock_delta_engine = mocker.patch("hsfs.core.delta_engine.DeltaEngine")
         mocker.patch("hsfs.feature_group.FeatureGroup.from_response_json")
-        mock_reconcile_schema = mocker.patch("hsfs.engine.spark.Engine.reconcile_schema")
+        mock_reconcile_schema = mocker.patch(
+            "hsfs.engine.spark.Engine.reconcile_schema"
+        )
 
         spark_engine = spark.Engine()
 
@@ -1562,13 +1568,13 @@ class TestSpark:
         # Arrange
         spark_engine = spark.Engine()
 
-        mock_to_avro = mocker.patch('hsfs.engine.spark.to_avro')
-        mock_to_avro.return_value = lit(b'111')
+        mock_to_avro = mocker.patch("hsfs.engine.spark.to_avro")
+        mock_to_avro.return_value = lit(b"111")
 
         fg_data = []
         fg_data.append(("ekarson", ["GRAVITY RUSH 2", "KING'S QUEST"]))
         fg_data.append(("ratmilkdrinker", ["NBA 2K", "CALL OF DUTY"]))
-        pandas_df = pd.DataFrame(fg_data, columns =["account_id", "last_played_games"])
+        pandas_df = pd.DataFrame(fg_data, columns=["account_id", "last_played_games"])
 
         df = spark_engine._spark_session.createDataFrame(pandas_df)
 
@@ -1587,10 +1593,10 @@ class TestSpark:
             features=features,
         )
         fg._subject = {
-            'id': 1025,
-            'subject': 'fg_1',
-            'version': 1,
-            'schema': '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]}]}'
+            "id": 1025,
+            "subject": "fg_1",
+            "version": 1,
+            "schema": '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]}]}',
         }
 
         # Act
@@ -1600,9 +1606,12 @@ class TestSpark:
         )
 
         # Assert
-        assert serialized_df.schema.json() == '{"fields":[{"metadata":{},"name":"key","nullable":false,"type":"binary"},{"metadata":{},"name":"value","nullable":false,"type":"binary"}],"type":"struct"}'
+        assert (
+            serialized_df.schema.json()
+            == '{"fields":[{"metadata":{},"name":"key","nullable":false,"type":"binary"},{"metadata":{},"name":"value","nullable":false,"type":"binary"}],"type":"struct"}'
+        )
 
-    ''' Need spark to run these tests properly
+    """ Need spark to run these tests properly
     def test_deserialize_from_avro(self, mocker):
         # Arrange
         spark_engine = spark.Engine()
@@ -1695,7 +1704,7 @@ class TestSpark:
         assert serialized_df.schema.json() == '{"fields":[{"metadata":{},"name":"key","nullable":false,"type":"binary"},{"metadata":{},"name":"value","nullable":false,"type":"binary"}],"type":"struct"}'
         assert df.schema == deserialized_df.schema
         assert df.collect() == deserialized_df.collect()
-    '''
+    """
 
     def test_get_training_data(self, mocker):
         # Arrange
@@ -4263,6 +4272,109 @@ class TestSpark:
         )
         mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.endpoint", s3_connector.arguments.get("fs.s3a.endpoint")
+        )
+
+    def test_setup_s3_hadoop_conf_disable_legacy(self, mocker):
+        # Arrange
+        mock_pyspark_getOrCreate = mocker.patch(
+            "pyspark.sql.session.SparkSession.builder.getOrCreate"
+        )
+
+        spark_engine = spark.Engine()
+
+        s3_connector = storage_connector.S3Connector(
+            id=1,
+            name="test_connector",
+            featurestore_id=99,
+            bucket="bucket-name",
+            access_key="1",
+            secret_key="2",
+            server_encryption_algorithm="3",
+            server_encryption_key="4",
+            session_token="5",
+            arguments=[
+                {"name": "fs.s3a.endpoint", "value": "testEndpoint"},
+                {"name": "fs.s3a.global-conf", "value": "False"},
+            ],
+        )
+
+        # Act
+        result = spark_engine._setup_s3_hadoop_conf(
+            storage_connector=s3_connector,
+            path="s3://_test_path",
+        )
+
+        # Assert
+        assert result == "s3a://_test_path"
+        assert (
+            mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.call_count
+            == 7  # Options should only be set at bucket level
+        )
+        assert (
+            call("fs.s3a.access.key", s3_connector.access_key)
+            not in mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.mock_calls
+        )
+        assert (
+            call("fs.s3a.secret.key", s3_connector.secret_key)
+            not in mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.mock_calls
+        )
+        assert (
+            call(
+                "fs.s3a.server-side-encryption-algorithm",
+                s3_connector.server_encryption_algorithm,
+            )
+            not in mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.mock_calls
+        )
+
+        assert (
+            call(
+                "fs.s3a.server-side-encryption-key", s3_connector.server_encryption_key
+            )
+            not in mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.mock_calls
+        )
+
+        assert (
+            call(
+                "fs.s3a.aws.credentials.provider",
+                "org.apache.hadoop.fs.s3a.TemporaryAWSCredentialsProvider",
+            )
+            not in mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.mock_calls
+        )
+
+        assert (
+            call("fs.s3a.session.token", s3_connector.session_token)
+            not in mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.mock_calls
+        )
+
+        assert (
+            call("fs.s3a.endpoint", s3_connector.arguments.get("fs.s3a.endpoint"))
+            not in mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.mock_calls
+        )
+
+        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+            "fs.s3a.bucket.bucket-name.access.key", s3_connector.access_key
+        )
+        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+            "fs.s3a.bucket.bucket-name.secret.key", s3_connector.secret_key
+        )
+        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+            "fs.s3a.bucket.bucket-name.server-side-encryption-algorithm",
+            s3_connector.server_encryption_algorithm,
+        )
+        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+            "fs.s3a.bucket.bucket-name.server-side-encryption-key",
+            s3_connector.server_encryption_key,
+        )
+        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+            "fs.s3a.bucket.bucket-name.aws.credentials.provider",
+            "org.apache.hadoop.fs.s3a.TemporaryAWSCredentialsProvider",
+        )
+        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+            "fs.s3a.bucket.bucket-name.session.token", s3_connector.session_token
+        )
+        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+            "fs.s3a.bucket.bucket-name.endpoint",
+            s3_connector.arguments.get("fs.s3a.endpoint"),
         )
 
     def test_setup_s3_hadoop_conf_bucket_scope(self, mocker):
