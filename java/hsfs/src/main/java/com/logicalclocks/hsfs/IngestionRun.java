@@ -47,7 +47,7 @@ public class IngestionRun extends RestDto<IngestionRun> {
   private Integer totalEntries;
 
   @Getter
-  private Integer remainingEntries;
+  private Integer processedEntries;
 
   public IngestionRun(String startingOffsets, String endingOffsets) {
     this.startingOffsets = startingOffsets;

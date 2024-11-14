@@ -36,7 +36,7 @@ class IngestionRun:
         ending_offsets: str = None,
         current_offsets: str = None,
         total_entries: int = None,
-        remaining_entries: int = None,
+        processed_entries: int = None,
         **kwargs,
     ):
         self._id = id
@@ -44,7 +44,7 @@ class IngestionRun:
         self._ending_offsets = ending_offsets
         self._current_offsets = current_offsets
         self._total_entries = total_entries
-        self._remaining_entries = remaining_entries
+        self._processed_entries = processed_entries
 
     @classmethod
     def from_response_json(cls, json_dict: Dict[str, Any]) -> "IngestionRun":
@@ -118,8 +118,8 @@ class IngestionRun:
         return self._total_entries
 
     @property
-    def remaining_entries(self) -> int:
-        return self._remaining_entries
+    def processed_entries(self) -> int:
+        return self._processed_entries
 
     def wait_for_completion(self):
         with tqdm(total=self.total_entries,
@@ -127,10 +127,10 @@ class IngestionRun:
                   desc="Data processing progress",
                   mininterval=1) as progress_bar:
             while True:
-                progress_bar.n = self.total_entries - self.remaining_entries
+                progress_bar.n = self.processed_entries
                 progress_bar.refresh()
 
-                if self.remaining_entries <= 0:
+                if self.processed_entries >= self.total_entries:
                     break
 
                 time.sleep(1)
