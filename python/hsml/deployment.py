@@ -67,7 +67,7 @@ class Deployment:
         self._model_registry_id = None
 
     @usage.method_logger
-    def save(self, await_update: Optional[int] = 60):
+    def save(self, await_update: Optional[int] = 120):
         """Persist this deployment including the predictor and metadata to Model Serving.
 
         # Arguments
@@ -79,7 +79,7 @@ class Deployment:
         self._serving_engine.save(self, await_update)
 
     @usage.method_logger
-    def start(self, await_running: Optional[int] = 60):
+    def start(self, await_running: Optional[int] = 120):
         """Start the deployment
 
         # Arguments
@@ -91,7 +91,7 @@ class Deployment:
         self._serving_engine.start(self, await_status=await_running)
 
     @usage.method_logger
-    def stop(self, await_stopped: Optional[int] = 60):
+    def stop(self, await_stopped: Optional[int] = 120):
         """Stop the deployment
 
         # Arguments
