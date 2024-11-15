@@ -17,29 +17,30 @@
 
 package com.logicalclocks.hsfs;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
+import java.io.IOException;
+import java.text.ParseException;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
+import org.apache.avro.Schema;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.logicalclocks.hsfs.constructor.QueryBase;
 import com.logicalclocks.hsfs.engine.FeatureGroupEngineBase;
 import com.logicalclocks.hsfs.engine.FeatureGroupUtils;
+import com.logicalclocks.hsfs.metadata.IngestionRunApi;
 import com.logicalclocks.hsfs.metadata.Statistics;
 import com.logicalclocks.hsfs.metadata.Subject;
 import com.logicalclocks.hsfs.metadata.User;
 
 import lombok.Getter;
 import lombok.Setter;
-
-import org.apache.avro.Schema;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.text.ParseException;
-import java.util.Collections;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 
 public abstract class FeatureGroupBase<T> {
@@ -543,5 +544,12 @@ public abstract class FeatureGroupBase<T> {
     return utils.getDeserializedAvroSchema(getAvroSchema());
   }
 
+  @JsonIgnore
+  public IngestionRun getLatestIngestionRun() throws IOException, FeatureStoreException {
+    return new IngestionRunApi().getIngestionRun(this, new HashMap<String, String>() {{
+        put("filter_by", "LATEST");
+      }
+    });
+  }
 
 }
