@@ -1269,9 +1269,6 @@ class FeatureView:
         statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
         write_options: Optional[Dict[Any, Any]] = None,
         spine: Optional[SplineDataFrameTypes] = None,
-        primary_key: bool = False,
-        event_time: bool = False,
-        training_helper_columns: bool = False,
         **kwargs,
     ) -> Tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
@@ -1436,14 +1433,6 @@ class FeatureView:
                 It is possible to directly pass a spine group instead of a dataframe to overwrite the left side of the
                 feature join, however, the same features as in the original feature group that is being replaced need to
                 be available in the spine group.
-            primary_key: whether to include primary key features or not.  Defaults to `False`, no primary key
-                features.
-            event_time: whether to include event time feature or not.  Defaults to `False`, no event time feature.
-            training_helper_columns: whether to include training helper columns or not. Training helper columns are a
-                list of feature names in the feature view, defined during its creation, that are not the part of the
-                model schema itself but can be used during training as a helper for extra information.
-                If training helper columns were not defined in the feature view then`training_helper_columns=True`
-                will not have any effect. Defaults to `False`, no training helper columns.
         # Returns
             (td_version, `Job`): Tuple of training dataset version and job.
                 When using the `python` engine, it returns the Hopsworks Job
@@ -1471,9 +1460,6 @@ class FeatureView:
             td,
             write_options or {},
             spine=spine,
-            #primary_keys=kwargs.get("primary_keys") or primary_key,
-            #event_time=event_time,
-            #training_helper_columns=training_helper_columns,
         )
         warnings.warn(
             "Incremented version to `{}`.".format(td.version),
@@ -1502,9 +1488,6 @@ class FeatureView:
         statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
         write_options: Optional[Dict[Any, Any]] = None,
         spine: Optional[SplineDataFrameTypes] = None,
-        primary_key: bool = False,
-        event_time: bool = False,
-        training_helper_columns: bool = False,
         **kwargs,
     ) -> Tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
@@ -1715,15 +1698,6 @@ class FeatureView:
                 It is possible to directly pass a spine group instead of a dataframe to overwrite the left side of the
                 feature join, however, the same features as in the original feature group that is being replaced need to
                 be available in the spine group.
-            primary_key: whether to include primary key features or not.  Defaults to `False`, no primary key
-                features.
-            event_time: whether to include event time feature or not.  Defaults to `False`, no event time feature.
-            training_helper_columns: whether to include training helper columns or not.
-                Training helper columns are a list of feature names in the feature view, defined during its creation,
-                that are not the part of the model schema itself but can be used during training as a helper for
-                extra information. If training helper columns were not defined in the feature view
-                then`training_helper_columns=True` will not have any effect. Defaults to `False`, no training helper
-                columns.
         # Returns
             (td_version, `Job`): Tuple of training dataset version and job.
                 When using the `python` engine, it returns the Hopsworks Job
@@ -1759,9 +1733,6 @@ class FeatureView:
             td,
             write_options or {},
             spine=spine,
-            #primary_keys=kwargs.get("primary_keys") or primary_key,
-            #event_time=event_time,
-            #training_helper_columns=training_helper_columns,
         )
         warnings.warn(
             "Incremented version to `{}`.".format(td.version),
@@ -1792,9 +1763,6 @@ class FeatureView:
         statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
         write_options: Optional[Dict[Any, Any]] = None,
         spine: Optional[SplineDataFrameTypes] = None,
-        primary_key: bool = False,
-        event_time: bool = False,
-        training_helper_columns: bool = False,
         **kwargs,
     ) -> Tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
@@ -1991,15 +1959,6 @@ class FeatureView:
                 It is possible to directly pass a spine group instead of a dataframe to overwrite the left side of the
                 feature join, however, the same features as in the original feature group that is being replaced need to
                 be available in the spine group.
-            primary_key: whether to include primary key features or not.  Defaults to `False`, no primary key
-                features.
-            event_time: whether to include event time feature or not.  Defaults to `False`, no event time feature.
-            training_helper_columns: whether to include training helper columns or not.
-                Training helper columns are a list of feature names in the feature view, defined during its creation,
-                that are not the part of the model schema itself but can be used during training as a helper for
-                extra information. If training helper columns were not defined in the feature view
-                then`training_helper_columns=True` will not have any effect. Defaults to `False`, no training helper
-                columns.
         # Returns
             (td_version, `Job`): Tuple of training dataset version and job.
                 When using the `python` engine, it returns the Hopsworks Job
@@ -2043,9 +2002,6 @@ class FeatureView:
             td,
             write_options or {},
             spine=spine,
-            #primary_keys=kwargs.get("primary_keys") or primary_key,
-            #event_time=event_time,
-            #training_helper_columns=training_helper_columns,
         )
         warnings.warn(
             "Incremented version to `{}`.".format(td.version),

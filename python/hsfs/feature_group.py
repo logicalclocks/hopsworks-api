@@ -262,6 +262,7 @@ class FeatureGroupBase:
         self,
         include_primary_key: Optional[bool] = True,
         include_foreign_key: Optional[bool] = True,
+        include_partition_key: Optional[bool] = True,
         include_event_time: Optional[bool] = True,
     ) -> query.Query:
         """Select all features along with primary key and event time from the feature group and return a query object.
@@ -310,6 +311,10 @@ class FeatureGroupBase:
         # Arguments
             include_primary_key: If True, include primary key of the feature group
                 to the feature list. Defaults to True.
+            include_foreign_key: If True, include foreign key of the feature group
+                to the feature list. Defaults to True.
+            include_partition_key: If True, include partition key of the feature group
+                to the feature list. Defaults to True.
             include_event_time: If True, include event time of the feature group
                 to the feature list. Defaults to True.
         # Returns
@@ -323,13 +328,15 @@ class FeatureGroupBase:
                 feature_store_id=self._feature_store_id,
             )
         elif include_event_time:
-            return self.select_except(self.primary_key + self.foreign_key)
+            return self.select_except(self.primary_key + self.foreign_key + self.partition_key)
         elif include_primary_key:
-            return self.select_except(self.foreign_key + [self.event_time])
+            return self.select_except(self.foreign_key + self.partition_key + [self.event_time])
         elif include_foreign_key:
-            return self.select_except(self.primary_key + [self.event_time])
-        else:
+            return self.select_except(self.primary_key + self.partition_key + [self.event_time])
+        elif include_partition_key:
             return self.select_except(self.primary_key + self.foreign_key + [self.event_time])
+        else:
+            return self.select_except(self.primary_key + self.partition_key + self.foreign_key + [self.event_time])
 
     def select_features(
         self,
@@ -428,7 +435,7 @@ class FeatureGroupBase:
         # Returns
             `Query`. A query object with all features of the feature group.
         """
-        query = self.select_except(self.primary_key + self.foreign_key + [self.event_time])
+        query = self.select_except(self.primary_key + self.partition_key + self.foreign_key + [self.event_time])
         _logger.info(
             f"Using {[f.name for f in query.features]} as features for the query."
             "To include primary key and event time use `select_all`."
@@ -4334,7 +4341,6 @@ class SpineGroup(FeatureGroupBase):
         version: Optional[int] = None,
         description: Optional[str] = None,
         primary_key: Optional[List[str]] = None,
-        foreign_key: Optional[List[str]] = None,
         featurestore_id: Optional[int] = None,
         featurestore_name: Optional[str] = None,
         created: Optional[str] = None,
@@ -4412,14 +4418,8 @@ class SpineGroup(FeatureGroupBase):
                 if self._features
                 else []
             )
-            self.foreign_key = (
-                [feat.name for feat in self._features if feat.foreign is True]
-                if self._features
-                else []
-            )
         else:
             self.primary_key = primary_key
-            self.foreign_key = foreign_key
             self._features = features
 
         self._href = href

@@ -42,6 +42,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             id=10,
         )
@@ -80,6 +81,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             transformation_functions=[test],
             id=10,
@@ -121,6 +123,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             id=10,
         )
@@ -169,6 +172,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
         )
 
@@ -215,6 +219,7 @@ class TestFeatureGroupEngine:
             featurestore_id=feature_store_id,
             transformation_functions=[test],
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
         )
 
@@ -260,6 +265,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             id=10,
         )
@@ -308,6 +314,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
         )
 
@@ -360,6 +367,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
         )
 
@@ -405,6 +413,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
         )
 
@@ -438,6 +447,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             id=10,
         )
@@ -466,6 +476,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             id=10,
         )
@@ -499,6 +510,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             time_travel_format="wrong",
             id=10,
@@ -533,6 +545,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             time_travel_format="HUDI",
             id=10,
@@ -564,6 +577,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             time_travel_format="HUDI",
             id=10,
@@ -608,6 +622,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             id=10,
         )
@@ -634,6 +649,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             id=10,
             time_travel_format="DELTA",
@@ -658,6 +674,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             id=10,
             time_travel_format="HUDI",
@@ -734,6 +751,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             id=10,
         )
@@ -790,6 +808,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             features=[f, f1],
             id=10,
@@ -822,6 +841,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             id=10,
         )
@@ -848,6 +868,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             id=10,
         )
@@ -881,6 +902,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             id=10,
         )
@@ -931,6 +953,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             online_enabled=True,
         )
@@ -980,6 +1003,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             stream=True,
         )
@@ -1028,6 +1052,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             transformation_functions=[test],
             stream=True,
@@ -1078,6 +1103,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             online_enabled=True,
             id=10,
@@ -1277,6 +1303,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             id=10,
         )
@@ -1325,6 +1352,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             features=[f],
             id=10,
@@ -1374,6 +1402,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=["f"],
+            foreign_key=[],
             partition_key=["f"],
             hudi_precombine_key="f",
             time_travel_format="HUDI",
@@ -1426,6 +1455,7 @@ class TestFeatureGroupEngine:
                 version=1,
                 featurestore_id=feature_store_id,
                 primary_key=["feature_name"],
+                foreign_key=[],
                 partition_key=["f"],
                 hudi_precombine_key="f",
                 event_time="f",
@@ -1442,6 +1472,7 @@ class TestFeatureGroupEngine:
                 version=1,
                 featurestore_id=feature_store_id,
                 primary_key=["f"],
+                foreign_key=[],
                 partition_key=["feature_name"],
                 hudi_precombine_key="f",
                 event_time="f",
@@ -1458,6 +1489,7 @@ class TestFeatureGroupEngine:
                 version=1,
                 featurestore_id=feature_store_id,
                 primary_key=["f"],
+                foreign_key=[],
                 partition_key=["f"],
                 hudi_precombine_key="feature_name",
                 event_time="f",
@@ -1474,6 +1506,7 @@ class TestFeatureGroupEngine:
                 version=1,
                 featurestore_id=feature_store_id,
                 primary_key=["f"],
+                foreign_key=[],
                 partition_key=["f"],
                 hudi_precombine_key="f",
                 event_time="feature_name",
@@ -1530,6 +1563,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             stream=True,
             id=10,
@@ -1576,6 +1610,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             id=10,
             transformation_functions=[test("col2")],
@@ -1618,6 +1653,7 @@ class TestFeatureGroupEngine:
             version=1,
             featurestore_id=feature_store_id,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             id=10,
             transformation_functions=[test("col2")],
