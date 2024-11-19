@@ -520,7 +520,7 @@ class FeatureView:
 
     def get_feature_vector(
         self,
-        entry: Dict[str, Any],
+        entry: Optional[Dict[str, Any]] = None,
         passed_features: Optional[Dict[str, Any]] = None,
         external: Optional[bool] = None,
         return_type: Literal["list", "polars", "numpy", "pandas"] = "list",
@@ -635,7 +635,7 @@ class FeatureView:
 
     def get_feature_vectors(
         self,
-        entry: List[Dict[str, Any]],
+        entry: Optional[List[Dict[str, Any]]] = None,
         passed_features: Optional[List[Dict[str, Any]]] = None,
         external: Optional[bool] = None,
         return_type: Literal["list", "polars", "numpy", "pandas"] = "list",

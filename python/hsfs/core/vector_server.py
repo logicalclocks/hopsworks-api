@@ -149,6 +149,7 @@ class VectorServer:
         self._feature_to_handle_if_sql: Optional[Set[str]] = None
         self._valid_serving_keys: Set[str] = set()
         self._serving_initialized: bool = False
+        self.__all_features_on_demand: Optional[bool] = None
 
     def init_serving(
         self,
@@ -415,14 +416,22 @@ class VectorServer:
             request_parameters is None
             or len(request_parameters) == 0
             or isinstance(request_parameters, dict)
-            or len(request_parameters) == len(entries)
-        ), "Request Parameters should be a Dictionary, None, empty or have the same length as the entries"
+            or (not entries or (entries and len(request_parameters) == len(entries)))
+        ), "Request Parameters should be a Dictionary, None, empty or have the same length as the entries when entires is not None or empty."
 
         online_client_choice = self.which_client_and_ensure_initialised(
             force_rest_client=force_rest_client, force_sql_client=force_sql_client
         )
         rondb_entries = []
         skipped_empty_entries = []
+
+        if not entries:
+            entries = (
+                [[] * len(request_parameters)]
+                if isinstance(request_parameters, list)
+                else [[]]
+            )
+
         for (idx, entry), passed, vector_features in itertools.zip_longest(
             enumerate(entries),
             passed_features,
@@ -547,7 +556,11 @@ class VectorServer:
         # for backward compatibility, before 3.4, if result is empty,
         # instead of throwing error, it skips the result
         # Maybe we drop this behaviour for 4.0
-        if len(result_dict) == 0 and not allow_missing:
+        if (
+            len(result_dict) == 0
+            and not allow_missing
+            and not self._all_features_on_demand
+        ):
             return None
 
         if not allow_missing and len(missing_features) > 0:
@@ -1255,6 +1268,17 @@ class VectorServer:
 
         Keys relevant to vector_db are filtered out.
         """
+        _logger.debug(
+            "Checking if entry is None and all features in the feature view are on-demand."
+        )
+        if not entry:
+            if self._all_features_on_demand:
+                return {}
+            else:
+                raise exceptions.FeatureStoreException(
+                    "The required argument `entries` is missing. If the feature view includes only on-demand features, entries may be left empty or set to None."
+                )
+
         _logger.debug("Checking keys in entry are valid serving keys.")
         for key in entry.keys():
             if key not in self.valid_serving_keys:
@@ -1584,3 +1608,12 @@ class VectorServer:
             ]
             self._transformed_feature_vector_col_name.extend(output_column_names)
         return self._transformed_feature_vector_col_name
+
+    @property
+    def _all_features_on_demand(self) -> bool:
+        """True if all features in the feature view is on-demand."""
+        if self.__all_features_on_demand is None:
+            self.__all_features_on_demand = all(
+                feature.on_demand_transformation_function for feature in self._features
+            )
+        return self.__all_features_on_demand
