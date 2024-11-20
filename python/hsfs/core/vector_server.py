@@ -416,8 +416,9 @@ class VectorServer:
             request_parameters is None
             or len(request_parameters) == 0
             or isinstance(request_parameters, dict)
-            or (not entries or (entries and len(request_parameters) == len(entries)))
-        ), "Request Parameters should be a Dictionary, None, empty or have the same length as the entries when entires is not None or empty."
+            or not entries
+            or len(request_parameters) == len(entries)
+        ), "Request Parameters should be a Dictionary, None, empty or have the same length as the entries if they are not None or empty."
 
         online_client_choice = self.which_client_and_ensure_initialised(
             force_rest_client=force_rest_client, force_sql_client=force_sql_client
@@ -1611,7 +1612,7 @@ class VectorServer:
 
     @property
     def _all_features_on_demand(self) -> bool:
-        """True if all features in the feature view is on-demand."""
+        """True if all features in the feature view are on-demand."""
         if self.__all_features_on_demand is None:
             self.__all_features_on_demand = all(
                 feature.on_demand_transformation_function for feature in self._features
