@@ -328,15 +328,28 @@ class FeatureGroupBase:
                 feature_store_id=self._feature_store_id,
             )
         elif include_event_time:
-            return self.select_except(self.primary_key + self.foreign_key + self.partition_key)
+            return self.select_except(
+                self.primary_key + self.foreign_key + self.partition_key
+            )
         elif include_primary_key:
-            return self.select_except(self.foreign_key + self.partition_key + [self.event_time])
+            return self.select_except(
+                self.foreign_key + self.partition_key + [self.event_time]
+            )
         elif include_foreign_key:
-            return self.select_except(self.primary_key + self.partition_key + [self.event_time])
+            return self.select_except(
+                self.primary_key + self.partition_key + [self.event_time]
+            )
         elif include_partition_key:
-            return self.select_except(self.primary_key + self.foreign_key + [self.event_time])
+            return self.select_except(
+                self.primary_key + self.foreign_key + [self.event_time]
+            )
         else:
-            return self.select_except(self.primary_key + self.partition_key + self.foreign_key + [self.event_time])
+            return self.select_except(
+                self.primary_key
+                + self.partition_key
+                + self.foreign_key
+                + [self.event_time]
+            )
 
     def select_features(
         self,
@@ -435,7 +448,9 @@ class FeatureGroupBase:
         # Returns
             `Query`. A query object with all features of the feature group.
         """
-        query = self.select_except(self.primary_key + self.partition_key + self.foreign_key + [self.event_time])
+        query = self.select_except(
+            self.primary_key + self.partition_key + self.foreign_key + [self.event_time]
+        )
         _logger.info(
             f"Using {[f.name for f in query.features]} as features for the query."
             "To include primary key and event time use `select_all`."
@@ -2075,7 +2090,7 @@ class FeatureGroupBase:
 
     def prepare_spark_location(self) -> str:
         location = self.location
-        if (self.storage_connector is not None):
+        if self.storage_connector is not None:
             location = self.storage_connector.prepare_spark(location)
         return location
 
@@ -2348,8 +2363,10 @@ class FeatureGroup(FeatureGroupBase):
             self._hudi_precombine_key = (
                 util.autofix_feature_name(hudi_precombine_key)
                 if hudi_precombine_key is not None
-                and (self._time_travel_format is None
-                or self._time_travel_format == "HUDI")
+                and (
+                    self._time_travel_format is None
+                    or self._time_travel_format == "HUDI"
+                )
                 else None
             )
             self.statistics_config = statistics_config
@@ -3279,7 +3296,7 @@ class FeatureGroup(FeatureGroupBase):
         self,
         retention_hours: int = None,
     ) -> None:
-        """ Vacuum files that are no longer referenced by a Delta table and are older than the retention threshold.
+        """Vacuum files that are no longer referenced by a Delta table and are older than the retention threshold.
         This method can only be used on feature groups stored as DELTA.
 
         !!! example
