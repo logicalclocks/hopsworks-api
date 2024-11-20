@@ -830,8 +830,8 @@ class Query:
         if len(join_object.query.joins) > 0:
             for nested_join in join_object.query.joins:
                 self._fg_rec_add_joins(nested_join, joins)
-        for join in join_object.query.joins:
-            joins.add(join)
+        for q_join in join_object.query.joins:
+            joins.add(q_join)
 
     def _fg_rec_add(self, join_object, feature_groups):
         """
