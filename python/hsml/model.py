@@ -17,6 +17,7 @@
 import json
 import logging
 import os
+import re
 import warnings
 from typing import Any, Dict, Optional, Union
 
@@ -236,7 +237,7 @@ class Model:
         """
 
         if name is None:
-            name = self._name
+            name = self._get_default_serving_name()
 
         predictor = Predictor.for_model(
             self,
@@ -365,6 +366,9 @@ class Model:
             `ProvenanceLinks`: Object containing the section of provenance graph requested.
         """
         return self._model_engine.get_training_dataset_provenance(model_instance=self)
+
+    def _get_default_serving_name(self):
+        return re.sub(r"[^a-zA-Z0-9]", "", self._name)
 
     @classmethod
     def from_response_json(cls, json_dict):
