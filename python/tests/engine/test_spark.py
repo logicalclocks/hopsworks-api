@@ -1162,7 +1162,7 @@ class TestSpark:
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
-        mock_save_ingestion_run = mocker.patch("hsfs.core.ingestion_run_api.IngestionRunApi.save_ingestion_run")
+        mock_save_online_ingestion = mocker.patch("hsfs.core.online_ingestion_api.OnlineIngestionApi.save_online_ingestion")
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
@@ -1289,7 +1289,7 @@ class TestSpark:
             mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.return_value.start.return_value.awaitTermination.call_count
             == 1
         )
-        assert mock_save_ingestion_run.call_count == 1
+        assert mock_save_online_ingestion.call_count == 1
 
     def test_save_stream_dataframe_await_termination(self, mocker, backend_fixtures):
         # Arrange
@@ -1592,7 +1592,7 @@ class TestSpark:
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
-        mock_save_ingestion_run = mocker.patch("hsfs.core.ingestion_run_api.IngestionRunApi.save_ingestion_run")
+        mock_save_online_ingestion = mocker.patch("hsfs.core.online_ingestion_api.OnlineIngestionApi.save_online_ingestion")
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
@@ -1688,7 +1688,7 @@ class TestSpark:
             mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.write.format.return_value.options.return_value.option.return_value.save.call_count
             == 1
         )
-        assert mock_save_ingestion_run.call_count == 1
+        assert mock_save_online_ingestion.call_count == 1
 
     def test_serialize_to_avro(self, mocker):
         # Arrange

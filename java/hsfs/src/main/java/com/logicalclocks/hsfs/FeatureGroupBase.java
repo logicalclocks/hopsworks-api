@@ -34,7 +34,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.logicalclocks.hsfs.constructor.QueryBase;
 import com.logicalclocks.hsfs.engine.FeatureGroupEngineBase;
 import com.logicalclocks.hsfs.engine.FeatureGroupUtils;
-import com.logicalclocks.hsfs.metadata.IngestionRunApi;
+import com.logicalclocks.hsfs.metadata.OnlineIngestionApi;
 import com.logicalclocks.hsfs.metadata.Statistics;
 import com.logicalclocks.hsfs.metadata.Subject;
 import com.logicalclocks.hsfs.metadata.User;
@@ -545,8 +545,8 @@ public abstract class FeatureGroupBase<T> {
   }
 
   @JsonIgnore
-  public IngestionRun getLatestIngestionRun() throws IOException, FeatureStoreException {
-    return new IngestionRunApi().getIngestionRun(this, new HashMap<String, String>() {{
+  public OnlineIngestion getLatestOnlineIngestion() throws IOException, FeatureStoreException {
+    return new OnlineIngestionApi().getOnlineIngestion(this, new HashMap<String, String>() {{
         put("filter_by", "LATEST");
       }
     });

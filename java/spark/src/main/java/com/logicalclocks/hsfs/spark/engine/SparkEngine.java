@@ -27,14 +27,14 @@ import com.logicalclocks.hsfs.engine.EngineBase;
 import com.logicalclocks.hsfs.metadata.DatasetApi;
 import com.logicalclocks.hsfs.metadata.FeatureGroupApi;
 import com.logicalclocks.hsfs.metadata.HopsworksExternalClient;
-import com.logicalclocks.hsfs.metadata.IngestionRunApi;
+import com.logicalclocks.hsfs.metadata.OnlineIngestionApi;
 import com.logicalclocks.hsfs.spark.constructor.Query;
 import com.logicalclocks.hsfs.spark.engine.hudi.HudiEngine;
 import com.logicalclocks.hsfs.DataFormat;
 import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.HudiOperationType;
-import com.logicalclocks.hsfs.IngestionRun;
+import com.logicalclocks.hsfs.OnlineIngestion;
 import com.logicalclocks.hsfs.Split;
 import com.logicalclocks.hsfs.StorageConnector;
 import com.logicalclocks.hsfs.TimeTravelFormat;
@@ -132,7 +132,7 @@ public class SparkEngine extends EngineBase {
   private final StorageConnectorUtils storageConnectorUtils = new StorageConnectorUtils();
   private FeatureGroupUtils featureGroupUtils = new FeatureGroupUtils();
   protected FeatureGroupApi featureGroupApi = new FeatureGroupApi();
-  protected IngestionRunApi ingestionRunApi = new IngestionRunApi();
+  protected OnlineIngestionApi onlineIngestionApi = new OnlineIngestionApi();
   private final KafkaEngine kafkaEngine;
 
   private static SparkEngine INSTANCE = null;
@@ -576,7 +576,7 @@ public class SparkEngine extends EngineBase {
 
     String endingCheckPoint = kafkaEngine.kafkaGetOffsets(featureGroupBase, writeOptions, true);
 
-    ingestionRunApi.saveIngestionRun(featureGroupBase, new IngestionRun(startingCheckPoint, endingCheckPoint));
+    onlineIngestionApi.saveOnlineIngestion(featureGroupBase, new OnlineIngestion(startingCheckPoint, endingCheckPoint));
   }
 
   public <S> StreamingQuery writeStreamDataframe(FeatureGroupBase featureGroupBase, Dataset<Row> dataset,
@@ -637,7 +637,8 @@ public class SparkEngine extends EngineBase {
         public void onQueryTerminated(QueryTerminatedEvent queryTerminated) {
           try {
             String endingCheckPoint = kafkaEngine.kafkaGetOffsets(featureGroupBase, writeOptions, true);
-            ingestionRunApi.saveIngestionRun(featureGroupBase, new IngestionRun(startingCheckPoint, endingCheckPoint));
+            onlineIngestionApi.saveOnlineIngestion(featureGroupBase,
+                new OnlineIngestion(startingCheckPoint, endingCheckPoint));
           } catch (Exception e) {
             e.printStackTrace();
           }

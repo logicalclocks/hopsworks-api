@@ -26,7 +26,7 @@ import lombok.Setter;
 
 @NoArgsConstructor
 @AllArgsConstructor
-public class IngestionRun extends RestDto<IngestionRun> {
+public class OnlineIngestion extends RestDto<OnlineIngestion> {
 
   @Getter
   @Setter
@@ -49,7 +49,7 @@ public class IngestionRun extends RestDto<IngestionRun> {
   @Getter
   private Integer processedEntries;
 
-  public IngestionRun(String startingOffsets, String endingOffsets) {
+  public OnlineIngestion(String startingOffsets, String endingOffsets) {
     this.startingOffsets = startingOffsets;
     this.endingOffsets = endingOffsets;
   }

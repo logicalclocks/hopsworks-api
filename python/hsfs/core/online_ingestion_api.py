@@ -17,15 +17,15 @@ from __future__ import annotations
 
 from hopsworks_common import client
 from hsfs import feature_group as fg_mod
-from hsfs.core import ingestion_run
+from hsfs.core import online_ingestion
 
 
-class IngestionRunApi:
+class OnlineIngestionApi:
 
-    def save_ingestion_run(
+    def save_online_ingestion(
         self,
         feature_group_instance: fg_mod.FeatureGroup,
-        ingestion_run_instance: ingestion_run.IngestionRun,
+        online_ingestion_instance: online_ingestion.OnlineIngestion,
     ):
         _client = client.get_instance()
         path_params = [
@@ -35,13 +35,13 @@ class IngestionRunApi:
             feature_group_instance.feature_store_id,
             "featuregroups",
             feature_group_instance.id,
-            "ingestionrun",
+            "online_ingestion",
         ]
 
         headers = {"content-type": "application/json"}
-        _client._send_request("POST", path_params, headers=headers, data=ingestion_run_instance.json())
+        _client._send_request("POST", path_params, headers=headers, data=online_ingestion_instance.json())
 
-    def get_ingestion_run(
+    def get_online_ingestion(
         self,
         feature_group_instance: fg_mod.FeatureGroup,
         query_params: None,
@@ -54,11 +54,11 @@ class IngestionRunApi:
             feature_group_instance.feature_store_id,
             "featuregroups",
             feature_group_instance.id,
-            "ingestionrun",
+            "online_ingestion",
         ]
 
-        ingestion_run_instance = ingestion_run.IngestionRun.from_response_json(
+        online_ingestion_instance = online_ingestion.OnlineIngestion.from_response_json(
             _client._send_request("GET", path_params, query_params)
         )
-        ingestion_run_instance.feature_group = feature_group_instance
-        return ingestion_run_instance
+        online_ingestion_instance.feature_group = feature_group_instance
+        return online_ingestion_instance

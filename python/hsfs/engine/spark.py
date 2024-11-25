@@ -36,7 +36,7 @@ import pandas as pd
 import tzlocal
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_PANDAS
 from hsfs.constructor import query
-from hsfs.core import feature_group_api, ingestion_run, ingestion_run_api
+from hsfs.core import feature_group_api, online_ingestion, online_ingestion_api
 
 # in case importing in %%local
 from hsfs.core.vector_db_client import VectorDbClient
@@ -559,9 +559,9 @@ class Engine:
                 high=True,
             )
 
-            ingestion_run_api.IngestionRunApi().save_ingestion_run(
+            online_ingestion_api.OnlineIngestionApi().save_online_ingestion(
                 feature_group,
-                ingestion_run.IngestionRun(
+                online_ingestion.OnlineIngestion(
                     starting_offsets=starting_check_point,
                     ending_offsets=ending_check_point
                 )
@@ -647,9 +647,9 @@ class Engine:
             high=True,
         )
 
-        ingestion_run_api.IngestionRunApi().save_ingestion_run(
+        online_ingestion_api.OnlineIngestionApi().save_online_ingestion(
             feature_group,
-            ingestion_run.IngestionRun(
+            online_ingestion.OnlineIngestion(
                 starting_offsets=starting_check_point,
                 ending_offsets=ending_check_point
             )

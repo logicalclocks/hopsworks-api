@@ -70,11 +70,11 @@ from hsfs.core import (
     feature_group_api,
     feature_view_api,
     ingestion_job_conf,
-    ingestion_run,
-    ingestion_run_api,
     job,
     job_api,
     kafka_engine,
+    online_ingestion,
+    online_ingestion_api,
     statistics_api,
     storage_connector_api,
     training_dataset_api,
@@ -1504,9 +1504,9 @@ class Engine:
                 high=True,
             )
 
-            ingestion_run_api.IngestionRunApi().save_ingestion_run(
+            online_ingestion_api.OnlineIngestionApi().save_online_ingestion(
                 feature_group,
-                ingestion_run.IngestionRun(
+                online_ingestion.OnlineIngestion(
                     starting_offsets=initial_check_point,
                     ending_offsets=ending_check_point
                 )

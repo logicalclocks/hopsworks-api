@@ -3503,7 +3503,7 @@ class TestPython:
         # Arrange
         mocker.patch("hsfs.core.kafka_engine.get_kafka_config", return_value={})
         mocker.patch("hsfs.feature_group.FeatureGroup._get_encoded_avro_schema")
-        mock_save_ingestion_run = mocker.patch("hsfs.core.ingestion_run_api.IngestionRunApi.save_ingestion_run")
+        mock_save_online_ingestion = mocker.patch("hsfs.core.online_ingestion_api.OnlineIngestionApi.save_online_ingestion")
         mocker.patch("hsfs.core.kafka_engine.get_encoder_func")
         mocker.patch("hsfs.core.kafka_engine.encode_complex_features")
         mock_python_engine_kafka_produce = mocker.patch(
@@ -3557,13 +3557,13 @@ class TestPython:
             args="defaults",
             await_termination=False,
         )
-        assert mock_save_ingestion_run.call_count == 1
+        assert mock_save_online_ingestion.call_count == 1
 
     def test_materialization_kafka_first_job_execution(self, mocker):
         # Arrange
         mocker.patch("hsfs.core.kafka_engine.get_kafka_config", return_value={})
         mocker.patch("hsfs.feature_group.FeatureGroup._get_encoded_avro_schema")
-        mock_save_ingestion_run = mocker.patch("hsfs.core.ingestion_run_api.IngestionRunApi.save_ingestion_run")
+        mock_save_online_ingestion = mocker.patch("hsfs.core.online_ingestion_api.OnlineIngestionApi.save_online_ingestion")
         mocker.patch("hsfs.core.kafka_engine.get_encoder_func")
         mocker.patch("hsfs.core.kafka_engine.encode_complex_features")
         mock_python_engine_kafka_produce = mocker.patch(
@@ -3617,13 +3617,13 @@ class TestPython:
             args="defaults -initialCheckPointString tests_offsets",
             await_termination=False,
         )
-        assert mock_save_ingestion_run.call_count == 1
+        assert mock_save_online_ingestion.call_count == 1
 
     def test_materialization_kafka_skip_offsets(self, mocker):
         # Arrange
         mocker.patch("hsfs.core.kafka_engine.get_kafka_config", return_value={})
         mocker.patch("hsfs.feature_group.FeatureGroup._get_encoded_avro_schema")
-        mock_save_ingestion_run = mocker.patch("hsfs.core.ingestion_run_api.IngestionRunApi.save_ingestion_run")
+        mock_save_online_ingestion = mocker.patch("hsfs.core.online_ingestion_api.OnlineIngestionApi.save_online_ingestion")
         mocker.patch("hsfs.core.kafka_engine.get_encoder_func")
         mocker.patch("hsfs.core.kafka_engine.encode_complex_features")
         mock_python_engine_kafka_produce = mocker.patch(
@@ -3676,13 +3676,13 @@ class TestPython:
             args="defaults -initialCheckPointString tests_offsets",
             await_termination=False,
         )
-        assert mock_save_ingestion_run.call_count == 1
+        assert mock_save_online_ingestion.call_count == 1
 
     def test_materialization_kafka_topic_doesnt_exist(self, mocker):
         # Arrange
         mocker.patch("hsfs.core.kafka_engine.get_kafka_config", return_value={})
         mocker.patch("hsfs.feature_group.FeatureGroup._get_encoded_avro_schema")
-        mock_save_ingestion_run = mocker.patch("hsfs.core.ingestion_run_api.IngestionRunApi.save_ingestion_run")
+        mock_save_online_ingestion = mocker.patch("hsfs.core.online_ingestion_api.OnlineIngestionApi.save_online_ingestion")
         mocker.patch("hsfs.core.kafka_engine.get_encoder_func")
         mocker.patch("hsfs.core.kafka_engine.encode_complex_features")
         mock_python_engine_kafka_produce = mocker.patch(
@@ -3732,7 +3732,7 @@ class TestPython:
             args="defaults -initialCheckPointString tests_offsets",
             await_termination=False,
         )
-        assert mock_save_ingestion_run.call_count == 1
+        assert mock_save_online_ingestion.call_count == 1
 
     def test_test(self, mocker):
         fg = feature_group.FeatureGroup(
@@ -3755,7 +3755,7 @@ class TestPython:
 
         assert fg.materialization_job.config == {"defaultArgs": "defaults"}
 
-    def test_materialization_ingestion_run(self, mocker):
+    def test_materialization_online_ingestion(self, mocker):
         # Arrange
         mocker.patch("hsfs.core.kafka_engine.get_kafka_config", return_value={})
         mocker.patch("hsfs.feature_group.FeatureGroup._get_encoded_avro_schema")
@@ -3769,7 +3769,7 @@ class TestPython:
             "hsfs.core.kafka_engine.kafka_get_offsets",
             side_effect=["tests_offsets1", "tests_offsets2"],
         )
-        mock_save_ingestion_run = mocker.patch("hsfs.core.ingestion_run_api.IngestionRunApi.save_ingestion_run")
+        mock_save_online_ingestion = mocker.patch("hsfs.core.online_ingestion_api.OnlineIngestionApi.save_online_ingestion")
         mocker.patch(
             "hsfs.core.job_api.JobApi.last_execution",
             return_value=[],
@@ -3807,8 +3807,8 @@ class TestPython:
         )
 
         # Assert
-        assert mock_save_ingestion_run.call_count == 1
-        args, _ = mock_save_ingestion_run.call_args
+        assert mock_save_online_ingestion.call_count == 1
+        args, _ = mock_save_online_ingestion.call_args
         assert args[0] == fg
         assert args[1].starting_offsets == "tests_offsets1"
         assert args[1].ending_offsets == "tests_offsets2"

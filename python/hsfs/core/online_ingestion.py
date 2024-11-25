@@ -24,9 +24,9 @@ from hopsworks_common import util
 from tqdm.auto import tqdm
 
 
-class IngestionRun:
+class OnlineIngestion:
     """
-    Metadata object used to provide Ingestion Run information for a feature group.
+    Metadata object used to provide Online Ingestion information for a feature group.
     """
 
     def __init__(
@@ -47,7 +47,7 @@ class IngestionRun:
         self._processed_entries = processed_entries
 
     @classmethod
-    def from_response_json(cls, json_dict: Dict[str, Any]) -> "IngestionRun":
+    def from_response_json(cls, json_dict: Dict[str, Any]) -> "OnlineIngestion":
         if json_dict is None:
             return None
 
@@ -63,13 +63,13 @@ class IngestionRun:
             return None
 
     def refresh(self):
-        from hsfs.core.ingestion_run_api import IngestionRunApi
+        from python.hsfs.core.online_ingestion_api import OnlineIngestionApi
 
-        ingestion_run = IngestionRunApi().get_ingestion_run(
+        online_ingestion = OnlineIngestionApi().get_online_ingestion(
             self.feature_group,
             query_params={"filter_by": f"ID:{self.id}"}
         )
-        self.__dict__.update(ingestion_run.__dict__)
+        self.__dict__.update(online_ingestion.__dict__)
 
     def to_dict(self):
         return {

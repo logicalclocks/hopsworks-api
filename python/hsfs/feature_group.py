@@ -64,9 +64,9 @@ from hsfs.core import (
     feature_monitoring_result_engine,
     feature_store_api,
     great_expectation_engine,
-    ingestion_run,
-    ingestion_run_api,
     job_api,
+    online_ingestion,
+    online_ingestion_api,
     spine_group_engine,
     statistics_engine,
     validation_report_engine,
@@ -1801,8 +1801,8 @@ class FeatureGroupBase:
             )
         return self._feature_store
 
-    def get_latest_ingestion_run(self) -> ingestion_run.IngestionRun:
-        return ingestion_run_api.IngestionRunApi().get_ingestion_run(self, query_params={"filter_by": "LATEST"})
+    def get_latest_online_ingestion(self) -> online_ingestion.OnlineIngestion:
+        return online_ingestion_api.OnlineIngestionApi().get_online_ingestion(self, query_params={"filter_by": "LATEST"})
 
     @feature_store.setter
     def feature_store(self, feature_store: feature_store_mod.FeatureStore) -> None:

@@ -20,7 +20,7 @@ package com.logicalclocks.hsfs.metadata;
 import com.damnhandy.uri.template.UriTemplate;
 import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.FeatureStoreException;
-import com.logicalclocks.hsfs.IngestionRun;
+import com.logicalclocks.hsfs.OnlineIngestion;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.slf4j.Logger;
@@ -29,20 +29,20 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.Map;
 
-public class IngestionRunApi {
+public class OnlineIngestionApi {
 
   public static final String FEATURE_GROUP_ID_PATH = "/featuregroups/{fgId}";
-  public static final String FEATURE_GROUP_INGESTION_RUN = FEATURE_GROUP_ID_PATH
-      + "/ingestionrun{?filter_by,sort_by,offset,limit}";
+  public static final String FEATURE_GROUP_ONLINE_INGESTION = FEATURE_GROUP_ID_PATH
+      + "/online_ingestion{?filter_by,sort_by,offset,limit}";
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(IngestionRunApi.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(OnlineIngestionApi.class);
 
-  public void saveIngestionRun(FeatureGroupBase featureGroupBase, IngestionRun ingestionRun)
+  public void saveOnlineIngestion(FeatureGroupBase featureGroupBase, OnlineIngestion onlineIngestion)
       throws FeatureStoreException, IOException {
     HopsworksClient hopsworksClient = HopsworksClient.getInstance();
     String pathTemplate = HopsworksClient.PROJECT_PATH
         + FeatureStoreApi.FEATURE_STORE_PATH
-        + FEATURE_GROUP_INGESTION_RUN;
+        + FEATURE_GROUP_ONLINE_INGESTION;
 
     String uri = UriTemplate.fromTemplate(pathTemplate)
         .set("projectId", hopsworksClient.getProject().getProjectId())
@@ -51,16 +51,16 @@ public class IngestionRunApi {
         .expand();
 
     HttpPost postRequest = new HttpPost(uri);
-    postRequest.setEntity(hopsworksClient.buildStringEntity(ingestionRun));
+    postRequest.setEntity(hopsworksClient.buildStringEntity(onlineIngestion));
     hopsworksClient.handleRequest(postRequest);
   }
 
-  public IngestionRun getIngestionRun(FeatureGroupBase featureGroupBase,  Map<String, String> queryParams)
+  public OnlineIngestion getOnlineIngestion(FeatureGroupBase featureGroupBase,  Map<String, String> queryParams)
       throws IOException, FeatureStoreException {
     HopsworksClient hopsworksClient = HopsworksClient.getInstance();
     String pathTemplate = HopsworksClient.PROJECT_PATH
         + FeatureStoreApi.FEATURE_STORE_PATH
-        + FEATURE_GROUP_INGESTION_RUN;
+        + FEATURE_GROUP_ONLINE_INGESTION;
 
     UriTemplate uriTemplate = UriTemplate.fromTemplate(pathTemplate)
         .set("projectId", hopsworksClient.getProject().getProjectId())
@@ -76,6 +76,6 @@ public class IngestionRunApi {
     String uri = uriTemplate.expand();
 
     LOGGER.info("Sending metadata request: " + uri);
-    return hopsworksClient.handleRequest(new HttpGet(uri), IngestionRun.class);
+    return hopsworksClient.handleRequest(new HttpGet(uri), OnlineIngestion.class);
   }
 }
