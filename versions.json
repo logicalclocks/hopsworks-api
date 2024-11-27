@@ -1,9 +1,15 @@
 [
   {
+    "version": "4.1.0",
+    "title": "4.1.0",
+    "aliases": [
+      "4.1"
+    ]
+  },
+  {
     "version": "4.1.0-RC0",
     "title": "4.1.0-RC0",
     "aliases": [
-      "4.1",
       "latest"
     ]
   },
