@@ -1494,6 +1494,7 @@ class Engine:
         # make sure producer blocks and everything is delivered
         if not feature_group._multi_part_insert:
             producer.flush()
+            del producer
             progress_bar.close()
 
         # start materialization job if not an external feature group, otherwise return None
