@@ -1511,7 +1511,7 @@ class Engine:
                 topic_name=feature_group._online_topic_name,
                 feature_store_id=feature_group.feature_store_id,
                 offline_write_options=offline_write_options,
-                high=True,
+                high=False,
             )
             now = datetime.now(timezone.utc)
             feature_group.materialization_job.run(
