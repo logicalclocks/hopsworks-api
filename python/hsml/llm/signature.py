@@ -1,5 +1,5 @@
 #
-#   Copyright 2021 Logical Clocks AB
+#   Copyright 2024 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@ from typing import Optional, Union
 import numpy
 import pandas
 from hopsworks_common import usage
+from hsml.llm.model import Model
 from hsml.model_schema import ModelSchema
-from hsml.sklearn.model import Model
 
 
 _mr = None
@@ -39,7 +39,7 @@ def create_model(
     feature_view=None,
     training_dataset_version: Optional[int] = None,
 ):
-    """Create an SkLearn model metadata object.
+    """Create an LLM model metadata object.
 
     !!! note "Lazy"
         This method is lazy and does not persist any metadata or uploads model artifacts in the

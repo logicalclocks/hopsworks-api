@@ -15,17 +15,23 @@
 #
 
 import os
+import tempfile
 import time
 import uuid
 from typing import Dict, List, Union
 
-from hopsworks_common import util
 from hopsworks_common.client.exceptions import ModelServingException, RestAPIError
 from hopsworks_common.client.istio.utils.infer_type import InferInput
-from hopsworks_common.constants import DEPLOYMENT, PREDICTOR, PREDICTOR_STATE
+from hopsworks_common.constants import (
+    DEPLOYMENT,
+    MODEL_SERVING,
+    PREDICTOR,
+    PREDICTOR_STATE,
+)
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.core import dataset_api
 from hsml.core import serving_api
+from hsml.engine import local_engine
 from tqdm.auto import tqdm
 
 
@@ -45,6 +51,8 @@ class ServingEngine:
     def __init__(self):
         self._serving_api = serving_api.ServingApi()
         self._dataset_api = dataset_api.DatasetApi()
+
+        self._engine = local_engine.LocalEngine()
 
     def _poll_deployment_status(
         self, deployment_instance, status: str, await_status: int, update_progress=None
@@ -299,7 +307,64 @@ class ServingEngine:
         num_instances = requested_instances - available_instances
         return num_instances if num_instances >= 0 else 0
 
-    def download_artifact(self, deployment_instance):
+    def _download_files_from_hopsfs_recursive(
+        self,
+        from_hdfs_path: str,
+        to_local_path: str,
+        update_download_progress,
+        n_dirs,
+        n_files,
+    ):
+        """Download model files from a model path in hdfs, recursively"""
+
+        for entry in self._dataset_api.list(from_hdfs_path, sort_by="NAME:desc")[
+            "items"
+        ]:
+            path_attr = entry["attributes"]
+            path = path_attr["path"]
+            basename = os.path.basename(path)
+
+            if path_attr.get("dir", False):
+                # otherwise, make a recursive call for the folder
+                if (
+                    basename == MODEL_SERVING.ARTIFACTS_DIR_NAME
+                ):  # TODO: Not needed anymore
+                    continue  # skip Artifacts subfolder
+                local_folder_path = os.path.join(to_local_path, basename)
+                os.mkdir(local_folder_path)
+                n_dirs, n_files = self._download_files_from_hopsfs_recursive(
+                    from_hdfs_path=path,
+                    to_local_path=local_folder_path,
+                    update_download_progress=update_download_progress,
+                    n_dirs=n_dirs,
+                    n_files=n_files,
+                )
+                n_dirs += 1
+                update_download_progress(n_dirs=n_dirs, n_files=n_files)
+            else:
+                # if it's a file, download it
+                local_file_path = os.path.join(to_local_path, basename)
+                self._engine.download(path, local_file_path)
+                n_files += 1
+                update_download_progress(n_dirs=n_dirs, n_files=n_files)
+
+        return n_dirs, n_files
+
+    def _download_files_from_hopsfs(
+        self, from_hdfs_path: str, to_local_path: str, update_download_progress
+    ):
+        """Download files from a model path in hdfs."""
+
+        n_dirs, n_files = self._download_files_from_hopsfs_recursive(
+            from_hdfs_path=from_hdfs_path,
+            to_local_path=to_local_path,
+            update_download_progress=update_download_progress,
+            n_dirs=0,
+            n_files=0,
+        )
+        update_download_progress(n_dirs=n_dirs, n_files=n_files, done=True)
+
+    def download_artifact_files(self, deployment_instance, local_path=None):
         if deployment_instance.id is None:
             raise ModelServingException(
                 "Deployment is not created yet. To create the deployment use `.save()`"
@@ -311,30 +376,39 @@ class ServingEngine:
                  Download the model files by using `model.download()`"
             )
 
-        from_artifact_zip_path = deployment_instance.artifact_path
-        to_artifacts_path = os.path.join(
-            os.getcwd(),
-            str(uuid.uuid4()),
-            deployment_instance.model_name,
-            str(deployment_instance.model_version),
-            "Artifacts",
-        )
-        to_artifact_version_path = (
-            to_artifacts_path + "/" + str(deployment_instance.artifact_version)
-        )
-        to_artifact_zip_path = to_artifact_version_path + ".zip"
+        if local_path is None:
+            local_path = os.path.join(
+                tempfile.gettempdir(),
+                str(uuid.uuid4()),
+                deployment_instance.model_name,
+                str(deployment_instance.model_version),
+                MODEL_SERVING.ARTIFACTS_DIR_NAME,
+                str(deployment_instance.artifact_version),
+            )
+        os.makedirs(local_path, exist_ok=True)
 
-        os.makedirs(to_artifacts_path)
+        def update_download_progress(n_dirs, n_files, done=False):
+            print(
+                "Downloading artifact files (%s dirs, %s files)... %s"
+                % (n_dirs, n_files, "DONE" if done else ""),
+                end="\r",
+            )
 
         try:
-            self._dataset_api.download(from_artifact_zip_path, to_artifact_zip_path)
-            util.decompress(to_artifact_zip_path, extract_dir=to_artifacts_path)
-            os.remove(to_artifact_zip_path)
-        finally:
-            if os.path.exists(to_artifact_zip_path):
-                os.remove(to_artifact_zip_path)
+            from_hdfs_path = deployment_instance.artifact_files_path
+            if from_hdfs_path.startswith("hdfs:/"):
+                projects_index = from_hdfs_path.find("/Projects", 0)
+                from_hdfs_path = from_hdfs_path[projects_index:]
 
-        return to_artifact_version_path
+            self._download_files_from_hopsfs(
+                from_hdfs_path=from_hdfs_path,
+                to_local_path=local_path,
+                update_download_progress=update_download_progress,
+            )
+        except BaseException as be:
+            raise be
+
+        return local_path
 
     def create(self, deployment_instance):
         try:
@@ -488,7 +562,10 @@ class ServingEngine:
         inputs: Union[Dict, List[Dict]],
     ):
         # validate user-provided payload
-        self._validate_inference_payload(deployment_instance.api_protocol, data, inputs)
+        if deployment_instance.model_server != "VLLM":
+            self._validate_inference_payload(
+                deployment_instance.api_protocol, data, inputs
+            )
 
         # build inference payload based on API protocol
         payload = self._build_inference_payload(

@@ -2327,27 +2327,14 @@ class FeatureGroup(FeatureGroupBase):
             # for python engine we always use stream feature group
             if engine.get_type() == "python":
                 self._stream = True
-            # for stream feature group time travel format is always HUDI
-            if self._stream:
-                expected_format = "HUDI"
-                if self._time_travel_format != expected_format:
-                    warnings.warn(
-                        (
-                            "The provided time travel format `{}` has been overwritten "
-                            "because Stream enabled feature groups only support `{}`"
-                        ).format(self._time_travel_format, expected_format),
-                        util.FeatureGroupWarning,
-                        stacklevel=1,
-                    )
-                    self._time_travel_format = expected_format
 
             self.primary_key = primary_key
             self.partition_key = partition_key
             self._hudi_precombine_key = (
                 util.autofix_feature_name(hudi_precombine_key)
                 if hudi_precombine_key is not None
-                and self._time_travel_format is not None
-                and self._time_travel_format == "HUDI"
+                and (self._time_travel_format is None
+                or self._time_travel_format == "HUDI")
                 else None
             )
             self.statistics_config = statistics_config
@@ -3289,7 +3276,7 @@ class FeatureGroup(FeatureGroupBase):
             fg = fs.get_or_create_feature_group(...)
 
             commit_details = fg.delta_vacuum(retention_hours = 168)
-
+            ```
         # Arguments
             retention_hours: User provided retention period. The default retention threshold for the files is 7 days.
 

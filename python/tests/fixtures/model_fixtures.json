@@ -16,7 +16,6 @@
           "program": "program",
           "user_full_name": "Full Name",
           "model_schema": "model_schema.json",
-          "training_dataset": "training_dataset",
           "input_example": "input_example.json",
           "model_registry_id": 1,
           "tags": [],
@@ -42,7 +41,6 @@
           "program": "program",
           "user_full_name": "Full Name",
           "model_schema": "model_schema.json",
-          "training_dataset": "training_dataset",
           "input_example": "input_example.json",
           "model_registry_id": 1,
           "tags": [],
@@ -69,7 +67,6 @@
           "program": "program",
           "user_full_name": "Full Name",
           "model_schema": "model_schema.json",
-          "training_dataset": "training_dataset",
           "input_example": "input_example.json",
           "model_registry_id": 1,
           "tags": [],
@@ -96,7 +93,6 @@
           "program": "program",
           "user_full_name": "Full Name",
           "model_schema": "model_schema.json",
-          "training_dataset": "training_dataset",
           "input_example": "input_example.json",
           "model_registry_id": 1,
           "tags": [],
@@ -123,11 +119,36 @@
           "program": "program",
           "user_full_name": "Full Name",
           "model_schema": "model_schema.json",
-          "training_dataset": "training_dataset",
           "input_example": "input_example.json",
           "model_registry_id": 1,
           "tags": [],
           "framework": "TORCH",
+          "href": "test_href"
+        }
+      ]
+    }
+  },
+  "get_llm": {
+    "response": {
+      "count": 1,
+      "items": [
+        {
+          "id": "5",
+          "name": "llmmodel",
+          "version": 0,
+          "created": "created",
+          "creator": "creator",
+          "environment": "environment.yml",
+          "description": "description",
+          "project_name": "myproject",
+          "metrics": { "acc": 0.7 },
+          "program": "program",
+          "user_full_name": "Full Name",
+          "model_schema": "model_schema.json",
+          "input_example": "input_example.json",
+          "model_registry_id": 1,
+          "tags": [],
+          "framework": "LLM",
           "href": "test_href"
         }
       ]
@@ -150,7 +171,6 @@
           "program": "program",
           "user_full_name": "Full Name",
           "model_schema": "model_schema.json",
-          "training_dataset": "training_dataset",
           "input_example": "input_example.json",
           "model_registry_id": 1,
           "tags": [],
@@ -170,7 +190,6 @@
           "program": "program",
           "user_full_name": "Full Name",
           "model_schema": "model_schema.json",
-          "training_dataset": "training_dataset",
           "input_example": "input_example.json",
           "model_registry_id": 1,
           "tags": [],

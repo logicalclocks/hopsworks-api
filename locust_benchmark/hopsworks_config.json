@@ -1,10 +1,11 @@
 {
-    "host": "localhost",
+    "host": "mercury.hops.works",
     "port": 443,
-    "project": "test",
+    "project": "fabio_demo",
     "external": true,
-    "rows": 100000,
+    "rows": 1000,
     "schema_repetitions": 1,
     "recreate_feature_group": true,
-    "batch_size": 100
+    "batch_size": 100,
+    "tablespace": "ts1"
 }

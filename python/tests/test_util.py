@@ -28,6 +28,8 @@ from hopsworks_common.constants import MODEL
 from hopsworks_common.core.constants import HAS_AIOMYSQL, HAS_SQLALCHEMY
 from hsfs.embedding import EmbeddingFeature, EmbeddingIndex
 from hsfs.feature import Feature
+from hsml.llm.model import Model as LLMModel
+from hsml.llm.predictor import Predictor as LLMPredictor
 from hsml.model import Model as BaseModel
 from hsml.predictor import Predictor as BasePredictor
 from hsml.python.model import Model as PythonModel
@@ -104,6 +106,17 @@ class TestUtil:
         # Assert
         assert isinstance(model, TorchModel)
         assert model.framework == MODEL.FRAMEWORK_TORCH
+
+    def test_set_model_class_llm(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["model"]["get_llm"]["response"]["items"][0]
+
+        # Act
+        model = util.set_model_class(json)
+
+        # Assert
+        assert isinstance(model, LLMModel)
+        assert model.framework == MODEL.FRAMEWORK_LLM
 
     def test_set_model_class_unsupported(self, backend_fixtures):
         # Arrange
@@ -385,6 +398,7 @@ class TestUtil:
         pred_sklearn = mocker.patch("hsml.sklearn.predictor.Predictor.__init__")
         pred_tensorflow = mocker.patch("hsml.tensorflow.predictor.Predictor.__init__")
         pred_torch = mocker.patch("hsml.torch.predictor.Predictor.__init__")
+        pred_llm = mocker.patch("hsml.llm.predictor.Predictor.__init__")
 
         # Act
         predictor = util.get_predictor_for_model(model_base)
@@ -398,6 +412,7 @@ class TestUtil:
         pred_sklearn.assert_not_called()
         pred_tensorflow.assert_not_called()
         pred_torch.assert_not_called()
+        pred_llm.assert_not_called()
 
     def test_get_predictor_for_model_python(self, mocker, model_python):
         # Arrange
@@ -408,6 +423,7 @@ class TestUtil:
         pred_sklearn = mocker.patch("hsml.sklearn.predictor.Predictor.__init__")
         pred_tensorflow = mocker.patch("hsml.tensorflow.predictor.Predictor.__init__")
         pred_torch = mocker.patch("hsml.torch.predictor.Predictor.__init__")
+        pred_llm = mocker.patch("hsml.llm.predictor.Predictor.__init__")
 
         # Act
         predictor = util.get_predictor_for_model(model_python)
@@ -419,6 +435,7 @@ class TestUtil:
         pred_sklearn.assert_not_called()
         pred_tensorflow.assert_not_called()
         pred_torch.assert_not_called()
+        pred_llm.assert_not_called()
 
     def test_get_predictor_for_model_sklearn(self, mocker, model_sklearn):
         # Arrange
@@ -429,6 +446,7 @@ class TestUtil:
         )
         pred_tensorflow = mocker.patch("hsml.tensorflow.predictor.Predictor.__init__")
         pred_torch = mocker.patch("hsml.torch.predictor.Predictor.__init__")
+        pred_llm = mocker.patch("hsml.llm.predictor.Predictor.__init__")
 
         # Act
         predictor = util.get_predictor_for_model(model_sklearn)
@@ -440,6 +458,7 @@ class TestUtil:
         pred_sklearn.assert_called_once()
         pred_tensorflow.assert_not_called()
         pred_torch.assert_not_called()
+        pred_llm.assert_not_called()
 
     def test_get_predictor_for_model_tensorflow(self, mocker, model_tensorflow):
         # Arrange
@@ -450,6 +469,7 @@ class TestUtil:
             "hsml.tensorflow.predictor.Predictor.__init__", return_value=None
         )
         pred_torch = mocker.patch("hsml.torch.predictor.Predictor.__init__")
+        pred_llm = mocker.patch("hsml.llm.predictor.Predictor.__init__")
 
         # Act
         predictor = util.get_predictor_for_model(model_tensorflow)
@@ -461,6 +481,7 @@ class TestUtil:
         pred_sklearn.assert_not_called()
         pred_tensorflow.assert_called_once()
         pred_torch.assert_not_called()
+        pred_llm.assert_not_called()
 
     def test_get_predictor_for_model_torch(self, mocker, model_torch):
         # Arrange
@@ -471,6 +492,7 @@ class TestUtil:
         pred_torch = mocker.patch(
             "hsml.torch.predictor.Predictor.__init__", return_value=None
         )
+        pred_llm = mocker.patch("hsml.llm.predictor.Predictor.__init__")
 
         # Act
         predictor = util.get_predictor_for_model(model_torch)
@@ -482,6 +504,30 @@ class TestUtil:
         pred_sklearn.assert_not_called()
         pred_tensorflow.assert_not_called()
         pred_torch.assert_called_once()
+        pred_llm.assert_not_called()
+
+    def test_get_predictor_for_model_llm(self, mocker, model_llm):
+        # Arrange
+        pred_base = mocker.patch("hsml.predictor.Predictor.__init__")
+        pred_python = mocker.patch("hsml.python.predictor.Predictor.__init__")
+        pred_sklearn = mocker.patch("hsml.sklearn.predictor.Predictor.__init__")
+        pred_tensorflow = mocker.patch("hsml.tensorflow.predictor.Predictor.__init__")
+        pred_torch = mocker.patch("hsml.torch.predictor.Predictor.__init__")
+        pred_llm = mocker.patch(
+            "hsml.llm.predictor.Predictor.__init__", return_value=None
+        )
+
+        # Act
+        predictor = util.get_predictor_for_model(model_llm)
+
+        # Assert
+        assert isinstance(predictor, LLMPredictor)
+        pred_base.assert_not_called()
+        pred_python.assert_not_called()
+        pred_sklearn.assert_not_called()
+        pred_tensorflow.assert_not_called()
+        pred_torch.assert_not_called()
+        pred_llm.assert_called_once()
 
     def test_get_predictor_for_model_non_base(self, mocker):
         # Arrange
@@ -490,6 +536,7 @@ class TestUtil:
         pred_sklearn = mocker.patch("hsml.sklearn.predictor.Predictor.__init__")
         pred_tensorflow = mocker.patch("hsml.tensorflow.predictor.Predictor.__init__")
         pred_torch = mocker.patch("hsml.torch.predictor.Predictor.__init__")
+        pred_llm = mocker.patch("hsml.llm.predictor.Predictor.__init__")
 
         class NonBaseModel:
             pass
@@ -506,6 +553,7 @@ class TestUtil:
         pred_sklearn.assert_not_called()
         pred_tensorflow.assert_not_called()
         pred_torch.assert_not_called()
+        pred_llm.assert_not_called()
 
     def test_get_hostname_replaced_url(self, mocker):
         # Arrange

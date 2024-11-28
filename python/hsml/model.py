@@ -17,19 +17,22 @@
 import json
 import logging
 import os
+import re
 import warnings
 from typing import Any, Dict, Optional, Union
 
 import humps
 from hopsworks_common import client, usage, util
-from hopsworks_common.constants import ARTIFACT_VERSION
+from hopsworks_common.constants import ARTIFACT_VERSION, MODEL_REGISTRY
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hsml.core import explicit_provenance
 from hsml.engine import model_engine
 from hsml.inference_batcher import InferenceBatcher
 from hsml.inference_logger import InferenceLogger
+from hsml.model_schema import ModelSchema
 from hsml.predictor import Predictor
 from hsml.resources import PredictorResources
+from hsml.schema import Schema
 from hsml.transformer import Transformer
 
 
@@ -53,7 +56,6 @@ class Model:
         program=None,
         user_full_name=None,
         model_schema=None,
-        training_dataset=None,
         input_example=None,
         framework=None,
         model_registry_id=None,
@@ -83,7 +85,6 @@ class Model:
         self._input_example = input_example
         self._framework = framework
         self._model_schema = model_schema
-        self._training_dataset = training_dataset
 
         # This is needed for update_from_response_json function to not overwrite name of the shared registry this model originates from
         if not hasattr(self, "_shared_registry_project_name"):
@@ -94,17 +95,6 @@ class Model:
         self._model_engine = model_engine.ModelEngine()
         self._feature_view = feature_view
         self._training_dataset_version = training_dataset_version
-        if training_dataset_version is None and feature_view is not None:
-            if feature_view.get_last_accessed_training_dataset() is not None:
-                self._training_dataset_version = (
-                    feature_view.get_last_accessed_training_dataset()
-                )
-            else:
-                warnings.warn(
-                    "Provenance cached data - feature view provided, but training dataset version is missing",
-                    util.ProvenanceWarning,
-                    stacklevel=1,
-                )
 
     @usage.method_logger
     def save(
@@ -130,6 +120,39 @@ class Model:
         # Returns
             `Model`: The model metadata object.
         """
+        if self._training_dataset_version is None and self._feature_view is not None:
+            if self._feature_view.get_last_accessed_training_dataset() is not None:
+                self._training_dataset_version = (
+                    self._feature_view.get_last_accessed_training_dataset()
+                )
+            else:
+                warnings.warn(
+                    "Provenance cached data - feature view provided, but training dataset version is missing",
+                    util.ProvenanceWarning,
+                    stacklevel=1,
+                )
+        if self._model_schema is None:
+            if (
+                self._feature_view is not None
+                and self._training_dataset_version is not None
+            ):
+                all_features = self._feature_view.get_training_dataset_schema(
+                    self._training_dataset_version
+                )
+                features, labels = [], []
+                for feature in all_features:
+                    (labels if feature.label else features).append(feature.to_dict())
+                self._model_schema = ModelSchema(
+                    input_schema=Schema(features) if features else None,
+                    output_schema=Schema(labels) if labels else None,
+                )
+            else:
+                warnings.warn(
+                    "Model schema cannot not be inferred without both the feature view and the training dataset version.",
+                    util.ProvenanceWarning,
+                    stacklevel=1,
+                )
+
         return self._model_engine.save(
             model_instance=self,
             model_path=model_path,
@@ -139,13 +162,15 @@ class Model:
         )
 
     @usage.method_logger
-    def download(self):
+    def download(self, local_path=None):
         """Download the model files.
 
+        # Arguments
+            local_path: path where to download the model files in the local filesystem
         # Returns
             `str`: Absolute path to local folder containing the model files.
         """
-        return self._model_engine.download(model_instance=self)
+        return self._model_engine.download(model_instance=self, local_path=local_path)
 
     @usage.method_logger
     def delete(self):
@@ -211,7 +236,7 @@ class Model:
         """
 
         if name is None:
-            name = self._name
+            name = self._get_default_serving_name()
 
         predictor = Predictor.for_model(
             self,
@@ -341,6 +366,9 @@ class Model:
         """
         return self._model_engine.get_training_dataset_provenance(model_instance=self)
 
+    def _get_default_serving_name(self):
+        return re.sub(r"[^a-zA-Z0-9]", "", self._name)
+
     @classmethod
     def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
@@ -372,7 +400,6 @@ class Model:
             "inputExample": self._input_example,
             "framework": self._framework,
             "metrics": self._training_metrics,
-            "trainingDataset": self._training_dataset,
             "environment": self._environment,
             "program": self._program,
             "featureView": util.feature_view_to_json(self._feature_view),
@@ -508,15 +535,6 @@ class Model:
         self._model_schema = model_schema
 
     @property
-    def training_dataset(self):
-        """training_dataset of the model."""
-        return self._training_dataset
-
-    @training_dataset.setter
-    def training_dataset(self, training_dataset):
-        self._training_dataset = training_dataset
-
-    @property
     def project_name(self):
         """project_name of the model."""
         return self._project_name
@@ -543,6 +561,14 @@ class Model:
     def version_path(self):
         """path of the model including version folder. Resolves to /Projects/{project_name}/Models/{name}/{version}"""
         return "{}/{}".format(self.model_path, str(self.version))
+
+    @property
+    def model_files_path(self):
+        """path of the model files including version and files folder. Resolves to /Projects/{project_name}/Models/{name}/{version}/Files"""
+        return "{}/{}".format(
+            self.version_path,
+            MODEL_REGISTRY.MODEL_FILES_DIR_NAME,
+        )
 
     @property
     def shared_registry_project_name(self):

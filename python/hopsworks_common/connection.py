@@ -100,7 +100,7 @@ class Connection:
             Defaults to `None`.
         engine: Which engine to use, `"spark"`, `"python"` or `"training"`. Defaults to `None`,
             which initializes the engine to Spark if the environment provides Spark, for
-            example on Hopsworks and Databricks, or falls back on Hive in Python if Spark is not
+            example on Hopsworks and Databricks, or falls back to Python if Spark is not
             available, e.g. on local Python environments or AWS SageMaker. This option
             allows you to override this behaviour. `"training"` engine is useful when only
             feature store metadata is needed, for example training dataset location and label
@@ -151,7 +151,6 @@ class Connection:
     def get_feature_store(
         self,
         name: Optional[str] = None,
-        engine: Optional[str] = None,
     ):  # -> feature_store.FeatureStore
         # the typing is commented out due to circular dependency, it breaks auto_doc.py
         """Get a reference to a feature store to perform operations on.
@@ -161,25 +160,10 @@ class Connection:
 
         # Arguments
             name: The name of the feature store, defaults to `None`.
-            engine: Which engine to use, `"spark"`, `"python"` or `"training"`. Defaults to `None`,
-            which initializes the engine to Spark if the environment provides Spark, for
-            example on Hopsworks and Databricks, or falls back on Hive in Python if Spark is not
-            available, e.g. on local Python environments or AWS SageMaker. This option
-            allows you to override this behaviour. `"training"` engine is useful when only
-            feature store metadata is needed, for example training dataset location and label
-            information when Hopsworks training experiment is conducted.
 
         # Returns
             `FeatureStore`. A feature store handle object to perform operations on.
         """
-        # Ensure the engine is initialized and of right type
-        from hsfs import engine as hsfs_engine
-
-        if engine:
-            global _hsfs_engine_type
-            _hsfs_engine_type = engine
-        hsfs_engine.get_instance()
-
         if not name:
             name = client.get_instance()._project_name
         return self._feature_store_api.get(util.append_feature_store_suffix(name))
@@ -484,7 +468,74 @@ class Connection:
         api_key_file: Optional[str] = None,
         api_key_value: Optional[str] = None,
     ) -> Connection:
-        """Connection factory method, accessible through `hopsworks.connection()`."""
+        """Connection factory method, accessible through `hopsworks.connection()`.
+
+        This class provides convenience classmethods accessible from the `hopsworks`-module:
+
+        !!! example "Connection factory"
+            For convenience, `hopsworks` provides a factory method, accessible from the top level
+            module, so you don't have to import the `Connection` class manually:
+
+            ```python
+            import hopsworks
+            conn = hopsworks.connection()
+            ```
+
+        !!! hint "Save API Key as File"
+            To get started quickly, you can simply create a file with the previously
+            created Hopsworks API Key and place it on the environment from which you
+            wish to connect to Hopsworks.
+
+            You can then connect by simply passing the path to the key file when
+            instantiating a connection:
+
+            ```python hl_lines="6"
+                import hopsworks
+                conn = hopsworks.connection(
+                    'my_instance',                      # DNS of your Hopsworks instance
+                    443,                                # Port to reach your Hopsworks instance, defaults to 443
+                    api_key_file='hopsworks.key',       # The file containing the API key generated above
+                    hostname_verification=True)         # Disable for self-signed certificates
+                )
+                project = conn.get_project("my_project")
+            ```
+
+        Clients in external clusters need to connect to the Hopsworks using an
+        API key. The API key is generated inside the Hopsworks platform, and requires at
+        least the "project" scope to be able to access a project.
+        For more information, see the [integration guides](../setup.md).
+
+        # Arguments
+            host: The hostname of the Hopsworks instance in the form of `[UUID].cloud.hopsworks.ai`,
+                defaults to `None`. Do **not** use the url including `https://` when connecting
+                programatically.
+            port: The port on which the Hopsworks instance can be reached,
+                defaults to `443`.
+            project: The name of the project to connect to. When running on Hopsworks, this
+                defaults to the project from where the client is run from.
+                Defaults to `None`.
+            engine: Which engine to use, `"spark"`, `"python"` or `"training"`. Defaults to `None`,
+                which initializes the engine to Spark if the environment provides Spark, for
+                example on Hopsworks and Databricks, or falls back to Python if Spark is not
+                available, e.g. on local Python environments or AWS SageMaker. This option
+                allows you to override this behaviour. `"training"` engine is useful when only
+                feature store metadata is needed, for example training dataset location and label
+                information when Hopsworks training experiment is conducted.
+            hostname_verification: Whether or not to verify Hopsworks' certificate, defaults
+                to `True`.
+            trust_store_path: Path on the file system containing the Hopsworks certificates,
+                defaults to `None`.
+            cert_folder: The directory to store retrieved HopsFS certificates, defaults to
+                `"/tmp"`. Only required when running without a Spark environment.
+            api_key_file: Path to a file containing the API Key, defaults to `None`.
+            api_key_value: API Key as string, if provided, `api_key_file` will be ignored,
+                however, this should be used with care, especially if the used notebook or
+                job script is accessible by multiple parties. Defaults to `None`.
+
+        # Returns
+            `Connection`. Connection handle to perform operations on a
+                Hopsworks project.
+        """
         return cls(
             host,
             port,

@@ -109,7 +109,7 @@ class Project:
         return self._project_namespace
 
     def get_feature_store(
-        self, name: Optional[str] = None, engine: Optional[str] = None
+        self, name: Optional[str] = None
     ):  # -> hsfs.feature_store.FeatureStore
         """Connect to Project's Feature Store.
 
@@ -127,15 +127,12 @@ class Project:
 
         # Arguments
             name: Project name of the feature store.
-            engine: Which engine to use, `"spark"`, `"python"` or `"training"`.
-                Defaults to `"python"` when connected to [Serverless Hopsworks](https://app.hopsworks.ai).
-                See hsfs.Connection.connection documentation for more information.
         # Returns
             `hsfs.feature_store.FeatureStore`: The Feature Store API
         # Raises
             `RestAPIError`: If unable to connect
         """
-        return client.get_connection().get_feature_store(name, engine)
+        return client.get_connection().get_feature_store(name)
 
     def get_model_registry(self):
         """Connect to Project's Model Registry API.

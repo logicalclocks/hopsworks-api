@@ -66,7 +66,7 @@ class Deployment:
         self._model_registry_id = None
 
     @usage.method_logger
-    def save(self, await_update: Optional[int] = 60):
+    def save(self, await_update: Optional[int] = 120):
         """Persist this deployment including the predictor and metadata to Model Serving.
 
         # Arguments
@@ -78,7 +78,7 @@ class Deployment:
         self._serving_engine.save(self, await_update)
 
     @usage.method_logger
-    def start(self, await_running: Optional[int] = 60):
+    def start(self, await_running: Optional[int] = 120):
         """Start the deployment
 
         # Arguments
@@ -90,7 +90,7 @@ class Deployment:
         self._serving_engine.start(self, await_status=await_running)
 
     @usage.method_logger
-    def stop(self, await_stopped: Optional[int] = 60):
+    def stop(self, await_stopped: Optional[int] = 120):
         """Stop the deployment
 
         # Arguments
@@ -218,10 +218,14 @@ class Deployment:
         )
 
     @usage.method_logger
-    def download_artifact(self):
-        """Download the model artifact served by the deployment"""
+    def download_artifact_files(self, local_path=None):
+        """Download the artifact files served by the deployment
 
-        return self._serving_engine.download_artifact(self)
+        # Arguments
+            local_path: path where to download the artifact files in the local filesystem
+        """
+
+        return self._serving_engine.download_artifact_files(self, local_path=local_path)
 
     def get_logs(self, component="predictor", tail=10):
         """Prints the deployment logs of the predictor or transformer.
@@ -373,8 +377,14 @@ class Deployment:
         self._predictor.artifact_version = artifact_version
 
     @property
+    def artifact_files_path(self):
+        """Path of the artifact files deployed by the predictor."""
+        return self._predictor.artifact_files_path
+
+    @property
     def artifact_path(self):
         """Path of the model artifact deployed by the predictor."""
+        # TODO: deprecated
         return self._predictor.artifact_path
 
     @property

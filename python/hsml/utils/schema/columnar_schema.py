@@ -21,11 +21,6 @@ from hsml.utils.schema.column import Column
 
 
 try:
-    import hsfs
-except ImportError:
-    pass
-
-try:
     import pyspark
 except ImportError:
     pass
@@ -35,6 +30,10 @@ class ColumnarSchema:
     """Metadata object representing a columnar schema for a model."""
 
     def __init__(self, columnar_obj=None):
+        from hsfs.training_dataset import (
+            TrainingDataset,  # import performed here to prevent circular dependencies when importing ModelSchema
+        )
+
         if isinstance(columnar_obj, list):
             self.columns = self._convert_list_to_schema(columnar_obj)
         elif isinstance(columnar_obj, pandas.DataFrame):
@@ -45,9 +44,7 @@ class ColumnarSchema:
             columnar_obj, pyspark.sql.dataframe.DataFrame
         ):
             self.columns = self._convert_spark_to_schema(columnar_obj)
-        elif importlib.util.find_spec("hsfs") is not None and isinstance(
-            columnar_obj, hsfs.training_dataset.TrainingDataset
-        ):
+        elif isinstance(columnar_obj, TrainingDataset):
             self.columns = self._convert_td_to_schema(columnar_obj)
         else:
             raise TypeError(

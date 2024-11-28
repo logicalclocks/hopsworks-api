@@ -145,7 +145,7 @@ class TestDeployment:
         d.save()
 
         # Assert
-        mock_serving_engine_save.assert_called_once_with(d, 60)
+        mock_serving_engine_save.assert_called_once_with(d, 120)
 
     def test_save(self, mocker, backend_fixtures):
         # Arrange
@@ -176,7 +176,7 @@ class TestDeployment:
         d.start()
 
         # Assert
-        mock_serving_engine_start.assert_called_once_with(d, await_status=60)
+        mock_serving_engine_start.assert_called_once_with(d, await_status=120)
 
     def test_start(self, mocker, backend_fixtures):
         # Arrange
@@ -207,7 +207,7 @@ class TestDeployment:
         d.stop()
 
         # Assert
-        mock_serving_engine_stop.assert_called_once_with(d, await_status=60)
+        mock_serving_engine_stop.assert_called_once_with(d, await_status=120)
 
     def test_stop(self, mocker, backend_fixtures):
         # Arrange
@@ -617,15 +617,17 @@ class TestDeployment:
         # Arrange
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        mock_serving_engine_download_artifact = mocker.patch(
-            "hsml.engine.serving_engine.ServingEngine.download_artifact"
+        mock_serving_engine_download_artifact_files = mocker.patch(
+            "hsml.engine.serving_engine.ServingEngine.download_artifact_files"
         )
 
         # Act
-        d.download_artifact()
+        d.download_artifact_files()
 
         # Assert
-        mock_serving_engine_download_artifact.assert_called_once_with(d)
+        mock_serving_engine_download_artifact_files.assert_called_once_with(
+            d, local_path=None
+        )
 
     # get logs
 

@@ -125,7 +125,7 @@ class ModelServing:
             `RestAPIError`: If unable to retrieve deployments from model serving.
         """
 
-        model_name = model.name if model is not None else None
+        model_name = model._get_default_serving_name() if model is not None else None
         if status is not None:
             self._validate_deployment_status(status)
 
@@ -207,7 +207,7 @@ class ModelServing:
         """
 
         if name is None:
-            name = model.name
+            name = model._get_default_serving_name()
 
         return Predictor.for_model(
             model,

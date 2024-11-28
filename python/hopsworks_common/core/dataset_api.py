@@ -46,6 +46,7 @@ class DatasetApi:
 
     DEFAULT_UPLOAD_FLOW_CHUNK_SIZE = 10 * 1024 * 1024
     DEFAULT_UPLOAD_SIMULTANEOUS_UPLOADS = 3
+    DEFAULT_UPLOAD_SIMULTANEOUS_CHUNKS = 3
     DEFAULT_UPLOAD_MAX_CHUNK_RETRIES = 1
 
     DEFAULT_DOWNLOAD_FLOW_CHUNK_SIZE = 1024 * 1024
@@ -159,10 +160,11 @@ class DatasetApi:
         overwrite: bool = False,
         chunk_size: int = DEFAULT_UPLOAD_FLOW_CHUNK_SIZE,
         simultaneous_uploads: int = DEFAULT_UPLOAD_SIMULTANEOUS_UPLOADS,
+        simultaneous_chunks: int = DEFAULT_UPLOAD_SIMULTANEOUS_CHUNKS,
         max_chunk_retries: int = DEFAULT_UPLOAD_MAX_CHUNK_RETRIES,
         chunk_retry_interval: int = 1,
     ):
-        """Upload a file to the Hopsworks filesystem.
+        """Upload a file or directory to the Hopsworks filesystem.
 
         ```python
 
@@ -172,29 +174,33 @@ class DatasetApi:
 
         dataset_api = project.get_dataset_api()
 
+        # upload a file to Resources dataset
         uploaded_file_path = dataset_api.upload("my_local_file.txt", "Resources")
+
+        # upload a directory to Resources dataset
+        uploaded_file_path = dataset_api.upload("my_dir", "Resources")
 
         ```
         # Arguments
-            local_path: local path to file to upload
+            local_path: local path to file or directory to upload, can be relative or absolute
             upload_path: path to directory where to upload the file in Hopsworks Filesystem
-            overwrite: overwrite file if exists
+            overwrite: overwrite file or directory if exists
             chunk_size: upload chunk size in bytes. Default 10 MB
-            simultaneous_uploads: number of simultaneous chunks to upload. Default 3
+            simultaneous_chunks: number of simultaneous chunks to upload for each file upload. Default 3
+            simultaneous_uploads: number of simultaneous files to be uploaded for directories. Default 3
             max_chunk_retries: maximum retry for a chunk. Default is 1
             chunk_retry_interval: chunk retry interval in seconds. Default is 1sec
         # Returns
-            `str`: Path to uploaded file
+            `str`: Path to uploaded file or directory
         # Raises
-            `RestAPIError`: If unable to upload the file
+            `RestAPIError`: If unable to upload the file or directory
         """
+
         # local path could be absolute or relative,
         if not os.path.isabs(local_path) and os.path.exists(
             os.path.join(os.getcwd(), local_path)
         ):
             local_path = os.path.join(os.getcwd(), local_path)
-
-        file_size = os.path.getsize(local_path)
 
         _, file_name = os.path.split(local_path)
 
@@ -202,13 +208,58 @@ class DatasetApi:
 
         if self.exists(destination_path):
             if overwrite:
-                self.remove(destination_path)
+                if 'datasetType' in self._get(destination_path):
+                    raise DatasetException("overwrite=True not supported on a top-level dataset")
+                else:
+                    self.remove(destination_path)
             else:
                 raise DatasetException(
                     "{} already exists, set overwrite=True to overwrite it".format(
-                        local_path
+                        destination_path
                     )
                 )
+
+        if os.path.isdir(local_path):
+            self.mkdir(destination_path)
+
+        if os.path.isdir(local_path):
+            with ThreadPoolExecutor(simultaneous_uploads) as executor:
+                # if path is a dir, upload files and folders iteratively
+                for root, dirs, files in os.walk(local_path):
+                    # os.walk(local_model_path), where local_model_path is expected to be an absolute path
+                    # - root is the absolute path of the directory being walked
+                    # - dirs is the list of directory names present in the root dir
+                    # - files is the list of file names present in the root dir
+                    # we need to replace the local path prefix with the hdfs path prefix (i.e., /srv/hops/....../root with /Projects/.../)
+                    remote_base_path = root.replace(
+                        local_path, destination_path
+                    ).replace(os.sep, "/")
+                    for d_name in dirs:
+                        self.mkdir(remote_base_path + "/" + d_name)
+
+                    # uploading files in the same folder is done concurrently
+                    futures = [
+                        executor.submit(
+                            self._upload_file, f_name, root + os.sep + f_name, remote_base_path, chunk_size, simultaneous_chunks, max_chunk_retries, chunk_retry_interval
+                        )
+                        for f_name in files
+                    ]
+
+                    # wait for all upload tasks to complete
+                    _, _ = wait(futures)
+                    try:
+                        _ = [future.result() for future in futures]
+                    except Exception as e:
+                        raise e
+        else:
+            self._upload_file(file_name, local_path, upload_path, chunk_size, simultaneous_chunks, max_chunk_retries, chunk_retry_interval)
+
+        return upload_path + "/" + os.path.basename(local_path)
+
+
+    def _upload_file(self, file_name, local_path, upload_path, chunk_size, simultaneous_chunks, max_chunk_retries, chunk_retry_interval):
+
+        file_size = os.path.getsize(local_path)
 
         num_chunks = math.ceil(file_size / chunk_size)
 
@@ -223,15 +274,15 @@ class DatasetApi:
                 pbar = tqdm(
                     total=file_size,
                     bar_format="{desc}: {percentage:.3f}%|{bar}| {n_fmt}/{total_fmt} elapsed<{elapsed} remaining<{remaining}",
-                    desc="Uploading",
+                    desc="Uploading {}".format(local_path),
                 )
             except Exception:
                 self._log.exception("Failed to initialize progress bar.")
                 self._log.info("Starting upload")
-            with ThreadPoolExecutor(simultaneous_uploads) as executor:
+            with ThreadPoolExecutor(simultaneous_chunks) as executor:
                 while True:
                     chunks = []
-                    for _ in range(simultaneous_uploads):
+                    for _ in range(simultaneous_chunks):
                         chunk = f.read(chunk_size)
                         if not chunk:
                             break
@@ -268,8 +319,6 @@ class DatasetApi:
                 pbar.close()
             else:
                 self._log.info("Upload finished")
-
-        return upload_path + "/" + os.path.basename(local_path)
 
     def _upload_chunk(
         self,
@@ -459,7 +508,10 @@ class DatasetApi:
         """
         if self.exists(destination_path):
             if overwrite:
-                self.remove(destination_path)
+                if 'datasetType' in self._get(destination_path):
+                    raise DatasetException("overwrite=True not supported on a top-level dataset")
+                else:
+                    self.remove(destination_path)
             else:
                 raise DatasetException(
                     "{} already exists, set overwrite=True to overwrite it".format(
@@ -497,10 +549,12 @@ class DatasetApi:
         # Raises
             `RestAPIError`: If unable to perform the move
         """
-
         if self.exists(destination_path):
             if overwrite:
-                self.remove(destination_path)
+                if 'datasetType' in self._get(destination_path):
+                    raise DatasetException("overwrite=True not supported on a top-level dataset")
+                else:
+                    self.remove(destination_path)
             else:
                 raise DatasetException(
                     "{} already exists, set overwrite=True to overwrite it".format(

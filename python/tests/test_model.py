@@ -138,6 +138,19 @@ class TestModel:
         # Assert
         self.assert_model(mocker, m, json, MODEL.FRAMEWORK_TORCH)
 
+    def test_constructor_llm(self, mocker, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["model"]["get_llm"]["response"]["items"][0]
+        m_json = copy.deepcopy(json)
+        id = m_json.pop("id")
+        name = m_json.pop("name")
+
+        # Act
+        m = model.Model(id=id, name=name, **m_json)
+
+        # Assert
+        self.assert_model(mocker, m, json, MODEL.FRAMEWORK_LLM)
+
     # save
 
     def test_save(self, mocker, backend_fixtures):
@@ -253,7 +266,9 @@ class TestModel:
         m.download()
 
         # Assert
-        mock_model_engine_download.assert_called_once_with(model_instance=m)
+        mock_model_engine_download.assert_called_once_with(
+            model_instance=m, local_path=None
+        )
 
     # tags
 
@@ -357,7 +372,6 @@ class TestModel:
         assert m.project_name == m_json["project_name"]
         assert m.training_metrics == m_json["metrics"]
         assert m._user_full_name == m_json["user_full_name"]
-        assert m.training_dataset == m_json["training_dataset"]
         assert m.model_registry_id == m_json["model_registry_id"]
 
         if model_framework is None:
