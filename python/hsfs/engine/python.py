@@ -1492,6 +1492,7 @@ class Engine:
         # make sure producer blocks and everything is delivered
         if not feature_group._multi_part_insert:
             producer.flush()
+            del producer
             progress_bar.close()
 
         # start materialization job if not an external feature group, otherwise return None
@@ -1510,7 +1511,7 @@ class Engine:
                 topic_name=feature_group._online_topic_name,
                 feature_store_id=feature_group.feature_store_id,
                 offline_write_options=offline_write_options,
-                high=True,
+                high=False,
             )
             now = datetime.now(timezone.utc)
             feature_group.materialization_job.run(
