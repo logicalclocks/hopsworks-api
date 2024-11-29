@@ -98,7 +98,7 @@ class Connection:
         project: The name of the project to connect to. When running on Hopsworks, this
             defaults to the project from where the client is run from.
             Defaults to `None`.
-        engine: Which engine to use, `"spark"`, `"python"`, `"training"`, `"spark-no-metastore"` or `"spark-objectstore"`. Defaults to `None`,
+        engine: Which engine to use, `"spark"`, `"python"`, `"training"`, `"spark-no-metastore"` or `"spark-delta"`. Defaults to `None`,
             which initializes the engine to Spark if the environment provides Spark, for
             example on Hopsworks and Databricks, or falls back to Python if Spark is not
             available, e.g. on local Python environments or AWS SageMaker. This option
@@ -356,13 +356,13 @@ class Connection:
                 self._engine = "spark-no-metastore"
             elif (
                 self._engine is not None
-                and self._engine.lower() == "spark-objectstore"
+                and self._engine.lower() == "spark-delta"
             ):
-                self._engine = "spark-objectstore"
+                self._engine = "spark-delta"
             else:
                 raise ConnectionError(
                     "Engine you are trying to initialize is unknown. "
-                    "Supported engines are `'spark'`, `'python'`, `'training'`, `'spark-no-metastore'`, and `'spark-objectstore'`."
+                    "Supported engines are `'spark'`, `'python'`, `'training'`, `'spark-no-metastore'`, and `'spark-delta'`."
                 )
 
             # init client
@@ -519,7 +519,7 @@ class Connection:
             project: The name of the project to connect to. When running on Hopsworks, this
                 defaults to the project from where the client is run from.
                 Defaults to `None`.
-            engine: Which engine to use, `"spark"`, `"python"`, `"training"`, `"spark-no-metastore"` or `"spark-objectstore"`. Defaults to `None`,
+            engine: Which engine to use, `"spark"`, `"python"`, `"training"`, `"spark-no-metastore"` or `"spark-delta"`. Defaults to `None`,
                 which initializes the engine to Spark if the environment provides Spark, for
                 example on Hopsworks and Databricks, or falls back to Python if Spark is not
                 available, e.g. on local Python environments or AWS SageMaker. This option

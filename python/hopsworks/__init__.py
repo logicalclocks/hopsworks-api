@@ -84,7 +84,7 @@ def login(
     api_key_file: str = None,
     hostname_verification: bool = False,
     trust_store_path: str = None,
-    engine: Union[None, Literal["spark"], Literal["python"], Literal["training"], Literal["spark-no-metastore"], Literal["spark-objectstore"]] = None,
+    engine: Union[None, Literal["spark"], Literal["python"], Literal["training"], Literal["spark-no-metastore"], Literal["spark-delta"]] = None,
 ) -> project.Project:
     """Connect to [Serverless Hopsworks](https://app.hopsworks.ai) by calling the `hopsworks.login()` function with no arguments.
 
@@ -124,7 +124,7 @@ def login(
         api_key_file: Path to file wih Api Key
         hostname_verification: Whether to verify Hopsworks' certificate
         trust_store_path: Path on the file system containing the Hopsworks certificates
-        engine: Which engine to use, `"spark"`, `"python"`, `"training"`, `"spark-no-metastore"` or `"spark-objectstore"`. Defaults to `None`,
+        engine: Which engine to use, `"spark"`, `"python"`, `"training"`, `"spark-no-metastore"` or `"spark-delta"`. Defaults to `None`,
             which initializes the engine to Spark if the environment provides Spark, for
             example on Hopsworks and Databricks, or falls back to Python if Spark is not
             available, e.g. on local Python environments or AWS SageMaker. This option

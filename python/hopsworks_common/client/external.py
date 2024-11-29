@@ -148,7 +148,7 @@ class Client(base.Client):
             for conf_key, conf_value in configuration_dict.items():
                 _spark_session._jsc.hadoopConfiguration().set(conf_key, conf_value)
 
-        elif self._engine == "spark-objectstore":
+        elif self._engine == "spark-delta":
             _logger.debug(
                 "Running in Spark environment with no metastore and hopsfs, initializing Spark session"
             )

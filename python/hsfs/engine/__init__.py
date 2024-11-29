@@ -41,7 +41,7 @@ def init(engine_type: str) -> None:
             raise ValueError(
                 "Hive engine is not supported in hopsworks client version >= 4.0."
             )
-        elif engine_type == "spark-no-metastore" or engine_type == "spark-objectstore":
+        elif engine_type == "spark-no-metastore" or engine_type == "spark-delta":
             _engine = spark_no_metastore.Engine()
         elif engine_type in python_types:
             try:
