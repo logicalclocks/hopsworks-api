@@ -354,10 +354,15 @@ class Connection:
                 and self._engine.lower() == "spark-no-metastore"
             ):
                 self._engine = "spark-no-metastore"
+            elif (
+                self._engine is not None
+                and self._engine.lower() == "spark-objectstore"
+            ):
+                self._engine = "spark-objectstore"
             else:
                 raise ConnectionError(
                     "Engine you are trying to initialize is unknown. "
-                    "Supported engines are `'spark'`, `'python'` and `'training'`."
+                    "Supported engines are `'spark'`, `'python'`, `'training'`, `'spark-no-metastore'`, and `'spark-objectstore'`."
                 )
 
             # init client

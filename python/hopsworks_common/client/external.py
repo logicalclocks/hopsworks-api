@@ -148,6 +148,12 @@ class Client(base.Client):
             for conf_key, conf_value in configuration_dict.items():
                 _spark_session._jsc.hadoopConfiguration().set(conf_key, conf_value)
 
+        elif self._engine == "spark-objectstore":
+            _logger.debug(
+                "Running in Spark environment with no metastore and hopsfs, initializing Spark session"
+            )
+            _spark_session = SparkSession.builder.getOrCreate()
+
         hopsworks_common.client.get_connection()._provide_project()
 
     def download_certs(self):
