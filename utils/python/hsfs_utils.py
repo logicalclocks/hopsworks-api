@@ -299,6 +299,7 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
         .option("subscribe", entity._online_topic_name)
         .option("startingOffsets", offset_string)
         .option("includeHeaders", "true")
+        .option("failOnDataLoss", "false")
         .load()
     )
 
