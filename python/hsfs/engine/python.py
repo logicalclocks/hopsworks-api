@@ -73,6 +73,8 @@ from hsfs.core import (
     job,
     job_api,
     kafka_engine,
+    online_ingestion,
+    online_ingestion_api,
     statistics_api,
     storage_connector_api,
     training_dataset_api,
@@ -1448,6 +1450,17 @@ class Engine:
             offline_write_options,
             project_id=client.get_instance()._project_id,
         )
+
+        online_ingestion_instance = online_ingestion.OnlineIngestion(
+            num_entries=len(dataframe)
+        )
+
+        online_ingestion_instance = online_ingestion_api.OnlineIngestionApi().create_online_ingestion(
+            feature_group,
+            online_ingestion_instance
+        )
+
+        headers["onlineIngestionId"] = str(online_ingestion_instance.id).encode("utf8")
         if not feature_group._multi_part_insert:
             # set initial_check_point to the current offset
             initial_check_point = kafka_engine.kafka_get_offsets(

@@ -65,6 +65,8 @@ from hsfs.core import (
     feature_store_api,
     great_expectation_engine,
     job_api,
+    online_ingestion,
+    online_ingestion_api,
     spine_group_engine,
     statistics_engine,
     validation_report_engine,
@@ -1786,6 +1788,9 @@ class FeatureGroupBase:
                     type(statistics_config)
                 )
             )
+        
+    def get_latest_online_ingestion(self) -> online_ingestion.OnlineIngestion:
+        return online_ingestion_api.OnlineIngestionApi().get_online_ingestion(self, query_params={"filter_by": "LATEST"})
 
     @property
     def feature_store_id(self) -> Optional[int]:
