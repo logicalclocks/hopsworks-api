@@ -124,13 +124,12 @@ def login(
         api_key_file: Path to file wih Api Key
         hostname_verification: Whether to verify Hopsworks' certificate
         trust_store_path: Path on the file system containing the Hopsworks certificates
-        engine: Which engine to use, `"spark"`, `"python"`, `"training"`, `"spark-no-metastore"` or `"spark-delta"`. Defaults to `None`,
-            which initializes the engine to Spark if the environment provides Spark, for
-            example on Hopsworks and Databricks, or falls back to Python if Spark is not
-            available, e.g. on local Python environments or AWS SageMaker. This option
-            allows you to override this behaviour. `"training"` engine is useful when only
-            feature store metadata is needed, for example training dataset location and label
-            information when Hopsworks training experiment is conducted.
+        engine: Specifies the engine to use. Possible options are "spark", "python", "training", "spark-no-metastore", or "spark-delta". The default value is None, which automatically selects the engine based on the environment:
+            "spark": Used if Spark is available, such as in Hopsworks or Databricks environments.
+            "python": Used in local Python environments or AWS SageMaker when Spark is not available.
+            "training": Used when only feature store metadata is needed, such as for obtaining training dataset locations and label information during Hopsworks training experiments.
+            "spark-no-metastore": Functions like "spark" but does not rely on the Hive metastore.
+            "spark-delta": Minimizes dependencies further by avoiding both Hive metastore and HopsFS.
     # Returns
         `Project`: The Project object to perform operations on
     # Raises

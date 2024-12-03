@@ -152,7 +152,10 @@ class Client(base.Client):
             _logger.debug(
                 "Running in Spark environment with no metastore and hopsfs, initializing Spark session"
             )
-            _spark_session = SparkSession.builder.getOrCreate()
+            _spark_session = SparkSession.builder \
+                .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
+                .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
+                .getOrCreate()
 
         hopsworks_common.client.get_connection()._provide_project()
 
