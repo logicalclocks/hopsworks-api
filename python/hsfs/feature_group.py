@@ -320,35 +320,25 @@ class FeatureGroupBase:
         # Returns
             `Query`. A query object with all features of the feature group.
         """
-        if include_event_time and include_primary_key and include_foreign_key and include_partition_key:
+        removed_keys = []
+
+        if not include_event_time:
+            removed_keys += [self.event_time]
+        if not include_primary_key:
+            removed_keys += self.primary_key
+        if not include_foreign_key:
+            removed_keys += self.foreign_key
+        if not include_partition_key:
+            removed_keys += self.partition_key
+
+        if removed_keys:
+            return self.select_except(removed_keys)
+        else:
             return query.Query(
                 left_feature_group=self,
                 left_features=self._features,
                 feature_store_name=self._feature_store_name,
                 feature_store_id=self._feature_store_id,
-            )
-        elif include_event_time:
-            return self.select_except(
-                self.primary_key + self.foreign_key + self.partition_key
-            )
-        elif include_primary_key:
-            return self.select_except(
-                self.foreign_key + self.partition_key + [self.event_time]
-            )
-        elif include_foreign_key:
-            return self.select_except(
-                self.primary_key + self.partition_key + [self.event_time]
-            )
-        elif include_partition_key:
-            return self.select_except(
-                self.primary_key + self.foreign_key + [self.event_time]
-            )
-        else:
-            return self.select_except(
-                self.primary_key
-                + self.partition_key
-                + self.foreign_key
-                + [self.event_time]
             )
 
     def select_features(

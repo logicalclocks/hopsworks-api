@@ -588,6 +588,9 @@ class FeatureStore:
                 feature group. This primary key can be a composite key of multiple
                 features and will be used as joining key, if not specified otherwise.
                 Defaults to empty list `[]`, and the feature group won't have any primary key.
+            foreign_key: A list of feature names to be used as foreign key for the feature group.
+                Foreign key is referencing the primary key of another feature group and can be used as joining key.
+                Defaults to empty list `[]`, and the feature group won't have any foreign key.
             embedding_index: [`EmbeddingIndex`](./embedding_index_api.md). If an embedding index is provided,
                 vector database is used as online feature store. This enables similarity search by
                 using [`find_neighbors`](./feature_group_api.md#find_neighbors).
@@ -1238,6 +1241,9 @@ class FeatureStore:
                 spine group. This primary key can be a composite key of multiple
                 features and will be used as joining key, if not specified otherwise.
                 Defaults to empty list `[]`, and the spine group won't have any primary key.
+            foreign_key: A list of feature names to be used as foreign key for the feature group.
+                Foreign key is referencing the primary key of another feature group and can be used as joining key.
+                Defaults to empty list `[]`, and the feature group won't have any foreign key.
             event_time: Optionally, provide the name of the feature containing the event
                 time for the features in this spine group. If event_time is set
                 the spine group can be used for point-in-time joins. Defaults to `None`.

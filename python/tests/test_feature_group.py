@@ -350,14 +350,20 @@ class TestFeatureGroup:
     def test_select_all_exclude_pk(self):
         query = test_feature_group.select_all(include_primary_key=False)
         features = query.features
-        assert len(features) == 3
-        assert set([f.name for f in features]) == {"ts", "f1", "f2"}
+        assert len(features) == 4
+        assert set([f.name for f in features]) == {"ts", "fk", "f1", "f2"}
+
+    def test_select_all_exclude_fk(self):
+        query = test_feature_group.select_all(include_foreign_key=False)
+        features = query.features
+        assert len(features) == 4
+        assert set([f.name for f in features]) == {"f1", "f2", "pk", "ts"}
 
     def test_select_all_exclude_ts(self):
         query = test_feature_group.select_all(include_event_time=False)
         features = query.features
-        assert len(features) == 3
-        assert set([f.name for f in features]) == {"pk", "f1", "f2"}
+        assert len(features) == 4
+        assert set([f.name for f in features]) == {"pk", "fk", "f1", "f2"}
 
     def test_select_all_exclude_pk_ts(self):
         query = test_feature_group.select_all(
