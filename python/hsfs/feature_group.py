@@ -320,7 +320,7 @@ class FeatureGroupBase:
         # Returns
             `Query`. A query object with all features of the feature group.
         """
-        if include_event_time and include_primary_key and include_foreign_key:
+        if include_event_time and include_primary_key and include_foreign_key and include_partition_key:
             return query.Query(
                 left_feature_group=self,
                 left_features=self._features,
