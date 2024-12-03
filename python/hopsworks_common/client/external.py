@@ -148,6 +148,15 @@ class Client(base.Client):
             for conf_key, conf_value in configuration_dict.items():
                 _spark_session._jsc.hadoopConfiguration().set(conf_key, conf_value)
 
+        elif self._engine == "spark-delta":
+            _logger.debug(
+                "Running in Spark environment with no metastore and hopsfs, initializing Spark session"
+            )
+            _spark_session = SparkSession.builder \
+                .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
+                .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
+                .getOrCreate()
+
         hopsworks_common.client.get_connection()._provide_project()
 
     def download_certs(self):
