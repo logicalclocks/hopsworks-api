@@ -20,18 +20,17 @@ import time
 import uuid
 from typing import Dict, List, Union
 
-from hsml import constants
-from hsml.client.exceptions import ModelServingException, RestAPIError
-from hsml.client.istio.utils.infer_type import InferInput
-from hsml.constants import (
+from hopsworks_common.client.exceptions import ModelServingException, RestAPIError
+from hopsworks_common.client.istio.utils.infer_type import InferInput
+from hopsworks_common.constants import (
     DEPLOYMENT,
+    MODEL_SERVING,
     PREDICTOR,
     PREDICTOR_STATE,
 )
-from hsml.constants import (
-    INFERENCE_ENDPOINTS as IE,
-)
-from hsml.core import dataset_api, serving_api
+from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
+from hopsworks_common.core import dataset_api
+from hsml.core import serving_api
 from hsml.engine import local_engine
 from tqdm.auto import tqdm
 
@@ -328,7 +327,7 @@ class ServingEngine:
             if path_attr.get("dir", False):
                 # otherwise, make a recursive call for the folder
                 if (
-                    basename == constants.MODEL_SERVING.ARTIFACTS_DIR_NAME
+                    basename == MODEL_SERVING.ARTIFACTS_DIR_NAME
                 ):  # TODO: Not needed anymore
                     continue  # skip Artifacts subfolder
                 local_folder_path = os.path.join(to_local_path, basename)
@@ -383,7 +382,7 @@ class ServingEngine:
                 str(uuid.uuid4()),
                 deployment_instance.model_name,
                 str(deployment_instance.model_version),
-                constants.MODEL_SERVING.ARTIFACTS_DIR_NAME,
+                MODEL_SERVING.ARTIFACTS_DIR_NAME,
                 str(deployment_instance.artifact_version),
             )
         os.makedirs(local_path, exist_ok=True)
