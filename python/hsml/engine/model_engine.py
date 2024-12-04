@@ -456,6 +456,11 @@ class ModelEngine:
                 projects_index = from_hdfs_model_path.find("/Projects", 0)
                 from_hdfs_model_path = from_hdfs_model_path[projects_index:]
 
+            if not self._dataset_api.path_exists(from_hdfs_model_path):
+                # if Files directory doesn't exist, download files from the model version
+                # directory for backwards compatibility with the old model file structure
+                from_hdfs_model_path = model_instance.version_path
+
             self._download_model_from_hopsfs(
                 from_hdfs_model_path=from_hdfs_model_path,
                 to_local_path=local_path,
