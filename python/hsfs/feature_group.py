@@ -2681,7 +2681,7 @@ class FeatureGroup(FeatureGroupBase):
                 When using the `python` engine, write_options can contain the
                 following entries:
                 * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../job_configuration)
+                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
                   to configure the Hopsworks Job used to write data into the
                   feature group.
                 * key `wait_for_job` and value `True` or `False` to configure
@@ -2870,7 +2870,7 @@ class FeatureGroup(FeatureGroupBase):
                 When using the `python` engine, write_options can contain the
                 following entries:
                 * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../job_configuration)
+                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
                   to configure the Hopsworks Job used to write data into the
                   feature group.
                 * key `wait_for_job` and value `True` or `False` to configure
@@ -3033,7 +3033,7 @@ class FeatureGroup(FeatureGroupBase):
                 When using the `python` engine, write_options can contain the
                 following entries:
                 * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../job_configuration)
+                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
                   to configure the Hopsworks Job used to write data into the
                   feature group.
                 * key `wait_for_job` and value `True` or `False` to configure
