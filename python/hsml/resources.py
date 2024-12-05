@@ -18,8 +18,8 @@ from abc import ABC, abstractmethod
 from typing import Optional, Union
 
 import humps
-from hsml import client, util
-from hsml.constants import RESOURCES, Default
+from hopsworks_common import client, util
+from hopsworks_common.constants import RESOURCES, Default
 
 
 class Resources:
@@ -66,7 +66,7 @@ class Resources:
         return kwargs
 
     def json(self):
-        return json.dumps(self, cls=util.MLEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
         return {"cores": self._cores, "memory": self._memory, "gpus": self._gpus}
@@ -301,7 +301,7 @@ class ComponentResources(ABC):
         return kwargs
 
     def json(self):
-        return json.dumps(self, cls=util.MLEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     @abstractmethod
     def to_dict(self):
