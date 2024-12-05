@@ -307,9 +307,8 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
     filtered_df = df.filter(expr("CAST(filter(headers, header -> header.key = 'featureGroupId')[0].value AS STRING)") == str(entity._id))
     filtered_df = filtered_df.filter(expr("CAST(filter(headers, header -> header.key = 'subjectId')[0].value AS STRING)") == str(entity.subject["id"]))
 
-    limit = 5000000
-
     # limit the number of records ingested
+    limit = job_conf.get("write_options", {}).get("job_limit", 5000000)
     filtered_df = filtered_df.limit(limit)
 
     # deserialize dataframe so that it can be properly saved
