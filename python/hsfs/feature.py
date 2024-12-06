@@ -42,6 +42,7 @@ class Feature:
         type: Optional[str] = None,
         description: Optional[str] = None,
         primary: bool = False,
+        foreign: bool = False,
         partition: bool = False,
         hudi_precombine_key: bool = False,
         online_type: Optional[str] = None,
@@ -61,6 +62,7 @@ class Feature:
         self._type = type
         self._description = description
         self._primary = primary
+        self._foreign = foreign
         self._partition = partition
         self._hudi_precombine_key = hudi_precombine_key
         self._online_type = online_type
@@ -93,6 +95,7 @@ class Feature:
             "partition": self._partition,
             "hudiPrecombineKey": self._hudi_precombine_key,
             "primary": self._primary,
+            "foreign": self._foreign,
             "onlineType": self._online_type,
             "defaultValue": self._default_value,
             "featureGroupId": self._feature_group_id,
@@ -179,6 +182,15 @@ class Feature:
         self._primary = primary
 
     @property
+    def foreign(self) -> bool:
+        """Whether the feature is part of the foreign key of the feature group."""
+        return self._foreign
+
+    @foreign.setter
+    def foreign(self, foreign: bool) -> None:
+        self._foreign = foreign
+
+    @property
     def partition(self) -> bool:
         """Whether the feature is part of the partition key of the feature group."""
         return self._partition
@@ -262,7 +274,7 @@ class Feature:
         return self.json()
 
     def __repr__(self) -> str:
-        return f"Feature({self._name!r}, {self._type!r}, {self._description!r}, {self._primary}, {self._partition}, {self._online_type!r}, {self._default_value!r}, {self._feature_group_id!r})"
+        return f"Feature({self._name!r}, {self._type!r}, {self._description!r}, {self._primary}, {self._foreign}, {self._partition}, {self._online_type!r}, {self._default_value!r}, {self._feature_group_id!r})"
 
     def __hash__(self) -> int:
         return hash(f"{self.feature_group_id}_{self.name}")

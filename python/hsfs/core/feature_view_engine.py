@@ -389,9 +389,9 @@ class FeatureViewEngine:
         training_dataset_obj,
         user_write_options,
         spine=None,
-        primary_keys=False,
-        event_time=False,
-        training_helper_columns=False,
+        primary_keys=True,
+        event_time=True,
+        training_helper_columns=True,
     ):
         self._set_event_time(feature_view_obj, training_dataset_obj)
         updated_instance = self._create_training_data_metadata(

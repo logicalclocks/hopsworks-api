@@ -443,13 +443,15 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_group.features, dataframe_features
             )
 
-        # set primary and partition key columns
+        # set primary, foreign and partition key columns
         # we should move this to the backend
         util.verify_attribute_key_names(feature_group)
 
         for feat in feature_group.features:
             if feat.name in feature_group.primary_key:
                 feat.primary = True
+            if feat.name in feature_group.foreign_key:
+                feat.foreign = True
             if feat.name in feature_group.partition_key:
                 feat.partition = True
             if (

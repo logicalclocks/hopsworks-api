@@ -720,7 +720,12 @@ class Query:
             query_features[feat.name] = query_features.get(feat.name, []) + [
                 feature_entry
             ]
-        for join_obj in self.joins:
+
+        # collect joins. we do it recursively to collect nested joins.
+        joins = set(self.joins)
+        [self._fg_rec_add_joins(q_join, joins) for q_join in self.joins]
+
+        for join_obj in joins:
             for feat in join_obj.query._left_features:
                 feature_entry = (
                     feat,
@@ -815,17 +820,30 @@ class Query:
         """
         return self._get_feature_by_name(feature_name)[0]
 
-    def _fg_rec_add(self, join_object, featuregroups):
+    def _fg_rec_add_joins(self, join_object, joins):
         """
-        Recursively get a feature groups from nested join and add to featuregroups list.
+        Recursively get a query object from nested join and add to joins list.
 
         # Arguments
             join_object: `Join object`.
         """
         if len(join_object.query.joins) > 0:
             for nested_join in join_object.query.joins:
-                self._fg_rec_add(nested_join, featuregroups)
-        featuregroups.add(join_object.query._left_feature_group)
+                self._fg_rec_add_joins(nested_join, joins)
+        for q_join in join_object.query.joins:
+            joins.add(q_join)
+
+    def _fg_rec_add(self, join_object, feature_groups):
+        """
+        Recursively get a feature groups from nested join and add to feature_groups list.
+
+        # Arguments
+            join_object: `Join object`.
+        """
+        if len(join_object.query.joins) > 0:
+            for nested_join in join_object.query.joins:
+                self._fg_rec_add(nested_join, feature_groups)
+        feature_groups.add(join_object.query._left_feature_group)
 
     def __getattr__(self, name: str) -> Any:
         try:

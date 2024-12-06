@@ -20,9 +20,13 @@ from hsfs.core import feature_group_api
 
 
 class HudiEngine:
-
-    HUDI_SPEC_FEATURE_NAMES = ["_hoodie_record_key", "_hoodie_partition_path",
-                               "_hoodie_commit_time", "_hoodie_file_name", "_hoodie_commit_seqno"]
+    HUDI_SPEC_FEATURE_NAMES = [
+        "_hoodie_record_key",
+        "_hoodie_partition_path",
+        "_hoodie_commit_time",
+        "_hoodie_file_name",
+        "_hoodie_commit_seqno",
+    ]
 
     HUDI_SPARK_FORMAT = "org.apache.hudi"
     HUDI_TABLE_NAME = "hoodie.table.name"
@@ -109,9 +113,7 @@ class HudiEngine:
         hudi_options = self._setup_hudi_read_opts(hudi_fg_alias, read_options)
         self._spark_session.read.format(self.HUDI_SPARK_FORMAT).options(
             **hudi_options
-        ).load(location).createOrReplaceTempView(
-            hudi_fg_alias.alias
-        )
+        ).load(location).createOrReplaceTempView(hudi_fg_alias.alias)
 
     def _write_hudi_dataset(self, dataset, save_mode, operation, write_options):
         location = self._feature_group.prepare_spark_location()

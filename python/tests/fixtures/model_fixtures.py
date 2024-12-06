@@ -66,6 +66,7 @@ def model_tensorflow():
 def model_torch():
     return TorchModel(MODEL_TORCH_ID, MODEL_TORCH_NAME)
 
+
 @pytest.fixture
 def model_llm():
     return LLMModel(MODEL_LLM_ID, MODEL_LLM_NAME)

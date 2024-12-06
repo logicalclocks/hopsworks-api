@@ -198,7 +198,9 @@ class Engine:
                 external_fg.query,
                 external_fg.data_format,
                 external_fg.options,
-                external_fg.storage_connector._get_path(external_fg.path), # cant rely on location since this method can be used before FG is saved
+                external_fg.storage_connector._get_path(
+                    external_fg.path
+                ),  # cant rely on location since this method can be used before FG is saved
             )
         else:
             external_dataset = external_fg.dataframe
@@ -222,9 +224,7 @@ class Engine:
             read_options,
         )
 
-        self.reconcile_schema(
-            hudi_fg_alias, read_options, hudi_engine_instance
-        )
+        self.reconcile_schema(hudi_fg_alias, read_options, hudi_engine_instance)
 
     def register_delta_temporary_table(
         self, delta_fg_alias, feature_store_id, feature_store_name, read_options
@@ -242,16 +242,14 @@ class Engine:
             read_options,
         )
 
-        self.reconcile_schema(
-            delta_fg_alias, read_options, delta_engine_instance
-        )
+        self.reconcile_schema(delta_fg_alias, read_options, delta_engine_instance)
 
-    def reconcile_schema(
-        self, fg_alias, read_options, engine_instance
-    ):
+    def reconcile_schema(self, fg_alias, read_options, engine_instance):
         if sorted(self._spark_session.table(fg_alias.alias).columns) != sorted(
-            [feature.name for feature in fg_alias.feature_group._features] +
-            hudi_engine.HudiEngine.HUDI_SPEC_FEATURE_NAMES if fg_alias.feature_group.time_travel_format == "HUDI" else []
+            [feature.name for feature in fg_alias.feature_group._features]
+            + hudi_engine.HudiEngine.HUDI_SPEC_FEATURE_NAMES
+            if fg_alias.feature_group.time_travel_format == "HUDI"
+            else []
         ):
             full_fg = feature_group_api.FeatureGroupApi().get(
                 feature_store_id=fg_alias.feature_group._feature_store_id,
@@ -644,28 +642,28 @@ class Engine:
         )
 
     def _deserialize_from_avro(
-            self,
-            feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
-            dataframe: Union[RDD, DataFrame],
-        ):
-            """
-            Deserializes 'value' column from binary using avro schema and unpacks it into columns.
-            """
-            decoded_dataframe = dataframe.select(
-                from_avro("value", feature_group._get_encoded_avro_schema()).alias("value")
-            ).select(col("value.*"))
+        self,
+        feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
+        dataframe: Union[RDD, DataFrame],
+    ):
+        """
+        Deserializes 'value' column from binary using avro schema and unpacks it into columns.
+        """
+        decoded_dataframe = dataframe.select(
+            from_avro("value", feature_group._get_encoded_avro_schema()).alias("value")
+        ).select(col("value.*"))
 
-            """Decodes all complex type features from binary using their avro type as schema."""
-            return decoded_dataframe.select(
-                [
-                    field["name"]
-                    if field["name"] not in feature_group.get_complex_features()
-                    else from_avro(
-                        field["name"], feature_group._get_feature_avro_schema(field["name"])
-                    ).alias(field["name"])
-                    for field in json.loads(feature_group.avro_schema)["fields"]
-                ]
-            )
+        """Decodes all complex type features from binary using their avro type as schema."""
+        return decoded_dataframe.select(
+            [
+                field["name"]
+                if field["name"] not in feature_group.get_complex_features()
+                else from_avro(
+                    field["name"], feature_group._get_feature_avro_schema(field["name"])
+                ).alias(field["name"])
+                for field in json.loads(feature_group.avro_schema)["fields"]
+            ]
+        )
 
     def get_training_data(
         self,
@@ -1353,7 +1351,9 @@ class Engine:
 
         for _feature in feature_group.features:
             if _feature.name not in dataframe.columns:
-                dataframe = dataframe.withColumn(_feature.name, lit(None).cast(_feature.type))
+                dataframe = dataframe.withColumn(
+                    _feature.name, lit(None).cast(_feature.type)
+                )
 
         self.save_dataframe(
             feature_group,
@@ -1372,7 +1372,9 @@ class Engine:
 
         for _feature in feature_group.features:
             if _feature.name not in dataframe.columns:
-                dataframe = dataframe.withColumn(_feature.name, lit(None).cast(_feature.type))
+                dataframe = dataframe.withColumn(
+                    _feature.name, lit(None).cast(_feature.type)
+                )
 
         dataframe.limit(0).write.format("delta").mode("append").option(
             "mergeSchema", "true"

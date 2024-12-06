@@ -46,11 +46,13 @@ test_feature_group = feature_group.FeatureGroup(
     time_travel_format="HUDI",
     partition_key=[],
     primary_key=["pk"],
+    foreign_key=["fk"],
     hudi_precombine_key="pk",
     featurestore_id=1,
     featurestore_name="fs",
     features=[
         feature.Feature("pk", primary=True),
+        feature.Feature("fk", foreign=True),
         feature.Feature("ts", primary=False),
         feature.Feature("f1", primary=False),
         feature.Feature("f2", primary=False),
@@ -342,28 +344,34 @@ class TestFeatureGroup:
     def test_select_all(self):
         query = test_feature_group.select_all()
         features = query.features
-        assert len(features) == 4
-        assert set([f.name for f in features]) == {"pk", "ts", "f1", "f2"}
+        assert len(features) == 5
+        assert set([f.name for f in features]) == {"pk", "fk", "ts", "f1", "f2"}
 
     def test_select_all_exclude_pk(self):
         query = test_feature_group.select_all(include_primary_key=False)
         features = query.features
-        assert len(features) == 3
-        assert set([f.name for f in features]) == {"ts", "f1", "f2"}
+        assert len(features) == 4
+        assert set([f.name for f in features]) == {"ts", "fk", "f1", "f2"}
+
+    def test_select_all_exclude_fk(self):
+        query = test_feature_group.select_all(include_foreign_key=False)
+        features = query.features
+        assert len(features) == 4
+        assert set([f.name for f in features]) == {"f1", "f2", "pk", "ts"}
 
     def test_select_all_exclude_ts(self):
         query = test_feature_group.select_all(include_event_time=False)
         features = query.features
-        assert len(features) == 3
-        assert set([f.name for f in features]) == {"pk", "f1", "f2"}
+        assert len(features) == 4
+        assert set([f.name for f in features]) == {"pk", "fk", "f1", "f2"}
 
     def test_select_all_exclude_pk_ts(self):
         query = test_feature_group.select_all(
             include_primary_key=False, include_event_time=False
         )
         features = query.features
-        assert len(features) == 2
-        assert set([f.name for f in features]) == {"f1", "f2"}
+        assert len(features) == 3
+        assert set([f.name for f in features]) == {"f1", "f2", "fk"}
 
     def test_select_features(self):
         query = test_feature_group.select_features()
@@ -382,6 +390,7 @@ class TestFeatureGroup:
             version=2,
             featurestore_id=99,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             id=10,
         )
@@ -427,6 +436,7 @@ class TestFeatureGroup:
             version=2,
             featurestore_id=99,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             id=10,
         )
@@ -461,6 +471,7 @@ class TestFeatureGroup:
             version=2,
             featurestore_id=99,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             id=10,
         )
@@ -479,6 +490,7 @@ class TestFeatureGroup:
             version=2,
             featurestore_id=99,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             id=10,
         )
@@ -498,6 +510,7 @@ class TestFeatureGroup:
             version=2,
             featurestore_id=99,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             id=10,
         )
@@ -523,6 +536,7 @@ class TestFeatureGroup:
             version=2,
             featurestore_id=99,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
         )
 
@@ -547,6 +561,7 @@ class TestFeatureGroup:
             featurestore_id=99,
             features=features,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
         )
 
@@ -559,6 +574,7 @@ class TestFeatureGroup:
             version=2,
             featurestore_id=99,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
         )
 
@@ -585,6 +601,7 @@ class TestFeatureGroup:
             version=2,
             featurestore_id=99,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
         )
 
@@ -611,6 +628,7 @@ class TestFeatureGroup:
             version=2,
             featurestore_id=99,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             id=10,
         )
@@ -644,6 +662,7 @@ class TestFeatureGroup:
             version=2,
             featurestore_id=99,
             primary_key=[],
+            foreign_key=[],
             partition_key=[],
             id=10,
         )
@@ -932,7 +951,9 @@ class TestExternalFeatureGroup:
         json = backend_fixtures["feature_group"]["get_basic_info"]["response"]
         fg = feature_group.FeatureGroup.from_response_json(json)
         fg._location = f"{fg.name}_{fg.version}"
-        fg._storage_connector = storage_connector.S3Connector(id=1, name="s3_conn", featurestore_id=fg.feature_store_id)
+        fg._storage_connector = storage_connector.S3Connector(
+            id=1, name="s3_conn", featurestore_id=fg.feature_store_id
+        )
 
         # Act
         path = fg.prepare_spark_location()
@@ -942,7 +963,9 @@ class TestExternalFeatureGroup:
         engine_instance.assert_called_once()
         refetch_api.assert_called_once()
 
-    def test_prepare_spark_location_with_s3_connector_python(self, mocker, backend_fixtures):
+    def test_prepare_spark_location_with_s3_connector_python(
+        self, mocker, backend_fixtures
+    ):
         # Arrange
         engine = python.Engine()
         engine_instance = mocker.patch("hsfs.engine.get_instance", return_value=engine)
@@ -950,7 +973,9 @@ class TestExternalFeatureGroup:
         json = backend_fixtures["feature_group"]["get_basic_info"]["response"]
         fg = feature_group.FeatureGroup.from_response_json(json)
         fg._location = f"{fg.name}_{fg.version}"
-        fg._storage_connector = storage_connector.S3Connector(id=1, name="s3_conn", featurestore_id=fg.feature_store_id)
+        fg._storage_connector = storage_connector.S3Connector(
+            id=1, name="s3_conn", featurestore_id=fg.feature_store_id
+        )
 
         # Act
         with pytest.raises(AttributeError):

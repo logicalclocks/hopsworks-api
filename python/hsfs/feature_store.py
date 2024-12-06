@@ -501,6 +501,7 @@ class FeatureStore:
         time_travel_format: Optional[str] = "HUDI",
         partition_key: Optional[List[str]] = None,
         primary_key: Optional[List[str]] = None,
+        foreign_key: Optional[List[str]] = None,
         embedding_index: Optional[EmbeddingIndex] = None,
         hudi_precombine_key: Optional[str] = None,
         features: Optional[List[feature.Feature]] = None,
@@ -526,7 +527,9 @@ class FeatureStore:
             ]
         ] = None,
         offline_backfill_every_hr: Optional[Union[int, str]] = None,
-        storage_connector: Union[storage_connector.StorageConnector, Dict[str, Any]] = None,
+        storage_connector: Union[
+            storage_connector.StorageConnector, Dict[str, Any]
+        ] = None,
         path: Optional[str] = None,
     ) -> feature_group.FeatureGroup:
         """Create a feature group metadata object.
@@ -585,6 +588,9 @@ class FeatureStore:
                 feature group. This primary key can be a composite key of multiple
                 features and will be used as joining key, if not specified otherwise.
                 Defaults to empty list `[]`, and the feature group won't have any primary key.
+            foreign_key: A list of feature names to be used as foreign key for the feature group.
+                Foreign key is referencing the primary key of another feature group and can be used as joining key.
+                Defaults to empty list `[]`, and the feature group won't have any foreign key.
             embedding_index: [`EmbeddingIndex`](./embedding_index_api.md). If an embedding index is provided,
                 vector database is used as online feature store. This enables similarity search by
                 using [`find_neighbors`](./feature_group_api.md#find_neighbors).
@@ -648,6 +654,7 @@ class FeatureStore:
             time_travel_format=time_travel_format,
             partition_key=partition_key or [],
             primary_key=primary_key or [],
+            foreign_key=foreign_key or [],
             hudi_precombine_key=hudi_precombine_key,
             featurestore_id=self._id,
             featurestore_name=self._name,
@@ -679,6 +686,7 @@ class FeatureStore:
         time_travel_format: Optional[str] = "HUDI",
         partition_key: Optional[List[str]] = None,
         primary_key: Optional[List[str]] = None,
+        foreign_key: Optional[List[str]] = None,
         embedding_index: Optional[EmbeddingIndex] = None,
         hudi_precombine_key: Optional[str] = None,
         features: Optional[List[feature.Feature]] = None,
@@ -699,7 +707,9 @@ class FeatureStore:
         ] = None,
         online_config: Optional[Union[OnlineConfig, Dict[str, Any]]] = None,
         offline_backfill_every_hr: Optional[Union[int, str]] = None,
-        storage_connector: Union[storage_connector.StorageConnector, Dict[str, Any]] = None,
+        storage_connector: Union[
+            storage_connector.StorageConnector, Dict[str, Any]
+        ] = None,
         path: Optional[str] = None,
     ) -> Union[
         feature_group.FeatureGroup,
@@ -748,6 +758,9 @@ class FeatureStore:
                 feature group. This primary key can be a composite key of multiple
                 features and will be used as joining key, if not specified otherwise.
                 Defaults to empty list `[]`, and the feature group won't have any primary key.
+            foreign_key: A list of feature names to be used as foreign key for the feature group.
+                Foreign key is referencing the primary key of another feature group and can be used as joining key.
+                Defaults to empty list `[]`, and the feature group won't have any foreign key.
             embedding_index: [`EmbeddingIndex`](./embedding_index_api.md). If an embedding index is provided,
                 the vector database is used as online feature store. This enables similarity search by
                 using [`find_neighbors`](./feature_group_api.md#find_neighbors).
@@ -820,6 +833,7 @@ class FeatureStore:
                     time_travel_format=time_travel_format,
                     partition_key=partition_key or [],
                     primary_key=primary_key or [],
+                    foreign_key=foreign_key or [],
                     embedding_index=embedding_index,
                     hudi_precombine_key=hudi_precombine_key,
                     featurestore_id=self._id,
@@ -855,6 +869,7 @@ class FeatureStore:
         version: Optional[int] = None,
         description: Optional[str] = "",
         primary_key: Optional[List[str]] = None,
+        foreign_key: Optional[List[str]] = None,
         features: Optional[List[feature.Feature]] = None,
         statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
         event_time: Optional[str] = None,
@@ -901,6 +916,9 @@ class FeatureStore:
                 feature group. This primary key can be a composite key of multiple
                 features and will be used as joining key, if not specified otherwise.
                 Defaults to empty list `[]`, and the feature group won't have any primary key.
+            foreign_key: A list of feature names to be used as foreign key for the feature group.
+                Foreign key is referencing the primary key of another feature group and can be used as joining key.
+                Defaults to empty list `[]`, and the feature group won't have any foreign key.
             features: Optionally, define the schema of the external feature group manually as a
                 list of `Feature` objects. Defaults to empty list `[]` and will use the
                 schema information of the DataFrame resulting by executing the provided query
@@ -943,6 +961,7 @@ class FeatureStore:
             version=version,
             description=description,
             primary_key=primary_key or [],
+            foreign_key=foreign_key or [],
             featurestore_id=self._id,
             featurestore_name=self._name,
             features=features or [],
@@ -967,6 +986,7 @@ class FeatureStore:
         version: Optional[int] = None,
         description: Optional[str] = "",
         primary_key: Optional[List[str]] = None,
+        foreign_key: Optional[List[str]] = None,
         embedding_index: Optional[EmbeddingIndex] = None,
         features: Optional[List[feature.Feature]] = None,
         statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
@@ -1058,6 +1078,9 @@ class FeatureStore:
                 feature group. This primary key can be a composite key of multiple
                 features and will be used as joining key, if not specified otherwise.
                 Defaults to empty list `[]`, and the feature group won't have any primary key.
+            foreign_key: A list of feature names to be used as foreign key for the feature group.
+                Foreign key is referencing the primary key of another feature group and can be used as joining key.
+                Defaults to empty list `[]`, and the feature group won't have any foreign key.
             features: Optionally, define the schema of the external feature group manually as a
                 list of `Feature` objects. Defaults to empty list `[]` and will use the
                 schema information of the DataFrame resulting by executing the provided query
@@ -1101,6 +1124,7 @@ class FeatureStore:
             version=version,
             description=description,
             primary_key=primary_key or [],
+            foreign_key=foreign_key or [],
             embedding_index=embedding_index,
             featurestore_id=self._id,
             featurestore_name=self._name,
@@ -1123,6 +1147,7 @@ class FeatureStore:
         version: Optional[int] = None,
         description: Optional[str] = "",
         primary_key: Optional[List[str]] = None,
+        foreign_key: Optional[List[str]] = None,
         event_time: Optional[str] = None,
         features: Optional[List[feature.Feature]] = None,
         dataframe: Union[
@@ -1216,6 +1241,9 @@ class FeatureStore:
                 spine group. This primary key can be a composite key of multiple
                 features and will be used as joining key, if not specified otherwise.
                 Defaults to empty list `[]`, and the spine group won't have any primary key.
+            foreign_key: A list of feature names to be used as foreign key for the feature group.
+                Foreign key is referencing the primary key of another feature group and can be used as joining key.
+                Defaults to empty list `[]`, and the feature group won't have any foreign key.
             event_time: Optionally, provide the name of the feature containing the event
                 time for the features in this spine group. If event_time is set
                 the spine group can be used for point-in-time joins. Defaults to `None`.
@@ -1249,6 +1277,7 @@ class FeatureStore:
                     version=version,
                     description=description,
                     primary_key=primary_key or [],
+                    foreign_key=foreign_key or [],
                     event_time=event_time,
                     features=features or [],
                     dataframe=dataframe,
