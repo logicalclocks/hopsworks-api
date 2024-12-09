@@ -147,7 +147,9 @@ class HopsworksUdf:
         transformation_function_argument_names : `Optional[List[TransformationFeature]]`. The argument names of the transformation function.
         dropped_argument_names : `Optional[List[str]]`. The arguments to be dropped from the finial DataFrame after the transformation functions are applied.
         dropped_feature_names : `Optional[List[str]]`. The feature name corresponding to the arguments names that are dropped
-        feature_name_prefix: `Optional[str]` = None. Prefixes if any used in the feature view.
+        feature_name_prefix: `Optional[str]`. Prefixes if any used in the feature view.
+        output_column_names: `Optional[List[str]]`. The names of the output columns returned from the transformation function.
+        generate_output_col_names: `Optional[bool]`. Generate default output column names for the transformation function. Default's to True.
     """
 
     # Mapping for converting python types to spark types - required for creating pandas UDF's.
@@ -175,6 +177,7 @@ class HopsworksUdf:
         dropped_feature_names: Optional[List[str]] = None,
         feature_name_prefix: Optional[str] = None,
         output_column_names: Optional[str] = None,
+        generate_output_col_names: bool = True,
     ):
         self._return_types: List[str] = HopsworksUdf._validate_and_convert_output_types(
             return_types
@@ -240,6 +243,10 @@ class HopsworksUdf:
         )
 
         self._statistics: Optional[TransformationStatistics] = None
+
+        # Denote if the output feature names have to be generated.
+        # Set to `False` if the output column names are saved in the backend and the udf is constructed from it using `from_response_json` function or if user has specified the output feature names using the `alias`` function.
+        self._generate_output_col_name: bool = generate_output_col_names
 
     @staticmethod
     def _validate_and_convert_drop_features(
@@ -718,6 +725,7 @@ def renaming_wrapper(*args):
                 f"Invalid output feature names provided for the transformation function '{repr(self)}'. Please ensure all arguments are strings."
             )
 
+        self._generate_output_col_name = False
         self.output_column_names = output_col_names
 
         return self
@@ -915,7 +923,7 @@ def renaming_wrapper(*args):
                 for arg_index in range(len(arg_list))
             ]
 
-        hopsworks_udf = cls(
+        hopsworks_udf: HopsworksUdf = cls(
             func=function_source_code,
             return_types=output_types,
             name=function_name,
@@ -928,6 +936,7 @@ def renaming_wrapper(*args):
                 json_decamelized["execution_mode"]
             ),
             output_column_names=output_column_names,
+            generate_output_col_names=not output_column_names,  # Do not generate output column names if they are retrieved from the back
         )
 
         # Set transformation features if already set.
