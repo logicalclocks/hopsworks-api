@@ -78,17 +78,17 @@ class TransformationFunction:
             raise FeatureStoreException(
                 "Please use the hopsworks_udf decorator when defining transformation functions."
             )
-        if not id and hopsworks_udf.output_column_names:
-            # Create a copy and reset the output column names of the UDF if the transformation function is newly created and the UDF has output column names assigned already.
-            # This happens for example if the same udf is used in a on-demand and a model-dependent transformation function.
-            hopsworks_udf._output_column_names = []
-            hopsworks_udf = copy.copy(hopsworks_udf)
 
         self.__hopsworks_udf: HopsworksUdf = hopsworks_udf
         TransformationFunction._validate_transformation_type(
             transformation_type=transformation_type, hopsworks_udf=hopsworks_udf
         )
         self.transformation_type = transformation_type
+
+        if self.__hopsworks_udf._generate_output_col_name:
+            # Reset output column names so that they would be regenerated.
+            # Handles the use case in which the same UDF is used to define both on-demand and model dependent transformations.
+            self.__hopsworks_udf._output_column_names = []
 
     def save(self) -> None:
         """Save a transformation function into the backend.
