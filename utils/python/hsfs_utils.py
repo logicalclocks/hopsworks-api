@@ -331,7 +331,7 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
 
     # update offsets
     df_offsets = (df if limit > filtered_df.count() else filtered_df).groupBy('partition').agg(max('offset').alias('offset')).collect()
-    offset_dict = json.loads(offset_string)
+    offset_dict = json.loads(starting_offset_string)
     for offset_row in df_offsets:
         offset_dict[f"{entity._online_topic_name}"][f"{offset_row.partition}"] = offset_row.offset + 1
 
