@@ -165,8 +165,9 @@ public class FeatureStore extends FeatureStoreBase<Query> {
   public StreamFeatureGroup getOrCreateStreamFeatureGroup(String name, Integer version, String description,
                                                           List<String> primaryKeys, List<String> partitionKeys,
                                                           String hudiPrecombineKey, boolean onlineEnabled,
-                                                          StatisticsConfig statisticsConfig, String eventTime,
-                                                          OnlineConfig onlineConfig)
+                                                          TimeTravelFormat timeTravelFormat,
+                                                          StatisticsConfig statisticsConfig,
+                                                          String eventTime, OnlineConfig onlineConfig)
       throws IOException, FeatureStoreException {
     throw new UnsupportedOperationException("Not supported for Flink");
   }

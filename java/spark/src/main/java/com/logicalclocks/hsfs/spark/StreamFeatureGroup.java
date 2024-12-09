@@ -17,32 +17,6 @@
 
 package com.logicalclocks.hsfs.spark;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-
-import com.logicalclocks.hsfs.spark.constructor.Query;
-import com.logicalclocks.hsfs.spark.engine.FeatureGroupEngine;
-import com.logicalclocks.hsfs.spark.engine.StatisticsEngine;
-import com.logicalclocks.hsfs.EntityEndpointType;
-import com.logicalclocks.hsfs.Feature;
-import com.logicalclocks.hsfs.FeatureStoreException;
-import com.logicalclocks.hsfs.HudiOperationType;
-import com.logicalclocks.hsfs.JobConfiguration;
-import com.logicalclocks.hsfs.OnlineConfig;
-import com.logicalclocks.hsfs.StatisticsConfig;
-import com.logicalclocks.hsfs.Storage;
-import com.logicalclocks.hsfs.StorageConnector;
-import com.logicalclocks.hsfs.FeatureGroupBase;
-import com.logicalclocks.hsfs.metadata.Statistics;
-
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.NonNull;
-
-import org.apache.spark.sql.Dataset;
-import org.apache.spark.sql.Row;
-import org.apache.spark.sql.SaveMode;
-import org.apache.spark.sql.streaming.StreamingQuery;
-
 import java.io.IOException;
 import java.text.ParseException;
 import java.util.ArrayList;
@@ -50,6 +24,32 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+
+import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.SaveMode;
+import org.apache.spark.sql.streaming.StreamingQuery;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.logicalclocks.hsfs.EntityEndpointType;
+import com.logicalclocks.hsfs.Feature;
+import com.logicalclocks.hsfs.FeatureGroupBase;
+import com.logicalclocks.hsfs.FeatureStoreException;
+import com.logicalclocks.hsfs.HudiOperationType;
+import com.logicalclocks.hsfs.JobConfiguration;
+import com.logicalclocks.hsfs.OnlineConfig;
+import com.logicalclocks.hsfs.StatisticsConfig;
+import com.logicalclocks.hsfs.Storage;
+import com.logicalclocks.hsfs.StorageConnector;
+import com.logicalclocks.hsfs.TimeTravelFormat;
+import com.logicalclocks.hsfs.metadata.Statistics;
+import com.logicalclocks.hsfs.spark.constructor.Query;
+import com.logicalclocks.hsfs.spark.engine.FeatureGroupEngine;
+import com.logicalclocks.hsfs.spark.engine.StatisticsEngine;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.NonNull;
 
 @AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -61,9 +61,10 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
   @Builder
   public StreamFeatureGroup(FeatureStore featureStore, @NonNull String name, Integer version, String description,
                             List<String> primaryKeys, List<String> partitionKeys, String hudiPrecombineKey,
-                            boolean onlineEnabled, List<Feature> features, StatisticsConfig statisticsConfig,
-                            String onlineTopicName, String topicName, String notificationTopicName, String eventTime,
-                            OnlineConfig onlineConfig, StorageConnector storageConnector, String path) {
+                            boolean onlineEnabled, TimeTravelFormat timeTravelFormat, List<Feature> features,
+                            StatisticsConfig statisticsConfig, String onlineTopicName, String topicName,
+                            String notificationTopicName, String eventTime, OnlineConfig onlineConfig,
+                            StorageConnector storageConnector, String path) {
     this();
     this.featureStore = featureStore;
     this.name = name;
@@ -75,6 +76,7 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
         ? partitionKeys.stream().map(String::toLowerCase).collect(Collectors.toList()) : null;
     this.hudiPrecombineKey = hudiPrecombineKey != null ? hudiPrecombineKey.toLowerCase() : null;
     this.onlineEnabled = onlineEnabled;
+    this.timeTravelFormat = timeTravelFormat != null ? timeTravelFormat : TimeTravelFormat.HUDI;
     this.features = features;
     this.statisticsConfig = statisticsConfig != null ? statisticsConfig : new StatisticsConfig();
     this.onlineTopicName = onlineTopicName;
