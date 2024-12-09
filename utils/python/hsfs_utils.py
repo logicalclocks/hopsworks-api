@@ -273,13 +273,13 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
         entity.feature_store_id, {}, engine="spark"
     )
 
-    # get offsets
+    # get starting offsets
     offset_location = entity.prepare_spark_location() + "/kafka_offsets"
     try:
         if initial_check_point_string:
-            offset_string = json.dumps(_build_starting_offsets(initial_check_point_string))
+            starting_offset_string = json.dumps(_build_starting_offsets(initial_check_point_string))
         else:
-            offset_string = spark.read.json(offset_location).toJSON().first()
+            starting_offset_string = spark.read.json(offset_location).toJSON().first()
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
         # if all else fails read from the beggining
@@ -289,22 +289,30 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
             offline_write_options={},
             high=False,
         )
-        offset_string = json.dumps(_build_starting_offsets(initial_check_point_string))
-    print(f"startingOffsets: {offset_string}")
+        starting_offset_string = json.dumps(_build_starting_offsets(initial_check_point_string))
+    print(f"startingOffsets: {starting_offset_string}")
+
+    # get ending offsets
+    ending_offset_string = kafka_engine.kafka_get_offsets(
+        topic_name=entity._online_topic_name,
+        feature_store_id=entity.feature_store_id,
+        offline_write_options={},
+        high=True,
+    )
+    ending_offset_string = json.dumps(_build_starting_offsets(ending_offset_string))
+    print(f"endingOffsets: {ending_offset_string}")
 
     # read kafka topic
     df = (
         spark.read.format("kafka")
         .options(**read_options)
         .option("subscribe", entity._online_topic_name)
-        .option("startingOffsets", offset_string)
+        .option("startingOffsets", starting_offset_string)
+        .option("endingOffsets", ending_offset_string)
         .option("includeHeaders", "true")
         .option("failOnDataLoss", "false")
         .load()
     )
-
-    # Cache the DataFrame in memory
-    df = df.cache()
 
     # filter only the necassary entries
     filtered_df = df.filter(expr("CAST(filter(headers, header -> header.key = 'featureGroupId')[0].value AS STRING)") == str(entity._id))
