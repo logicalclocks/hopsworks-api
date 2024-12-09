@@ -304,7 +304,7 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
     )
 
     # Cache the DataFrame in memory
-    df.cache()
+    df = df.cache()
 
     # filter only the necassary entries
     filtered_df = df.filter(expr("CAST(filter(headers, header -> header.key = 'featureGroupId')[0].value AS STRING)") == str(entity._id))
