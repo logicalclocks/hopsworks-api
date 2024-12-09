@@ -731,9 +731,14 @@ def renaming_wrapper(*args):
                 f"Invalid output feature names specified for the transformation function '{repr(self)}'. Please provide names shorter than {FEATURES.MAX_LENGTH_NAME} characters."
             )
 
+        if len(output_col_names) != len(set(output_col_names)):
+            raise FeatureStoreException(
+                f"Duplicate output feature names provided for the transformation function '{repr(self)}'. Please ensure all arguments names are unique."
+            )
+
         if output_col_names and len(output_col_names) != len(self.return_types):
             raise FeatureStoreException(
-                f"Provided names for output columns does not match the number of columns returned from the UDF. Please provide {len(self.return_types)} names."
+                f"The number of output feature names provided does not match the number of features returned by the transformation function '{repr(self)}'. Pease provide exactly {len(self.return_types)} feature name(s) to match the output."
             )
 
     def update_return_type_one_hot(self):

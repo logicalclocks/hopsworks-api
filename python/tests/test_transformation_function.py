@@ -459,3 +459,300 @@ class TestTransformationFunction:
             str(exe.value)
             == "On-Demand Transformation functions cannot use statistics, please remove statistics parameters from the functions"
         )
+
+    def test_alias_one_output(self):
+        @udf(int)
+        def add_one(feature):
+            return feature + 1
+
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        mdt = mdt.alias("feature_plus_one_mdt")
+
+        assert mdt.output_column_names == ["feature_plus_one_mdt"]
+
+        odt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+
+        odt = odt.alias("feature_plus_one_odt")
+
+        assert odt.output_column_names == ["feature_plus_one_odt"]
+
+    def test_alias_one_output_list(self):
+        @udf(int)
+        def add_one(feature):
+            return feature + 1
+
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        mdt = mdt.alias(["feature_plus_one_mdt"])
+
+        assert mdt.output_column_names == ["feature_plus_one_mdt"]
+
+        odt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+
+        odt = odt.alias(["feature_plus_one_odt"])
+
+        assert odt.output_column_names == ["feature_plus_one_odt"]
+
+    def test_alias_multiple_output(self):
+        @udf([int, int])
+        def add_and_sub(feature):
+            return feature + 1, feature - 1
+
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_and_sub,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        mdt = mdt.alias("feature_plus_one_mdt", "feature_minus_one_mdt")
+
+        assert mdt.output_column_names == [
+            "feature_plus_one_mdt",
+            "feature_minus_one_mdt",
+        ]
+
+    def test_alias_multiple_output_list(self):
+        @udf([int, int])
+        def add_and_sub(feature):
+            return feature + 1, feature - 1
+
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_and_sub,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        mdt = mdt.alias(["feature_plus_one_mdt", "feature_minus_one_mdt"])
+
+        assert mdt.output_column_names == [
+            "feature_plus_one_mdt",
+            "feature_minus_one_mdt",
+        ]
+
+    def test_alias_invalid_number_column_names(self):
+        @udf([int, int])
+        def add_and_sub(feature):
+            return feature + 1, feature - 1
+
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_and_sub,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        with pytest.raises(FeatureStoreException) as exp:
+            mdt.alias(["feature_plus_one", "feature_minus_one", "invalid_col"])
+
+        assert (
+            str(exp.value)
+            == "The number of output feature names provided does not match the number of features returned by the transformation function 'add_and_sub(feature)'. Pease provide exactly 2 feature name(s) to match the output."
+        )
+
+        @udf(int)
+        def add_one(feature):
+            return feature + 1
+
+        odt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+
+        with pytest.raises(FeatureStoreException) as exp:
+            odt.alias(["feature_plus_one", "feature_minus_one", "invalid_col"])
+
+        assert (
+            str(exp.value)
+            == "The number of output feature names provided does not match the number of features returned by the transformation function 'add_one(feature)'. Pease provide exactly 1 feature name(s) to match the output."
+        )
+
+    def test_alias_invalid_type(self):
+        @udf([int])
+        def add_one(feature):
+            return feature + 1
+
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        with pytest.raises(FeatureStoreException) as exp:
+            mdt.alias({"name": "col1"})
+
+        assert (
+            str(exp.value)
+            == "Invalid output feature names provided for the transformation function 'add_one(feature)'. Please ensure all arguments are strings."
+        )
+
+        odt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+
+        with pytest.raises(FeatureStoreException) as exp:
+            odt.alias({"name": "col1"})
+
+        assert (
+            str(exp.value)
+            == "Invalid output feature names provided for the transformation function 'add_one(feature)'. Please ensure all arguments are strings."
+        )
+
+    def test_alias_duplicates(self):
+        @udf([int, int])
+        def add_and_sub(feature):
+            return feature + 1, feature - 1
+
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_and_sub,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        with pytest.raises(FeatureStoreException) as exp:
+            mdt.alias("feature_plus_one", "feature_plus_one")
+
+        assert (
+            str(exp.value)
+            == "Duplicate output feature names provided for the transformation function 'add_and_sub(feature)'. Please ensure all arguments names are unique."
+        )
+
+    def test_call_and_alias(self):
+        @udf(int)
+        def add_one(feature):
+            return feature + 1
+
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        mdt = mdt("feature2_mdt").alias(["feature_plus_one_mdt"])
+
+        assert mdt.output_column_names == ["feature_plus_one_mdt"]
+        assert mdt.hopsworks_udf.transformation_features == ["feature2_mdt"]
+
+        odt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+
+        odt = odt("feature2_odt").alias(["feature_plus_one_odt"])
+
+        assert odt.output_column_names == ["feature_plus_one_odt"]
+        assert odt.hopsworks_udf.transformation_features == ["feature2_odt"]
+
+    def test_alias_invalid_length(self):
+        @udf(int)
+        def add_one(feature):
+            return feature + 1
+
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        with pytest.raises(FeatureStoreException) as exp:
+            mdt.alias(["invalid" * 10])
+
+        assert (
+            str(exp.value)
+            == "Invalid output feature names specified for the transformation function 'add_one(feature)'. Please provide names shorter than 63 characters."
+        )
+
+        odt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+
+        with pytest.raises(FeatureStoreException) as exp:
+            odt.alias(["invalid" * 10])
+
+        assert (
+            str(exp.value)
+            == "Invalid output feature names specified for the transformation function 'add_one(feature)'. Please provide names shorter than 63 characters."
+        )
+
+    def test_generated_output_col_name_invalid_mdt(self):
+        @udf(int)
+        def test(
+            long_feature_name1,
+            long_feature_name2,
+            long_feature_name3,
+            long_feature_name4,
+            long_feature_name5,
+            long_feature_name6,
+            long_feature_name7,
+        ):
+            return long_feature_name1
+
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=test,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        with pytest.raises(FeatureStoreException) as exp:
+            mdt._get_output_column_names()
+
+        assert (
+            str(exp.value)
+            == "The default names for output features generated by the transformation function `test(long_feature_name1, long_feature_name2, long_feature_name3, long_feature_name4, long_feature_name5, long_feature_name6, long_feature_name7)` exceeds the maximum length of 63 characters. Please use the `alias` function to assign shorter names to the output features."
+        )
+
+    def test_generate_output_col_name_invalid_odt(self):
+        @udf(int)
+        def really_long_function_name_that_exceed_63_characters_causing_invalid_name_for_on_demand_features(
+            features,
+        ):
+            return features
+
+        odt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=really_long_function_name_that_exceed_63_characters_causing_invalid_name_for_on_demand_features,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+
+        with pytest.raises(FeatureStoreException) as exp:
+            odt._get_output_column_names()
+
+        assert (
+            str(exp.value)
+            == "The default names for output features generated by the transformation function `really_long_function_name_that_exceed_63_characters_causing_invalid_name_for_on_demand_features(features)` exceeds the maximum length of 63 characters. Please use the `alias` function to assign shorter names to the output features."
+        )
+
+        mdt = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=really_long_function_name_that_exceed_63_characters_causing_invalid_name_for_on_demand_features,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        with pytest.raises(FeatureStoreException) as exp:
+            mdt._get_output_column_names()
+
+        assert (
+            str(exp.value)
+            == "The default names for output features generated by the transformation function `really_long_function_name_that_exceed_63_characters_causing_invalid_name_for_on_demand_features(features)` exceeds the maximum length of 63 characters. Please use the `alias` function to assign shorter names to the output features."
+        )
