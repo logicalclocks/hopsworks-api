@@ -237,7 +237,12 @@ class TestTransformationFunction:
             transformation_type=TransformationType.MODEL_DEPENDENT,
         )
 
-        assert tf.hopsworks_udf == test2
+        # Creating dict representation of udf.
+        udf_json = test2.to_dict()
+        # Adding output column names to dict for testing since it would be generated when UDF is accessed out the transformation function.
+        udf_json["outputColumnNames"] = ["test2_col1_"]
+
+        assert tf.hopsworks_udf.to_dict() == udf_json
 
     def test_generate_output_column_names_one_argument_one_output_type(self):
         @udf(int)
