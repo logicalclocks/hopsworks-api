@@ -27,7 +27,6 @@ import threading
 import time
 from datetime import date, datetime, timezone
 from typing import (
-    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -41,13 +40,12 @@ from urllib.parse import urljoin, urlparse
 import humps
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException, JobException
-from hopsworks_common.constants import MODEL, PREDICTOR, Default
-from hopsworks_common.core.constants import HAS_PANDAS
+from hopsworks_common.constants import HAS_PANDAS, MODEL, PREDICTOR, Default
 from hopsworks_common.git_file_status import GitFileStatus
 from six import string_types
 
 
-if TYPE_CHECKING:
+if HAS_PANDAS:
     import pandas as pd
 
 
@@ -74,9 +72,6 @@ class NumpyEncoder(json.JSONEncoder):
 
         import numpy as np
 
-        if HAS_PANDAS:
-            import pandas as pd
-
         def encode_binary(x):
             return base64.encodebytes(x).decode("ascii")
 
@@ -88,7 +83,7 @@ class NumpyEncoder(json.JSONEncoder):
             else:
                 return obj.tolist(), True
 
-        if isinstance(obj, datetime.date) or (
+        if isinstance(obj, datetime) or (
             HAS_PANDAS and isinstance(obj, pd.Timestamp)
         ):
             return obj.isoformat(), True
@@ -520,8 +515,6 @@ def _handle_tensor_input(input_tensor):
 
 
 def _handle_dataframe_input(input_ex):
-    if HAS_PANDAS:
-        import pandas as pd
     if HAS_PANDAS and isinstance(input_ex, pd.DataFrame):
         if not input_ex.empty:
             return input_ex.iloc[0].tolist()
