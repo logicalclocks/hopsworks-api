@@ -894,10 +894,13 @@ class TestSpark:
 
         mock_common_client_get_instance.return_value._project_name = "test_project_name"
 
+        df = pd.DataFrame(data={"col_0": [1, 2], "col_1": ["test_1", "test_2"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
         # Act
         spark_engine.save_stream_dataframe(
             feature_group=fg,
-            dataframe=None,
+            dataframe=spark_df,
             query_name=None,
             output_mode="test_mode",
             await_termination=None,
@@ -1012,10 +1015,13 @@ class TestSpark:
 
         mock_common_client_get_instance.return_value._project_name = "test_project_name"
 
+        df = pd.DataFrame(data={"col_0": [1, 2], "col_1": ["test_1", "test_2"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
         # Act
         spark_engine.save_stream_dataframe(
             feature_group=fg,
-            dataframe=None,
+            dataframe=spark_df,
             query_name="test_query_name",
             output_mode="test_mode",
             await_termination=None,
@@ -1138,10 +1144,13 @@ class TestSpark:
 
         mock_common_client_get_instance.return_value._project_name = "test_project_name"
 
+        df = pd.DataFrame(data={"col_0": [1, 2], "col_1": ["test_1", "test_2"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
         # Act
         spark_engine.save_stream_dataframe(
             feature_group=fg,
-            dataframe=None,
+            dataframe=spark_df,
             query_name=None,
             output_mode="test_mode",
             await_termination=None,
@@ -1258,10 +1267,13 @@ class TestSpark:
 
         mock_common_client_get_instance.return_value._project_name = "test_project_name"
 
+        df = pd.DataFrame(data={"col_0": [1, 2], "col_1": ["test_1", "test_2"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
         # Act
         spark_engine.save_stream_dataframe(
             feature_group=fg,
-            dataframe=None,
+            dataframe=spark_df,
             query_name=None,
             output_mode="test_mode",
             await_termination=True,
