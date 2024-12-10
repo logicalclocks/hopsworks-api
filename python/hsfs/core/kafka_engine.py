@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Literal, Optional, Tuple,
 import pandas as pd
 from hopsworks_common import client
 from hopsworks_common.core.constants import HAS_NUMPY
-from hsfs.core import storage_connector_api
+from hsfs.core import online_ingestion, online_ingestion_api, storage_connector_api
 from hsfs.core.constants import HAS_AVRO, HAS_CONFLUENT_KAFKA, HAS_FAST_AVRO
 from tqdm import tqdm
 
@@ -61,7 +61,7 @@ def init_kafka_consumer(
 def init_kafka_resources(
     feature_group: Union[FeatureGroup, ExternalFeatureGroup],
     offline_write_options: Dict[str, Any],
-    project_id: int,
+    num_entries: int,
 ) -> Tuple[
     Producer, Dict[str, bytes], Dict[str, Callable[..., bytes]], Callable[..., bytes] :
 ]:
@@ -74,7 +74,7 @@ def init_kafka_resources(
             feature_group._writer,
         )
     producer, headers, feature_writers, writer = _init_kafka_resources(
-        feature_group, offline_write_options, project_id
+        feature_group, offline_write_options, num_entries
     )
     if feature_group._multi_part_insert:
         feature_group._kafka_producer = producer
@@ -87,7 +87,7 @@ def init_kafka_resources(
 def _init_kafka_resources(
     feature_group: Union[FeatureGroup, ExternalFeatureGroup],
     offline_write_options: Dict[str, Any],
-    project_id: int,
+    num_entries: int,
 ) -> Tuple[
     Producer, Dict[str, bytes], Dict[str, Callable[..., bytes]], Callable[..., bytes] :
 ]:
@@ -103,13 +103,29 @@ def _init_kafka_resources(
     # setup row writer function
     writer = get_encoder_func(feature_group._get_encoded_avro_schema())
 
+    return producer, get_headers(feature_group, num_entries), feature_writers, writer
+
+def get_headers(
+        feature_group: Union[FeatureGroup, ExternalFeatureGroup],
+        num_entries: int,
+) -> Dict[str, bytes]:
+    # setup online ingestion
+    online_ingestion_instance = online_ingestion.OnlineIngestion(
+        num_entries=num_entries
+    )
+
+    online_ingestion_instance = online_ingestion_api.OnlineIngestionApi().create_online_ingestion(
+        feature_group,
+        online_ingestion_instance
+    )
+
     # custom headers for hopsworks onlineFS
-    headers = {
-        "projectId": str(project_id).encode("utf8"),
+    return {
+        "projectId": str(feature_group.feature_store.project_id).encode("utf8"),
         "featureGroupId": str(feature_group._id).encode("utf8"),
         "subjectId": str(feature_group.subject["id"]).encode("utf8"),
+        "onlineIngestionId": str(online_ingestion_instance.id).encode("utf8"),
     }
-    return producer, headers, feature_writers, writer
 
 
 def init_kafka_producer(

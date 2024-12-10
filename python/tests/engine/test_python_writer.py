@@ -21,6 +21,7 @@ from io import BytesIO
 import fastavro
 from confluent_kafka.admin import TopicMetadata
 from hsfs import feature_group
+from hsfs.core import online_ingestion
 from hsfs.engine import python
 
 
@@ -32,6 +33,10 @@ class TestPythonWriter:
         mocker.patch("hsfs.core.kafka_engine.get_kafka_config", return_value={})
         avro_schema_mock = mocker.patch(
             "hsfs.feature_group.FeatureGroup._get_encoded_avro_schema"
+        )
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value= online_ingestion.OnlineIngestion(id=123),
         )
         avro_schema = (
             '{"type":"record","name":"test_fg","namespace":"test_featurestore.db","fields":'
@@ -69,6 +74,8 @@ class TestPythonWriter:
             id=10,
             stream=False,
         )
+        fg.feature_store = mocker.Mock()
+        fg.feature_store.project_id = 234
 
         mocker.patch.object(fg, "commit_details", return_value={"commit1": 1})
         fg._online_topic_name = topic_name
