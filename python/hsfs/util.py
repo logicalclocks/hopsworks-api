@@ -59,6 +59,9 @@ if TYPE_CHECKING:
     from hsfs.constructor import serving_prepared_statement
 
 
+FeatureStoreEncoder = Encoder
+
+
 def validate_feature(
     ft: Union[str, feature.Feature, Dict[str, Any]],
 ) -> feature.Feature:
@@ -109,6 +112,7 @@ __all__ = [
     "FEATURE_STORE_NAME_SUFFIX",
     "VALID_EMBEDDING_TYPE",
     "Encoder",
+    "FeatureStoreEncoder",
     "FeatureGroupWarning",
     "JobWarning",
     "StatisticsWarning",

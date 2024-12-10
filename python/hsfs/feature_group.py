@@ -263,6 +263,8 @@ class FeatureGroupBase:
     def select_all(
         self,
         include_primary_key: Optional[bool] = True,
+        include_foreign_key: Optional[bool] = True,
+        include_partition_key: Optional[bool] = True,
         include_event_time: Optional[bool] = True,
     ) -> query.Query:
         """Select all features along with primary key and event time from the feature group and return a query object.
@@ -311,24 +313,35 @@ class FeatureGroupBase:
         # Arguments
             include_primary_key: If True, include primary key of the feature group
                 to the feature list. Defaults to True.
+            include_foreign_key: If True, include foreign key of the feature group
+                to the feature list. Defaults to True.
+            include_partition_key: If True, include partition key of the feature group
+                to the feature list. Defaults to True.
             include_event_time: If True, include event time of the feature group
                 to the feature list. Defaults to True.
         # Returns
             `Query`. A query object with all features of the feature group.
         """
-        if include_event_time and include_primary_key:
+        removed_keys = []
+
+        if not include_event_time:
+            removed_keys += [self.event_time]
+        if not include_primary_key:
+            removed_keys += self.primary_key
+        if not include_foreign_key:
+            removed_keys += self.foreign_key
+        if not include_partition_key:
+            removed_keys += self.partition_key
+
+        if removed_keys:
+            return self.select_except(removed_keys)
+        else:
             return query.Query(
                 left_feature_group=self,
                 left_features=self._features,
                 feature_store_name=self._feature_store_name,
                 feature_store_id=self._feature_store_id,
             )
-        elif include_event_time:
-            return self.select_except(self.primary_key)
-        elif include_primary_key:
-            return self.select_except([self.event_time])
-        else:
-            return self.select_except(self.primary_key + [self.event_time])
 
     def select_features(
         self,
@@ -427,7 +440,9 @@ class FeatureGroupBase:
         # Returns
             `Query`. A query object with all features of the feature group.
         """
-        query = self.select_except(self.primary_key + [self.event_time])
+        query = self.select_except(
+            self.primary_key + self.partition_key + self.foreign_key + [self.event_time]
+        )
         _logger.info(
             f"Using {[f.name for f in query.features]} as features for the query."
             "To include primary key and event time use `select_all`."
@@ -2070,7 +2085,7 @@ class FeatureGroupBase:
 
     def prepare_spark_location(self) -> str:
         location = self.location
-        if (self.storage_connector is not None):
+        if self.storage_connector is not None:
             location = self.storage_connector.prepare_spark(location)
         return location
 
@@ -2221,6 +2236,7 @@ class FeatureGroup(FeatureGroupBase):
         description: Optional[str] = "",
         partition_key: Optional[List[str]] = None,
         primary_key: Optional[List[str]] = None,
+        foreign_key: Optional[List[str]] = None,
         hudi_precombine_key: Optional[str] = None,
         featurestore_name: Optional[str] = None,
         embedding_index: Optional["EmbeddingIndex"] = None,
@@ -2307,6 +2323,9 @@ class FeatureGroup(FeatureGroupBase):
             self.primary_key: List[str] = [
                 feat.name for feat in self._features if feat.primary is True
             ]
+            self.foreign_key: List[str] = [
+                feat.name for feat in self._features if feat.foreign is True
+            ]
             self._partition_key: List[str] = [
                 feat.name for feat in self._features if feat.partition is True
             ]
@@ -2334,12 +2353,15 @@ class FeatureGroup(FeatureGroupBase):
                 self._stream = True
 
             self.primary_key = primary_key
+            self.foreign_key = foreign_key
             self.partition_key = partition_key
             self._hudi_precombine_key = (
                 util.autofix_feature_name(hudi_precombine_key)
                 if hudi_precombine_key is not None
-                and (self._time_travel_format is None
-                or self._time_travel_format == "HUDI")
+                and (
+                    self._time_travel_format is None
+                    or self._time_travel_format == "HUDI"
+                )
                 else None
             )
             self.statistics_config = statistics_config
@@ -2686,7 +2708,7 @@ class FeatureGroup(FeatureGroupBase):
                 When using the `python` engine, write_options can contain the
                 following entries:
                 * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../job_configuration)
+                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
                   to configure the Hopsworks Job used to write data into the
                   feature group.
                 * key `wait_for_job` and value `True` or `False` to configure
@@ -2875,7 +2897,7 @@ class FeatureGroup(FeatureGroupBase):
                 When using the `python` engine, write_options can contain the
                 following entries:
                 * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../job_configuration)
+                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
                   to configure the Hopsworks Job used to write data into the
                   feature group.
                 * key `wait_for_job` and value `True` or `False` to configure
@@ -3038,7 +3060,7 @@ class FeatureGroup(FeatureGroupBase):
                 When using the `python` engine, write_options can contain the
                 following entries:
                 * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../job_configuration)
+                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
                   to configure the Hopsworks Job used to write data into the
                   feature group.
                 * key `wait_for_job` and value `True` or `False` to configure
@@ -3269,7 +3291,7 @@ class FeatureGroup(FeatureGroupBase):
         self,
         retention_hours: int = None,
     ) -> None:
-        """ Vacuum files that are no longer referenced by a Delta table and are older than the retention threshold.
+        """Vacuum files that are no longer referenced by a Delta table and are older than the retention threshold.
         This method can only be used on feature groups stored as DELTA.
 
         !!! example
@@ -3798,6 +3820,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         version: Optional[int] = None,
         description: Optional[str] = None,
         primary_key: Optional[List[str]] = None,
+        foreign_key: Optional[List[str]] = None,
         featurestore_id: Optional[int] = None,
         featurestore_name: Optional[str] = None,
         created: Optional[str] = None,
@@ -3882,6 +3905,11 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 if self._features
                 else []
             )
+            self.foreign_key = (
+                [feat.name for feat in self._features if feat.foreign is True]
+                if self._features
+                else []
+            )
             self.statistics_config = statistics_config
 
             self._options = (
@@ -3891,6 +3919,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
             )
         else:
             self.primary_key = primary_key
+            self.foreign_key = foreign_key
             self.statistics_config = statistics_config
             self._features = features
             self._options = options or {}

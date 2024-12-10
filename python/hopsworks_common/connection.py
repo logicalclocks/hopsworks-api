@@ -24,7 +24,7 @@ import warnings
 import weakref
 from typing import Any, Optional
 
-from hopsworks_common import client, usage, util, version
+from hopsworks_common import client, constants, usage, util, version
 from hopsworks_common.core import (
     hosts_api,
     project_api,
@@ -98,13 +98,12 @@ class Connection:
         project: The name of the project to connect to. When running on Hopsworks, this
             defaults to the project from where the client is run from.
             Defaults to `None`.
-        engine: Which engine to use, `"spark"`, `"python"` or `"training"`. Defaults to `None`,
-            which initializes the engine to Spark if the environment provides Spark, for
-            example on Hopsworks and Databricks, or falls back to Python if Spark is not
-            available, e.g. on local Python environments or AWS SageMaker. This option
-            allows you to override this behaviour. `"training"` engine is useful when only
-            feature store metadata is needed, for example training dataset location and label
-            information when Hopsworks training experiment is conducted.
+        engine: Specifies the engine to use. Possible options are "spark", "python", "training", "spark-no-metastore", or "spark-delta". The default value is None, which automatically selects the engine based on the environment:
+            "spark": Used if Spark is available and the connection is not to serverless Hopsworks, such as in Hopsworks or Databricks environments.
+            "python": Used in local Python environments or AWS SageMaker when Spark is not available or the connection is done to serverless Hopsworks.
+            "training": Used when only feature store metadata is needed, such as for obtaining training dataset locations and label information during Hopsworks training experiments.
+            "spark-no-metastore": Functions like "spark" but does not rely on the Hive metastore.
+            "spark-delta": Minimizes dependencies further by avoiding both Hive metastore and HopsFS.
         hostname_verification: Whether or not to verify Hopsworks' certificate, defaults
             to `True`.
         trust_store_path: Path on the file system containing the Hopsworks certificates,
@@ -338,30 +337,35 @@ class Connection:
         self._connected = True
         finalizer = weakref.finalize(self, self.close)
         try:
+            external = client.base.Client.REST_ENDPOINT not in os.environ
+            serverless = self._host == constants.HOSTS.APP_HOST
             # determine engine, needed to init client
-            if (self._engine is not None and self._engine.lower() == "spark") or (
-                self._engine is None and importlib.util.find_spec("pyspark")
+            if (
+                self._engine is None
+                and importlib.util.find_spec("pyspark")
+                and (not external or not serverless)
             ):
                 self._engine = "spark"
-            elif (self._engine is not None and self._engine.lower() == "python") or (
-                self._engine is None and not importlib.util.find_spec("pyspark")
-            ):
+            elif self._engine is None:
                 self._engine = "python"
-            elif self._engine is not None and self._engine.lower() == "training":
+            elif self._engine.lower() == "spark":
+                self._engine = "spark"
+            elif self._engine.lower() == "python":
+                self._engine = "python"
+            elif self._engine.lower() == "training":
                 self._engine = "training"
-            elif (
-                self._engine is not None
-                and self._engine.lower() == "spark-no-metastore"
-            ):
+            elif self._engine.lower() == "spark-no-metastore":
                 self._engine = "spark-no-metastore"
+            elif self._engine.lower() == "spark-delta":
+                self._engine = "spark-delta"
             else:
                 raise ConnectionError(
                     "Engine you are trying to initialize is unknown. "
-                    "Supported engines are `'spark'`, `'python'` and `'training'`."
+                    "Supported engines are `'spark'`, `'python'`, `'training'`, `'spark-no-metastore'`, and `'spark-delta'`."
                 )
 
             # init client
-            if client.base.Client.REST_ENDPOINT not in os.environ:
+            if external:
                 client.init(
                     "external",
                     self._host,
@@ -514,7 +518,7 @@ class Connection:
             project: The name of the project to connect to. When running on Hopsworks, this
                 defaults to the project from where the client is run from.
                 Defaults to `None`.
-            engine: Which engine to use, `"spark"`, `"python"` or `"training"`. Defaults to `None`,
+            engine: Which engine to use, `"spark"`, `"python"`, `"training"`, `"spark-no-metastore"` or `"spark-delta"`. Defaults to `None`,
                 which initializes the engine to Spark if the environment provides Spark, for
                 example on Hopsworks and Databricks, or falls back to Python if Spark is not
                 available, e.g. on local Python environments or AWS SageMaker. This option

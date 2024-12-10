@@ -22,10 +22,9 @@ import warnings
 from typing import Any, Dict, Optional, Union
 
 import humps
-from hopsworks_common import usage
-from hsml import client, constants, util
-from hsml.constants import ARTIFACT_VERSION
-from hsml.constants import INFERENCE_ENDPOINTS as IE
+from hopsworks_common import client, usage, util
+from hopsworks_common.constants import ARTIFACT_VERSION, MODEL_REGISTRY
+from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hsml.core import explicit_provenance
 from hsml.engine import model_engine
 from hsml.inference_batcher import InferenceBatcher
@@ -388,7 +387,7 @@ class Model:
         return self
 
     def json(self):
-        return json.dumps(self, cls=util.MLEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
         return {
@@ -568,7 +567,7 @@ class Model:
         """path of the model files including version and files folder. Resolves to /Projects/{project_name}/Models/{name}/{version}/Files"""
         return "{}/{}".format(
             self.version_path,
-            constants.MODEL_REGISTRY.MODEL_FILES_DIR_NAME,
+            MODEL_REGISTRY.MODEL_FILES_DIR_NAME,
         )
 
     @property
