@@ -489,34 +489,17 @@ class Engine:
         )
         serialized_df = self._serialize_to_avro(feature_group, dataframe)
 
-        project_id = str(feature_group.feature_store.project_id)
-        feature_group_id = str(feature_group._id)
-        subject_id = str(feature_group.subject["id"]).encode("utf8")
-
         if query_name is None:
             query_name = (
-                f"insert_stream_{project_id}_{feature_group_id}"
+                f"insert_stream_{feature_group.feature_store.project_id}_{feature_group._id}"
                 f"_{feature_group.name}_{feature_group.version}_onlinefs"
             )
 
         query = (
-            serialized_df.withColumn(
-                "headers",
-                array(
-                    struct(
-                        lit("projectId").alias("key"),
-                        lit(project_id.encode("utf8")).alias("value"),
-                    ),
-                    struct(
-                        lit("featureGroupId").alias("key"),
-                        lit(feature_group_id.encode("utf8")).alias("value"),
-                    ),
-                    struct(
-                        lit("subjectId").alias("key"), lit(subject_id).alias("value")
-                    ),
-                ),
-            )
-            .writeStream.outputMode(output_mode)
+            serialized_df
+            .withColumn("headers", self._get_headers(feature_group, dataframe))
+            .writeStream
+            .outputMode(output_mode)
             .format(self.KAFKA_FORMAT)
             .option(
                 "checkpointLocation",
@@ -582,23 +565,27 @@ class Engine:
 
         serialized_df = self._serialize_to_avro(feature_group, dataframe)
 
-        project_id = str(feature_group.feature_store.project_id).encode("utf8")
-        feature_group_id = str(feature_group._id).encode("utf8")
-        subject_id = str(feature_group.subject["id"]).encode("utf8")
+        (
+            serialized_df
+            .withColumn("headers", self._get_headers(feature_group, dataframe))
+            .write
+            .format(self.KAFKA_FORMAT)
+            .options(**write_options)
+            .option("topic", feature_group._online_topic_name)
+            .save()
+        )
 
-        serialized_df.withColumn(
-            "headers",
-            array(
-                struct(lit("projectId").alias("key"), lit(project_id).alias("value")),
-                struct(
-                    lit("featureGroupId").alias("key"),
-                    lit(feature_group_id).alias("value"),
-                ),
-                struct(lit("subjectId").alias("key"), lit(subject_id).alias("value")),
-            ),
-        ).write.format(self.KAFKA_FORMAT).options(**write_options).option(
-            "topic", feature_group._online_topic_name
-        ).save()
+    def _get_headers(
+        self,
+        feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
+        dataframe: Union[RDD, DataFrame],
+    ):
+        return array(
+            *[
+                struct(lit(key).alias("key"), lit(value).alias("value"))
+                for key, value in kafka_engine.get_headers(feature_group, dataframe.count()).items()
+            ]
+        )
 
     def _serialize_to_avro(
         self,

@@ -109,11 +109,11 @@ class OnlineIngestion:
     @property
     def processed_entries(self) -> int:
         return 0 if self._processed_entries is None else self._processed_entries
-    
+
     @property
     def inserted_entries(self) -> int:
         return 0 if self._inserted_entries is None else self._inserted_entries
-    
+
     @property
     def aborted_entries(self) -> int:
         return 0 if self._aborted_entries is None else self._aborted_entries
