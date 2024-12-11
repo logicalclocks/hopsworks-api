@@ -140,6 +140,7 @@ docs/index.md
 
 # Test artifacts
 keyFile.json
+gcs.json
 
 # Dev directories
 dev_tools/
