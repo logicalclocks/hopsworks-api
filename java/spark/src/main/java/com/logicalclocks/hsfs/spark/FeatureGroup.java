@@ -883,7 +883,7 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
       throw new FeatureStoreException(
           "Features have to be a streaming type spark dataframe. Use `insert()` method instead.");
     }
-    LOGGER.info("StatisticsWarning: Stream ingestion for feature group `" + name + "`, with version `" + version
+    logger.info("StatisticsWarning: Stream ingestion for feature group `" + name + "`, with version `" + version
         + "` will not compute statistics.");
 
     return featureGroupEngine.insertStream(this, featureData, queryName, outputMode, awaitTermination,
@@ -1211,7 +1211,7 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
     if (statisticsConfig.getEnabled()) {
       return statisticsEngine.computeStatistics(this, read(), null);
     } else {
-      LOGGER.info("StorageWarning: The statistics are not enabled of feature group `" + name + "`, with version `"
+      logger.info("StorageWarning: The statistics are not enabled of feature group `" + name + "`, with version `"
           + version + "`. No statistics computed.");
     }
     return null;
@@ -1250,7 +1250,7 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
       Long commitId = (Long) latestCommitMetaData.keySet().toArray()[0];
       return statisticsEngine.computeStatistics(this, featureData, commitId);
     } else {
-      LOGGER.info("StorageWarning: The statistics are not enabled of feature group `" + name + "`, with version `"
+      logger.info("StorageWarning: The statistics are not enabled of feature group `" + name + "`, with version `"
           + version + "`. No statistics computed.");
     }
     return null;

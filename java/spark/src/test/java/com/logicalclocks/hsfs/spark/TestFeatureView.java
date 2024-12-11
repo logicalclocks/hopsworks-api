@@ -19,75 +19,47 @@ package com.logicalclocks.hsfs.spark;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.logicalclocks.hsfs.Feature;
-import com.logicalclocks.hsfs.FeatureGroupBase;
-import com.logicalclocks.hsfs.FeatureGroupBaseForApi;
-import com.logicalclocks.hsfs.FeatureStoreException;
-import com.logicalclocks.hsfs.metadata.FeatureGroupApi;
-import com.logicalclocks.hsfs.metadata.HopsworksClient;
-import com.logicalclocks.hsfs.metadata.HopsworksHttpClient;
-import com.logicalclocks.hsfs.spark.constructor.Query;
-import com.logicalclocks.hsfs.spark.engine.FeatureGroupEngine;
-import org.apache.log4j.Appender;
-import org.apache.log4j.Level;
-import org.apache.log4j.Logger;
-import org.apache.log4j.spi.LoggingEvent;
-import org.junit.Assert;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
-
-import java.io.IOException;
-import java.text.ParseException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.when;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 class TestFeatureView {
 
   @Test
   void testParsingJson() throws JsonProcessingException {
-    // Arrange
-    Logger logger = Logger.getRootLogger();
-    Appender appender = Mockito.mock(Appender.class);
-    logger.addAppender(appender);
+    try (MockedStatic<LoggerFactory> staticLoggerFactory = Mockito.mockStatic(LoggerFactory.class)) {
+      // Arrange
+      Logger logger = Mockito.mock(Logger.class);
+      staticLoggerFactory.when(() -> LoggerFactory.getLogger(Mockito.any(Class.class))).thenReturn(logger);
 
-    ArgumentCaptor<LoggingEvent> argument = ArgumentCaptor.forClass(LoggingEvent.class);
+      ObjectMapper objectMapper = new ObjectMapper();
+      String json = "{\"name\":\"test_name\",\"query\":{\"leftFeatureGroup\":{\"name\":\"test_fg\",\"version\":1,\"deprecated\":false}}}";
 
-    ObjectMapper objectMapper = new ObjectMapper();
-    String json = "{\"name\":\"test_name\",\"query\":{\"leftFeatureGroup\":{\"name\":\"test_fg\",\"version\":1,\"deprecated\":false}}}";
+      // Act
+      FeatureView fv = objectMapper.readValue(json, FeatureView.class);
 
-    // Act
-    FeatureView fv = objectMapper.readValue(json, FeatureView.class);
-
-    // Assert
-    Mockito.verify(appender, Mockito.times(0)).doAppend(argument.capture());
+      // Assert
+      Mockito.verify(logger, Mockito.times(0)).warn(Mockito.anyString());
+    }
   }
 
   @Test
   void testParsingJsonWhenDeprecatedFeatureGroup() throws JsonProcessingException {
-    // Arrange
-    Logger logger = Logger.getRootLogger();
-    Appender appender = Mockito.mock(Appender.class);
-    logger.addAppender(appender);
+    try (MockedStatic<LoggerFactory> staticLoggerFactory = Mockito.mockStatic(LoggerFactory.class)) {
+      // Arrange
+      Logger logger = Mockito.mock(Logger.class);
+      staticLoggerFactory.when(() -> LoggerFactory.getLogger(Mockito.any(Class.class))).thenReturn(logger);
 
-    ArgumentCaptor<LoggingEvent> argument = ArgumentCaptor.forClass(LoggingEvent.class);
+      ObjectMapper objectMapper = new ObjectMapper();
+      String json = "{\"name\":\"test_name\",\"query\":{\"leftFeatureGroup\":{\"name\":\"test_fg\",\"version\":1,\"deprecated\":true}}}";
 
-    ObjectMapper objectMapper = new ObjectMapper();
-    String json = "{\"name\":\"test_name\",\"query\":{\"leftFeatureGroup\":{\"name\":\"test_fg\",\"version\":1,\"deprecated\":true}}}";
+      // Act
+      FeatureView fv = objectMapper.readValue(json, FeatureView.class);
 
-    // Act
-    FeatureView fv = objectMapper.readValue(json, FeatureView.class);
-
-    // Assert
-    Mockito.verify(appender, Mockito.times(1)).doAppend(argument.capture());
-    Assert.assertEquals(Level.WARN, argument.getValue().getLevel());
-    Assert.assertEquals("Feature Group `test_fg`, version `1` is deprecated", argument.getValue().getMessage());
-    Assert.assertEquals("com.logicalclocks.hsfs.FeatureGroupBase", argument.getValue().getLoggerName());
+      // Assert
+      Mockito.verify(logger, Mockito.times(1)).warn("Feature Group `test_fg`, version `1` is deprecated");
+    }
   }
 }

@@ -154,7 +154,7 @@ public abstract class FeatureGroupBase<T> {
   protected FeatureGroupEngineBase featureGroupEngineBase = new FeatureGroupEngineBase();
   protected FeatureGroupUtils utils = new FeatureGroupUtils();
 
-  protected static final Logger LOGGER = LoggerFactory.getLogger(FeatureGroupBase.class);
+  protected final Logger logger = LoggerFactory.getLogger(FeatureGroupBase.class);
 
   public void setDeprecated(Boolean deprecated) {
     this.deprecated = deprecated;
@@ -163,12 +163,12 @@ public abstract class FeatureGroupBase<T> {
 
   public void checkDeprecated() {
     if (Boolean.TRUE.equals(this.deprecated)) {
-      LOGGER.warn(String.format("Feature Group `%s`, version `%s` is deprecated", this.name, this.version));
+      logger.warn(String.format("Feature Group `%s`, version `%s` is deprecated", this.name, this.version));
     }
   }
 
   public void delete() throws FeatureStoreException, IOException {
-    LOGGER.warn("JobWarning: All jobs associated to feature group `" + name + "`, version `"
+    logger.warn("JobWarning: All jobs associated to feature group `" + name + "`, version `"
         + version + "` will be removed.");
     featureGroupEngineBase.delete(this);
   }
