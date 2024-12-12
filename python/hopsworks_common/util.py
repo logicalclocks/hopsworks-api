@@ -40,7 +40,8 @@ from urllib.parse import urljoin, urlparse
 import humps
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException, JobException
-from hopsworks_common.constants import HAS_PANDAS, MODEL, PREDICTOR, Default
+from hopsworks_common.constants import MODEL, PREDICTOR, Default
+from hopsworks_common.core.constants import HAS_PANDAS
 from hopsworks_common.git_file_status import GitFileStatus
 from six import string_types
 
