@@ -25,9 +25,7 @@ import com.logicalclocks.hsfs.constructor.FeatureGroupAlias;
 import com.logicalclocks.hsfs.engine.FeatureGroupUtils;
 import com.logicalclocks.hsfs.metadata.FeatureGroupApi;
 import com.logicalclocks.hsfs.FeatureGroupBase;
-import com.logicalclocks.hsfs.metadata.KafkaApi;
 
-import com.logicalclocks.hsfs.metadata.StorageConnectorApi;
 import com.logicalclocks.hsfs.spark.FeatureGroup;
 import com.logicalclocks.hsfs.spark.FeatureStore;
 import com.logicalclocks.hsfs.spark.StreamFeatureGroup;
@@ -146,8 +144,6 @@ public class HudiEngine {
   private FeatureGroupApi featureGroupApi = new FeatureGroupApi();
   private FeatureGroupCommit fgCommitMetadata = new FeatureGroupCommit();
   private DeltaStreamerConfig deltaStreamerConfig = new DeltaStreamerConfig();
-  private KafkaApi kafkaApi = new KafkaApi();
-  private StorageConnectorApi storageConnectorApi = new StorageConnectorApi();
 
   protected static HudiEngine hudiEngineInstance = null;
 
@@ -156,6 +152,10 @@ public class HudiEngine {
       hudiEngineInstance = new HudiEngine();
     }
     return hudiEngineInstance;
+  }
+
+  // To make sure everyone uses getInstance
+  private HudiEngine() {
   }
 
   public void saveHudiFeatureGroup(SparkSession sparkSession, FeatureGroupBase featureGroup,
