@@ -149,6 +149,15 @@ public class HudiEngine {
   private KafkaApi kafkaApi = new KafkaApi();
   private StorageConnectorApi storageConnectorApi = new StorageConnectorApi();
 
+  protected static HudiEngine hudiEngineInstance = null;
+
+  public static HudiEngine getInstance() {
+    if (hudiEngineInstance == null) {
+      hudiEngineInstance = new HudiEngine();
+    }
+    return hudiEngineInstance;
+  }
+
   public void saveHudiFeatureGroup(SparkSession sparkSession, FeatureGroupBase featureGroup,
                                    Dataset<Row> dataset, HudiOperationType operation,
                                    Map<String, String> writeOptions, Integer validationId)
