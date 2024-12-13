@@ -15,7 +15,7 @@
 #
 import importlib
 
-from hsfs import storage_connector, feature_group
+from hsfs import feature_group, storage_connector
 from hsfs.core import constants, kafka_engine, online_ingestion
 
 
