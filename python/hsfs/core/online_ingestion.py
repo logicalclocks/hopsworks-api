@@ -125,7 +125,7 @@ class OnlineIngestion:
     def wait_for_completion(self):
         with tqdm(total=self.num_entries,
                   bar_format="{desc}: {percentage:.2f}% |{bar}| Rows {n_fmt}/{total_fmt}",
-                  desc="Data processing progress",
+                  desc="Online data ingestion progress",
                   mininterval=1) as progress_bar:
             while True:
                 if self.aborted_entries:
