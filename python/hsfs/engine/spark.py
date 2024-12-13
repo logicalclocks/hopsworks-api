@@ -518,6 +518,10 @@ class Engine:
         if await_termination:
             query.awaitTermination(timeout)
 
+            # wait for online ingestion
+            if feature_group.online_enabled and write_options.get("wait_for_online_ingestion", False):
+                feature_group.get_latest_online_ingestion().wait_for_completion()
+
         return query
 
     def _save_offline_dataframe(
@@ -572,6 +576,10 @@ class Engine:
             .option("topic", feature_group._online_topic_name)
             .save()
         )
+
+        # wait for online ingestion
+        if feature_group.online_enabled and write_options.get("wait_for_online_ingestion", False):
+            feature_group.get_latest_online_ingestion().wait_for_completion()
 
     def _get_headers(
         self,

@@ -1558,6 +1558,11 @@ class Engine:
                 ),
                 await_termination=offline_write_options.get("wait_for_job", False),
             )
+
+        # wait for online ingestion
+        if feature_group.online_enabled and offline_write_options.get("wait_for_online_ingestion", False):
+            feature_group.get_latest_online_ingestion().wait_for_completion()
+
         return feature_group.materialization_job
 
     @staticmethod
