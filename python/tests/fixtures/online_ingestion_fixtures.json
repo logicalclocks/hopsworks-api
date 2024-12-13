@@ -1,0 +1,22 @@
+{
+  "get": {
+    "response": {
+      "count": 1,
+      "items": [
+        {
+          "id": 1,
+          "num_entries": 10,
+          "processed_entries": 8,
+          "inserted_entries": 6,
+          "aborted_entries": 2
+        }
+      ]
+    }
+  },
+  "get_empty": {
+    "response": {
+      "count": 0,
+      "items": []
+    }
+  }
+}
