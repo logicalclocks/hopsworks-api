@@ -14,6 +14,7 @@
   <properties>
     <flink.version>1.17.1.0</flink.version>
     <fasterxml.version>2.13.4.2</fasterxml.version>
+    <bouncycastle.version>1.79</bouncycastle.version>
   </properties>
 
   <dependencies>
@@ -86,6 +87,13 @@
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
       <version>${fasterxml.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcpkix-jdk18on</artifactId>
+      <scope>test</scope>
+      <version>${bouncycastle.version}</version>
     </dependency>
 
   </dependencies>
