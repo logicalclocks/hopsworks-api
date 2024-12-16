@@ -25,6 +25,7 @@ import weakref
 from typing import Any, Optional
 
 from hopsworks_common import client, constants, usage, util, version
+from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.core import (
     hosts_api,
     project_api,
@@ -429,7 +430,17 @@ class Connection:
         if self._variable_api.get_data_science_profile_enabled():
             # load_default_configuration has to be called before using hsml
             # but after a project is provided to client
-            self._model_serving_api.load_default_configuration()  # istio client, default resources,...
+            try:
+                # istio client, default resources,...
+                self._model_serving_api.load_default_configuration()
+            except RestAPIError as e:
+                if e.response.error_code == 403:
+                    print(
+                        "You lack permission to initialize model serving. Machine learning functionality will be not available."
+                    )
+                    print("The permission-related exception is:", e)
+                else:
+                    raise e
 
     def close(self) -> None:
         """Close a connection gracefully.
