@@ -145,13 +145,13 @@ public class HudiEngine {
   private FeatureGroupCommit fgCommitMetadata = new FeatureGroupCommit();
   private DeltaStreamerConfig deltaStreamerConfig = new DeltaStreamerConfig();
 
-  protected static HudiEngine hudiEngineInstance = null;
+  protected static HudiEngine INSTANCE = null;
 
-  public static HudiEngine getInstance() {
-    if (hudiEngineInstance == null) {
-      hudiEngineInstance = new HudiEngine();
+  public static synchronized HudiEngine getInstance() {
+    if (INSTANCE == null) {
+      INSTANCE = new HudiEngine();
     }
-    return hudiEngineInstance;
+    return INSTANCE;
   }
 
   // To make sure everyone uses getInstance
