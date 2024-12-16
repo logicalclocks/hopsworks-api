@@ -17,7 +17,6 @@
 import copy
 
 import humps
-import pytest
 from hopsworks_common import kafka_topic
 from hopsworks_common.constants import KAFKA_TOPIC
 
