@@ -15,7 +15,7 @@
 #
 import importlib
 
-from hopsworks_common import constants
+from hopsworks_common.core import constants
 from hsfs import storage_connector
 from hsfs.core import kafka_engine
 
