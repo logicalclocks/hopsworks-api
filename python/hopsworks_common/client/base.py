@@ -51,6 +51,7 @@ class Client:
     REST_ENDPOINT = "REST_ENDPOINT"
     DEFAULT_DATABRICKS_ROOT_VIRTUALENV_ENV = "DEFAULT_DATABRICKS_ROOT_VIRTUALENV_ENV"
     HOPSWORKS_PUBLIC_HOST = "HOPSWORKS_PUBLIC_HOST"
+    HOPSWORKS_READONLY_MODE = "HOPSWORKS_READONLY_MODE"
 
     def _get_verify(self, verify, trust_store_path):
         """Get verification method for sending HTTP requests to Hopsworks.
@@ -153,6 +154,10 @@ class Client:
         :return: Response json
         :rtype: dict
         """
+        if os.getenv(self.HOPSWORKS_READONLY_MODE, "") == "true":
+            if method != "GET" and method != "HEAD" and method != "OPTIONS":
+                return None
+
         f_url = furl.furl(self._base_url)
         if with_base_path_params:
             base_path_params = ["hopsworks-api", "api"]
