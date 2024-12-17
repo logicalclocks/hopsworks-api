@@ -124,7 +124,10 @@ class OnlineIngestion:
     def batch_results(self):
         return self._batch_results
 
-    def wait_for_completion(self, options={}):
+    def wait_for_completion(self, options: Dict[str, Any] = None):
+        if options is None:
+            options = {}
+
         # Set timeout time
         timeout_delta = timedelta(seconds=options.get("timeout", 60))
         timeout_time = datetime.now() + timeout_delta
