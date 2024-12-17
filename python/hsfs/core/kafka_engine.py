@@ -21,16 +21,16 @@ from io import BytesIO
 from typing import TYPE_CHECKING, Any, Callable, Dict, Literal, Optional, Tuple, Union
 
 from hopsworks_common import client
-from hopsworks_common.core.constants import HAS_NUMPY
-from hopsworks_common.decorators import uses_confluent_kafka
-from hsfs.core import storage_connector_api
-from hsfs.core.constants import (
+from hopsworks_common.core.constants import (
     HAS_AVRO,
     HAS_CONFLUENT_KAFKA,
     HAS_FAST_AVRO,
+    HAS_NUMPY,
     HAS_PANDAS,
     avro_not_installed_message,
 )
+from hopsworks_common.decorators import uses_confluent_kafka
+from hsfs.core import storage_connector_api
 from tqdm import tqdm
 
 
