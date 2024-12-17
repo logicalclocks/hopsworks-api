@@ -15,8 +15,9 @@
 #
 import importlib
 
+from hopsworks_common import constants
 from hsfs import storage_connector
-from hsfs.core import constants, kafka_engine
+from hsfs.core import kafka_engine
 
 
 if constants.HAS_CONFLUENT_KAFKA:
