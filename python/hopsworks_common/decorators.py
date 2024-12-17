@@ -99,7 +99,7 @@ def uses_polars(f):
 
     return g
 
-def uses_kafka(f):
+def uses_confluent_kafka(f):
     @functools.wraps(f)
     def g(*args, **kwds):
         if not HAS_CONFLUENT_KAFKA:
