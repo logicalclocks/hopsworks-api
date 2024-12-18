@@ -440,7 +440,7 @@ class Connection:
             except RestAPIError as e:
                 if e.response.error_code == 403 and e.error_code == 320004:
                     print(
-                        'API key does not include "SERVING" scope, the related functionality will be disabled.'
+                        'The used API key does not include "SERVING" scope, the related functionality will be disabled.'
                     )
                     _logger.debug(f"The ignored exception: {e}")
                 else:
