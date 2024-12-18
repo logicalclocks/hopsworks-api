@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import logging
 import os
 import re
 import sys
@@ -50,6 +51,9 @@ PROJECT_NAME = "HOPSWORKS_PROJECT_NAME"
 
 
 _hsfs_engine_type = None
+
+
+_logger = logging.getLogger(__name__)
 
 
 class Connection:
@@ -434,11 +438,11 @@ class Connection:
                 # istio client, default resources,...
                 self._model_serving_api.load_default_configuration()
             except RestAPIError as e:
-                if e.response.error_code == 403:
+                if e.response.error_code == 403 and e.error_code == 320004:
                     print(
-                        "You lack permission to initialize model serving. Machine learning functionality will be not available."
+                        'API key does not include "SERVING" scope, the related functionality will be disabled.'
                     )
-                    print("The permission-related exception is:", e)
+                    _logger.debug(f"The ignored exception: {e}")
                 else:
                     raise e
 
