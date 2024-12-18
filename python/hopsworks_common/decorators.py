@@ -20,8 +20,10 @@ import functools
 import os
 
 from hopsworks_common.core.constants import (
+    HAS_CONFLUENT_KAFKA,
     HAS_GREAT_EXPECTATIONS,
     HAS_POLARS,
+    confluent_kafka_not_installed_message,
     great_expectations_not_installed_message,
     polars_not_installed_message,
 )
@@ -93,6 +95,15 @@ def uses_polars(f):
     def g(*args, **kwds):
         if not HAS_POLARS:
             raise ModuleNotFoundError(polars_not_installed_message)
+        return f(*args, **kwds)
+
+    return g
+
+def uses_confluent_kafka(f):
+    @functools.wraps(f)
+    def g(*args, **kwds):
+        if not HAS_CONFLUENT_KAFKA:
+            raise ModuleNotFoundError(confluent_kafka_not_installed_message)
         return f(*args, **kwds)
 
     return g
