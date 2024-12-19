@@ -22,6 +22,7 @@ import re
 import warnings
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, TypeVar, Union
+import posixpath
 
 import humps
 import pandas as pd
@@ -342,7 +343,7 @@ class S3Connector(StorageConnector):
     @property
     def path(self) -> Optional[str]:
         """If the connector refers to a path (e.g. S3) - return the path of the connector"""
-        return os.path.join("s3://" + self._bucket, *os.path.split(self._path if self._path else ""))
+        return posixpath.join("s3://" + self._bucket, *os.path.split(self._path if self._path else ""))
 
     @property
     def arguments(self) -> Optional[Dict[str, Any]]:
@@ -435,7 +436,7 @@ class S3Connector(StorageConnector):
         )
 
     def _get_path(self, sub_path: str) -> str:
-        return os.path.join(self.path, *os.path.split(sub_path))
+        return posixpath.join(self.path, *os.path.split(sub_path))
 
 
 class RedshiftConnector(StorageConnector):
