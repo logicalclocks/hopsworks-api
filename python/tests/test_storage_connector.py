@@ -114,7 +114,7 @@ class TestS3Connector:
         sc.read(data_format="csv")
         # assert
         assert "" == mock_engine_read.call_args[0][3]
-    
+
     def test_get_path(self, mocker):
         mocker.patch("hsfs.engine.get_instance", return_value=spark.Engine())
         sc = storage_connector.S3Connector(
