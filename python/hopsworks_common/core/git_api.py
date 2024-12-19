@@ -433,6 +433,66 @@ class GitApi:
         )
         _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
 
+    def _fetch(self, repo_id, remote: str, branch: str):
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "git",
+            "repository",
+            str(repo_id),
+        ]
+
+        query_params = {"action": "FETCH", "expand": ["repository", "user"]}
+        fetch_config = {
+            "type": "fetchCommandConfiguration",
+            "remoteName": remote,
+            "branchName": branch,
+        }
+
+        headers = {"content-type": "application/json"}
+        git_op = git_op_execution.GitOpExecution.from_response_json(
+            _client._send_request(
+                "POST",
+                path_params,
+                headers=headers,
+                query_params=query_params,
+                data=json.dumps(fetch_config),
+            )
+        )
+        _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
+
+    def _reset(self, repo_id, remote: str, branch: str, commit: str):
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "git",
+            "repository",
+            str(repo_id),
+        ]
+
+        query_params = {"action": "RESET", "expand": ["repository", "user"]}
+        reset_config = {
+            "type": "resetCommandConfiguration",
+            "remoteName": remote,
+            "branchName": branch,
+            "commit": commit,
+        }
+
+        headers = {"content-type": "application/json"}
+        git_op = git_op_execution.GitOpExecution.from_response_json(
+            _client._send_request(
+                "POST",
+                path_params,
+                headers=headers,
+                query_params=query_params,
+                data=json.dumps(reset_config),
+            )
+        )
+        _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
+
+
     def _checkout_files(self, repo_id, files: Union[List[str], List[GitFileStatus]]):
         files = util.convert_git_status_to_files(files)
 
