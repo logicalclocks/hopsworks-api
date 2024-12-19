@@ -84,11 +84,6 @@ class KafkaTopic:
                         )
                     )
                     num_partitions = KAFKA_TOPIC.NUM_PARTITIONS
-            else:
-                if num_replicas is not None or num_partitions is not None:
-                    raise ValueError(
-                        "Number of replicas or partitions cannot be changed in existing kafka topics."
-                    )
         elif name is None or name == KAFKA_TOPIC.NONE:
             num_replicas = None
             num_partitions = None
