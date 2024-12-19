@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import logging
 import os
 import re
 import sys
@@ -25,6 +26,7 @@ import weakref
 from typing import Any, Optional
 
 from hopsworks_common import client, constants, usage, util, version
+from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.core import (
     hosts_api,
     project_api,
@@ -49,6 +51,9 @@ PROJECT_NAME = "HOPSWORKS_PROJECT_NAME"
 
 
 _hsfs_engine_type = None
+
+
+_logger = logging.getLogger(__name__)
 
 
 class Connection:
@@ -429,7 +434,17 @@ class Connection:
         if self._variable_api.get_data_science_profile_enabled():
             # load_default_configuration has to be called before using hsml
             # but after a project is provided to client
-            self._model_serving_api.load_default_configuration()  # istio client, default resources,...
+            try:
+                # istio client, default resources,...
+                self._model_serving_api.load_default_configuration()
+            except RestAPIError as e:
+                if e.response.error_code == 403 and e.error_code == 320004:
+                    print(
+                        'The used API key does not include "SERVING" scope, the related functionality will be disabled.'
+                    )
+                    _logger.debug(f"The ignored exception: {e}")
+                else:
+                    raise e
 
     def close(self) -> None:
         """Close a connection gracefully.
