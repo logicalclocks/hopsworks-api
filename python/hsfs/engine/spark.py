@@ -494,10 +494,10 @@ class Engine:
             )
 
         query = (
-            serialized_df
-            .withColumn("headers", self._get_headers(feature_group, dataframe))
-            .writeStream
-            .outputMode(output_mode)
+            serialized_df.withColumn(
+                "headers", self._get_headers(feature_group, dataframe)
+            )
+            .writeStream.outputMode(output_mode)
             .format(self.KAFKA_FORMAT)
             .option(
                 "checkpointLocation",
@@ -519,8 +519,12 @@ class Engine:
             query.awaitTermination(timeout)
 
             # wait for online ingestion
-            if feature_group.online_enabled and write_options.get("wait_for_online_ingestion", False):
-                feature_group.get_latest_online_ingestion().wait_for_completion()
+            if feature_group.online_enabled and write_options.get(
+                "wait_for_online_ingestion", False
+            ):
+                feature_group.get_latest_online_ingestion().wait_for_completion(
+                    options=offline_write_options.get("online_ingestion_options", {})
+                )
 
         return query
 
@@ -568,28 +572,34 @@ class Engine:
         serialized_df = self._serialize_to_avro(feature_group, dataframe)
 
         (
-            serialized_df
-            .withColumn("headers", self._get_headers(feature_group, dataframe))
-            .write
-            .format(self.KAFKA_FORMAT)
+            serialized_df.withColumn(
+                "headers", self._get_headers(feature_group, dataframe)
+            )
+            .write.format(self.KAFKA_FORMAT)
             .options(**write_options)
             .option("topic", feature_group._online_topic_name)
             .save()
         )
 
         # wait for online ingestion
-        if feature_group.online_enabled and write_options.get("wait_for_online_ingestion", False):
-            feature_group.get_latest_online_ingestion().wait_for_completion()
+        if feature_group.online_enabled and write_options.get(
+            "wait_for_online_ingestion", False
+        ):
+            feature_group.get_latest_online_ingestion().wait_for_completion(
+                options=offline_write_options.get("online_ingestion_options", {})
+            )
 
     def _get_headers(
         self,
         feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
         dataframe: Union[RDD, DataFrame],
-    ):
+    ) -> array:
         return array(
             *[
                 struct(lit(key).alias("key"), lit(value).alias("value"))
-                for key, value in kafka_engine.get_headers(feature_group, dataframe.count()).items()
+                for key, value in kafka_engine.get_headers(
+                    feature_group, dataframe.count()
+                ).items()
             ]
         )
 

@@ -115,18 +115,20 @@ def _init_kafka_resources(
 
     return producer, get_headers(feature_group, num_entries), feature_writers, writer
 
+
 def get_headers(
-        feature_group: Union[FeatureGroup, ExternalFeatureGroup],
-        num_entries: int,
+    feature_group: Union[FeatureGroup, ExternalFeatureGroup],
+    num_entries: int,
 ) -> Dict[str, bytes]:
     # setup online ingestion
     online_ingestion_instance = online_ingestion.OnlineIngestion(
         num_entries=num_entries
     )
 
-    online_ingestion_instance = online_ingestion_api.OnlineIngestionApi().create_online_ingestion(
-        feature_group,
-        online_ingestion_instance
+    online_ingestion_instance = (
+        online_ingestion_api.OnlineIngestionApi().create_online_ingestion(
+            feature_group, online_ingestion_instance
+        )
     )
 
     # custom headers for hopsworks onlineFS

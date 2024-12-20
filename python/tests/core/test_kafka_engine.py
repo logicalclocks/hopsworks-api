@@ -547,14 +547,12 @@ class TestKafkaEngine:
         fg._subject = {"id": 823}
 
         # Act
-        results = kafka_engine.get_headers(
-            fg, num_entries=10
-        )
+        results = kafka_engine.get_headers(fg, num_entries=10)
 
         # Assert
         assert results == {
-            'featureGroupId': b'111',
-            'onlineIngestionId': b'1',
-            'projectId': b'234',
-            'subjectId': b'823'
+            "featureGroupId": b"111",
+            "onlineIngestionId": b"1",
+            "projectId": b"234",
+            "subjectId": b"823",
         }

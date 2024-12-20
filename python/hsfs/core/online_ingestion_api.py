@@ -15,18 +15,19 @@
 #
 from __future__ import annotations
 
+from typing import Dict, Optional
+
 from hopsworks_common import client
 from hsfs import feature_group as fg_mod
 from hsfs.core import online_ingestion
 
 
 class OnlineIngestionApi:
-
     def create_online_ingestion(
         self,
         feature_group_instance: fg_mod.FeatureGroup,
         online_ingestion_instance: online_ingestion.OnlineIngestion,
-    ):
+    ) -> online_ingestion.OnlineIngestion:
         _client = client.get_instance()
         path_params = [
             "project",
@@ -39,17 +40,21 @@ class OnlineIngestionApi:
         ]
 
         headers = {"content-type": "application/json"}
-        online_ingestion_instance = online_ingestion.OnlineIngestion.from_response_json(
-            _client._send_request("POST", path_params, headers=headers, data=online_ingestion_instance.json())
+        return online_ingestion.OnlineIngestion.from_response_json(
+            _client._send_request(
+                "POST",
+                path_params,
+                headers=headers,
+                data=online_ingestion_instance.json(),
+            ),
+            feature_group=feature_group_instance,
         )
-        online_ingestion_instance.feature_group = feature_group_instance
-        return online_ingestion_instance
 
     def get_online_ingestion(
         self,
         feature_group_instance: fg_mod.FeatureGroup,
-        query_params: None,
-    ):
+        query_params: Optional[Dict[str, str]] = None,
+    ) -> online_ingestion.OnlineIngestion:
         _client = client.get_instance()
         path_params = [
             "project",
@@ -61,8 +66,7 @@ class OnlineIngestionApi:
             "online_ingestion",
         ]
 
-        online_ingestion_instance = online_ingestion.OnlineIngestion.from_response_json(
-            _client._send_request("GET", path_params, query_params)
+        return online_ingestion.OnlineIngestion.from_response_json(
+            _client._send_request("GET", path_params, query_params),
+            feature_group=feature_group_instance,
         )
-        online_ingestion_instance.feature_group = feature_group_instance
-        return online_ingestion_instance

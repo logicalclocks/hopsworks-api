@@ -1805,7 +1805,9 @@ class FeatureGroupBase:
             )
 
     def get_latest_online_ingestion(self) -> online_ingestion.OnlineIngestion:
-        return online_ingestion_api.OnlineIngestionApi().get_online_ingestion(self, query_params={"filter_by": "LATEST"})
+        return online_ingestion_api.OnlineIngestionApi().get_online_ingestion(
+            self, query_params={"filter_by": "LATEST"}
+        )
 
     @property
     def feature_store_id(self) -> Optional[int]:

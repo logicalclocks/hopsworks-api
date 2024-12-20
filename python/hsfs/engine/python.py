@@ -1560,8 +1560,12 @@ class Engine:
             )
 
         # wait for online ingestion
-        if feature_group.online_enabled and offline_write_options.get("wait_for_online_ingestion", False):
-            feature_group.get_latest_online_ingestion().wait_for_completion()
+        if feature_group.online_enabled and offline_write_options.get(
+            "wait_for_online_ingestion", False
+        ):
+            feature_group.get_latest_online_ingestion().wait_for_completion(
+                options=offline_write_options.get("online_ingestion_options", {})
+            )
 
         return feature_group.materialization_job
 

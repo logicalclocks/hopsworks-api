@@ -19,10 +19,18 @@ import json
 import time
 import warnings
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional
+from typing import (
+    Any,
+    Dict,
+    List,
+    Optional,
+    Union,
+)
 
 import humps
 from hopsworks_common import util
+from hsfs import feature_group as fg_mod
+from hsfs.core import online_ingestion_batch_result
 from tqdm.auto import tqdm
 
 
@@ -35,34 +43,53 @@ class OnlineIngestion:
         self,
         id: Optional[int] = None,
         num_entries: int = None,
-        current_offsets: int = None,
-        processed_entries: int = None,
-        inserted_entries: int = None,
-        aborted_entries: int = None,
-        batch_results = None,
+        current_offsets: Optional[str] = None,
+        processed_entries: Optional[int] = None,
+        inserted_entries: Optional[int] = None,
+        aborted_entries: Optional[int] = None,
+        batch_results: Union[
+            List[online_ingestion_batch_result.OnlineIngestionBatchResult],
+            List[Dict[str, Any]],
+        ] = [],
+        feature_group: fg_mod.FeatureGroup = None,
         **kwargs,
     ):
         self._id = id
-        self._num_entries = num_entries # specified when inserting
+        self._num_entries = num_entries  # specified when inserting
         self._current_offsets = current_offsets
         self._processed_entries = processed_entries
         self._inserted_entries = inserted_entries
         self._aborted_entries = aborted_entries
-        self._batch_results = batch_results # batch inserts performed by onlinefs
+        self._batch_results = [
+            (
+                online_ingestion_batch_result.OnlineIngestionBatchResult.from_response_json(
+                    batch_result
+                )
+                if isinstance(batch_result, dict)
+                else batch_result
+            )
+            for batch_result in batch_results
+        ]  # batch inserts performed by onlinefs
+        self._feature_group = feature_group
 
     @classmethod
-    def from_response_json(cls, json_dict: Dict[str, Any]) -> "OnlineIngestion":
+    def from_response_json(
+        cls, json_dict: Dict[str, Any], feature_group: fg_mod.FeatureGroup = None
+    ) -> OnlineIngestion:
         if json_dict is None:
             return None
 
         json_decamelized: dict = humps.decamelize(json_dict)
 
         if "count" not in json_decamelized:
-            return cls(**json_decamelized)
+            return cls(**json_decamelized, feature_group=feature_group)
         elif json_decamelized["count"] == 1:
-            return cls(**json_decamelized["items"][0])
+            return cls(**json_decamelized["items"][0], feature_group=feature_group)
         elif json_decamelized["count"] > 1:
-            return [cls(**item) for item in json_decamelized["items"]]
+            return [
+                cls(**item, feature_group=feature_group)
+                for item in json_decamelized["items"]
+            ]
         else:
             return None
 
@@ -70,22 +97,18 @@ class OnlineIngestion:
         from hsfs.core.online_ingestion_api import OnlineIngestionApi
 
         online_ingestion = OnlineIngestionApi().get_online_ingestion(
-            self.feature_group,
-            query_params={"filter_by": f"ID:{self.id}"}
+            self.feature_group, query_params={"filter_by": f"ID:{self.id}"}
         )
         self.__dict__.update(online_ingestion.__dict__)
 
     def to_dict(self):
-        return {
-            "id": self._id,
-            "numEntries": self._num_entries
-        }
+        return {"id": self._id, "numEntries": self._num_entries}
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
     @property
-    def id(self) -> int:
+    def id(self) -> Optional[int]:
         return self._id
 
     @property
@@ -93,19 +116,11 @@ class OnlineIngestion:
         return self._num_entries
 
     @num_entries.setter
-    def num_entries(self, num_entries: str) -> None:
+    def num_entries(self, num_entries: int) -> None:
         self._num_entries = num_entries
 
     @property
-    def feature_group(self):
-        return self._feature_group
-
-    @feature_group.setter
-    def feature_group(self, feature_group) -> None:
-        self._feature_group = feature_group
-
-    @property
-    def current_offsets(self) -> str:
+    def current_offsets(self) -> Optional[str]:
         return self._current_offsets
 
     @property
@@ -121,8 +136,14 @@ class OnlineIngestion:
         return 0 if self._aborted_entries is None else self._aborted_entries
 
     @property
-    def batch_results(self):
+    def batch_results(
+        self,
+    ) -> List[online_ingestion_batch_result.OnlineIngestionBatchResult]:
         return self._batch_results
+
+    @property
+    def feature_group(self) -> fg_mod.FeatureGroup:
+        return self._feature_group
 
     def wait_for_completion(self, options: Dict[str, Any] = None):
         if options is None:
@@ -132,10 +153,12 @@ class OnlineIngestion:
         timeout_delta = timedelta(seconds=options.get("timeout", 60))
         timeout_time = datetime.now() + timeout_delta
 
-        with tqdm(total=self.num_entries,
-                  bar_format="{desc}: {percentage:.2f}% |{bar}| Rows {n_fmt}/{total_fmt}",
-                  desc="Online data ingestion progress",
-                  mininterval=1) as progress_bar:
+        with tqdm(
+            total=self.num_entries,
+            bar_format="{desc}: {percentage:.2f}% |{bar}| Rows {n_fmt}/{total_fmt}",
+            desc="Online data ingestion progress",
+            mininterval=1,
+        ) as progress_bar:
             while True:
                 if self.aborted_entries:
                     progress_bar.colour = "RED"

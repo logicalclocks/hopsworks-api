@@ -3522,7 +3522,7 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch(
             "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
-            return_value= online_ingestion.OnlineIngestion(id=123),
+            return_value=online_ingestion.OnlineIngestion(id=123),
         )
 
         python_engine = python.Engine()
@@ -3586,7 +3586,7 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch(
             "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
-            return_value= online_ingestion.OnlineIngestion(id=123),
+            return_value=online_ingestion.OnlineIngestion(id=123),
         )
 
         python_engine = python.Engine()
@@ -3646,7 +3646,7 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch(
             "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
-            return_value= online_ingestion.OnlineIngestion(id=123),
+            return_value=online_ingestion.OnlineIngestion(id=123),
         )
 
         python_engine = python.Engine()
@@ -3709,7 +3709,7 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch(
             "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
-            return_value= online_ingestion.OnlineIngestion(id=123),
+            return_value=online_ingestion.OnlineIngestion(id=123),
         )
 
         python_engine = python.Engine()
