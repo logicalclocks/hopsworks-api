@@ -523,7 +523,7 @@ class Engine:
                 "wait_for_online_ingestion", False
             ):
                 feature_group.get_latest_online_ingestion().wait_for_completion(
-                    options=offline_write_options.get("online_ingestion_options", {})
+                    options=write_options.get("online_ingestion_options", {})
                 )
 
         return query
@@ -586,7 +586,7 @@ class Engine:
             "wait_for_online_ingestion", False
         ):
             feature_group.get_latest_online_ingestion().wait_for_completion(
-                options=offline_write_options.get("online_ingestion_options", {})
+                options=write_options.get("online_ingestion_options", {})
             )
 
     def _get_headers(
