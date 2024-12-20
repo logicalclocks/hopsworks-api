@@ -33,7 +33,7 @@ from hsfs import (
 from hsfs.client import exceptions
 from hsfs.constructor import query
 from hsfs.constructor.hudi_feature_group_alias import HudiFeatureGroupAlias
-from hsfs.core import inode, job
+from hsfs.core import inode, job, online_ingestion
 from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
 from hsfs.engine import python
 from hsfs.expectation_suite import ExpectationSuite
@@ -3520,6 +3520,10 @@ class TestPython:
 
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
 
         python_engine = python.Engine()
 
@@ -3533,6 +3537,8 @@ class TestPython:
             stream=False,
             time_travel_format="HUDI",
         )
+        fg.feature_store = mocker.Mock()
+        fg.feature_store.project_id = 234
 
         mocker.patch.object(fg, "commit_details", return_value={"commit1": 1})
 
@@ -3578,6 +3584,10 @@ class TestPython:
 
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
 
         python_engine = python.Engine()
 
@@ -3591,6 +3601,8 @@ class TestPython:
             stream=False,
             time_travel_format="HUDI",
         )
+        fg.feature_store = mocker.Mock()
+        fg.feature_store.project_id = 234
 
         mocker.patch.object(fg, "commit_details", return_value={"commit1": 1})
 
@@ -3632,6 +3644,10 @@ class TestPython:
 
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
 
         python_engine = python.Engine()
 
@@ -3645,6 +3661,8 @@ class TestPython:
             stream=False,
             time_travel_format="HUDI",
         )
+        fg.feature_store = mocker.Mock()
+        fg.feature_store.project_id = 234
 
         mocker.patch.object(fg, "commit_details", return_value={"commit1": 1})
 
@@ -3689,6 +3707,10 @@ class TestPython:
 
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
 
         python_engine = python.Engine()
 
@@ -3702,6 +3724,8 @@ class TestPython:
             stream=False,
             time_travel_format="HUDI",
         )
+        fg.feature_store = mocker.Mock()
+        fg.feature_store.project_id = 234
 
         mocker.patch.object(fg, "commit_details", return_value={"commit1": 1})
 

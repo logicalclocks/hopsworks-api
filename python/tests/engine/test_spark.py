@@ -34,7 +34,7 @@ from hsfs import (
 )
 from hsfs.client import exceptions
 from hsfs.constructor import hudi_feature_group_alias, query
-from hsfs.core import training_dataset_engine
+from hsfs.core import online_ingestion, training_dataset_engine
 from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
 from hsfs.engine import spark
 from hsfs.hopsworks_udf import udf
@@ -873,6 +873,10 @@ class TestSpark:
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
@@ -894,10 +898,13 @@ class TestSpark:
 
         mock_common_client_get_instance.return_value._project_name = "test_project_name"
 
+        df = pd.DataFrame(data={"col_0": [1, 2], "col_1": ["test_1", "test_2"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
         # Act
         spark_engine.save_stream_dataframe(
             feature_group=fg,
-            dataframe=None,
+            dataframe=spark_df,
             query_name=None,
             output_mode="test_mode",
             await_termination=None,
@@ -993,6 +1000,10 @@ class TestSpark:
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
@@ -1012,10 +1023,13 @@ class TestSpark:
 
         mock_common_client_get_instance.return_value._project_name = "test_project_name"
 
+        df = pd.DataFrame(data={"col_0": [1, 2], "col_1": ["test_1", "test_2"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
         # Act
         spark_engine.save_stream_dataframe(
             feature_group=fg,
-            dataframe=None,
+            dataframe=spark_df,
             query_name="test_query_name",
             output_mode="test_mode",
             await_termination=None,
@@ -1117,6 +1131,10 @@ class TestSpark:
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
@@ -1138,10 +1156,13 @@ class TestSpark:
 
         mock_common_client_get_instance.return_value._project_name = "test_project_name"
 
+        df = pd.DataFrame(data={"col_0": [1, 2], "col_1": ["test_1", "test_2"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
         # Act
         spark_engine.save_stream_dataframe(
             feature_group=fg,
-            dataframe=None,
+            dataframe=spark_df,
             query_name=None,
             output_mode="test_mode",
             await_termination=None,
@@ -1237,6 +1258,10 @@ class TestSpark:
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
@@ -1258,10 +1283,13 @@ class TestSpark:
 
         mock_common_client_get_instance.return_value._project_name = "test_project_name"
 
+        df = pd.DataFrame(data={"col_0": [1, 2], "col_1": ["test_1", "test_2"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
         # Act
         spark_engine.save_stream_dataframe(
             feature_group=fg,
-            dataframe=None,
+            dataframe=spark_df,
             query_name=None,
             output_mode="test_mode",
             await_termination=True,
@@ -1494,6 +1522,10 @@ class TestSpark:
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
@@ -1511,10 +1543,13 @@ class TestSpark:
         )
         fg.feature_store = mocker.Mock()
 
+        df = pd.DataFrame(data={"col_0": [1, 2], "col_1": ["test_1", "test_2"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
         # Act
         spark_engine._save_online_dataframe(
             feature_group=fg,
-            dataframe=None,
+            dataframe=spark_df,
             write_options={"test_name": "test_value"},
         )
 
