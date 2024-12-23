@@ -277,7 +277,7 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
     offset_location = entity.prepare_spark_location() + "/kafka_offsets"
     try:
         if initial_check_point_string:
-            starting_offset_string = json.dumps(_build_starting_offsets(initial_check_point_string))
+            starting_offset_string = json.dumps(_build_offsets(initial_check_point_string))
         else:
             starting_offset_string = spark.read.json(offset_location).toJSON().first()
     except Exception as e:
@@ -289,7 +289,7 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
             offline_write_options={},
             high=False,
         )
-        starting_offset_string = json.dumps(_build_starting_offsets(initial_check_point_string))
+        starting_offset_string = json.dumps(_build_offsets(initial_check_point_string))
     print(f"startingOffsets: {starting_offset_string}")
 
     # get ending offsets
@@ -299,7 +299,7 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
         offline_write_options={},
         high=True,
     )
-    ending_offset_string = json.dumps(_build_starting_offsets(ending_offset_string))
+    ending_offset_string = json.dumps(_build_offsets(ending_offset_string))
     print(f"endingOffsets: {ending_offset_string}")
 
     # read kafka topic
@@ -351,7 +351,7 @@ def update_table_schema_fg(spark: SparkSession, job_conf: Dict[Any, Any]) -> Non
     entity.stream = False
     engine.get_instance().update_table_schema(entity)
 
-def _build_starting_offsets(initial_check_point_string: str):
+def _build_offsets(initial_check_point_string: str):
     if not initial_check_point_string:
         return ""
 
