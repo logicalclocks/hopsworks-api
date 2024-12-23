@@ -50,7 +50,7 @@ class OnlineIngestion:
         batch_results: Union[
             List[online_ingestion_batch_result.OnlineIngestionBatchResult],
             List[Dict[str, Any]],
-        ] = [],
+        ] = None,
         feature_group: fg_mod.FeatureGroup = None,
         **kwargs,
     ):
@@ -69,7 +69,7 @@ class OnlineIngestion:
                 else batch_result
             )
             for batch_result in batch_results
-        ]  # batch inserts performed by onlinefs
+        ] if batch_results else []  # batch inserts performed by onlinefs
         self._feature_group = feature_group
 
     @classmethod
