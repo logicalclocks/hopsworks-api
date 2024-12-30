@@ -32,13 +32,11 @@ class OnlineIngestionBatchResult:
         id: Optional[int] = None,
         batch_size: int = None,
         status: str = None,
-        info: Optional[str] = None,
         **kwargs,
     ):
         self._id = id
         self._batch_size = batch_size
         self._status = status
-        self._info = info
 
     @classmethod
     def from_response_json(
@@ -63,7 +61,6 @@ class OnlineIngestionBatchResult:
             "id": self._id,
             "batchSize": self._batch_size,
             "status": self._status,
-            "info": self._info,
         }
 
     def json(self):
@@ -80,7 +77,3 @@ class OnlineIngestionBatchResult:
     @property
     def status(self) -> str:
         return self._status
-
-    @property
-    def info(self) -> Optional[str]:
-        return self._info

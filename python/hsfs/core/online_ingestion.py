@@ -28,9 +28,10 @@ from typing import (
 )
 
 import humps
-from hopsworks_common import util
+from hopsworks_common import client, util
 from hsfs import feature_group as fg_mod
 from hsfs.core import online_ingestion_batch_result
+from hsfs.core.opensearch import OpenSearchClientSingleton
 from tqdm.auto import tqdm
 
 
@@ -60,16 +61,20 @@ class OnlineIngestion:
         self._processed_entries = processed_entries
         self._inserted_entries = inserted_entries
         self._aborted_entries = aborted_entries
-        self._batch_results = [
-            (
-                online_ingestion_batch_result.OnlineIngestionBatchResult.from_response_json(
-                    batch_result
+        self._batch_results = (
+            [
+                (
+                    online_ingestion_batch_result.OnlineIngestionBatchResult.from_response_json(
+                        batch_result
+                    )
+                    if isinstance(batch_result, dict)
+                    else batch_result
                 )
-                if isinstance(batch_result, dict)
-                else batch_result
-            )
-            for batch_result in batch_results
-        ] if batch_results else []  # batch inserts performed by onlinefs
+                for batch_result in batch_results
+            ]
+            if batch_results
+            else []
+        )  # batch inserts performed by onlinefs
         self._feature_group = feature_group
 
     @classmethod
@@ -179,3 +184,33 @@ class OnlineIngestion:
                 time.sleep(options.get("period", 1))
 
                 self.refresh()
+
+    def print_logs(self, priority: str = "error", size: int = 20):
+        open_search_client = OpenSearchClientSingleton()
+
+        response = open_search_client.search(
+            body={
+                "query": {
+                    "bool": {
+                        "must": [
+                            {
+                                "match": {
+                                    "log_arguments.feature_group_id": f"{self.feature_group.id}"
+                                }
+                            },
+                            {
+                                "match": {
+                                    "log_arguments.online_ingestion_id": f"{self.id}"
+                                }
+                            },
+                            {"match": {"priority": priority}},
+                        ]
+                    }
+                },
+                "size": size,
+            },
+            index=f"onlinefs_{client.get_instance()._project_id}-*",
+        )
+
+        for hit in response["hits"]["hits"]:
+            print(hit["_source"]["error"]["data"])
