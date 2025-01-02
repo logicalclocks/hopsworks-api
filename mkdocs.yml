@@ -14,9 +14,8 @@ nav:
   - Tutorials: https://docs.hopsworks.ai/
   - Concepts: https://docs.hopsworks.ai/
   - Guides: https://docs.hopsworks.ai/
-  - Setup and Installation: https://docs.hopsworks.ai/
-  - Administration: https://docs.hopsworks.ai/
-  - API<div class="dropdown"><button class="dropbtn"> API </button> <div id="myDropdown" class="dropdown-content"> <a id="hopsworks_api_link" href="https://docs.hopsworks.ai/hopsworks-api/latest">Python API</a> <a id="hsfs_javadoc_link" href="https://docs.hopsworks.ai/hopsworks-api/latest/javadoc">Feature Store JavaDoc</a> </div></div>:
+  - Setup and Administration: https://docs.hopsworks.ai/
+  - API<div class="dropdown"><button class="dropbtn"> API </button> <div id="myDropdown" class="dropdown-content"> <a id="hopsworks_api_link" href="https://docs.hopsworks.ai/hopsworks-api/latest">Hopsworks API</a> <a id="hsfs_javadoc_link" href="https://docs.hopsworks.ai/hopsworks-api/latest/javadoc">Feature Store JavaDoc</a> </div></div>:
     - Platform API:
       - Login: generated/api/login.md
       - Connection: generated/api/connection.md
