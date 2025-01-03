@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import humps
 from hopsworks_common import util
@@ -29,7 +29,7 @@ class OnlineIngestionBatchResult:
 
     def __init__(
         self,
-        id: Optional[int] = None,
+        id: str = None,
         batch_size: int = None,
         status: str = None,
         **kwargs,
@@ -67,7 +67,7 @@ class OnlineIngestionBatchResult:
         return json.dumps(self, cls=util.Encoder)
 
     @property
-    def id(self) -> Optional[int]:
+    def id(self) -> str:
         return self._id
 
     @property
