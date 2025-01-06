@@ -34,7 +34,7 @@ public class OnlineIngestion {
 
   @Getter
   @Setter
-  private long numEntries;
+  private Long numEntries;
 
   @Getter
   @Setter
