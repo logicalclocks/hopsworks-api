@@ -43,7 +43,7 @@ class OnlineIngestion:
     def __init__(
         self,
         id: Optional[int] = None,
-        num_entries: int = None,
+        num_entries: Optional[int] = None,
         current_offsets: Optional[str] = None,
         processed_entries: Optional[int] = None,
         inserted_entries: Optional[int] = None,
@@ -56,7 +56,7 @@ class OnlineIngestion:
         **kwargs,
     ):
         self._id = id
-        self._num_entries = num_entries  # specified when inserting
+        self._num_entries = num_entries  # specified when inserting (optional since might not be specified when using streaming)
         self._current_offsets = current_offsets
         self._processed_entries = processed_entries
         self._inserted_entries = inserted_entries
@@ -117,7 +117,7 @@ class OnlineIngestion:
         return self._id
 
     @property
-    def num_entries(self) -> int:
+    def num_entries(self) -> Optional[int]:
         return self._num_entries
 
     @num_entries.setter
@@ -171,7 +171,7 @@ class OnlineIngestion:
                 progress_bar.n = self.processed_entries
                 progress_bar.refresh()
 
-                if self.processed_entries >= self.num_entries:
+                if self.num_entries and self.processed_entries >= self.num_entries:
                     break
 
                 if datetime.now() >= timeout_time:

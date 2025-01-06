@@ -592,13 +592,13 @@ class Engine:
     def _get_headers(
         self,
         feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
-        dataframe: Union[RDD, DataFrame],
+        dataframe: Optional[Union[RDD, DataFrame]] = None,
     ) -> array:
         return array(
             *[
                 struct(lit(key).alias("key"), lit(value).alias("value"))
                 for key, value in kafka_engine.get_headers(
-                    feature_group, dataframe.count()
+                    feature_group, dataframe.count() if dataframe else None
                 ).items()
             ]
         )

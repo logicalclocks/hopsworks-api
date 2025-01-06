@@ -71,7 +71,7 @@ def init_kafka_consumer(
 def init_kafka_resources(
     feature_group: Union[FeatureGroup, ExternalFeatureGroup],
     offline_write_options: Dict[str, Any],
-    num_entries: int,
+    num_entries: Optional[int] = None,
 ) -> Tuple[
     Producer, Dict[str, bytes], Dict[str, Callable[..., bytes]], Callable[..., bytes] :
 ]:
@@ -97,7 +97,7 @@ def init_kafka_resources(
 def _init_kafka_resources(
     feature_group: Union[FeatureGroup, ExternalFeatureGroup],
     offline_write_options: Dict[str, Any],
-    num_entries: int,
+    num_entries: Optional[int] = None,
 ) -> Tuple[
     Producer, Dict[str, bytes], Dict[str, Callable[..., bytes]], Callable[..., bytes] :
 ]:
@@ -118,7 +118,7 @@ def _init_kafka_resources(
 
 def get_headers(
     feature_group: Union[FeatureGroup, ExternalFeatureGroup],
-    num_entries: int,
+    num_entries: Optional[int] = None,
 ) -> Dict[str, bytes]:
     # setup online ingestion
     online_ingestion_instance = online_ingestion.OnlineIngestion(
