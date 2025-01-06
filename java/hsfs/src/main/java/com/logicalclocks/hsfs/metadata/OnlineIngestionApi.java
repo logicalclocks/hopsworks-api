@@ -29,6 +29,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.List;
 
 public class OnlineIngestionApi {
 
@@ -55,10 +56,12 @@ public class OnlineIngestionApi {
 
     LOGGER.info("Sending metadata request: " + uri);
 
-    return hopsworksClient.handleRequest(postRequest, OnlineIngestion.class);
+    onlineIngestion = hopsworksClient.handleRequest(postRequest, OnlineIngestion.class);
+    onlineIngestion.setFeatureGroup(featureGroup);
+    return onlineIngestion;
   }
 
-  public OnlineIngestion getOnlineIngestion(FeatureGroupBase featureGroup, String queryParameters)
+  public List<OnlineIngestion> getOnlineIngestion(FeatureGroupBase featureGroup, String queryParameters)
       throws FeatureStoreException, IOException {
     HopsworksClient hopsworksClient = HopsworksClient.getInstance();
     String pathTemplate = HopsworksClient.PROJECT_PATH
@@ -74,6 +77,10 @@ public class OnlineIngestionApi {
 
     LOGGER.info("Sending metadata request: " + uri);
 
-    return hopsworksClient.handleRequest(new HttpGet(uri), OnlineIngestion.class);
+    OnlineIngestion onlineIngestion = hopsworksClient.handleRequest(new HttpGet(uri), OnlineIngestion.class);
+    for (OnlineIngestion ingestion : onlineIngestion.getItems()) {
+      ingestion.setFeatureGroup(featureGroup);
+    }
+    return onlineIngestion.getItems();
   }
 }

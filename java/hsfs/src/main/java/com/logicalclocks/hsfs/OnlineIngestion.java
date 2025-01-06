@@ -17,7 +17,14 @@
 
 package com.logicalclocks.hsfs;
 
+import java.io.IOException;
 import java.util.List;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.logicalclocks.hsfs.metadata.OnlineIngestionApi;
+import com.logicalclocks.hsfs.metadata.RestDto;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -26,7 +33,9 @@ import lombok.Setter;
 
 @NoArgsConstructor
 @AllArgsConstructor
-public class OnlineIngestion {
+public class OnlineIngestion extends RestDto<OnlineIngestion> {
+
+  protected static final Logger LOGGER = LoggerFactory.getLogger(OnlineIngestion.class);
 
   @Getter
   @Setter
@@ -64,8 +73,45 @@ public class OnlineIngestion {
     this.numEntries = numEntries;
   }
 
-  public void waitForCompletion() {
+  public void refresh() throws FeatureStoreException, IOException {
+    OnlineIngestion onlineIngestion = new OnlineIngestionApi()
+        .getOnlineIngestion(featureGroup, "filter_by=ID:" + id).get(0);
 
+    // Method to copy data from another object
+    this.id = onlineIngestion.id;
+    this.numEntries = onlineIngestion.numEntries;
+    this.currentOffsets = onlineIngestion.currentOffsets;
+    this.processedEntries = onlineIngestion.processedEntries;
+    this.insertedEntries = onlineIngestion.insertedEntries;
+    this.abortedEntries = onlineIngestion.abortedEntries;
+    this.batchResults = onlineIngestion.batchResults;
+    this.featureGroup = onlineIngestion.featureGroup;
+  }
+
+  public void waitForCompletion(int timeout, int period)
+      throws InterruptedException, FeatureStoreException, IOException {
+    long startTime = System.currentTimeMillis();
+
+    // Convert to milliseconds
+    timeout = timeout * 1000;
+    period = period * 1000;
+
+    while (true) {
+      refresh();
+      if (numEntries != null && processedEntries >= numEntries) {
+        break;
+      }
+
+      // Check if the timeout has been reached
+      if (System.currentTimeMillis() - startTime > timeout) {
+        LOGGER.warn("Timeout of " + timeout
+            + " was exceeded while waiting for online ingestion completion.");
+        break;
+      }
+      
+      // Sleep for the specified period in seconds
+      Thread.sleep(period);
+    }
   }
 
 }
