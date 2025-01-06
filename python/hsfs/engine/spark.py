@@ -495,7 +495,7 @@ class Engine:
 
         query = (
             serialized_df.withColumn(
-                "headers", self._get_headers(feature_group, dataframe)
+                "headers", self._get_headers(feature_group)
             )
             .writeStream.outputMode(output_mode)
             .format(self.KAFKA_FORMAT)
@@ -573,7 +573,7 @@ class Engine:
 
         (
             serialized_df.withColumn(
-                "headers", self._get_headers(feature_group, dataframe)
+                "headers", self._get_headers(feature_group, dataframe.count())
             )
             .write.format(self.KAFKA_FORMAT)
             .options(**write_options)
@@ -592,13 +592,13 @@ class Engine:
     def _get_headers(
         self,
         feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
-        dataframe: Optional[Union[RDD, DataFrame]] = None,
+        num_entries: Optional[int] = None,
     ) -> array:
         return array(
             *[
                 struct(lit(key).alias("key"), lit(value).alias("value"))
                 for key, value in kafka_engine.get_headers(
-                    feature_group, dataframe.count() if dataframe else None
+                    feature_group, num_entries
                 ).items()
             ]
         )

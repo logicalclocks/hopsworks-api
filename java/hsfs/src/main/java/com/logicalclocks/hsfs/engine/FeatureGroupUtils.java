@@ -20,11 +20,13 @@ package com.logicalclocks.hsfs.engine;
 import com.logicalclocks.hsfs.metadata.FeatureGroupApi;
 import com.logicalclocks.hsfs.metadata.HopsworksClient;
 import com.logicalclocks.hsfs.metadata.KafkaApi;
+import com.logicalclocks.hsfs.metadata.OnlineIngestionApi;
 import com.logicalclocks.hsfs.metadata.Subject;
 import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.FeatureGroupCommit;
 import com.logicalclocks.hsfs.FeatureStoreException;
+import com.logicalclocks.hsfs.OnlineIngestion;
 
 import lombok.SneakyThrows;
 import org.apache.avro.Schema;
@@ -34,6 +36,7 @@ import scala.collection.JavaConverters;
 import scala.collection.Seq;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -246,5 +249,22 @@ public class FeatureGroupUtils {
       return "HIVEDB";
     }
     return "DATASET";
+  }
+
+  public static Map<String, byte[]> getHeaders(FeatureGroupBase featureGroup, Long numEntries)
+      throws FeatureStoreException, IOException {
+    Map<String, byte[]> headerMap = new HashMap<>();
+    OnlineIngestion onlineIngestion = new OnlineIngestionApi()
+        .createOnlineIngestion(featureGroup, new OnlineIngestion(numEntries));
+
+    headerMap.put("projectId",
+        String.valueOf(featureGroup.getFeatureStore().getProjectId()).getBytes(StandardCharsets.UTF_8));
+    headerMap.put("featureGroupId", String.valueOf(featureGroup.getId()).getBytes(StandardCharsets.UTF_8));
+    headerMap.put("subjectId",
+        String.valueOf(featureGroup.getSubject().getId()).getBytes(StandardCharsets.UTF_8));
+    headerMap.put("onlineIngestionId",
+        String.valueOf(onlineIngestion.getId()).getBytes(StandardCharsets.UTF_8));
+
+    return headerMap;
   }
 }
