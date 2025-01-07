@@ -171,16 +171,19 @@ class OnlineIngestion:
                 progress_bar.n = self.processed_entries
                 progress_bar.refresh()
 
+                # Check if the online ingestion is complete
                 if self.num_entries and self.processed_entries >= self.num_entries:
                     break
 
-                if datetime.now() >= timeout_time:
+                # Check if the timeout has been reached (if timeout is 0 we will wait indefinitely)
+                if timeout_delta != timedelta(0) and datetime.now() >= timeout_time:
                     warnings.warn(
                         f"Timeout of {timeout_delta} was exceeded while waiting for online ingestion completion.",
                         stacklevel=1,
                     )
                     break
 
+                # Sleep for the specified period in seconds
                 time.sleep(options.get("period", 1))
 
                 self.refresh()

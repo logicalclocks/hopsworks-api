@@ -98,12 +98,14 @@ public class OnlineIngestion extends RestDto<OnlineIngestion> {
 
     while (true) {
       refresh();
+
+      // Check if the online ingestion is complete
       if (numEntries != null && processedEntries >= numEntries) {
         break;
       }
 
-      // Check if the timeout has been reached
-      if (System.currentTimeMillis() - startTime > timeout) {
+      // Check if the timeout has been reached (if timeout is 0 we will wait indefinitely)
+      if (timeout != 0 && System.currentTimeMillis() - startTime > timeout) {
         LOGGER.warn("Timeout of " + timeout
             + " was exceeded while waiting for online ingestion completion.");
         break;
