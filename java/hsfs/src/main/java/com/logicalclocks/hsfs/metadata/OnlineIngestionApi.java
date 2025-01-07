@@ -35,7 +35,7 @@ public class OnlineIngestionApi {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(OnlineIngestionApi.class);
 
-  public static final String ONLINE_INGESTION_PATH = "/featuregroups/{fgId}/online_ingestion{?queryParameters}";
+  public static final String ONLINE_INGESTION_PATH = "/featuregroups/{fgId}/online_ingestion";
 
   public OnlineIngestion createOnlineIngestion(FeatureGroupBase featureGroup, OnlineIngestion onlineIngestion)
       throws FeatureStoreException, IOException {
@@ -72,10 +72,10 @@ public class OnlineIngestionApi {
         .set("projectId", hopsworksClient.getProject().getProjectId())
         .set("fsId", featureGroup.getFeatureStore().getId())
         .set("fgId", featureGroup.getId())
-        .set("queryParameters", queryParameters)
-        .expand();
+        .expand() + "?" + queryParameters;
 
     LOGGER.info("Sending metadata request: " + uri);
+    System.out.println(uri);
 
     OnlineIngestion onlineIngestion = hopsworksClient.handleRequest(new HttpGet(uri), OnlineIngestion.class);
     for (OnlineIngestion ingestion : onlineIngestion.getItems()) {
