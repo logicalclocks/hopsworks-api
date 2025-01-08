@@ -431,7 +431,7 @@ class TestArrowFlightClient:
             "connectors": {
                 "test.tpch1snowflake_1": {
                     "time_travel_type": None,
-                    "type": 'SNOWFLAKE',
+                    "type": "SNOWFLAKE",
                     "options": {
                         "user": "test_user",
                         "account": "test_url",

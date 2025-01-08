@@ -100,28 +100,26 @@ class DatasetApi:
         # Build the path to download the file on the local fs and return to the user, it should be absolute for consistency
         # Download in CWD if local_path not specified
         if local_path is None:
-            local_path = os.path.join(os.getcwd(), os.path.basename(path))
+            local_path = os.getcwd()
         # If local_path specified, ensure it is absolute
-        else:
-            if os.path.isabs(local_path):
-                local_path = os.path.join(local_path, os.path.basename(path))
-            else:
-                local_path = os.path.join(
-                    os.getcwd(), local_path, os.path.basename(path)
-                )
+        elif not os.path.isabs(local_path):
+            local_path = os.path.join(os.getcwd(), local_path)
 
-        if os.path.exists(local_path):
-            if overwrite:
-                if os.path.isfile:
-                    os.remove(local_path)
-                else:
-                    shutil.rmtree(local_path)
-            else:
-                raise IOError(
-                    "{} already exists, set overwrite=True to overwrite it".format(
-                        local_path
-                    )
+        # If local_path is a directory, download into the directory
+        if os.path.isdir(local_path):
+            local_path = os.path.join(local_path, os.path.basename(path))
+
+        if overwrite:
+            if os.path.isfile(local_path):
+                os.remove(local_path)
+            elif os.path.isdir(local_path):
+                shutil.rmtree(local_path)
+        elif os.path.exists(local_path):
+            raise IOError(
+                "{} already exists, set overwrite=True to overwrite it".format(
+                    local_path
                 )
+            )
 
         file_size = int(self._get(path)["attributes"]["size"])
         with _client._send_request(
@@ -208,8 +206,10 @@ class DatasetApi:
 
         if self.exists(destination_path):
             if overwrite:
-                if 'datasetType' in self._get(destination_path):
-                    raise DatasetException("overwrite=True not supported on a top-level dataset")
+                if "datasetType" in self._get(destination_path):
+                    raise DatasetException(
+                        "overwrite=True not supported on a top-level dataset"
+                    )
                 else:
                     self.remove(destination_path)
             else:
@@ -240,7 +240,14 @@ class DatasetApi:
                     # uploading files in the same folder is done concurrently
                     futures = [
                         executor.submit(
-                            self._upload_file, f_name, root + os.sep + f_name, remote_base_path, chunk_size, simultaneous_chunks, max_chunk_retries, chunk_retry_interval
+                            self._upload_file,
+                            f_name,
+                            root + os.sep + f_name,
+                            remote_base_path,
+                            chunk_size,
+                            simultaneous_chunks,
+                            max_chunk_retries,
+                            chunk_retry_interval,
                         )
                         for f_name in files
                     ]
@@ -252,13 +259,28 @@ class DatasetApi:
                     except Exception as e:
                         raise e
         else:
-            self._upload_file(file_name, local_path, upload_path, chunk_size, simultaneous_chunks, max_chunk_retries, chunk_retry_interval)
+            self._upload_file(
+                file_name,
+                local_path,
+                upload_path,
+                chunk_size,
+                simultaneous_chunks,
+                max_chunk_retries,
+                chunk_retry_interval,
+            )
 
         return upload_path + "/" + os.path.basename(local_path)
 
-
-    def _upload_file(self, file_name, local_path, upload_path, chunk_size, simultaneous_chunks, max_chunk_retries, chunk_retry_interval):
-
+    def _upload_file(
+        self,
+        file_name,
+        local_path,
+        upload_path,
+        chunk_size,
+        simultaneous_chunks,
+        max_chunk_retries,
+        chunk_retry_interval,
+    ):
         file_size = os.path.getsize(local_path)
 
         num_chunks = math.ceil(file_size / chunk_size)
@@ -508,8 +530,10 @@ class DatasetApi:
         """
         if self.exists(destination_path):
             if overwrite:
-                if 'datasetType' in self._get(destination_path):
-                    raise DatasetException("overwrite=True not supported on a top-level dataset")
+                if "datasetType" in self._get(destination_path):
+                    raise DatasetException(
+                        "overwrite=True not supported on a top-level dataset"
+                    )
                 else:
                     self.remove(destination_path)
             else:
@@ -551,8 +575,10 @@ class DatasetApi:
         """
         if self.exists(destination_path):
             if overwrite:
-                if 'datasetType' in self._get(destination_path):
-                    raise DatasetException("overwrite=True not supported on a top-level dataset")
+                if "datasetType" in self._get(destination_path):
+                    raise DatasetException(
+                        "overwrite=True not supported on a top-level dataset"
+                    )
                 else:
                     self.remove(destination_path)
             else:

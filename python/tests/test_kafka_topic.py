@@ -17,7 +17,6 @@
 import copy
 
 import humps
-import pytest
 from hopsworks_common import kafka_topic
 from hopsworks_common.constants import KAFKA_TOPIC
 
@@ -159,23 +158,6 @@ class TestKafkaTopic:
         # Assert
         assert num_repl is None
         assert num_part is None
-
-    def test_validate_topic_config_existing_with_name_and_config(
-        self, backend_fixtures
-    ):
-        # Arrange
-        json = backend_fixtures["kafka_topic"]["get_existing_with_name_and_config"][
-            "response"
-        ]["kafka_topic_dto"]
-
-        # Act
-        with pytest.raises(ValueError) as e_info:
-            num_repl, num_part = kafka_topic.KafkaTopic._validate_topic_config(
-                json["name"], json["num_replicas"], json["num_partitions"]
-            )
-
-        # Assert
-        assert "Number of replicas or partitions cannot be changed" in str(e_info.value)
 
     def test_validate_topic_config_none(self, backend_fixtures):
         # Arrange

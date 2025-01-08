@@ -21,7 +21,6 @@ import os
 
 class HdfsApi:
     def __init__(self):
-
         import fsspec.implementations.arrow as pfs
 
         host, port = os.environ["LIBHDFS_DEFAULT_FS"].split(":")
