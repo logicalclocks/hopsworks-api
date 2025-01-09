@@ -193,6 +193,7 @@ class Model:
         artifact_version: Optional[str] = ARTIFACT_VERSION.CREATE,
         serving_tool: Optional[str] = None,
         script_file: Optional[str] = None,
+        config_file: Optional[str] = None,
         resources: Optional[Union[PredictorResources, dict]] = None,
         inference_logger: Optional[Union[InferenceLogger, dict]] = None,
         inference_batcher: Optional[Union[InferenceBatcher, dict]] = None,
@@ -224,6 +225,7 @@ class Model:
             or `MODEL-ONLY` to reuse the shared artifact containing only the model files.
             serving_tool: Serving tool used to deploy the model server.
             script_file: Path to a custom predictor script implementing the Predict class.
+            config_file: Server configuration file to be passed to the model deployment.
             resources: Resources to be allocated for the predictor.
             inference_logger: Inference logger configuration.
             inference_batcher: Inference batcher configuration.
@@ -245,6 +247,7 @@ class Model:
             artifact_version=artifact_version,
             serving_tool=serving_tool,
             script_file=script_file,
+            config_file=config_file,
             resources=resources,
             inference_logger=inference_logger,
             inference_batcher=inference_batcher,
