@@ -45,9 +45,9 @@ class OnlineIngestion:
         id: Optional[int] = None,
         num_entries: Optional[int] = None,
         current_offsets: Optional[str] = None,
-        processed_entries: Optional[int] = None,
-        inserted_entries: Optional[int] = None,
-        aborted_entries: Optional[int] = None,
+        rows_upserted: Optional[int] = None,
+        rows_failed: Optional[int] = None,
+        rows_ignored: Optional[int] = None,
         batch_results: Union[
             List[online_ingestion_batch_result.OnlineIngestionBatchResult],
             List[Dict[str, Any]],
@@ -58,9 +58,9 @@ class OnlineIngestion:
         self._id = id
         self._num_entries = num_entries  # specified when inserting (optional since might not be specified when using streaming)
         self._current_offsets = current_offsets
-        self._processed_entries = processed_entries
-        self._inserted_entries = inserted_entries
-        self._aborted_entries = aborted_entries
+        self._rows_upserted = rows_upserted
+        self._rows_failed = rows_failed
+        self._rows_ignored = rows_ignored
         self._batch_results = (
             [
                 (
@@ -129,16 +129,16 @@ class OnlineIngestion:
         return self._current_offsets
 
     @property
-    def processed_entries(self) -> int:
-        return 0 if self._processed_entries is None else self._processed_entries
+    def rows_upserted(self) -> int:
+        return 0 if self._rows_upserted is None else self._rows_upserted
 
     @property
-    def inserted_entries(self) -> int:
-        return 0 if self._inserted_entries is None else self._inserted_entries
+    def rows_failed(self) -> int:
+        return 0 if self._rows_failed is None else self._rows_failed
 
     @property
-    def aborted_entries(self) -> int:
-        return 0 if self._aborted_entries is None else self._aborted_entries
+    def rows_ignored(self) -> int:
+        return 0 if self._rows_ignored is None else self._rows_ignored
 
     @property
     def batch_results(
@@ -165,14 +165,17 @@ class OnlineIngestion:
             mininterval=1,
         ) as progress_bar:
             while True:
-                if self.aborted_entries:
-                    progress_bar.colour = "RED"
+                # Get total number of rows processed
+                rows_processed = self.rows_upserted + self.rows_failed + self.rows_ignored
 
-                progress_bar.n = self.processed_entries
+                # Update progress bar
+                if self.rows_failed or self.rows_ignored:
+                    progress_bar.colour = "RED"
+                progress_bar.n = rows_processed
                 progress_bar.refresh()
 
                 # Check if the online ingestion is complete
-                if self.num_entries and self.processed_entries >= self.num_entries:
+                if self.num_entries and rows_processed >= self.num_entries:
                     break
 
                 # Check if the timeout has been reached (if timeout is 0 we will wait indefinitely)

@@ -6,9 +6,9 @@
         {
           "id": 1,
           "num_entries": 10,
-          "processed_entries": 8,
-          "inserted_entries": 6,
-          "aborted_entries": 2
+          "rows_upserted": 8,
+          "rows_failed": 6,
+          "rows_ignored": 2
         }
       ]
     }

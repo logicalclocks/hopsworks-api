@@ -51,15 +51,15 @@ public class OnlineIngestion extends RestDto<OnlineIngestion> {
 
   @Getter
   @Setter
-  private Integer processedEntries;
+  private Integer rowsUpserted;
 
   @Getter
   @Setter
-  private Integer insertedEntries;
+  private Integer rowsFailed;
 
   @Getter
   @Setter
-  private Integer abortedEntries;
+  private Integer rowsIgnored;
 
   @Getter
   @Setter
@@ -81,9 +81,9 @@ public class OnlineIngestion extends RestDto<OnlineIngestion> {
     this.id = onlineIngestion.id;
     this.numEntries = onlineIngestion.numEntries;
     this.currentOffsets = onlineIngestion.currentOffsets;
-    this.processedEntries = onlineIngestion.processedEntries;
-    this.insertedEntries = onlineIngestion.insertedEntries;
-    this.abortedEntries = onlineIngestion.abortedEntries;
+    this.rowsUpserted = onlineIngestion.rowsUpserted;
+    this.rowsFailed = onlineIngestion.rowsFailed;
+    this.rowsIgnored = onlineIngestion.rowsIgnored;
     this.batchResults = onlineIngestion.batchResults;
     this.featureGroup = onlineIngestion.featureGroup;
   }
@@ -97,10 +97,11 @@ public class OnlineIngestion extends RestDto<OnlineIngestion> {
     period = period * 1000;
 
     while (true) {
-      refresh();
+      // Get total number of rows processed
+      long rowsProcessed = rowsUpserted + rowsFailed + rowsIgnored;
 
       // Check if the online ingestion is complete
-      if (numEntries != null && processedEntries >= numEntries) {
+      if (numEntries != null && rowsProcessed >= numEntries) {
         break;
       }
 
@@ -113,6 +114,8 @@ public class OnlineIngestion extends RestDto<OnlineIngestion> {
       
       // Sleep for the specified period in seconds
       Thread.sleep(period);
+
+      refresh();
     }
   }
 
