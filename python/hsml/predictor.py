@@ -48,6 +48,7 @@ class Predictor(DeployableComponent):
         model_server: str,
         serving_tool: Optional[str] = None,
         script_file: Optional[str] = None,
+        config_file: Optional[str] = None,
         resources: Optional[Union[PredictorResources, dict, Default]] = None,  # base
         inference_logger: Optional[
             Union[InferenceLogger, dict, Default]
@@ -87,6 +88,7 @@ class Predictor(DeployableComponent):
         self._artifact_version = artifact_version
         self._serving_tool = serving_tool
         self._model_server = model_server
+        self._config_file = config_file
         self._id = id
         self._description = description
         self._created_at = created_at
@@ -167,12 +169,9 @@ class Predictor(DeployableComponent):
 
     @classmethod
     def _validate_script_file(cls, model_framework, script_file):
-        if script_file is None and (
-            model_framework == MODEL.FRAMEWORK_PYTHON
-            or model_framework == MODEL.FRAMEWORK_LLM
-        ):
+        if script_file is None and (model_framework == MODEL.FRAMEWORK_PYTHON):
             raise ValueError(
-                "Predictor scripts are required in deployments for custom Python models and LLMs."
+                "Predictor scripts are required in deployments for custom Python models."
             )
 
     @classmethod
@@ -273,6 +272,9 @@ class Predictor(DeployableComponent):
         kwargs["script_file"] = util.extract_field_from_json(
             json_decamelized, "predictor"
         )
+        kwargs["config_file"] = util.extract_field_from_json(
+            json_decamelized, "config_file"
+        )
         kwargs["resources"] = PredictorResources.from_json(json_decamelized)
         kwargs["inference_logger"] = InferenceLogger.from_json(json_decamelized)
         kwargs["inference_batcher"] = InferenceBatcher.from_json(json_decamelized)
@@ -311,6 +313,7 @@ class Predictor(DeployableComponent):
             "modelServer": self._model_server,
             "servingTool": self._serving_tool,
             "predictor": self._script_file,
+            "configFile": self._config_file,
             "apiProtocol": self._api_protocol,
             "projectNamespace": self._project_namespace,
         }
@@ -440,6 +443,16 @@ class Predictor(DeployableComponent):
     @script_file.setter
     def script_file(self, script_file: str):
         self._script_file = script_file
+        self._artifact_version = ARTIFACT_VERSION.CREATE
+
+    @property
+    def config_file(self):
+        """Server config file to be passed to the model deployment."""
+        return self._config_file
+
+    @config_file.setter
+    def config_file(self, config_file: str):
+        self._config_file = config_file
         self._artifact_version = ARTIFACT_VERSION.CREATE
 
     @property
