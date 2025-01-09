@@ -419,7 +419,4 @@ class ServingApi:
         ]
 
     def _get_istio_inference_path(self, deployment_instance):
-        if deployment_instance.model_server == "VLLM":
-            return ["openai", "v1", "completions"]
-
         return ["v1", "models", deployment_instance.name + ":predict"]
