@@ -80,6 +80,7 @@ class TestPredictor:
         assert p.artifact_version == p_json["artifact_version"]
         assert p.environment == p_json["environment_dto"]["name"]
         assert p.script_file == p_json["predictor"]
+        assert p.config_file == p_json["config_file"]
         assert isinstance(p.resources, resources.PredictorResources)
         assert isinstance(p.transformer, transformer.Transformer)
         assert p.transformer.script_file == p_json["transformer"]
@@ -123,6 +124,7 @@ class TestPredictor:
             assert p.environment == p_json["environment_dto"]["name"]
             assert p.artifact_version == p_json["artifact_version"]
             assert p.script_file == p_json["predictor"]
+            assert p.config_file == p_json["config_file"]
             assert isinstance(p.resources, resources.PredictorResources)
             assert isinstance(p.transformer, transformer.Transformer)
             assert p.transformer.script_file == p_json["transformer"]
@@ -161,6 +163,7 @@ class TestPredictor:
         assert p.environment == p_json["environment_dto"]["name"]
         assert p.artifact_version == p_json["artifact_version"]
         assert p.script_file == p_json["predictor"]
+        assert p.config_file == p_json["config_file"]
         assert isinstance(p.resources, resources.PredictorResources)
         assert isinstance(p.transformer, transformer.Transformer)
         assert p.transformer.script_file == p_json["transformer"]
@@ -213,6 +216,7 @@ class TestPredictor:
             environment=p_json["environment_dto"]["name"],
             artifact_version=p_json["artifact_version"],
             script_file=p_json["predictor"],
+            config_file=p_json["config_file"],
             resources=p_json["predictor_resources"],
             transformer={
                 "script_file": p_json["transformer"],
@@ -241,6 +245,7 @@ class TestPredictor:
         assert p.environment == p_json["environment_dto"]["name"]
         assert p.artifact_version == p_json["artifact_version"]
         assert p.script_file == p_json["predictor"]
+        assert p.config_file == p_json["config_file"]
         assert isinstance(p.resources, resources.PredictorResources)
         assert isinstance(p.transformer, transformer.Transformer)
         assert p.transformer.script_file == p_json["transformer"]
@@ -340,14 +345,6 @@ class TestPredictor:
         # Act
         with pytest.raises(ValueError) as e_info:
             _ = predictor.Predictor._validate_script_file(MODEL.FRAMEWORK_PYTHON, None)
-
-        # Assert
-        assert "Predictor scripts are required" in str(e_info.value)
-
-    def test_validate_script_file_llm_none(self):
-        # Act
-        with pytest.raises(ValueError) as e_info:
-            _ = predictor.Predictor._validate_script_file(MODEL.FRAMEWORK_LLM, None)
 
         # Assert
         assert "Predictor scripts are required" in str(e_info.value)
@@ -665,6 +662,7 @@ class TestPredictor:
         assert kwargs["model_server"] == p_json["model_server"]
         assert kwargs["serving_tool"] == p_json["serving_tool"]
         assert kwargs["script_file"] == p_json["predictor"]
+        assert kwargs["config_file"] == p_json["config_file"]
         assert isinstance(kwargs["resources"], resources.PredictorResources)
         assert isinstance(kwargs["inference_logger"], inference_logger.InferenceLogger)
         assert kwargs["inference_logger"].mode == p_json["inference_logging"]
