@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 
 from hopsworks_common import client, tag, usage
+from hopsworks_common.client.exceptions import RestAPIError
 
 
 class TagsApi:
@@ -95,12 +96,22 @@ class TagsApi:
         if name is not None:
             path_params.append(name)
 
-        return {
-            tag._name: json.loads(tag._value)
-            for tag in tag.Tag.from_response_json(
-                _client._send_request("GET", path_params)
-            )
-        }
+        try:
+            return {
+                tag._name: json.loads(tag._value)
+                for tag in tag.Tag.from_response_json(
+                    _client._send_request("GET", path_params)
+                )
+            }
+        # migrate to catch_not_found decorator later on
+        except RestAPIError as e:
+            if (
+                e.response.json().get("errorCode", "") == 370000
+                and e.response.status_code == 404
+            ):
+                return {}
+            else:
+                raise e
 
     @usage.method_logger
     def get_path(self, metadata_instance, training_dataset_version=None):

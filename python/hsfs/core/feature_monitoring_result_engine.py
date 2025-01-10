@@ -230,9 +230,7 @@ class FeatureMonitoringResultEngine:
         elif config_name is not None and isinstance(config_name, str):
             config = self._feature_monitoring_config_api.get_by_name(config_name)
             if not isinstance(config, fmc.FeatureMonitoringConfig):
-                raise ValueError(
-                    f"Feature monitoring configuration with name {config_name} does not exist."
-                )
+                return []
             config_id = config._id
         elif config_name is not None:
             raise TypeError(

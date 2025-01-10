@@ -17,7 +17,7 @@
 import json
 from typing import Union
 
-from hsml import client, model, tag
+from hsml import client, decorators, model, tag
 from hsml.core import explicit_provenance
 
 
@@ -199,7 +199,8 @@ class ModelApi:
         ]
         _client._send_request("DELETE", path_params)
 
-    def get_tags(self, model_instance, name: str = None):
+    @decorators.catch_not_found(["hopsworks_common.tag.Tag"], fallback_return={})
+    def get_tags(self, model_instance):
         """Get the tags.
 
         Gets all tags if no tag name is specified.
@@ -221,16 +222,41 @@ class ModelApi:
             model_instance.id,
             "tags",
         ]
-
-        if name is not None:
-            path_params.append(name)
-
         return {
             tag._name: json.loads(tag._value)
             for tag in tag.Tag.from_response_json(
                 _client._send_request("GET", path_params)
             )
         }
+
+    @decorators.catch_not_found(["hopsworks_common.tag.Tag"], fallback_return=None)
+    def get_tag(self, model_instance, name: str):
+        """Get the tag.
+
+        Gets the tag for a specific name
+
+        :param model_instance: model instance to get the tags from
+        :type model_instance: Model
+        :param name: tag name
+        :type name: str
+        :return: dict of tag name/value
+        :rtype: dict
+        """
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "modelregistries",
+            str(model_instance.model_registry_id),
+            "models",
+            model_instance.id,
+            "tags",
+            name,
+        ]
+
+        return tag.Tag.from_response_json(_client._send_request("GET", path_params))[
+            name
+        ]
 
     def get_feature_view_provenance(self, model_instance):
         """Get the parent feature view of this model, based on explicit provenance.
@@ -241,7 +267,10 @@ class ModelApi:
             model_instance: Metadata object of model.
 
         # Returns
-            `ExplicitProvenance.Links`:  the feature view used to generate this model
+            `Links`: the feature view used to generate this model or `None` if it does not exist.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`.
         """
         _client = client.get_instance()
         path_params = [
@@ -260,11 +289,13 @@ class ModelApi:
             "downstreamLvls": 0,
         }
         links_json = _client._send_request("GET", path_params, query_params)
-        return explicit_provenance.Links.from_response_json(
+        links = explicit_provenance.Links.from_response_json(
             links_json,
             explicit_provenance.Links.Direction.UPSTREAM,
             explicit_provenance.Links.Type.FEATURE_VIEW,
         )
+        if not links.is_empty():
+            return links
 
     def get_training_dataset_provenance(self, model_instance):
         """Get the parent training dataset of this model, based on explicit provenance.
@@ -275,7 +306,10 @@ class ModelApi:
             model_instance: Metadata object of model.
 
         # Returns
-            `ExplicitProvenance.Links`:  the training dataset used to generate this model
+            `Links`: the training dataset used to generate this model or `None` if it does not exist.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`.
         """
         _client = client.get_instance()
         path_params = [
@@ -294,8 +328,10 @@ class ModelApi:
             "downstreamLvls": 0,
         }
         links_json = _client._send_request("GET", path_params, query_params)
-        return explicit_provenance.Links.from_response_json(
+        links = explicit_provenance.Links.from_response_json(
             links_json,
             explicit_provenance.Links.Direction.UPSTREAM,
             explicit_provenance.Links.Type.TRAINING_DATASET,
         )
+        if not links.is_empty():
+            return links

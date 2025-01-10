@@ -19,9 +19,10 @@ from typing import Any, Dict, List, Optional, Union
 
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import RestAPIError
-from hsfs import feature_view, training_dataset
+from hsfs import decorators, feature_view, training_dataset
 from hsfs.constructor import query, serving_prepared_statement
 from hsfs.core import explicit_provenance, job, training_dataset_job_conf
+from hsfs.core.feature_logging import FeatureLogging
 from hsfs.core.job import Job
 
 
@@ -87,6 +88,7 @@ class FeatureViewApi:
             data=feature_view_obj.json(),
         )
 
+    @decorators.catch_not_found(["hsfs.feature_view.FeatureView"], fallback_return=[])
     def get_by_name(self, name: str) -> List[feature_view.FeatureView]:
         """
         Get a feature view from the backend using its name.
@@ -98,8 +100,8 @@ class FeatureViewApi:
             `List[FeatureView]`: A list that contains all version of the feature view.
 
         # Raises
-            `RestAPIError`: If the feature view cannot be found from the backend.
             `ValueError`: If the feature group associated with the feature view cannot be found.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         path = self._base_path + [name]
         try:
@@ -121,9 +123,10 @@ class FeatureViewApi:
             else:
                 raise e
 
+    @decorators.catch_not_found(["hsfs.feature_view.FeatureView"], fallback_return=None)
     def get_by_name_version(self, name: str, version: int) -> feature_view.FeatureView:
         """
-        Get a feature view form the backend using both name and version
+        Get a feature view from the backend using both name and version
 
         # Arguments
             name `str`: Name of feature view.
@@ -133,8 +136,8 @@ class FeatureViewApi:
             `FeatureView`
 
         # Raises
-            `RestAPIError`: If the feature view cannot be found from the backend.
             `ValueError`: If the feature group associated with the feature view cannot be found.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         path = self._base_path + [name, self._VERSION, version]
         try:
@@ -469,6 +472,9 @@ class FeatureViewApi:
             jobs.append(Job.from_response_json(jobs_json))
         return jobs
 
+    @decorators.catch_not_found(
+        ["hsfs.core.feature_logging.FeatureLogging"], fallback_return=None
+    )
     def get_feature_logging(
         self,
         feature_view_name: str,
@@ -481,7 +487,9 @@ class FeatureViewApi:
             feature_view_version,
             self._LOGGING,
         ]
-        return _client._send_request("GET", path_params, {})
+        return FeatureLogging.from_response_json(
+            _client._send_request("GET", path_params, {})
+        )
 
     def delete_feature_logs(
         self,

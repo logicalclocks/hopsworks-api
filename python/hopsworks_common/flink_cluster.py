@@ -22,6 +22,8 @@ from hopsworks_common.engine import execution_engine
 
 
 class FlinkCluster:
+    NOT_FOUND_ERROR_CODE = 130009
+
     def __init__(
         self,
         job,
@@ -83,7 +85,7 @@ class FlinkCluster:
         # Arguments
             await_time: defaults to 1800 seconds to account for auto-scale mechanisms.
         # Raises
-            `RestAPIError`: If unable to start the flink cluster.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         if self._count_ongoing_executions() > 0:
@@ -139,7 +141,7 @@ class FlinkCluster:
         # Returns
             `List[Dict]`: The array of dicts with flink job id and status of the job.
         # Raises
-            `RestAPIError`: If unable to get the jobs from the cluster
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         return self._flink_cluster_api._get_jobs(
@@ -168,7 +170,7 @@ class FlinkCluster:
         # Returns
             `Dict`: Dict with flink job id and status of the job.
         # Raises
-            `RestAPIError`: If unable to get the job from the cluster
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         return self._flink_cluster_api._get_job(
@@ -196,7 +198,7 @@ class FlinkCluster:
         # Arguments
             job_id: id of the job within this flink cluster.
         # Raises
-            `RestAPIError`: If unable to stop the job
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._flink_cluster_api._stop_job(
             self._get_execution(assert_running=True), job_id
@@ -220,7 +222,7 @@ class FlinkCluster:
         # Returns
             `List[Dict]`: The array of dicts with jar metadata.
         # Raises
-            `RestAPIError`: If unable to get jars from the flink cluster.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._flink_cluster_api._get_jars(
             self._get_execution(assert_running=True)
@@ -245,7 +247,7 @@ class FlinkCluster:
         # Arguments
             jar_file: path to the jar file.
         # Raises
-            `RestAPIError`: If unable to upload jar file
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         self._flink_cluster_api._upload_jar(
@@ -283,7 +285,7 @@ class FlinkCluster:
         # Returns
             `str`:  job id.
         # Raises
-            `RestAPIError`: If unable to submit the job.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         return self._flink_cluster_api._submit_job(
@@ -313,7 +315,7 @@ class FlinkCluster:
             `str`: status of the job. Possible states:  "INITIALIZING", "CREATED", "RUNNING", "FAILING", "FAILED",
             "CANCELLING", "CANCELED",  "FINISHED", "RESTARTING", "SUSPENDED", "RECONCILING".
         # Raises
-            `RestAPIError`: If unable to get the job state from the flink cluster.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         return self._flink_cluster_api._job_state(
@@ -338,7 +340,7 @@ class FlinkCluster:
         ```
 
         # Raises
-            `RestAPIError`: If unable to stop the flink cluster.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         exec = self._get_execution(assert_running=False)
         if exec is None or exec.success is not None:

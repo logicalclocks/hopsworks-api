@@ -20,7 +20,7 @@ import warnings
 from datetime import date, datetime
 from typing import List, Optional, Union
 
-from hsfs import engine, split_statistics, statistics, util
+from hsfs import decorators, engine, split_statistics, statistics, util
 from hsfs.client import exceptions
 from hsfs.core import job, statistics_api
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
@@ -248,6 +248,7 @@ class StatisticsEngine:
         )
         return self._save_statistics(stats, td_metadata_instance, feature_view_obj)
 
+    @decorators.catch_not_found(["hsfs.statistics.Statistics"], fallback_return=None)
     def get(
         self,
         metadata_instance,
@@ -269,24 +270,15 @@ class StatisticsEngine:
             Statistics. Statistics metadata containing a list of single feature descriptive statistics.
         """
         computation_timestamp = util.convert_event_time_to_timestamp(computation_time)
-        try:
-            return self._statistics_api.get(
-                metadata_instance,
-                feature_names=feature_names,
-                computation_time=computation_timestamp,
-                before_transformation=before_transformation,
-                training_dataset_version=training_dataset_version,
-            )
-        except exceptions.RestAPIError as e:
-            if (
-                # statistics not found
-                e.response.json().get("errorCode", "")
-                == exceptions.RestAPIError.FeatureStoreErrorCode.STATISTICS_NOT_FOUND
-                and e.response.status_code == 404
-            ):
-                return None
-            raise e
+        return self._statistics_api.get(
+            metadata_instance,
+            feature_names=feature_names,
+            computation_time=computation_timestamp,
+            before_transformation=before_transformation,
+            training_dataset_version=training_dataset_version,
+        )
 
+    @decorators.catch_not_found(["hsfs.statistics.Statistics"], fallback_return=None)
     def get_all(
         self,
         metadata_instance,
@@ -305,23 +297,17 @@ class StatisticsEngine:
         Returns:
             Statistics. Statistics metadata containing a list of single feature descriptive statistics.
         """
-        try:
-            return self._statistics_api.get_all(
-                metadata_instance,
-                feature_names=feature_names,
-                computation_time=computation_time,
-                training_dataset_version=training_dataset_version,
-            )
-        except exceptions.RestAPIError as e:
-            if (
-                # statistics not found
-                e.response.json().get("errorCode", "")
-                == exceptions.RestAPIError.FeatureStoreErrorCode.STATISTICS_NOT_FOUND
-                and e.response.status_code == 404
-            ):
-                return None
-            raise e
+        return self._statistics_api.get_all(
+            metadata_instance,
+            feature_names=feature_names,
+            computation_time=computation_time,
+            training_dataset_version=training_dataset_version,
+        )
 
+    @decorators.catch_not_found(
+        ["hsfs.statistics.Statistics", "hsfs.feature_group_commit.FeatureGroupCommit"],
+        fallback_return=None,
+    )
     def get_by_time_window(
         self,
         metadata_instance,
@@ -342,28 +328,13 @@ class StatisticsEngine:
         """
         start_commit_time = util.convert_event_time_to_timestamp(start_commit_time)
         end_commit_time = util.convert_event_time_to_timestamp(end_commit_time)
-        try:
-            return self._statistics_api.get(
-                metadata_instance,
-                start_commit_time=start_commit_time,
-                end_commit_time=end_commit_time,
-                feature_names=feature_names,
-                row_percentage=row_percentage,
-            )
-        except exceptions.RestAPIError as e:
-            if (
-                # statistics not found
-                e.response.json().get("errorCode", "")
-                == exceptions.RestAPIError.FeatureStoreErrorCode.STATISTICS_NOT_FOUND
-                and e.response.status_code == 404
-            ) or (
-                # commits not found
-                e.response.json().get("errorCode", "")
-                == exceptions.RestAPIError.FeatureStoreErrorCode.FEATURE_GROUP_COMMIT_NOT_FOUND
-                and e.response.status_code == 400
-            ):
-                return None
-            raise e
+        return self._statistics_api.get(
+            metadata_instance,
+            start_commit_time=start_commit_time,
+            end_commit_time=end_commit_time,
+            feature_names=feature_names,
+            row_percentage=row_percentage,
+        )
 
     def _profile_transformation_fn_statistics(
         self, feature_dataframe, columns, label_encoder_features

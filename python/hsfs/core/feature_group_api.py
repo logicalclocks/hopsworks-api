@@ -19,8 +19,8 @@ import warnings
 from typing import List, Optional, Union
 
 from hopsworks_common import client
+from hsfs import decorators, feature_group_commit, util
 from hsfs import feature_group as fg_mod
-from hsfs import feature_group_commit, util
 from hsfs.core import (
     explicit_provenance,
     ingestion_job,
@@ -72,6 +72,45 @@ class FeatureGroupApi:
         )
         return feature_group_object
 
+    @decorators.catch_not_found(
+        ["hsfs.feature_group.FeatureGroupBase"], fallback_return=[]
+    )
+    def _get_feature_group_by_name(self, feature_store_id: int, name: str):
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            feature_store_id,
+            "featuregroups",
+            name,
+        ]
+        query_params = {
+            "expand": ["features", "expectationsuite", "transformationfunctions"]
+        }
+        return _client._send_request("GET", path_params, query_params)
+
+    @decorators.catch_not_found(
+        ["hsfs.feature_group.FeatureGroupBase"], fallback_return=None
+    )
+    def _get_feature_group_by_version(
+        self, feature_store_id: int, name: str, version: int
+    ):
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            feature_store_id,
+            "featuregroups",
+            name,
+        ]
+        query_params = {
+            "expand": ["features", "expectationsuite", "transformationfunctions"],
+            "version": version,
+        }
+        return _client._send_request("GET", path_params, query_params)
+
     def get(
         self, feature_store_id: int, name: str, version: Optional[int]
     ) -> Union[
@@ -94,25 +133,20 @@ class FeatureGroupApi:
         :return: feature group metadata object
         :rtype: FeatureGroup, SpineGroup, ExternalFeatureGroup, List[FeatureGroup], List[SpineGroup], List[ExternalFeatureGroup]
         """
-        _client = client.get_instance()
-        path_params = [
-            "project",
-            _client._project_id,
-            "featurestores",
-            feature_store_id,
-            "featuregroups",
-            name,
-        ]
-        query_params = {
-            "expand": ["features", "expectationsuite", "transformationfunctions"]
-        }
-        if version is not None:
-            query_params["version"] = version
+        if version:
+            fgs_json = self._get_feature_group_by_version(
+                feature_store_id, name, version
+            )
+        else:
+            fgs_json = self._get_feature_group_by_name(feature_store_id, name)
+
+        if not fgs_json:
+            return fgs_json
 
         fg_objs = []
         # In principle unique names are enforced across fg type and this should therefore
         # return only list of the same type. But it cost nothing to check in case this gets forgotten.
-        for fg_json in _client._send_request("GET", path_params, query_params):
+        for fg_json in fgs_json:
             if (
                 fg_json["type"] == FeatureGroupApi.BACKEND_FG_STREAM
                 or fg_json["type"] == FeatureGroupApi.BACKEND_FG_BATCH
@@ -145,6 +179,9 @@ class FeatureGroupApi:
                 self._check_features(fg_obj)
             return fg_objs
 
+    @decorators.catch_not_found(
+        ["hsfs.feature_group.FeatureGroupBase"], fallback_return=None
+    )
     def get_by_id(
         self, feature_store_id: int, feature_group_id: int
     ) -> Union[

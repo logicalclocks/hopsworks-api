@@ -16,9 +16,9 @@
 
 import getpass
 import json
+from typing import List, Optional
 
-from hopsworks_common import client, secret, util
-from hopsworks_common.client.exceptions import RestAPIError
+from hopsworks_common import client, decorators, secret
 from hopsworks_common.core import project_api
 
 
@@ -28,13 +28,13 @@ class SecretsApi:
     ):
         self._project_api = project_api.ProjectApi()
 
-    def get_secrets(self):
+    def get_secrets(self) -> List[secret.Secret]:
         """Get all secrets
 
         # Returns
             `List[Secret]`: List of all accessible secrets
         # Raises
-            `RestAPIError`: If unable to get the secrets
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = [
@@ -45,16 +45,19 @@ class SecretsApi:
             _client._send_request("GET", path_params)
         )
 
-    def get_secret(self, name: str, owner: str = None) -> secret.Secret:
+    @decorators.catch_not_found(
+        ["hopsworks_common.secret.Secret"], fallback_return=None
+    )
+    def get_secret(self, name: str, owner: str = None) -> Optional[secret.Secret]:
         """Get a secret.
 
         # Arguments
             name: Name of the secret.
             owner: username of the owner for a secret shared with the current project. Users can find their username in the Account Settings > Profile section.
         # Returns
-            `Secret`: The Secret object
+            `Secret`: The Secret object or `None` if it does not exist.
         # Raises
-            `RestAPIError`: If unable to get the secret
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         query_params = None
@@ -86,22 +89,16 @@ class SecretsApi:
         # Returns
             `str`: The secret value
         # Raises
-            `RestAPIError`: If unable to get the secret
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        try:
-            return self.get_secret(name=name, owner=owner).value
-        except RestAPIError as e:
-            if (
-                e.response.json().get("errorCode", "") == 160048
-                and e.response.status_code == 404
-                and util.is_interactive()
-            ):
-                secret_input = getpass.getpass(
-                    prompt="\nCould not find secret, enter value here to create it: "
-                )
-                return self.create_secret(name, secret_input).value
-            else:
-                raise e
+        secret_obj = self.get_secret(name=name, owner=owner)
+        if secret_obj:
+            return secret_obj.value
+        else:
+            secret_input = getpass.getpass(
+                prompt="\nCould not find secret, enter value here to create it: "
+            )
+        return self.create_secret(name, secret_input).value
 
     def create_secret(
         self, name: str, value: str, project: str = None
@@ -126,7 +123,7 @@ class SecretsApi:
         # Returns
             `Secret`: The Secret object
         # Raises
-            `RestAPIError`: If unable to create the secret
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
 

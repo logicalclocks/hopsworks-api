@@ -114,6 +114,7 @@ _logger = logging.getLogger(__name__)
 @typechecked
 class FeatureView:
     ENTITY_TYPE = "featureview"
+    NOT_FOUND_ERROR_CODE = 270181
 
     def __init__(
         self,
@@ -233,7 +234,7 @@ class FeatureView:
             feature view **and** related training dataset **and** materialized data in HopsFS.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         warnings.warn(
             "All jobs associated to feature view `{}`, version `{}` will be removed.".format(
@@ -274,7 +275,7 @@ class FeatureView:
             feature_view_version: str. Version of feature view.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if not isinstance(feature_store_id, int):
             raise ValueError("`feature_store_id` should be an integer.")
@@ -304,7 +305,7 @@ class FeatureView:
             `FeatureView` Updated feature view.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine.update(self)
 
@@ -622,7 +623,7 @@ class FeatureView:
             ordered according to positions of this features in the feature view query.
 
         # Raises
-            `Exception`. When primary key entry cannot be found in one or more of the feature groups used by this
+            `hopsworks.client.exceptions.FeatureStoreException`: When primary key entry cannot be found in one or more of the feature groups used by this
                 feature view.
         """
         if not self._vector_server._serving_initialized:
@@ -744,7 +745,7 @@ class FeatureView:
             keys, ordered according to positions of this features in the feature view query.
 
         # Raises
-            `Exception`. When primary key entry cannot be found in one or more of the feature groups used by this
+            `hopsworks.client.exceptions.FeatureStoreException`: When primary key entry cannot be found in one or more of the feature groups used by this
                 feature view.
         """
         if not self._vector_server._serving_initialized:
@@ -807,7 +808,7 @@ class FeatureView:
             `pd.DataFrame`, `polars.DataFrame` or `dict`. Defaults to `pd.DataFrame`.
 
         # Raises
-            `Exception`. When primary key entry cannot be found in one or more of the feature groups used by this
+            `Exception`: When primary key entry cannot be found in one or more of the feature groups used by this
                 feature view.
         """
         if not self._vector_server._serving_initialized:
@@ -868,7 +869,7 @@ class FeatureView:
             keys, ordered according to positions of this features in the feature view query.
 
         # Raises
-            `Exception`. When primary key entry cannot be found in one or more of the feature groups used by this
+            `Exception`: When primary key entry cannot be found in one or more of the feature groups used by this
                 feature view.
         """
         if self._vector_server is None:
@@ -1081,11 +1082,11 @@ class FeatureView:
 
         # Returns
             `DataFrame`: The spark dataframe containing the feature data.
-            `pyspark.DataFrame`. A Spark DataFrame.
-            `pandas.DataFrame`. A Pandas DataFrame.
-            `polars.DataFrame`. A Polars DataFrame.
-            `numpy.ndarray`. A two-dimensional Numpy array.
-            `list`. A two-dimensional Python list.
+            `pyspark.DataFrame`: A Spark DataFrame.
+            `pandas.DataFrame`: A Pandas DataFrame.
+            `polars.DataFrame`: A Polars DataFrame.
+            `numpy.ndarray`: A two-dimensional Numpy array.
+            `list`: A two-dimensional Python list.
         """
         if not self._batch_scoring_server._serving_initialized:
             self.init_batch_scoring()
@@ -1130,11 +1131,11 @@ class FeatureView:
             value: Value of the tag to be added.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to add the tag.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine.add_tag(self, name, value)
 
-    def get_tag(self, name: str) -> "tag.Tag":
+    def get_tag(self, name: str) -> Optional[tag.Tag]:
         """Get the tags of a feature view.
 
         !!! example
@@ -1153,15 +1154,15 @@ class FeatureView:
             name: Name of the tag to get.
 
         # Returns
-            tag value
+            tag value or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to retrieve the tag.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine.get_tag(self, name)
 
-    def get_tags(self) -> List[tag.Tag]:
-        """Returns all tags attached to a training dataset.
+    def get_tags(self) -> Dict[str, tag.Tag]:
+        """Returns all tags attached to a feature view.
 
         !!! example
             ```python
@@ -1179,19 +1180,21 @@ class FeatureView:
             `Dict[str, obj]` of tags.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to retrieve the tags.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine.get_tags(self)
 
-    def get_parent_feature_groups(self) -> "explicit_provenance.Links":
+    def get_parent_feature_groups(self) -> Optional["explicit_provenance.Links"]:
         """Get the parents of this feature view, based on explicit provenance.
         Parents are feature groups or external feature groups. These feature
         groups can be accessible, deleted or inaccessible.
-        For deleted and inaccessible feature groups, only a minimal information is
+        For deleted and inaccessible feature groups, only minimal information is
         returned.
 
         # Returns
-            `ProvenanceLinks`: Object containing the section of provenance graph requested.
+            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine.get_parent_feature_groups(self)
 
@@ -1206,7 +1209,9 @@ class FeatureView:
             training_dataset_version: Filter generated models based on the used training dataset version.
 
         # Returns
-            `Model`: Newest Generated Model.
+            `Model`: Newest Generated Model or `None` if it does not exist.
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         models = self.get_models(training_dataset_version=training_dataset_version)
         models.sort(key=lambda model: model.created, reverse=True)
@@ -1223,11 +1228,17 @@ class FeatureView:
         # Arguments
             training_dataset_version: Filter generated models based on the used training dataset version.
         # Returns
-            `List[Model]: List of models.
+            `List[Model]`: List of models.
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        return self.get_models_provenance(
+        models = self.get_models_provenance(
             training_dataset_version=training_dataset_version
-        ).accessible
+        )
+        if models and models.accessible:
+            return models.accessible
+        else:
+            return []
 
     def get_models_provenance(
         self, training_dataset_version: Optional[int] = None
@@ -1242,7 +1253,10 @@ class FeatureView:
             training_dataset_version: Filter generated models based on the used training dataset version.
 
         # Returns
-            `ProvenanceLinks`: Object containing the section of provenance graph requested.
+            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine.get_models_provenance(
             self, training_dataset_version=training_dataset_version
@@ -1267,7 +1281,7 @@ class FeatureView:
             name: Name of the tag to be removed.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to delete the tag.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine.delete_tag(self, name)
 
@@ -1465,6 +1479,9 @@ class FeatureView:
             (td_version, `Job`): Tuple of training dataset version and job.
                 When using the `python` engine, it returns the Hopsworks Job
                 that was launched to create the training dataset.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         td = training_dataset.TrainingDataset(
             name=self.name,
@@ -1735,6 +1752,8 @@ class FeatureView:
             (td_version, `Job`): Tuple of training dataset version and job.
                 When using the `python` engine, it returns the Hopsworks Job
                 that was launched to create the training dataset.
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         self._validate_train_test_split(
@@ -2001,6 +2020,9 @@ class FeatureView:
             (td_version, `Job`): Tuple of training dataset version and job.
                 When using the `python` engine, it returns the Hopsworks Job
                 that was launched to create the training dataset.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         self._validate_train_validation_test_split(
@@ -2117,6 +2139,8 @@ class FeatureView:
         # Returns
             `Job`: When using the `python` engine, it returns the Hopsworks Job
                 that was launched to create the training dataset.
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         td, td_job = self._feature_view_engine.recreate_training_dataset(
             self,
@@ -2943,7 +2967,7 @@ class FeatureView:
             `List[TrainingDatasetBase]` List of training datasets metadata.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to retrieve the training datasets metadata.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine.get_training_datasets(self)
 
@@ -3014,7 +3038,7 @@ class FeatureView:
             value: Value of the tag to be added.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to add the tag.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine.add_tag(
             self, name, value, training_dataset_version=training_dataset_version
@@ -3023,7 +3047,7 @@ class FeatureView:
     @usage.method_logger
     def get_training_dataset_tag(
         self, training_dataset_version: int, name: str
-    ) -> "tag.Tag":
+    ) -> Optional[tag.Tag]:
         """Get the tags of a training dataset.
 
         !!! example
@@ -3046,10 +3070,10 @@ class FeatureView:
             name: Name of the tag to get.
 
         # Returns
-            tag value
+            tag value or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to retrieve the tag.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine.get_tag(
             self, name, training_dataset_version=training_dataset_version
@@ -3058,7 +3082,7 @@ class FeatureView:
     @usage.method_logger
     def get_training_dataset_tags(
         self, training_dataset_version: int
-    ) -> Dict[str, "tag.Tag"]:
+    ) -> Dict[str, tag.Tag]:
         """Returns all tags attached to a training dataset.
 
         !!! example
@@ -3079,7 +3103,7 @@ class FeatureView:
             `Dict[str, obj]` of tags.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to retrieve the tags.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine.get_tags(
             self, training_dataset_version=training_dataset_version
@@ -3111,7 +3135,7 @@ class FeatureView:
             name: Name of the tag to be removed.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to delete the tag.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine.delete_tag(
             self, name, training_dataset_version=training_dataset_version
@@ -3137,7 +3161,7 @@ class FeatureView:
             training_dataset_version: Version of the training dataset to be removed.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to delete the training dataset.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if self._last_accessed_training_dataset == training_dataset_version:
             self.update_last_accessed_training_dataset(None)
@@ -3162,7 +3186,7 @@ class FeatureView:
             ```
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to delete the training datasets.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if self._last_accessed_training_dataset is not None:
             self.update_last_accessed_training_dataset(None)
@@ -3190,7 +3214,7 @@ class FeatureView:
             training_dataset_version: Version of the training dataset to be removed.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to delete the training dataset.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if self._last_accessed_training_dataset == training_dataset_version:
             self.update_last_accessed_training_dataset(None)
@@ -3215,7 +3239,7 @@ class FeatureView:
             ```
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to delete the training datasets.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if self._last_accessed_training_dataset is not None:
             self.update_last_accessed_training_dataset(None)
@@ -3256,10 +3280,10 @@ class FeatureView:
             config_id: If provided, fetch only the feature monitoring config with the given id.
                 Defaults to None.
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
-            `hsfs.client.exceptions.FeatureStoreException`.
-            ValueError: if both name and feature_name are provided.
-            TypeError: if name or feature_name are not string or None.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If the feature view is not registered in Hopsworks
+            `ValueError`: if both name and feature_name are provided.
+            `TypeError`: if name or feature_name are not string or None.
         # Return
             Union[`FeatureMonitoringConfig`, List[`FeatureMonitoringConfig`], None]
                 A list of feature monitoring configs. If name provided,
@@ -3315,10 +3339,10 @@ class FeatureView:
             with_statistics: Whether to include statistics in the feature monitoring history.
                 Defaults to True. If False, only metadata about the monitoring will be fetched.
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
-            `hsfs.client.exceptions.FeatureStoreException`.
-            ValueError: if both config_name and config_id are provided.
-            TypeError: if config_name or config_id are not respectively string, int or None.
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+            `hopsworks.client.exceptions.FeatureStoreException`: If the feature view is not registered in Hopsworks
+            `ValueError`: if both config_name and config_id are provided.
+            `TypeError`: if config_name or config_id are not respectively string, int or None.
         # Return
             List[`FeatureMonitoringResult`]
                 A list of feature monitoring results containing the monitoring metadata
@@ -3378,7 +3402,7 @@ class FeatureView:
                 must be in UTC and follow the Quartz specification. Default is '0 0 12 ? * * *',
                 every day at 12pm UTC.
         # Raises
-            `hsfs.client.exceptions.FeatureStoreException`.
+            `hopsworks.client.exceptions.FeatureStoreException`: If the feature view is not registered in Hopsworks
         # Return
             `FeatureMonitoringConfig` Configuration with minimal information about the feature monitoring.
                 Additional information are required before feature monitoring is enabled.
@@ -3443,7 +3467,7 @@ class FeatureView:
                 must be in UTC and follow the Quartz specification. Default is '0 0 12 ? * * *',
                 every day at 12pm UTC.
         # Raises
-            `hsfs.client.exceptions.FeatureStoreException`.
+            `hopsworks.client.exceptions.FeatureStoreException`: If the feature view is not registered in Hopsworks
         # Return
             `FeatureMonitoringConfig` Configuration with minimal information about the feature monitoring.
                 Additional information are required before feature monitoring is enabled.
@@ -3634,9 +3658,8 @@ class FeatureView:
             # enable logging
             feature_view.enable_logging()
             ```
-
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to enable feature logging.
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
         fv = self._feature_view_engine.enable_feature_logging(self)
         self._feature_logging = self._feature_view_engine.get_feature_logging(fv)
@@ -3690,7 +3713,7 @@ class FeatureView:
             ```
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to log features.
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to log features.
         """
         if not self.logging_enabled:
             warnings.warn(
@@ -3739,7 +3762,7 @@ class FeatureView:
             is `Dict[str, str]` with key value pairs of date committed on, number of rows updated, inserted and deleted.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to retrieve the log timeline.
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the log timeline.
         """
         return self._feature_view_engine.get_log_timeline(
             self, wallclock_time, limit, transformed
@@ -3791,7 +3814,7 @@ class FeatureView:
             `polars.DataFrame`. A Polars DataFrame.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to read the log entries.
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to read the log entries.
         """
         return self._feature_view_engine.read_feature_logs(
             self,
@@ -3813,7 +3836,7 @@ class FeatureView:
             ```
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to pause feature logging.
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to pause feature logging.
         """
         self._feature_view_engine.pause_logging(self)
 
@@ -3827,7 +3850,7 @@ class FeatureView:
             ```
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to pause feature logging.
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to pause feature logging.
         """
         self._feature_view_engine.resume_logging(self)
 
@@ -3851,7 +3874,7 @@ class FeatureView:
 
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to materialize the log.
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to materialize the log.
         """
         return self._feature_view_engine.materialize_feature_logs(
             self, wait, transformed
@@ -3870,7 +3893,7 @@ class FeatureView:
             ```
 
          # Raises
-             `hsfs.client.exceptions.RestAPIError` in case the backend fails to delete the log.
+             `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to delete the log.
         """
         if self.feature_logging is not None:
             self._feature_view_engine.delete_feature_logs(
@@ -3944,9 +3967,6 @@ class FeatureView:
 
         # Returns
             `List[training_dataset_feature.TrainingDatasetFeature]`: List of training dataset features objects.
-
-        # Raises
-            `ValueError` if the  training dataset version provided cannot be found.
         """
         return self._feature_view_engine.get_training_dataset_schema(
             self, training_dataset_version
