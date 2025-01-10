@@ -216,7 +216,7 @@ class Execution:
         !!! danger "Potentially dangerous operation"
             This operation deletes the execution.
         # Raises
-            `RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._execution_api._delete(self._job.name, self.id)
 
@@ -226,7 +226,7 @@ class Execution:
         !!! danger "Potentially dangerous operation"
             This operation stops the execution.
         # Raises
-            `RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._execution_api._stop(self.job_name, self.id)
 
@@ -238,7 +238,7 @@ class Execution:
             timeout: the maximum waiting time in seconds, if `None` the waiting time is unbounded; defaults to `None`. Note: the actual waiting time may be bigger by approximately 3 seconds.
 
         # Raises
-            `RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         x = self._execution_engine.wait_until_finished(self._job, self, timeout)
         if x.final_status == "KILLED":

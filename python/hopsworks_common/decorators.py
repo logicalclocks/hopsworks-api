@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import functools
 import os
+import importlib
 
 from hopsworks_common.core.constants import (
     HAS_CONFLUENT_KAFKA,
@@ -27,6 +28,8 @@ from hopsworks_common.core.constants import (
     great_expectations_not_installed_message,
     polars_not_installed_message,
 )
+
+from hopsworks.client.exceptions import RestAPIError
 
 
 def not_connected(fn):
@@ -47,6 +50,33 @@ def connected(fn):
         return fn(inst, *args, **kwargs)
 
     return if_connected
+
+def catch_not_found(class_import_path_list, fallback_return=None, fallback_exception=None):
+    def decorator(f):
+        @functools.wraps(f)
+        def g(*args, **kwds):
+            not_found_error_codes = []
+            for class_import_path in class_import_path_list:
+                class_index = class_import_path.rfind(".")
+                module_path = class_import_path[:class_index]
+                module = importlib.import_module(module_path)
+                object_class = getattr(module, class_import_path[class_index+1:])
+                not_found_error_codes.append(object_class.NOT_FOUND_ERROR_CODE)
+            try:
+                print("exec")
+                return f(*args, **kwds)
+            except RestAPIError as e:
+                print("catching")
+                if e.response.status_code in [400, 404] and e.response.json().get("errorCode", "") in not_found_error_codes:
+                    print("we in")
+                    if fallback_exception:
+                        raise fallback_exception
+                    else:
+                        return fallback_return
+                else:
+                    raise e
+        return g
+    return decorator
 
 
 class HopsworksConnectionError(Exception):

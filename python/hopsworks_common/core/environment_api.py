@@ -17,9 +17,8 @@
 import json
 from typing import List, Optional
 
-from hopsworks_common import client, environment, usage
+from hopsworks_common import client, environment, usage, decorators
 from hopsworks_common.engine import environment_engine
-
 
 class EnvironmentApi:
     def __init__(self):
@@ -54,7 +53,7 @@ class EnvironmentApi:
         # Returns
             `Environment`: The Environment object
         # Raises
-            `RestAPIError`: If unable to create the environment
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
 
@@ -83,8 +82,23 @@ class EnvironmentApi:
 
     @usage.method_logger
     def get_environments(self) -> List[environment.Environment]:
-        """
-        Get all available python environments in the project
+        """Get all available environments in the project.
+
+        ```python
+
+        import hopsworks
+
+        project = hopsworks.login()
+
+        env_api = project.get_environment_api()
+
+        envs = env_api.get_environments()
+
+        ```
+        # Returns
+            `List[Environment]`: List of Environment objects
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
 
@@ -98,8 +112,9 @@ class EnvironmentApi:
         )
 
     @usage.method_logger
-    def get_environment(self, name: str) -> environment.Environment:
-        """Get handle for the Python environment for the project
+    @decorators.catch_not_found(["hopsworks_common.environment.Environment"], fallback_return=None)
+    def get_environment(self, name: str) -> Optional[environment.Environment]:
+        """Get handle for a Python environment in the project
 
         ```python
 
@@ -115,9 +130,9 @@ class EnvironmentApi:
         # Arguments
             name: name of the environment
         # Returns
-            `Environment`: The Environment object
+            `Environment`: The Environment object or `None` if it does not exist.
         # Raises
-            `RestAPIError`: If unable to get the environment
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
 
@@ -129,6 +144,7 @@ class EnvironmentApi:
                 "GET", path_params, query_params=query_params, headers=headers
             )
         )
+
 
     def _delete(self, name):
         """Delete the Python environment.

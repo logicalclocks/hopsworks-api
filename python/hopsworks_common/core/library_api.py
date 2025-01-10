@@ -30,7 +30,7 @@ class LibraryApi:
         # Returns
             `Library`: The library object
         # Raises
-            `RestAPIError`: If unable to install library
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         _client = client.get_instance()

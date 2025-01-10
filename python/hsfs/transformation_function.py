@@ -40,6 +40,7 @@ class TransformationType(Enum):
 
 @typechecked
 class TransformationFunction:
+    NOT_FOUND_ERROR_CODE = 270160
     """
     DTO class for transformation functions.
 
@@ -148,7 +149,7 @@ class TransformationFunction:
         # Returns
             `HopsworksUdf`: Meta data class for the user defined function.
         # Raises
-            `FeatureStoreException: If the provided number of features do not match the number of arguments in the defined UDF or if the provided feature names are not strings.
+            `hopsworks.client.exceptions.FeatureStoreException`: If the provided number of features do not match the number of arguments in the defined UDF or if the provided feature names are not strings.
         """
         # Deep copy so that the same transformation function can be used to create multiple new transformation function with different features.
         transformation = copy.deepcopy(self)
@@ -276,7 +277,7 @@ class TransformationFunction:
         Function that returns validates if the defined transformation function can be used for the specified UDF type.
 
         # Raises
-            `hsfs.client.exceptions.FeatureStoreException` : If the UDF Type is None or if statistics or multiple columns has been output by a on-demand transformation function
+            `hopsworks.client.exceptions.FeatureStoreException` : If the UDF Type is None or if statistics or multiple columns has been output by a on-demand transformation function
         """
 
         if transformation_type == TransformationType.ON_DEMAND:

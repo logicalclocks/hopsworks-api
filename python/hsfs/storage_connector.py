@@ -51,6 +51,7 @@ class StorageConnector(ABC):
     KAFKA = "KAFKA"
     GCS = "GCS"
     BIGQUERY = "BIGQUERY"
+    NOT_FOUND_ERROR_CODE = 270042
 
     def __init__(
         self,
@@ -203,13 +204,14 @@ class StorageConnector(ABC):
         For inaccessible feature groups, only a minimal information is returned.
 
         # Returns
-            `ExplicitProvenance.Links`: the feature groups generated using this
-            storage connector
+            `Links`: the feature groups generated using this storage connector or `None` if none were created
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
-        return self._storage_connector_api.get_feature_groups_provenance(self)
+        links = self._storage_connector_api.get_feature_groups_provenance(self)
+        if not links.is_empty():
+            return links
 
     def get_feature_groups(self):
         """Get the feature groups using this storage connector, based on explicit
@@ -221,15 +223,15 @@ class StorageConnector(ABC):
         """
         feature_groups_provenance = self.get_feature_groups_provenance()
 
-        if feature_groups_provenance.inaccessible or feature_groups_provenance.deleted:
+        if feature_groups_provenance and (feature_groups_provenance.inaccessible or feature_groups_provenance.deleted):
             _logger.info(
                 "There are deleted or inaccessible feature groups. For more details access `get_feature_groups_provenance`"
             )
 
-        if feature_groups_provenance.accessible:
+        if feature_groups_provenance and feature_groups_provenance.accessible:
             return feature_groups_provenance.accessible
         else:
-            return None
+            return []
 
 
 class HopsFSConnector(StorageConnector):

@@ -21,6 +21,7 @@ from hopsworks_common import client
 from hsfs import training_dataset
 from hsfs.constructor import fs_query, serving_prepared_statement
 from hsfs.core import job, training_dataset_job_conf
+from hsfs.client import exceptions
 
 
 class TrainingDatasetApi:
@@ -63,9 +64,20 @@ class TrainingDatasetApi:
             name,
         ]
         query_params = None if version is None else {"version": version}
-        td_list = training_dataset.TrainingDataset.from_response_json(
-            _client._send_request("GET", path_params, query_params),
-        )
+
+        try:
+            td_list = training_dataset.TrainingDataset.from_response_json(
+                _client._send_request("GET", path_params, query_params),
+            )
+        except exceptions.RestAPIError as e:
+            if e.response.json().get("errorCode", "") == exceptions.RestAPIError.FeatureStoreErrorCode.TRAINING_DATASET_NOT_FOUND and e.response.status_code == 404:
+                if version:
+                    return None
+                else:
+                    return []
+            else:
+                raise e
+
         if version is not None:
             return td_list[0]
         else:

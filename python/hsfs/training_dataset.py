@@ -635,7 +635,7 @@ class TrainingDataset(TrainingDatasetBase):
                 that was launched to create the training dataset.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: Unable to create training dataset metadata.
+            `hopsworks.client.exceptions.RestAPIError`: Unable to create training dataset metadata.
         """
         user_version = self._version
         user_stats_config = self._statistics_config
@@ -701,7 +701,7 @@ class TrainingDataset(TrainingDatasetBase):
                 that was launched to create the training dataset.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: Unable to create training dataset metadata.
+            `hopsworks.client.exceptions.RestAPIError`: Unable to create training dataset metadata.
         """
         # td_job is used only if the python engine is used
         td_job = self._training_dataset_engine.insert(
@@ -783,7 +783,7 @@ class TrainingDataset(TrainingDatasetBase):
             value: Value of the tag to be added.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to add the tag.
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to add the tag.
         """
         self._training_dataset_engine.add_tag(self, name, value)
 
@@ -794,7 +794,7 @@ class TrainingDataset(TrainingDatasetBase):
             name: Name of the tag to be removed.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to delete the tag.
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to delete the tag.
         """
         self._training_dataset_engine.delete_tag(self, name)
 
@@ -808,7 +808,7 @@ class TrainingDataset(TrainingDatasetBase):
             tag value
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to retrieve the tag.
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the tag.
         """
         return self._training_dataset_engine.get_tag(self, name)
 
@@ -819,7 +819,7 @@ class TrainingDataset(TrainingDatasetBase):
             `Dict[str, obj]` of tags.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to retrieve the tags.
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the tags.
         """
         return self._training_dataset_engine.get_tags(self)
 
@@ -833,7 +833,7 @@ class TrainingDataset(TrainingDatasetBase):
             `TrainingDataset`. The updated metadata object of the training dataset.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend encounters an issue
         """
         self._training_dataset_engine.update_statistics_config(self)
         return self
@@ -852,7 +852,7 @@ class TrainingDataset(TrainingDatasetBase):
             training dataset **and** and the materialized data in HopsFS.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`.
         """
         warnings.warn(
             "All jobs associated to training dataset `{}`, version `{}` will be removed.".format(

@@ -43,11 +43,19 @@ class FeatureGroupBaseEngine:
 
     def get_tag(self, feature_group, name):
         """Get tag with a certain name."""
-        return self._tags_api.get(feature_group, name)[name]
+        tag = self._tags_api.get(feature_group, name)
+        if tag:
+            return tag[name]
+        else:
+            return None
 
     def get_tags(self, feature_group):
         """Get all tags for a feature group."""
-        return self._tags_api.get(feature_group)
+        tags = self._tags_api.get(feature_group)
+        if tags:
+            return tags
+        else:
+            return {}
 
     def get_parent_feature_groups(self, feature_group):
         """Get the parents of this feature group, based on explicit provenance.
@@ -57,12 +65,14 @@ class FeatureGroupBaseEngine:
         returned.
 
         # Arguments
-            feature_group_instance: Metadata object of feature group.
+            feature_group: Metadata object of feature group.
 
         # Returns
-            `ProvenanceLinks`:  the feature groups used to generate this feature group
+            `Links`:  the feature groups used to generate this feature group
         """
-        return self._feature_group_api.get_parent_feature_groups(feature_group)
+        links = self._feature_group_api.get_parent_feature_groups(feature_group)
+        if not links.is_empty():
+            return links
 
     def get_storage_connector_provenance(self, feature_group):
         """Get the parents of this feature group, based on explicit provenance.
@@ -72,13 +82,14 @@ class FeatureGroupBaseEngine:
         returned.
 
         # Arguments
-            feature_group_instance: Metadata object of feature group.
+            feature_group: Metadata object of feature group.
 
         # Returns
-            `ExplicitProvenance.Links`: the storage connector used to generated this
-            feature group
+            `Links`: the storage connector used to generated this feature group
         """
-        return self._feature_group_api.get_storage_connector_provenance(feature_group)
+        links = self._feature_group_api.get_storage_connector_provenance(feature_group)
+        if not links.is_empty():
+            return links
 
     def get_generated_feature_views(self, feature_group):
         """Get the generated feature view using this feature group, based on explicit
@@ -88,12 +99,14 @@ class FeatureGroupBaseEngine:
         For inaccessible feature views, only a minimal information is returned.
 
         # Arguments
-            feature_group_instance: Metadata object of feature group.
+            feature_group: Metadata object of feature group.
 
         # Returns
-            `ProvenanceLinks`:  the feature views generated using this feature group
+            `Links`:  the feature views generated using this feature group
         """
-        return self._feature_group_api.get_generated_feature_views(feature_group)
+        links = self._feature_group_api.get_generated_feature_views(feature_group)
+        if not links.is_empty():
+            return links
 
     def get_generated_feature_groups(self, feature_group):
         """Get the generated feature groups using this feature group, based on explicit
@@ -103,12 +116,14 @@ class FeatureGroupBaseEngine:
         For inaccessible feature groups, only a minimal information is returned.
 
         # Arguments
-            feature_group_instance: Metadata object of feature group.
+            feature_group: Metadata object of feature group.
 
         # Returns
-            `ProvenanceLinks`:  the feature groups generated using this feature group
+            `Links`:  the feature groups generated using this feature group
         """
-        return self._feature_group_api.get_generated_feature_groups(feature_group)
+        links = self._feature_group_api.get_generated_feature_groups(feature_group)
+        if not links.is_empty():
+            return links
 
     def update_statistics_config(self, feature_group):
         """Update the statistics configuration of a feature group."""

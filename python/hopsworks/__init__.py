@@ -133,8 +133,8 @@ def login(
     # Returns
         `Project`: The Project object to perform operations on
     # Raises
-        `RestAPIError`: If unable to connect to Hopsworks
-        `HopsworksSSLClientError`: If SSLError is raised from underlying requests library
+        `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        `hopsworks.client.exceptions.HopsworksSSLClientError`: If SSLError is raised from underlying requests library
     """
 
     global _connected_project
