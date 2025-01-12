@@ -413,8 +413,10 @@ public class HudiEngine {
     deltaStreamerConfig.streamToHoodieTable(hudiWriteOpts, sparkSession);
     FeatureGroupCommit fgCommit = getLastCommitMetadata(sparkSession, streamFeatureGroup.getLocation());
     if (fgCommit != null) {
-      featureGroupApi.featureGroupCommit(streamFeatureGroup, fgCommit);
-      streamFeatureGroup.computeStatistics();
+      fgCommit = featureGroupApi.featureGroupCommit(streamFeatureGroup, fgCommit);
+      if (fgCommit.getCommitID() != null) {
+        streamFeatureGroup.computeStatistics();
+      }
     }
   }
 }
