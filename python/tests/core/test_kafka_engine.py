@@ -528,6 +528,31 @@ class TestKafkaEngine:
     def test_get_headers(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
+
+        fg = feature_group.FeatureGroup(
+            id=111,
+            name="test",
+            version=1,
+            featurestore_id=99,
+        )
+        fg.feature_store = mocker.Mock()
+        fg.feature_store.project_id = 234
+
+        fg._subject = {"id": 823}
+
+        # Act
+        results = kafka_engine.get_headers(fg, num_entries=10)
+
+        # Assert
+        assert results == {
+            "featureGroupId": b"111",
+            "projectId": b"234",
+            "subjectId": b"823",
+        }
+
+    def test_get_headers_online_ingestion(self, mocker, backend_fixtures):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
         mock_online_ingestion_api = mocker.patch(
             "hsfs.core.online_ingestion_api.OnlineIngestionApi"
         )
@@ -540,6 +565,7 @@ class TestKafkaEngine:
             name="test",
             version=1,
             featurestore_id=99,
+            online_enabled=True,
         )
         fg.feature_store = mocker.Mock()
         fg.feature_store.project_id = 234

@@ -120,24 +120,25 @@ def get_headers(
     feature_group: Union[FeatureGroup, ExternalFeatureGroup],
     num_entries: Optional[int] = None,
 ) -> Dict[str, bytes]:
-    # setup online ingestion
-    online_ingestion_instance = online_ingestion.OnlineIngestion(
-        num_entries=num_entries
-    )
-
-    online_ingestion_instance = (
-        online_ingestion_api.OnlineIngestionApi().create_online_ingestion(
-            feature_group, online_ingestion_instance
-        )
-    )
-
     # custom headers for hopsworks onlineFS
-    return {
+    headers = {
         "projectId": str(feature_group.feature_store.project_id).encode("utf8"),
         "featureGroupId": str(feature_group._id).encode("utf8"),
         "subjectId": str(feature_group.subject["id"]).encode("utf8"),
-        "onlineIngestionId": str(online_ingestion_instance.id).encode("utf8"),
     }
+
+    if feature_group.online_enabled:
+        # setup online ingestion id
+        online_ingestion_instance = (
+            online_ingestion_api.OnlineIngestionApi().create_online_ingestion(
+                feature_group, online_ingestion.OnlineIngestion(
+                    num_entries=num_entries
+                )
+            )
+        )
+        headers["onlineIngestionId"] = str(online_ingestion_instance.id).encode("utf8")
+
+    return headers
 
 
 @uses_confluent_kafka

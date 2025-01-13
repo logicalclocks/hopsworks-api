@@ -254,16 +254,20 @@ public class FeatureGroupUtils {
   public static Map<String, byte[]> getHeaders(FeatureGroupBase featureGroup, Long numEntries)
       throws FeatureStoreException, IOException {
     Map<String, byte[]> headerMap = new HashMap<>();
-    OnlineIngestion onlineIngestion = new OnlineIngestionApi()
-        .createOnlineIngestion(featureGroup, new OnlineIngestion(numEntries));
 
     headerMap.put("projectId",
         String.valueOf(featureGroup.getFeatureStore().getProjectId()).getBytes(StandardCharsets.UTF_8));
     headerMap.put("featureGroupId", String.valueOf(featureGroup.getId()).getBytes(StandardCharsets.UTF_8));
     headerMap.put("subjectId",
         String.valueOf(featureGroup.getSubject().getId()).getBytes(StandardCharsets.UTF_8));
-    headerMap.put("onlineIngestionId",
-        String.valueOf(onlineIngestion.getId()).getBytes(StandardCharsets.UTF_8));
+
+    if (featureGroup.getOnlineEnabled()) {
+      OnlineIngestion onlineIngestion = new OnlineIngestionApi()
+          .createOnlineIngestion(featureGroup, new OnlineIngestion(numEntries));
+
+      headerMap.put("onlineIngestionId",
+          String.valueOf(onlineIngestion.getId()).getBytes(StandardCharsets.UTF_8));
+    }
 
     return headerMap;
   }
