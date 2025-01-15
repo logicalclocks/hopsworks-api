@@ -44,7 +44,6 @@ class OnlineIngestion:
         self,
         id: Optional[int] = None,
         num_entries: Optional[int] = None,
-        current_offsets: Optional[str] = None,
         rows_upserted: Optional[int] = None,
         rows_failed: Optional[int] = None,
         rows_ignored: Optional[int] = None,
@@ -57,7 +56,6 @@ class OnlineIngestion:
     ):
         self._id = id
         self._num_entries = num_entries  # specified when inserting (optional since might not be specified when using streaming)
-        self._current_offsets = current_offsets
         self._rows_upserted = rows_upserted
         self._rows_failed = rows_failed
         self._rows_ignored = rows_ignored
@@ -123,10 +121,6 @@ class OnlineIngestion:
     @num_entries.setter
     def num_entries(self, num_entries: int) -> None:
         self._num_entries = num_entries
-
-    @property
-    def current_offsets(self) -> Optional[str]:
-        return self._current_offsets
 
     @property
     def rows_upserted(self) -> int:

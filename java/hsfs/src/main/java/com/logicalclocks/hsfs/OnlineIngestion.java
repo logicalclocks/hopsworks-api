@@ -47,10 +47,6 @@ public class OnlineIngestion extends RestDto<OnlineIngestion> {
 
   @Getter
   @Setter
-  private String currentOffsets;
-
-  @Getter
-  @Setter
   private Integer rowsUpserted;
 
   @Getter
@@ -80,7 +76,6 @@ public class OnlineIngestion extends RestDto<OnlineIngestion> {
     // Method to copy data from another object
     this.id = onlineIngestion.id;
     this.numEntries = onlineIngestion.numEntries;
-    this.currentOffsets = onlineIngestion.currentOffsets;
     this.rowsUpserted = onlineIngestion.rowsUpserted;
     this.rowsFailed = onlineIngestion.rowsFailed;
     this.rowsIgnored = onlineIngestion.rowsIgnored;
