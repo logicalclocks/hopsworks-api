@@ -48,8 +48,9 @@ public class StreamFeatureGroup extends FeatureGroupBase<DataStream<?>> {
   public StreamFeatureGroup(FeatureStore featureStore, @NonNull String name, Integer version, String description,
                             List<String> primaryKeys, List<String> partitionKeys, String hudiPrecombineKey,
                             boolean onlineEnabled, TimeTravelFormat timeTravelFormat, List<Feature> features,
-                            StatisticsConfig statisticsConfig, String onlineTopicName, String topicName, String notificationTopicName,
-                            String eventTime, OnlineConfig onlineConfig, StorageConnector storageConnector, String path) {
+                            StatisticsConfig statisticsConfig, String onlineTopicName, String topicName,
+                            String notificationTopicName, String eventTime, OnlineConfig onlineConfig,
+                            StorageConnector storageConnector, String path) {
     this();
     this.featureStore = featureStore;
     this.name = name;

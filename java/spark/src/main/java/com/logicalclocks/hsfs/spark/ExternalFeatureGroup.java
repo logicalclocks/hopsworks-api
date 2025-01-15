@@ -18,11 +18,19 @@
 package com.logicalclocks.hsfs.spark;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.logicalclocks.hsfs.*;
+
 import com.logicalclocks.hsfs.spark.constructor.Query;
 import com.logicalclocks.hsfs.spark.engine.FeatureGroupEngine;
 import com.logicalclocks.hsfs.spark.engine.StatisticsEngine;
-
+import com.logicalclocks.hsfs.EntityEndpointType;
+import com.logicalclocks.hsfs.ExternalDataFormat;
+import com.logicalclocks.hsfs.Feature;
+import com.logicalclocks.hsfs.FeatureStoreException;
+import com.logicalclocks.hsfs.OnlineConfig;
+import com.logicalclocks.hsfs.StatisticsConfig;
+import com.logicalclocks.hsfs.Storage;
+import com.logicalclocks.hsfs.StorageConnector;
+import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.metadata.OnDemandOptions;
 import com.logicalclocks.hsfs.metadata.Statistics;
 
