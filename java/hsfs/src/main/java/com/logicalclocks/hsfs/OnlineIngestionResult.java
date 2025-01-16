@@ -24,18 +24,18 @@ import lombok.Setter;
 
 @NoArgsConstructor
 @AllArgsConstructor
-public class OnlineIngestionBatchResult {
+public class OnlineIngestionResult {
 
   @Getter
   @Setter
-  private String id;
+  private Integer onlineIngestionId;
 
   @Getter
   @Setter
-  private Integer batchSize;
+  private String status;
 
   @Getter
   @Setter
-  private String status; // "SUCCEEDED", "FAILED"
+  private Long rows;
 
 }

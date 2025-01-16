@@ -19,6 +19,7 @@ package com.logicalclocks.hsfs;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,19 +48,7 @@ public class OnlineIngestion extends RestDto<OnlineIngestion> {
 
   @Getter
   @Setter
-  private Integer rowsUpserted;
-
-  @Getter
-  @Setter
-  private Integer rowsFailed;
-
-  @Getter
-  @Setter
-  private Integer rowsIgnored;
-
-  @Getter
-  @Setter
-  private List<OnlineIngestionBatchResult> batchResults;
+  private List<OnlineIngestionResult> results;
 
   @Getter
   @Setter
@@ -76,10 +65,7 @@ public class OnlineIngestion extends RestDto<OnlineIngestion> {
     // Method to copy data from another object
     this.id = onlineIngestion.id;
     this.numEntries = onlineIngestion.numEntries;
-    this.rowsUpserted = onlineIngestion.rowsUpserted;
-    this.rowsFailed = onlineIngestion.rowsFailed;
-    this.rowsIgnored = onlineIngestion.rowsIgnored;
-    this.batchResults = onlineIngestion.batchResults;
+    this.results = onlineIngestion.results;
     this.featureGroup = onlineIngestion.featureGroup;
   }
 
@@ -93,7 +79,7 @@ public class OnlineIngestion extends RestDto<OnlineIngestion> {
 
     while (true) {
       // Get total number of rows processed
-      long rowsProcessed = rowsUpserted + rowsFailed + rowsIgnored;
+      long rowsProcessed = results.stream().collect(Collectors.summarizingLong(o -> o.getRows())).getSum();
 
       // Check if the online ingestion is complete
       if (numEntries != null && rowsProcessed >= numEntries) {

@@ -131,9 +131,7 @@ def get_headers(
         # setup online ingestion id
         online_ingestion_instance = (
             online_ingestion_api.OnlineIngestionApi().create_online_ingestion(
-                feature_group, online_ingestion.OnlineIngestion(
-                    num_entries=num_entries
-                )
+                feature_group, online_ingestion.OnlineIngestion(num_entries=num_entries)
             )
         )
         headers["onlineIngestionId"] = str(online_ingestion_instance.id).encode("utf8")

@@ -30,7 +30,7 @@ from typing import (
 import humps
 from hopsworks_common import client, util
 from hsfs import feature_group as fg_mod
-from hsfs.core import online_ingestion_batch_result
+from hsfs.core import online_ingestion_result
 from hsfs.core.opensearch import OpenSearchClientSingleton
 from tqdm.auto import tqdm
 
@@ -44,11 +44,8 @@ class OnlineIngestion:
         self,
         id: Optional[int] = None,
         num_entries: Optional[int] = None,
-        rows_upserted: Optional[int] = None,
-        rows_failed: Optional[int] = None,
-        rows_ignored: Optional[int] = None,
-        batch_results: Union[
-            List[online_ingestion_batch_result.OnlineIngestionBatchResult],
+        results: Union[
+            List[online_ingestion_result.OnlineIngestionResult],
             List[Dict[str, Any]],
         ] = None,
         feature_group: fg_mod.FeatureGroup = None,
@@ -56,21 +53,18 @@ class OnlineIngestion:
     ):
         self._id = id
         self._num_entries = num_entries  # specified when inserting (optional since might not be specified when using streaming)
-        self._rows_upserted = rows_upserted
-        self._rows_failed = rows_failed
-        self._rows_ignored = rows_ignored
-        self._batch_results = (
+        self._results = (
             [
                 (
-                    online_ingestion_batch_result.OnlineIngestionBatchResult.from_response_json(
-                        batch_result
+                    online_ingestion_result.OnlineIngestionResult.from_response_json(
+                        result
                     )
-                    if isinstance(batch_result, dict)
-                    else batch_result
+                    if isinstance(result, dict)
+                    else result
                 )
-                for batch_result in batch_results
+                for result in results
             ]
-            if batch_results
+            if results
             else []
         )  # batch inserts performed by onlinefs
         self._feature_group = feature_group
@@ -123,22 +117,10 @@ class OnlineIngestion:
         self._num_entries = num_entries
 
     @property
-    def rows_upserted(self) -> int:
-        return 0 if self._rows_upserted is None else self._rows_upserted
-
-    @property
-    def rows_failed(self) -> int:
-        return 0 if self._rows_failed is None else self._rows_failed
-
-    @property
-    def rows_ignored(self) -> int:
-        return 0 if self._rows_ignored is None else self._rows_ignored
-
-    @property
-    def batch_results(
+    def results(
         self,
-    ) -> List[online_ingestion_batch_result.OnlineIngestionBatchResult]:
-        return self._batch_results
+    ) -> List[online_ingestion_result.OnlineIngestionResult]:
+        return self._results
 
     @property
     def feature_group(self) -> fg_mod.FeatureGroup:
@@ -160,10 +142,10 @@ class OnlineIngestion:
         ) as progress_bar:
             while True:
                 # Get total number of rows processed
-                rows_processed = self.rows_upserted + self.rows_failed + self.rows_ignored
+                rows_processed = sum(result.rows for result in self.results)
 
                 # Update progress bar
-                if self.rows_failed or self.rows_ignored:
+                if any(result.status != "UPSERTED" for result in self.results):
                     progress_bar.colour = "RED"
                 progress_bar.n = rows_processed
                 progress_bar.refresh()

@@ -22,26 +22,26 @@ import humps
 from hopsworks_common import util
 
 
-class OnlineIngestionBatchResult:
+class OnlineIngestionResult:
     """
     Metadata object used to provide Online Ingestion Batch Result information for a feature group.
     """
 
     def __init__(
         self,
-        id: str = None,
-        batch_size: int = None,
+        online_ingestion_id: int = None,
         status: str = None,
+        rows: int = None,
         **kwargs,
     ):
-        self._id = id
-        self._batch_size = batch_size
+        self._online_ingestion_id = online_ingestion_id
         self._status = status
+        self._rows = rows
 
     @classmethod
     def from_response_json(
         cls, json_dict: Dict[str, Any]
-    ) -> OnlineIngestionBatchResult:
+    ) -> OnlineIngestionResult:
         if json_dict is None:
             return None
 
@@ -58,22 +58,22 @@ class OnlineIngestionBatchResult:
 
     def to_dict(self):
         return {
-            "id": self._id,
-            "batchSize": self._batch_size,
+            "onlineIngestionId": self._online_ingestion_id,
             "status": self._status,
+            "rows": self._rows,
         }
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
     @property
-    def id(self) -> str:
-        return self._id
-
-    @property
-    def batch_size(self) -> int:
-        return self._batch_size
+    def online_ingestion_id(self) -> int:
+        return self._online_ingestion_id
 
     @property
     def status(self) -> str:
         return self._status
+
+    @property
+    def rows(self) -> int:
+        return self._rows
