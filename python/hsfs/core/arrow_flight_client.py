@@ -332,18 +332,19 @@ class ArrowFlightClient:
             content = f.read()
             return base64.b64encode(content).decode("utf-8")
 
+    def _make_certificates(self):
+        kstore = self._encode_certs(self._client._get_jks_key_store_path())
+        tstore = self._encode_certs(self._client._get_jks_trust_store_path())
+        cert_key = self._client._cert_key
+        return {"kstore": kstore, "tstore": tstore, "cert_key": cert_key}
+
     @retry(
         wait_exponential_multiplier=1000,
         stop_max_attempt_number=3,
         retry_on_exception=_should_retry_healthcheck_or_certificate_registration,
     )
     def _register_certificates(self):
-        kstore = self._encode_certs(self._client._get_jks_key_store_path())
-        tstore = self._encode_certs(self._client._get_jks_trust_store_path())
-        cert_key = self._client._cert_key
-        certificates_json = json.dumps(
-            {"kstore": kstore, "tstore": tstore, "cert_key": cert_key}
-        ).encode("ascii")
+        certificates_json = json.dumps(self._make_certificates()).encode("ascii")
         certificates_json_buf = pyarrow.py_buffer(certificates_json)
         action = pyarrow.flight.Action(
             "register-client-certificates", certificates_json_buf
@@ -410,6 +411,9 @@ class ArrowFlightClient:
         info = self.get_flight_info(descriptor)
         _logger.debug("Retrieved flight info: %s. Fetching dataset.", str(info))
         options = pyarrow.flight.FlightCallOptions(timeout=timeout)
+        ticket = json.loads(info.endpoints[0].ticket.ticket.decode("ascii"))
+        ticket["certificates"] = self._make_certificates()
+        info.endpoints[0].ticket.ticket = json.dumps(ticket).encode("ascii")
         reader = self._connection.do_get(info.endpoints[0].ticket, options)
         _logger.debug("Dataset fetched. Converting to dataframe %s.", dataframe_type)
         if dataframe_type.lower() == "polars":
@@ -467,6 +471,7 @@ class ArrowFlightClient:
         training_dataset["fv_version"] = feature_view_obj.version
         training_dataset["tds_version"] = training_dataset_obj.version
         training_dataset["query"] = query_obj
+        training_dataset["certificates"] = self._make_certificates()
         _logger.debug(f"Creating training dataset: {training_dataset}")
         try:
             training_dataset_encoded = json.dumps(training_dataset).encode("ascii")
