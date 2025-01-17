@@ -228,11 +228,18 @@ class VectorServer:
             entity,
             self._training_dataset_version,
         )
-        self._on_demand_transformation_functions = [
-            feature.on_demand_transformation_function
-            for feature in entity.features
-            if feature.on_demand_transformation_function
-        ]
+        self._on_demand_transformation_functions = []
+
+        for feature in entity.features:
+            if (
+                feature.on_demand_transformation_function
+                and feature.on_demand_transformation_function
+                not in self._on_demand_transformation_functions
+            ):
+                self._on_demand_transformation_functions.append(
+                    feature.on_demand_transformation_function
+                )
+
         self._on_demand_feature_names = [
             feature.name
             for feature in entity.features
@@ -1043,13 +1050,8 @@ class VectorServer:
             on_demand_feature = tf.hopsworks_udf.get_udf(online=True)(
                 *features
             )  # Get only python compatible UDF irrespective of engine
-            if (
-                tf.hopsworks_udf.execution_mode.get_current_execution_mode(online=True)
-                == UDFExecutionMode.PANDAS
-            ):
-                rows[on_demand_feature.name] = on_demand_feature.values[0]
-            else:
-                rows[tf.output_column_names[0]] = on_demand_feature
+
+            rows.update(self.parse_transformed_result(on_demand_feature, tf))
         return rows
 
     def apply_model_dependent_transformations(self, rows: Union[dict, pd.DataFrame]):
@@ -1076,21 +1078,31 @@ class VectorServer:
                 *features
             )  # Get only python compatible UDF irrespective of engine
 
-            if (
-                tf.hopsworks_udf.execution_mode.get_current_execution_mode(online=True)
-                == UDFExecutionMode.PANDAS
-            ):
-                if isinstance(transformed_result, pd.Series):
-                    rows[transformed_result.name] = transformed_result.values[0]
-                else:
-                    for col in transformed_result:
-                        rows[col] = transformed_result[col].values[0]
+            rows.update(self.parse_transformed_result(transformed_result, tf))
+        return rows
+
+    def parse_transformed_result(self, transformed_results, transformation_function):
+        rows = {}
+        if (
+            transformation_function.hopsworks_udf.execution_mode.get_current_execution_mode(
+                online=True
+            )
+            == UDFExecutionMode.PANDAS
+        ):
+            if isinstance(transformed_results, pd.Series):
+                rows[transformed_results.name] = transformed_results.values[0]
             else:
-                if isinstance(transformed_result, tuple):
-                    for index, result in enumerate(transformed_result):
-                        rows[tf.output_column_names[index]] = result
-                else:
-                    rows[tf.output_column_names[0]] = transformed_result
+                for col in transformed_results:
+                    rows[col] = transformed_results[col].values[0]
+        else:
+            if isinstance(transformed_results, tuple):
+                for index, result in enumerate(transformed_results):
+                    rows[transformation_function.output_column_names[index]] = result
+            else:
+                rows[transformation_function.output_column_names[0]] = (
+                    transformed_results
+                )
+
         return rows
 
     def apply_transformation(

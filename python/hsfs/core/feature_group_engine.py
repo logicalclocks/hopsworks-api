@@ -49,12 +49,18 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             transformed_features = []
             dropped_features = []
             for tf in feature_group.transformation_functions:
-                transformed_features.append(
-                    feature.Feature(
-                        tf.hopsworks_udf.output_column_names[0],
-                        tf.hopsworks_udf.return_types[0],
-                        on_demand=True,
-                    )
+                transformed_features.extend(
+                    [
+                        feature.Feature(
+                            output_column_name,
+                            return_type,
+                            on_demand=True,
+                        )
+                        for output_column_name, return_type in zip(
+                            tf.hopsworks_udf.output_column_names,
+                            tf.hopsworks_udf.return_types,
+                        )
+                    ]
                 )
                 if tf.hopsworks_udf.dropped_features:
                     dropped_features.extend(tf.hopsworks_udf.dropped_features)
