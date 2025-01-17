@@ -1446,8 +1446,9 @@ class Engine:
         producer, headers, feature_writers, writer = kafka_engine.init_kafka_resources(
             feature_group,
             offline_write_options,
-            project_id=client.get_instance()._project_id,
+            num_entries=len(dataframe),
         )
+
         if not feature_group._multi_part_insert:
             # set initial_check_point to the current offset
             initial_check_point = kafka_engine.kafka_get_offsets(
@@ -1557,6 +1558,15 @@ class Engine:
                 ),
                 await_termination=offline_write_options.get("wait_for_job", False),
             )
+
+        # wait for online ingestion
+        if feature_group.online_enabled and offline_write_options.get(
+            "wait_for_online_ingestion", False
+        ):
+            feature_group.get_latest_online_ingestion().wait_for_completion(
+                options=offline_write_options.get("online_ingestion_options", {})
+            )
+
         return feature_group.materialization_job
 
     @staticmethod

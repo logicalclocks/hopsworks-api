@@ -18,7 +18,9 @@
 package com.logicalclocks.hsfs.flink.engine;
 
 import com.logicalclocks.hsfs.FeatureStoreException;
+import com.logicalclocks.hsfs.engine.FeatureGroupUtils;
 import com.logicalclocks.hsfs.flink.StreamFeatureGroup;
+
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
@@ -32,7 +34,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -40,17 +41,12 @@ public class KafkaRecordSerializer implements KafkaRecordSerializationSchema<Gen
 
   private final String topic;
   private final List<String> primaryKeys;
-  private final Map<String, byte[]> headerMap = new HashMap<>();
+  private final Map<String, byte[]> headerMap;
 
   KafkaRecordSerializer(StreamFeatureGroup streamFeatureGroup) throws FeatureStoreException, IOException {
     this.topic = streamFeatureGroup.getOnlineTopicName();
     this.primaryKeys = streamFeatureGroup.getPrimaryKeys();
-
-    headerMap.put("projectId",
-        String.valueOf(streamFeatureGroup.getFeatureStore().getProjectId()).getBytes(StandardCharsets.UTF_8));
-    headerMap.put("featureGroupId", String.valueOf(streamFeatureGroup.getId()).getBytes(StandardCharsets.UTF_8));
-    headerMap.put("subjectId",
-        String.valueOf(streamFeatureGroup.getSubject().getId()).getBytes(StandardCharsets.UTF_8));
+    this.headerMap = FeatureGroupUtils.getHeaders(streamFeatureGroup, null);
   }
 
   @Override

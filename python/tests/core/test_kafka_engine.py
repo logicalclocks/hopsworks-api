@@ -16,8 +16,8 @@
 import importlib
 
 from hopsworks_common.core import constants
-from hsfs import storage_connector
-from hsfs.core import kafka_engine
+from hsfs import feature_group, storage_connector
+from hsfs.core import kafka_engine, online_ingestion
 
 
 if constants.HAS_CONFLUENT_KAFKA:
@@ -524,3 +524,61 @@ class TestKafkaEngine:
             mock_storage_connector_api.return_value.get_kafka_connector.call_args[0][1]
             is False
         )
+
+    def test_get_headers(self, mocker, backend_fixtures):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+
+        fg = feature_group.FeatureGroup(
+            id=111,
+            name="test",
+            version=1,
+            featurestore_id=99,
+        )
+        fg.feature_store = mocker.Mock()
+        fg.feature_store.project_id = 234
+
+        fg._subject = {"id": 823}
+
+        # Act
+        results = kafka_engine.get_headers(fg, num_entries=10)
+
+        # Assert
+        assert results == {
+            "featureGroupId": b"111",
+            "projectId": b"234",
+            "subjectId": b"823",
+        }
+
+    def test_get_headers_online_ingestion(self, mocker, backend_fixtures):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mock_online_ingestion_api = mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi"
+        )
+        json = backend_fixtures["online_ingestion"]["get"]["response"]
+        oi = online_ingestion.OnlineIngestion.from_response_json(json)
+        mock_online_ingestion_api.return_value.create_online_ingestion.return_value = oi
+
+        fg = feature_group.FeatureGroup(
+            id=111,
+            name="test",
+            version=1,
+            featurestore_id=99,
+            online_enabled=True,
+        )
+        fg.feature_store = mocker.Mock()
+        fg.feature_store.project_id = 234
+
+        fg._subject = {"id": 823}
+
+        # Act
+        results = kafka_engine.get_headers(fg, num_entries=10)
+
+        # Assert
+        assert results == {
+            "featureGroupId": b"111",
+            "onlineIngestionId": b"1",
+            "projectId": b"234",
+            "subjectId": b"823",
+        }

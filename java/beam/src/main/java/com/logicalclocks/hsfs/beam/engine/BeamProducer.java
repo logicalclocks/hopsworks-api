@@ -19,6 +19,8 @@ package com.logicalclocks.hsfs.beam.engine;
 
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.beam.StreamFeatureGroup;
+import com.logicalclocks.hsfs.engine.FeatureGroupUtils;
+
 import lombok.NonNull;
 
 import org.apache.avro.Schema;
@@ -46,13 +48,11 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -64,7 +64,7 @@ public class BeamProducer extends PTransform<@NonNull PCollection<Row>, @NonNull
   private transient Schema encodedSchema;
   private Map<String, Schema> deserializedComplexFeatureSchemas;
   private List<String> primaryKeys;
-  private final Map<String, byte[]> headerMap = new HashMap<>();
+  private final Map<String, byte[]> headerMap;
 
   public BeamProducer(String topic, Map<String, String> properties, Schema schema, Schema encodedSchema,
                       Map<String, Schema> deserializedComplexFeatureSchemas, List<String> primaryKeys,
@@ -75,12 +75,7 @@ public class BeamProducer extends PTransform<@NonNull PCollection<Row>, @NonNull
     this.properties = properties;
     this.deserializedComplexFeatureSchemas = deserializedComplexFeatureSchemas;
     this.primaryKeys = primaryKeys;
-
-    headerMap.put("projectId",
-        String.valueOf(streamFeatureGroup.getFeatureStore().getProjectId()).getBytes(StandardCharsets.UTF_8));
-    headerMap.put("featureGroupId", String.valueOf(streamFeatureGroup.getId()).getBytes(StandardCharsets.UTF_8));
-    headerMap.put("subjectId",
-        String.valueOf(streamFeatureGroup.getSubject().getId()).getBytes(StandardCharsets.UTF_8));
+    this.headerMap = FeatureGroupUtils.getHeaders(streamFeatureGroup, null);
   }
 
   @Override
