@@ -176,15 +176,14 @@ class ArrowFlightClient:
 
         self._client = client.get_instance()
         self._variable_api: VariableApi = VariableApi()
+        self._certificates_json: Optional[str] = None
 
         try:
             self._check_cluster_service_enabled()
             self._host_url = self._retrieve_host_url()
 
             if self._enabled_on_cluster:
-                _logger.debug(
-                    "Hopsworks Query Service is enabled on the cluster."
-                )
+                _logger.debug("Hopsworks Query Service is enabled on the cluster.")
                 self._initialize_flight_client()
             else:
                 _logger.debug(
@@ -240,9 +239,7 @@ class ArrowFlightClient:
                     "The variable is either not set or empty in Hopsworks cluster configuration."
                 )
             host_url = f"grpc+tls://flyingduck.service.{service_discovery_domain}:5005"
-        _logger.debug(
-            f"Connecting to Hopsworks Query Service on host {host_url}"
-        )
+        _logger.debug(f"Connecting to Hopsworks Query Service on host {host_url}")
         return host_url
 
     def _disable_for_session(
@@ -335,7 +332,9 @@ class ArrowFlightClient:
         return {"kstore": kstore, "tstore": tstore, "cert_key": cert_key}
 
     def _certificates_header(self):
-        return ("X-Certificates-JSON", json.dumps(self._make_certificates()))
+        if self._certificates_json is None:
+            self._certificates_json = json.dumps(self._make_certificates())
+        return ("X-Certificates-JSON", self._certificates_json)
 
     def _handle_afs_exception(user_message="None"):
         def decorator(func):
