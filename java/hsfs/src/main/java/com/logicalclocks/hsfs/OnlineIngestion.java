@@ -24,7 +24,6 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.logicalclocks.hsfs.metadata.OnlineIngestionApi;
 import com.logicalclocks.hsfs.metadata.RestDto;
 
 import lombok.AllArgsConstructor;
@@ -59,8 +58,7 @@ public class OnlineIngestion extends RestDto<OnlineIngestion> {
   }
 
   public void refresh() throws FeatureStoreException, IOException {
-    OnlineIngestion onlineIngestion = new OnlineIngestionApi()
-        .getOnlineIngestion(featureGroup, "filter_by=ID:" + id).get(0);
+    OnlineIngestion onlineIngestion = featureGroup.getOnlineIngestion(id);
 
     // Method to copy data from another object
     this.id = onlineIngestion.id;

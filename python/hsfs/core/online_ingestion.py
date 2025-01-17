@@ -91,11 +91,7 @@ class OnlineIngestion:
             return None
 
     def refresh(self):
-        from hsfs.core.online_ingestion_api import OnlineIngestionApi
-
-        online_ingestion = OnlineIngestionApi().get_online_ingestion(
-            self.feature_group, query_params={"filter_by": f"ID:{self.id}"}
-        )
+        online_ingestion = self.feature_group.get_online_ingestion(self._id)
         self.__dict__.update(online_ingestion.__dict__)
 
     def to_dict(self):

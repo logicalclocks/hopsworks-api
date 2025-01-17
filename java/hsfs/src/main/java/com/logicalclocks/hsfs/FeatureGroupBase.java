@@ -550,4 +550,9 @@ public abstract class FeatureGroupBase<T> {
     return onlineIngestionApi.getOnlineIngestion(this, "filter_by=LATEST").get(0);
   }
 
+  @JsonIgnore
+  public OnlineIngestion getOnlineIngestion(Integer id) throws FeatureStoreException, IOException {
+    return onlineIngestionApi.getOnlineIngestion(this, "filter_by=ID:" + id).get(0);
+  }
+
 }
