@@ -325,7 +325,7 @@ class ArrowFlightClient:
             content = f.read()
             return base64.b64encode(content).decode("utf-8")
 
-    def _make_certificates(self):
+    def _certificates(self):
         kstore = self._encode_certs(self._client._get_jks_key_store_path())
         tstore = self._encode_certs(self._client._get_jks_trust_store_path())
         cert_key = self._client._cert_key
@@ -333,8 +333,8 @@ class ArrowFlightClient:
 
     def _certificates_header(self):
         if self._certificates_json is None:
-            self._certificates_json = json.dumps(self._make_certificates())
-        return ("X-Certificates-JSON", self._certificates_json)
+            self._certificates_json = json.dumps(self._certificates()).encode("utf-8")
+        return ("X-Certificates-JSON".encode("utf-8"), self._certificates_json)
 
     def _handle_afs_exception(user_message="None"):
         def decorator(func):
