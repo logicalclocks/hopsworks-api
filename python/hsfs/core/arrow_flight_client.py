@@ -334,7 +334,7 @@ class ArrowFlightClient:
     def _certificates_header(self):
         if self._certificates_json is None:
             self._certificates_json = json.dumps(self._certificates()).encode("utf-8")
-        return ("X-Certificates-JSON".encode("utf-8"), self._certificates_json)
+        return (b"x-certificates-json", self._certificates_json)
 
     def _handle_afs_exception(user_message="None"):
         def decorator(func):
