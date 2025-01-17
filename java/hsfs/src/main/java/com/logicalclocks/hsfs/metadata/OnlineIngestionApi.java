@@ -74,8 +74,7 @@ public class OnlineIngestionApi {
         .set("fgId", featureGroup.getId())
         .expand() + "?" + queryParameters;
 
-    LOGGER.info("Sending metadata request: " + uri);
-    System.out.println(uri);
+    LOGGER.debug("Sending metadata request: " + uri);
 
     OnlineIngestion onlineIngestion = hopsworksClient.handleRequest(new HttpGet(uri), OnlineIngestion.class);
     for (OnlineIngestion ingestion : onlineIngestion.getItems()) {
