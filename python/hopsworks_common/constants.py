@@ -70,6 +70,14 @@ class OPENSEARCH_CONFIG:
     CA_CERTS = "ca_certs"
 
 
+class FEATURES:
+    """
+    Class that stores constants about a feature.
+    """
+
+    MAX_LENGTH_NAME = 63
+
+
 class KAFKA_SSL_CONFIG:
     """
     Kafka SSL constant strings for configuration
