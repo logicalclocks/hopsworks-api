@@ -347,6 +347,7 @@ class VectorServer:
         force_sql_client: bool = False,
         transform: bool = True,
         request_parameters: Optional[Dict[str, Any]] = None,
+        transformation_context: Dict[str, Any] = None,
     ) -> Union[pd.DataFrame, pl.DataFrame, np.ndarray, List[Any], Dict[str, Any]]:
         """Assembles serving vector from online feature store."""
         online_client_choice = self.which_client_and_ensure_initialised(
@@ -380,6 +381,7 @@ class VectorServer:
             client=online_client_choice,
             transform=transform,
             request_parameters=request_parameters,
+            transformation_context=transformation_context,
         )
 
         return self.handle_feature_vector_return_type(
@@ -537,6 +539,7 @@ class VectorServer:
         client: Literal["rest", "sql"],
         transform: bool,
         request_parameters: Optional[Dict[str, Any]] = None,
+        transformation_context: Dict[str, Any] = None,
     ) -> Optional[List[Any]]:
         """Assembles serving vector from online feature store."""
         # Errors in batch requests are returned as None values
@@ -587,7 +590,9 @@ class VectorServer:
             len(self.model_dependent_transformation_functions) > 0
             or len(self.on_demand_transformation_functions) > 0
         ) and transform:
-            self.apply_transformation(result_dict, request_parameters or {})
+            self.apply_transformation(
+                result_dict, request_parameters or {}, transformation_context
+            )
 
         _logger.debug("Assembled and transformed dict feature vector: %s", result_dict)
         if transform:
@@ -1017,10 +1022,15 @@ class VectorServer:
             self._init_sql_client = True
 
     def apply_on_demand_transformations(
-        self, rows: Union[dict, pd.DataFrame], request_parameter: Dict[str, Any]
+        self,
+        rows: Union[dict, pd.DataFrame],
+        request_parameter: Dict[str, Any],
+        transformation_context: Dict[str, Any] = None,
     ) -> dict:
         _logger.debug("Applying On-Demand transformation functions.")
         for tf in self._on_demand_transformation_functions:
+            # Setting transformation function context variables.
+            tf.hopsworks_udf.transformation_context = transformation_context
             if (
                 tf.hopsworks_udf.execution_mode.get_current_execution_mode(online=True)
                 == UDFExecutionMode.PANDAS
@@ -1054,9 +1064,15 @@ class VectorServer:
             rows.update(self.parse_transformed_result(on_demand_feature, tf))
         return rows
 
-    def apply_model_dependent_transformations(self, rows: Union[dict, pd.DataFrame]):
+    def apply_model_dependent_transformations(
+        self,
+        rows: Union[dict, pd.DataFrame],
+        transformation_context: Dict[str, Any] = None,
+    ):
         _logger.debug("Applying Model-Dependent transformation functions.")
         for tf in self.model_dependent_transformation_functions:
+            # Setting transformation function context variables.
+            tf.hopsworks_udf.transformation_context = transformation_context
             if (
                 tf.hopsworks_udf.execution_mode.get_current_execution_mode(online=True)
                 == UDFExecutionMode.PANDAS
@@ -1106,14 +1122,21 @@ class VectorServer:
         return rows
 
     def apply_transformation(
-        self, row_dict: Union[dict, pd.DataFrame], request_parameter: Dict[str, Any]
+        self,
+        row_dict: Union[dict, pd.DataFrame],
+        request_parameter: Dict[str, Any],
+        transformation_context: Dict[str, Any] = None,
     ):
         """
         Function that applies both on-demand and model dependent transformation to the input dictonary
         """
-        feature_dict = self.apply_on_demand_transformations(row_dict, request_parameter)
+        feature_dict = self.apply_on_demand_transformations(
+            row_dict, request_parameter, transformation_context
+        )
 
-        encoded_feature_dict = self.apply_model_dependent_transformations(feature_dict)
+        encoded_feature_dict = self.apply_model_dependent_transformations(
+            feature_dict, transformation_context
+        )
         return encoded_feature_dict
 
     def apply_return_value_handlers(

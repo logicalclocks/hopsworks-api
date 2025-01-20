@@ -529,6 +529,7 @@ class FeatureView:
         force_sql_client: bool = False,
         transform: Optional[bool] = True,
         request_parameters: Optional[Dict[str, Any]] = None,
+        transformation_context: Dict[str, Any] = None,
     ) -> Union[List[Any], pd.DataFrame, np.ndarray, pl.DataFrame]:
         """Returns assembled feature vector from online feature store.
             Call [`feature_view.init_serving`](#init_serving) before this method if the following configurations are needed.
@@ -604,6 +605,8 @@ class FeatureView:
             allow_missing: Setting to `True` returns feature vectors with missing values.
             transformed: Setting to `False` returns the untransformed feature vectors.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
+            transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         # Returns
             `list`, `pd.DataFrame`, `polars.DataFrame` or `np.ndarray` if `return type` is set to `"list"`, `"pandas"`, `"polars"` or `"numpy"`
@@ -631,6 +634,7 @@ class FeatureView:
             force_sql_client=force_sql_client,
             transform=transform,
             request_parameters=request_parameters,
+            transformation_context=transformation_context,
         )
 
     def get_feature_vectors(
@@ -644,6 +648,7 @@ class FeatureView:
         force_sql_client: bool = False,
         transform: Optional[bool] = True,
         request_parameters: Optional[List[Dict[str, Any]]] = None,
+        transformation_context: Dict[str, Any] = None,
     ) -> Union[List[List[Any]], pd.DataFrame, np.ndarray, pl.DataFrame]:
         """Returns assembled feature vectors in batches from online feature store.
             Call [`feature_view.init_serving`](#init_serving) before this method if the following configurations are needed.
@@ -717,6 +722,8 @@ class FeatureView:
             allow_missing: Setting to `True` returns feature vectors with missing values.
             transformed: Setting to `False` returns the untransformed feature vectors.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
+            transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         # Returns
             `List[list]`, `pd.DataFrame`, `polars.DataFrame` or `np.ndarray` if `return type` is set to `"list", `"pandas"`,`"polars"` or `"numpy"`
@@ -747,6 +754,7 @@ class FeatureView:
             force_sql_client=force_sql_client,
             transform=transform,
             request_parameters=request_parameters,
+            transformation_context=transformation_context,
         )
 
     def get_inference_helper(
@@ -999,6 +1007,7 @@ class FeatureView:
         inference_helper_columns: bool = False,
         dataframe_type: Optional[str] = "default",
         transformed: Optional[bool] = True,
+        transformation_context: Dict[str, Any] = None,
         **kwargs,
     ) -> TrainingDatasetDataFrameTypes:
         """Get a batch of data from an event time interval from the offline feature store.
@@ -1055,6 +1064,8 @@ class FeatureView:
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
             transformed: Setting to `False` returns the untransformed feature vectors.
+            transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         # Returns
             `DataFrame`: The spark dataframe containing the feature data.
@@ -1080,6 +1091,7 @@ class FeatureView:
             inference_helper_columns,
             dataframe_type,
             transformed=transformed,
+            transformation_context=transformation_context,
         )
 
     def add_tag(self, name: str, value: Any) -> None:
