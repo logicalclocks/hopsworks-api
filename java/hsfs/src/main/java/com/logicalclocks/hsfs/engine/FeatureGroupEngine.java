@@ -8,7 +8,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 
-public class FeatureGroupEngine extends FeatureGroupEngineBase {
+public class FeatureGroupEngine<T>  extends FeatureGroupEngineBase {
 
   public StreamFeatureGroup getStreamFeatureGroup(FeatureStore featureStore, String fgName, Integer fgVersion)
       throws IOException, FeatureStoreException {
@@ -28,5 +28,10 @@ public class FeatureGroupEngine extends FeatureGroupEngineBase {
       featureGroupApi.getInternal(featureStore, fgName, null, StreamFeatureGroup[].class);
 
     return Arrays.asList(streamFeatureGroups);
+  }
+  @SneakyThrows
+  public List<Object> insertStream(StreamFeatureGroup streamFeatureGroup, List<T> featureData,
+                                        Map<String, String> writeOptions) {
+    return Engine.getInstance().writeStream(streamFeatureGroup, featureData,  writeOptions);
   }
 }

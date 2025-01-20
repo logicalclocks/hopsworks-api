@@ -31,7 +31,7 @@ import java.util.stream.Collectors;
 
 @AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class StreamFeatureGroup extends FeatureGroupBase<List<Object>> {
+public class StreamFeatureGroup<T> extends FeatureGroupBase<List<T>> {
 
   protected FeatureGroupEngineBase featureGroupEngine = new FeatureGroupEngineBase();
 
@@ -76,12 +76,12 @@ public class StreamFeatureGroup extends FeatureGroupBase<List<Object>> {
   }
 
   @Override
-  public List<Object> insertStream(List<Object> featureData) throws Exception {
-    throw new UnsupportedOperationException("Not implemented.");
+  public List<T> insertStream(List<T> featureData) throws Exception {
+    return insertStream(featureData, new HashMap<>());
   }
 
   @Override
-  public List<Object>  insertStream(List<Object> featureData, Map<String, String> writeOptions) throws Exception {
-    throw new UnsupportedOperationException("Not implemented.");
+  public List<T> insertStream(List<T> featureData, Map<String, String> writeOptions) throws Exception {
+    return featureGroupEngine.insertStream(this, featureData, writeOptions);
   }
 }
