@@ -566,7 +566,7 @@ class HopsworksUdf:
                 code += (
                     "   transformed_features = list(transformed_features)\n"
                     "   for index in _date_time_output_index:\n"
-                    + "      transformed_features[index] = convert_timezone(transformed_features[index])"
+                    + "      transformed_features[index] = convert_timezone(transformed_features[index])\n"
                 )
             if rename_outputs:
                 # Use a dictionary to rename output to correct column names. This must be for the udf's to be executable in spark.

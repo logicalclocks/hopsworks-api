@@ -406,6 +406,7 @@ class VectorServer:
         force_rest_client: bool = False,
         force_sql_client: bool = False,
         transform: bool = True,
+        transformation_context: Dict[str, Any] = None,
     ) -> Union[pd.DataFrame, pl.DataFrame, np.ndarray, List[Any], List[Dict[str, Any]]]:
         """Assembles serving vector from online feature store."""
         if passed_features is None:
@@ -516,6 +517,7 @@ class VectorServer:
                 client=online_client_choice,
                 transform=transform,
                 request_parameters=request_parameter,
+                transformation_context=transformation_context,
             )
 
             if vector is not None:
@@ -660,12 +662,15 @@ class VectorServer:
     def transform(
         self,
         feature_vectors: Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame],
+        transformation_context: Dict[str, Any] = None,
     ) -> Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]:
         """
         Applies model dependent transformation on the provided feature vector.
 
         # Arguments
             feature_vectors: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vectors to be transformed using attached model-dependent transformations.
+            transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         # Returns
             `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The transformed feature vector.
@@ -685,7 +690,7 @@ class VectorServer:
         transformed_feature_vectors = []
         for feature_vector in feature_vectors:
             transformed_feature_vector = self.apply_model_dependent_transformations(
-                feature_vector
+                feature_vector, transformation_context=transformation_context
             )
             transformed_feature_vectors.append(
                 [
@@ -712,6 +717,7 @@ class VectorServer:
         self,
         feature_vectors: Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame],
         request_parameters: Union[List[Dict[str, Any]], Dict[str, Any]],
+        transformation_context: Dict[str, Any] = None,
     ):
         """
         Function computes on-demand features present in the feature view.
@@ -719,6 +725,8 @@ class VectorServer:
         # Arguments
             feature_vector: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vector to be transformed.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
+            transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
         # Returns
             `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The feature vector that contains all on-demand features in the feature view.
         """
@@ -749,7 +757,9 @@ class VectorServer:
             feature_vectors, request_parameters
         ):
             on_demand_feature_vector = self.apply_on_demand_transformations(
-                feature_vector, request_parameter
+                feature_vector,
+                request_parameter,
+                transformation_context=transformation_context,
             )
             on_demand_feature_vectors.append(
                 [
@@ -1111,14 +1121,15 @@ class VectorServer:
                 for col in transformed_results:
                     rows[col] = transformed_results[col].values[0]
         else:
-            if isinstance(transformed_results, tuple):
+            if isinstance(transformed_results, tuple) or isinstance(
+                transformed_results, list
+            ):
                 for index, result in enumerate(transformed_results):
                     rows[transformation_function.output_column_names[index]] = result
             else:
                 rows[transformation_function.output_column_names[0]] = (
                     transformed_results
                 )
-
         return rows
 
     def apply_transformation(

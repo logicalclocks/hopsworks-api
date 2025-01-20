@@ -2736,10 +2736,14 @@ class FeatureGroup(FeatureGroupBase):
         # Raises
             `hsfs.client.exceptions.RestAPIError`. Unable to create feature group.
         """
-        if (features is None and len(self._features) > 0) or (
-            isinstance(features, List)
-            and len(features) > 0
-            and all([isinstance(f, feature.Feature) for f in features])
+        if (
+            (features is None and len(self._features) > 0)
+            or (
+                isinstance(features, List)
+                and len(features) > 0
+                and all([isinstance(f, feature.Feature) for f in features])
+            )
+            or (not features and len(self.transformation_functions) > 0)
         ):
             # This is done for compatibility. Users can specify the feature list in the
             # (get_or_)create_feature_group. Users can also provide the feature list in the save().
@@ -2748,7 +2752,13 @@ class FeatureGroup(FeatureGroupBase):
             # and in the `save()` call, then the (get_or_)create_feature_group wins.
             # This is consistent with the behavior of the insert method where the feature list wins over the
             # dataframe structure
-            self._features = self._features if len(self._features) > 0 else features
+            self._features = (
+                self._features
+                if len(self._features) > 0
+                else features
+                if features
+                else []
+            )
 
             self._features = self._feature_group_engine._update_feature_group_schema_on_demand_transformations(
                 self, self._features

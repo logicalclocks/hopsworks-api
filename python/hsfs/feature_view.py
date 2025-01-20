@@ -3504,7 +3504,7 @@ class FeatureView:
         request_parameters: Optional[
             Union[List[Dict[str, Any]], Dict[str, Any]]
         ] = None,
-        external: Optional[bool] = None,
+        transformation_context: Dict[str, Any] = None,
     ):
         """
         Function computes on-demand features present in the feature view.
@@ -3512,18 +3512,23 @@ class FeatureView:
         # Arguments
             feature_vector: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vector to be transformed.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
+            transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
         # Returns
             `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The feature vector that contains all on-demand features in the feature view.
         """
 
         return self._vector_server.compute_on_demand_features(
-            feature_vectors=feature_vector, request_parameters=request_parameters
+            feature_vectors=feature_vector,
+            request_parameters=request_parameters,
+            transformation_context=transformation_context,
         )
 
     def transform(
         self,
         feature_vector: Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame],
         external: Optional[bool] = None,
+        transformation_context: Dict[str, Any] = None,
     ):
         """
         Transform the input feature vector by applying Model-dependent transformations attached to the feature view.
@@ -3539,13 +3544,18 @@ class FeatureView:
                 If set to False, the online feature store storage connector is used
                 which relies on the private IP. Defaults to True if connection to Hopsworks is established from
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
+            transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
         # Returns
             `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The transformed feature vector obtained by applying Model-Dependent Transformations.
         """
         if not self._vector_server._serving_initialized:
             self.init_serving(external=external)
 
-        return self._vector_server.transform(feature_vectors=feature_vector)
+        return self._vector_server.transform(
+            feature_vectors=feature_vector,
+            transformation_context=transformation_context,
+        )
 
     def enable_logging(self) -> None:
         """Enable feature logging for the current feature view.
