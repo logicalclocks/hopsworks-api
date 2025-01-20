@@ -913,6 +913,7 @@ class FeatureViewEngine:
         inference_helper_columns=False,
         dataframe_type="default",
         transformed=True,
+        transformation_context: Dict[str, Any] = None,
     ):
         self._check_feature_group_accessibility(feature_view_obj)
 
@@ -936,7 +937,9 @@ class FeatureViewEngine:
         ).read(read_options=read_options, dataframe_type=dataframe_type)
         if transformation_functions and transformed:
             return engine.get_instance()._apply_transformation_function(
-                transformation_functions, dataset=feature_dataframe
+                transformation_functions,
+                dataset=feature_dataframe,
+                transformation_context=transformation_context,
             )
         else:
             return feature_dataframe

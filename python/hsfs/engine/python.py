@@ -1255,6 +1255,7 @@ class Engine:
         transformation_functions: List[transformation_function.TransformationFunction],
         dataset: Union[pd.DataFrame, pl.DataFrame],
         online_inference: bool = False,
+        transformation_context: Dict[str, Any] = None,
     ) -> Union[pd.DataFrame, pl.DataFrame]:
         """
         Apply transformation function to the dataframe.
@@ -1283,6 +1284,10 @@ class Engine:
 
         for tf in transformation_functions:
             hopsworks_udf = tf.hopsworks_udf
+
+            # Setting transformation function context variables.
+            hopsworks_udf.transformation_context = transformation_context
+
             missing_features = set(hopsworks_udf.transformation_features) - set(
                 dataset.columns
             )

@@ -2736,10 +2736,14 @@ class FeatureGroup(FeatureGroupBase):
         # Raises
             `hsfs.client.exceptions.RestAPIError`. Unable to create feature group.
         """
-        if (features is None and len(self._features) > 0) or (
-            isinstance(features, List)
-            and len(features) > 0
-            and all([isinstance(f, feature.Feature) for f in features])
+        if (
+            (features is None and len(self._features) > 0)
+            or (
+                isinstance(features, List)
+                and len(features) > 0
+                and all([isinstance(f, feature.Feature) for f in features])
+            )
+            or (not features and len(self.transformation_functions) > 0)
         ):
             # This is done for compatibility. Users can specify the feature list in the
             # (get_or_)create_feature_group. Users can also provide the feature list in the save().
@@ -2748,7 +2752,13 @@ class FeatureGroup(FeatureGroupBase):
             # and in the `save()` call, then the (get_or_)create_feature_group wins.
             # This is consistent with the behavior of the insert method where the feature list wins over the
             # dataframe structure
-            self._features = self._features if len(self._features) > 0 else features
+            self._features = (
+                self._features
+                if len(self._features) > 0
+                else features
+                if features
+                else []
+            )
 
             self._features = self._feature_group_engine._update_feature_group_schema_on_demand_transformations(
                 self, self._features
@@ -2813,6 +2823,7 @@ class FeatureGroup(FeatureGroupBase):
         write_options: Optional[Dict[str, Any]] = None,
         validation_options: Optional[Dict[str, Any]] = None,
         wait: bool = False,
+        transformation_context: Dict[str, Any] = None,
     ) -> Tuple[Optional[Job], Optional[ValidationReport]]:
         """Persist the metadata and materialize the feature group to the feature store
         or insert data from a dataframe into the existing feature group.
@@ -2919,6 +2930,8 @@ class FeatureGroup(FeatureGroupBase):
                    suite of the feature group should be fetched before every insert.
             wait: Wait for job to finish before returning, defaults to `False`.
                 Shortcut for read_options `{"wait_for_job": False}`.
+            transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         # Returns
             (`Job`, `ValidationReport`) A tuple with job information if python engine is used and the validation report if validation is enabled.
@@ -2954,6 +2967,7 @@ class FeatureGroup(FeatureGroupBase):
             storage=storage.lower() if storage is not None else None,
             write_options=write_options,
             validation_options={"save_report": True, **validation_options},
+            transformation_context=transformation_context,
         )
 
         if engine.get_type().startswith("spark") and not self.stream:
@@ -2983,6 +2997,7 @@ class FeatureGroup(FeatureGroupBase):
         storage: Optional[str] = None,
         write_options: Optional[Dict[str, Any]] = None,
         validation_options: Optional[Dict[str, Any]] = None,
+        transformation_context: Dict[str, Any] = None,
     ) -> Union[
         Tuple[Optional[Job], Optional[ValidationReport]],
         feature_group_writer.FeatureGroupWriter,
@@ -3081,6 +3096,8 @@ class FeatureGroup(FeatureGroupBase):
                 * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
                 * key `fetch_expectation_suite` a boolean value, by default `False` for multi part inserts,
                    to control whether the expectation suite of the feature group should be fetched before every insert.
+            transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         # Returns
             (`Job`, `ValidationReport`) A tuple with job information if python engine is used and the validation report if validation is enabled.
@@ -3099,6 +3116,7 @@ class FeatureGroup(FeatureGroupBase):
                 storage,
                 write_options or {},
                 validation_options or {},
+                transformation_context,
             )
 
     def finalize_multi_part_insert(self) -> None:
@@ -3141,6 +3159,7 @@ class FeatureGroup(FeatureGroupBase):
         timeout: Optional[int] = None,
         checkpoint_dir: Optional[str] = None,
         write_options: Optional[Dict[str, Any]] = None,
+        transformation_context: Dict[str, Any] = None,
     ) -> TypeVar("StreamingQuery"):
         """Ingest a Spark Structured Streaming Dataframe to the online feature store.
 
@@ -3194,6 +3213,8 @@ class FeatureGroup(FeatureGroupBase):
                 "insert_stream_" + online_topic_name. Defaults to `None`.
                 write_options: Additional write options for Spark as key-value pairs.
                 Defaults to `{}`.
+            transformation_context: A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         # Returns
             `StreamingQuery`: Spark Structured Streaming Query object.
@@ -3228,6 +3249,7 @@ class FeatureGroup(FeatureGroupBase):
                 timeout,
                 checkpoint_dir,
                 write_options or {},
+                transformation_context,
             )
 
     def commit_details(
