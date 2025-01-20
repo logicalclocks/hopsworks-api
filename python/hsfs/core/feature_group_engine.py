@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import List, Union
+from typing import Any, Dict, List, Union
 
 from hsfs import engine, feature, util
 from hsfs import feature_group as fg
@@ -49,12 +49,18 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             transformed_features = []
             dropped_features = []
             for tf in feature_group.transformation_functions:
-                transformed_features.append(
-                    feature.Feature(
-                        tf.hopsworks_udf.output_column_names[0],
-                        tf.hopsworks_udf.return_types[0],
-                        on_demand=True,
-                    )
+                transformed_features.extend(
+                    [
+                        feature.Feature(
+                            output_column_name,
+                            return_type,
+                            on_demand=True,
+                        )
+                        for output_column_name, return_type in zip(
+                            tf.hopsworks_udf.output_column_names,
+                            tf.hopsworks_udf.return_types,
+                        )
+                    ]
                 )
                 if tf.hopsworks_udf.dropped_features:
                     dropped_features.extend(tf.hopsworks_udf.dropped_features)
@@ -141,6 +147,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         storage,
         write_options,
         validation_options: dict = None,
+        transformation_context: Dict[str, Any] = None,
     ):
         dataframe_features = engine.get_instance().parse_schema_feature_group(
             feature_dataframe,
@@ -154,7 +161,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             and feature_group.transformation_functions
         ):
             feature_dataframe = engine.get_instance()._apply_transformation_function(
-                feature_group.transformation_functions, feature_dataframe
+                feature_group.transformation_functions,
+                feature_dataframe,
+                transformation_context=transformation_context,
             )
 
         dataframe_features = (
@@ -358,6 +367,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         timeout,
         checkpoint_dir,
         write_options,
+        transformation_context: Dict[str, Any] = None,
     ):
         if not feature_group.online_enabled and not feature_group.stream:
             raise exceptions.FeatureStoreException(
@@ -376,7 +386,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
         if feature_group.transformation_functions:
             dataframe = engine.get_instance()._apply_transformation_function(
-                feature_group.transformation_functions, dataframe
+                feature_group.transformation_functions,
+                dataframe,
+                transformation_context=transformation_context,
             )
 
         util.validate_embedding_feature_type(
