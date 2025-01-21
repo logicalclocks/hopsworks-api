@@ -20,10 +20,12 @@ package com.logicalclocks.hsfs.engine;
 import com.logicalclocks.hsfs.FeatureStore;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.StreamFeatureGroup;
+import lombok.SneakyThrows;
 
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 public class FeatureGroupEngine<T>  extends FeatureGroupEngineBase {
 
@@ -46,9 +48,10 @@ public class FeatureGroupEngine<T>  extends FeatureGroupEngineBase {
 
     return Arrays.asList(streamFeatureGroups);
   }
+
   @SneakyThrows
   public List<Object> insertStream(StreamFeatureGroup streamFeatureGroup, List<T> featureData,
-                                        Map<String, String> writeOptions) {
+                                        Map<String, String> writeOptions) throws FeatureStoreException {
     return Engine.getInstance().writeStream(streamFeatureGroup, featureData,  writeOptions);
   }
 }

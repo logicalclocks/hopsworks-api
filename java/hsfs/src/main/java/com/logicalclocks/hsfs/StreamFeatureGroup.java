@@ -19,12 +19,13 @@ package com.logicalclocks.hsfs;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
-import com.logicalclocks.hsfs.engine.FeatureGroupEngineBase;
+import com.logicalclocks.hsfs.engine.FeatureGroupEngine;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.NonNull;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -33,7 +34,7 @@ import java.util.stream.Collectors;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class StreamFeatureGroup<T> extends FeatureGroupBase<List<T>> {
 
-  protected FeatureGroupEngineBase featureGroupEngine = new FeatureGroupEngineBase();
+  protected FeatureGroupEngine featureGroupEngine = new FeatureGroupEngine();
 
   @Builder
   public StreamFeatureGroup(FeatureStoreBase featureStore, @NonNull String name, Integer version, String description,
