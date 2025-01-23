@@ -1808,7 +1808,7 @@ class FeatureGroupBase:
         return online_ingestion_api.OnlineIngestionApi().get_online_ingestion(
             self, query_params={"filter_by": "LATEST"}
         )
-    
+
     def get_online_ingestion(self, id) -> online_ingestion.OnlineIngestion:
         return online_ingestion_api.OnlineIngestionApi().get_online_ingestion(
             self, query_params={"filter_by": f"ID:{id}"}
