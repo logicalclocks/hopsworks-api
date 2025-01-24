@@ -68,7 +68,14 @@ jobs:
           java-version: "8"
           distribution: "adopt"
 
+      - name: Set up JDK 8
+        uses: actions/setup-java@v3
+        with:
+          java-version: "8"
+          distribution: "adopt"
+
       - name: Set Timezone
+        run: sudo timedatectl set-timezone UTC && echo UTC | sudo tee /etc/timezone
         run: sudo timedatectl set-timezone UTC && echo UTC | sudo tee /etc/timezone
 
       - uses: actions/checkout@v4
@@ -131,6 +138,12 @@ jobs:
           java-version: "8"
           distribution: "adopt"
 
+      - name: Set up JDK 8
+        uses: actions/setup-java@v3
+        with:
+          java-version: "8"
+          distribution: "adopt"
+
       - name: Set Timezone
         run: sudo timedatectl set-timezone UTC && echo UTC | sudo tee /etc/timezone
 
@@ -158,6 +171,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Set up JDK 8
+        uses: actions/setup-java@v3
+        with:
+          java-version: "8"
+          distribution: "adopt"
+
       - name: Set up JDK 8
         uses: actions/setup-java@v3
         with:

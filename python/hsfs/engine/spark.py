@@ -1681,6 +1681,12 @@ class Engine:
         df = query.read()
         return df.drop("log_id", time_col)
 
+    def get_spark_version(self):
+        return self._spark_session.version
+
+    def get_spark_version(self):
+        return self._spark_session.version
+
 
 class SchemaError(Exception):
     """Thrown when schemas don't match"""
