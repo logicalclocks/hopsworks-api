@@ -149,7 +149,7 @@ class HopsworksUdf:
         dropped_feature_names : `Optional[List[str]]`. The feature name corresponding to the arguments names that are dropped
         feature_name_prefix: `Optional[str]`. Prefixes if any used in the feature view.
         output_column_names: `Optional[List[str]]`. The names of the output columns returned from the transformation function.
-        generate_output_col_names: `Optional[bool]`. Generate default output column names for the transformation function. Default's to True.
+        generate_output_col_names: `bool`. Generate default output column names for the transformation function. Default's to True.
     """
 
     # Mapping for converting python types to spark types - required for creating pandas UDF's.
