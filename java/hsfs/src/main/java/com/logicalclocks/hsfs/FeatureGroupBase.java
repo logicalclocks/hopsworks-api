@@ -21,6 +21,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import com.logicalclocks.hsfs.engine.FeatureGroupEngineBase;
 import com.logicalclocks.hsfs.engine.FeatureGroupUtils;
+import com.logicalclocks.hsfs.metadata.OnlineIngestionApi;
+import com.logicalclocks.hsfs.metadata.Statistics;
 import com.logicalclocks.hsfs.metadata.Subject;
 import com.logicalclocks.hsfs.metadata.User;
 
@@ -150,6 +152,7 @@ public abstract class FeatureGroupBase<T> {
 
   protected FeatureGroupEngineBase featureGroupEngineBase = new FeatureGroupEngineBase();
   protected FeatureGroupUtils utils = new FeatureGroupUtils();
+  protected OnlineIngestionApi onlineIngestionApi = new OnlineIngestionApi();
 
   protected static final Logger LOGGER = LoggerFactory.getLogger(FeatureGroupBase.class);
 
@@ -362,5 +365,15 @@ public abstract class FeatureGroupBase<T> {
   @JsonIgnore
   public Schema getDeserializedAvroSchema() throws FeatureStoreException, IOException {
     return utils.getDeserializedAvroSchema(getAvroSchema());
+  }
+
+  @JsonIgnore
+  public OnlineIngestion getLatestOnlineIngestion() throws FeatureStoreException, IOException {
+    return onlineIngestionApi.getOnlineIngestion(this, "filter_by=LATEST").get(0);
+  }
+
+  @JsonIgnore
+  public OnlineIngestion getOnlineIngestion(Integer id) throws FeatureStoreException, IOException {
+    return onlineIngestionApi.getOnlineIngestion(this, "filter_by=ID:" + id).get(0);
   }
 }

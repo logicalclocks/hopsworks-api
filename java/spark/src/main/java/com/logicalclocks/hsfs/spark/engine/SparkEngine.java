@@ -41,6 +41,7 @@ import com.logicalclocks.hsfs.engine.FeatureGroupUtils;
 import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.metadata.HopsworksClient;
 import com.logicalclocks.hsfs.metadata.OnDemandOptions;
+import com.logicalclocks.hsfs.metadata.OnlineIngestionApi;
 import com.logicalclocks.hsfs.metadata.Option;
 import com.logicalclocks.hsfs.util.Constants;
 import com.logicalclocks.hsfs.spark.ExternalFeatureGroup;
@@ -124,6 +125,7 @@ public class SparkEngine extends EngineBase {
 
   private final StorageConnectorUtils storageConnectorUtils = new StorageConnectorUtils();
   private FeatureGroupUtils featureGroupUtils = new FeatureGroupUtils();
+  private OnlineIngestionApi onlineIngestionApi = new OnlineIngestionApi();
 
   private static SparkEngine INSTANCE = null;
 
@@ -532,26 +534,8 @@ public class SparkEngine extends EngineBase {
   public void writeOnlineDataframe(FeatureGroupBase featureGroupBase, Dataset<Row> dataset, String onlineTopicName,
                                    Map<String, String> writeOptions)
       throws FeatureStoreException, IOException {
-    byte[] projectId = String.valueOf(featureGroupBase.getFeatureStore().getProjectId())
-        .getBytes(StandardCharsets.UTF_8);
-    byte[] featureGroupId = String.valueOf(featureGroupBase.getId()).getBytes(StandardCharsets.UTF_8);
-    byte[] subjectId = String.valueOf(featureGroupBase.getSubject().getId()).getBytes(StandardCharsets.UTF_8);
-
     onlineFeatureGroupToAvro(featureGroupBase, encodeComplexFeatures(featureGroupBase, dataset))
-        .withColumn("headers", array(
-            struct(
-                lit("projectId").as("key"),
-                lit(projectId).as("value")
-            ),
-            struct(
-                lit("featureGroupId").as("key"),
-                lit(featureGroupId).as("value")
-            ),
-            struct(
-                lit("subjectId").as("key"),
-                lit(subjectId).as("value")
-            )
-        ))
+        .withColumn("headers", getHeader(featureGroupBase, dataset.count()))
         .write()
         .format(Constants.KAFKA_FORMAT)
         .options(writeOptions)
@@ -564,28 +548,10 @@ public class SparkEngine extends EngineBase {
                                                  Long timeout, String checkpointLocation,
                                                  Map<String, String> writeOptions)
       throws FeatureStoreException, IOException, StreamingQueryException, TimeoutException {
-    byte[] projectId = String.valueOf(featureGroupBase.getFeatureStore().getProjectId())
-        .getBytes(StandardCharsets.UTF_8);
-    byte[] featureGroupId = String.valueOf(featureGroupBase.getId()).getBytes(StandardCharsets.UTF_8);
-    byte[] subjectId = String.valueOf(featureGroupBase.getSubject().getId()).getBytes(StandardCharsets.UTF_8);
-
     queryName = makeQueryName(queryName, featureGroupBase);
     DataStreamWriter<Row> writer =
         onlineFeatureGroupToAvro(featureGroupBase, encodeComplexFeatures(featureGroupBase, dataset))
-            .withColumn("headers", array(
-                struct(
-                    lit("projectId").as("key"),
-                    lit(projectId).as("value")
-                ),
-                struct(
-                    lit("featureGroupId").as("key"),
-                    lit(featureGroupId).as("value")
-                ),
-                struct(
-                    lit("subjectId").as("key"),
-                    lit(subjectId).as("value")
-                )
-            ))
+            .withColumn("headers", getHeader(featureGroupBase, null))
             .writeStream()
             .format(Constants.KAFKA_FORMAT)
             .outputMode(outputMode)
@@ -602,6 +568,17 @@ public class SparkEngine extends EngineBase {
       query.awaitTermination(timeout);
     }
     return query;
+  }
+
+  private Column getHeader(FeatureGroupBase featureGroup, Long numEntries) throws FeatureStoreException, IOException {
+    return array(
+      FeatureGroupUtils.getHeaders(featureGroup, numEntries).entrySet().stream()
+      .map(entry -> struct(
+        lit(entry.getKey()).as("key"),
+        lit(entry.getValue()).as("value")
+      ))
+      .toArray(Column[]::new)
+    );
   }
 
   /**
