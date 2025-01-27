@@ -22,7 +22,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.logicalclocks.hsfs.engine.FeatureGroupEngineBase;
 import com.logicalclocks.hsfs.engine.FeatureGroupUtils;
 import com.logicalclocks.hsfs.metadata.OnlineIngestionApi;
-import com.logicalclocks.hsfs.metadata.Statistics;
 import com.logicalclocks.hsfs.metadata.Subject;
 import com.logicalclocks.hsfs.metadata.User;
 
