@@ -25,6 +25,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -213,8 +214,12 @@ public class VectorServer {
     for (Integer fgId : preparedQueryString.keySet()) {
       String query = preparedQueryString.get(fgId);
       String zippedTupleString =
-          zipArraysToTupleString(preparedStatementParameters.get(fgId).keySet().stream().map(entry::get)
-              .collect(Collectors.toList()));
+          zipArraysToTupleString(preparedStatementParameters.get(fgId)
+            .entrySet()
+            .stream()
+            .sorted(Comparator.comparingInt(Map.Entry::getValue))
+            .map(e -> entry.get(e.getKey()))
+            .collect(Collectors.toList()));
       queries.add(query.replaceFirst("\\?", zippedTupleString));
     }
     return getFeatureVectors(featureStoreBase, features, queries, external);
@@ -420,8 +425,12 @@ public class VectorServer {
 
   private Object deserializeComplexFeature(Map<String, DatumReader<Object>> complexFeatureSchemas, ResultSet results,
                                            int index) throws SQLException, IOException {
-    Decoder decoder = DecoderFactory.get().binaryDecoder(results.getBytes(index), binaryDecoder);
-    return complexFeatureSchemas.get(results.getMetaData().getColumnName(index)).read(null, decoder);
+    if (results.getBytes(index) != null) {
+      Decoder decoder = DecoderFactory.get().binaryDecoder(results.getBytes(index), binaryDecoder);
+      return complexFeatureSchemas.get(results.getMetaData().getColumnName(index)).read(null, decoder);
+    } else {
+      return null;
+    }
   }
 
   private Map<String, DatumReader<Object>> getComplexFeatureSchemas(List<TrainingDatasetFeature> features)
@@ -430,7 +439,7 @@ public class VectorServer {
     for (TrainingDatasetFeature f : features) {
       if (f.isComplex()) {
         DatumReader<Object> datumReader =
-            new GenericDatumReader<>(parser.parse(f.getFeatureGroup().getFeatureAvroSchema(f.getName())));
+            new GenericDatumReader<>(parser.parse(f.getFeaturegroup().getFeatureAvroSchema(f.getName())));
         featureSchemaMap.put(f.getName(), datumReader);
       }
     }
