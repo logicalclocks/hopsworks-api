@@ -126,7 +126,7 @@ class FeatureViewApi:
     @decorators.catch_not_found(["hsfs.feature_view.FeatureView"], fallback_return=None)
     def get_by_name_version(self, name: str, version: int) -> feature_view.FeatureView:
         """
-        Get a feature view form the backend using both name and version
+        Get a feature view from the backend using both name and version
 
         # Arguments
             name `str`: Name of feature view.

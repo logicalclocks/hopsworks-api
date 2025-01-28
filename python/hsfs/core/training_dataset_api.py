@@ -18,10 +18,9 @@ from __future__ import annotations
 from typing import List, Optional, Union
 
 from hopsworks_common import client
-from hsfs import training_dataset
+from hsfs import training_dataset, decorators
 from hsfs.constructor import fs_query, serving_prepared_statement
 from hsfs.core import job, training_dataset_job_conf
-from hsfs.client import exceptions
 
 
 class TrainingDatasetApi:
@@ -49,11 +48,8 @@ class TrainingDatasetApi:
             ),
         )
 
-    def get(
-        self, name: str, version: Optional[int]
-    ) -> Union[
-        training_dataset.TrainingDataset, List[training_dataset.TrainingDataset]
-    ]:
+    @decorators.catch_not_found(["hsfs.training_dataset.TrainingDataset"], fallback_return=[])
+    def _get_all_training_datasets(self, name: str):
         _client = client.get_instance()
         path_params = [
             "project",
@@ -63,25 +59,35 @@ class TrainingDatasetApi:
             "trainingdatasets",
             name,
         ]
-        query_params = None if version is None else {"version": version}
+        return training_dataset.TrainingDataset.from_response_json(
+            _client._send_request("GET", path_params),
+        )
 
-        try:
-            td_list = training_dataset.TrainingDataset.from_response_json(
-                _client._send_request("GET", path_params, query_params),
-            )
-        except exceptions.RestAPIError as e:
-            if e.response.json().get("errorCode", "") == exceptions.RestAPIError.FeatureStoreErrorCode.TRAINING_DATASET_NOT_FOUND and e.response.status_code == 404:
-                if version:
-                    return None
-                else:
-                    return []
-            else:
-                raise e
+    @decorators.catch_not_found(["hsfs.training_dataset.TrainingDataset"], fallback_return=None)
+    def _get_training_dataset_by_version(self, name: str, version: int):
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            self._feature_store_id,
+            "trainingdatasets",
+            name,
+        ]
+        query_params = {"version": version}
+        return training_dataset.TrainingDataset.from_response_json(
+            _client._send_request("GET", path_params, query_params),
+        )
 
-        if version is not None:
-            return td_list[0]
+    def get(
+        self, name: str, version: Optional[int]
+    ) -> Union[
+        training_dataset.TrainingDataset, List[training_dataset.TrainingDataset]
+    ]:
+        if version:
+            return self._get_training_dataset_by_version(name, version)[0]
         else:
-            return td_list
+            return self._get_all_training_datasets(name)
 
     def get_query(
         self,

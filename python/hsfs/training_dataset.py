@@ -41,6 +41,7 @@ if HAS_NUMPY:
 
 
 class TrainingDatasetBase:
+    NOT_FOUND_ERROR_CODE = 270012
     # NOTE: This class is exposed to users with the only purpose of providing information about a Training Dataset
     # and, therefore, it should not implement any functionality and remain with as minimal as possible
 

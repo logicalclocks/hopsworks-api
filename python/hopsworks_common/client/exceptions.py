@@ -34,7 +34,6 @@ class RestAPIError(Exception):
 
     class FeatureStoreErrorCode(int, Enum):
         FEATURE_GROUP_NOT_FOUND = 270009
-        TRAINING_DATASET_NOT_FOUND = 270012
 
         def __eq__(self, other: Union[int, Any]) -> bool:
             if isinstance(other, int):
