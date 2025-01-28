@@ -20,6 +20,7 @@ from typing import List, Optional, Union
 from hopsworks_common import client
 from hsfs.core import feature_monitoring_config as fmc
 from hsfs.core.job import Job
+from hsfs import decorators
 
 
 class FeatureMonitoringConfigApi:
@@ -153,6 +154,7 @@ class FeatureMonitoringConfigApi:
             _client._send_request("GET", path_params)
         )
 
+    @decorators.catch_not_found(["hsfs.core.feature_monitoring_config.FeatureMonitoringConfig"], fallback_return=None)
     def get_by_name(
         self,
         name: str,
@@ -168,7 +170,6 @@ class FeatureMonitoringConfigApi:
             project_id=_client._project_id,
             name=name,
         )
-
         return fmc.FeatureMonitoringConfig.from_response_json(
             _client._send_request("GET", path_params)
         )

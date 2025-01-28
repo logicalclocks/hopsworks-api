@@ -30,6 +30,8 @@ from hopsworks_common.job_schedule import JobSchedule
 
 
 class Job:
+    NOT_FOUND_ERROR_CODE = 130009
+
     def __init__(
         self,
         id,
@@ -232,7 +234,7 @@ class Job:
         # Returns
             `List[Execution]`
         # Raises
-            `RestAPIError` in case the backend fails to retrieve executions.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._execution_api._get_all(self)
 
@@ -257,7 +259,7 @@ class Job:
         !!! danger "Potentially dangerous operation"
             This operation deletes the job and all executions.
         # Raises
-            `RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._job_api._delete(self)
 

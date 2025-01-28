@@ -130,7 +130,7 @@ class Project:
         # Returns
             `hsfs.feature_store.FeatureStore`: The Feature Store API
         # Raises
-            `RestAPIError`: If unable to connect
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return client.get_connection().get_feature_store(name)
 
@@ -149,7 +149,7 @@ class Project:
         # Returns
             `hsml.model_registry.ModelRegistry`: The Model Registry API
         # Raises
-            `RestAPIError`: If unable to connect
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return client.get_connection().get_model_registry()
 
@@ -168,7 +168,7 @@ class Project:
         # Returns
             `hsml.model_serving.ModelServing`: The Model Serving API
         # Raises
-            `RestAPIError`: If unable to connect
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return client.get_connection().get_model_serving()
 
@@ -201,10 +201,6 @@ class Project:
             `JobApi`: The Job Api handle
         """
         return self._job_api
-
-    def get_jobs_api(self):
-        """**Deprecated**, use get_job_api instead."""
-        return self.get_job_api()
 
     def get_flink_cluster_api(self):
         """Get the flink cluster API for the project.

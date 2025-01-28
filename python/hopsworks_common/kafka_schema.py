@@ -79,7 +79,7 @@ class KafkaSchema:
         !!! danger "Potentially dangerous operation"
             This operation deletes the schema.
         # Raises
-            `RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._kafka_api._delete_subject_version(self.subject, self.version)
 

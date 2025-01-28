@@ -17,10 +17,9 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Union
+from typing import Any, Dict, Union, List, Optional
 
-from hopsworks_common import client, execution, job, job_schedule, usage, util
-from hopsworks_common.client.exceptions import RestAPIError
+from hopsworks_common import client, execution, job, job_schedule, usage, util, decorators
 from hopsworks_common.core import (
     ingestion_job_conf,
     job_configuration,
@@ -29,7 +28,7 @@ from hopsworks_common.core import (
 
 class JobApi:
     @usage.method_logger
-    def create_job(self, name: str, config: dict):
+    def create_job(self, name: str, config: dict) -> job.Job:
         """Create a new job or update an existing one.
 
         ```python
@@ -53,7 +52,7 @@ class JobApi:
         # Returns
             `Job`: The Job object
         # Raises
-            `RestAPIError`: If unable to create the job
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
 
@@ -71,15 +70,16 @@ class JobApi:
         return created_job
 
     @usage.method_logger
-    def get_job(self, name: str):
+    @decorators.catch_not_found(["hopsworks_common.job.Job"], fallback_return=None)
+    def get_job(self, name: str) -> Optional[job.Job]:
         """Get a job.
 
         # Arguments
             name: Name of the job.
         # Returns
-            `Job`: The Job object
+            `Job`: The Job object or `None` if it does not exist.
         # Raises
-            `RestAPIError`: If unable to get the job
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = [
@@ -89,18 +89,16 @@ class JobApi:
             name,
         ]
         query_params = {"expand": ["creator"]}
-        return job.Job.from_response_json(
-            _client._send_request("GET", path_params, query_params=query_params)
-        )
+        return job.Job.from_response_json(_client._send_request("GET", path_params, query_params=query_params))
 
     @usage.method_logger
-    def get_jobs(self):
+    def get_jobs(self) -> List[job.Job]:
         """Get all jobs.
 
         # Returns
             `List[Job]`: List of Job objects
         # Raises
-            `RestAPIError`: If unable to get the jobs
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = [
@@ -122,13 +120,10 @@ class JobApi:
         # Returns
             `bool`: True if the job exists, otherwise False
         # Raises
-            `RestAPIError`: If unable to check the existence of the job
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        try:
-            self.get_job(name)
-            return True
-        except RestAPIError:
-            return False
+        job = self.get_job(name)
+        return job is not None
 
     @usage.method_logger
     def get_configuration(self, type: str):
@@ -139,7 +134,7 @@ class JobApi:
         # Returns
             `dict`: Default job configuration
         # Raises
-            `RestAPIError`: If unable to get the job configuration
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = [
@@ -235,13 +230,6 @@ class JobApi:
         path_params = ["project", _client._project_id, "jobs", name, "executions"]
 
         _client._send_request("POST", path_params, data=args)
-
-    @usage.method_logger
-    def get(self, name: str) -> job.Job:
-        _client = client.get_instance()
-        path_params = ["project", _client._project_id, "jobs", name]
-
-        return job.Job.from_response_json(_client._send_request("GET", path_params))
 
     @usage.method_logger
     def last_execution(self, job: job.Job) -> execution.Execution:

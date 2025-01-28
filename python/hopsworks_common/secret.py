@@ -22,6 +22,8 @@ from hopsworks_common.core import secret_api
 
 
 class Secret:
+    NOT_FOUND_ERROR_CODE = 160048
+
     def __init__(
         self,
         name=None,
@@ -87,7 +89,7 @@ class Secret:
         !!! danger "Potentially dangerous operation"
             This operation deletes the secret and may break applications using it.
         # Raises
-            `RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._secret_api._delete(self.name)
 

@@ -43,7 +43,7 @@ class ProjectApi:
         # Returns
             `List[Project]`: List of Project objects
         # Raises
-            `RestAPIError`: If unable to get the projects
+            `hopsworks.client.exceptions.RestAPIError`: If unable to get the projects
         """
         _client = client.get_instance()
         path_params = [
@@ -63,7 +63,7 @@ class ProjectApi:
         # Returns
             `Project`: The Project object
         # Raises
-            `RestAPIError`: If unable to get the project
+            `hopsworks.client.exceptions.RestAPIError`: If unable to get the project
         """
         _client = client.get_instance()
         path_params = [
@@ -86,7 +86,7 @@ class ProjectApi:
         # Returns
             `Project`: The Project object
         # Raises
-            `RestAPIError`: If unable to create the project
+            `hopsworks.client.exceptions.RestAPIError`: If unable to create the project
         """
         _client = client.get_instance()
 

@@ -37,11 +37,11 @@ class VariableApi:
         """Get the configured value of a variable.
 
         # Arguments
-            vairable: Name of the variable.
+            variable: Name of the variable.
         # Returns
-            The vairable's value
+            The variable's value
         # Raises
-            `RestAPIError`: If unable to get the variable
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         _client = client.get_instance()
@@ -59,7 +59,7 @@ class VariableApi:
         # Returns
             The software's version, if the software is available, otherwise `None`.
         # Raises
-            `RestAPIError`: If unable to get the version
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         _client = client.get_instance()
@@ -96,7 +96,7 @@ class VariableApi:
         # Returns
             `True`: If data science profile is enabled, `False` otherwise.
         # Raises
-            `RestAPIError`: If unable to obtain the flag's value.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self.get_variable("enable_data_science_profile") == "true"
 
@@ -106,7 +106,7 @@ class VariableApi:
         # Returns
             `True`: If flying duck is available, `False` otherwise.
         # Raises
-            `RestAPIError`: If unable to obtain the flag's value.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self.get_variable("enable_flyingduck") == "true"
 
@@ -117,8 +117,8 @@ class VariableApi:
             `str`: The domain of external loadbalancer for a service, if it is set up.
 
         # Raises
-            `FeatureStoreException`: If variable is not set in Hopsworks Cluster Configuration.
-            `RestAPIError`: Other errors than variable not found.
+            `hopsworks.client.exceptions.FeatureStoreException`: If variable is not set in Hopsworks Cluster Configuration.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         try:
             return self.get_variable(f"loadbalancer_external_domain_{service}")

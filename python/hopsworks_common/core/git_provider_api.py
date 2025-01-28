@@ -54,7 +54,6 @@ class GitProviderApi:
         for p in providers:
             if p.git_provider.lower() == provider.lower():
                 return p
-        raise GitException("No git provider configured for {}".format(provider))
 
     def _set_provider(self, provider: str, username: str, token: str):
         _client = client.get_instance()

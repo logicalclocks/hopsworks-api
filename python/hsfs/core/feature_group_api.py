@@ -27,6 +27,7 @@ from hsfs.core import (
     ingestion_job_conf,
     job,
 )
+from hopsworks_common.client.exceptions import RestAPIError
 
 
 class FeatureGroupApi:
@@ -112,7 +113,17 @@ class FeatureGroupApi:
         fg_objs = []
         # In principle unique names are enforced across fg type and this should therefore
         # return only list of the same type. But it cost nothing to check in case this gets forgotten.
-        for fg_json in _client._send_request("GET", path_params, query_params):
+        try:
+            fgs_json = _client._send_request("GET", path_params, query_params)
+        except RestAPIError as e:
+            if e.response.json().get("errorCode", "") == RestAPIError.FeatureStoreErrorCode.FEATURE_GROUP_NOT_FOUND and e.response.status_code == 404:
+                if version:
+                    return None
+                else:
+                    return []
+            else:
+                raise e            
+        for fg_json in fgs_json:
             if (
                 fg_json["type"] == FeatureGroupApi.BACKEND_FG_STREAM
                 or fg_json["type"] == FeatureGroupApi.BACKEND_FG_BATCH
@@ -174,7 +185,13 @@ class FeatureGroupApi:
         query_params = {
             "expand": ["features", "expectationsuite", "transformationfunctions"]
         }
-        fg_json = _client._send_request("GET", path_params, query_params)
+        try:
+            fg_json = _client._send_request("GET", path_params, query_params)
+        except RestAPIError as e:
+            if e.response.json().get("errorCode", "") == RestAPIError.FeatureStoreErrorCode.FEATURE_GROUP_NOT_FOUND and e.response.status_code == 404:
+                return None
+            else:
+                raise e
         if (
             fg_json["type"] == FeatureGroupApi.BACKEND_FG_STREAM
             or fg_json["type"] == FeatureGroupApi.BACKEND_FG_BATCH

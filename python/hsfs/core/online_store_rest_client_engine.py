@@ -165,8 +165,8 @@ class OnlineStoreRestClientEngine:
                     Keys include operationId, featureGroupId, httpStatus and message.
 
         # Raises:
-            `hsfs.client.exceptions.RestAPIError`: If the server response status code is not 200.
-            ValueError: If the length of the feature values and metadata in the reponse does not match.
+            `hopsworks.client.exceptions.RestAPIError`: If the server response status code is not 200.
+            `ValueError`: If the length of the feature values and metadata in the reponse does not match.
         """
         _logger.debug(
             f"Getting single raw feature vector for Feature View {self._feature_view_name}, version: {self._feature_view_version} in Feature Store {self._feature_store_name}."
