@@ -1120,7 +1120,7 @@ class Engine:
 
         # for external clients, download the file
         if client._is_external():
-            tmp_file = "f/tmp/{file_name)"
+            tmp_file = f"/tmp/{file_name}"
             print("Reading key file from storage connector.")
             response = self._dataset_api.read_content(file, util.get_dataset_type(file))
 
