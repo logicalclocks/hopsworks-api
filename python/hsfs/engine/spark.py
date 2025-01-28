@@ -494,9 +494,7 @@ class Engine:
             )
 
         query = (
-            serialized_df.withColumn(
-                "headers", self._get_headers(feature_group)
-            )
+            serialized_df.withColumn("headers", self._get_headers(feature_group))
             .writeStream.outputMode(output_mode)
             .format(self.KAFKA_FORMAT)
             .option(
@@ -678,6 +676,7 @@ class Engine:
         read_options: Dict[str, Any],
         dataframe_type: str,
         training_dataset_version: int = None,
+        transformation_context: Dict[str, Any] = None,
     ):
         """
         Function that creates or retrieves already created the training dataset.
@@ -689,6 +688,8 @@ class Engine:
             read_options `Dict[str, Any]`: Dictionary that can be used to specify extra parameters for reading data.
             dataframe_type `str`: The type of dataframe returned.
             training_dataset_version `int`: Version of training data to be retrieved.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
         # Raises
             `ValueError`: If the training dataset statistics could not be retrieved.
         """
@@ -701,6 +702,7 @@ class Engine:
             to_df=True,
             feature_view_obj=feature_view_obj,
             training_dataset_version=training_dataset_version,
+            transformation_context=transformation_context,
         )
 
     def split_labels(self, df, labels, dataframe_type):
@@ -731,6 +733,7 @@ class Engine:
         feature_view_obj: feature_view.FeatureView = None,
         to_df: bool = False,
         training_dataset_version: Optional[int] = None,
+        transformation_context: Dict[str, Any] = None,
     ):
         """
         Function that creates or retrieves already created the training dataset.
@@ -744,6 +747,8 @@ class Engine:
             feature_view_obj `FeatureView`: The feature view object for the which the training data is being created.
             to_df `bool`: Return dataframe instead of writing the data.
             training_dataset_version `Optional[int]`: Version of training data to be retrieved.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
         # Raises
             `ValueError`: If the training dataset statistics could not be retrieved.
         """
@@ -782,6 +787,7 @@ class Engine:
                 save_mode,
                 path,
                 to_df=to_df,
+                transformation_context=transformation_context,
             )
         else:
             split_dataset = self._split_df(
@@ -809,6 +815,7 @@ class Engine:
                 save_mode,
                 to_df=to_df,
                 transformation_functions=feature_view_obj.transformation_functions,
+                transformation_context=transformation_context,
             )
 
     def _split_df(self, query_obj, training_dataset, read_options=None):
@@ -963,6 +970,7 @@ class Engine:
         transformation_functions: List[
             transformation_function.TransformationFunction
         ] = None,
+        transformation_context: Dict[str, Any] = None,
     ):
         for split_name, feature_dataframe in feature_dataframes.items():
             split_path = training_dataset.location + "/" + str(split_name)
@@ -975,6 +983,7 @@ class Engine:
                 save_mode,
                 split_path,
                 to_df=to_df,
+                transformation_context=transformation_context,
             )
 
         if to_df:
@@ -990,10 +999,13 @@ class Engine:
         save_mode,
         path,
         to_df=False,
+        transformation_context: Dict[str, Any] = None,
     ):
         # apply transformation functions (they are applied separately to each split)
         feature_dataframe = self._apply_transformation_function(
-            transformation_functions, dataset=feature_dataframe
+            transformation_functions,
+            dataset=feature_dataframe,
+            transformation_context=transformation_context,
         )
         if to_df:
             return feature_dataframe
@@ -1391,6 +1403,7 @@ class Engine:
         self,
         transformation_functions: List[transformation_function.TransformationFunction],
         dataset: DataFrame,
+        transformation_context: Dict[str, Any] = None,
     ):
         """
         Apply transformation function to the dataframe.
@@ -1398,6 +1411,8 @@ class Engine:
         # Arguments
             transformation_functions `List[TransformationFunction]` : List of transformation functions.
             dataset `Union[DataFrame]`: A spark dataframe.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
         # Returns
             `DataFrame`: A spark dataframe with the transformed data.
         # Raises
@@ -1410,6 +1425,10 @@ class Engine:
         explode_name = []
         for tf in transformation_functions:
             hopsworks_udf = tf.hopsworks_udf
+
+            # Setting transformation function context variables.
+            hopsworks_udf.transformation_context = transformation_context
+
             missing_features = set(hopsworks_udf.transformation_features) - set(
                 dataset.columns
             )

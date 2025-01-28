@@ -107,3 +107,7 @@ def test_function_transformation_statistics_as_default_multiple_line_return_type
 
 def test_function_statistics_invalid(arg1: pd.Series, statistics=stats_arg3):
     pass
+
+
+def test_function_context_variables(arg1: pd.Series, context):
+    pass

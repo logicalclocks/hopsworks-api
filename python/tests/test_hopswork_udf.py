@@ -337,6 +337,21 @@ def test_function():
             TransformationFeature(feature_name="arg3", statistic_argument_name="arg3"),
         ]
 
+    def test_extract_function_arguments_context_variable(
+        self,
+    ):
+        from .test_helpers.transformation_test_helper import (
+            test_function_context_variables,
+        )
+
+        function_argument = HopsworksUdf._extract_function_arguments(
+            test_function_context_variables
+        )
+
+        assert function_argument == [
+            TransformationFeature(feature_name="arg1", statistic_argument_name=None),
+        ]
+
     def test_extract_function_arguments_statistics_invalid(self):
         from .test_helpers.transformation_test_helper import (
             test_function_statistics_invalid,
@@ -681,6 +696,27 @@ def test_function():
 \t    pass"""
         )
 
+    def test_format_source_code_context_variable(
+        self,
+    ):
+        from .test_helpers.transformation_test_helper import (
+            test_function_context_variables,
+        )
+
+        function_source = HopsworksUdf._extract_source_code(
+            test_function_context_variables
+        )
+
+        formated_source, module_imports = HopsworksUdf._format_source_code(
+            function_source
+        )
+
+        assert (
+            formated_source.strip()
+            == """def test_function_context_variables(arg1):
+\t    pass"""
+        )
+
     def test_drop_features_one_element(self):
         @udf([int, float, int], drop="col1")
         def test_func(col1, col2, col3):
@@ -790,6 +826,22 @@ def test_function():
         assert result.name == "test_func_col1_"
         assert result.values.tolist() == [2, 3, 4, 5]
 
+    def test_pandas_udf_wrapper_context_variables(self):
+        test_dataframe = pd.DataFrame({"col1": [1, 2, 3, 4]})
+
+        @udf(int)
+        def test_func(col1, context):
+            return col1 + context["test_value"]
+
+        test_func.output_column_names = ["test_func_col1_"]
+        test_func.transformation_context = {"test_value": 200}
+        renaming_wrapper_function = test_func.pandas_udf_wrapper()
+
+        result = renaming_wrapper_function(test_dataframe["col1"])
+
+        assert result.name == "test_func_col1_"
+        assert result.values.tolist() == [201, 202, 203, 204]
+
     def test_python_udf_wrapper_single_output(self):
         test_dataframe = pd.DataFrame({"col1": [1, 2, 3, 4]})
 
@@ -805,6 +857,23 @@ def test_function():
         )
 
         assert result.values.tolist() == [2, 3, 4, 5]
+
+    def test_python_udf_wrapper_context_variables(self):
+        test_dataframe = pd.DataFrame({"col1": [1, 2, 3, 4]})
+
+        @udf(int)
+        def test_func(col1, context):
+            return col1 + context["test_value"]
+
+        test_func.transformation_context = {"test_value": 100}
+        test_func.output_column_names = ["test_func_col1_"]
+        wrapper_function = test_func.python_udf_wrapper(rename_outputs=False)
+
+        result = test_dataframe.apply(
+            lambda x: wrapper_function(x["col1"]), axis=1, result_type="expand"
+        )
+
+        assert result.values.tolist() == [101, 102, 103, 104]
 
     def test_pandas_udf_wrapper_multiple_output(self):
         @udf([int, float])
@@ -1336,3 +1405,13 @@ def test_function():
             str(exp.value)
             == "Invalid output feature names specified for the transformation function 'add_and_sub(feature)'. Please provide names shorter than 63 characters."
         )
+
+    def test_invalid_transformation_context(self):
+        @udf(int)
+        def test_func(feature, context):
+            return feature + context["test_value"]
+
+        with pytest.raises(FeatureStoreException) as exp:
+            test_func.transformation_context = "invalid_context"
+
+        exp.match("Transformation context variable must be passed as dictionary.")

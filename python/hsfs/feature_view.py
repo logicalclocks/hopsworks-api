@@ -529,6 +529,7 @@ class FeatureView:
         force_sql_client: bool = False,
         transform: Optional[bool] = True,
         request_parameters: Optional[Dict[str, Any]] = None,
+        transformation_context: Dict[str, Any] = None,
     ) -> Union[List[Any], pd.DataFrame, np.ndarray, pl.DataFrame]:
         """Returns assembled feature vector from online feature store.
             Call [`feature_view.init_serving`](#init_serving) before this method if the following configurations are needed.
@@ -604,6 +605,8 @@ class FeatureView:
             allow_missing: Setting to `True` returns feature vectors with missing values.
             transformed: Setting to `False` returns the untransformed feature vectors.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         # Returns
             `list`, `pd.DataFrame`, `polars.DataFrame` or `np.ndarray` if `return type` is set to `"list"`, `"pandas"`, `"polars"` or `"numpy"`
@@ -631,6 +634,7 @@ class FeatureView:
             force_sql_client=force_sql_client,
             transform=transform,
             request_parameters=request_parameters,
+            transformation_context=transformation_context,
         )
 
     def get_feature_vectors(
@@ -644,6 +648,7 @@ class FeatureView:
         force_sql_client: bool = False,
         transform: Optional[bool] = True,
         request_parameters: Optional[List[Dict[str, Any]]] = None,
+        transformation_context: Dict[str, Any] = None,
     ) -> Union[List[List[Any]], pd.DataFrame, np.ndarray, pl.DataFrame]:
         """Returns assembled feature vectors in batches from online feature store.
             Call [`feature_view.init_serving`](#init_serving) before this method if the following configurations are needed.
@@ -717,6 +722,8 @@ class FeatureView:
             allow_missing: Setting to `True` returns feature vectors with missing values.
             transformed: Setting to `False` returns the untransformed feature vectors.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         # Returns
             `List[list]`, `pd.DataFrame`, `polars.DataFrame` or `np.ndarray` if `return type` is set to `"list", `"pandas"`,`"polars"` or `"numpy"`
@@ -747,6 +754,7 @@ class FeatureView:
             force_sql_client=force_sql_client,
             transform=transform,
             request_parameters=request_parameters,
+            transformation_context=transformation_context,
         )
 
     def get_inference_helper(
@@ -999,6 +1007,7 @@ class FeatureView:
         inference_helper_columns: bool = False,
         dataframe_type: Optional[str] = "default",
         transformed: Optional[bool] = True,
+        transformation_context: Dict[str, Any] = None,
         **kwargs,
     ) -> TrainingDatasetDataFrameTypes:
         """Get a batch of data from an event time interval from the offline feature store.
@@ -1055,6 +1064,8 @@ class FeatureView:
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
             transformed: Setting to `False` returns the untransformed feature vectors.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         # Returns
             `DataFrame`: The spark dataframe containing the feature data.
@@ -1080,6 +1091,7 @@ class FeatureView:
             inference_helper_columns,
             dataframe_type,
             transformed=transformed,
+            transformation_context=transformation_context,
         )
 
     def add_tag(self, name: str, value: Any) -> None:
@@ -1269,6 +1281,7 @@ class FeatureView:
         statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
         write_options: Optional[Dict[Any, Any]] = None,
         spine: Optional[SplineDataFrameTypes] = None,
+        transformation_context: Dict[str, Any] = None,
         **kwargs,
     ) -> Tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
@@ -1433,6 +1446,8 @@ class FeatureView:
                 It is possible to directly pass a spine group instead of a dataframe to overwrite the left side of the
                 feature join, however, the same features as in the original feature group that is being replaced need to
                 be available in the spine group.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
         # Returns
             (td_version, `Job`): Tuple of training dataset version and job.
                 When using the `python` engine, it returns the Hopsworks Job
@@ -1460,6 +1475,7 @@ class FeatureView:
             td,
             write_options or {},
             spine=spine,
+            transformation_context=transformation_context,
         )
         warnings.warn(
             "Incremented version to `{}`.".format(td.version),
@@ -1488,6 +1504,7 @@ class FeatureView:
         statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
         write_options: Optional[Dict[Any, Any]] = None,
         spine: Optional[SplineDataFrameTypes] = None,
+        transformation_context: Dict[str, Any] = None,
         **kwargs,
     ) -> Tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
@@ -1698,6 +1715,8 @@ class FeatureView:
                 It is possible to directly pass a spine group instead of a dataframe to overwrite the left side of the
                 feature join, however, the same features as in the original feature group that is being replaced need to
                 be available in the spine group.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
         # Returns
             (td_version, `Job`): Tuple of training dataset version and job.
                 When using the `python` engine, it returns the Hopsworks Job
@@ -1733,6 +1752,7 @@ class FeatureView:
             td,
             write_options or {},
             spine=spine,
+            transformation_context=transformation_context,
         )
         warnings.warn(
             "Incremented version to `{}`.".format(td.version),
@@ -1763,6 +1783,7 @@ class FeatureView:
         statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
         write_options: Optional[Dict[Any, Any]] = None,
         spine: Optional[SplineDataFrameTypes] = None,
+        transformation_context: Dict[str, Any] = None,
         **kwargs,
     ) -> Tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
@@ -1959,6 +1980,8 @@ class FeatureView:
                 It is possible to directly pass a spine group instead of a dataframe to overwrite the left side of the
                 feature join, however, the same features as in the original feature group that is being replaced need to
                 be available in the spine group.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
         # Returns
             (td_version, `Job`): Tuple of training dataset version and job.
                 When using the `python` engine, it returns the Hopsworks Job
@@ -2002,6 +2025,7 @@ class FeatureView:
             td,
             write_options or {},
             spine=spine,
+            transformation_context=transformation_context,
         )
         warnings.warn(
             "Incremented version to `{}`.".format(td.version),
@@ -2019,6 +2043,7 @@ class FeatureView:
         statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
         write_options: Optional[Dict[Any, Any]] = None,
         spine: Optional[SplineDataFrameTypes] = None,
+        transformation_context: Dict[str, Any] = None,
     ) -> job.Job:
         """
         Recreate a training dataset.
@@ -2071,6 +2096,8 @@ class FeatureView:
                 It is possible to directly pass a spine group instead of a dataframe to overwrite the left side of the
                 feature join, however, the same features as in the original feature group that is being replaced need to
                 be available in the spine group.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         # Returns
             `Job`: When using the `python` engine, it returns the Hopsworks Job
@@ -2082,6 +2109,7 @@ class FeatureView:
             statistics_config=statistics_config,
             user_write_options=write_options or {},
             spine=spine,
+            transformation_context=transformation_context,
         )
         self.update_last_accessed_training_dataset(td.version)
 
@@ -2101,6 +2129,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: Optional[str] = "default",
+        transformation_context: Dict[str, Any] = None,
         **kwargs,
     ) -> Tuple[
         TrainingDatasetDataFrameTypes,
@@ -2199,6 +2228,8 @@ class FeatureView:
             dataframe_type: str, optional. The type of the returned dataframe.
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
         # Returns
             (X, y): Tuple of dataframe of features and labels. If there are no labels, y returns `None`.
         """
@@ -2226,6 +2257,7 @@ class FeatureView:
             event_time=event_time,
             training_helper_columns=training_helper_columns,
             dataframe_type=dataframe_type,
+            transformation_context=transformation_context,
         )
         warnings.warn(
             "Incremented version to `{}`.".format(td.version),
@@ -2252,6 +2284,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: Optional[str] = "default",
+        transformation_context: Dict[str, Any] = None,
         **kwargs,
     ) -> Tuple[
         TrainingDatasetDataFrameTypes,
@@ -2362,6 +2395,8 @@ class FeatureView:
             dataframe_type: str, optional. The type of the returned dataframe.
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
         # Returns
             (X_train, X_test, y_train, y_test):
                 Tuple of dataframe of features and labels
@@ -2398,6 +2433,7 @@ class FeatureView:
             event_time=event_time,
             training_helper_columns=training_helper_columns,
             dataframe_type=dataframe_type,
+            transformation_context=transformation_context,
         )
         warnings.warn(
             "Incremented version to `{}`.".format(td.version),
@@ -2440,6 +2476,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: Optional[str] = "default",
+        transformation_context: Dict[str, Any] = None,
         **kwargs,
     ) -> Tuple[
         TrainingDatasetDataFrameTypes,
@@ -2565,6 +2602,8 @@ class FeatureView:
             dataframe_type: str, optional. The type of the returned dataframe.
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
         # Returns
             (X_train, X_val, X_test, y_train, y_val, y_test):
                 Tuple of dataframe of features and labels
@@ -2614,6 +2653,7 @@ class FeatureView:
             event_time=event_time,
             training_helper_columns=training_helper_columns,
             dataframe_type=dataframe_type,
+            transformation_context=transformation_context,
         )
         warnings.warn(
             "Incremented version to `{}`.".format(td.version),
@@ -2653,6 +2693,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: Optional[str] = "default",
+        transformation_context: Dict[str, Any] = None,
         **kwargs,
     ) -> Tuple[
         TrainingDatasetDataFrameTypes,
@@ -2710,6 +2751,7 @@ class FeatureView:
             event_time=event_time,
             training_helper_columns=training_helper_columns,
             dataframe_type=dataframe_type,
+            transformation_context=transformation_context,
         )
         self.update_last_accessed_training_dataset(td.version)
         return df
@@ -2723,6 +2765,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: Optional[str] = "default",
+        transformation_context: Dict[str, Any] = None,
         **kwargs,
     ) -> Tuple[
         TrainingDatasetDataFrameTypes,
@@ -2766,6 +2809,8 @@ class FeatureView:
             dataframe_type: str, optional. The type of the returned dataframe.
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
         # Returns
             (X_train, X_test, y_train, y_test):
                 Tuple of dataframe of features and labels
@@ -2779,6 +2824,7 @@ class FeatureView:
             event_time=event_time,
             training_helper_columns=training_helper_columns,
             dataframe_type=dataframe_type,
+            transformation_context=transformation_context,
         )
         self.update_last_accessed_training_dataset(td.version)
         return df
@@ -2792,6 +2838,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: str = "default",
+        transformation_context: Dict[str, Any] = None,
         **kwargs,
     ) -> Tuple[
         TrainingDatasetDataFrameTypes,
@@ -2837,6 +2884,8 @@ class FeatureView:
             dataframe_type: str, optional. The type of the returned dataframe.
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
         # Returns
             (X_train, X_val, X_test, y_train, y_val, y_test):
                 Tuple of dataframe of features and labels
@@ -2854,6 +2903,7 @@ class FeatureView:
             event_time=event_time,
             training_helper_columns=training_helper_columns,
             dataframe_type=dataframe_type,
+            transformation_context=transformation_context,
         )
         self.update_last_accessed_training_dataset(td.version)
         return df
@@ -3488,11 +3538,14 @@ class FeatureView:
 
     def compute_on_demand_features(
         self,
-        feature_vector: Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame],
+        feature_vector: Optional[
+            Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]
+        ] = None,
         request_parameters: Optional[
             Union[List[Dict[str, Any]], Dict[str, Any]]
         ] = None,
-        external: Optional[bool] = None,
+        transformation_context: Dict[str, Any] = None,
+        return_type: Union[Literal["list", "numpy", "pandas", "polars"]] = None,
     ):
         """
         Function computes on-demand features present in the feature view.
@@ -3500,18 +3553,26 @@ class FeatureView:
         # Arguments
             feature_vector: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vector to be transformed.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            return_type: `"list"`, `"pandas"`, `"polars"` or `"numpy"`. Defaults to the same type as the input feature vector.
         # Returns
             `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The feature vector that contains all on-demand features in the feature view.
         """
 
         return self._vector_server.compute_on_demand_features(
-            feature_vectors=feature_vector, request_parameters=request_parameters
+            feature_vectors=feature_vector,
+            request_parameters=request_parameters,
+            transformation_context=transformation_context,
+            return_type=return_type,
         )
 
     def transform(
         self,
         feature_vector: Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame],
         external: Optional[bool] = None,
+        transformation_context: Dict[str, Any] = None,
+        return_type: Union[Literal["list", "numpy", "pandas", "polars"]] = None,
     ):
         """
         Transform the input feature vector by applying Model-dependent transformations attached to the feature view.
@@ -3527,13 +3588,20 @@ class FeatureView:
                 If set to False, the online feature store storage connector is used
                 which relies on the private IP. Defaults to True if connection to Hopsworks is established from
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            return_type: `"list"`, `"pandas"`, `"polars"` or `"numpy"`. Defaults to the same type as the input feature vector.
         # Returns
             `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The transformed feature vector obtained by applying Model-Dependent Transformations.
         """
         if not self._vector_server._serving_initialized:
             self.init_serving(external=external)
 
-        return self._vector_server.transform(feature_vectors=feature_vector)
+        return self._vector_server.transform(
+            feature_vectors=feature_vector,
+            transformation_context=transformation_context,
+            return_type=return_type,
+        )
 
     def enable_logging(self) -> None:
         """Enable feature logging for the current feature view.

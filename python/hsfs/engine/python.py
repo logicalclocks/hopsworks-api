@@ -869,6 +869,7 @@ class Engine:
         read_options: Dict[str, Any],
         dataframe_type: str,
         training_dataset_version: int = None,
+        transformation_context: Dict[str, Any] = None,
     ) -> Union[pd.DataFrame, pl.DataFrame]:
         """
         Function that creates or retrieves already created the training dataset.
@@ -880,6 +881,8 @@ class Engine:
             read_options `Dict[str, Any]`: Dictionary that can be used to specify extra parameters for reading data.
             dataframe_type `str`: The type of dataframe returned.
             training_dataset_version `int`: Version of training data to be retrieved.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
         # Raises
             `ValueError`: If the training dataset statistics could not be retrieved.
         """
@@ -897,6 +900,7 @@ class Engine:
                 read_options,
                 dataframe_type,
                 training_dataset_version,
+                transformation_context=transformation_context,
             )
         else:
             df = query_obj.read(
@@ -911,7 +915,9 @@ class Engine:
             #        training_dataset_obj, feature_view_obj, training_dataset_version
             #    )
             return self._apply_transformation_function(
-                feature_view_obj.transformation_functions, df
+                feature_view_obj.transformation_functions,
+                df,
+                transformation_context=transformation_context,
             )
 
     def split_labels(
@@ -945,6 +951,7 @@ class Engine:
         read_option: Dict[str, Any],
         dataframe_type: str,
         training_dataset_version: int = None,
+        transformation_context: Dict[str, Any] = None,
     ) -> Dict[str, Union[pd.DataFrame, pl.DataFrame]]:
         """
         Split a df into slices defined by `splits`. `splits` is a `dict(str, int)` which keys are name of split
@@ -957,6 +964,8 @@ class Engine:
             read_options `Dict[str, Any]`: Dictionary that can be used to specify extra parameters for reading data.
             dataframe_type `str`: The type of dataframe returned.
             training_dataset_version `int`: Version of training data to be retrieved.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
         # Raises
             `ValueError`: If the training dataset statistics could not be retrieved.
         """
@@ -1005,6 +1014,7 @@ class Engine:
             result_dfs[split_name] = self._apply_transformation_function(
                 feature_view_obj.transformation_functions,
                 result_dfs.get(split_name),
+                transformation_context=transformation_context,
             )
 
         return result_dfs
@@ -1255,6 +1265,7 @@ class Engine:
         transformation_functions: List[transformation_function.TransformationFunction],
         dataset: Union[pd.DataFrame, pl.DataFrame],
         online_inference: bool = False,
+        transformation_context: Dict[str, Any] = None,
     ) -> Union[pd.DataFrame, pl.DataFrame]:
         """
         Apply transformation function to the dataframe.
@@ -1283,6 +1294,10 @@ class Engine:
 
         for tf in transformation_functions:
             hopsworks_udf = tf.hopsworks_udf
+
+            # Setting transformation function context variables.
+            hopsworks_udf.transformation_context = transformation_context
+
             missing_features = set(hopsworks_udf.transformation_features) - set(
                 dataset.columns
             )

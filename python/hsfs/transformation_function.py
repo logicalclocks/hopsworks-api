@@ -235,6 +235,7 @@ class TransformationFunction:
             "version": self._version,
             "featurestoreId": self._featurestore_id,
             "hopsworksUdf": self.hopsworks_udf.to_dict(),
+            "transformationType": self.transformation_type.value,
         }
 
     def alias(self, *args: str):
@@ -281,7 +282,13 @@ class TransformationFunction:
             else:
                 output_col_names = [f"{_BASE_COLUMN_NAME}"]
         elif self.transformation_type == TransformationType.ON_DEMAND:
-            output_col_names = [self.__hopsworks_udf.function_name]
+            if len(self.__hopsworks_udf.return_types) > 1:
+                output_col_names = [
+                    f"{self.__hopsworks_udf.function_name}_{i}"
+                    for i in range(0, len(self.__hopsworks_udf.return_types))
+                ]
+            else:
+                output_col_names = [self.__hopsworks_udf.function_name]
 
         if any(
             len(output_col_name) > FEATURES.MAX_LENGTH_NAME
@@ -315,11 +322,6 @@ class TransformationFunction:
         """
 
         if transformation_type == TransformationType.ON_DEMAND:
-            if len(hopsworks_udf.return_types) > 1:
-                raise FeatureStoreException(
-                    "On-Demand Transformation functions can only return one column as output"
-                )
-
             if hopsworks_udf.statistics_required:
                 raise FeatureStoreException(
                     "On-Demand Transformation functions cannot use statistics, please remove statistics parameters from the functions"
@@ -395,3 +397,6 @@ class TransformationFunction:
             return f"On-Demand Transformation Function : {repr(self.__hopsworks_udf)}"
         else:
             return f"Transformation Function : {repr(self.__hopsworks_udf)}"
+
+    def __eq__(self, other):
+        return self.to_dict() == other.to_dict()

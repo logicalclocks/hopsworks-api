@@ -392,6 +392,7 @@ class FeatureViewEngine:
         primary_keys=True,
         event_time=True,
         training_helper_columns=True,
+        transformation_context: Dict[str, Any] = None,
     ):
         self._set_event_time(feature_view_obj, training_dataset_obj)
         updated_instance = self._create_training_data_metadata(
@@ -405,6 +406,7 @@ class FeatureViewEngine:
             primary_keys=primary_keys,
             event_time=event_time,
             training_helper_columns=training_helper_columns,
+            transformation_context=transformation_context,
         )
         return updated_instance, td_job
 
@@ -420,6 +422,7 @@ class FeatureViewEngine:
         event_time=False,
         training_helper_columns=False,
         dataframe_type="default",
+        transformation_context: Dict[str, Any] = None,
     ):
         # check if provided td version has already existed.
         if training_dataset_version:
@@ -497,6 +500,7 @@ class FeatureViewEngine:
                 read_options,
                 dataframe_type,
                 training_dataset_version,
+                transformation_context=transformation_context,
             )
             self.compute_training_dataset_statistics(
                 feature_view_obj, td_updated, split_df
@@ -581,6 +585,7 @@ class FeatureViewEngine:
         statistics_config,
         user_write_options,
         spine=None,
+        transformation_context: Dict[str, Any] = None,
     ):
         training_dataset_obj = self._get_training_dataset_metadata(
             feature_view_obj, training_dataset_version
@@ -597,6 +602,7 @@ class FeatureViewEngine:
             user_write_options,
             training_dataset_obj=training_dataset_obj,
             spine=spine,
+            transformation_context=transformation_context,
         )
         # Set training dataset schema after training dataset has been generated
         training_dataset_obj.schema = self.get_training_dataset_schema(
@@ -757,6 +763,7 @@ class FeatureViewEngine:
         primary_keys=False,
         event_time=False,
         training_helper_columns=False,
+        transformation_context: Dict[str, Any] = None,
     ):
         if training_dataset_obj:
             pass
@@ -791,6 +798,7 @@ class FeatureViewEngine:
             user_write_options,
             self._OVERWRITE,
             feature_view_obj=feature_view_obj,
+            transformation_context=transformation_context,
         )
 
         # Set training dataset schema after training dataset has been generated
@@ -913,6 +921,7 @@ class FeatureViewEngine:
         inference_helper_columns=False,
         dataframe_type="default",
         transformed=True,
+        transformation_context: Dict[str, Any] = None,
     ):
         self._check_feature_group_accessibility(feature_view_obj)
 
@@ -936,7 +945,9 @@ class FeatureViewEngine:
         ).read(read_options=read_options, dataframe_type=dataframe_type)
         if transformation_functions and transformed:
             return engine.get_instance()._apply_transformation_function(
-                transformation_functions, dataset=feature_dataframe
+                transformation_functions,
+                dataset=feature_dataframe,
+                transformation_context=transformation_context,
             )
         else:
             return feature_dataframe

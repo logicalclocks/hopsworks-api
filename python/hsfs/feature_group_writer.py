@@ -48,6 +48,8 @@ class FeatureGroupWriter:
         storage: Optional[str] = None,
         write_options: Optional[Dict[str, Any]] = None,
         validation_options: Optional[Dict[str, Any]] = None,
+        transformation_context: Dict[str, Any] = None,
+        transform: bool = True,
     ) -> Tuple[Optional[Job], Optional[ValidationReport]]:
         if validation_options is None:
             validation_options = {}
@@ -60,6 +62,8 @@ class FeatureGroupWriter:
             storage=storage,
             write_options={"start_offline_materialization": False, **write_options},
             validation_options={"fetch_expectation_suite": False, **validation_options},
+            transformation_context=transformation_context,
+            transform=transform,
         )
 
     def __exit__(self, exc_type, exc_value, exc_tb):
