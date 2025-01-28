@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import humps
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.constants import FEATURES
 from hsfs import util
 from hsfs.core import (
     feature_monitoring_config_engine,
@@ -34,7 +35,6 @@ from hsfs.core.feature_monitoring_result import FeatureMonitoringResult
 from hsfs.core.job_schedule import JobSchedule
 
 
-MAX_LENGTH_NAME = 63
 MAX_LENGTH_DESCRIPTION = 2000
 
 
@@ -686,8 +686,10 @@ class FeatureMonitoringConfig:
             raise AttributeError("The name of a registered config is read-only.")
         elif not isinstance(name, str):
             raise TypeError("name must be of type str")
-        if len(name) > MAX_LENGTH_NAME:
-            raise ValueError("name must be less than {MAX_LENGTH_NAME} characters.")
+        if len(name) > FEATURES.MAX_LENGTH_NAME:
+            raise ValueError(
+                "name must be less than {FEATURES.MAX_LENGTH_NAME} characters."
+            )
         self._name = name
 
     @property
