@@ -19,6 +19,7 @@
           "artifact_version": 2,
           "predictor": "predictor_file",
           "transformer": "transformer_file",
+          "config_file": "config_file",
           "requested_instances": 1,
           "requested_transformer_instances": 1,
           "predictor_resources": {
@@ -74,6 +75,7 @@
           "api_protocol": "REST",
           "artifact_version": 2,
           "predictor": "predictor_file",
+          "config_file": "config_file",
           "transformer": "transformer_file",
           "requested_instances": 1,
           "requested_transformer_instances": 1,
@@ -117,6 +119,7 @@
           "api_protocol": "REST",
           "artifact_version": 3,
           "predictor": "predictor_file",
+          "config_file": "config_file",
           "transformer": "transformer_file",
           "requested_instances": 1,
           "requested_transformer_instances": 1,
