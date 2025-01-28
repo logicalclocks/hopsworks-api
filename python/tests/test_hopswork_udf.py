@@ -1236,3 +1236,103 @@ def test_function():
             str(exp.value)
             == "Cannot drop features 'test_feature1', 'test_feature2' as they are not features given as arguments in the defined UDF."
         )
+
+    def test_alias_one_output(self):
+        @udf(int)
+        def add_one(feature):
+            return feature + 1
+
+        add_one = add_one.alias("feature_plus_one")
+
+        assert add_one.output_column_names == ["feature_plus_one"]
+
+    def test_alias_one_output_list(self):
+        @udf(int)
+        def add_one(feature):
+            return feature + 1
+
+        add_one = add_one.alias(["feature_plus_one"])
+
+        assert add_one.output_column_names == ["feature_plus_one"]
+
+    def test_alias_multiple_output(self):
+        @udf([int, int])
+        def add_and_sub(feature):
+            return feature + 1, feature - 1
+
+        add_one = add_and_sub.alias("feature_plus_one", "feature_minus_one")
+
+        assert add_one.output_column_names == ["feature_plus_one", "feature_minus_one"]
+
+    def test_alias_multiple_output_list(self):
+        @udf([int, int])
+        def add_and_sub(feature):
+            return feature + 1, feature - 1
+
+        add_one = add_and_sub.alias(["feature_plus_one", "feature_minus_one"])
+
+        assert add_one.output_column_names == ["feature_plus_one", "feature_minus_one"]
+
+    def test_alias_invalid_number_column_names(self):
+        @udf([int, int])
+        def add_and_sub(feature):
+            return feature + 1, feature - 1
+
+        with pytest.raises(FeatureStoreException) as exp:
+            add_and_sub.alias(["feature_plus_one", "feature_minus_one", "invalid_col"])
+
+        assert (
+            str(exp.value)
+            == "The number of output feature names provided does not match the number of features returned by the transformation function 'add_and_sub(feature)'. Pease provide exactly 2 feature name(s) to match the output."
+        )
+
+    def test_alias_invalid_type(self):
+        @udf([int, int])
+        def add_and_sub(feature):
+            return feature + 1, feature - 1
+
+        with pytest.raises(FeatureStoreException) as exp:
+            add_and_sub.alias("feature_plus_one", {"name": "col1"})
+
+        assert (
+            str(exp.value)
+            == "Invalid output feature names provided for the transformation function 'add_and_sub(feature)'. Please ensure all arguments are strings."
+        )
+
+    def test_alias_duplicates(self):
+        @udf([int, int])
+        def add_and_sub(feature):
+            return feature + 1, feature - 1
+
+        with pytest.raises(FeatureStoreException) as exp:
+            add_and_sub.alias("feature_plus_one", "feature_plus_one")
+
+        assert (
+            str(exp.value)
+            == "Duplicate output feature names provided for the transformation function 'add_and_sub(feature)'. Please ensure all arguments names are unique."
+        )
+
+    def test_call_and_alias(self):
+        @udf([int, int])
+        def add_and_sub(feature):
+            return feature + 1, feature - 1
+
+        add_one = add_and_sub("feature2").alias(
+            ["feature_plus_one", "feature_minus_one"]
+        )
+
+        assert add_one.output_column_names == ["feature_plus_one", "feature_minus_one"]
+        assert add_one.transformation_features == ["feature2"]
+
+    def test_alias_invalid_length(self):
+        @udf([int, int])
+        def add_and_sub(feature):
+            return feature + 1, feature - 1
+
+        with pytest.raises(FeatureStoreException) as exp:
+            add_and_sub.alias(["invalid" * 10, "feature_minus_one"])
+
+        assert (
+            str(exp.value)
+            == "Invalid output feature names specified for the transformation function 'add_and_sub(feature)'. Please provide names shorter than 63 characters."
+        )
