@@ -85,7 +85,9 @@ class TrainingDatasetApi:
         training_dataset.TrainingDataset, List[training_dataset.TrainingDataset]
     ]:
         if version:
-            return self._get_training_dataset_by_version(name, version)[0]
+            tds = self._get_training_dataset_by_version(name, version)
+            if tds:
+                return tds[0]
         else:
             return self._get_all_training_datasets(name)
 
