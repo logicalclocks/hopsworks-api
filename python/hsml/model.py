@@ -25,7 +25,7 @@ import humps
 from hopsworks_common import client, usage, util
 from hopsworks_common.constants import ARTIFACT_VERSION, MODEL_REGISTRY
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
-from hsml import deployment
+from hsml import deployment, tag
 from hsml.core import explicit_provenance
 from hsml.engine import model_engine
 from hsml.inference_batcher import InferenceBatcher
