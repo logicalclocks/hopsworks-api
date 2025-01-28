@@ -61,6 +61,15 @@ class UDFExecutionMode(Enum):
             ) from e
 
 
+class UDFKeyWords(Enum):
+    """
+    Class that stores the keywords used as arguments in a UDFs.
+    """
+
+    STATISTICS = "statistics"
+    CONTEXT = "context"
+
+
 def udf(
     return_type: Union[List[type], type],
     drop: Optional[Union[str, List[str]]] = None,
@@ -144,7 +153,7 @@ class HopsworksUdf:
         return_types : `Union[List[type], type, List[str], str]`. A python type or a list of python types that denotes the data types of the columns output from the transformation functions.
         name : `Optional[str]`. Name of the transformation function.
         transformation_features : `Optional[List[TransformationFeature]]`. A list of objects of `TransformationFeature` that maps the feature used for transformation to their corresponding statistics argument names if any
-        transformation_function_argument_names : `Optional[List[TransformationFeature]]`. The argument names of the transformation function.
+        transformation_function_argument_names : `Optional[List[str]]`. The argument names of the transformation function.
         dropped_argument_names : `Optional[List[str]]`. The arguments to be dropped from the finial DataFrame after the transformation functions are applied.
         dropped_feature_names : `Optional[List[str]]`. The feature name corresponding to the arguments names that are dropped
         feature_name_prefix: `Optional[str]`. Prefixes if any used in the feature view.
@@ -170,9 +179,7 @@ class HopsworksUdf:
         execution_mode: UDFExecutionMode,
         name: Optional[str] = None,
         transformation_features: Optional[List[TransformationFeature]] = None,
-        transformation_function_argument_names: Optional[
-            List[TransformationFeature]
-        ] = None,
+        transformation_function_argument_names: Optional[List[str]] = None,
         dropped_argument_names: Optional[List[str]] = None,
         dropped_feature_names: Optional[List[str]] = None,
         feature_name_prefix: Optional[str] = None,
@@ -243,6 +250,8 @@ class HopsworksUdf:
         )
 
         self._statistics: Optional[TransformationStatistics] = None
+
+        self._transformation_context: Dict[str, Any] = {}
 
         # Denote if the output feature names have to be generated.
         # Set to `False` if the output column names are saved in the backend and the udf is constructed from it using `from_response_json` function or if user has specified the output feature names using the `alias`` function.
@@ -418,8 +427,12 @@ class HopsworksUdf:
             for arg in arg_list
             if not arg.strip() == ""
         ]
-        if "statistics" in arg_list:
-            arg_list.remove("statistics")
+
+        # Extracting keywords like `context`and `statistics` from the function signature.
+        if UDFKeyWords.STATISTICS.value in arg_list:
+            arg_list.remove(UDFKeyWords.STATISTICS.value)
+        if UDFKeyWords.CONTEXT.value in arg_list:
+            arg_list.remove(UDFKeyWords.CONTEXT.value)
         return arg_list, signature, signature_start_line, signature_end_line
 
     @staticmethod
@@ -439,10 +452,13 @@ class HopsworksUdf:
             raise FeatureStoreException(
                 "No arguments present in the provided user defined function. Please provide at least one argument in the defined user defined function."
             )
+
+        # Extracting keywords like `context`and `statistics` from the function signature.
         for arg in inspect.signature(function).parameters.values():
-            if arg.name == "statistics":
+            # Fetching default value for statistics parameter to find argument names that require statistics.
+            if arg.name == UDFKeyWords.STATISTICS.value:
                 statistics = arg.default
-            else:
+            elif arg.name != UDFKeyWords.CONTEXT.value:
                 arg_list.append(arg.name)
 
         if statistics:
@@ -525,9 +541,9 @@ class HopsworksUdf:
 
         # Function that converts the timestamp to localized timezone
         convert_timstamp_function = (
-            "from datetime import datetime, timezone\n"
-            + "import tzlocal\n"
-            + "def convert_timezone(date_time_obj : datetime):\n"
+            "def convert_timezone(date_time_obj : datetime):\n"
+            + "   from datetime import datetime, timezone\n"
+            + "   import tzlocal\n"
             + "   current_timezone = tzlocal.get_localzone()\n"
             + "   if date_time_obj and isinstance(date_time_obj, datetime):\n"
             + "      if date_time_obj.tzinfo is None:\n"
@@ -555,7 +571,7 @@ class HopsworksUdf:
                 code += (
                     "   transformed_features = list(transformed_features)\n"
                     "   for index in _date_time_output_index:\n"
-                    + "      transformed_features[index] = convert_timezone(transformed_features[index])"
+                    + "      transformed_features[index] = convert_timezone(transformed_features[index])\n"
                 )
             if rename_outputs:
                 # Use a dictionary to rename output to correct column names. This must be for the udf's to be executable in spark.
@@ -572,7 +588,9 @@ class HopsworksUdf:
         # Inject required parameter to scope
         scope = __import__("__main__").__dict__.copy()
         if self.transformation_statistics is not None:
-            scope.update({"statistics": self.transformation_statistics})
+            scope.update({UDFKeyWords.STATISTICS.value: self.transformation_statistics})
+        if self.transformation_context:
+            scope.update({UDFKeyWords.CONTEXT.value: self.transformation_context})
         scope.update({"_output_col_names": self.output_column_names})
         scope.update({"_date_time_output_index": date_time_output_index})
 
@@ -650,8 +668,10 @@ def renaming_wrapper(*args):
 
         # Shallow copy of scope performed because updating statistics argument of scope must not affect other instances.
         scope = __import__("__main__").__dict__.copy()
-        if self.transformation_statistics is not None:
-            scope.update({"statistics": self.transformation_statistics})
+        if self.transformation_statistics:
+            scope.update({UDFKeyWords.STATISTICS.value: self.transformation_statistics})
+        if self.transformation_context:
+            scope.update({UDFKeyWords.CONTEXT.value: self.transformation_context})
         scope.update({"_output_col_names": self.output_column_names})
         scope.update({"_date_time_output_columns": date_time_output_columns})
         # executing code
@@ -748,6 +768,19 @@ def renaming_wrapper(*args):
             raise FeatureStoreException(
                 f"The number of output feature names provided does not match the number of features returned by the transformation function '{repr(self)}'. Pease provide exactly {len(self.return_types)} feature name(s) to match the output."
             )
+
+    def _validate_transformation_context(self, transformation_context: Dict[str, Any]):
+        """
+        Function that checks if the context variables provided to the transformation function is valid.
+
+        it checks if context variables are defined as a dictionary.
+        """
+        if not isinstance(transformation_context, dict):
+            raise FeatureStoreException(
+                "Transformation context variable must be passed as dictionary."
+            )
+
+        return transformation_context
 
     def update_return_type_one_hot(self):
         self._return_types = [
@@ -996,6 +1029,21 @@ def renaming_wrapper(*args):
             ]
 
     @property
+    def unprefixed_transformation_features(self) -> List[str]:
+        """
+        List of feature name used in the transformation function without the feature name prefix.
+        """
+        return [
+            transformation_feature.feature_name
+            for transformation_feature in self._transformation_features
+        ]
+
+    @property
+    def feature_name_prefix(self) -> Optional[str]:
+        """The feature name prefix that needs to be added to the feature names"""
+        return self._feature_name_prefix
+
+    @property
     def statistics_features(self) -> List[str]:
         """
         List of feature names that require statistics
@@ -1043,6 +1091,22 @@ def renaming_wrapper(*args):
     @property
     def execution_mode(self) -> UDFExecutionMode:
         return self._execution_mode
+
+    @property
+    def transformation_context(self) -> Dict[str, Any]:
+        """
+        Dictionary that contains the context variables required for the UDF.
+        These context variables passed to the UDF during execution.
+        """
+        return self._transformation_context if self._transformation_context else {}
+
+    @transformation_context.setter
+    def transformation_context(self, context_variables: Dict[str, Any]) -> None:
+        self._transformation_context = (
+            self._validate_transformation_context(context_variables)
+            if context_variables
+            else {}
+        )
 
     @dropped_features.setter
     def dropped_features(self, features: List[str]) -> None:
