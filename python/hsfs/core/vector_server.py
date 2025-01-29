@@ -315,21 +315,28 @@ class VectorServer:
             feature_name_prefix = (
                 on_demand_transformation.hopsworks_udf.feature_name_prefix
             )
+
             transformation_features = set(
                 on_demand_transformation.hopsworks_udf.transformation_features
             )
             unprefixed_features = set(
                 on_demand_transformation.hopsworks_udf.unprefixed_transformation_features
             )
-            prefixed_unavailable_features = {
+            # Prefixed feature names for request parameters that are not available in their unprefixed form as request-parameters.
+            unprefixed_missing_features = {
                 feature_name_prefix + feature_name
                 if feature_name_prefix
                 else feature_name
                 for feature_name in unprefixed_features - available_parameters
             }
-            missing_request_parameter = (
-                transformation_features - available_parameters
-            ).intersection(prefixed_unavailable_features)
+
+            # Prefixed feature names for features that are not available in the in their unprefixed form as request-parameters.
+            prefixed_missing_features = transformation_features - available_parameters
+
+            # Get Missing request parameters: These are will include request parameters that are not provided in their unprefixed or prefixed form.
+            missing_request_parameter = prefixed_missing_features.intersection(
+                unprefixed_missing_features
+            )
 
             if missing_request_parameter:
                 missing_request_parameters_features[on_demand_feature] = sorted(
@@ -372,7 +379,7 @@ class VectorServer:
             force_rest_client=force_rest_client, force_sql_client=force_sql_client
         )
 
-        # Adding values in entry to request_parameters if it is not explicitly mentioned so that on-demand feature can be computed using the values in entry if they are not present in retrieved feature vector.'
+        # Adding values in entry to request_parameters if it is not explicitly mentioned so that on-demand feature can be computed using the values in entry if they are not present in retrieved feature vector. This happens when no features can be retrieved from the feature view since the serving key is not yet there.
         if request_parameters:
             for key, value in entry.items():
                 request_parameters.setdefault(key, value)

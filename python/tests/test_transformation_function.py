@@ -476,6 +476,20 @@ class TestTransformationFunction:
             "test_func_col1_col2_col3_1",
             "test_func_col1_col2_col3_2",
         ]
+        assert mdt.output_column_names == [
+            "test_func_col1_col2_col3_0",
+            "test_func_col1_col2_col3_1",
+            "test_func_col1_col2_col3_2",
+        ]
+
+    def test_generate_output_column_names_multiple_argument_multiple_output_type_odt(
+        self,
+    ):
+        @udf([int, float, int])
+        def test_func(col1, col2, col3):
+            return pd.DataFrame(
+                {"col1": [col1 + 1], "col2": [col2 + 1], "col3": [col3 + 1]}
+            )
 
         odt = TransformationFunction(
             featurestore_id=10,

@@ -95,8 +95,9 @@ def udf(
         ```
 
     # Arguments
-        return_type: The output types of the defined UDF
-        drop: The features to be dropped after application of transformation functions
+        return_type: `Union[List[type], type]`. The output types of the defined UDF
+        drop: `Optional[Union[str, List[str]]]`. The features to be dropped after application of transformation functions. Default's to None.
+        mode: `Literal["default", "python", "pandas"]`. The exection mode of the UDF. Default's to 'default'
 
     # Returns
         `HopsworksUdf`: The metadata object for hopsworks UDF's.
