@@ -1373,6 +1373,7 @@ class FeatureView:
             4. parquet
             5. avro
             6. orc
+            7. json
 
             Currently not supported petastorm, hdf5 and npy file formats.
 
@@ -1600,6 +1601,7 @@ class FeatureView:
             4. parquet
             5. avro
             6. orc
+            7. json
 
             Currently not supported petastorm, hdf5 and npy file formats.
 
@@ -1885,6 +1887,7 @@ class FeatureView:
             4. parquet
             5. avro
             6. orc
+            7. json
 
             Currently not supported petastorm, hdf5 and npy file formats.
 
