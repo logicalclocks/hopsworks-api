@@ -27,6 +27,7 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import humps
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.constants import FEATURES
 from hsfs import engine, util
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hsfs.decorators import typechecked
@@ -146,7 +147,9 @@ class HopsworksUdf:
         transformation_function_argument_names : `Optional[List[TransformationFeature]]`. The argument names of the transformation function.
         dropped_argument_names : `Optional[List[str]]`. The arguments to be dropped from the finial DataFrame after the transformation functions are applied.
         dropped_feature_names : `Optional[List[str]]`. The feature name corresponding to the arguments names that are dropped
-        feature_name_prefix: `Optional[str]` = None. Prefixes if any used in the feature view.
+        feature_name_prefix: `Optional[str]`. Prefixes if any used in the feature view.
+        output_column_names: `Optional[List[str]]`. The names of the output columns returned from the transformation function.
+        generate_output_col_names: `bool`. Generate default output column names for the transformation function. Default's to True.
     """
 
     # Mapping for converting python types to spark types - required for creating pandas UDF's.
@@ -173,6 +176,8 @@ class HopsworksUdf:
         dropped_argument_names: Optional[List[str]] = None,
         dropped_feature_names: Optional[List[str]] = None,
         feature_name_prefix: Optional[str] = None,
+        output_column_names: Optional[str] = None,
+        generate_output_col_names: bool = True,
     ):
         self._return_types: List[str] = HopsworksUdf._validate_and_convert_output_types(
             return_types
@@ -191,6 +196,12 @@ class HopsworksUdf:
             if isinstance(func, Callable)
             else func
         )
+
+        # The parameter `output_column_names` is initialized lazily.
+        # It is only initialized if the output column names are retrieved from the backend or explicitly specified using the `alias` function or is initialized with default column names if the UDF is accessed from a transformation function.
+        # Output column names are only stored in the backend when a model dependent or on demand transformation function is created using the defined UDF.
+        self._output_column_names: List[str] = []
+
         if not transformation_features:
             # New transformation function being declared so extract source code from function
             self._transformation_features: List[TransformationFeature] = (
@@ -211,6 +222,7 @@ class HopsworksUdf:
                 )
             )
             self._dropped_features = self._dropped_argument_names
+
         else:
             self._transformation_features = transformation_features
             self._transformation_function_argument_names = (
@@ -222,6 +234,9 @@ class HopsworksUdf:
                 if dropped_feature_names
                 else dropped_argument_names
             )
+            self._output_column_names = (
+                output_column_names if output_column_names else []
+            )
 
         self._formatted_function_source, self._module_imports = (
             HopsworksUdf._format_source_code(self._function_source)
@@ -229,7 +244,9 @@ class HopsworksUdf:
 
         self._statistics: Optional[TransformationStatistics] = None
 
-        self._output_column_names: List[str] = []
+        # Denote if the output feature names have to be generated.
+        # Set to `False` if the output column names are saved in the backend and the udf is constructed from it using `from_response_json` function or if user has specified the output feature names using the `alias`` function.
+        self._generate_output_col_name: bool = generate_output_col_names
 
     @staticmethod
     def _validate_and_convert_drop_features(
@@ -691,6 +708,47 @@ def renaming_wrapper(*args):
         udf.dropped_features = updated_dropped_features
         return udf
 
+    def alias(self, *args: str):
+        """
+        Set the names of the transformed features output by the UDF.
+        """
+        if len(args) == 1 and isinstance(args[0], list):
+            # If a single list is passed, use it directly
+            output_col_names = args[0]
+        else:
+            # Otherwise, use the individual arguments as a list
+            output_col_names = list(args)
+        if any(
+            not isinstance(output_col_name, str) for output_col_name in output_col_names
+        ):
+            raise FeatureStoreException(
+                f"Invalid output feature names provided for the transformation function '{repr(self)}'. Please ensure all arguments are strings."
+            )
+
+        self._generate_output_col_name = False
+        self.output_column_names = output_col_names
+
+        return self
+
+    def _validate_output_col_name(self, output_col_names):
+        if any(
+            len(output_col_name) > FEATURES.MAX_LENGTH_NAME
+            for output_col_name in output_col_names
+        ):
+            raise FeatureStoreException(
+                f"Invalid output feature names specified for the transformation function '{repr(self)}'. Please provide names shorter than {FEATURES.MAX_LENGTH_NAME} characters."
+            )
+
+        if len(output_col_names) != len(set(output_col_names)):
+            raise FeatureStoreException(
+                f"Duplicate output feature names provided for the transformation function '{repr(self)}'. Please ensure all arguments names are unique."
+            )
+
+        if output_col_names and len(output_col_names) != len(self.return_types):
+            raise FeatureStoreException(
+                f"The number of output feature names provided does not match the number of features returned by the transformation function '{repr(self)}'. Pease provide exactly {len(self.return_types)} feature name(s) to match the output."
+            )
+
     def update_return_type_one_hot(self):
         self._return_types = [
             self._return_types[0]
@@ -765,6 +823,7 @@ def renaming_wrapper(*args):
             "name": self.function_name,
             "featureNamePrefix": self._feature_name_prefix,
             "executionMode": self.execution_mode.value.upper(),
+            "outputColumnNames": self.output_column_names,
         }
 
     def json(self) -> str:
@@ -826,6 +885,12 @@ def renaming_wrapper(*args):
             else None
         )
 
+        output_column_names = (
+            [feature.strip() for feature in json_decamelized["output_column_names"]]
+            if json_decamelized.get("output_column_names", None)
+            else None
+        )
+
         # Reconstructing statistics arguments.
         arg_list, _, _, _ = HopsworksUdf._parse_function_signature(function_source_code)
 
@@ -858,7 +923,7 @@ def renaming_wrapper(*args):
                 for arg_index in range(len(arg_list))
             ]
 
-        hopsworks_udf = cls(
+        hopsworks_udf: HopsworksUdf = cls(
             func=function_source_code,
             return_types=output_types,
             name=function_name,
@@ -870,6 +935,8 @@ def renaming_wrapper(*args):
             execution_mode=UDFExecutionMode.from_string(
                 json_decamelized["execution_mode"]
             ),
+            output_column_names=output_column_names,
+            generate_output_col_names=not output_column_names,  # Do not generate output column names if they are retrieved from the back
         )
 
         # Set transformation features if already set.
@@ -998,12 +1065,8 @@ def renaming_wrapper(*args):
     def output_column_names(self, output_col_names: Union[str, List[str]]) -> None:
         if not isinstance(output_col_names, List):
             output_col_names = [output_col_names]
-        if not output_col_names and len(output_col_names) != len(self.return_types):
-            raise FeatureStoreException(
-                f"Provided names for output columns does not match the number of columns returned from the UDF. Please provide {len(self.return_types)} names."
-            )
-        else:
-            self._output_column_names = output_col_names
+        self._validate_output_col_name(output_col_names)
+        self._output_column_names = output_col_names
 
     def __repr__(self):
         return f'{self.function_name}({", ".join(self.transformation_features)})'
