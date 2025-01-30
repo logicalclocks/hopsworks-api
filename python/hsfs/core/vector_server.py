@@ -309,9 +309,7 @@ class VectorServer:
         available_parameters = set((features | request_parameters).keys())
         missing_request_parameters_features = {}
 
-        for on_demand_feature, on_demand_transformation in zip(
-            self._on_demand_feature_names, self._on_demand_transformation_functions
-        ):
+        for on_demand_transformation in self._on_demand_transformation_functions:
             feature_name_prefix = (
                 on_demand_transformation.hopsworks_udf.feature_name_prefix
             )
@@ -339,8 +337,11 @@ class VectorServer:
             )
 
             if missing_request_parameter:
-                missing_request_parameters_features[on_demand_feature] = sorted(
-                    list(missing_request_parameter)
+                missing_request_parameters_features.update(
+                    {
+                        on_demand_feature: sorted(missing_request_parameter)
+                        for on_demand_feature in on_demand_transformation.hopsworks_udf.output_column_names
+                    }
                 )
 
         if missing_request_parameters_features:
