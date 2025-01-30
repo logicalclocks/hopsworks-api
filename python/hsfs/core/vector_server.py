@@ -804,7 +804,7 @@ class VectorServer:
             )
             return feature_vectors
 
-        feature_vectors = [] if not feature_vectors else feature_vectors
+        feature_vectors = [] if feature_vectors is None else feature_vectors
 
         request_parameters = {} if not request_parameters else request_parameters
         # Convert feature vectors to dictionary
