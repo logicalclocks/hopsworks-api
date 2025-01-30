@@ -1782,3 +1782,33 @@ class Engine:
     def read_feature_log(query, time_col):
         df = query.read()
         return df.drop(["log_id", time_col], axis=1)
+
+    def validate_schema(feature_group, df, dataframe_features, options=None):
+        print("!!!! Validating schema using python !!!")
+        print("Feature group: ", feature_group)
+        print("Dataframe: ", df)
+        # check if the dataframe is pandas or polars
+        # if pandas then check if dataframe has a primary key and that the string columns are less than 100 characters using pandas
+        # if polars then check if dataframe has a primary key and that the string columns are less than 100 characters
+        # using polars
+
+        if isinstance(df, pd.DataFrame):
+            for col in df.columns:
+                if df[col].dtype == "object":
+                    if df[col].str.len().max() > 100:
+                        raise ValueError(
+                            f"Column {col} has string values longer than 100 characters"
+                        )
+        elif isinstance(df, pl.DataFrame):
+            if df.columns[0] not in feature_group.primary_key:
+                raise ValueError(
+                    f"Primary key column {df.columns[0]} not found in dataframe"
+                )
+            for col in df.columns:
+                if df[col].dtype == pl.Object:
+                    if df[col].str_lengths().max() > 100:
+                        raise ValueError(
+                            f"Column {col} has string values longer than 100 characters"
+                        )
+
+        pass

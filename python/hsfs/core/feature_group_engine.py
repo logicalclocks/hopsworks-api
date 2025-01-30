@@ -178,6 +178,12 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group.embedding_index, dataframe_features
         )
 
+        if validation_options.get("run_validation", False):
+            # get engine instance and validate schema
+            engine.get_instance().validate_schema(
+                feature_group, feature_dataframe, dataframe_features
+            )
+
         if not feature_group._id:
             # only save metadata if feature group does not exist
             self.save_feature_group_metadata(

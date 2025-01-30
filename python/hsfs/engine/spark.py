@@ -1681,6 +1681,13 @@ class Engine:
         df = query.read()
         return df.drop("log_id", time_col)
 
+    def validate_schema(feature_group, df, dataframe_features, options=None):
+        # validate schema using spark
+        print("!!!! Validating schema with spark !!!")
+        print("Feature group: ", feature_group)
+        print("Dataframe: ", df)
+        pass
+
 
 class SchemaError(Exception):
     """Thrown when schemas don't match"""
