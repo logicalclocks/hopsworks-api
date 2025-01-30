@@ -168,11 +168,12 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 transformation_context=transformation_context,
             )
 
-        dataframe_features = (
-            self._update_feature_group_schema_on_demand_transformations(
-                feature_group=feature_group, features=dataframe_features
+            dataframe_features = (
+                self._update_feature_group_schema_on_demand_transformations(
+                    feature_group=feature_group, features=dataframe_features
+                )
             )
-        )
+
         util.validate_embedding_feature_type(
             feature_group.embedding_index, dataframe_features
         )
