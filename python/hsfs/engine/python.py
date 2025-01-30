@@ -1095,6 +1095,7 @@ class Engine:
         save_mode: str,
         feature_view_obj: Optional[feature_view.FeatureView] = None,
         to_df: bool = False,
+        transformation_context: Dict[str, Any] = None,
     ) -> Union["job.Job", Any]:
         if not feature_view_obj and not isinstance(dataset, query.Query):
             raise Exception(
@@ -1115,6 +1116,7 @@ class Engine:
             and feature_view_obj
             and len(feature_view_obj.transformation_functions) == 0
             and training_dataset.data_format == "parquet"
+            and not transformation_context
         ):
             query_obj, _ = dataset._prep_read(False, user_write_options)
             response = util.run_with_loading_animation(
@@ -1131,6 +1133,13 @@ class Engine:
         # As for creating a feature group, users have the possibility of passing
         # a spark_job_configuration object as part of the user_write_options with the key "spark"
         spark_job_configuration = user_write_options.pop("spark", None)
+
+        # Pass transformation context to the training dataset job
+        if transformation_context:
+            raise FeatureStoreException(
+                "Cannot pass transformation context to training dataset materialization job from the Python Kernel. Please use the Spark Kernel."
+            )
+
         td_app_conf = training_dataset_job_conf.TrainingDatasetJobConf(
             query=dataset,
             overwrite=(save_mode == "overwrite"),
