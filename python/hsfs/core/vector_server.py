@@ -328,7 +328,7 @@ class VectorServer:
                 for feature_name in unprefixed_features - available_parameters
             }
 
-            # Prefixed feature names for features that are not available in the in their unprefixed form as request-parameters.
+            # Prefixed feature names for features that are not available in the in their prefixed form as request-parameters.
             prefixed_missing_features = transformation_features - available_parameters
 
             # Get Missing request parameters: These are will include request parameters that are not provided in their unprefixed or prefixed form.
@@ -371,7 +371,7 @@ class VectorServer:
         allow_missing: bool = False,
         force_rest_client: bool = False,
         force_sql_client: bool = False,
-        transform: bool = True,
+        transform: bool = False,
         on_demand_features: Optional[bool] = True,
         request_parameters: Optional[Dict[str, Any]] = None,
         transformation_context: Dict[str, Any] = None,
@@ -439,7 +439,7 @@ class VectorServer:
         allow_missing: bool = False,
         force_rest_client: bool = False,
         force_sql_client: bool = False,
-        transform: bool = True,
+        transform: bool = False,
         on_demand_features: Optional[bool] = True,
         transformation_context: Dict[str, Any] = None,
     ) -> Union[pd.DataFrame, pl.DataFrame, np.ndarray, List[Any], List[Dict[str, Any]]]:
@@ -1273,6 +1273,10 @@ class VectorServer:
         if transform and not on_demand_features:
             _logger.warning(
                 "On-demand features are always returned when `transform=True`, regardless of the value set to `on_demand_features`. To fetch untransformed feature vector without on-demand features, set both `transform=False` and `on_demand_features=False`."
+            )
+        elif not transform:
+            _logger.info(
+                "Returning feature vector without applying Model Dependent transformations. Set `transform=True` to apply model-dependent transformations to the feature vector or use the `transform` function in the Feature View."
             )
 
         if transform or on_demand_features:

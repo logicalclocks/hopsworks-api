@@ -531,7 +531,7 @@ class FeatureView:
         allow_missing: bool = False,
         force_rest_client: bool = False,
         force_sql_client: bool = False,
-        transform: Optional[bool] = True,
+        transform: Optional[bool] = False,
         on_demand_features: Optional[bool] = True,
         request_parameters: Optional[Dict[str, Any]] = None,
         transformation_context: Dict[str, Any] = None,
@@ -609,7 +609,7 @@ class FeatureView:
                 using the SQL client if initialised.
             allow_missing: Setting to `True` returns feature vectors with missing values.
             transform: `bool`, defaults to `True`. Setting this to `False` returns a feature vector that includes both precomputed and on-demand features without applying model-dependent transformations. When set to `True`, it automatically sets `on_demand_features` to `True` and applies model-dependent transformations.
-            on_demand_features: `bool`, defaults to `True`. Setting this to `False` returns untransformed feature vectors without any on-demand features.
+            on_demand_features: `bool`, defaults to `False`. Setting this to `False` returns untransformed feature vectors without any on-demand features.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
@@ -653,7 +653,7 @@ class FeatureView:
         allow_missing: bool = False,
         force_rest_client: bool = False,
         force_sql_client: bool = False,
-        transform: Optional[bool] = True,
+        transform: Optional[bool] = False,
         on_demand_features: Optional[bool] = True,
         request_parameters: Optional[List[Dict[str, Any]]] = None,
         transformation_context: Dict[str, Any] = None,
@@ -729,7 +729,7 @@ class FeatureView:
                 using the REST client if initialised.
             allow_missing: Setting to `True` returns feature vectors with missing values.
             transformed: `bool`, defaults to `True`. Setting this to `False` returns a feature vector that includes both precomputed and on-demand features without applying model-dependent transformations. When set to `True`, it automatically sets `on_demand_features` to `True` and applies model-dependent transformations.
-            on_demand_features: `bool`, defaults to `True`. Setting this to `False` returns untransformed feature vectors without any on-demand features.
+            on_demand_features: `bool`, defaults to `False`. Setting this to `False` returns untransformed feature vectors without any on-demand features.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
