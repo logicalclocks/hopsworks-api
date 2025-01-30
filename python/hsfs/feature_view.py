@@ -532,6 +532,7 @@ class FeatureView:
         force_rest_client: bool = False,
         force_sql_client: bool = False,
         transform: Optional[bool] = True,
+        on_demand_features: Optional[bool] = True,
         request_parameters: Optional[Dict[str, Any]] = None,
         transformation_context: Dict[str, Any] = None,
     ) -> Union[List[Any], pd.DataFrame, np.ndarray, pl.DataFrame]:
@@ -607,7 +608,8 @@ class FeatureView:
             force_sql_client: boolean, defaults to False. If set to True, reads from online feature store
                 using the SQL client if initialised.
             allow_missing: Setting to `True` returns feature vectors with missing values.
-            transformed: Setting to `False` returns the untransformed feature vectors.
+            transform: `bool`, defaults to `True`. Setting this to `False` returns a feature vector that includes both precomputed and on-demand features without applying model-dependent transformations. When set to `True`, it automatically sets `on_demand_features` to `True` and applies model-dependent transformations.
+            on_demand_features: `bool`, defaults to `True`. Setting this to `False` returns untransformed feature vectors without any on-demand features.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
@@ -637,6 +639,7 @@ class FeatureView:
             force_rest_client=force_rest_client,
             force_sql_client=force_sql_client,
             transform=transform,
+            on_demand_features=on_demand_features,
             request_parameters=request_parameters,
             transformation_context=transformation_context,
         )
@@ -651,6 +654,7 @@ class FeatureView:
         force_rest_client: bool = False,
         force_sql_client: bool = False,
         transform: Optional[bool] = True,
+        on_demand_features: Optional[bool] = True,
         request_parameters: Optional[List[Dict[str, Any]]] = None,
         transformation_context: Dict[str, Any] = None,
     ) -> Union[List[List[Any]], pd.DataFrame, np.ndarray, pl.DataFrame]:
@@ -724,7 +728,8 @@ class FeatureView:
             force_rest_client: boolean, defaults to False. If set to True, reads from online feature store
                 using the REST client if initialised.
             allow_missing: Setting to `True` returns feature vectors with missing values.
-            transformed: Setting to `False` returns the untransformed feature vectors.
+            transformed: `bool`, defaults to `True`. Setting this to `False` returns a feature vector that includes both precomputed and on-demand features without applying model-dependent transformations. When set to `True`, it automatically sets `on_demand_features` to `True` and applies model-dependent transformations.
+            on_demand_features: `bool`, defaults to `True`. Setting this to `False` returns untransformed feature vectors without any on-demand features.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
@@ -757,6 +762,7 @@ class FeatureView:
             force_rest_client=force_rest_client,
             force_sql_client=force_sql_client,
             transform=transform,
+            on_demand_features=on_demand_features,
             request_parameters=request_parameters,
             transformation_context=transformation_context,
         )
