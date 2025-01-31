@@ -4641,7 +4641,7 @@ class TestSpark:
                 "col_2": [True, False],
                 "plus_one_col_0_": [2, 3],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -4702,7 +4702,7 @@ class TestSpark:
                 "col_2": [True, False],
                 "plus_one_col_0_": [2, 3],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -4763,7 +4763,7 @@ class TestSpark:
                 "col_2": [True, False],
                 "plus_one_col_0_": [2, 3],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -4827,7 +4827,7 @@ class TestSpark:
                 "col_2": [True, False],
                 "plus_one_col_0_": [21, 22],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -4892,7 +4892,7 @@ class TestSpark:
                 "plus_two_col_0_0": [2, 3],
                 "plus_two_col_0_1": [3, 4],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -4956,7 +4956,7 @@ class TestSpark:
                 "plus_two_col_0_0": [2, 3],
                 "plus_two_col_0_1": [3, 4],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -5020,7 +5020,7 @@ class TestSpark:
                 "plus_two_col_0_0": [2, 3],
                 "plus_two_col_0_1": [3, 4],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -5470,7 +5470,7 @@ class TestSpark:
                 "test_col_0_col_2_0": [2, 3],
                 "test_col_0_col_2_1": [12, 13],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -5533,7 +5533,7 @@ class TestSpark:
                 "test_col_0_col_2_0": [2, 3],
                 "test_col_0_col_2_1": [12, 13],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -5596,7 +5596,7 @@ class TestSpark:
                 "test_col_0_col_2_0": [2, 3],
                 "test_col_0_col_2_1": [12, 13],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 

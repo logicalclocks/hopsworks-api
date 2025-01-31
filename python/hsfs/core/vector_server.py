@@ -652,6 +652,53 @@ class VectorServer:
                 for fname in self._untransformed_feature_vector_col_name
             ]
 
+    def _validate_input_features(
+        self,
+        feature_vectors: Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame],
+        on_demand_features: bool = False,
+    ) -> None:
+        """
+        Validate if an feature-vector provided contain all required features.
+
+        # Arguments
+            feature_vectors: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vectors to be converted.
+            on_demand_features : `bool`. Specify if on-demand features provided in the input feature vector.
+
+        """
+
+        required_features = (
+            set(self._untransformed_feature_vector_col_name)
+            if not on_demand_features
+            else set(self._on_demand_feature_vector_col_name)
+        )
+
+        if isinstance(
+            feature_vectors, pd.DataFrame or isinstance(feature_vectors, pl.DataFrame)
+        ):
+            missing_features = required_features - set(feature_vectors.columns)
+            if missing_features:
+                raise exceptions.FeatureStoreException(
+                    f"The input feature vector is missing the following required features: `{'`, `'.join(missing_features)}`. Please include these features in the feature vector."
+                )
+        else:
+            if isinstance(feature_vectors, list):
+                if feature_vectors and all(
+                    isinstance(feature_vector, list)
+                    for feature_vector in feature_vectors
+                ):
+                    if any(
+                        len(feature_vector) != len(required_features)
+                        for feature_vector in feature_vectors
+                    ):
+                        raise exceptions.FeatureStoreException(
+                            f"Input feature vector is missing required features. Please ensure the following features are included: `{'`, `'.join(required_features)}`."
+                        )
+                else:
+                    if len(feature_vectors) != len(required_features):
+                        raise exceptions.FeatureStoreException(
+                            f"Input feature vector is missing required features. Please ensure the following features are included: '{', '.join(required_features)}'."
+                        )
+
     def _check_feature_vectors_type_and_convert_to_dict(
         self,
         feature_vectors: Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame],
@@ -668,29 +715,14 @@ class VectorServer:
             `Tuple[Dict[str, Any], Literal["pandas", "polars", "list"]]`: A tuple that contains the feature vector as a dictionary and a string denoting the data type of the input feature vector.
 
         """
-        required_features = (
-            set(self._untransformed_feature_vector_col_name)
-            if not on_demand_features
-            else set(self._on_demand_feature_vector_col_name)
-        )
+
         if isinstance(feature_vectors, pd.DataFrame):
             return_type = "pandas"
-            missing_features = required_features - set(feature_vectors.columns)
-            if missing_features:
-                raise exceptions.FeatureStoreException(
-                    f"The input feature vector is missing the following required features: `{'`, `'.join(missing_features)}`. Please include these features in the feature vector."
-                )
             feature_vectors = feature_vectors.to_dict(orient="records")
 
         elif HAS_POLARS and isinstance(feature_vectors, pl.DataFrame):
             return_type = "polars"
-            feature_vectors = feature_vectors.to_pandas()
-            missing_features = required_features - set(feature_vectors.columns)
-            if missing_features:
-                raise exceptions.FeatureStoreException(
-                    f"The input feature vector is missing the following required features: `{'`, `'.join(missing_features)}`. Please include these features in the feature vector."
-                )
-            feature_vectors = feature_vectors.to_dict(orient="records")
+            feature_vectors = feature_vectors.to_pandas().to_dict(orient="records")
 
         elif isinstance(feature_vectors, list):
             if feature_vectors and all(
@@ -870,10 +902,6 @@ class VectorServer:
             `Dict[str, Any]` : Dictionary mapping features name to values.
         """
         if on_demand_features:
-            if len(features) != len(self._on_demand_feature_vector_col_name):
-                raise exceptions.FeatureStoreException(
-                    f"Input feature vector is missing required features. Please ensure the following features are included: `{'`, `'.join(self._on_demand_feature_vector_col_name)}`."
-                )
             return dict(
                 [
                     (fname, fvalue)
@@ -883,10 +911,6 @@ class VectorServer:
                 ]
             )
         else:
-            if len(features) != len(self._untransformed_feature_vector_col_name):
-                raise exceptions.FeatureStoreException(
-                    f"Input feature vector is missing required features. Please ensure the following features are included: '{', '.join(self._untransformed_feature_vector_col_name)}'."
-                )
             return dict(
                 [
                     (fname, fvalue)
@@ -1135,13 +1159,13 @@ class VectorServer:
                 else:
                     prefixed_feature = unprefixed_feature
 
-                # Check if the prefixed feature name is provided as a request parameter, if so then use it. Otherwise if the unprefixed feature name is provided as a request parameter and use it. Else fetch the feature from the retrieved feature vector.
-                if prefixed_feature in request_parameter.keys():
-                    feature_value = request_parameter[prefixed_feature]
-                elif unprefixed_feature in request_parameter.keys():
-                    feature_value = request_parameter[unprefixed_feature]
-                else:
-                    feature_value = rows[prefixed_feature]
+                # Check if the prefixed feature name is provided as a request parameter, if so then use it. Otherwise if the unprefixed feature name is provided as a request parameter and use it. Else fetch the feature from the retrieved feature vector
+                feature_value = request_parameter.get(
+                    prefixed_feature,
+                    request_parameter.get(
+                        unprefixed_feature, rows.get(prefixed_feature)
+                    ),
+                )
 
                 if (
                     tf.hopsworks_udf.execution_mode.get_current_execution_mode(

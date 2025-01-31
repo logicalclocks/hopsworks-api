@@ -274,21 +274,21 @@ class TransformationFunction:
         else:
             if self.transformation_type == TransformationType.MODEL_DEPENDENT:
                 _BASE_COLUMN_NAME = f'{self.__hopsworks_udf.function_name}_{"_".join(self.__hopsworks_udf.transformation_features)}_'
-                if len(self.__hopsworks_udf.return_types) > 1:
-                    output_col_names = [
-                        f"{_BASE_COLUMN_NAME}{i}"
-                        for i in range(len(self.__hopsworks_udf.return_types))
-                    ]
-                else:
-                    output_col_names = [f"{_BASE_COLUMN_NAME}"]
             elif self.transformation_type == TransformationType.ON_DEMAND:
-                if len(self.__hopsworks_udf.return_types) > 1:
-                    output_col_names = [
-                        f"{self.__hopsworks_udf.function_name}_{i}"
-                        for i in range(0, len(self.__hopsworks_udf.return_types))
-                    ]
-                else:
-                    output_col_names = [self.__hopsworks_udf.function_name]
+                _BASE_COLUMN_NAME = (
+                    self.__hopsworks_udf.function_name
+                    if len(self.__hopsworks_udf.return_types) == 1
+                    else f"{self.__hopsworks_udf.function_name}_"
+                )
+
+            output_col_names = (
+                [
+                    f"{_BASE_COLUMN_NAME}{i}"
+                    for i in range(len(self.__hopsworks_udf.return_types))
+                ]
+                if len(self.__hopsworks_udf.return_types) > 1
+                else [_BASE_COLUMN_NAME]
+            )
 
         if any(
             len(output_col_name) > FEATURES.MAX_LENGTH_NAME

@@ -430,10 +430,9 @@ class HopsworksUdf:
         ]
 
         # Extracting keywords like `context`and `statistics` from the function signature.
-        if UDFKeyWords.STATISTICS.value in arg_list:
-            arg_list.remove(UDFKeyWords.STATISTICS.value)
-        if UDFKeyWords.CONTEXT.value in arg_list:
-            arg_list.remove(UDFKeyWords.CONTEXT.value)
+        keyword_to_remove = [keyword.value for keyword in UDFKeyWords]
+        arg_list = [arg for arg in arg_list if arg not in keyword_to_remove]
+
         return arg_list, signature, signature_start_line, signature_end_line
 
     @staticmethod
@@ -525,6 +524,28 @@ class HopsworksUdf:
         else:
             return self.return_types[0]
 
+    def _prepare_transformation_function_scope(self, **kwargs) -> Dict[str, Any]:
+        """
+        Function that prepares the scope for the transformation function to be executed. This scope would include any variable that are required to be injected into the transformation function.
+
+        By default the output column names, transformation statistics and transformation context are injected into the scope if they are required by the transformation function. Any additional arguments can be passed as kwargs.
+        """
+        # Shallow copy of scope performed because updating statistics argument of scope must not affect other instances.
+        scope = __import__("__main__").__dict__.copy()
+
+        # Adding variables required to be injected into the scope.
+        vaariable_to_inject = {
+            UDFKeyWords.STATISTICS.value: self.transformation_statistics,
+            UDFKeyWords.CONTEXT.value: self.transformation_context,
+            "_output_col_names": self.output_column_names,
+        }
+        vaariable_to_inject.update(**kwargs)
+
+        # Injecting variables that have a value into scope.
+        scope.update({k: v for k, v in vaariable_to_inject.items() if v is not None})
+
+        return scope
+
     def python_udf_wrapper(self, rename_outputs) -> Callable:
         """
         Function that creates a dynamic wrapper function for the defined udf. The wrapper function would be used to specify column names, in spark engines and to localize timezones.
@@ -587,13 +608,9 @@ class HopsworksUdf:
             code += "   return transformed_features"
 
         # Inject required parameter to scope
-        scope = __import__("__main__").__dict__.copy()
-        if self.transformation_statistics is not None:
-            scope.update({UDFKeyWords.STATISTICS.value: self.transformation_statistics})
-        if self.transformation_context:
-            scope.update({UDFKeyWords.CONTEXT.value: self.transformation_context})
-        scope.update({"_output_col_names": self.output_column_names})
-        scope.update({"_date_time_output_index": date_time_output_index})
+        scope = self._prepare_transformation_function_scope(
+            _date_time_output_index=date_time_output_index
+        )
 
         # executing code
         exec(code, scope)
@@ -665,16 +682,11 @@ def renaming_wrapper(*args):
     return df"""
             )
 
-        # injecting variables into scope used to execute wrapper function.
+        # Inject required parameter to scope
+        scope = self._prepare_transformation_function_scope(
+            _date_time_output_columns=date_time_output_columns
+        )
 
-        # Shallow copy of scope performed because updating statistics argument of scope must not affect other instances.
-        scope = __import__("__main__").__dict__.copy()
-        if self.transformation_statistics:
-            scope.update({UDFKeyWords.STATISTICS.value: self.transformation_statistics})
-        if self.transformation_context:
-            scope.update({UDFKeyWords.CONTEXT.value: self.transformation_context})
-        scope.update({"_output_col_names": self.output_column_names})
-        scope.update({"_date_time_output_columns": date_time_output_columns})
         # executing code
         exec(code, scope)
 

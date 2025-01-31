@@ -1415,3 +1415,84 @@ def test_function():
             test_func.transformation_context = "invalid_context"
 
         exp.match("Transformation context variable must be passed as dictionary.")
+
+    def test_prepare_transformation_function_scope_no_kwargs_no_statistics_no_context(
+        self,
+    ):
+        @udf(int)
+        def test_func(feature):
+            return feature + 1
+
+        # Setting the output column names to test the scope as they would always be set before scope is prepared.
+        test_func._output_column_names = ["test_func_feature_"]
+
+        scope = test_func._prepare_transformation_function_scope()
+
+        assert scope["_output_col_names"] == ["test_func_feature_"]
+        assert "_output_col_names" in scope.keys()
+
+    def test_prepare_transformation_function_scope_no_kwargs_no_statistics_context(
+        self,
+    ):
+        @udf(int)
+        def test_func(feature, context):
+            return feature + 1
+
+        # Setting the output column names to test the scope, transformation context as they would always be set before scope is prepared.
+        test_func._output_column_names = ["test_func_feature_"]
+        test_func.transformation_context = {"test_value": 100}
+
+        scope = test_func._prepare_transformation_function_scope()
+
+        print(scope)
+
+        assert scope["_output_col_names"] == ["test_func_feature_"]
+        assert scope["context"] == {"test_value": 100}
+        assert all(
+            value in scope.keys()
+            for value in {
+                "_output_col_names",
+                "context",
+            }
+        )
+
+    def test_prepare_transformation_function_scope_no_kwargs_statistics_context(self):
+        @udf(int)
+        def test_func(feature, context):
+            return feature + 1
+
+        # Setting the output column names to test the scope, transformation context and statistics as they would always be set before scope is prepared.
+        test_func._output_column_names = ["test_func_feature_"]
+        test_func.transformation_context = {"test_value": 100}
+        test_func._statistics = 10
+
+        scope = test_func._prepare_transformation_function_scope()
+
+        assert scope["_output_col_names"] == ["test_func_feature_"]
+        assert scope["context"] == {"test_value": 100}
+        assert scope["statistics"] == 10
+        assert all(
+            value in scope.keys()
+            for value in {"_output_col_names", "context", "statistics"}
+        )
+
+    def test_prepare_transformation_function_scope_kwargs_statistics_context(self):
+        @udf(int)
+        def test_func(feature, context):
+            return feature + 1
+
+        # Setting the output column names to test the scope, transformation context and statistics as they would always be set before scope is prepared.
+        test_func._output_column_names = ["test_func_feature_"]
+        test_func.transformation_context = {"test_value": 100}
+        test_func._statistics = 10
+
+        scope = test_func._prepare_transformation_function_scope(test="values")
+
+        assert scope["_output_col_names"] == ["test_func_feature_"]
+        assert scope["context"] == {"test_value": 100}
+        assert scope["statistics"] == 10
+        assert scope["test"] == "values"
+        assert all(
+            value in scope.keys()
+            for value in {"_output_col_names", "context", "statistics", "test"}
+        )
