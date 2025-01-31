@@ -381,7 +381,7 @@ class VectorServer:
         )
 
         # Adding values in entry to request_parameters if it is not explicitly mentioned so that on-demand feature can be computed using the values in entry if they are not present in retrieved feature vector. This happens when no features can be retrieved from the feature view since the serving key is not yet there.
-        if request_parameters:
+        if request_parameters and entry:
             for key, value in entry.items():
                 request_parameters.setdefault(key, value)
 
@@ -463,7 +463,7 @@ class VectorServer:
         ), "Request Parameters should be a Dictionary, None, empty or have the same length as the entries if they are not None or empty."
 
         # Adding values in entry to request_parameters if it is not explicitly mentioned so that on-demand feature can be computed using the values in entry if they are not present in retrieved feature vector.
-        if request_parameters:
+        if request_parameters and entries:
             if isinstance(request_parameters, list) and len(entries) == len(
                 request_parameters
             ):
