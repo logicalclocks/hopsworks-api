@@ -222,7 +222,7 @@ class GitRepo:
             remote: name of the remote
             branch: name of the branch
         # Raises
-            `RestAPIError` in case the backend fails to retrieve the commits.
+            `RestAPIError` in case the backend fails perform the fetch operation.
         """
         self._git_api._fetch(self.id, remote, branch)
 
@@ -235,7 +235,7 @@ class GitRepo:
             branch: name of the branch
             commit: hash of the commit
         # Raises
-            `RestAPIError` in case the backend fails to retrieve the commits.
+            `RestAPIError` in case the backend fails to perform the reset.
         """
         self._git_api._reset(self.id, remote, branch, commit)
 
