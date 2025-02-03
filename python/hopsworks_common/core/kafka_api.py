@@ -355,20 +355,9 @@ class KafkaApi:
             constants.KAFKA_CONSUMER_CONFIG.GROUP_ID_CONFIG: "my-group-id",
             constants.KAFKA_SSL_CONFIG.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG: "none",
         }
-        if type(_client) is Client:
-            config[constants.KAFKA_PRODUCER_CONFIG.BOOTSTRAP_SERVERS_CONFIG] = ",".join(
-                [
-                    endpoint.replace("EXTERNAL://", "")
-                    for endpoint in self._get_broker_endpoints(externalListeners=True)
-                ]
-            )
-        else:
-            config[constants.KAFKA_PRODUCER_CONFIG.BOOTSTRAP_SERVERS_CONFIG] = ",".join(
-                [
-                    endpoint.replace("INTERNAL://", "")
-                    for endpoint in self._get_broker_endpoints(externalListeners=False)
-                ]
-            )
+        config["bootstrap.servers"] = self._get_broker_endpoints(
+            externalListeners=True if type(_client) is Client else False
+        )
 
         return config
 
