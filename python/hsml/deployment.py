@@ -417,7 +417,10 @@ class Deployment:
 
     @property
     def config_file(self):
-        """Config file passed to the predictor."""
+        """Model server configuration file passed to the model deployment.
+        It can be accessed via `CONFIG_FILE_PATH` environment variable from a predictor or transformer script.
+        For LLM deployments without a predictor script, this file is used to configure the vLLM engine.
+        """
         return self._predictor.config_file
 
     @config_file.setter
