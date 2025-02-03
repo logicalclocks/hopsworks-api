@@ -1,0 +1,26 @@
+name: End-to-End Workflow Tests
+
+on: pull_request
+
+jobs:
+    e2e_workflows:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Get the short sha
+              id: short_sha
+              run: |
+                export SHORT_SHA=$(git rev-parse --short "$GITHUB_SHA")
+                echo "SHORT_SHA=$SHORT_SHA" >> $GITHUB_ENV
+
+            - name: Calling Loadtest Workflow
+              uses: logicalclocks/loadtest/.github/workflows/e2e_small.yaml
+              with:
+                hopsworks_domain: 'stagingmain.devnet.hops.works'
+                hopsworks_api_branch: 'FSTORE-1684'
+                short_sha: ${{ env.SHORT_SHA }}
+
+            
+
