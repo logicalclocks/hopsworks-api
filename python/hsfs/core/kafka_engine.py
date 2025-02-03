@@ -105,6 +105,17 @@ def _init_kafka_resources(
     producer = init_kafka_producer(
         feature_group.feature_store_id, offline_write_options
     )
+    # setup headers
+    headers = get_headers(feature_group, num_entries)
+    # setup writers
+    feature_writers, writer = get_writer_function(feature_group)
+
+    return producer, headers, feature_writers, writer
+
+
+def get_writer_function(
+    feature_group: Union[FeatureGroup, ExternalFeatureGroup],
+) -> Tuple[Dict[str, Callable[..., bytes]], Callable[..., bytes]]:
     # setup complex feature writers
     feature_writers = {
         feature: get_encoder_func(feature_group._get_feature_avro_schema(feature))
@@ -112,8 +123,7 @@ def _init_kafka_resources(
     }
     # setup row writer function
     writer = get_encoder_func(feature_group._get_encoded_avro_schema())
-
-    return producer, get_headers(feature_group, num_entries), feature_writers, writer
+    return (feature_writers, writer)
 
 
 def get_headers(
