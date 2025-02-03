@@ -16,11 +16,13 @@ jobs:
                 echo "SHORT_SHA=$SHORT_SHA" >> $GITHUB_ENV
 
             - name: Calling Loadtest Workflow
-              uses: logicalclocks/loadtest/.github/workflows/e2e_small.yaml
+              uses: logicalclocks/loadtest/.github/workflows/e2e_small.yaml@main
               with:
                 hopsworks_domain: 'stagingmain.devnet.hops.works'
-                hopsworks_api_branch: 'FSTORE-1684'
+                hopsworks_api_branch: ${{ github.event.pull_request.head.ref}}
+                loadtest_branch: ${{ github.event.pull_request.head.ref || 'main'}}
                 short_sha: ${{ env.SHORT_SHA }}
+                
 
             
 
