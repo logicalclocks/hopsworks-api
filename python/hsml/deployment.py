@@ -415,6 +415,15 @@ class Deployment:
         self._predictor.script_file = script_file
 
     @property
+    def config_file(self):
+        """Config file passed to the predictor."""
+        return self._predictor.config_file
+
+    @config_file.setter
+    def config_file(self, config_file: str):
+        self._predictor.config_file = config_file
+
+    @property
     def resources(self):
         """Resource configuration for the predictor."""
         return self._predictor.resources
