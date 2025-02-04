@@ -2721,6 +2721,9 @@ class FeatureGroup(FeatureGroupBase):
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the save call should return only
                   after the Hopsworks Job has finished. By default it does not wait.
+                * key `wait_for_online_ingestion` and value `True` or `False` to configure
+                  whether or not to the save call should return only
+                  after the Hopsworks online ingestion has finished. By default it does not wait.
                 * key `start_offline_backfill` and value `True` or `False` to configure
                   whether or not to start the materialization job to write data to the offline
                   storage. `start_offline_backfill` is deprecated. Use `start_offline_materialization` instead.
@@ -2738,8 +2741,8 @@ class FeatureGroup(FeatureGroupBase):
                 * key `run_validation` boolean value, set to `False` to skip validation temporarily on ingestion.
                 * key `save_report` boolean value, set to `False` to skip upload of the validation report to Hopsworks.
                 * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
-            wait: Wait for job to finish before returning, defaults to `False`.
-                Shortcut for read_options `{"wait_for_job": False}`.
+            wait: Wait for job and online ingestion to finish before returning, defaults to `False`.
+                Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
 
         # Returns
             `Job`: When using the `python` engine, it returns the Hopsworks Job
@@ -2786,6 +2789,8 @@ class FeatureGroup(FeatureGroupBase):
             write_options = {}
         if "wait_for_job" not in write_options:
             write_options["wait_for_job"] = wait
+        if "wait_for_online_ingestion" not in write_options:
+            write_options["wait_for_online_ingestion"] = wait
 
         # fg_job is used only if the python engine is used
         fg_job, ge_report = self._feature_group_engine.save(
@@ -2910,6 +2915,9 @@ class FeatureGroup(FeatureGroupBase):
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the insert call should return only
                   after the Hopsworks Job has finished. By default it waits.
+                * key `wait_for_online_ingestion` and value `True` or `False` to configure
+                  whether or not to the save call should return only
+                  after the Hopsworks online ingestion has finished. By default it does not wait.
                 * key `start_offline_backfill` and value `True` or `False` to configure
                   whether or not to start the materialization job to write data to the offline
                   storage. `start_offline_backfill` is deprecated. Use `start_offline_materialization` instead.
@@ -2929,8 +2937,8 @@ class FeatureGroup(FeatureGroupBase):
                 * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
                 * key `fetch_expectation_suite` a boolean value, by default `True`, to control whether the expectation
                    suite of the feature group should be fetched before every insert.
-            wait: Wait for job to finish before returning, defaults to `False`.
-                Shortcut for read_options `{"wait_for_job": False}`.
+            wait: Wait for job and online ingestion to finish before returning, defaults to `False`.
+                Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
 
         # Returns
             (`Job`, `ValidationReport`) A tuple with job information if python engine is used and the validation report if validation is enabled.
@@ -2955,6 +2963,8 @@ class FeatureGroup(FeatureGroupBase):
             write_options = {}
         if "wait_for_job" not in write_options:
             write_options["wait_for_job"] = wait
+        if "wait_for_online_ingestion" not in write_options:
+            write_options["wait_for_online_ingestion"] = wait
         if not self._id and self._offline_backfill_every_hr is not None:
             write_options["offline_backfill_every_hr"] = self._offline_backfill_every_hr
 
@@ -4009,6 +4019,12 @@ class ExternalFeatureGroup(FeatureGroupBase):
             write_options: Additional write options as key-value pairs, defaults to `{}`.
                 When using the `python` engine, write_options can contain the
                 following entries:
+                * key `wait_for_job` and value `True` or `False` to configure
+                  whether or not to the insert call should return only
+                  after the Hopsworks Job has finished. By default it waits.
+                * key `wait_for_online_ingestion` and value `True` or `False` to configure
+                  whether or not to the save call should return only
+                  after the Hopsworks online ingestion has finished. By default it does not wait.
                 * key `kafka_producer_config` and value an object of type [properties](https://docs.confluent.io/platform/current/clients/librdkafka/html/md_CONFIGURATION.htmln)
                   used to configure the Kafka client. To optimize for throughput in high latency connection consider
                   changing [producer properties](https://docs.confluent.io/cloud/current/client-apps/optimizing/throughput.html#producer).
@@ -4022,6 +4038,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
                 * key `fetch_expectation_suite` a boolean value, by default `True`, to control whether the expectation
                    suite of the feature group should be fetched before every insert.
+            wait: Wait for job and online ingestion to finish before returning, defaults to `False`.
+                Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
 
         # Returns
             Tuple(None, `ge.core.ExpectationSuiteValidationResult`) The validation report if validation is enabled.
@@ -4041,6 +4059,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
             write_options = {}
         if "wait_for_job" not in write_options:
             write_options["wait_for_job"] = wait
+        if "wait_for_online_ingestion" not in write_options:
+            write_options["wait_for_online_ingestion"] = wait
 
         job, ge_report = self._feature_group_engine.insert(
             self,
