@@ -337,6 +337,21 @@ def test_function():
             TransformationFeature(feature_name="arg3", statistic_argument_name="arg3"),
         ]
 
+    def test_extract_function_arguments_context_variable(
+        self,
+    ):
+        from .test_helpers.transformation_test_helper import (
+            test_function_context_variables,
+        )
+
+        function_argument = HopsworksUdf._extract_function_arguments(
+            test_function_context_variables
+        )
+
+        assert function_argument == [
+            TransformationFeature(feature_name="arg1", statistic_argument_name=None),
+        ]
+
     def test_extract_function_arguments_statistics_invalid(self):
         from .test_helpers.transformation_test_helper import (
             test_function_statistics_invalid,
@@ -681,6 +696,27 @@ def test_function():
 \t    pass"""
         )
 
+    def test_format_source_code_context_variable(
+        self,
+    ):
+        from .test_helpers.transformation_test_helper import (
+            test_function_context_variables,
+        )
+
+        function_source = HopsworksUdf._extract_source_code(
+            test_function_context_variables
+        )
+
+        formated_source, module_imports = HopsworksUdf._format_source_code(
+            function_source
+        )
+
+        assert (
+            formated_source.strip()
+            == """def test_function_context_variables(arg1):
+\t    pass"""
+        )
+
     def test_drop_features_one_element(self):
         @udf([int, float, int], drop="col1")
         def test_func(col1, col2, col3):
@@ -790,6 +826,22 @@ def test_function():
         assert result.name == "test_func_col1_"
         assert result.values.tolist() == [2, 3, 4, 5]
 
+    def test_pandas_udf_wrapper_context_variables(self):
+        test_dataframe = pd.DataFrame({"col1": [1, 2, 3, 4]})
+
+        @udf(int)
+        def test_func(col1, context):
+            return col1 + context["test_value"]
+
+        test_func.output_column_names = ["test_func_col1_"]
+        test_func.transformation_context = {"test_value": 200}
+        renaming_wrapper_function = test_func.pandas_udf_wrapper()
+
+        result = renaming_wrapper_function(test_dataframe["col1"])
+
+        assert result.name == "test_func_col1_"
+        assert result.values.tolist() == [201, 202, 203, 204]
+
     def test_python_udf_wrapper_single_output(self):
         test_dataframe = pd.DataFrame({"col1": [1, 2, 3, 4]})
 
@@ -805,6 +857,23 @@ def test_function():
         )
 
         assert result.values.tolist() == [2, 3, 4, 5]
+
+    def test_python_udf_wrapper_context_variables(self):
+        test_dataframe = pd.DataFrame({"col1": [1, 2, 3, 4]})
+
+        @udf(int)
+        def test_func(col1, context):
+            return col1 + context["test_value"]
+
+        test_func.transformation_context = {"test_value": 100}
+        test_func.output_column_names = ["test_func_col1_"]
+        wrapper_function = test_func.python_udf_wrapper(rename_outputs=False)
+
+        result = test_dataframe.apply(
+            lambda x: wrapper_function(x["col1"]), axis=1, result_type="expand"
+        )
+
+        assert result.values.tolist() == [101, 102, 103, 104]
 
     def test_pandas_udf_wrapper_multiple_output(self):
         @udf([int, float])
@@ -1235,4 +1304,195 @@ def test_function():
         assert (
             str(exp.value)
             == "Cannot drop features 'test_feature1', 'test_feature2' as they are not features given as arguments in the defined UDF."
+        )
+
+    def test_alias_one_output(self):
+        @udf(int)
+        def add_one(feature):
+            return feature + 1
+
+        add_one = add_one.alias("feature_plus_one")
+
+        assert add_one.output_column_names == ["feature_plus_one"]
+
+    def test_alias_one_output_list(self):
+        @udf(int)
+        def add_one(feature):
+            return feature + 1
+
+        add_one = add_one.alias(["feature_plus_one"])
+
+        assert add_one.output_column_names == ["feature_plus_one"]
+
+    def test_alias_multiple_output(self):
+        @udf([int, int])
+        def add_and_sub(feature):
+            return feature + 1, feature - 1
+
+        add_one = add_and_sub.alias("feature_plus_one", "feature_minus_one")
+
+        assert add_one.output_column_names == ["feature_plus_one", "feature_minus_one"]
+
+    def test_alias_multiple_output_list(self):
+        @udf([int, int])
+        def add_and_sub(feature):
+            return feature + 1, feature - 1
+
+        add_one = add_and_sub.alias(["feature_plus_one", "feature_minus_one"])
+
+        assert add_one.output_column_names == ["feature_plus_one", "feature_minus_one"]
+
+    def test_alias_invalid_number_column_names(self):
+        @udf([int, int])
+        def add_and_sub(feature):
+            return feature + 1, feature - 1
+
+        with pytest.raises(FeatureStoreException) as exp:
+            add_and_sub.alias(["feature_plus_one", "feature_minus_one", "invalid_col"])
+
+        assert (
+            str(exp.value)
+            == "The number of output feature names provided does not match the number of features returned by the transformation function 'add_and_sub(feature)'. Pease provide exactly 2 feature name(s) to match the output."
+        )
+
+    def test_alias_invalid_type(self):
+        @udf([int, int])
+        def add_and_sub(feature):
+            return feature + 1, feature - 1
+
+        with pytest.raises(FeatureStoreException) as exp:
+            add_and_sub.alias("feature_plus_one", {"name": "col1"})
+
+        assert (
+            str(exp.value)
+            == "Invalid output feature names provided for the transformation function 'add_and_sub(feature)'. Please ensure all arguments are strings."
+        )
+
+    def test_alias_duplicates(self):
+        @udf([int, int])
+        def add_and_sub(feature):
+            return feature + 1, feature - 1
+
+        with pytest.raises(FeatureStoreException) as exp:
+            add_and_sub.alias("feature_plus_one", "feature_plus_one")
+
+        assert (
+            str(exp.value)
+            == "Duplicate output feature names provided for the transformation function 'add_and_sub(feature)'. Please ensure all arguments names are unique."
+        )
+
+    def test_call_and_alias(self):
+        @udf([int, int])
+        def add_and_sub(feature):
+            return feature + 1, feature - 1
+
+        add_one = add_and_sub("feature2").alias(
+            ["feature_plus_one", "feature_minus_one"]
+        )
+
+        assert add_one.output_column_names == ["feature_plus_one", "feature_minus_one"]
+        assert add_one.transformation_features == ["feature2"]
+
+    def test_alias_invalid_length(self):
+        @udf([int, int])
+        def add_and_sub(feature):
+            return feature + 1, feature - 1
+
+        with pytest.raises(FeatureStoreException) as exp:
+            add_and_sub.alias(["invalid" * 10, "feature_minus_one"])
+
+        assert (
+            str(exp.value)
+            == "Invalid output feature names specified for the transformation function 'add_and_sub(feature)'. Please provide names shorter than 63 characters."
+        )
+
+    def test_invalid_transformation_context(self):
+        @udf(int)
+        def test_func(feature, context):
+            return feature + context["test_value"]
+
+        with pytest.raises(FeatureStoreException) as exp:
+            test_func.transformation_context = "invalid_context"
+
+        exp.match("Transformation context variable must be passed as dictionary.")
+
+    def test_prepare_transformation_function_scope_no_kwargs_no_statistics_no_context(
+        self,
+    ):
+        @udf(int)
+        def test_func(feature):
+            return feature + 1
+
+        # Setting the output column names to test the scope as they would always be set before scope is prepared.
+        test_func._output_column_names = ["test_func_feature_"]
+
+        scope = test_func._prepare_transformation_function_scope()
+
+        assert scope["_output_col_names"] == ["test_func_feature_"]
+        assert "_output_col_names" in scope.keys()
+
+    def test_prepare_transformation_function_scope_no_kwargs_no_statistics_context(
+        self,
+    ):
+        @udf(int)
+        def test_func(feature, context):
+            return feature + 1
+
+        # Setting the output column names to test the scope, transformation context as they would always be set before scope is prepared.
+        test_func._output_column_names = ["test_func_feature_"]
+        test_func.transformation_context = {"test_value": 100}
+
+        scope = test_func._prepare_transformation_function_scope()
+
+        print(scope)
+
+        assert scope["_output_col_names"] == ["test_func_feature_"]
+        assert scope["context"] == {"test_value": 100}
+        assert all(
+            value in scope.keys()
+            for value in {
+                "_output_col_names",
+                "context",
+            }
+        )
+
+    def test_prepare_transformation_function_scope_no_kwargs_statistics_context(self):
+        @udf(int)
+        def test_func(feature, context):
+            return feature + 1
+
+        # Setting the output column names to test the scope, transformation context and statistics as they would always be set before scope is prepared.
+        test_func._output_column_names = ["test_func_feature_"]
+        test_func.transformation_context = {"test_value": 100}
+        test_func._statistics = 10
+
+        scope = test_func._prepare_transformation_function_scope()
+
+        assert scope["_output_col_names"] == ["test_func_feature_"]
+        assert scope["context"] == {"test_value": 100}
+        assert scope["statistics"] == 10
+        assert all(
+            value in scope.keys()
+            for value in {"_output_col_names", "context", "statistics"}
+        )
+
+    def test_prepare_transformation_function_scope_kwargs_statistics_context(self):
+        @udf(int)
+        def test_func(feature, context):
+            return feature + 1
+
+        # Setting the output column names to test the scope, transformation context and statistics as they would always be set before scope is prepared.
+        test_func._output_column_names = ["test_func_feature_"]
+        test_func.transformation_context = {"test_value": 100}
+        test_func._statistics = 10
+
+        scope = test_func._prepare_transformation_function_scope(test="values")
+
+        assert scope["_output_col_names"] == ["test_func_feature_"]
+        assert scope["context"] == {"test_value": 100}
+        assert scope["statistics"] == 10
+        assert scope["test"] == "values"
+        assert all(
+            value in scope.keys()
+            for value in {"_output_col_names", "context", "statistics", "test"}
         )

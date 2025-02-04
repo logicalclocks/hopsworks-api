@@ -451,6 +451,15 @@ PAGES = {
         "hopsworks_udf_properties": keras_autodoc.get_properties(
             "hsfs.hopsworks_udf.HopsworksUdf"
         ),
+        "hopsworks_udf_methods": keras_autodoc.get_methods(
+            "hsfs.hopsworks_udf.HopsworksUdf",
+            exclude=[
+                "update_return_type_one_hot",
+                "python_udf_wrapper",
+                "pandas_udf_wrapper",
+                "get_udf",
+            ],
+        ),
         "transformation_feature": ["hsfs.hopsworks_udf.TransformationFeature"],
     },
     "api/transformation_statistics.md": {
