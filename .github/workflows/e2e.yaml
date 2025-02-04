@@ -14,6 +14,7 @@ jobs:
               run: |
                 export SHORT_SHA=$(git rev-parse --short "$GITHUB_SHA")
                 echo "SHORT_SHA=$SHORT_SHA" >> $GITHUB_ENV
+                echo "Hello"
 
             - name: Calling Loadtest Workflow
               uses: logicalclocks/loadtest/.github/workflows/e2e_small.yaml@main
@@ -22,6 +23,8 @@ jobs:
                 hopsworks_api_branch: ${{ github.event.pull_request.head.ref}}
                 loadtest_branch: ${{ github.event.pull_request.head.ref || 'main'}}
                 short_sha: ${{ env.SHORT_SHA }}
+
+            
                 
 
             
