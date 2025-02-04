@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 import socket
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional, Union
 
 from hopsworks_common import client, constants, kafka_schema, kafka_topic, usage
 from hopsworks_common.client.exceptions import KafkaException
@@ -321,7 +321,7 @@ class KafkaApi:
         """
         return constants.KAFKA_SSL_CONFIG.SSL
 
-    def get_default_config(self):
+    def get_default_config(self, internal_kafka: Optional[bool] = None):
         """Get the configuration to set up a Producer or Consumer for a Kafka broker using confluent-kafka.
 
         ```python
@@ -355,9 +355,15 @@ class KafkaApi:
             constants.KAFKA_CONSUMER_CONFIG.GROUP_ID_CONFIG: "my-group-id",
             constants.KAFKA_SSL_CONFIG.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG: "none",
         }
-        config["bootstrap.servers"] = self._get_broker_endpoints(
-            externalListeners=True if type(_client) is Client else False
-        )
+
+        if internal_kafka is not None:
+            config["bootstrap.servers"] = self._get_broker_endpoints(
+                externalListeners=not internal_kafka
+            )
+        else:
+            config["bootstrap.servers"] = self._get_broker_endpoints(
+                externalListeners=True if type(_client) is Client else False
+            )
 
         return config
 
