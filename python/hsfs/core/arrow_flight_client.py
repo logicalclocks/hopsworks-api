@@ -558,7 +558,10 @@ def _serialize_featuregroup_connector(fg, query, on_demand_fg_aliases):
         connector["time_travel_type"] = None
         connector["type"] = fg.storage_connector.type
         connector["options"] = fg.storage_connector.connector_options()
-        connector["query"] = fg.query[:-1] if fg.query.endswith(";") else fg.query
+        if fg.query is not None:
+            connector["query"] = fg.query[:-1] if fg.query.endswith(";") else fg.query
+        else:
+            connector["query"] = ""
         for on_demand_fg_alias in on_demand_fg_aliases:
             if on_demand_fg_alias.on_demand_feature_group.name == fg.name:
                 connector["alias"] = on_demand_fg_alias.alias
