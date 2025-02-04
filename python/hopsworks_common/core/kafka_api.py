@@ -22,7 +22,6 @@ from typing import Any, Dict, Optional, Union
 
 from hopsworks_common import client, constants, kafka_schema, kafka_topic, usage
 from hopsworks_common.client.exceptions import KafkaException
-from hopsworks_common.client.external import Client
 
 
 class KafkaApi:
@@ -359,11 +358,11 @@ class KafkaApi:
         if internal_kafka is not None:
             config["bootstrap.servers"] = self._get_broker_endpoints(
                 externalListeners=not internal_kafka
-            )
+            ).join(",")
         else:
             config["bootstrap.servers"] = self._get_broker_endpoints(
-                externalListeners=True if type(_client) is Client else False
-            )
+                externalListeners=_client._is_external()
+            ).join(",")
 
         return config
 
