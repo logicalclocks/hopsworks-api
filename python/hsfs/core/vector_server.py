@@ -406,6 +406,10 @@ class VectorServer:
             _logger.debug("get_feature_vector Online SQL client")
             serving_vector = self.sql_client.get_single_feature_vector(rondb_entry)
 
+        self._raise_transformation_warnings(
+            transform=transform, on_demand_features=on_demand_features
+        )
+
         vector = self.assemble_feature_vector(
             result_dict=serving_vector,
             passed_values=passed_features or {},
@@ -489,6 +493,10 @@ class VectorServer:
                 if isinstance(request_parameters, list)
                 else [[]]
             )
+
+        self._raise_transformation_warnings(
+            transform=transform, on_demand_features=on_demand_features
+        )
 
         for (idx, entry), passed, vector_features in itertools.zip_longest(
             enumerate(entries),
@@ -1257,6 +1265,39 @@ class VectorServer:
                 )
         return rows
 
+    def _raise_transformation_warnings(self, transform: bool, on_demand_features: bool):
+        """
+        Function that raises warnings based on the values of `transform` and `on_demand_features` parameters to let users know about the behavior of the function.
+
+        # Arguments
+            transform : `bool`. Specify if model-dependent transformations should be applied.
+            on_demand_features : `bool`. Specify if on-demand features should be computed.
+        """
+        warn_on_demand_features = (
+            not on_demand_features and self.on_demand_transformation_functions
+        )
+        warn_model_dependent_features = (
+            not transform and self.model_dependent_transformation_functions
+        )
+
+        if transform and not on_demand_features:
+            _logger.warning(
+                "On-demand features are always returned when `transform=True`, regardless of `on_demand_features`. "
+                "To fetch an untransformed feature vector without on-demand features, set both `transform=False` and `on_demand_features=False`."
+            )
+        elif warn_on_demand_features and warn_model_dependent_features:
+            _logger.info(
+                "Both `transform` and `on_demand_features` are set to False. Returning feature vector without on-demand features or model-dependent transformations."
+            )
+        elif warn_on_demand_features:
+            _logger.info(
+                "On-demand features are not computed when `on_demand_features=False`. Returning feature vector without on-demand features."
+            )
+        elif warn_model_dependent_features:
+            _logger.info(
+                "Model-dependent transformation functions are not applied when `transform=False`. Returning feature vector without model-dependent transformations."
+            )
+
     def apply_transformation(
         self,
         row_dict: Union[dict, pd.DataFrame],
@@ -1269,15 +1310,6 @@ class VectorServer:
         Function that applies both on-demand and model dependent transformation to the input dictonary
         """
         encoded_feature_dict = row_dict
-
-        if transform and not on_demand_features:
-            _logger.warning(
-                "On-demand features are always returned when `transform=True`, regardless of the value set to `on_demand_features`. To fetch untransformed feature vector without on-demand features, set both `transform=False` and `on_demand_features=False`."
-            )
-        elif not transform:
-            _logger.info(
-                "Returning feature vector without applying Model Dependent transformations. Set `transform=True` to apply model-dependent transformations to the feature vector or use the `transform` function in the Feature View."
-            )
 
         if transform or on_demand_features:
             # Check for any missing request parameters
