@@ -41,7 +41,7 @@ class TransformationType(Enum):
 
     MODEL_DEPENDENT = "model_dependent"
     ON_DEMAND = "on_demand"
-    UNDEFINE = "undefined"  # This type is used when the UDF created is not attached to a feature view / feature group. Hence the transformation function is neither model dependent nor on-demand.
+    UNDEFINED = "undefined"  # This type is used when the UDF created is not attached to a feature view / feature group. Hence the transformation function is neither model dependent nor on-demand.
 
 
 @typechecked
@@ -92,7 +92,7 @@ class TransformationFunction:
         # Setting transformation type as unknown when the transformation function is not attached to a feature view / feature group.
         # This happens for example when the transformation function is fetched from the backend.
         self.transformation_type = (
-            transformation_type if transformation_type else TransformationType.UNDEFINE
+            transformation_type if transformation_type else TransformationType.UNDEFINED
         )
 
         if self.__hopsworks_udf._generate_output_col_name:
@@ -357,7 +357,7 @@ class TransformationFunction:
         # Make sure that the output column names for a model-dependent or on-demand transformation function, when accessed externally from the class.
         if (
             self.transformation_type
-            and self.transformation_type != TransformationType.UNDEFINE
+            and self.transformation_type != TransformationType.UNDEFINED
             and not self.__hopsworks_udf.output_column_names
         ):
             self.__hopsworks_udf.output_column_names = self._get_output_column_names()

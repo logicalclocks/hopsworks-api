@@ -2379,7 +2379,11 @@ class FeatureGroup(FeatureGroupBase):
                         )
                     )
                 else:
-                    if not transformation_function.transformation_type:
+                    if (
+                        not transformation_function.transformation_type
+                        or transformation_function.transformation_type
+                        == TransformationType.UNDEFINED
+                    ):
                         transformation_function.transformation_type = (
                             TransformationType.ON_DEMAND
                         )
