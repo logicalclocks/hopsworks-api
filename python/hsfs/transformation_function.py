@@ -355,7 +355,11 @@ class TransformationFunction:
     def hopsworks_udf(self) -> HopsworksUdf:
         """Meta data class for the user defined transformation function."""
         # Make sure that the output column names for a model-dependent or on-demand transformation function, when accessed externally from the class.
-        if self.transformation_type and not self.__hopsworks_udf.output_column_names:
+        if (
+            self.transformation_type
+            and self.transformation_type != TransformationType.UNDEFINE
+            and not self.__hopsworks_udf.output_column_names
+        ):
             self.__hopsworks_udf.output_column_names = self._get_output_column_names()
         return self.__hopsworks_udf
 
