@@ -875,7 +875,7 @@ def renaming_wrapper(*args):
             "executionMode": self.execution_mode.value.upper(),
             **(
                 {"outputColumnNames": self.output_column_names}
-                if Version(backend_version) < Version("4.1.6")
+                if not backend_version or Version(backend_version) > Version("4.1.6")
                 else {}
             ),  # This check is added for backward compatibility with older versions of Hopsworks. The outputColumnNames field was added in Hopsworks 4.1.6 and versions below do support unknown fields.
         }
