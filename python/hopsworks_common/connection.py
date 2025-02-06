@@ -300,7 +300,7 @@ class Connection:
         regexMatcher = re.compile(versionPattern)
 
         client_version = version.__version__
-        self._backend_version = self._variable_api.get_version("hopsworks")
+        self.backend_version = self._variable_api.get_version("hopsworks")
 
         major_minor_client = regexMatcher.search(client_version).group(0)
         major_minor_backend = regexMatcher.search(self._backend_version).group(0)
@@ -620,6 +620,16 @@ class Connection:
         """
         The version of the backend currently connected to hopsworks.
         """
+        return self._backend_version
+
+    @backend_version.setter
+    def backend_version(self, backend_version: str) -> None:
+        """
+        The version of the backend currently connected to hopsworks.
+        """
+        self._backend_version = backend_version.split("-SNAPSHOT")[
+            0
+        ].strip()  # Strip off the -SNAPSHOT part of the version if it is present.
         return self._backend_version
 
     @api_key_file.setter

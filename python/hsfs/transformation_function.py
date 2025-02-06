@@ -249,7 +249,7 @@ class TransformationFunction:
                 {"transformationType": self.transformation_type.value}
                 if Version(backend_version) > Version("4.1.6")
                 else {}
-            ),  # This check is added for backward compatibility with older versions of Hopsworks. The transformationType field was added in Hopsworks 4.1.6 and versions below do support unknown fields.
+            ),  # This check is added for backward compatibility with older versions of Hopsworks. The "transformationType" field was added for equality checking of transformation functions and versions below 4.1.6 do not support unknown fields in the backend.
         }
 
     def alias(self, *args: str):
