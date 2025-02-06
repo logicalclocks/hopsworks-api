@@ -2400,7 +2400,11 @@ class FeatureGroup(FeatureGroupBase):
                         )
                     )
                 else:
-                    if not transformation_function.transformation_type:
+                    if (
+                        not transformation_function.transformation_type
+                        or transformation_function.transformation_type
+                        == TransformationType.UNDEFINED
+                    ):
                         transformation_function.transformation_type = (
                             TransformationType.ON_DEMAND
                         )
@@ -2754,11 +2758,11 @@ class FeatureGroup(FeatureGroupBase):
         if (
             (features is None and len(self._features) > 0)
             or (
-                isinstance(features, List)
+                isinstance(features, list)
                 and len(features) > 0
                 and all([isinstance(f, feature.Feature) for f in features])
             )
-            or (not features and len(self.transformation_functions) > 0)
+            or (features is None and len(self.transformation_functions) > 0)
         ):
             # This is done for compatibility. Users can specify the feature list in the
             # (get_or_)create_feature_group. Users can also provide the feature list in the save().
