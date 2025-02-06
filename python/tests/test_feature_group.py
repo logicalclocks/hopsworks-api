@@ -624,6 +624,8 @@ class TestFeatureGroup:
             storage=None,
             write_options={"wait_for_job": False},
             validation_options={"save_report": True},
+            transformation_context=None,
+            transform=True,
         )
 
     def test_save_report_default_overwritable(self, mocker, dataframe_fixture_basic):
@@ -658,6 +660,8 @@ class TestFeatureGroup:
             storage=None,
             write_options={"wait_for_job": False},
             validation_options={"save_report": False},
+            transformation_context=None,
+            transform=True,
         )
 
 
@@ -931,7 +935,9 @@ class TestExternalFeatureGroup:
         json = backend_fixtures["feature_group"]["get_basic_info"]["response"]
         fg = feature_group.FeatureGroup.from_response_json(json)
         fg._location = f"{fg.name}_{fg.version}"
-        fg._storage_connector = storage_connector.S3Connector(id=1, name="s3_conn", featurestore_id=fg.feature_store_id)
+        fg._storage_connector = storage_connector.S3Connector(
+            id=1, name="s3_conn", featurestore_id=fg.feature_store_id
+        )
 
         # Act
         path = fg.prepare_spark_location()
@@ -940,14 +946,18 @@ class TestExternalFeatureGroup:
         assert fg.location == path
         engine_instance.assert_called_once()
 
-    def test_prepare_spark_location_with_s3_connector_python(self, mocker, backend_fixtures):
+    def test_prepare_spark_location_with_s3_connector_python(
+        self, mocker, backend_fixtures
+    ):
         # Arrange
         engine = python.Engine()
         engine_instance = mocker.patch("hsfs.engine.get_instance", return_value=engine)
         json = backend_fixtures["feature_group"]["get_basic_info"]["response"]
         fg = feature_group.FeatureGroup.from_response_json(json)
         fg._location = f"{fg.name}_{fg.version}"
-        fg._storage_connector = storage_connector.S3Connector(id=1, name="s3_conn", featurestore_id=fg.feature_store_id)
+        fg._storage_connector = storage_connector.S3Connector(
+            id=1, name="s3_conn", featurestore_id=fg.feature_store_id
+        )
 
         # Act
         with pytest.raises(AttributeError):

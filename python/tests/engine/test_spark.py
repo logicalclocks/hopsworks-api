@@ -4414,7 +4414,7 @@ class TestSpark:
                 "col_2": [True, False],
                 "plus_one_col_0_": [2, 3],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -4475,7 +4475,7 @@ class TestSpark:
                 "col_2": [True, False],
                 "plus_one_col_0_": [2, 3],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -4536,7 +4536,7 @@ class TestSpark:
                 "col_2": [True, False],
                 "plus_one_col_0_": [2, 3],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -4544,6 +4544,71 @@ class TestSpark:
         result = spark_engine._apply_transformation_function(
             transformation_functions=fv.transformation_functions,
             dataset=spark_df,
+        )
+        # Assert
+        assert result.schema == expected_spark_df.schema
+        assert result.collect() == expected_spark_df.collect()
+
+    @pytest.mark.parametrize("execution_mode", ["default", "pandas", "python"])
+    def test_apply_transformation_function_single_output_udf_transformation_context(
+        self, mocker, execution_mode
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "spark"
+        spark_engine = spark.Engine()
+
+        @udf(int, drop=["col1"], mode=execution_mode)
+        def plus_one(col1, context):
+            return col1 + context["test"]
+
+        tf = transformation_function.TransformationFunction(
+            99,
+            hopsworks_udf=plus_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        f = feature.Feature(name="col_0", type=IntegerType(), index=0)
+        f1 = feature.Feature(name="col_1", type=StringType(), index=1)
+        f2 = feature.Feature(name="col_2", type=BooleanType(), index=1)
+        features = [f, f1, f2]
+        fg1 = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=features,
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="test",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            transformation_functions=[tf("col_0")],
+        )
+
+        d = {"col_0": [1, 2], "col_1": ["test_1", "test_2"], "col_2": [True, False]}
+        df = pd.DataFrame(data=d)
+
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
+        expected_df = pd.DataFrame(
+            data={
+                "col_1": ["test_1", "test_2"],
+                "col_2": [True, False],
+                "plus_one_col_0_": [21, 22],
+            }
+        )
+
+        expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
+
+        # Act
+        result = spark_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions,
+            dataset=spark_df,
+            transformation_context={"test": 20},
         )
         # Assert
         assert result.schema == expected_spark_df.schema
@@ -4600,7 +4665,7 @@ class TestSpark:
                 "plus_two_col_0_0": [2, 3],
                 "plus_two_col_0_1": [3, 4],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -4664,7 +4729,7 @@ class TestSpark:
                 "plus_two_col_0_0": [2, 3],
                 "plus_two_col_0_1": [3, 4],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -4728,7 +4793,7 @@ class TestSpark:
                 "plus_two_col_0_0": [2, 3],
                 "plus_two_col_0_1": [3, 4],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -5178,7 +5243,7 @@ class TestSpark:
                 "test_col_0_col_2_0": [2, 3],
                 "test_col_0_col_2_1": [12, 13],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -5241,7 +5306,7 @@ class TestSpark:
                 "test_col_0_col_2_0": [2, 3],
                 "test_col_0_col_2_1": [12, 13],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -5304,7 +5369,7 @@ class TestSpark:
                 "test_col_0_col_2_0": [2, 3],
                 "test_col_0_col_2_1": [12, 13],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
