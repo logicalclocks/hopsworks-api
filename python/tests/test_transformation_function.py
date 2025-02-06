@@ -23,7 +23,6 @@ from hopsworks_common import version
 from hsfs.client.exceptions import FeatureStoreException
 from hsfs.hopsworks_udf import udf
 from hsfs.transformation_function import TransformationFunction, TransformationType
-from packaging.version import Version
 
 
 class TestTransformationFunction:
@@ -251,9 +250,9 @@ class TestTransformationFunction:
 
         # Creating dict representation of udf.
         udf_json = test2.to_dict()
-        if Version(version.__version__) > Version("4.1.6"):
-            # Adding output column names to dict for testing since it would be generated when UDF is accessed out the transformation function.
-            udf_json["outputColumnNames"] = ["test2_col1_"]
+
+        # Adding output column names to dict for testing since it would be generated when UDF is accessed out the transformation function.
+        udf_json["outputColumnNames"] = ["test2_col1_"]
 
         assert tf.hopsworks_udf.to_dict() == udf_json
 
@@ -967,10 +966,6 @@ class TestTransformationFunction:
             "really_long_function_name_that_exceed_63_characters_causing_inv"
         ]
 
-    @pytest.mark.skipif(
-        Version("4.1.6") >= Version(version.__version__),
-        reason="Requires Hopsworks 4.1.7 or higher to be working.",
-    )
     def test_equality_mdt(self, mocker):
         mocked_connection = mocker.MagicMock()
         mocked_connection.backend_version = (
@@ -998,10 +993,6 @@ class TestTransformationFunction:
 
         assert mdt1 == mdt2
 
-    @pytest.mark.skipif(
-        Version("4.1.6") >= Version(version.__version__),
-        reason="Requires Hopsworks 4.1.7 or higher to be working.",
-    )
     def test_equality_odt(self, mocker):
         mocked_connection = mocker.MagicMock()
         mocked_connection.backend_version = (
@@ -1029,10 +1020,6 @@ class TestTransformationFunction:
 
         assert odt1 == odt2
 
-    @pytest.mark.skipif(
-        Version("4.1.6") >= Version(version.__version__),
-        reason="Requires Hopsworks 4.1.7 or higher to be working.",
-    )
     def test_inequality(self, mocker):
         mocked_connection = mocker.MagicMock()
         mocked_connection.backend_version = (
