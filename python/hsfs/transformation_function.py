@@ -247,7 +247,7 @@ class TransformationFunction:
             "hopsworksUdf": self.hopsworks_udf.to_dict(),
             **(
                 {"transformationType": self.transformation_type.value}
-                if Version(backend_version) >= Version("4.1.6")
+                if Version(backend_version) > Version("4.1.6")
                 else {}
             ),  # This check is added for backward compatibility with older versions of Hopsworks. The "transformationType" field was added for equality checking of transformation functions and versions below 4.1.6 do not support unknown fields in the backend.
         }
