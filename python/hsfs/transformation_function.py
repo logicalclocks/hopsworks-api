@@ -21,6 +21,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
 import humps
+from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.constants import FEATURES
 from hsfs import util
@@ -29,6 +30,7 @@ from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistic
 from hsfs.decorators import typechecked
 from hsfs.hopsworks_udf import HopsworksUdf
 from hsfs.transformation_statistics import TransformationStatistics
+from packaging.version import Version
 
 
 _logger = logging.getLogger(__name__)
@@ -236,12 +238,18 @@ class TransformationFunction:
         # Returns
             `Dict`: Dictionary that contains all data required to json serialize the object.
         """
+        backend_version = client.get_connection().backend_version
+
         return {
             "id": self._id,
             "version": self._version,
             "featurestoreId": self._featurestore_id,
             "hopsworksUdf": self.hopsworks_udf.to_dict(),
-            "transformationType": self.transformation_type.value,
+            **(
+                {"transformationType": self.transformation_type.value}
+                if Version(backend_version) < Version("4.1.6")
+                else {}
+            ),  # This check is added for backward compatibility with older versions of Hopsworks. The transformationType field was added in Hopsworks 4.1.6 and versions below do support unknown fields.
         }
 
     def alias(self, *args: str):
