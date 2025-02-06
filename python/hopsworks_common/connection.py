@@ -142,6 +142,7 @@ class Connection:
         self._api_key_file = api_key_file
         self._api_key_value = api_key_value
         self._connected = False
+        self._backend_version = None
 
         self.connect()
 
@@ -299,16 +300,16 @@ class Connection:
         regexMatcher = re.compile(versionPattern)
 
         client_version = version.__version__
-        backend_version = self._variable_api.get_version("hopsworks")
+        self.backend_version = self._variable_api.get_version("hopsworks")
 
         major_minor_client = regexMatcher.search(client_version).group(0)
-        major_minor_backend = regexMatcher.search(backend_version).group(0)
+        major_minor_backend = regexMatcher.search(self._backend_version).group(0)
 
         if major_minor_backend != major_minor_client:
             print("\n", file=sys.stderr)
             warnings.warn(
                 "The installed hopsworks client version {0} may not be compatible with the connected Hopsworks backend version {1}. \nTo ensure compatibility please install the latest bug fix release matching the minor version of your backend ({2}) by running 'pip install hopsworks=={2}.*'".format(
-                    client_version, backend_version, major_minor_backend
+                    client_version, self._backend_version, major_minor_backend
                 ),
                 stacklevel=1,
             )
@@ -613,6 +614,23 @@ class Connection:
     @property
     def api_key_value(self) -> Optional[str]:
         return self._api_key_value
+
+    @property
+    def backend_version(self) -> Optional[str]:
+        """
+        The version of the backend currently connected to hopsworks.
+        """
+        return self._backend_version
+
+    @backend_version.setter
+    def backend_version(self, backend_version: str) -> None:
+        """
+        The version of the backend currently connected to hopsworks.
+        """
+        self._backend_version = backend_version.split("-SNAPSHOT")[
+            0
+        ].strip()  # Strip off the -SNAPSHOT part of the version if it is present.
+        return self._backend_version
 
     @api_key_file.setter
     @not_connected
