@@ -55,6 +55,7 @@ dependencies = [
     "tqdm",
     "grpcio>=1.49.1,<2.0.0",         # ^1.49.1
     "protobuf>=4.25.4,<5.0.0",       # ^4.25.4
+    "packaging",         # ^21.0
 ]
 
 [project.optional-dependencies]
