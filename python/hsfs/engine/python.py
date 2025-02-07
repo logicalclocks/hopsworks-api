@@ -869,6 +869,7 @@ class Engine:
         read_options: Dict[str, Any],
         dataframe_type: str,
         training_dataset_version: int = None,
+        transformation_context: Dict[str, Any] = None,
     ) -> Union[pd.DataFrame, pl.DataFrame]:
         """
         Function that creates or retrieves already created the training dataset.
@@ -880,6 +881,8 @@ class Engine:
             read_options `Dict[str, Any]`: Dictionary that can be used to specify extra parameters for reading data.
             dataframe_type `str`: The type of dataframe returned.
             training_dataset_version `int`: Version of training data to be retrieved.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
         # Raises
             `ValueError`: If the training dataset statistics could not be retrieved.
         """
@@ -897,6 +900,7 @@ class Engine:
                 read_options,
                 dataframe_type,
                 training_dataset_version,
+                transformation_context=transformation_context,
             )
         else:
             df = query_obj.read(
@@ -911,7 +915,9 @@ class Engine:
             #        training_dataset_obj, feature_view_obj, training_dataset_version
             #    )
             return self._apply_transformation_function(
-                feature_view_obj.transformation_functions, df
+                feature_view_obj.transformation_functions,
+                df,
+                transformation_context=transformation_context,
             )
 
     def split_labels(
@@ -945,6 +951,7 @@ class Engine:
         read_option: Dict[str, Any],
         dataframe_type: str,
         training_dataset_version: int = None,
+        transformation_context: Dict[str, Any] = None,
     ) -> Dict[str, Union[pd.DataFrame, pl.DataFrame]]:
         """
         Split a df into slices defined by `splits`. `splits` is a `dict(str, int)` which keys are name of split
@@ -957,6 +964,8 @@ class Engine:
             read_options `Dict[str, Any]`: Dictionary that can be used to specify extra parameters for reading data.
             dataframe_type `str`: The type of dataframe returned.
             training_dataset_version `int`: Version of training data to be retrieved.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
         # Raises
             `ValueError`: If the training dataset statistics could not be retrieved.
         """
@@ -1005,6 +1014,7 @@ class Engine:
             result_dfs[split_name] = self._apply_transformation_function(
                 feature_view_obj.transformation_functions,
                 result_dfs.get(split_name),
+                transformation_context=transformation_context,
             )
 
         return result_dfs
@@ -1085,6 +1095,7 @@ class Engine:
         save_mode: str,
         feature_view_obj: Optional[feature_view.FeatureView] = None,
         to_df: bool = False,
+        transformation_context: Dict[str, Any] = None,
     ) -> Union["job.Job", Any]:
         if not feature_view_obj and not isinstance(dataset, query.Query):
             raise Exception(
@@ -1105,6 +1116,7 @@ class Engine:
             and feature_view_obj
             and len(feature_view_obj.transformation_functions) == 0
             and training_dataset.data_format == "parquet"
+            and not transformation_context
         ):
             query_obj, _ = dataset._prep_read(False, user_write_options)
             response = util.run_with_loading_animation(
@@ -1121,6 +1133,13 @@ class Engine:
         # As for creating a feature group, users have the possibility of passing
         # a spark_job_configuration object as part of the user_write_options with the key "spark"
         spark_job_configuration = user_write_options.pop("spark", None)
+
+        # Pass transformation context to the training dataset job
+        if transformation_context:
+            raise FeatureStoreException(
+                "Cannot pass transformation context to training dataset materialization job from the Python Kernel. Please use the Spark Kernel."
+            )
+
         td_app_conf = training_dataset_job_conf.TrainingDatasetJobConf(
             query=dataset,
             overwrite=(save_mode == "overwrite"),
@@ -1255,6 +1274,7 @@ class Engine:
         transformation_functions: List[transformation_function.TransformationFunction],
         dataset: Union[pd.DataFrame, pl.DataFrame],
         online_inference: bool = False,
+        transformation_context: Dict[str, Any] = None,
     ) -> Union[pd.DataFrame, pl.DataFrame]:
         """
         Apply transformation function to the dataframe.
@@ -1283,6 +1303,10 @@ class Engine:
 
         for tf in transformation_functions:
             hopsworks_udf = tf.hopsworks_udf
+
+            # Setting transformation function context variables.
+            hopsworks_udf.transformation_context = transformation_context
+
             missing_features = set(hopsworks_udf.transformation_features) - set(
                 dataset.columns
             )
@@ -1446,8 +1470,9 @@ class Engine:
         producer, headers, feature_writers, writer = kafka_engine.init_kafka_resources(
             feature_group,
             offline_write_options,
-            project_id=client.get_instance()._project_id,
+            num_entries=len(dataframe),
         )
+
         if not feature_group._multi_part_insert:
             # set initial_check_point to the current offset
             initial_check_point = kafka_engine.kafka_get_offsets(
@@ -1557,6 +1582,15 @@ class Engine:
                 ),
                 await_termination=offline_write_options.get("wait_for_job", False),
             )
+
+        # wait for online ingestion
+        if feature_group.online_enabled and offline_write_options.get(
+            "wait_for_online_ingestion", False
+        ):
+            feature_group.get_latest_online_ingestion().wait_for_completion(
+                options=offline_write_options.get("online_ingestion_options", {})
+            )
+
         return feature_group.materialization_job
 
     @staticmethod

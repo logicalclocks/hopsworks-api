@@ -34,7 +34,7 @@ from hsfs import (
 )
 from hsfs.client import exceptions
 from hsfs.constructor import hudi_feature_group_alias, query
-from hsfs.core import training_dataset_engine
+from hsfs.core import online_ingestion, training_dataset_engine
 from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
 from hsfs.engine import spark
 from hsfs.hopsworks_udf import udf
@@ -873,6 +873,10 @@ class TestSpark:
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
@@ -894,10 +898,13 @@ class TestSpark:
 
         mock_common_client_get_instance.return_value._project_name = "test_project_name"
 
+        df = pd.DataFrame(data={"col_0": [1, 2], "col_1": ["test_1", "test_2"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
         # Act
         spark_engine.save_stream_dataframe(
             feature_group=fg,
-            dataframe=None,
+            dataframe=spark_df,
             query_name=None,
             output_mode="test_mode",
             await_termination=None,
@@ -993,6 +1000,10 @@ class TestSpark:
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
@@ -1012,10 +1023,13 @@ class TestSpark:
 
         mock_common_client_get_instance.return_value._project_name = "test_project_name"
 
+        df = pd.DataFrame(data={"col_0": [1, 2], "col_1": ["test_1", "test_2"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
         # Act
         spark_engine.save_stream_dataframe(
             feature_group=fg,
-            dataframe=None,
+            dataframe=spark_df,
             query_name="test_query_name",
             output_mode="test_mode",
             await_termination=None,
@@ -1117,6 +1131,10 @@ class TestSpark:
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
@@ -1138,10 +1156,13 @@ class TestSpark:
 
         mock_common_client_get_instance.return_value._project_name = "test_project_name"
 
+        df = pd.DataFrame(data={"col_0": [1, 2], "col_1": ["test_1", "test_2"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
         # Act
         spark_engine.save_stream_dataframe(
             feature_group=fg,
-            dataframe=None,
+            dataframe=spark_df,
             query_name=None,
             output_mode="test_mode",
             await_termination=None,
@@ -1237,6 +1258,10 @@ class TestSpark:
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
@@ -1258,10 +1283,13 @@ class TestSpark:
 
         mock_common_client_get_instance.return_value._project_name = "test_project_name"
 
+        df = pd.DataFrame(data={"col_0": [1, 2], "col_1": ["test_1", "test_2"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
         # Act
         spark_engine.save_stream_dataframe(
             feature_group=fg,
-            dataframe=None,
+            dataframe=spark_df,
             query_name=None,
             output_mode="test_mode",
             await_termination=True,
@@ -1494,6 +1522,10 @@ class TestSpark:
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
@@ -1511,10 +1543,13 @@ class TestSpark:
         )
         fg.feature_store = mocker.Mock()
 
+        df = pd.DataFrame(data={"col_0": [1, 2], "col_1": ["test_1", "test_2"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
         # Act
         spark_engine._save_online_dataframe(
             feature_group=fg,
-            dataframe=None,
+            dataframe=spark_df,
             write_options={"test_name": "test_value"},
         )
 
@@ -4606,7 +4641,7 @@ class TestSpark:
                 "col_2": [True, False],
                 "plus_one_col_0_": [2, 3],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -4667,7 +4702,7 @@ class TestSpark:
                 "col_2": [True, False],
                 "plus_one_col_0_": [2, 3],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -4728,7 +4763,7 @@ class TestSpark:
                 "col_2": [True, False],
                 "plus_one_col_0_": [2, 3],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -4736,6 +4771,71 @@ class TestSpark:
         result = spark_engine._apply_transformation_function(
             transformation_functions=fv.transformation_functions,
             dataset=spark_df,
+        )
+        # Assert
+        assert result.schema == expected_spark_df.schema
+        assert result.collect() == expected_spark_df.collect()
+
+    @pytest.mark.parametrize("execution_mode", ["default", "pandas", "python"])
+    def test_apply_transformation_function_single_output_udf_transformation_context(
+        self, mocker, execution_mode
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "spark"
+        spark_engine = spark.Engine()
+
+        @udf(int, drop=["col1"], mode=execution_mode)
+        def plus_one(col1, context):
+            return col1 + context["test"]
+
+        tf = transformation_function.TransformationFunction(
+            99,
+            hopsworks_udf=plus_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        f = feature.Feature(name="col_0", type=IntegerType(), index=0)
+        f1 = feature.Feature(name="col_1", type=StringType(), index=1)
+        f2 = feature.Feature(name="col_2", type=BooleanType(), index=1)
+        features = [f, f1, f2]
+        fg1 = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=features,
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="test",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            transformation_functions=[tf("col_0")],
+        )
+
+        d = {"col_0": [1, 2], "col_1": ["test_1", "test_2"], "col_2": [True, False]}
+        df = pd.DataFrame(data=d)
+
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
+        expected_df = pd.DataFrame(
+            data={
+                "col_1": ["test_1", "test_2"],
+                "col_2": [True, False],
+                "plus_one_col_0_": [21, 22],
+            }
+        )
+
+        expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
+
+        # Act
+        result = spark_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions,
+            dataset=spark_df,
+            transformation_context={"test": 20},
         )
         # Assert
         assert result.schema == expected_spark_df.schema
@@ -4792,7 +4892,7 @@ class TestSpark:
                 "plus_two_col_0_0": [2, 3],
                 "plus_two_col_0_1": [3, 4],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -4856,7 +4956,7 @@ class TestSpark:
                 "plus_two_col_0_0": [2, 3],
                 "plus_two_col_0_1": [3, 4],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -4920,7 +5020,7 @@ class TestSpark:
                 "plus_two_col_0_0": [2, 3],
                 "plus_two_col_0_1": [3, 4],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -5370,7 +5470,7 @@ class TestSpark:
                 "test_col_0_col_2_0": [2, 3],
                 "test_col_0_col_2_1": [12, 13],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -5433,7 +5533,7 @@ class TestSpark:
                 "test_col_0_col_2_0": [2, 3],
                 "test_col_0_col_2_1": [12, 13],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -5496,7 +5596,7 @@ class TestSpark:
                 "test_col_0_col_2_0": [2, 3],
                 "test_col_0_col_2_1": [12, 13],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 

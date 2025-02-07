@@ -30,7 +30,7 @@ from hopsworks_common.core.constants import (
     avro_not_installed_message,
 )
 from hopsworks_common.decorators import uses_confluent_kafka
-from hsfs.core import storage_connector_api
+from hsfs.core import online_ingestion, online_ingestion_api, storage_connector_api
 from tqdm import tqdm
 
 
@@ -71,7 +71,7 @@ def init_kafka_consumer(
 def init_kafka_resources(
     feature_group: Union[FeatureGroup, ExternalFeatureGroup],
     offline_write_options: Dict[str, Any],
-    project_id: int,
+    num_entries: Optional[int] = None,
 ) -> Tuple[
     Producer, Dict[str, bytes], Dict[str, Callable[..., bytes]], Callable[..., bytes] :
 ]:
@@ -84,7 +84,7 @@ def init_kafka_resources(
             feature_group._writer,
         )
     producer, headers, feature_writers, writer = _init_kafka_resources(
-        feature_group, offline_write_options, project_id
+        feature_group, offline_write_options, num_entries
     )
     if feature_group._multi_part_insert:
         feature_group._kafka_producer = producer
@@ -97,7 +97,7 @@ def init_kafka_resources(
 def _init_kafka_resources(
     feature_group: Union[FeatureGroup, ExternalFeatureGroup],
     offline_write_options: Dict[str, Any],
-    project_id: int,
+    num_entries: Optional[int] = None,
 ) -> Tuple[
     Producer, Dict[str, bytes], Dict[str, Callable[..., bytes]], Callable[..., bytes] :
 ]:
@@ -105,6 +105,17 @@ def _init_kafka_resources(
     producer = init_kafka_producer(
         feature_group.feature_store_id, offline_write_options
     )
+    # setup headers
+    headers = get_headers(feature_group, num_entries)
+    # setup writers
+    feature_writers, writer = get_writer_function(feature_group)
+
+    return producer, headers, feature_writers, writer
+
+
+def get_writer_function(
+    feature_group: Union[FeatureGroup, ExternalFeatureGroup],
+) -> Tuple[Dict[str, Callable[..., bytes]], Callable[..., bytes]]:
     # setup complex feature writers
     feature_writers = {
         feature: get_encoder_func(feature_group._get_feature_avro_schema(feature))
@@ -112,14 +123,30 @@ def _init_kafka_resources(
     }
     # setup row writer function
     writer = get_encoder_func(feature_group._get_encoded_avro_schema())
+    return (feature_writers, writer)
 
+
+def get_headers(
+    feature_group: Union[FeatureGroup, ExternalFeatureGroup],
+    num_entries: Optional[int] = None,
+) -> Dict[str, bytes]:
     # custom headers for hopsworks onlineFS
     headers = {
-        "projectId": str(project_id).encode("utf8"),
+        "projectId": str(feature_group.feature_store.project_id).encode("utf8"),
         "featureGroupId": str(feature_group._id).encode("utf8"),
         "subjectId": str(feature_group.subject["id"]).encode("utf8"),
     }
-    return producer, headers, feature_writers, writer
+
+    if feature_group.online_enabled:
+        # setup online ingestion id
+        online_ingestion_instance = (
+            online_ingestion_api.OnlineIngestionApi().create_online_ingestion(
+                feature_group, online_ingestion.OnlineIngestion(num_entries=num_entries)
+            )
+        )
+        headers["onlineIngestionId"] = str(online_ingestion_instance.id).encode("utf8")
+
+    return headers
 
 
 @uses_confluent_kafka

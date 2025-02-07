@@ -640,8 +640,10 @@ class TestFeatureGroup:
             overwrite=False,
             operation="upsert",
             storage=None,
-            write_options={"wait_for_job": False},
+            write_options={"wait_for_job": False, 'wait_for_online_ingestion': False},
             validation_options={"save_report": True},
+            transformation_context=None,
+            transform=True,
         )
 
     def test_save_report_default_overwritable(self, mocker, dataframe_fixture_basic):
@@ -675,8 +677,10 @@ class TestFeatureGroup:
             overwrite=False,
             operation="upsert",
             storage=None,
-            write_options={"wait_for_job": False},
+            write_options={"wait_for_job": False, 'wait_for_online_ingestion': False},
             validation_options={"save_report": False},
+            transformation_context=None,
+            transform=True,
         )
 
 
