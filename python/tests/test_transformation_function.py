@@ -19,9 +19,11 @@ import logging
 
 import pandas as pd
 import pytest
+from hopsworks_common import version
 from hsfs.client.exceptions import FeatureStoreException
 from hsfs.hopsworks_udf import udf
 from hsfs.transformation_function import TransformationFunction, TransformationType
+from packaging.version import Version
 
 
 class TestTransformationFunction:
@@ -228,7 +230,15 @@ class TestTransformationFunction:
             == "Please use the hopsworks_udf decorator when defining transformation functions."
         )
 
-    def test_transformation_function_definition_with_hopworks_udf(self):
+    def test_transformation_function_definition_with_hopworks_udf(self, mocker):
+        mocked_connection = mocker.MagicMock()
+        mocked_connection.backend_version = (
+            version.__version__
+        )  # Mocking backend version to be the same as the current version
+        mocked_connection = mocker.patch(
+            "hopsworks_common.client.get_connection", return_value=mocked_connection
+        )
+
         @udf(int)
         def test2(col1):
             return col1 + 1
@@ -956,7 +966,19 @@ class TestTransformationFunction:
             "really_long_function_name_that_exceed_63_characters_causing_inv"
         ]
 
-    def test_equality_mdt(self):
+    @pytest.mark.skipif(
+        Version("4.1.6") >= Version(version.__version__),
+        reason="Requires Hopsworks 4.1.7 or higher to be working.",
+    )
+    def test_equality_mdt(self, mocker):
+        mocked_connection = mocker.MagicMock()
+        mocked_connection.backend_version = (
+            version.__version__
+        )  # Mocking backend version to be the same as the current version
+        mocked_connection = mocker.patch(
+            "hopsworks_common.client.get_connection", return_value=mocked_connection
+        )
+
         @udf([int])
         def add_one(feature):
             return feature + 1
@@ -975,7 +997,19 @@ class TestTransformationFunction:
 
         assert mdt1 == mdt2
 
-    def test_equality_odt(self):
+    @pytest.mark.skipif(
+        Version("4.1.6") >= Version(version.__version__),
+        reason="Requires Hopsworks 4.1.7 or higher to be working.",
+    )
+    def test_equality_odt(self, mocker):
+        mocked_connection = mocker.MagicMock()
+        mocked_connection.backend_version = (
+            version.__version__
+        )  # Mocking backend version to be the same as the current version
+        mocked_connection = mocker.patch(
+            "hopsworks_common.client.get_connection", return_value=mocked_connection
+        )
+
         @udf([int])
         def add_one(feature):
             return feature + 1
@@ -994,7 +1028,19 @@ class TestTransformationFunction:
 
         assert odt1 == odt2
 
-    def test_inequality(self):
+    @pytest.mark.skipif(
+        Version("4.1.6") >= Version(version.__version__),
+        reason="Requires Hopsworks 4.1.7 or higher to be working.",
+    )
+    def test_inequality(self, mocker):
+        mocked_connection = mocker.MagicMock()
+        mocked_connection.backend_version = (
+            version.__version__
+        )  # Mocking backend version to be the same as the current version
+        mocked_connection = mocker.patch(
+            "hopsworks_common.client.get_connection", return_value=mocked_connection
+        )
+
         @udf([int])
         def add_one(feature):
             return feature + 1

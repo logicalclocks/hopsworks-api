@@ -26,12 +26,14 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import humps
+from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.constants import FEATURES
 from hsfs import engine, util
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hsfs.decorators import typechecked
 from hsfs.transformation_statistics import TransformationStatistics
+from packaging.version import Version
 
 
 class UDFExecutionMode(Enum):
@@ -857,6 +859,8 @@ def renaming_wrapper(*args):
         # Returns
             `Dict`: Dictionary that contains all data required to json serialize the object.
         """
+        backend_version = client.get_connection().backend_version
+
         return {
             "sourceCode": self._function_source,
             "outputTypes": self.return_types,
@@ -869,7 +873,11 @@ def renaming_wrapper(*args):
             "name": self.function_name,
             "featureNamePrefix": self._feature_name_prefix,
             "executionMode": self.execution_mode.value.upper(),
-            "outputColumnNames": self.output_column_names,
+            **(
+                {"outputColumnNames": self.output_column_names}
+                if Version(backend_version) >= Version("4.1.6")
+                else {}
+            ),  # This check is added for backward compatibility with older versions of Hopsworks. The "outputColumnNames" field was added in Hopsworks 4.1.6 and versions below do not support unknown fields in the backend.
         }
 
     def json(self) -> str:
