@@ -145,7 +145,7 @@ class TestDeployment:
         d.save()
 
         # Assert
-        mock_serving_engine_save.assert_called_once_with(d, 120)
+        mock_serving_engine_save.assert_called_once_with(d, 600)
 
     def test_save(self, mocker, backend_fixtures):
         # Arrange
@@ -156,7 +156,7 @@ class TestDeployment:
         )
 
         # Act
-        await_update = 120
+        await_update = 600
         d.save(await_update=await_update)
 
         # Assert
@@ -176,7 +176,7 @@ class TestDeployment:
         d.start()
 
         # Assert
-        mock_serving_engine_start.assert_called_once_with(d, await_status=120)
+        mock_serving_engine_start.assert_called_once_with(d, await_status=600)
 
     def test_start(self, mocker, backend_fixtures):
         # Arrange
@@ -187,7 +187,7 @@ class TestDeployment:
         )
 
         # Act
-        await_running = 120
+        await_running = 600
         d.start(await_running=await_running)
 
         # Assert
@@ -207,7 +207,7 @@ class TestDeployment:
         d.stop()
 
         # Assert
-        mock_serving_engine_stop.assert_called_once_with(d, await_status=120)
+        mock_serving_engine_stop.assert_called_once_with(d, await_status=600)
 
     def test_stop(self, mocker, backend_fixtures):
         # Arrange
@@ -218,7 +218,7 @@ class TestDeployment:
         )
 
         # Act
-        await_stopped = 120
+        await_stopped = 600
         d.stop(await_stopped=await_stopped)
 
         # Assert
