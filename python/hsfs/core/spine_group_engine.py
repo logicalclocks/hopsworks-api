@@ -40,8 +40,6 @@ class SpineGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         for feat in feature_group.features:
             if feat.name in feature_group.primary_key:
                 feat.primary = True
-            if feat.name in feature_group.foreign_key:
-                feat.foreign = True
 
         # need to save dataframe during save since otherwise it will be lost
         dataframe = feature_group.dataframe
