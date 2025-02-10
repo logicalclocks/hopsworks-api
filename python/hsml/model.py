@@ -318,11 +318,14 @@ class Model:
         )
         return util.get_hostname_replaced_url(sub_path=path)
 
-    def get_feature_view(self, init: bool = True, online: Optional[bool] = None):
+    def get_feature_view(self, init: bool = True, online: bool = False):
         """Get the parent feature view of this model, based on explicit provenance.
          Only accessible, usable feature view objects are returned. Otherwise an Exception is raised.
          For more details, call the base method - get_feature_view_provenance
 
+         # Arguments
+            init: By default this is set to True. If you require a more complex initialization of the feature view for online or batch scenarios, you should set `init` to False to retrieve a non initialized feature view and then call `init_batch_scoring()` or `init_serving()` with the required parameters.
+            online: By default this is set to False and the initialization for batch scoring is considered the default scenario. If you set `online` to True, the online scenario is enabled and the `init_serving()` method is called. When inside a deployment, the only available scenario is the online one, thus the parameter is ignored and init_serving is always called (if `init` is set to True). If you want to override this behaviour, you should set `init` to False and proceed with a custom initialization.
         # Returns
             `FeatureView`: Feature View Object.
         # Raises

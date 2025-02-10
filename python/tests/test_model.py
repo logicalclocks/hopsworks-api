@@ -432,7 +432,7 @@ class TestModel:
         mock_fv_provenance.assert_called_once()
         mock_td_provenance.assert_called_once()
         assert not mock_fv.init_serving.called
-        assert not mock_fv.init_batch_scoring.called
+        assert mock_fv.init_batch_scoring.called
 
     def test_get_feature_view_online(self, mocker):
         mock_fv = mocker.Mock()

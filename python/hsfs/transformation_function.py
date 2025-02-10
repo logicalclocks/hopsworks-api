@@ -21,6 +21,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
 import humps
+from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.constants import FEATURES
 from hsfs import util
@@ -29,6 +30,7 @@ from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistic
 from hsfs.decorators import typechecked
 from hsfs.hopsworks_udf import HopsworksUdf
 from hsfs.transformation_statistics import TransformationStatistics
+from packaging.version import Version
 
 
 _logger = logging.getLogger(__name__)
@@ -41,6 +43,7 @@ class TransformationType(Enum):
 
     MODEL_DEPENDENT = "model_dependent"
     ON_DEMAND = "on_demand"
+    UNDEFINED = "undefined"  # This type is used when the UDF created is not attached to a feature view / feature group. Hence the transformation function is neither model dependent nor on-demand.
 
 
 @typechecked
@@ -87,7 +90,12 @@ class TransformationFunction:
         TransformationFunction._validate_transformation_type(
             transformation_type=transformation_type, hopsworks_udf=hopsworks_udf
         )
-        self.transformation_type = transformation_type
+
+        # Setting transformation type as unknown when the transformation function is not attached to a feature view / feature group.
+        # This happens for example when the transformation function is fetched from the backend.
+        self.transformation_type = (
+            transformation_type if transformation_type else TransformationType.UNDEFINED
+        )
 
         if self.__hopsworks_udf._generate_output_col_name:
             # Reset output column names so that they would be regenerated.
@@ -230,12 +238,18 @@ class TransformationFunction:
         # Returns
             `Dict`: Dictionary that contains all data required to json serialize the object.
         """
+        backend_version = client.get_connection().backend_version
+
         return {
             "id": self._id,
             "version": self._version,
             "featurestoreId": self._featurestore_id,
             "hopsworksUdf": self.hopsworks_udf.to_dict(),
-            "transformationType": self.transformation_type.value,
+            **(
+                {"transformationType": self.transformation_type.value}
+                if Version(backend_version) > Version("4.1.6")
+                else {}
+            ),  # This check is added for backward compatibility with older versions of Hopsworks. The "transformationType" field was added for equality checking of transformation functions and versions below 4.1.6 do not support unknown fields in the backend.
         }
 
     def alias(self, *args: str):
@@ -349,7 +363,11 @@ class TransformationFunction:
     def hopsworks_udf(self) -> HopsworksUdf:
         """Meta data class for the user defined transformation function."""
         # Make sure that the output column names for a model-dependent or on-demand transformation function, when accessed externally from the class.
-        if self.transformation_type and not self.__hopsworks_udf.output_column_names:
+        if (
+            self.transformation_type
+            and self.transformation_type != TransformationType.UNDEFINED
+            and not self.__hopsworks_udf.output_column_names
+        ):
             self.__hopsworks_udf.output_column_names = self._get_output_column_names()
         return self.__hopsworks_udf
 
