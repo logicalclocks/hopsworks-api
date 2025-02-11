@@ -763,7 +763,7 @@ class TestKafkaConnector:
             "sasl.password": "111",
             "sasl.username": "222",
         }
-    
+
     def test_kafka_options_kerberos(self, mocker, backend_fixtures):
         # Arrange
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
