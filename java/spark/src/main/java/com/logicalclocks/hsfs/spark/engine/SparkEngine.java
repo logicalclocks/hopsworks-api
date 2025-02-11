@@ -41,7 +41,6 @@ import com.logicalclocks.hsfs.engine.FeatureGroupUtils;
 import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.metadata.HopsworksClient;
 import com.logicalclocks.hsfs.metadata.OnDemandOptions;
-import com.logicalclocks.hsfs.metadata.OnlineIngestionApi;
 import com.logicalclocks.hsfs.metadata.Option;
 import com.logicalclocks.hsfs.util.Constants;
 import com.logicalclocks.hsfs.spark.ExternalFeatureGroup;
@@ -143,7 +142,7 @@ public class SparkEngine extends EngineBase {
   @Getter
   private SparkSession sparkSession;
 
-  public SparkEngine() {
+  private SparkEngine() {
     sparkSession = SparkSession.builder()
         .enableHiveSupport()
         .getOrCreate();
