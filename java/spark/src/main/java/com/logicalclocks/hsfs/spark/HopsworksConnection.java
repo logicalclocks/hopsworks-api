@@ -21,6 +21,7 @@ import com.logicalclocks.hsfs.spark.engine.SparkEngine;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.HopsworksConnectionBase;
 import com.logicalclocks.hsfs.SecretStore;
+import com.logicalclocks.hsfs.engine.EngineBase;
 import com.logicalclocks.hsfs.metadata.HopsworksClient;
 
 import com.logicalclocks.hsfs.metadata.HopsworksHttpClient;
@@ -53,6 +54,7 @@ public class HopsworksConnection extends HopsworksConnectionBase {
         hostnameVerification, trustStorePath, this.apiKeyFilePath, this.apiKeyValue);
     this.projectObj = getProject();
     HopsworksClient.getInstance().setProject(this.projectObj);
+    EngineBase.setInstance(SparkEngine.getInstance());
     if (!System.getProperties().containsKey(HopsworksInternalClient.REST_ENDPOINT_SYS)) {
       SparkEngine.getInstance().validateSparkConfiguration();
       HopsworksHttpClient hopsworksHttpClient =  HopsworksClient.getInstance().getHopsworksHttpClient();

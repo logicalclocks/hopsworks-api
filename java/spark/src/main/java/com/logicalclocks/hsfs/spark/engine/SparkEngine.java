@@ -125,7 +125,6 @@ public class SparkEngine extends EngineBase {
 
   private final StorageConnectorUtils storageConnectorUtils = new StorageConnectorUtils();
   private FeatureGroupUtils featureGroupUtils = new FeatureGroupUtils();
-  private OnlineIngestionApi onlineIngestionApi = new OnlineIngestionApi();
 
   private static SparkEngine INSTANCE = null;
 
@@ -144,7 +143,7 @@ public class SparkEngine extends EngineBase {
   @Getter
   private SparkSession sparkSession;
 
-  private SparkEngine() {
+  public SparkEngine() {
     sparkSession = SparkSession.builder()
         .enableHiveSupport()
         .getOrCreate();
@@ -923,8 +922,6 @@ public class SparkEngine extends EngineBase {
 
     StorageConnector.KafkaConnector storageConnector =
         storageConnectorApi.getKafkaStorageConnector(featureGroup.getFeatureStore(), external);
-    storageConnector.setSslTruststoreLocation(addFile(storageConnector.getSslTruststoreLocation()));
-    storageConnector.setSslKeystoreLocation(addFile(storageConnector.getSslKeystoreLocation()));
 
     Map<String, String> config = storageConnector.sparkOptions();
 
