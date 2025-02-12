@@ -70,7 +70,6 @@ jobs:
 
       - name: Set Timezone
         run: sudo timedatectl set-timezone UTC && echo UTC | sudo tee /etc/timezone
-        run: sudo timedatectl set-timezone UTC && echo UTC | sudo tee /etc/timezone
 
       - uses: actions/checkout@v4
       - name: Copy README
