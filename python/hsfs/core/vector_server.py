@@ -371,7 +371,7 @@ class VectorServer:
         allow_missing: bool = False,
         force_rest_client: bool = False,
         force_sql_client: bool = False,
-        transform: bool = False,
+        transform: bool = True,
         on_demand_features: Optional[bool] = True,
         request_parameters: Optional[Dict[str, Any]] = None,
         transformation_context: Dict[str, Any] = None,
@@ -443,7 +443,7 @@ class VectorServer:
         allow_missing: bool = False,
         force_rest_client: bool = False,
         force_sql_client: bool = False,
-        transform: bool = False,
+        transform: bool = True,
         on_demand_features: Optional[bool] = True,
         transformation_context: Dict[str, Any] = None,
     ) -> Union[pd.DataFrame, pl.DataFrame, np.ndarray, List[Any], List[Dict[str, Any]]]:
