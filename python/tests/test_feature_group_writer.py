@@ -43,6 +43,8 @@ class TestFeatureGroupWriter:
             storage=None,
             write_options={"start_offline_materialization": False},
             validation_options={"fetch_expectation_suite": False},
+            transformation_context=None,
+            transform=True,
         )
         assert fg._multi_part_insert is False
 

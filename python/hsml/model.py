@@ -193,6 +193,7 @@ class Model:
         artifact_version: Optional[str] = ARTIFACT_VERSION.CREATE,
         serving_tool: Optional[str] = None,
         script_file: Optional[str] = None,
+        config_file: Optional[str] = None,
         resources: Optional[Union[PredictorResources, dict]] = None,
         inference_logger: Optional[Union[InferenceLogger, dict]] = None,
         inference_batcher: Optional[Union[InferenceBatcher, dict]] = None,
@@ -224,6 +225,7 @@ class Model:
             or `MODEL-ONLY` to reuse the shared artifact containing only the model files.
             serving_tool: Serving tool used to deploy the model server.
             script_file: Path to a custom predictor script implementing the Predict class.
+            config_file: Server configuration file to be passed to the model deployment.
             resources: Resources to be allocated for the predictor.
             inference_logger: Inference logger configuration.
             inference_batcher: Inference batcher configuration.
@@ -245,6 +247,7 @@ class Model:
             artifact_version=artifact_version,
             serving_tool=serving_tool,
             script_file=script_file,
+            config_file=config_file,
             resources=resources,
             inference_logger=inference_logger,
             inference_batcher=inference_batcher,
@@ -315,11 +318,14 @@ class Model:
         )
         return util.get_hostname_replaced_url(sub_path=path)
 
-    def get_feature_view(self, init: bool = True, online: Optional[bool] = None):
+    def get_feature_view(self, init: bool = True, online: bool = False):
         """Get the parent feature view of this model, based on explicit provenance.
          Only accessible, usable feature view objects are returned. Otherwise an Exception is raised.
          For more details, call the base method - get_feature_view_provenance
 
+         # Arguments
+            init: By default this is set to True. If you require a more complex initialization of the feature view for online or batch scenarios, you should set `init` to False to retrieve a non initialized feature view and then call `init_batch_scoring()` or `init_serving()` with the required parameters.
+            online: By default this is set to False and the initialization for batch scoring is considered the default scenario. If you set `online` to True, the online scenario is enabled and the `init_serving()` method is called. When inside a deployment, the only available scenario is the online one, thus the parameter is ignored and init_serving is always called (if `init` is set to True). If you want to override this behaviour, you should set `init` to False and proceed with a custom initialization.
         # Returns
             `FeatureView`: Feature View Object.
         # Raises

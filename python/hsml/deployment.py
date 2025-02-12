@@ -66,7 +66,7 @@ class Deployment:
         self._model_registry_id = None
 
     @usage.method_logger
-    def save(self, await_update: Optional[int] = 120):
+    def save(self, await_update: Optional[int] = 600):
         """Persist this deployment including the predictor and metadata to Model Serving.
 
         # Arguments
@@ -78,7 +78,7 @@ class Deployment:
         self._serving_engine.save(self, await_update)
 
     @usage.method_logger
-    def start(self, await_running: Optional[int] = 120):
+    def start(self, await_running: Optional[int] = 600):
         """Start the deployment
 
         # Arguments
@@ -90,7 +90,7 @@ class Deployment:
         self._serving_engine.start(self, await_status=await_running)
 
     @usage.method_logger
-    def stop(self, await_stopped: Optional[int] = 120):
+    def stop(self, await_stopped: Optional[int] = 600):
         """Stop the deployment
 
         # Arguments
@@ -413,6 +413,15 @@ class Deployment:
     @script_file.setter
     def script_file(self, script_file: str):
         self._predictor.script_file = script_file
+
+    @property
+    def config_file(self):
+        """Config file passed to the predictor."""
+        return self._predictor.config_file
+
+    @config_file.setter
+    def config_file(self, config_file: str):
+        self._predictor.config_file = config_file
 
     @property
     def resources(self):

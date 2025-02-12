@@ -2683,6 +2683,51 @@ class TestPython:
         assert result["plus_one_tf_name_"][0] == 2
         assert result["plus_one_tf_name_"][1] == 3
 
+    @pytest.mark.parametrize("execution_mode", ["default", "pandas", "python"])
+    def test_apply_transformation_function_udf_transformation_context(
+        self, mocker, execution_mode
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "python"
+        python_engine = python.Engine()
+
+        @udf(int, mode=execution_mode)
+        def plus_one(col1, context):
+            return col1 + context["test"]
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("id"), feature.Feature("tf_name")],
+            id=11,
+            stream=False,
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg.select_all(),
+            featurestore_id=99,
+            transformation_functions=[plus_one("tf_name")],
+        )
+
+        df = pd.DataFrame(data={"tf_name": [1, 2]})
+
+        # Act
+        result = python_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions,
+            dataset=df,
+            transformation_context={"test": 10},
+        )
+
+        # Assert
+        assert len(result["plus_one_tf_name_"]) == 2
+        assert result["plus_one_tf_name_"][0] == 11
+        assert result["plus_one_tf_name_"][1] == 12
+
     def test_apply_transformation_function_multiple_output_udf_default_mode(
         self, mocker
     ):
@@ -3448,7 +3493,7 @@ class TestPython:
             python_engine._apply_transformation_function(
                 transformation_functions=fg.transformation_functions, dataset=df
             )
-        print(str(exception.value))
+
         assert (
             str(exception.value)
             == "The following feature(s): `missing_col1`, specified in the on-demand transformation function 'add_one' are not present in the dataframe being inserted into the feature group. "
@@ -3492,7 +3537,7 @@ class TestPython:
             python_engine._apply_transformation_function(
                 transformation_functions=fv.transformation_functions, dataset=df
             )
-        print(str(exception.value))
+
         assert (
             str(exception.value)
             == "The following feature(s): `missing_col1`, specified in the model-dependent transformation function 'add_one' are not present in the feature view. "

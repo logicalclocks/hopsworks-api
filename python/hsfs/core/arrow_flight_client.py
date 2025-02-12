@@ -67,7 +67,7 @@ def close() -> None:
 
 def _disable_feature_query_service_client():
     global _arrow_flight_instance
-    _logger.debug("Disabling Hopsworks Feature Query Service Client.")
+    _logger.debug("Disabling Hopsworks Query Service Client.")
     if _arrow_flight_instance is None:
         _arrow_flight_instance.ArrowFlightClient(disabled_for_session=True)
     else:
@@ -90,11 +90,16 @@ def _is_no_commits_found_error(exception):
     ) and "No commits found" in str(exception)
 
 
-def _should_retry_healthcheck_or_certificate_registration(exception):
+def _should_retry_healthcheck(exception):
     return (
         isinstance(exception, pyarrow._flight.FlightUnavailableError)
         or isinstance(exception, pyarrow._flight.FlightTimedOutError)
-        # not applicable for healthcheck, only certificate registration
+    )
+
+
+def _should_retry_certificate_registration(exception):
+    return (
+        _should_retry_healthcheck(exception)
         or _is_feature_query_service_queue_full_error(exception)
     )
 
@@ -151,8 +156,8 @@ class ArrowFlightClient:
         StorageConnector.SNOWFLAKE,
         StorageConnector.BIGQUERY,
     ]
-    READ_ERROR = "Could not read data using Hopsworks Feature Query Service."
-    WRITE_ERROR = 'Could not write data using Hopsworks Feature Query Service. If the issue persists, use write_options={"use_spark": True} instead.'
+    READ_ERROR = "Could not read data using Hopsworks Query Service."
+    WRITE_ERROR = 'Could not write data using Hopsworks Query Service. If the issue persists, use write_options={"use_spark": True} instead.'
     DEFAULTING_TO_DIFFERENT_SERVICE_WARNING = (
         "Defaulting to Spark execution for this call."
     )
@@ -162,7 +167,7 @@ class ArrowFlightClient:
     DEFAULT_GRPC_MIN_RECONNECT_BACKOFF_MS = 2000
 
     def __init__(self, disabled_for_session: bool = False):
-        _logger.debug("Initializing Hopsworks Feature Query Service Client.")
+        _logger.debug("Initializing Hopsworks Query Service Client.")
         self._timeout: float = ArrowFlightClient.DEFAULT_TIMEOUT_SECONDS
         self._health_check_timeout: float = (
             ArrowFlightClient.DEFAULT_HEALTHCHECK_TIMEOUT_SECONDS
@@ -179,36 +184,40 @@ class ArrowFlightClient:
 
         self._client = client.get_instance()
         self._variable_api: VariableApi = VariableApi()
+        self._certificates_json: Optional[str] = None
 
         try:
             self._check_cluster_service_enabled()
             self._host_url = self._retrieve_host_url()
 
             if self._enabled_on_cluster:
-                _logger.debug(
-                    "Hopsworks Feature Query Service is enabled on the cluster."
-                )
+                _logger.debug("Hopsworks Query Service is enabled on the cluster.")
                 self._initialize_flight_client()
             else:
                 _logger.debug(
-                    "Hopsworks Feature Query Service Client is not enabled on the cluster or a cluster variable is misconfigured."
+                    "Hopsworks Query Service Client is not enabled on the cluster or a cluster variable is misconfigured."
                 )
                 self._disable_for_session()
                 return
         except Exception as e:
-            _logger.debug("Failed to connect to Hopsworks Feature Query Service")
+            _logger.debug("Failed to connect to Hopsworks Query Service")
             _logger.exception(e)
             self._disable_for_session(str(e))
             return
 
         try:
             self._health_check()
-            self._register_certificates()
+            if "get-version" in [action.type for action in self._connection.list_actions()]:
+                self._server_version = self._get_server_version()
+            else:
+                self._server_version = None
+            if self._server_version is None:
+                self._register_certificates()
         except Exception as e:
-            _logger.debug("Failed to connect to Hopsworks Feature Query Service.")
+            _logger.debug("Failed to connect to Hopsworks Query Service.")
             _logger.exception(e)
             warnings.warn(
-                f"Failed to connect to Hopsworks Feature Query Service, got {str(e)}."
+                f"Failed to connect to Hopsworks Query Service, got {str(e)}."
                 + ArrowFlightClient.DEFAULTING_TO_DIFFERENT_SERVICE_WARNING
                 + ArrowFlightClient.CLIENT_WILL_STAY_ACTIVE_WARNING,
                 stacklevel=1,
@@ -218,13 +227,13 @@ class ArrowFlightClient:
     def _check_cluster_service_enabled(self) -> None:
         try:
             _logger.debug(
-                "Connecting to Hopsworks Cluster to check if Feature Query Service is enabled."
+                "Connecting to Hopsworks Cluster to check if Hopsworks Query Service is enabled."
             )
             self._enabled_on_cluster = self._variable_api.get_flyingduck_enabled()
         except Exception as e:
             # if feature flag cannot be retrieved, assume it is disabled
             _logger.debug(
-                "Unable to fetch Hopsworks Feature Query Service (HQFS) flag, disabling HFQS client."
+                "Unable to fetch Hopsworks Query Service flag, disabling its client."
             )
             _logger.exception(e)
             self._enabled_on_cluster = False
@@ -240,13 +249,11 @@ class ArrowFlightClient:
             service_discovery_domain = self._variable_api.get_service_discovery_domain()
             if service_discovery_domain == "":
                 raise FeatureStoreException(
-                    "Client could not get Feature Query Service hostname from service_discovery_domain. "
+                    "Client could not get Hopsworks Query Service hostname from service_discovery_domain. "
                     "The variable is either not set or empty in Hopsworks cluster configuration."
                 )
             host_url = f"grpc+tls://flyingduck.service.{service_discovery_domain}:5005"
-        _logger.debug(
-            f"Connecting to Hopsworks Feature Query Service on host {host_url}"
-        )
+        _logger.debug(f"Connecting to Hopsworks Query Service on host {host_url}")
         return host_url
 
     def _disable_for_session(
@@ -255,17 +262,17 @@ class ArrowFlightClient:
         self._disabled_for_session = True
         if on_purpose:
             warnings.warn(
-                "Hopsworks Feature Query Service will be disabled for this session.",
+                "Hopsworks Query Service will be disabled for this session.",
                 stacklevel=1,
             )
         if self._enabled_on_cluster:
             warnings.warn(
-                "Hospworks Feature Query Service is disabled on cluster. Contact your administrator to enable it.",
+                "Hospworks Query Service is disabled on cluster. Contact your administrator to enable it.",
                 stacklevel=1,
             )
         else:
             warnings.warn(
-                f"Client initialisation failed: {message}. Hopsworks Feature Query Service will be disabled for this session."
+                f"Client initialisation failed: {message}. Hopsworks Query Service will be disabled for this session."
                 "If you believe this is a transient error, you can call `(hopsworks.)hsfs.reset_offline_query_service_client()`"
                 " to re-enable it.",
                 stacklevel=1,
@@ -291,29 +298,43 @@ class ArrowFlightClient:
     @retry(
         wait_exponential_multiplier=1000,
         stop_max_attempt_number=5,
-        retry_on_exception=_should_retry_healthcheck_or_certificate_registration,
+        retry_on_exception=_should_retry_healthcheck,
     )
     def _health_check(self):
-        _logger.debug("Performing healthcheck of Hopsworks Feature Query Service.")
+        _logger.debug("Performing healthcheck of Hopsworks Query Service.")
         action = pyarrow.flight.Action("healthcheck", b"")
         options = pyarrow.flight.FlightCallOptions(timeout=self.health_check_timeout)
         list(self._connection.do_action(action, options=options))
         _logger.debug("Healthcheck succeeded.")
 
+    @retry(
+        wait_exponential_multiplier=1000,
+        stop_max_attempt_number=3,
+        retry_on_exception=_should_retry,
+    )
+    def _get_server_version(self):
+        _logger.debug("Acquiring the server version of Hopsworks Query Service.")
+        action = pyarrow.flight.Action("get-version", b"")
+        options = pyarrow.flight.FlightCallOptions(timeout=self.health_check_timeout)
+        for res in self._connection.do_action(action, options=options):
+            version = res.body.to_pybytes()
+            _logger.debug(f"The HQS server is of version {version}.")
+            return version
+
     def _should_be_used(self):
         if not self._enabled_on_cluster:
             _logger.debug(
-                "Hopsworks Feature Query Service not used as it is disabled on the cluster."
+                "Hopsworks Query Service not used as it is disabled on the cluster."
             )
             return False
 
         if self._disabled_for_session:
             _logger.debug(
-                "Hopsworks Feature Query Service client failed to initialise and is disabled for the session."
+                "Hopsworks Query Service client failed to initialise and is disabled for the session."
             )
             return False
 
-        _logger.debug("Using Hopsworks Feature Query Service.")
+        _logger.debug("Using Hopsworks Query Service.")
         return True
 
     def _extract_certs(self):
@@ -332,27 +353,36 @@ class ArrowFlightClient:
             content = f.read()
             return base64.b64encode(content).decode("utf-8")
 
-    @retry(
-        wait_exponential_multiplier=1000,
-        stop_max_attempt_number=3,
-        retry_on_exception=_should_retry_healthcheck_or_certificate_registration,
-    )
-    def _register_certificates(self):
+    def _certificates(self):
         kstore = self._encode_certs(self._client._get_jks_key_store_path())
         tstore = self._encode_certs(self._client._get_jks_trust_store_path())
         cert_key = self._client._cert_key
-        certificates_json = json.dumps(
-            {"kstore": kstore, "tstore": tstore, "cert_key": cert_key}
-        ).encode("ascii")
+        return {"kstore": kstore, "tstore": tstore, "cert_key": cert_key}
+
+    def _make_certificates_json(self):
+        if self._certificates_json is None:
+            self._certificates_json = json.dumps(self._certificates()).encode("utf-8")
+        return self._certificates_json
+
+    def _certificates_headers(self):
+        if self._server_version is None:
+            return []
+        return [(b"x-certificates-json", self._make_certificates_json())]
+
+    @retry(
+        wait_exponential_multiplier=1000,
+        stop_max_attempt_number=3,
+        retry_on_exception=_should_retry_certificate_registration,
+    )
+    def _register_certificates(self):
+        certificates_json = self._make_certificates_json()
         certificates_json_buf = pyarrow.py_buffer(certificates_json)
         action = pyarrow.flight.Action(
             "register-client-certificates", certificates_json_buf
         )
         # Registering certificates queue time occasionally spike.
         options = pyarrow.flight.FlightCallOptions(timeout=self.health_check_timeout)
-        _logger.debug(
-            "Registering client certificates with Hopsworks Feature Query Service."
-        )
+        _logger.debug("Registering client certificates with Hopsworks Query Service.")
         self._connection.do_action(action, options=options)
         _logger.debug("Client certificates registered.")
 
@@ -366,7 +396,7 @@ class ArrowFlightClient:
                     message = str(e)
                     _logger.debug("Caught exception in %s: %s", func.__name__, message)
                     _logger.exception(e)
-                    if (
+                    if instance._server_version is None and (
                         isinstance(e, FlightServerError)
                         and "Please register client certificates first." in message
                     ):
@@ -374,7 +404,7 @@ class ArrowFlightClient:
                         return func(instance, *args, **kw)
                     elif _is_feature_query_service_queue_full_error(e):
                         raise FeatureStoreException(
-                            "Hopsworks Feature Query Service is busy right now. Please try again later."
+                            "Hopsworks Query Service is busy right now. Please try again later."
                         ) from e
                     elif _is_no_commits_found_error(e):
                         raise FeatureStoreException(str(e).split("Details:")[0]) from e
@@ -409,7 +439,9 @@ class ArrowFlightClient:
             timeout = self.timeout
         info = self.get_flight_info(descriptor)
         _logger.debug("Retrieved flight info: %s. Fetching dataset.", str(info))
-        options = pyarrow.flight.FlightCallOptions(timeout=timeout)
+        options = pyarrow.flight.FlightCallOptions(
+            timeout=timeout, headers=self._certificates_headers()
+        )
         reader = self._connection.do_get(info.endpoints[0].ticket, options)
         _logger.debug("Dataset fetched. Converting to dataframe %s.", dataframe_type)
         if dataframe_type.lower() == "polars":
@@ -479,7 +511,9 @@ class ArrowFlightClient:
                 if arrow_flight_config
                 else self.timeout
             )
-            options = pyarrow.flight.FlightCallOptions(timeout=timeout)
+            options = pyarrow.flight.FlightCallOptions(
+                timeout=timeout, headers=self._certificates_headers()
+            )
             for result in self._connection.do_action(action, options):
                 return result.body.to_pybytes()
         except pyarrow.lib.ArrowIOError as e:
@@ -516,7 +550,7 @@ class ArrowFlightClient:
 
     @property
     def timeout(self) -> Union[int, float]:
-        """Timeout in seconds for Hopsworks Feature Query Service do_get or do_action operations, not including the healthcheck."""
+        """Timeout in seconds for Hopsworks Query Service do_get or do_action operations, not including the healthcheck."""
         return self._timeout
 
     @timeout.setter
@@ -534,7 +568,7 @@ class ArrowFlightClient:
 
     @property
     def host_url(self) -> Optional[str]:
-        """URL of Hopsworks Feature Query Service."""
+        """URL of Hopsworks Query Service."""
         return self._host_url
 
     @host_url.setter
