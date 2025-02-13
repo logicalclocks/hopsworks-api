@@ -1127,6 +1127,8 @@ class Engine:
             with open(tmp_file, "wb") as f:
                 f.write(response.content)
 
+            file = f"file://{tmp_file}"
+
         self._spark_context.addFile(file)
 
         return SparkFiles.get(file_name)
