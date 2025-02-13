@@ -114,7 +114,7 @@ class EnvironmentApi:
 
     @usage.method_logger
     @decorators.catch_not_found(
-        ["hopsworks_common.environment.Environment"], fallback_return=None
+        "hopsworks_common.environment.Environment", fallback_return=None
     )
     def get_environment(self, name: str) -> Optional[environment.Environment]:
         """Get handle for a Python environment in the project

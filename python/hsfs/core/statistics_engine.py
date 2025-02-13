@@ -248,7 +248,7 @@ class StatisticsEngine:
         )
         return self._save_statistics(stats, td_metadata_instance, feature_view_obj)
 
-    @decorators.catch_not_found(["hsfs.statistics.Statistics"], fallback_return=None)
+    @decorators.catch_not_found("hsfs.statistics.Statistics", fallback_return=None)
     def get(
         self,
         metadata_instance,
@@ -278,7 +278,7 @@ class StatisticsEngine:
             training_dataset_version=training_dataset_version,
         )
 
-    @decorators.catch_not_found(["hsfs.statistics.Statistics"], fallback_return=None)
+    @decorators.catch_not_found("hsfs.statistics.Statistics", fallback_return=None)
     def get_all(
         self,
         metadata_instance,
@@ -305,7 +305,7 @@ class StatisticsEngine:
         )
 
     @decorators.catch_not_found(
-        ["hsfs.statistics.Statistics", "hsfs.feature_group_commit.FeatureGroupCommit"],
+        "hsfs.statistics.Statistics", "hsfs.feature_group_commit.FeatureGroupCommit",
         fallback_return=None,
     )
     def get_by_time_window(

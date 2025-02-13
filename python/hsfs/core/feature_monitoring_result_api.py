@@ -88,7 +88,7 @@ class FeatureMonitoringResultApi:
         _client._send_request("DELETE", path_params)
 
     @decorators.catch_not_found(
-        ["hsfs.core.feature_monitoring_result.FeatureMonitoringResult"],
+        "hsfs.core.feature_monitoring_result.FeatureMonitoringResult",
         fallback_return=[],
     )
     def get_by_config_id(

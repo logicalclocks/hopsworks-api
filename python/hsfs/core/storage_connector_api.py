@@ -23,7 +23,7 @@ from hsfs import decorators, storage_connector
 
 class StorageConnectorApi:
     @decorators.catch_not_found(
-        ["hsfs.storage_connector.StorageConnector"], fallback_return=None
+        "hsfs.storage_connector.StorageConnector", fallback_return=None
     )
     def _get(self, feature_store_id: int, name: str) -> Dict[str, Any]:
         """Returning response dict instead of initialized object."""

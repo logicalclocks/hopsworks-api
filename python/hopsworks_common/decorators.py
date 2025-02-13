@@ -50,15 +50,14 @@ def connected(fn):
     return if_connected
 
 
-def catch_not_found(class_import_path_list, fallback_return=None):
+def catch_not_found(*class_import_paths, fallback_return=None):
     def decorator(f):
         @functools.wraps(f)
         def g(*args, **kwds):
             # Needs to be imported inside function to avoid circular dependency
             from hopsworks.client.exceptions import RestAPIError
-
             not_found_error_codes = []
-            for class_import_path in class_import_path_list:
+            for class_import_path in class_import_paths:
                 class_index = class_import_path.rfind(".")
                 module_path = class_import_path[:class_index]
                 module = importlib.import_module(module_path)

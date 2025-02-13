@@ -65,7 +65,6 @@ class ModelRegistry:
         return cls(**json_decamelized)
 
     @usage.method_logger
-    @decorators.catch_not_found(["hsml.model.Model"], fallback_return=None)
     def get_model(self, name: str, version: int = None) -> Optional[model.Model]:
         """Get a model entity from the model registry.
         Getting a model from the Model Registry means getting its metadata handle

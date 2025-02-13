@@ -155,7 +155,7 @@ class FeatureMonitoringConfigApi:
         )
 
     @decorators.catch_not_found(
-        ["hsfs.core.feature_monitoring_config.FeatureMonitoringConfig"],
+        "hsfs.core.feature_monitoring_config.FeatureMonitoringConfig",
         fallback_return=[],
     )
     def get_by_name(

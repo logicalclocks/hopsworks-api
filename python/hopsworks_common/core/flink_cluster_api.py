@@ -100,7 +100,7 @@ class FlinkClusterApi:
 
     @usage.method_logger
     @decorators.catch_not_found(
-        ["hopsworks_common.flink_cluster.FlinkCluster"], fallback_return=None
+        "hopsworks_common.flink_cluster.FlinkCluster", fallback_return=None
     )
     def get_cluster(self, name: str) -> Optional[flink_cluster.FlinkCluster]:
         """Get the job corresponding to the flink cluster.

@@ -88,7 +88,7 @@ class FeatureViewApi:
             data=feature_view_obj.json(),
         )
 
-    @decorators.catch_not_found(["hsfs.feature_view.FeatureView"], fallback_return=[])
+    @decorators.catch_not_found("hsfs.feature_view.FeatureView", fallback_return=[])
     def get_by_name(self, name: str) -> List[feature_view.FeatureView]:
         """
         Get a feature view from the backend using its name.
@@ -123,7 +123,7 @@ class FeatureViewApi:
             else:
                 raise e
 
-    @decorators.catch_not_found(["hsfs.feature_view.FeatureView"], fallback_return=None)
+    @decorators.catch_not_found("hsfs.feature_view.FeatureView", fallback_return=None)
     def get_by_name_version(self, name: str, version: int) -> feature_view.FeatureView:
         """
         Get a feature view from the backend using both name and version
@@ -473,7 +473,7 @@ class FeatureViewApi:
         return jobs
 
     @decorators.catch_not_found(
-        ["hsfs.core.feature_logging.FeatureLogging"], fallback_return=None
+        "hsfs.core.feature_logging.FeatureLogging", fallback_return=None
     )
     def get_feature_logging(
         self,

@@ -53,6 +53,7 @@ class ModelApi:
             )
         )
 
+    @decorators.catch_not_found("hsml.model.Model", fallback_return=None)
     def get(self, name, version, model_registry_id, shared_registry_project_name=None):
         """Get the metadata of a model with a certain name and version.
 
@@ -199,7 +200,7 @@ class ModelApi:
         ]
         _client._send_request("DELETE", path_params)
 
-    @decorators.catch_not_found(["hopsworks_common.tag.Tag"], fallback_return={})
+    @decorators.catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
     def get_tags(self, model_instance):
         """Get the tags.
 
@@ -229,7 +230,7 @@ class ModelApi:
             )
         }
 
-    @decorators.catch_not_found(["hopsworks_common.tag.Tag"], fallback_return=None)
+    @decorators.catch_not_found("hopsworks_common.tag.Tag", fallback_return=None)
     def get_tag(self, model_instance, name: str):
         """Get the tag.
 
