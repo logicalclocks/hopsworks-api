@@ -356,13 +356,13 @@ class KafkaApi:
         }
 
         if internal_kafka is not None:
-            config["bootstrap.servers"] = self._get_broker_endpoints(
-                externalListeners=not internal_kafka
-            ).join(",")
+            config["bootstrap.servers"] = ",".join(
+                self._get_broker_endpoints(externalListeners=not internal_kafka)
+            )
         else:
-            config["bootstrap.servers"] = self._get_broker_endpoints(
-                externalListeners=_client._is_external()
-            ).join(",")
+            config["bootstrap.servers"] = ",".join(
+                self._get_broker_endpoints(externalListeners=_client._is_external())
+            )
 
         return config
 
