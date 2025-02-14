@@ -202,6 +202,10 @@ class Project:
         """
         return self._job_api
 
+    def get_jobs_api(self):
+        """**Deprecated**, use get_job_api instead. Excluded from docs to prevent API breakage"""
+        return self.get_job_api()
+
     def get_flink_cluster_api(self):
         """Get the flink cluster API for the project.
 

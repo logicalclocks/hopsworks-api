@@ -53,7 +53,7 @@ PAGES = {
         "project_create": ["hopsworks.create_project"],
         "project_properties": keras_autodoc.get_properties("hopsworks.project.Project"),
         "project_methods": keras_autodoc.get_methods(
-            "hopsworks.project.Project", exclude=EXCLUDE_METHODS
+            "hopsworks.project.Project", exclude=EXCLUDE_METHODS + ["get_jobs_api"]
         ),
     },
     "api/jobs.md": {
