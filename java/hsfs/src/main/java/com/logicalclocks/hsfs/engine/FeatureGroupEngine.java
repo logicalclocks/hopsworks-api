@@ -51,7 +51,7 @@ public class FeatureGroupEngine<T>  extends FeatureGroupEngineBase {
 
   @SneakyThrows
   public List<Object> insertStream(StreamFeatureGroup streamFeatureGroup, List<T> featureData,
-                                        Map<String, String> writeOptions) throws FeatureStoreException {
+                                        Map<String, String> writeOptions) {
     return Engine.getInstance().writeStream(streamFeatureGroup, featureData,  writeOptions);
   }
 }

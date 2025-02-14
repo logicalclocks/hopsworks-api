@@ -17,18 +17,18 @@
 
 package com.logicalclocks.hsfs.beam;
 
-
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import com.logicalclocks.hsfs.StorageConnector;
 import org.apache.beam.sdk.values.PCollection;
 
 import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.FeatureGroupBase;
+
 import com.logicalclocks.hsfs.OnlineConfig;
 import com.logicalclocks.hsfs.StatisticsConfig;
-import com.logicalclocks.hsfs.StorageConnector;
 import com.logicalclocks.hsfs.TimeTravelFormat;
 import com.logicalclocks.hsfs.beam.engine.BeamProducer;
 import com.logicalclocks.hsfs.beam.engine.FeatureGroupEngine;

@@ -365,7 +365,6 @@ public abstract class FeatureGroupBase<T> {
   public Schema getDeserializedAvroSchema() throws FeatureStoreException, IOException {
     return utils.getDeserializedAvroSchema(getAvroSchema());
   }
-
   @JsonIgnore
   public OnlineIngestion getLatestOnlineIngestion() throws FeatureStoreException, IOException {
     return onlineIngestionApi.getOnlineIngestion(this, "filter_by=LATEST").get(0);
