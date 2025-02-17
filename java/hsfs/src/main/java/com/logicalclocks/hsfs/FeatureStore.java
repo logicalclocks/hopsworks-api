@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2023. Hopsworks AB
+ *  Copyright (c) 2025. Hopsworks AB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -15,13 +15,11 @@
  *
  */
 
-package com.logicalclocks.hsfs.beam;
+package com.logicalclocks.hsfs;
 
-import com.logicalclocks.hsfs.FeatureStoreBase;
-import com.logicalclocks.hsfs.FeatureStoreException;
-import com.logicalclocks.hsfs.beam.constructor.Query;
-import com.logicalclocks.hsfs.beam.engine.FeatureGroupEngine;
-import com.logicalclocks.hsfs.beam.engine.FeatureViewEngine;
+import com.logicalclocks.hsfs.constructor.Query;
+import com.logicalclocks.hsfs.engine.FeatureGroupEngine;
+import com.logicalclocks.hsfs.engine.FeatureViewEngine;
 import lombok.NonNull;
 
 import java.io.IOException;
@@ -35,6 +33,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
     featureViewEngine = new FeatureViewEngine();
     featureGroupEngine = new FeatureGroupEngine();
   }
+
 
   /**
    * Get a stream feature group object from the feature store.
@@ -57,7 +56,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
    * @throws IOException Generic IO exception.
    */
   @Override
-  public Object getStreamFeatureGroup(String name) throws FeatureStoreException, IOException {
+  public StreamFeatureGroup getStreamFeatureGroup(String name) throws FeatureStoreException, IOException {
     LOGGER.info("VersionWarning: No version provided for getting feature group `" + name + "`, defaulting to `"
         + DEFAULT_VERSION + "`.");
     return getStreamFeatureGroup(name, DEFAULT_VERSION);
@@ -123,7 +122,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
    * }
    * </pre>
    *
-   * @param name Name of the feature view.
+   * @param name    Name of the feature view.
    * @return FeatureView The feature view metadata object.
    * @throws FeatureStoreException If unable to retrieve FeatureView from the feature store.
    * @throws IOException Generic IO exception.
