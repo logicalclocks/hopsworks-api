@@ -66,34 +66,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericDatumReader;
-import org.apache.avro.io.BinaryDecoder;
-import org.apache.avro.io.DatumReader;
-import org.apache.avro.io.Decoder;
-import org.apache.avro.io.DecoderFactory;
-
-import com.google.common.base.Strings;
-import com.google.common.collect.Lists;
-import com.logicalclocks.hsfs.FeatureStoreBase;
-import com.logicalclocks.hsfs.FeatureStoreException;
-import com.logicalclocks.hsfs.FeatureViewBase;
-import com.logicalclocks.hsfs.StorageConnector;
-import com.logicalclocks.hsfs.TrainingDatasetBase;
-import com.logicalclocks.hsfs.TrainingDatasetFeature;
-import com.logicalclocks.hsfs.constructor.ServingPreparedStatement;
-import com.logicalclocks.hsfs.metadata.FeatureViewApi;
-import com.logicalclocks.hsfs.metadata.HopsworksClient;
-import com.logicalclocks.hsfs.metadata.HopsworksExternalClient;
-import com.logicalclocks.hsfs.metadata.StorageConnectorApi;
-import com.logicalclocks.hsfs.metadata.TrainingDatasetApi;
-import com.logicalclocks.hsfs.metadata.Variable;
-import com.logicalclocks.hsfs.metadata.VariablesApi;
-import com.logicalclocks.hsfs.util.Constants;
-
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-
 @NoArgsConstructor
 public class VectorServer {
 
