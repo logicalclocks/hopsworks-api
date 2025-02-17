@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 
-from hopsworks_common import client, tag, usage, decorators
+from hopsworks_common import client, decorators, tag, usage
 
 
 class TagsApi:

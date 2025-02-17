@@ -19,7 +19,7 @@ from typing import List, Optional
 
 import humps
 from hopsworks_common import usage, util
-from hsml import decorators, model
+from hsml import model
 from hsml.core import model_api
 from hsml.llm import signature as llm_signature  # noqa: F401
 from hsml.python import signature as python_signature  # noqa: F401
