@@ -18,11 +18,10 @@ from __future__ import annotations
 
 import json
 import socket
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional, Union
 
 from hopsworks_common import client, constants, kafka_schema, kafka_topic, usage
 from hopsworks_common.client.exceptions import KafkaException
-from hopsworks_common.client.external import Client
 
 
 class KafkaApi:
@@ -321,7 +320,7 @@ class KafkaApi:
         """
         return constants.KAFKA_SSL_CONFIG.SSL
 
-    def get_default_config(self):
+    def get_default_config(self, internal_kafka: Optional[bool] = None):
         """Get the configuration to set up a Producer or Consumer for a Kafka broker using confluent-kafka.
 
         ```python
@@ -355,19 +354,14 @@ class KafkaApi:
             constants.KAFKA_CONSUMER_CONFIG.GROUP_ID_CONFIG: "my-group-id",
             constants.KAFKA_SSL_CONFIG.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG: "none",
         }
-        if type(_client) is Client:
-            config[constants.KAFKA_PRODUCER_CONFIG.BOOTSTRAP_SERVERS_CONFIG] = ",".join(
-                [
-                    endpoint.replace("EXTERNAL://", "")
-                    for endpoint in self._get_broker_endpoints(externalListeners=True)
-                ]
+
+        if internal_kafka is not None:
+            config["bootstrap.servers"] = ",".join(
+                self._get_broker_endpoints(externalListeners=not internal_kafka)
             )
         else:
-            config[constants.KAFKA_PRODUCER_CONFIG.BOOTSTRAP_SERVERS_CONFIG] = ",".join(
-                [
-                    endpoint.replace("INTERNAL://", "")
-                    for endpoint in self._get_broker_endpoints(externalListeners=False)
-                ]
+            config["bootstrap.servers"] = ",".join(
+                self._get_broker_endpoints(externalListeners=_client._is_external())
             )
 
         return config

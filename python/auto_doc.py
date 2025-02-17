@@ -576,6 +576,7 @@ PAGES = {
         "ml_create_th": ["hsml.model_registry.ModelRegistry.torch.create_model"],
         "ml_create_sl": ["hsml.model_registry.ModelRegistry.sklearn.create_model"],
         "ml_create_py": ["hsml.model_registry.ModelRegistry.python.create_model"],
+        "ml_create_llm": ["hsml.model_registry.ModelRegistry.llm.create_model"],
         "ml_get": ["hsml.model_registry.ModelRegistry.get_model"],
         "ml_properties": keras_autodoc.get_properties("hsml.model.Model"),
         "ml_methods": keras_autodoc.get_methods(

@@ -744,7 +744,7 @@ class DatasetApi:
 
         # Wait for zip file to appear. When it does, check that parent dir zipState is not set to CHOWNING
         count = 0
-        while timeout is None:
+        while True:
             if action == "zip":
                 zip_path = remote_path + ".zip"
                 # Get the status of the zipped file
@@ -771,7 +771,7 @@ class DatasetApi:
                     return True
             time.sleep(1)
             count += 1
-            if count >= timeout:
+            if timeout is not None and count >= timeout:
                 self._log.info(
                     f"Timeout of {timeout} seconds exceeded while {action} {remote_path}."
                 )
