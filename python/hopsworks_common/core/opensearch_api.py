@@ -68,11 +68,11 @@ class OpenSearchApi:
         """
         This helper method prefixes the supplied index name with the project name to avoid index name clashes.
 
-        Args:
-            :index: the opensearch index to interact with.
+        # Arguments
+            index: the opensearch index to interact with.
 
-        Returns:
-            A valid opensearch index name.
+        # Returns
+            `str`: A valid opensearch index name.
         """
         _client = client.get_instance()
         return (_client._project_name + "_" + index).lower()
@@ -94,8 +94,9 @@ class OpenSearchApi:
         client = OpenSearch(**opensearch_api.get_default_py_config())
 
         ```
-        Returns:
-            A dictionary with required configuration.
+
+        # Returns
+            `dict`: A dictionary with required configuration.
         """
         url = furl(self._get_opensearch_url())
         return {

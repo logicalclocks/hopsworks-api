@@ -541,7 +541,7 @@ PAGES = {
     "api/embedding_feature_api.md": {
         "embedding_feature": ["hsfs.embedding.EmbeddingFeature"],
         "embedding_feature_properties": keras_autodoc.get_properties(
-            "hsfs.embedding.EmbeddingFeature"
+            "hsfs.embedding.EmbeddingFeature", exclude=["dimenstion"]
         ),
     },
     "api/similarity_function_type_api.md": {

@@ -712,7 +712,7 @@ class FeatureGroupBase:
         For more items use the base method - get_storage_connector_provenance
 
         # Returns
-            `StorageConnector: Storage connector or `None` if it does not exist.
+            `StorageConnector`: Storage connector or `None` if it does not exist.
 
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request

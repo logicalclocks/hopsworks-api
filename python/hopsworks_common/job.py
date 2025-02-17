@@ -172,7 +172,7 @@ class Job:
             args: Optional runtime arguments for the job.
             await_termination: Identifies if the client should wait for the job to complete, defaults to True.
         # Returns
-            `Execution`. The execution object for the submitted run.
+            `Execution`: The execution object for the submitted run.
         """
         if self._is_materialization_running(args):
             return None
@@ -232,7 +232,7 @@ class Job:
         """Retrieves all executions for the job ordered by submission time.
 
         # Returns
-            `List[Execution]`
+            `List[Execution]`: list of Execution objects
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -249,7 +249,7 @@ class Job:
         job.save()
         ```
         # Returns
-            `Job`. The updated job object.
+            `Job`: The updated job object.
         """
         return self._job_api._update_job(self.name, self.config)
 
@@ -326,7 +326,7 @@ class Job:
             start_time: The schedule start time in UTC. If None, the current time is used. The start_time can be a value in the past.
             end_time: The schedule end time in UTC. If None, the schedule will continue running indefinitely. The end_time can be a value in the past.
         # Returns
-            `JobSchedule`. The schedule of the job
+            `JobSchedule`: The schedule of the job
         """
         job_schedule = JobSchedule(
             id=self._job_schedule.id if self._job_schedule else None,

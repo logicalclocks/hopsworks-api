@@ -218,7 +218,7 @@ class StorageConnector(ABC):
         For more items use the base method - get_feature_groups_provenance
 
         # Returns
-            `List[FeatureGroup]: List of feature groups.
+            `List[FeatureGroup]`: List of feature groups.
         """
         feature_groups_provenance = self.get_feature_groups_provenance()
 
