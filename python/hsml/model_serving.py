@@ -15,7 +15,7 @@
 #
 
 import os
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 from hopsworks_common import usage, util
 from hopsworks_common.constants import ARTIFACT_VERSION, PREDICTOR_STATE
@@ -23,6 +23,7 @@ from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hsml.core import serving_api
 from hsml.deployment import Deployment
 from hsml.inference_batcher import InferenceBatcher
+from hsml.inference_endpoint import InferenceEndpoint
 from hsml.inference_logger import InferenceLogger
 from hsml.model import Model
 from hsml.predictor import Predictor
@@ -45,7 +46,7 @@ class ModelServing:
         self._serving_api = serving_api.ServingApi()
 
     @usage.method_logger
-    def get_deployment_by_id(self, id: int):
+    def get_deployment_by_id(self, id: int) -> Optional[Deployment]:
         """Get a deployment by id from Model Serving.
         Getting a deployment from Model Serving means getting its metadata handle
         so you can subsequently operate on it (e.g., start or stop).
@@ -61,15 +62,15 @@ class ModelServing:
         # Arguments
             id: Id of the deployment to get.
         # Returns
-            `Deployment`: The deployment metadata object.
+            `Deployment`: The deployment metadata object or `None` if it does not exist.
         # Raises
-            `RestAPIError`: If unable to retrieve deployment from model serving.
+            `hopsworks.client.exceptions.RestAPIError`: If unable to retrieve deployment from model serving.
         """
 
         return self._serving_api.get_by_id(id)
 
     @usage.method_logger
-    def get_deployment(self, name: str = None):
+    def get_deployment(self, name: str = None) -> Optional[Deployment]:
         """Get a deployment by name from Model Serving.
 
         !!! example
@@ -86,9 +87,9 @@ class ModelServing:
         # Arguments
             name: Name of the deployment to get.
         # Returns
-            `Deployment`: The deployment metadata object.
+            `Deployment`: The deployment metadata object or `None` if it does not exist.
         # Raises
-            `RestAPIError`: If unable to retrieve deployment from model serving.
+            `hopsworks.client.exceptions.RestAPIError`: If unable to retrieve deployment from model serving.
         """
 
         if name is None and ("DEPLOYMENT_NAME" in os.environ):
@@ -96,7 +97,9 @@ class ModelServing:
         return self._serving_api.get(name)
 
     @usage.method_logger
-    def get_deployments(self, model: Model = None, status: str = None):
+    def get_deployments(
+        self, model: Model = None, status: str = None
+    ) -> List[Deployment]:
         """Get all deployments from model serving.
         !!! example
             ```python
@@ -122,7 +125,7 @@ class ModelServing:
         # Returns
             `List[Deployment]`: A list of deployments.
         # Raises
-            `RestAPIError`: If unable to retrieve deployments from model serving.
+            `hopsworks.client.exceptions.RestAPIError`: If unable to retrieve deployments from model serving.
         """
 
         model_name = model._get_default_serving_name() if model is not None else None
@@ -142,7 +145,7 @@ class ModelServing:
             )
         return status
 
-    def get_inference_endpoints(self):
+    def get_inference_endpoints(self) -> List[InferenceEndpoint]:
         """Get all inference endpoints available in the current project.
 
         # Returns
@@ -165,7 +168,7 @@ class ModelServing:
         inference_batcher: Optional[Union[InferenceBatcher, dict]] = None,
         transformer: Optional[Union[Transformer, dict]] = None,
         api_protocol: Optional[str] = IE.API_PROTOCOL_REST,
-    ):
+    ) -> Predictor:
         """Create a Predictor metadata object.
 
         !!! example
@@ -232,7 +235,7 @@ class ModelServing:
         self,
         script_file: Optional[str] = None,
         resources: Optional[Union[PredictorResources, dict]] = None,
-    ):
+    ) -> Transformer:
         """Create a Transformer metadata object.
 
         !!! example
@@ -290,7 +293,7 @@ class ModelServing:
             resources: Resources to be allocated for the transformer.
 
         # Returns
-            `Transformer`. The model metadata object.
+            `Transformer`. The transformer metadata object.
         """
 
         return Transformer(script_file=script_file, resources=resources)
@@ -301,7 +304,7 @@ class ModelServing:
         predictor: Predictor,
         name: Optional[str] = None,
         environment: Optional[str] = None,
-    ):
+    ) -> Deployment:
         """Create a Deployment metadata object.
 
         !!! example
@@ -367,7 +370,7 @@ class ModelServing:
             environment: The inference environment to use
 
         # Returns
-            `Deployment`. The model metadata object.
+            `Deployment`. The deployment metadata object.
         """
 
         return Deployment(predictor=predictor, name=name, environment=environment)

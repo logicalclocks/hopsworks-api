@@ -18,10 +18,13 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from hopsworks_common import client
-from hsfs import storage_connector
+from hsfs import decorators, storage_connector
 
 
 class StorageConnectorApi:
+    @decorators.catch_not_found(
+        "hsfs.storage_connector.StorageConnector", fallback_return=None
+    )
     def _get(self, feature_store_id: int, name: str) -> Dict[str, Any]:
         """Returning response dict instead of initialized object."""
         _client = client.get_instance()
@@ -34,6 +37,7 @@ class StorageConnectorApi:
             name,
         ]
         query_params = {"temporaryCredentials": True}
+
         return _client._send_request("GET", path_params, query_params=query_params)
 
     def get(
@@ -48,9 +52,11 @@ class StorageConnectorApi:
         :return: the storage connector
         :rtype: StorageConnector
         """
-        return storage_connector.StorageConnector.from_response_json(
-            self._get(feature_store_id, name)
-        )
+        storage_connector_json = self._get(feature_store_id, name)
+        if storage_connector_json:
+            return storage_connector.StorageConnector.from_response_json(
+                storage_connector_json
+            )
 
     def refetch(
         self, storage_connector_instance: storage_connector.StorageConnector

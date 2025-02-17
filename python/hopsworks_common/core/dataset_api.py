@@ -84,7 +84,7 @@ class DatasetApi:
         # Returns
             `str`: Path to downloaded file
         # Raises
-            `RestAPIError`: If unable to download the file
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = [
@@ -191,7 +191,7 @@ class DatasetApi:
         # Returns
             `str`: Path to uploaded file or directory
         # Raises
-            `RestAPIError`: If unable to upload the file or directory
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         # local path could be absolute or relative,
@@ -430,7 +430,7 @@ class DatasetApi:
         # Returns
             `bool`: True if exists, otherwise False
         # Raises
-            `RestAPIError`: If unable to check existence for the path
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         try:
             self._get(path)
@@ -455,7 +455,7 @@ class DatasetApi:
         # Arguments
             path: path to remove
         # Raises
-            `RestAPIError`: If unable to remove the path
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "dataset", path]
@@ -467,7 +467,7 @@ class DatasetApi:
         # Arguments
             remote_path: path to remove
         # Raises
-            `RestAPIError`: If unable to remove the path
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self.remove(remote_path)
 
@@ -491,7 +491,7 @@ class DatasetApi:
         # Returns
             `str`: Path to created directory
         # Raises
-            `RestAPIError`: If unable to create the directory
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "dataset", path]
@@ -526,7 +526,7 @@ class DatasetApi:
             destination_path: the destination path
             overwrite: overwrite destination if exists
         # Raises
-            `RestAPIError`: If unable to perform the copy
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if self.exists(destination_path):
             if overwrite:
@@ -571,7 +571,7 @@ class DatasetApi:
             destination_path: the destination path
             overwrite: overwrite destination if exists
         # Raises
-            `RestAPIError`: If unable to perform the move
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if self.exists(destination_path):
             if overwrite:

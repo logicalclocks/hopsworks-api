@@ -25,6 +25,7 @@ import humps
 from hopsworks_common import client, usage, util
 from hopsworks_common.constants import ARTIFACT_VERSION, MODEL_REGISTRY
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
+from hsml import deployment, tag
 from hsml.core import explicit_provenance
 from hsml.engine import model_engine
 from hsml.inference_batcher import InferenceBatcher
@@ -40,6 +41,7 @@ _logger = logging.getLogger(__name__)
 
 
 class Model:
+    NOT_FOUND_ERROR_CODE = 360000
     """Metadata object representing a model in the Model Registry."""
 
     def __init__(
@@ -119,6 +121,8 @@ class Model:
 
         # Returns
             `Model`: The model metadata object.
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
         if self._training_dataset_version is None and self._feature_view is not None:
             if self._feature_view.get_last_accessed_training_dataset() is not None:
@@ -162,13 +166,15 @@ class Model:
         )
 
     @usage.method_logger
-    def download(self, local_path=None):
+    def download(self, local_path=None) -> str:
         """Download the model files.
 
         # Arguments
             local_path: path where to download the model files in the local filesystem
         # Returns
             `str`: Absolute path to local folder containing the model files.
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
         return self._model_engine.download(model_instance=self, local_path=local_path)
 
@@ -181,7 +187,7 @@ class Model:
             model **and** deletes the model files.
 
         # Raises
-            `RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
         self._model_engine.delete(model_instance=self)
 
@@ -200,7 +206,7 @@ class Model:
         transformer: Optional[Union[Transformer, dict]] = None,
         api_protocol: Optional[str] = IE.API_PROTOCOL_REST,
         environment: Optional[str] = None,
-    ):
+    ) -> deployment.Deployment:
         """Deploy the model.
 
         !!! example
@@ -237,6 +243,9 @@ class Model:
 
         # Returns
             `Deployment`: The deployment metadata object of a new or existing deployment.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
 
         if name is None:
@@ -271,7 +280,7 @@ class Model:
             name: Name of the tag to be added.
             value: Value of the tag to be added.
         # Raises
-            `RestAPIError` in case the backend fails to add the tag.
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to add the tag.
         """
 
         self._model_engine.set_tag(model_instance=self, name=name, value=value)
@@ -283,29 +292,29 @@ class Model:
         # Arguments
             name: Name of the tag to be removed.
         # Raises
-            `RestAPIError` in case the backend fails to delete the tag.
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to delete the tag.
         """
         self._model_engine.delete_tag(model_instance=self, name=name)
 
-    def get_tag(self, name: str):
+    def get_tag(self, name: str) -> Optional[str]:
         """Get the tags of a model.
 
         # Arguments
             name: Name of the tag to get.
         # Returns
-            tag value
+            tag value or `None` if it does not exist.
         # Raises
-            `RestAPIError` in case the backend fails to retrieve the tag.
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the tag.
         """
         return self._model_engine.get_tag(model_instance=self, name=name)
 
-    def get_tags(self):
+    def get_tags(self) -> Dict[str, tag.Tag]:
         """Retrieves all tags attached to a model.
 
         # Returns
             `Dict[str, obj]` of tags.
         # Raises
-            `RestAPIError` in case the backend fails to retrieve the tags.
+            `hopsworks.client.exceptions.RestAPIError` in case the backend fails to retrieve the tags.
         """
         return self._model_engine.get_tags(model_instance=self)
 
@@ -329,9 +338,9 @@ class Model:
             init: By default this is set to True. If you require a more complex initialization of the feature view for online or batch scenarios, you should set `init` to False to retrieve a non initialized feature view and then call `init_batch_scoring()` or `init_serving()` with the required parameters.
             online: By default this is set to False and the initialization for batch scoring is considered the default scenario. If you set `online` to True, the online scenario is enabled and the `init_serving()` method is called. When inside a deployment, the only available scenario is the online one, thus the parameter is ignored and init_serving is always called (if `init` is set to True). If you want to override this behaviour, you should set `init` to False and proceed with a custom initialization.
         # Returns
-            `FeatureView`: Feature View Object.
+            `FeatureView`: Feature View Object or `None` if it does not exist.
         # Raises
-            `Exception` in case the backend fails to retrieve the tags.
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the feature view.
         """
         fv_prov = self.get_feature_view_provenance()
         fv = explicit_provenance.Links.get_one_accessible_parent(fv_prov)
@@ -352,25 +361,29 @@ class Model:
                 fv.init_batch_scoring(training_dataset_version=td.version)
         return fv
 
-    def get_feature_view_provenance(self):
+    def get_feature_view_provenance(self) -> explicit_provenance.Links:
         """Get the parent feature view of this model, based on explicit provenance.
         This feature view can be accessible, deleted or inaccessible.
         For deleted and inaccessible feature views, only a minimal information is
         returned.
 
         # Returns
-            `ProvenanceLinks`: Object containing the section of provenance graph requested.
+            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the feature view provenance
         """
         return self._model_engine.get_feature_view_provenance(model_instance=self)
 
-    def get_training_dataset_provenance(self):
+    def get_training_dataset_provenance(self) -> explicit_provenance.Links:
         """Get the parent training dataset of this model, based on explicit provenance.
         This training dataset can be accessible, deleted or inaccessible.
         For deleted and inaccessible training datasets, only a minimal information is
         returned.
 
         # Returns
-            `ProvenanceLinks`: Object containing the section of provenance graph requested.
+            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the training dataset provenance
         """
         return self._model_engine.get_training_dataset_provenance(model_instance=self)
 

@@ -24,6 +24,8 @@ from hopsworks_common.engine import environment_engine
 
 
 class Environment:
+    NOT_FOUND_ERROR_CODE = 300000
+
     def __init__(
         self,
         name=None,
@@ -104,6 +106,8 @@ class Environment:
             await_installation: bool. If True the method returns only when the installation finishes. Default True
         # Returns
             `Library`: The library object
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         # Wait for any ongoing environment operations
@@ -159,6 +163,8 @@ class Environment:
             await_installation: bool. If True the method returns only when the installation is finished. Default True
         # Returns
             `Library`: The library object
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         # Wait for any ongoing environment operations
@@ -190,7 +196,7 @@ class Environment:
         !!! danger "Potentially dangerous operation"
             This operation deletes the python environment.
         # Raises
-            `RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._environment_api._delete(self.name)
 
