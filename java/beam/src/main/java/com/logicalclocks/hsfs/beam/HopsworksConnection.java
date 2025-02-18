@@ -20,6 +20,8 @@ package com.logicalclocks.hsfs.beam;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.HopsworksConnectionBase;
 import com.logicalclocks.hsfs.SecretStore;
+import com.logicalclocks.hsfs.beam.engine.BeamEngine;
+import com.logicalclocks.hsfs.engine.EngineBase;
 import com.logicalclocks.hsfs.metadata.Credentials;
 import com.logicalclocks.hsfs.metadata.HopsworksClient;
 import com.logicalclocks.hsfs.metadata.HopsworksHttpClient;
@@ -55,6 +57,7 @@ public class HopsworksConnection extends HopsworksConnectionBase {
         hostnameVerification, trustStorePath, this.apiKeyFilePath, this.apiKeyValue);
     this.projectObj = getProject();
     HopsworksClient.getInstance().setProject(this.projectObj);
+    EngineBase.setInstance(BeamEngine.getInstance());
     Credentials credentials = HopsworksClient.getInstance().getCredentials();
     HopsworksHttpClient hopsworksHttpClient =  HopsworksClient.getInstance().getHopsworksHttpClient();
     hopsworksHttpClient.setTrustStorePath(credentials.gettStore());
