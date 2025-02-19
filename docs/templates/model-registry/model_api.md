@@ -12,9 +12,13 @@
 
 {{ml_create_sl}}
 
-## Creation of a generic model
+## Creation of a Python model
 
 {{ml_create_py}}
+
+## Creation of a LLM
+
+{{ml_create_llm}}
 
 ## Retrieval
 

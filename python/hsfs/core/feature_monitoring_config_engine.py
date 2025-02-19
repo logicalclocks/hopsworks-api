@@ -326,7 +326,7 @@ class FeatureMonitoringConfigEngine:
         """
         self._job_api.launch(name=job_name)
 
-        return self._job_api.get(name=job_name)
+        return self._job_api.get_job(name=job_name)
 
     def get_monitoring_job(
         self,
@@ -340,7 +340,7 @@ class FeatureMonitoringConfigEngine:
         Returns:
             `Job` A Hopsworks job with its metadata and execution history.
         """
-        return self._job_api.get(name=job_name)
+        return self._job_api.get_job(name=job_name)
 
     def run_feature_monitoring(
         self,

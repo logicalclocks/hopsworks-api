@@ -84,9 +84,7 @@ class NumpyEncoder(json.JSONEncoder):
             else:
                 return obj.tolist(), True
 
-        if isinstance(obj, datetime) or (
-            HAS_PANDAS and isinstance(obj, pd.Timestamp)
-        ):
+        if isinstance(obj, datetime) or (HAS_PANDAS and isinstance(obj, pd.Timestamp)):
             return obj.isoformat(), True
         if isinstance(obj, bytes) or isinstance(obj, bytearray):
             return encode_binary(obj), True

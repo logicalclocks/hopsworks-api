@@ -20,12 +20,13 @@ import shutil
 import keras_autodoc
 
 
-JSON_METHODS = [
+EXCLUDE_METHODS = [
     "extract_fields_from_json",
     "from_json",
     "from_response_json",
     "json",
     "update_from_response_json",
+    "to_dict",
 ]
 
 PAGES = {
@@ -45,14 +46,14 @@ PAGES = {
             "hopsworks.connection.Connection"
         ),
         "connection_methods": keras_autodoc.get_methods(
-            "hopsworks.connection.Connection", exclude=["from_response_json", "json"]
+            "hopsworks.connection.Connection", exclude=EXCLUDE_METHODS
         ),
     },
     "api/projects.md": {
         "project_create": ["hopsworks.create_project"],
         "project_properties": keras_autodoc.get_properties("hopsworks.project.Project"),
         "project_methods": keras_autodoc.get_methods(
-            "hopsworks.project.Project", exclude=["from_response_json", "json"]
+            "hopsworks.project.Project", exclude=EXCLUDE_METHODS + ["get_jobs_api"]
         ),
     },
     "api/jobs.md": {
@@ -66,7 +67,7 @@ PAGES = {
             "hopsworks_common.core.job_configuration.JobConfiguration",
         ],
         "job_methods": keras_autodoc.get_methods(
-            "hopsworks.job.Job", exclude=["from_response_json", "json"]
+            "hopsworks.job.Job", exclude=EXCLUDE_METHODS
         ),
     },
     "api/executions.md": {
@@ -77,7 +78,7 @@ PAGES = {
         ),
         "execution_methods": keras_autodoc.get_methods(
             "hopsworks.execution.Execution",
-            exclude=["from_response_json", "json", "update_from_response_json"],
+            exclude=EXCLUDE_METHODS,
         ),
     },
     "api/flink_cluster.md": {
@@ -93,7 +94,7 @@ PAGES = {
         ),
         "flink_cluster_methods": keras_autodoc.get_methods(
             "hopsworks.flink_cluster.FlinkCluster",
-            exclude=["from_response_json", "json"],
+            exclude=EXCLUDE_METHODS,
         ),
     },
     "api/environment.md": {
@@ -103,7 +104,7 @@ PAGES = {
         ],
         "env_get": ["hopsworks.core.environment_api.EnvironmentApi.get_environment"],
         "env_methods": keras_autodoc.get_methods(
-            "hopsworks.environment.Environment", exclude=["from_response_json", "json"]
+            "hopsworks.environment.Environment", exclude=EXCLUDE_METHODS
         ),
     },
     "api/git_repo.md": {
@@ -115,7 +116,7 @@ PAGES = {
             "hopsworks.git_repo.GitRepo"
         ),
         "git_repo_methods": keras_autodoc.get_methods(
-            "hopsworks.git_repo.GitRepo", exclude=["from_response_json", "json"]
+            "hopsworks.git_repo.GitRepo", exclude=EXCLUDE_METHODS
         ),
     },
     "api/git_provider.md": {
@@ -127,7 +128,7 @@ PAGES = {
             "hopsworks.git_provider.GitProvider"
         ),
         "git_provider_methods": keras_autodoc.get_methods(
-            "hopsworks.git_provider.GitProvider", exclude=["from_response_json", "json"]
+            "hopsworks.git_provider.GitProvider", exclude=EXCLUDE_METHODS
         ),
     },
     "api/git_remote.md": {
@@ -139,13 +140,13 @@ PAGES = {
             "hopsworks.git_remote.GitRemote"
         ),
         "git_remote_methods": keras_autodoc.get_methods(
-            "hopsworks.git_remote.GitRemote", exclude=["from_response_json", "json"]
+            "hopsworks.git_remote.GitRemote", exclude=EXCLUDE_METHODS
         ),
     },
     "api/datasets.md": {
         "dataset_api_handle": ["hopsworks.project.Project.get_dataset_api"],
         "dataset_methods": keras_autodoc.get_methods(
-            "hopsworks.core.dataset_api.DatasetApi"
+            "hopsworks.core.dataset_api.DatasetApi", exclude=EXCLUDE_METHODS
         ),
     },
     "api/kafka_topic.md": {
@@ -159,7 +160,7 @@ PAGES = {
         ),
         "kafka_topic_methods": keras_autodoc.get_methods(
             "hopsworks.kafka_topic.KafkaTopic",
-            exclude=["from_response_json", "json", "update_from_response_json"],
+            exclude=EXCLUDE_METHODS,
         ),
     },
     "api/kafka_schema.md": {
@@ -173,7 +174,7 @@ PAGES = {
         ),
         "kafka_schema_methods": keras_autodoc.get_methods(
             "hopsworks.kafka_schema.KafkaSchema",
-            exclude=["from_response_json", "json", "update_from_response_json"],
+            exclude=EXCLUDE_METHODS,
         ),
     },
     "api/secrets.md": {
@@ -184,13 +185,13 @@ PAGES = {
         "secret_get_all": ["hopsworks.core.secret_api.SecretsApi.get_secrets"],
         "secret_properties": keras_autodoc.get_properties("hopsworks.secret.Secret"),
         "secret_methods": keras_autodoc.get_methods(
-            "hopsworks.secret.Secret", exclude=["from_response_json", "json"]
+            "hopsworks.secret.Secret", exclude=EXCLUDE_METHODS
         ),
     },
     "api/opensearch.md": {
         "opensearch_api_handle": ["hopsworks.project.Project.get_opensearch_api"],
         "opensearch_methods": keras_autodoc.get_methods(
-            "hopsworks.core.opensearch_api.OpenSearchApi"
+            "hopsworks.core.opensearch_api.OpenSearchApi", exclude=EXCLUDE_METHODS
         ),
     },
     "api/spine_group_api.md": {
@@ -206,7 +207,8 @@ PAGES = {
                 "statistics",
                 "statistics_config",
                 "subject",
-            ],
+            ]
+            + EXCLUDE_METHODS,
         ),
         "fg_methods": keras_autodoc.get_methods(
             "hsfs.feature_group.SpineGroup",
@@ -225,7 +227,8 @@ PAGES = {
                 "update_from_response_json",
                 "update_statistics_config",
                 "validate",
-            ],
+            ]
+            + EXCLUDE_METHODS,
         ),
     },
     "api/training_dataset_api.md": {
@@ -236,7 +239,7 @@ PAGES = {
             "hsfs.training_dataset.TrainingDataset"
         ),
         "td_methods": keras_autodoc.get_methods(
-            "hsfs.training_dataset.TrainingDataset"
+            "hsfs.training_dataset.TrainingDataset", exclude=EXCLUDE_METHODS
         ),
     },
     "api/feature_view_api.md": {
@@ -245,12 +248,16 @@ PAGES = {
         "fv_get": ["hsfs.feature_store.FeatureStore.get_feature_view"],
         "fvs_get": ["hsfs.feature_store.FeatureStore.get_feature_views"],
         "fv_properties": keras_autodoc.get_properties("hsfs.feature_view.FeatureView"),
-        "fv_methods": keras_autodoc.get_methods("hsfs.feature_view.FeatureView"),
+        "fv_methods": keras_autodoc.get_methods(
+            "hsfs.feature_view.FeatureView", exclude=EXCLUDE_METHODS
+        ),
     },
     "api/feature_api.md": {
         "feature": ["hsfs.feature.Feature"],
         "feature_properties": keras_autodoc.get_properties("hsfs.feature.Feature"),
-        "feature_methods": keras_autodoc.get_methods("hsfs.feature.Feature"),
+        "feature_methods": keras_autodoc.get_methods(
+            "hsfs.feature.Feature", exclude=EXCLUDE_METHODS
+        ),
     },
     "api/expectation_suite_api.md": {
         "expectation_suite": ["hsfs.expectation_suite.ExpectationSuite"],
@@ -266,7 +273,7 @@ PAGES = {
             "hsfs.expectation_suite.ExpectationSuite"
         ),
         "expectation_suite_methods": keras_autodoc.get_methods(
-            "hsfs.expectation_suite.ExpectationSuite"
+            "hsfs.expectation_suite.ExpectationSuite", exclude=EXCLUDE_METHODS
         ),
     },
     "api/feature_store_api.md": {
@@ -275,7 +282,9 @@ PAGES = {
         "fs_properties": keras_autodoc.get_properties(
             "hsfs.feature_store.FeatureStore"
         ),
-        "fs_methods": keras_autodoc.get_methods("hsfs.feature_store.FeatureStore"),
+        "fs_methods": keras_autodoc.get_methods(
+            "hsfs.feature_store.FeatureStore", exclude=EXCLUDE_METHODS
+        ),
     },
     "api/feature_group_api.md": {
         "fg": ["hsfs.feature_group.FeatureGroup"],
@@ -287,7 +296,9 @@ PAGES = {
         "fg_properties": keras_autodoc.get_properties(
             "hsfs.feature_group.FeatureGroup"
         ),
-        "fg_methods": keras_autodoc.get_methods("hsfs.feature_group.FeatureGroup"),
+        "fg_methods": keras_autodoc.get_methods(
+            "hsfs.feature_group.FeatureGroup", exclude=EXCLUDE_METHODS
+        ),
     },
     "api/external_feature_group_api.md": {
         "fg": ["hsfs.feature_group.ExternalFeatureGroup"],
@@ -297,7 +308,7 @@ PAGES = {
             "hsfs.feature_group.ExternalFeatureGroup"
         ),
         "fg_methods": keras_autodoc.get_methods(
-            "hsfs.feature_group.ExternalFeatureGroup"
+            "hsfs.feature_group.ExternalFeatureGroup", exclude=EXCLUDE_METHODS
         ),
     },
     "api/storage_connector_api.md": {
@@ -306,55 +317,55 @@ PAGES = {
             "hsfs.feature_store.FeatureStore.get_online_storage_connector",
         ],
         "hopsfs_methods": keras_autodoc.get_methods(
-            "hsfs.storage_connector.HopsFSConnector", exclude=["from_response_json"]
+            "hsfs.storage_connector.HopsFSConnector", exclude=EXCLUDE_METHODS
         ),
         "hopsfs_properties": keras_autodoc.get_properties(
             "hsfs.storage_connector.HopsFSConnector"
         ),
         "s3_methods": keras_autodoc.get_methods(
-            "hsfs.storage_connector.S3Connector", exclude=["from_response_json"]
+            "hsfs.storage_connector.S3Connector", exclude=EXCLUDE_METHODS
         ),
         "s3_properties": keras_autodoc.get_properties(
             "hsfs.storage_connector.S3Connector"
         ),
         "redshift_methods": keras_autodoc.get_methods(
-            "hsfs.storage_connector.RedshiftConnector", exclude=["from_response_json"]
+            "hsfs.storage_connector.RedshiftConnector", exclude=EXCLUDE_METHODS
         ),
         "redshift_properties": keras_autodoc.get_properties(
             "hsfs.storage_connector.RedshiftConnector"
         ),
         "adls_methods": keras_autodoc.get_methods(
-            "hsfs.storage_connector.AdlsConnector", exclude=["from_response_json"]
+            "hsfs.storage_connector.AdlsConnector", exclude=EXCLUDE_METHODS
         ),
         "adls_properties": keras_autodoc.get_properties(
             "hsfs.storage_connector.AdlsConnector"
         ),
         "snowflake_methods": keras_autodoc.get_methods(
-            "hsfs.storage_connector.SnowflakeConnector", exclude=["from_response_json"]
+            "hsfs.storage_connector.SnowflakeConnector", exclude=EXCLUDE_METHODS
         ),
         "snowflake_properties": keras_autodoc.get_properties(
             "hsfs.storage_connector.SnowflakeConnector"
         ),
         "jdbc_methods": keras_autodoc.get_methods(
-            "hsfs.storage_connector.JdbcConnector", exclude=["from_response_json"]
+            "hsfs.storage_connector.JdbcConnector", exclude=EXCLUDE_METHODS
         ),
         "jdbc_properties": keras_autodoc.get_properties(
             "hsfs.storage_connector.JdbcConnector"
         ),
         "gcs_methods": keras_autodoc.get_methods(
-            "hsfs.storage_connector.GcsConnector", exclude=["from_response_json"]
+            "hsfs.storage_connector.GcsConnector", exclude=EXCLUDE_METHODS
         ),
         "gcs_properties": keras_autodoc.get_properties(
             "hsfs.storage_connector.GcsConnector"
         ),
         "bigquery_methods": keras_autodoc.get_methods(
-            "hsfs.storage_connector.BigQueryConnector", exclude=["from_response_json"]
+            "hsfs.storage_connector.BigQueryConnector", exclude=EXCLUDE_METHODS
         ),
         "bigquery_properties": keras_autodoc.get_properties(
             "hsfs.storage_connector.BigQueryConnector"
         ),
         "kafka_methods": keras_autodoc.get_methods(
-            "hsfs.storage_connector.KafkaConnector", exclude=["from_response_json"]
+            "hsfs.storage_connector.KafkaConnector", exclude=EXCLUDE_METHODS
         ),
         "kafka_properties": keras_autodoc.get_properties(
             "hsfs.storage_connector.KafkaConnector"
@@ -375,12 +386,7 @@ PAGES = {
         ),
         "transformation_function_methods": keras_autodoc.get_methods(
             "hsfs.transformation_function.TransformationFunction",
-            exclude=[
-                "from_response_json",
-                "update_from_response_json",
-                "json",
-                "to_dict",
-            ],
+            exclude=EXCLUDE_METHODS,
         ),
         "create_transformation_function": [
             "hsfs.feature_store.FeatureStore.create_transformation_function"
@@ -406,13 +412,13 @@ PAGES = {
             "hsfs.validation_report.ValidationReport"
         ),
         "validation_report_methods": keras_autodoc.get_methods(
-            "hsfs.validation_report.ValidationReport"
+            "hsfs.validation_report.ValidationReport", exclude=EXCLUDE_METHODS
         ),
     },
     "api/query_api.md": {
         "query_methods": keras_autodoc.get_methods(
             "hsfs.constructor.query.Query",
-            exclude=["json", "to_dict"],
+            exclude=EXCLUDE_METHODS,
         ),
         "query_properties": keras_autodoc.get_properties(
             "hsfs.constructor.query.Query"
@@ -484,12 +490,7 @@ PAGES = {
         ),
         "feature_monitoring_config_methods": keras_autodoc.get_methods(
             "hsfs.core.feature_monitoring_config.FeatureMonitoringConfig",
-            exclude=[
-                "from_response_json",
-                "update_from_response_json",
-                "json",
-                "to_dict",
-            ],
+            exclude=EXCLUDE_METHODS,
         ),
         # from feature group
         "feature_monitoring_config_creation_fg": [
@@ -534,13 +535,13 @@ PAGES = {
             "hsfs.embedding.EmbeddingIndex"
         ),
         "embedding_index_methods": keras_autodoc.get_methods(
-            "hsfs.embedding.EmbeddingIndex", exclude=["from_response_json"]
+            "hsfs.embedding.EmbeddingIndex", exclude=EXCLUDE_METHODS
         ),
     },
     "api/embedding_feature_api.md": {
         "embedding_feature": ["hsfs.embedding.EmbeddingFeature"],
         "embedding_feature_properties": keras_autodoc.get_properties(
-            "hsfs.embedding.EmbeddingFeature"
+            "hsfs.embedding.EmbeddingFeature", exclude=["dimenstion"]
         ),
     },
     "api/similarity_function_type_api.md": {
@@ -568,7 +569,7 @@ PAGES = {
             ],
         ),
         "mr_methods": keras_autodoc.get_methods(
-            "hsml.model_registry.ModelRegistry", exclude=["from_response_json"]
+            "hsml.model_registry.ModelRegistry", exclude=EXCLUDE_METHODS
         ),
     },
     "model-registry/model_api.md": {
@@ -576,16 +577,12 @@ PAGES = {
         "ml_create_th": ["hsml.model_registry.ModelRegistry.torch.create_model"],
         "ml_create_sl": ["hsml.model_registry.ModelRegistry.sklearn.create_model"],
         "ml_create_py": ["hsml.model_registry.ModelRegistry.python.create_model"],
+        "ml_create_llm": ["hsml.model_registry.ModelRegistry.llm.create_model"],
         "ml_get": ["hsml.model_registry.ModelRegistry.get_model"],
         "ml_properties": keras_autodoc.get_properties("hsml.model.Model"),
         "ml_methods": keras_autodoc.get_methods(
             "hsml.model.Model",
-            exclude=[
-                "from_response_json",
-                "json",
-                "to_dict",
-                "update_from_response_json",
-            ],
+            exclude=EXCLUDE_METHODS,
         ),
     },
     "model-registry/model_schema.md": {},
@@ -610,7 +607,7 @@ PAGES = {
             "hsml.model_serving.ModelServing"
         ),
         "ms_methods": keras_autodoc.get_methods(
-            "hsml.model_serving.ModelServing", exclude=["from_response_json"]
+            "hsml.model_serving.ModelServing", exclude=EXCLUDE_METHODS
         ),
     },
     "model-serving/deployment_api.md": {
@@ -625,7 +622,7 @@ PAGES = {
         "p_deploy": ["hsml.predictor.Predictor.deploy"],
         "dep_properties": keras_autodoc.get_properties("hsml.deployment.Deployment"),
         "dep_methods": keras_autodoc.get_methods(
-            "hsml.deployment.Deployment", exclude=JSON_METHODS + ["from_predictor"]
+            "hsml.deployment.Deployment", exclude=EXCLUDE_METHODS + ["from_predictor"]
         ),
     },
     "model-serving/predictor_api.md": {
@@ -634,7 +631,7 @@ PAGES = {
         "pred_properties": keras_autodoc.get_properties("hsml.predictor.Predictor"),
         "pred_methods": keras_autodoc.get_methods(
             "hsml.predictor.Predictor",
-            exclude=JSON_METHODS + ["for_model"],
+            exclude=EXCLUDE_METHODS + ["for_model"],
         ),
     },
     "model-serving/transformer_api.md": {
@@ -644,7 +641,7 @@ PAGES = {
             "hsml.transformer.Transformer"
         ),
         "trans_methods": keras_autodoc.get_methods(
-            "hsml.transformer.Transformer", exclude=JSON_METHODS
+            "hsml.transformer.Transformer", exclude=EXCLUDE_METHODS
         ),
     },
     "model-serving/inference_logger_api.md": {
@@ -653,7 +650,7 @@ PAGES = {
             "hsml.inference_logger.InferenceLogger"
         ),
         "il_methods": keras_autodoc.get_methods(
-            "hsml.inference_logger.InferenceLogger", exclude=JSON_METHODS
+            "hsml.inference_logger.InferenceLogger", exclude=EXCLUDE_METHODS
         ),
     },
     "model-serving/inference_batcher_api.md": {
@@ -662,14 +659,14 @@ PAGES = {
             "hsml.inference_batcher.InferenceBatcher"
         ),
         "ib_methods": keras_autodoc.get_methods(
-            "hsml.inference_batcher.InferenceBatcher", exclude=JSON_METHODS
+            "hsml.inference_batcher.InferenceBatcher", exclude=EXCLUDE_METHODS
         ),
     },
     "model-serving/resources_api.md": {
         "res": ["hsml.resources.Resources"],
         "res_properties": keras_autodoc.get_properties("hsml.resources.Resources"),
         "res_methods": keras_autodoc.get_methods(
-            "hsml.resources.Resources", exclude=JSON_METHODS
+            "hsml.resources.Resources", exclude=EXCLUDE_METHODS
         ),
     },
     "model-serving/predictor_state_api.md": {
@@ -678,7 +675,7 @@ PAGES = {
             "hsml.predictor_state.PredictorState"
         ),
         "ps_methods": keras_autodoc.get_methods(
-            "hsml.predictor_state.PredictorState", exclude=JSON_METHODS
+            "hsml.predictor_state.PredictorState", exclude=EXCLUDE_METHODS
         ),
     },
     "model-serving/predictor_state_condition_api.md": {
@@ -688,7 +685,7 @@ PAGES = {
         ),
         "psc_methods": keras_autodoc.get_methods(
             "hsml.predictor_state_condition.PredictorStateCondition",
-            exclude=JSON_METHODS,
+            exclude=EXCLUDE_METHODS,
         ),
     },
 }

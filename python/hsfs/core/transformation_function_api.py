@@ -19,6 +19,7 @@ from typing import List, Optional, Union
 
 from hopsworks_common import client
 from hsfs import (
+    decorators,
     transformation_function,
 )
 
@@ -55,6 +56,9 @@ class TransformationFunctionApi:
             )
         )
 
+    @decorators.catch_not_found(
+        "hsfs.transformation_function.TransformationFunction", fallback_return=None
+    )
     def get_transformation_fn(
         self, name: Optional[str], version: Optional[int]
     ) -> Union[
@@ -78,17 +82,15 @@ class TransformationFunctionApi:
             "transformationfunctions",
         ]
 
+        query_params = {}
         if name:
             query_params = {"name": name}
             if version:
                 query_params["version"] = version
-            return transformation_function.TransformationFunction.from_response_json(
-                _client._send_request("GET", path_params, query_params)
-            )
-        else:
-            return transformation_function.TransformationFunction.from_response_json(
-                _client._send_request("GET", path_params)
-            )
+
+        return transformation_function.TransformationFunction.from_response_json(
+            _client._send_request("GET", path_params, query_params)
+        )
 
     def delete(
         self,
