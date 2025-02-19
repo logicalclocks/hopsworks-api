@@ -112,6 +112,8 @@ _logger = logging.getLogger(__name__)
 
 @typechecked
 class FeatureGroupBase:
+    NOT_FOUND_ERROR_CODE = 270009
+
     def __init__(
         self,
         name: Optional[str],
@@ -249,7 +251,7 @@ class FeatureGroupBase:
             associated with it.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         warnings.warn(
             "All jobs associated to feature group `{}`, version `{}` will be removed.".format(
@@ -611,7 +613,7 @@ class FeatureGroupBase:
             value: Value of the tag to be added.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to add the tag.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         self._feature_group_engine.add_tag(self, name, value)
@@ -634,11 +636,11 @@ class FeatureGroupBase:
             name: Name of the tag to be removed.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to delete the tag.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._feature_group_engine.delete_tag(self, name)
 
-    def get_tag(self, name: str) -> tag.Tag:
+    def get_tag(self, name: str) -> Optional[tag.Tag]:
         """Get the tags of a feature group.
 
         !!! example
@@ -656,10 +658,10 @@ class FeatureGroupBase:
             name: Name of the tag to get.
 
         # Returns
-            tag value
+            tag value or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to retrieve the tag.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_group_engine.get_tag(self, name)
 
@@ -670,52 +672,54 @@ class FeatureGroupBase:
             `Dict[str, obj]` of tags.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to retrieve the tags.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_group_engine.get_tags(self)
 
-    def get_parent_feature_groups(self) -> explicit_provenance.Links:
+    def get_parent_feature_groups(self) -> Optional[explicit_provenance.Links]:
         """Get the parents of this feature group, based on explicit provenance.
         Parents are feature groups or external feature groups. These feature
         groups can be accessible, deleted or inaccessible.
-        For deleted and inaccessible feature groups, only a minimal information is
+        For deleted and inaccessible feature groups, only minimal information is
         returned.
 
         # Returns
-            `ProvenanceLinks`: Object containing the section of provenance graph requested.
+            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_group_engine.get_parent_feature_groups(self)
 
-    def get_storage_connector_provenance(self):
+    def get_storage_connector_provenance(self) -> Optional[explicit_provenance.Links]:
         """Get the parents of this feature group, based on explicit provenance.
         Parents are storage connectors. These storage connector can be accessible,
         deleted or inaccessible.
-        For deleted and inaccessible storage connector, only a minimal information is
+        For deleted and inaccessible storage connector, only minimal information is
         returned.
 
         # Returns
-            `ExplicitProvenance.Links`: the storage connector used to generated this
-            feature group
+            `Links`: the storage connector used to generate this feature group or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_group_engine.get_storage_connector_provenance(self)
 
-    def get_storage_connector(self):
+    def get_storage_connector(self) -> Optional["sc.StorageConnector"]:
         """Get the storage connector using this feature group, based on explicit
         provenance. Only the accessible storage connector is returned.
         For more items use the base method - get_storage_connector_provenance
 
         # Returns
-            `StorageConnector: Storage connector.
+            `StorageConnector`: Storage connector or `None` if it does not exist.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         storage_connector_provenance = self.get_storage_connector_provenance()
 
-        if (
+        if storage_connector_provenance and (
             storage_connector_provenance.inaccessible
             or storage_connector_provenance.deleted
         ):
@@ -723,12 +727,12 @@ class FeatureGroupBase:
                 "The parent storage connector is deleted or inaccessible. For more details access `get_storage_connector_provenance`"
             )
 
-        if storage_connector_provenance.accessible:
+        if storage_connector_provenance and storage_connector_provenance.accessible:
             return storage_connector_provenance.accessible[0]
         else:
             return None
 
-    def get_generated_feature_views(self) -> explicit_provenance.Links:
+    def get_generated_feature_views(self) -> Optional[explicit_provenance.Links]:
         """Get the generated feature view using this feature group, based on explicit
         provenance. These feature views can be accessible or inaccessible. Explicit
         provenance does not track deleted generated feature view links, so deleted
@@ -736,14 +740,14 @@ class FeatureGroupBase:
         For inaccessible feature views, only a minimal information is returned.
 
         # Returns
-            `ProvenanceLinks`: Object containing the section of provenance graph requested.
+            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_group_engine.get_generated_feature_views(self)
 
-    def get_generated_feature_groups(self) -> explicit_provenance.Links:
+    def get_generated_feature_groups(self) -> Optional[explicit_provenance.Links]:
         """Get the generated feature groups using this feature group, based on explicit
         provenance. These feature groups can be accessible or inaccessible. Explicit
         provenance does not track deleted generated feature group links, so deleted
@@ -751,14 +755,14 @@ class FeatureGroupBase:
         For inaccessible feature groups, only a minimal information is returned.
 
         # Returns
-            `ProvenanceLinks`: Object containing the section of provenance graph requested.
+            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_group_engine.get_generated_feature_groups(self)
 
-    def get_feature(self, name: str) -> feature.Feature:
+    def get_feature(self, name: str) -> Optional[feature.Feature]:
         """Retrieve a `Feature` object from the schema of the feature group.
 
         There are several ways to access features of a feature group:
@@ -787,17 +791,13 @@ class FeatureGroupBase:
             name: The name of the feature to retrieve
 
         # Returns:
-            Feature: The feature object
+            Feature: The feature object or `None` if it does not exist.
 
-        # Raises
-            `hsfs.client.exceptions.FeatureStoreException`.
         """
         try:
             return self.__getitem__(name)
-        except KeyError as err:
-            raise FeatureStoreException(
-                f"'FeatureGroup' object has no feature called '{name}'."
-            ) from err
+        except KeyError:
+            return None
 
     def update_statistics_config(
         self,
@@ -822,8 +822,8 @@ class FeatureGroupBase:
             `FeatureGroup`. The updated metadata object of the feature group.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
-            `hsfs.client.exceptions.FeatureStoreException`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If statistics are not supported for this feature group type
         """
         self._check_statistics_support()  # raises an error if stats not supported
         self._feature_group_engine.update_statistics_config(self)
@@ -854,6 +854,9 @@ class FeatureGroupBase:
 
         # Returns
             `FeatureGroup`. The updated feature group object.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._feature_group_engine.update_description(self, description)
         return self
@@ -884,6 +887,9 @@ class FeatureGroupBase:
 
         # Returns
             `FeatureGroup`. The updated feature group object.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._feature_group_engine.update_notification_topic_name(
             self, notification_topic_name
@@ -915,6 +921,9 @@ class FeatureGroupBase:
 
         # Returns
             `FeatureGroup`. The updated feature group object.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._feature_group_engine.update_deprecated(self, deprecate)
         return self
@@ -937,6 +946,9 @@ class FeatureGroupBase:
 
         # Returns
             `FeatureGroup`. The updated feature group object.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         new_features = []
         if isinstance(features, feature.Feature):
@@ -987,6 +999,9 @@ class FeatureGroupBase:
 
         # Returns
             `FeatureGroup`. The updated feature group object.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         f_copy = copy.deepcopy(self[feature_name])
         f_copy.description = description
@@ -1031,6 +1046,9 @@ class FeatureGroupBase:
 
         # Returns
             `FeatureGroup`. The updated feature group object.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         new_features = []
         if isinstance(features, feature.Feature):
@@ -1081,10 +1099,10 @@ class FeatureGroupBase:
                 else `False`.
 
         # Returns
-            `ExpectationSuite`. The expectation suite attached to the feature group.
+            `ExpectationSuite`. The expectation suite attached to the feature group or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         # Avoid throwing an error if Feature Group not initialised.
         if self._id:
@@ -1133,7 +1151,7 @@ class FeatureGroupBase:
                 - "ALWAYS" always insert the DataFrame to the Feature Group, irrespective of overall validation result.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if HAS_GREAT_EXPECTATIONS and isinstance(
             expectation_suite, great_expectations.core.ExpectationSuite
@@ -1188,7 +1206,7 @@ class FeatureGroupBase:
             ```
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if self.get_expectation_suite() is not None:
             self._expectation_suite_engine.delete(self._expectation_suite.id)
@@ -1219,10 +1237,10 @@ class FeatureGroupBase:
                 else `False`.
 
         # Returns
-            `ValidationReport`. The latest validation report attached to the Feature Group.
+            `ValidationReport`. The latest validation report attached to the Feature Group or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._validation_report_engine.get_last(ge_type=ge_type)
 
@@ -1256,8 +1274,8 @@ class FeatureGroupBase:
             Union[List[`ValidationReport`], `ValidationReport`]. All validation reports attached to the feature group.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
-            `hsfs.client.exceptions.FeatureStoreException`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If feature group is not registered with Hopsworks
         """
         if self._id:
             return self._validation_report_engine.get_all(ge_type=ge_type)
@@ -1309,7 +1327,8 @@ class FeatureGroupBase:
                 else `False`.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If feature group is not registered with Hopsworks
         """
         if self._id:
             if HAS_GREAT_EXPECTATIONS and isinstance(
@@ -1375,11 +1394,11 @@ class FeatureGroupBase:
                 method on hopsworks type. Defaults to `True` if Great Expectations is installed,
                 else `False`.
 
-        # Raises
-            `hsfs.client.exceptions.RestAPIError`.
-
-        # Return
+        # Returns
             Union[List[`ValidationResult`], List[`ExpectationValidationResult`]] A list of validation result connected to the expectation_id
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if self._id:
             return self._validation_result_engine.get_validation_history(
@@ -1449,7 +1468,7 @@ class FeatureGroupBase:
         # Returns
             A Validation Report produced by Great Expectations.
         """
-        # Activity is logged only if a the validation concerns the feature group and not a specific dataframe
+        # Activity is logged only if the validation concerns the feature group and not a specific dataframe
         if dataframe is None:
             dataframe = self.read()
             if ingestion_result.upper() == "UNKNOWN":
@@ -1523,16 +1542,16 @@ class FeatureGroupBase:
             config_id: If provided, fetch only the feature monitoring config with the given id.
                 Defaults to None.
 
-        # Raises
-            `hsfs.client.exceptions.RestAPIError`.
-            `hsfs.client.exceptions.FeatureStoreException`.
-            ValueError: if both name and feature_name are provided.
-            TypeError: if name or feature_name are not string or None.
-
-        # Return
+        # Returns
             Union[`FeatureMonitoringConfig`, List[`FeatureMonitoringConfig`], None]
                 A list of feature monitoring configs. If name provided,
-                returns either a single config or None if not found.
+                returns either a single config or `None` if not found.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If feature group is not registered with Hopsworks
+            `ValueError`: if both name and feature_name are provided.
+            `TypeError`: if name or feature_name are not string or None.
         """
         if not self._id:
             raise FeatureStoreException(
@@ -1587,17 +1606,17 @@ class FeatureGroupBase:
             with_statistics: Whether to include statistics in the feature monitoring history.
                 Defaults to True. If False, only metadata about the monitoring will be fetched.
 
-        # Raises
-            `hsfs.client.exceptions.RestAPIError`.
-            `hsfs.client.exceptions.FeatureStoreException`.
-            ValueError: if both config_name and config_id are provided.
-            TypeError: if config_name or config_id are not respectively string, int or None.
-
-        # Return
+        # Returns
             List[`FeatureMonitoringResult`]
                 A list of feature monitoring results containing the monitoring metadata
                 as well as the computed statistics for the detection and reference window
                 if requested.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If feature group is not registered with Hopsworks
+            `ValueError`: if both config_name and config_id are provided.
+            `TypeError`: if config_name or config_id are not respectively string, int or None.
         """
         if not self._id:
             raise FeatureStoreException(
@@ -1656,12 +1675,12 @@ class FeatureGroupBase:
                 must be in UTC and follow the Quartz specification. Default is '0 0 12 ? * * *',
                 every day at 12pm UTC.
 
-        # Raises
-            `hsfs.client.exceptions.FeatureStoreException`.
-
-        # Return
+        # Returns
             `FeatureMonitoringConfig` Configuration with minimal information about the feature monitoring.
                 Additional information are required before feature monitoring is enabled.
+
+        # Raises
+            `hopsworks.client.exceptions.FeatureStoreException`: If feature group is not registered with Hopsworks
         """
         if not self._id:
             raise FeatureStoreException(
@@ -1728,12 +1747,12 @@ class FeatureGroupBase:
                 must be in UTC and follow the Quartz specification. Default is '0 0 12 ? * * *',
                 every day at 12pm UTC.
 
-        # Raises
-            `hsfs.client.exceptions.FeatureStoreException`.
-
-        # Return
+        # Returns
             `FeatureMonitoringConfig` Configuration with minimal information about the feature monitoring.
                 Additional information are required before feature monitoring is enabled.
+
+        # Raises
+            `hopsworks.client.exceptions.FeatureStoreException`: If feature group is not registered with Hopsworks
         """
         if not self._id:
             raise FeatureStoreException(
@@ -1778,7 +1797,7 @@ class FeatureGroupBase:
         computation of the feature group.
 
         # Raises
-            `hsfs.client.exceptions.FeatureStoreException`.
+            `hopsworks.client.exceptions.FeatureStoreException`: If statistics are not supported for this feature group type
         """
         self._check_statistics_support()  # raises an error if stats not supported
         return self._statistics_config
@@ -1852,7 +1871,7 @@ class FeatureGroupBase:
         """Get the latest computed statistics for the whole feature group.
 
         # Raises
-            `hsfs.client.exceptions.FeatureStoreException`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._check_statistics_support()  # raises an error if stats not supported
         return self._statistics_engine.get(self)
@@ -1892,11 +1911,11 @@ class FeatureGroupBase:
                 or `%Y-%m-%d %H:%M:%S.%f`.
             feature_names: List of feature names of which statistics are retrieved.
         # Returns
-            `Statistics`. Statistics object.
+            `Statistics`. Statistics object or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`
-            `hsfs.client.exceptions.FeatureStoreException`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If statistics are not supported for this feature group type
         """
         self._check_statistics_support()  # raises an error if stats not supported
         return self._statistics_engine.get(
@@ -1930,11 +1949,11 @@ class FeatureGroupBase:
             feature_names: List of feature names of which statistics are retrieved.
 
         # Returns
-            `Statistics`. Statistics object.
+            `Statistics`. Statistics object or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`
-            `hsfs.client.exceptions.FeatureStoreException`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If statistics are not supported for this feature group type
         """
         self._check_statistics_support()  # raises an error if stats not supported
         return self._statistics_engine.get_all(
@@ -1962,8 +1981,8 @@ class FeatureGroupBase:
             `Statistics`. The statistics metadata object.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`. Unable to persist the statistics.
-            `hsfs.client.exceptions.FeatureStoreException`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If statistics are not supported for this feature group type
         """
         self._check_statistics_support()  # raises an error if stats not supported
         if self.statistics_config.enabled:
@@ -2500,7 +2519,7 @@ class FeatureGroup(FeatureGroupBase):
             `list`. A two-dimensional Python list.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`. No data is available for feature group with this commit date, If time travel enabled.
+            `hopsworks.client.exceptions.RestAPIError`: No data is available for feature group with this commit date, If time travel enabled.
         """
         if wallclock_time and self._time_travel_format is None:
             raise FeatureStoreException(
@@ -2577,8 +2596,8 @@ class FeatureGroup(FeatureGroupBase):
             feature data.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.  No data is available for feature group with this commit date.
-            `hsfs.client.exceptions.FeatureStoreException`. If the feature group does not have `HUDI` time travel format
+            `hopsworks.client.exceptions.RestAPIError`: No data is available for feature group with this commit date.
+            `hopsworks.client.exceptions.FeatureStoreException`: If the feature group does not have `HUDI` time travel format
         """
         return (
             self.select_all()
@@ -2753,7 +2772,7 @@ class FeatureGroup(FeatureGroupBase):
                 that was launched to ingest the feature group data.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`. Unable to create feature group.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         # sets feature from schema if not provided
@@ -2968,9 +2987,9 @@ class FeatureGroup(FeatureGroupBase):
             (`Job`, `ValidationReport`) A tuple with job information if python engine is used and the validation report if validation is enabled.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`. e.g fail to create feature group, dataframe schema does not match
+            `hopsworks.client.exceptions.RestAPIError`: e.g fail to create feature group, dataframe schema does not match
                 existing feature group schema, etc.
-            `hsfs.client.exceptions.DataValidationException`. If data validation fails and the expectation
+            `hsfs.client.exceptions.DataValidationException`: If data validation fails and the expectation
                 suite `validation_ingestion_policy` is set to `STRICT`. Data is NOT ingested.
         """
         if storage and self.stream:
@@ -3322,8 +3341,8 @@ class FeatureGroup(FeatureGroupBase):
             is `Dict[str, str]` with key value pairs of date committed on, number of rows updated, inserted and deleted.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
-            `hsfs.client.exceptions.FeatureStoreException`. If the feature group does not have `HUDI` time travel format
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If the feature group does not have `HUDI` time travel format
         """
         return self._feature_group_engine.commit_details(self, wallclock_time, limit)
 
@@ -3340,7 +3359,7 @@ class FeatureGroup(FeatureGroupBase):
             write_options: User provided write options. Defaults to `{}`.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._feature_group_engine.commit_delete(self, delete_df, write_options or {})
 
@@ -3365,7 +3384,7 @@ class FeatureGroup(FeatureGroupBase):
             retention_hours: User provided retention period. The default retention threshold for the files is 7 days.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._feature_group_engine.delta_vacuum(self, retention_hours)
 
@@ -3494,9 +3513,9 @@ class FeatureGroup(FeatureGroupBase):
                 or `%Y-%m-%d %H:%M:%S.%f`.
             feature_names: List of feature names of which statistics are retrieved.
         # Returns
-            `Statistics`. Statistics object.
+            `Statistics`. Statistics object or `None` if it does not exist.
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if not self._is_time_travel_enabled():
             raise ValueError("Time travel is not enabled for this feature group")
@@ -3527,7 +3546,7 @@ class FeatureGroup(FeatureGroupBase):
             `Statistics`. The statistics metadata object.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`. Unable to persist the statistics.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if self.statistics_config.enabled:
             if self._is_time_travel_enabled() or wallclock_time is not None:
@@ -4085,9 +4104,9 @@ class ExternalFeatureGroup(FeatureGroupBase):
             Tuple(None, `ge.core.ExpectationSuiteValidationResult`) The validation report if validation is enabled.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`. e.g fail to create feature group, dataframe schema does not match
+            `hopsworks.client.exceptions.RestAPIError`: e.g fail to create feature group, dataframe schema does not match
                 existing feature group schema, etc.
-            `hsfs.client.exceptions.DataValidationException`. If data validation fails and the expectation
+            `hsfs.client.exceptions.DataValidationException`: If data validation fails and the expectation
                 suite `validation_ingestion_policy` is set to `STRICT`. Data is NOT ingested.
 
         """
@@ -4173,7 +4192,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
             `list`. A two-dimensional Python list.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If trying to read an external feature group directly in
         """
 
         if (

@@ -519,7 +519,7 @@ class ModelEngine:
 
     def get_tag(self, model_instance, name):
         """Get tag with a certain name."""
-        return self._model_api.get_tags(model_instance, name)[name]
+        return self._model_api.get_tag(model_instance, name)
 
     def get_tags(self, model_instance):
         """Get all tags for a model."""
@@ -535,7 +535,7 @@ class ModelEngine:
             model_instance: Metadata object of model.
 
         # Returns
-            `ProvenanceLinks`:  the feature view used to generate this model
+            `Links`:  the feature view used to generate this model
         """
         return self._model_api.get_feature_view_provenance(model_instance)
 
@@ -549,6 +549,6 @@ class ModelEngine:
             model_instance: Metadata object of model.
 
         # Returns
-            `ProvenanceLinks`:  the training dataset used to generate this model
+            `Links`:  the training dataset used to generate this model
         """
         return self._model_api.get_training_dataset_provenance(model_instance)

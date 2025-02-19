@@ -170,6 +170,14 @@ class Links:
         """
         return self._faulty
 
+    def is_empty(self):
+        return (
+            len(self.accessible) == 0
+            and len(self.inaccessible) == 0
+            and len(self.deleted) == 0
+            and len(self.faulty) == 0
+        )
+
     class Direction(Enum):
         UPSTREAM = 1
         DOWNSTREAM = 2
