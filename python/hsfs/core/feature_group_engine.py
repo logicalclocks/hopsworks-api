@@ -502,7 +502,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_group_id=feature_group.id,
             )
         )
-    
+
     def set_features_from_schema(self, feature_group):
         if feature_group.features is None or len(feature_group.features) == 0:
             # If the user didn't specify the schema, parse it from the query
@@ -514,7 +514,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                     f'SELECT * \nFROM "{arrow_flight_client._serialize_featuregroup_name(feature_group)}"',
                     _features,
                     None,
-                    _connectors, 
+                    _connectors,
                 )
 
                 from hsfs import util
