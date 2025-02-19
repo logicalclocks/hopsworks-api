@@ -1226,9 +1226,7 @@ class FeatureViewEngine:
         return_list=False,
     ):
         fg = feature_logging.get_feature_group(transformed)
-        training_dataset_schema = fv.get_training_dataset_schema(
-            training_dataset_version=training_dataset_version
-        )
+        training_dataset_schema = fv.get_training_dataset_schema()
         td_predictions = [
             feature for feature in training_dataset_schema if feature.label
         ]
