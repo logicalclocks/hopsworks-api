@@ -57,7 +57,7 @@ class FeatureViewEngine:
 
     _LOG_TD_VERSION = "td_version"
     _LOG_TIME = "log_time"
-    _HSML_MODEL = "hsml_model"
+    _HSML_MODEL = "hopsworks_model"
 
     def __init__(self, feature_store_id):
         self._feature_store_id = feature_store_id
