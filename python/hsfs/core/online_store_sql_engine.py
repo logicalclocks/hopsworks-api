@@ -445,15 +445,14 @@ class OnlineStoreSqlClient:
     def _get_or_create_event_loop(self):
         try:
             _logger.debug("Acquiring or starting event loop for async engine.")
-            loop = asyncio.get_running_loop()
-            print("--- existing loop found", loop)
-            loop.set_debug(True)
-        except RuntimeError:
-            # if "There is no current event loop in thread" in str(ex):
-            _logger.debug("No existing running event loop. Creating new event loop.")
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            print(" --- created new loop", loop)
+            loop = asyncio.get_event_loop()
+        except RuntimeError as ex:
+            if "There is no current event loop in thread" in str(ex):
+                _logger.debug(
+                    "No existing running event loop. Creating new event loop."
+                )
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
         return loop
 
     def refresh_mysql_connection(self):
