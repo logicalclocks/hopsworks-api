@@ -522,15 +522,26 @@ class ArrowFlightClient:
             print("Error calling action:", e)
 
     def create_query_object(self, query, query_str, on_demand_fg_aliases=None):
+        if on_demand_fg_aliases is None:
+            on_demand_fg_aliases = []
         features = {}
         connectors = {}
         for fg in query.featuregroups:
-            _features, _connectors = _serialize_featuregroup(fg, query, on_demand_fg_aliases)
-            features.update(_features)
-            connectors.update(_connectors)
+            fg_name = _serialize_featuregroup_name(fg)
+            fg_connector = _serialize_featuregroup_connector(
+                fg, query, on_demand_fg_aliases
+            )
+            features[fg_name] = [feat.name for feat in fg.features]
+            connectors[fg_name] = fg_connector
         filters = _serialize_filter_expression(query.filters, query)
 
-        return _serialize_query(_translate_to_duckdb(query, query_str), features, filters, connectors)
+        query = {
+            "query_string": _translate_to_duckdb(query, query_str),
+            "features": features,
+            "filters": filters,
+            "connectors": connectors,
+        }
+        return query
 
     def is_enabled(self):
         if self._disabled_for_session or not self._enabled_on_cluster:
@@ -574,24 +585,17 @@ class ArrowFlightClient:
         """Whether the client is enabled on the cluster."""
         return self._enabled_on_cluster
 
-def _serialize_featuregroup(fg, query, on_demand_fg_aliases):
-    features = {}
-    connectors = {}
-    fg_name = _serialize_featuregroup_name(fg)
-    features[fg_name] = [feat.name for feat in fg.features]
-    connectors[fg_name] = _serialize_featuregroup_connector(
-        fg, query, on_demand_fg_aliases
-    )
-    return features, connectors
-
 def _serialize_featuregroup_connector(fg, query, on_demand_fg_aliases):
-    connector = _serialize_connector(fg)
-    if on_demand_fg_aliases:
+    connector = {}
+    if isinstance(fg, feature_group.ExternalFeatureGroup):
+        connector["time_travel_type"] = None
+        connector["type"] = fg.storage_connector.type
+        connector["options"] = fg.storage_connector.connector_options()
+        connector["query"] = fg.query[:-1] if fg.query.endswith(";") else fg.query
         for on_demand_fg_alias in on_demand_fg_aliases:
             if on_demand_fg_alias.on_demand_feature_group.name == fg.name:
                 connector["alias"] = on_demand_fg_alias.alias
                 break
-    if query:
         if query._left_feature_group == fg:
             connector["filters"] = _serialize_filter_expression(
                 query._filter, query, True
@@ -602,31 +606,26 @@ def _serialize_featuregroup_connector(fg, query, on_demand_fg_aliases):
                     connector["filters"] = _serialize_filter_expression(
                         join_obj._query._filter, join_obj._query, True
                     )
-    return connector
-
-
-def _serialize_connector(fg):
-    connector = {
-        "time_travel_type": None if isinstance(fg, feature_group.ExternalFeatureGroup) else fg.time_travel_format.lower(),
-    }
-    if fg.storage_connector:
+    elif fg.time_travel_format == "DELTA":
+        connector["time_travel_type"] = "delta"
         connector["type"] = fg.storage_connector.type
         connector["options"] = fg.storage_connector.connector_options()
-        connector["options"]["path"] = fg.storage_connector._get_path(fg.path)
-        if hasattr(fg, 'query') and fg.query:
-            connector["query"] = fg.query[:-1] if fg.query.endswith(";") else fg.query
+        if fg.storage_connector.type == StorageConnector.S3:
+            connector["options"]["path"] = fg.storage_connector._get_path(fg.path)
+        connector["query"] = ""
+        if query._left_feature_group == fg:
+            connector["filters"] = _serialize_filter_expression(
+                query._filter, query, True
+            )
         else:
-            connector["query"] = ""
-        connector["filters"] = None
+            for join_obj in query._joins:
+                if join_obj._query._left_feature_group == fg:
+                    connector["filters"] = _serialize_filter_expression(
+                        join_obj._query._filter, join_obj._query, True
+                    )
+    else:
+        connector["time_travel_type"] = "hudi"
     return connector
-
-def _serialize_query(query_str, features, filters, connectors):
-    return {
-        "query_string": query_str,
-        "features": features,
-        "filters": filters,
-        "connectors": connectors,
-    }
 
 
 def _serialize_featuregroup_name(fg):

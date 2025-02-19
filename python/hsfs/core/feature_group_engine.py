@@ -508,16 +508,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             # If the user didn't specify the schema, parse it from the query
             if engine.get_type() == "python":
                 from hsfs.core import arrow_flight_client
-
-                _features, _connectors = arrow_flight_client._serialize_featuregroup(feature_group, None, None)
-                arrow_query = arrow_flight_client._serialize_query(
+                arrow_query = arrow_flight_client.get_instance().create_query_object(
+                    feature_group.select_all(),
                     f'SELECT * \nFROM "{arrow_flight_client._serialize_featuregroup_name(feature_group)}"',
-                    _features,
-                    None,
-                    _connectors,
                 )
 
-                from hsfs import util
                 dataset = util.run_with_loading_animation(
                     "Reading data from Hopsworks, using Hopsworks Feature Query Service",
                     arrow_flight_client.get_instance().read_query,
