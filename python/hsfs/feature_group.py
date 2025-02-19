@@ -2755,6 +2755,11 @@ class FeatureGroup(FeatureGroupBase):
         # Raises
             `hsfs.client.exceptions.RestAPIError`. Unable to create feature group.
         """
+
+        # sets feature from schema if not provided
+        if not features:
+            self._feature_group_engine.set_features_from_schema(self)
+
         if (
             (features is None and len(self._features) > 0)
             or (
