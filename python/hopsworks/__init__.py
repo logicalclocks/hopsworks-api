@@ -151,6 +151,10 @@ def login(
 
     global _hw_connection
 
+    # If project argument not defined, get HOPSWORKS_ENGINE environment variable
+    if engine is None and "HOPSWORKS_ENGINE" in os.environ:
+        engine = os.environ["HOPSWORKS_ENGINE"]
+
     # If inside hopsworks, just return the current project for now
     if "REST_ENDPOINT" in os.environ:
         _hw_connection = _hw_connection(
@@ -178,10 +182,6 @@ def login(
     # If project argument not defined, get HOPSWORKS_PROJECT environment variable
     if project is None and "HOPSWORKS_PROJECT" in os.environ:
         project = os.environ["HOPSWORKS_PROJECT"]
-
-    # If project argument not defined, get HOPSWORKS_ENGINE environment variable
-    if engine is None and "HOPSWORKS_ENGINE" in os.environ:
-        engine = os.environ["HOPSWORKS_ENGINE"]
 
     # If host argument not defined, get HOPSWORKS_HOST environment variable
     if host is None and "HOPSWORKS_HOST" in os.environ:
