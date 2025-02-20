@@ -118,7 +118,7 @@ def login(
         ```
 
     In addition to setting function arguments directly, `hopsworks.login()` also reads the environment variables:
-    HOPSWORKS_HOST, HOPSWORKS_PORT, HOPSWORKS_PROJECT, HOPSWORKS_API_KEY, HOPSWORKS_HOSTNAME_VERIFICATION and HOPSWORKS_TRUST_STORE_PATH.
+    HOPSWORKS_HOST, HOPSWORKS_PORT, HOPSWORKS_PROJECT, HOPSWORKS_API_KEY, HOPSWORKS_HOSTNAME_VERIFICATION, HOPSWORKS_TRUST_STORE_PATH and HOPSWORKS_ENGINE.
 
     The function arguments do however take precedence over the environment variables in case both are set.
 
@@ -150,6 +150,10 @@ def login(
     logout()
 
     global _hw_connection
+
+    # If project argument not defined, get HOPSWORKS_ENGINE environment variable
+    if engine is None and "HOPSWORKS_ENGINE" in os.environ:
+        engine = os.environ["HOPSWORKS_ENGINE"]
 
     # If inside hopsworks, just return the current project for now
     if "REST_ENDPOINT" in os.environ:
