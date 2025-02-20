@@ -328,7 +328,7 @@ class VectorServer:
                 for feature_name in unprefixed_features - available_parameters
             }
 
-            # Prefixed feature names for features that are not available in the in their unprefixed form as request-parameters.
+            # Prefixed feature names for features that are not available in the in their prefixed form as request-parameters.
             prefixed_missing_features = transformation_features - available_parameters
 
             # Get Missing request parameters: These are will include request parameters that are not provided in their unprefixed or prefixed form.
@@ -372,6 +372,7 @@ class VectorServer:
         force_rest_client: bool = False,
         force_sql_client: bool = False,
         transform: bool = True,
+        on_demand_features: Optional[bool] = True,
         request_parameters: Optional[Dict[str, Any]] = None,
         transformation_context: Dict[str, Any] = None,
     ) -> Union[pd.DataFrame, pl.DataFrame, np.ndarray, List[Any], Dict[str, Any]]:
@@ -405,6 +406,10 @@ class VectorServer:
             _logger.debug("get_feature_vector Online SQL client")
             serving_vector = self.sql_client.get_single_feature_vector(rondb_entry)
 
+        self._raise_transformation_warnings(
+            transform=transform, on_demand_features=on_demand_features
+        )
+
         vector = self.assemble_feature_vector(
             result_dict=serving_vector,
             passed_values=passed_features or {},
@@ -412,6 +417,7 @@ class VectorServer:
             allow_missing=allow_missing,
             client=online_client_choice,
             transform=transform,
+            on_demand_features=on_demand_features,
             request_parameters=request_parameters,
             transformation_context=transformation_context,
         )
@@ -422,7 +428,7 @@ class VectorServer:
             inference_helper=False,
             return_type=return_type,
             transform=transform,
-            on_demand_feature=transform,
+            on_demand_feature=on_demand_features,
         )
 
     def get_feature_vectors(
@@ -438,6 +444,7 @@ class VectorServer:
         force_rest_client: bool = False,
         force_sql_client: bool = False,
         transform: bool = True,
+        on_demand_features: Optional[bool] = True,
         transformation_context: Dict[str, Any] = None,
     ) -> Union[pd.DataFrame, pl.DataFrame, np.ndarray, List[Any], List[Dict[str, Any]]]:
         """Assembles serving vector from online feature store."""
@@ -486,6 +493,10 @@ class VectorServer:
                 if isinstance(request_parameters, list)
                 else [[]]
             )
+
+        self._raise_transformation_warnings(
+            transform=transform, on_demand_features=on_demand_features
+        )
 
         for (idx, entry), passed, vector_features in itertools.zip_longest(
             enumerate(entries),
@@ -560,6 +571,7 @@ class VectorServer:
                 allow_missing=allow_missing,
                 client=online_client_choice,
                 transform=transform,
+                on_demand_features=on_demand_features,
                 request_parameters=request_parameter,
                 transformation_context=transformation_context,
             )
@@ -584,6 +596,7 @@ class VectorServer:
         allow_missing: bool,
         client: Literal["rest", "sql"],
         transform: bool,
+        on_demand_features: bool,
         request_parameters: Optional[Dict[str, Any]] = None,
         transformation_context: Dict[str, Any] = None,
     ) -> Optional[List[Any]]:
@@ -605,10 +618,6 @@ class VectorServer:
             .difference(result_dict.keys())
             .difference(self._on_demand_feature_names)
         )
-        if transform:
-            self.check_missing_request_parameters(
-                features=result_dict, request_parameters=request_parameters
-            )
 
         # for backward compatibility, before 3.4, if result is empty,
         # instead of throwing error, it skips the result
@@ -635,9 +644,13 @@ class VectorServer:
         if (
             len(self.model_dependent_transformation_functions) > 0
             or len(self.on_demand_transformation_functions) > 0
-        ) and transform:
+        ):
             self.apply_transformation(
-                result_dict, request_parameters or {}, transformation_context
+                result_dict,
+                request_parameters or {},
+                transformation_context,
+                transform=transform,
+                on_demand_features=on_demand_features,
             )
 
         _logger.debug("Assembled and transformed dict feature vector: %s", result_dict)
@@ -645,6 +658,11 @@ class VectorServer:
             return [
                 result_dict.get(fname, None)
                 for fname in self.transformed_feature_vector_col_name
+            ]
+        elif on_demand_features:
+            return [
+                result_dict.get(fname, None)
+                for fname in self._on_demand_feature_vector_col_name
             ]
         else:
             return [
@@ -1247,22 +1265,69 @@ class VectorServer:
                 )
         return rows
 
+    def _raise_transformation_warnings(self, transform: bool, on_demand_features: bool):
+        """
+        Function that raises warnings based on the values of `transform` and `on_demand_features` parameters to let users know about the behavior of the function.
+
+        # Arguments
+            transform : `bool`. Specify if model-dependent transformations should be applied.
+            on_demand_features : `bool`. Specify if on-demand features should be computed.
+        """
+        warn_on_demand_features = (
+            not on_demand_features and self.on_demand_transformation_functions
+        )
+        warn_model_dependent_features = (
+            not transform and self.model_dependent_transformation_functions
+        )
+
+        if transform and not on_demand_features:
+            _logger.warning(
+                "On-demand features are always returned when `transform=True`, regardless of `on_demand_features`. "
+                "To fetch an untransformed feature vector without on-demand features, set both `transform=False` and `on_demand_features=False`."
+            )
+        elif warn_on_demand_features and warn_model_dependent_features:
+            _logger.info(
+                "Both `transform` and `on_demand_features` are set to False. Returning feature vector without on-demand features or model-dependent transformations."
+            )
+        elif warn_on_demand_features:
+            _logger.info(
+                "On-demand features are not computed when `on_demand_features=False`. Returning feature vector without on-demand features."
+            )
+        elif warn_model_dependent_features:
+            _logger.info(
+                "Model-dependent transformation functions are not applied when `transform=False`. Returning feature vector without model-dependent transformations."
+            )
+
     def apply_transformation(
         self,
         row_dict: Union[dict, pd.DataFrame],
         request_parameter: Dict[str, Any],
         transformation_context: Dict[str, Any] = None,
+        transform: bool = True,
+        on_demand_features: bool = True,
     ):
         """
         Function that applies both on-demand and model dependent transformation to the input dictonary
         """
-        feature_dict = self.apply_on_demand_transformations(
-            row_dict, request_parameter, transformation_context
-        )
+        encoded_feature_dict = row_dict
 
-        encoded_feature_dict = self.apply_model_dependent_transformations(
-            feature_dict, transformation_context
-        )
+        if transform or on_demand_features:
+            # Check for any missing request parameters
+            self.check_missing_request_parameters(
+                features=row_dict, request_parameters=request_parameter
+            )
+
+            # Apply on-demand transformations
+            encoded_feature_dict = self.apply_on_demand_transformations(
+                row_dict, request_parameter, transformation_context
+            )
+
+        if transform:
+            # Apply model dependent transformations
+            encoded_feature_dict = self.apply_model_dependent_transformations(
+                encoded_feature_dict, transformation_context
+            )
+
         return encoded_feature_dict
 
     def apply_return_value_handlers(

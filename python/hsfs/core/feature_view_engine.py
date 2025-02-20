@@ -165,7 +165,7 @@ class FeatureViewEngine:
         self, name: str, version: int = None
     ) -> Union[feature_view.FeatureView, List[feature_view.FeatureView]]:
         """
-        Get a feature view form the backend using name or using name and version.
+        Get a feature view from the backend using name or using name and version.
 
         If version is not provided then a List of feature views containing all of its versions is returned.
 
@@ -177,7 +177,7 @@ class FeatureViewEngine:
             `Union[FeatureView, List[FeatureView]]`
 
         # Raises
-            `RestAPIError`: If the feature view cannot be found from the backend.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
             `ValueError`: If the feature group associated with the feature view cannot be found.
         """
         if version:
@@ -208,11 +208,10 @@ class FeatureViewEngine:
 
         # Returns
             `List[training_dataset_feature.TrainingDatasetFeature]`: List of training dataset features objects.
-
-        # Raises
-            `ValueError` if the  training dataset version provided cannot be found.
         """
-
+        # This is used to verify that the training dataset version actually exists, otherwise it raises an exception
+        if training_dataset_version:
+            self._get_training_dataset_metadata(feature_view, training_dataset_version)
         if not feature_view.transformation_functions:
             # Return the features in the feature view if the no transformation functions in the feature view.
             return feature_view.features
@@ -973,9 +972,11 @@ class FeatureViewEngine:
         )
 
     def get_tag(self, feature_view_obj, name: str, training_dataset_version=None):
-        return self._tags_api.get(
+        tags = self._tags_api.get(
             feature_view_obj, name, training_dataset_version=training_dataset_version
-        )[name]
+        )
+        if name in tags:
+            return tags[name]
 
     def get_tags(self, feature_view_obj, training_dataset_version=None):
         return self._tags_api.get(
@@ -993,11 +994,13 @@ class FeatureViewEngine:
             feature_view_obj: Metadata object of feature view.
 
         # Returns
-            `ProvenanceLinks`:  the feature groups used to generated this feature view
+            `Links`:  the feature groups used to generate this feature view or None
         """
-        return self._feature_view_api.get_parent_feature_groups(
+        links = self._feature_view_api.get_parent_feature_groups(
             feature_view_obj.name, feature_view_obj.version
         )
+        if not links.is_empty():
+            return links
 
     def get_models_provenance(
         self, feature_view_obj, training_dataset_version: Optional[int] = None
@@ -1013,13 +1016,15 @@ class FeatureViewEngine:
             training_dataset_version: Filter generated models based on the used training dataset version.
 
         # Returns
-            `ProvenanceLinks`:  the models generated using this feature group
+            `Links`: the models generated using this feature group or None
         """
-        return self._feature_view_api.get_models_provenance(
+        links = self._feature_view_api.get_models_provenance(
             feature_view_obj.name,
             feature_view_obj.version,
             training_dataset_version=training_dataset_version,
         )
+        if not links.is_empty():
+            return links
 
     def _check_feature_group_accessibility(self, feature_view_obj):
         if engine.get_type() == "python":
@@ -1127,12 +1132,13 @@ class FeatureViewEngine:
         return fv
 
     def get_feature_logging(self, fv):
-        return FeatureLogging.from_response_json(
-            self._feature_view_api.get_feature_logging(fv.name, fv.version)
-        )
+        return self._feature_view_api.get_feature_logging(fv.name, fv.version)
 
     def _get_logging_fg(self, fv, transformed):
-        return self.get_feature_logging(fv).get_feature_group(transformed)
+        feature_logging = self.get_feature_logging(fv)
+        if feature_logging:
+            return feature_logging.get_feature_group(transformed)
+        return feature_logging
 
     def log_features(
         self,
@@ -1220,9 +1226,7 @@ class FeatureViewEngine:
         return_list=False,
     ):
         fg = feature_logging.get_feature_group(transformed)
-        training_dataset_schema = fv.get_training_dataset_schema(
-            training_dataset_version=training_dataset_version
-        )
+        training_dataset_schema = fv.get_training_dataset_schema()
         td_predictions = [
             feature for feature in training_dataset_schema if feature.label
         ]
@@ -1357,7 +1361,10 @@ class FeatureViewEngine:
         transformed: Optional[bool] = False,
     ) -> Dict[str, Dict[str, str]]:
         fg = self._get_logging_fg(fv, transformed)
-        return fg.commit_details(wallclock_time=wallclock_time, limit=limit)
+        if fg:
+            return fg.commit_details(wallclock_time=wallclock_time, limit=limit)
+        else:
+            return {}
 
     def pause_logging(self, fv):
         self._feature_view_api.pause_feature_logging(fv.name, fv.version)

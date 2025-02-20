@@ -1419,7 +1419,7 @@ class Engine:
         # Returns
             `DataFrame`: A spark dataframe with the transformed data.
         # Raises
-            `FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
+            `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
         dropped_features = set()
         transformations = []

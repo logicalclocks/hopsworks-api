@@ -84,7 +84,14 @@ def login(
     api_key_file: str = None,
     hostname_verification: bool = False,
     trust_store_path: str = None,
-    engine: Union[None, Literal["spark"], Literal["python"], Literal["training"], Literal["spark-no-metastore"], Literal["spark-delta"]] = None,
+    engine: Union[
+        None,
+        Literal["spark"],
+        Literal["python"],
+        Literal["training"],
+        Literal["spark-no-metastore"],
+        Literal["spark-delta"],
+    ] = None,
 ) -> project.Project:
     """Connect to [Serverless Hopsworks](https://app.hopsworks.ai) by calling the `hopsworks.login()` function with no arguments.
 
@@ -111,7 +118,7 @@ def login(
         ```
 
     In addition to setting function arguments directly, `hopsworks.login()` also reads the environment variables:
-    HOPSWORKS_HOST, HOPSWORKS_PORT, HOPSWORKS_PROJECT, HOPSWORKS_API_KEY, HOPSWORKS_HOSTNAME_VERIFICATION and HOPSWORKS_TRUST_STORE_PATH.
+    HOPSWORKS_HOST, HOPSWORKS_PORT, HOPSWORKS_PROJECT, HOPSWORKS_API_KEY, HOPSWORKS_HOSTNAME_VERIFICATION, HOPSWORKS_TRUST_STORE_PATH and HOPSWORKS_ENGINE.
 
     The function arguments do however take precedence over the environment variables in case both are set.
 
@@ -133,8 +140,8 @@ def login(
     # Returns
         `Project`: The Project object to perform operations on
     # Raises
-        `RestAPIError`: If unable to connect to Hopsworks
-        `HopsworksSSLClientError`: If SSLError is raised from underlying requests library
+        `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        `hopsworks.client.exceptions.HopsworksSSLClientError`: If SSLError is raised from underlying requests library
     """
 
     global _connected_project
@@ -144,9 +151,15 @@ def login(
 
     global _hw_connection
 
+    # If project argument not defined, get HOPSWORKS_ENGINE environment variable
+    if engine is None and "HOPSWORKS_ENGINE" in os.environ:
+        engine = os.environ["HOPSWORKS_ENGINE"]
+
     # If inside hopsworks, just return the current project for now
     if "REST_ENDPOINT" in os.environ:
-        _hw_connection = _hw_connection(hostname_verification=hostname_verification, engine=engine)
+        _hw_connection = _hw_connection(
+            hostname_verification=hostname_verification, engine=engine
+        )
         _connected_project = _hw_connection.get_project()
         _initialize_module_apis()
         print("\nLogged in to project, explore it here " + _connected_project.get_url())

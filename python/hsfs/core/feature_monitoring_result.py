@@ -25,6 +25,8 @@ from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistic
 
 
 class FeatureMonitoringResult:
+    NOT_FOUND_ERROR_CODE = 270233
+
     def __init__(
         self,
         feature_store_id: int,

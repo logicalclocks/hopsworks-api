@@ -16,13 +16,14 @@
 
 import json
 import logging
-from typing import List, Union
+from typing import List, Optional, Union
 
 from hopsworks_common import (
     client,
     git_commit,
     git_file_status,
     git_op_execution,
+    git_provider,
     git_repo,
     usage,
     util,
@@ -40,7 +41,9 @@ class GitApi:
         self._log = logging.getLogger(__name__)
 
     @usage.method_logger
-    def clone(self, url: str, path: str, provider: str = None, branch: str = None):
+    def clone(
+        self, url: str, path: str, provider: str = None, branch: str = None
+    ) -> git_repo.GitRepo:
         """Clone a new Git Repo in to Hopsworks Filesystem.
 
         ```python
@@ -62,7 +65,7 @@ class GitApi:
         # Returns
             `GitRepo`: Git repository object
         # Raises
-            `RestAPIError`: If unable to clone the git repository.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         _client = client.get_instance()
@@ -104,13 +107,13 @@ class GitApi:
         return created_repo
 
     @usage.method_logger
-    def get_repos(self):
+    def get_repos(self) -> List[git_repo.GitRepo]:
         """Get the existing Git repositories
 
         # Returns
             `List[GitRepo]`: List of git repository objects
         # Raises
-            `RestAPIError`: If unable to get the repositories
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = [
@@ -124,26 +127,26 @@ class GitApi:
         )
 
     @usage.method_logger
-    def get_providers(self):
+    def get_providers(self) -> List[git_provider.GitProvider]:
         """Get the configured Git providers
 
         # Returns
             `List[GitProvider]`: List of git provider objects
         # Raises
-            `RestAPIError`: If unable to get the git providers
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._git_provider_api._get_providers()
 
     @usage.method_logger
-    def get_provider(self, provider: str):
+    def get_provider(self, provider: str) -> Optional[git_provider.GitProvider]:
         """Get the configured Git provider
 
         # Arguments
             provider: Name of git provider. Valid values are "GitHub", "GitLab" and "BitBucket".
         # Returns
-            `GitProvider`: The git provider
+            `GitProvider`: The git provider or `None` if it does not exist.
         # Raises
-            `RestAPIError`: If unable to get the git provider
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._git_provider_api._get_provider(provider)
 
@@ -167,21 +170,21 @@ class GitApi:
             username: Username for the git provider service
             token: Token to set for the git provider service
         # Raises
-            `RestAPIError`: If unable to configure the git provider
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._git_provider_api._set_provider(provider, username, token)
 
     @usage.method_logger
-    def get_repo(self, name: str, path: str = None):
+    def get_repo(self, name: str, path: str = None) -> Optional[git_repo.GitRepo]:
         """Get the cloned Git repository
 
         # Arguments
             name: Name of git repository
             path: Optional path to specify if multiple git repos with the same name exists in the project
         # Returns
-            `GitRepo`: The git repository
+            `GitRepo`: The git repository or `None` if it does not exist.
         # Raises
-            `RestAPIError`: If unable to get the git repository
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = [
@@ -215,7 +218,7 @@ class GitApi:
                 )
             )
         else:
-            raise GitException("No git repository found matching name {}".format(name))
+            return None
 
     def _delete_repo(self, repo_id):
         _client = client.get_instance()

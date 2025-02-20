@@ -1285,7 +1285,7 @@ class Engine:
         # Returns
             `DataFrame`: A pandas dataframe with the transformed data.
         # Raises
-            `FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
+            `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
         dropped_features = set()
 
@@ -1357,7 +1357,7 @@ class Engine:
         # Returns
             `DataFrame`: A pandas dataframe with the transformed data.
         # Raises
-            `FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
+            `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
         udf = hopsworks_udf.get_udf(online=False)
         if isinstance(dataframe, pd.DataFrame):
@@ -1419,7 +1419,7 @@ class Engine:
         # Returns
             `DataFrame`: A pandas dataframe with the transformed data.
         # Raises
-            `FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
+            `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
         if len(hopsworks_udf.return_types) > 1:
             dataframe[hopsworks_udf.output_column_names] = hopsworks_udf.get_udf(
