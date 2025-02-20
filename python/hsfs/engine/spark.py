@@ -1684,39 +1684,6 @@ class Engine:
         df = query.read()
         return df.drop("log_id", time_col)
 
-    def adjust_string_columns(self, column_lengths: dict, dataframe_features):
-        # dataframe_features is a list of features
-        # each feature has a schema
-        # for the column specified, update the corresponding feature schema online_type to have a max length of max_length
-        for i_feature in dataframe_features:
-            if i_feature.name in column_lengths:
-                print("updating feature: ", i_feature.name)
-                print("with length: ", column_lengths[i_feature.name])
-                i_feature.online_type = f"varchar({column_lengths[i_feature.name]})"
-        return dataframe_features
-
-    def get_feature_from_list(self, feature_name, features):
-        for i_feature in features:
-            if i_feature.name == feature_name:
-                return i_feature
-        raise ValueError(f"Feature {feature_name} not found in feature list")
-
-    @staticmethod
-    def extract_numbers(input_string):
-        # Define regular expression pattern for matching numbers
-        pattern = r"\d+"
-        # Use re.findall() to find all occurrences of the pattern in the input string
-        return re.findall(pattern, input_string)
-
-    def get_online_varchar_length(self, feature):
-        # returns the column length of varchar columns
-        if not feature.type == "string":
-            raise ValueError("Feature not a string type")
-        if not feature.online_type:
-            raise ValueError("Feature is not online enabled")
-
-        return int(self.extract_numbers(feature.online_type)[0])
-
     def validate_schema(self, feature_group, df, df_features):
         errors = {}
         # Check if the primary key columns exist
@@ -1747,8 +1714,8 @@ class Engine:
             for col in df.select_dtypes(include=["object"]).columns:
                 currentmax = df[col].str.len().max()
                 col_max_len = (
-                    self.get_online_varchar_length(
-                        self.get_feature_from_list(col, feature_group.features)
+                    util.get_online_varchar_length(
+                        util.get_feature_from_list(col, feature_group.features)
                     )
                     if is_fg_created
                     else 100
@@ -1775,8 +1742,8 @@ class Engine:
                         .collect()[0][0]
                     )
                     col_max_len = (
-                        self.get_online_varchar_length(
-                            self.get_feature_from_list(col_name, feature_group.features)
+                        util.get_online_varchar_length(
+                            util.get_feature_from_list(col_name, feature_group.features)
                         )
                         if is_fg_created
                         else 100
@@ -1791,7 +1758,7 @@ class Engine:
         # update the feature schema to adjust string lengths and warn the user
         # else raise error
         if not is_fg_created and column_lengths and not is_pk_null:
-            df_features = self.adjust_string_columns(column_lengths, df_features)
+            df_features = util.adjust_string_columns(column_lengths, df_features)
             print("new features: ", df_features)
         elif errors:
             raise SchemaError(
