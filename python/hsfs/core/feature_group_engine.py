@@ -502,3 +502,20 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_group_id=feature_group.id,
             )
         )
+
+    def set_features_from_schema(self, feature_group):
+        if feature_group.features is None or len(feature_group.features) == 0:
+            # If the user didn't specify the schema, parse it from the query
+            feature_group._features = engine.get_instance().parse_schema_feature_group(fg.read())
+
+        # set primary, foreign and partition key columns
+        # we should move this to the backend
+        util.verify_attribute_key_names(feature_group, True)
+        for feat in feature_group.features:
+            if feat.name in feature_group.primary_key:
+                feat.primary = True
+            if feat.name in feature_group.foreign_key:
+                feat.foreign = True
+        util.validate_embedding_feature_type(
+            feature_group.embedding_index, feature_group._features
+        )

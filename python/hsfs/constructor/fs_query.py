@@ -26,8 +26,9 @@ class FsQuery:
     def __init__(
         self,
         query: str,
-        on_demand_feature_groups: Optional[List[Dict[str, Any]]],
-        hudi_cached_feature_groups: Optional[List[Dict[str, Any]]],
+        on_demand_feature_groups: Optional[List[Dict[str, Any]]] = None,
+        hudi_cached_feature_groups: Optional[List[Dict[str, Any]]] = None,
+        delta_cached_feature_groups: Optional[List[Dict[str, Any]]] = None,
         query_online: Optional[str] = None,
         pit_query: Optional[str] = None,
         pit_query_asof: Optional[str] = None,
@@ -35,7 +36,6 @@ class FsQuery:
         expand: Optional[List[str]] = None,
         items: Optional[List[Dict[str, Any]]] = None,
         type: Optional[str] = None,
-        delta_cached_feature_groups: Optional[List[Dict[str, Any]]] = None,
         **kwargs,
     ) -> None:
         self._query = query
@@ -101,6 +101,12 @@ class FsQuery:
         self,
     ) -> List["hudi_feature_group_alias.HudiFeatureGroupAlias"]:
         return self._hudi_cached_feature_groups
+    
+    @property
+    def delta_cached_feature_groups(
+        self,
+    ) -> List["hudi_feature_group_alias.HudiFeatureGroupAlias"]:
+        return self._delta_cached_feature_groups
 
     def register_external(
         self,

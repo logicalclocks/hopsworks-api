@@ -24,15 +24,17 @@ from hsfs import feature_group as feature_group_module
 class HudiFeatureGroupAlias:
     def __init__(
         self,
-        feature_group: Dict[str, Any],
+        feature_group: Dict[str, Any, feature_group_module.FeatureGroup],
         alias: str,
         left_feature_group_end_timestamp: Optional[int] = None,
         left_feature_group_start_timestamp: Optional[int] = None,
         **kwargs,
     ) -> None:
-        self._feature_group = feature_group_module.FeatureGroup.from_response_json(
-            feature_group
-        )
+        if not isinstance(feature_group, feature_group_module.FeatureGroup):
+            feature_group = feature_group_module.FeatureGroup.from_response_json(
+                feature_group
+            )
+        self._feature_group = feature_group
         self._alias = alias
         self._left_feature_group_start_timestamp = left_feature_group_start_timestamp
         self._left_feature_group_end_timestamp = left_feature_group_end_timestamp

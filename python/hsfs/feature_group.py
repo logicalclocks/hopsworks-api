@@ -2774,6 +2774,11 @@ class FeatureGroup(FeatureGroupBase):
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
+
+        # sets feature from schema if not provided
+        if not features and self._storage_connector:
+            self._feature_group_engine.set_features_from_schema(self)
+
         if (
             (features is None and len(self._features) > 0)
             or (

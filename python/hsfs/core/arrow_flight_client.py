@@ -630,7 +630,7 @@ def _serialize_featuregroup_connector(fg, query, on_demand_fg_aliases):
 
 
 def _serialize_featuregroup_name(fg):
-    return f"{fg._get_project_name()}.{fg.name}_{fg.version}"
+    return f"{fg._get_project_name()}.{fg.name}_{fg.version if fg.version else 0}"
 
 
 def _serialize_filter_expression(filters, query, short_name=False):
