@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
 import pandas as pd
 import tzlocal
-from hopsworks_common.core.constants import HAS_NUMPY, HAS_PANDAS
+from hopsworks_common.core.constants import HAS_NUMPY, HAS_PANDAS, HAS_POLARS
 from hsfs.constructor import query
 from hsfs.core import feature_group_api
 
@@ -44,6 +44,8 @@ from hsfs.core.vector_db_client import VectorDbClient
 if HAS_NUMPY:
     import numpy as np
 
+if HAS_POLARS:
+    pass
 
 try:
     import pyspark
@@ -56,6 +58,7 @@ try:
         col,
         concat,
         from_json,
+        length,
         lit,
         struct,
         udf,
@@ -1681,12 +1684,121 @@ class Engine:
         df = query.read()
         return df.drop("log_id", time_col)
 
-    def validate_schema(feature_group, df, dataframe_features, options=None):
-        # validate schema using spark
-        print("!!!! Validating schema with spark !!!")
-        print("Feature group: ", feature_group)
-        print("Dataframe: ", df)
-        pass
+    def adjust_string_columns(self, column_lengths: dict, dataframe_features):
+        # dataframe_features is a list of features
+        # each feature has a schema
+        # for the column specified, update the corresponding feature schema online_type to have a max length of max_length
+        for i_feature in dataframe_features:
+            if i_feature.name in column_lengths:
+                print("updating feature: ", i_feature.name)
+                print("with length: ", column_lengths[i_feature.name])
+                i_feature.online_type = f"varchar({column_lengths[i_feature.name]})"
+        return dataframe_features
+
+    def get_feature_from_list(self, feature_name, features):
+        for i_feature in features:
+            if i_feature.name == feature_name:
+                return i_feature
+        raise ValueError(f"Feature {feature_name} not found in feature list")
+
+    @staticmethod
+    def extract_numbers(input_string):
+        # Define regular expression pattern for matching numbers
+        pattern = r"\d+"
+        # Use re.findall() to find all occurrences of the pattern in the input string
+        return re.findall(pattern, input_string)
+
+    def get_online_varchar_length(self, feature):
+        # returns the column length of varchar columns
+        if not feature.type == "string":
+            raise ValueError("Feature not a string type")
+        if not feature.online_type:
+            raise ValueError("Feature is not online enabled")
+
+        return int(self.extract_numbers(feature.online_type)[0])
+
+    def validate_schema(self, feature_group, df, df_features):
+        errors = {}
+        # Check if the primary key columns exist
+        for pk in feature_group.primary_key:
+            if pk not in df.columns:
+                raise ValueError(f"Primary key column {pk} is missing in dataframe")
+
+        if feature_group.event_time and feature_group.event_time not in df.columns:
+            errors["event_time_missing"] = (
+                f"Event time column {feature_group.event_time} is missing in dataframe"
+            )
+
+        column_lengths = {}
+        is_pk_null = False
+        is_fg_created = False
+        if feature_group.id:
+            is_fg_created = True
+
+        if isinstance(df, pd.DataFrame):
+            # Check for null values in the primary key columns
+            for pk in feature_group.primary_key:
+                if df[pk].isnull().any():
+                    errors[f"primary_key_{pk}_null"] = (
+                        f"Primary key column {pk} contains null values"
+                    )
+                    is_pk_null = True
+            # Check for string column lengths
+            for col in df.select_dtypes(include=["object"]).columns:
+                currentmax = df[col].str.len().max()
+                col_max_len = (
+                    self.get_online_varchar_length(
+                        self.get_feature_from_list(col, feature_group.features)
+                    )
+                    if is_fg_created
+                    else 100
+                )
+                if currentmax > col_max_len:
+                    errors[f"column_{col}_length"] = (
+                        f"Column {col} has string values longer than 100 characters"
+                    )
+                    column_lengths[col] = currentmax
+        elif isinstance(df, DataFrame):
+            # Check for null values in the primary key columns
+            for pk in feature_group.primary_key:
+                if df.filter(col(pk).isNull()).count() > 0:
+                    errors[f"primary_key_{pk}_null"] = (
+                        f"Primary key column {pk} contains null values"
+                    )
+                    is_pk_null = True
+            # Check for string column lengths
+            for col_name in df.columns:
+                if df.schema[col_name].dataType == StringType():
+                    currentmax = (
+                        df.select(length(col(col_name)).alias("length"))
+                        .agg({"length": "max"})
+                        .collect()[0][0]
+                    )
+                    col_max_len = (
+                        self.get_online_varchar_length(
+                            self.get_feature_from_list(col_name, feature_group.features)
+                        )
+                        if is_fg_created
+                        else 100
+                    )
+                    if currentmax > col_max_len:
+                        errors[f"column_{col_name}_length"] = (
+                            f"Column {col_name} has string values longer than {col_max_len} characters"
+                        )
+                        column_lengths[col_name] = currentmax
+
+        # if only errors are column lengths and feature_group is not created,
+        # update the feature schema to adjust string lengths and warn the user
+        # else raise error
+        if not is_fg_created and column_lengths and not is_pk_null:
+            df_features = self.adjust_string_columns(column_lengths, df_features)
+            print("new features: ", df_features)
+        elif errors:
+            raise SchemaError(
+                f"One or more data schema errors found. Please the dataframe as per the feature group schema: {errors}"
+            )
+
+        return df_features
 
 
 class SchemaError(Exception):

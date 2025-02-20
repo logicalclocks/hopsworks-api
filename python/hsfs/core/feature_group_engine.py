@@ -104,6 +104,10 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         util.validate_embedding_feature_type(
             feature_group.embedding_index, dataframe_features
         )
+        # validate df schema
+        dataframe_features = engine.get_instance().validate_schema(
+            feature_group, feature_dataframe, dataframe_features
+        )
 
         self.save_feature_group_metadata(
             feature_group, dataframe_features, write_options
@@ -179,8 +183,8 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         )
 
         if validation_options.get("run_validation", False):
-            # get engine instance and validate schema
-            engine.get_instance().validate_schema(
+            # validate df schema
+            dataframe_features = engine.get_instance().validate_schema(
                 feature_group, feature_dataframe, dataframe_features
             )
 
