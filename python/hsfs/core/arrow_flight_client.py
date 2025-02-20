@@ -35,7 +35,7 @@ import pyarrow.flight
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
-from hsfs import feature_group, util
+from hsfs import feature_group
 from hsfs.constructor import query
 from hsfs.core.variable_api import VariableApi
 from hsfs.storage_connector import StorageConnector
@@ -612,8 +612,7 @@ def _serialize_featuregroup_connector(fg, query, on_demand_fg_aliases):
         connector["type"] = fg.storage_connector.type
         connector["options"] = fg.storage_connector.connector_options()
         if fg.storage_connector.type == StorageConnector.S3:
-            path = fg.path if fg.path else util.feature_group_name(fg)
-            connector["options"]["path"] = fg.storage_connector._get_path(path)
+            connector["options"]["path"] = fg.location
         connector["query"] = ""
         if query._left_feature_group == fg:
             connector["filters"] = _serialize_filter_expression(

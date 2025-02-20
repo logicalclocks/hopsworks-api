@@ -506,31 +506,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
     def set_features_from_schema(self, feature_group):
         if feature_group.features is None or len(feature_group.features) == 0:
             # If the user didn't specify the schema, parse it from the query
-            q = feature_group.select_all()
-            if engine.get_instance().is_flyingduck_query_supported(q):
-                from hsfs.core import arrow_flight_client
-                arrow_query = arrow_flight_client.get_instance().create_query_object(
-                    q,
-                    f'SELECT * \nFROM "{arrow_flight_client._serialize_featuregroup_name(feature_group)}"',
-                )
-
-                dataset = util.run_with_loading_animation(
-                    "Reading data from Hopsworks, using Hopsworks Feature Query Service",
-                    arrow_flight_client.get_instance().read_query,
-                    arrow_query,
-                    {},
-                    "default",
-                )
-            else:
-                dataset = engine.get_instance().register_external_temporary_table(
-                    feature_group, "read_tmp"
-                )
-
-            feature_group._features = engine.get_instance().parse_schema_feature_group(
-                dataset
-            )
-
-            print(feature_group._features)
+            feature_group._features = engine.get_instance().parse_schema_feature_group(fg.read())
 
         # set primary, foreign and partition key columns
         # we should move this to the backend

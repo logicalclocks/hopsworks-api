@@ -26,7 +26,7 @@ from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import HAS_NUMPY
 from hsfs import engine, storage_connector, util
 from hsfs import feature_group as fg_mod
-from hsfs.constructor import join
+from hsfs.constructor import join, hudi_feature_group_alias
 from hsfs.constructor.filter import Filter, Logic
 from hsfs.constructor.fs_query import FsQuery
 from hsfs.core import query_constructor_api, storage_connector_api
@@ -94,7 +94,10 @@ class Query:
         Union[str, Dict[str, Any]], Optional["storage_connector.StorageConnector"]
     ]:
         self._check_read_supported(online)
-        fs_query = self._query_constructor_api.construct_query(self)
+        if (self._left_feature_group.id is None and self._left_feature_group.storage_connector):
+            fs_query = self.construct_temporary_query()
+        else:
+            fs_query = self._query_constructor_api.construct_query(self)
 
         if online:
             sql_query = self._to_string(fs_query, online)
@@ -858,3 +861,28 @@ class Query:
                 "Features are accessible by name."
             )
         return self.get_feature(name)
+    
+    def construct_temporary_query(self) -> FsQuery:
+        fg = self._left_feature_group
+
+        # set fg location
+        path = fg.path if fg.path else util.feature_group_name(fg)
+        fg._location = fg.storage_connector._get_path(path)
+
+        # create FsQuery
+        if engine.get_type() == "python":
+            from hsfs.core import arrow_flight_client
+            name = f'"{arrow_flight_client._serialize_featuregroup_name(self._left_feature_group)}"'
+        else:
+            name = "tmp_fg"
+        fs_query = FsQuery(query=f'SELECT * FROM {name}')
+
+        # create and assign fg alias
+        fg_alias = hudi_feature_group_alias.HudiFeatureGroupAlias(fg, alias=name)
+
+        if fg.time_travel_format == "HUDI":
+            fs_query._hudi_cached_feature_groups = [fg_alias]
+        elif fg.time_travel_format == "DELTA":
+            fs_query._delta_cached_feature_groups = [fg_alias]
+
+        return fs_query

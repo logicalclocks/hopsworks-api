@@ -257,12 +257,13 @@ class Engine:
                 version=fg_alias.feature_group.version,
             )
 
-            self.update_table_schema(full_fg)
+            if full_fg:
+                self.update_table_schema(full_fg)
 
-            engine_instance.register_temporary_table(
-                fg_alias,
-                read_options,
-            )
+                engine_instance.register_temporary_table(
+                    fg_alias,
+                    read_options,
+                )
 
     def _return_dataframe_type(self, dataframe, dataframe_type):
         if dataframe_type.lower() in ["default", "spark"]:
