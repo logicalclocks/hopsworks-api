@@ -17,6 +17,7 @@
 
 package com.logicalclocks.hsfs.flink;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -26,6 +27,8 @@ import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.OnlineConfig;
 import com.logicalclocks.hsfs.StatisticsConfig;
 import com.logicalclocks.hsfs.StorageConnector;
+import com.logicalclocks.hsfs.FeatureStoreException;
+import com.logicalclocks.hsfs.JobConfiguration;
 import com.logicalclocks.hsfs.TimeTravelFormat;
 import com.logicalclocks.hsfs.flink.engine.FeatureGroupEngine;
 
@@ -90,6 +93,32 @@ public class StreamFeatureGroup extends FeatureGroupBase<DataStream<?>> {
     this();
     this.featureStore = featureStore;
     this.id = id;
+  }
+
+  /**
+   * Save the feature group metadata on Hopsworks.
+   * This method is idempotent, if the feature group already exists the method does nothing.
+   *
+   * @throws FeatureStoreException
+   * @throws IOException
+   */
+  public void save() throws FeatureStoreException, IOException {
+    save(null, null);
+  }
+
+  /**
+   * Save the feature group metadata on Hopsworks.
+   * This method is idempotent, if the feature group already exists, the method does nothing
+   *
+   * @param writeOptions Options to provide to the materialization job
+   * @param materializationJobConfiguration Resource configuration for the materialization job
+   * @throws FeatureStoreException
+   * @throws IOException
+   */
+  public void save(Map<String, String> writeOptions, JobConfiguration materializationJobConfiguration)
+      throws FeatureStoreException, IOException {
+    featureGroupEngine.save(this, partitionKeys, hudiPrecombineKey,
+        writeOptions, materializationJobConfiguration);
   }
 
   /**
