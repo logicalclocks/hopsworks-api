@@ -1788,15 +1788,18 @@ class Engine:
         # Check if the primary key columns exist
         for pk in feature_group.primary_key:
             if pk not in df.columns:
-                raise ValueError(f"Primary key column {pk} is missing in dataframe")
+                raise SchemaError(
+                    f"Primary key column {pk} is missing in input dataframe"
+                )
 
         if feature_group.event_time and feature_group.event_time not in df.columns:
-            errors["event_time_missing"] = (
-                f"Event time column {feature_group.event_time} is missing in dataframe"
+            raise SchemaError(
+                f"Event time column {feature_group.event_time} is missing in input dataframe"
             )
 
         column_lengths = {}
         is_pk_null = False
+        is_string_length_exceeded = False
         is_fg_created = False
         if feature_group.id:
             is_fg_created = True
@@ -1823,6 +1826,7 @@ class Engine:
                         f"Column {col} has string values longer than 100 characters"
                     )
                     column_lengths[col] = currentmax
+                    is_string_length_exceeded = True
         elif isinstance(df, pl.DataFrame):
             for pk in feature_group.primary_key:
                 if df[pk].is_null().any():
@@ -1844,17 +1848,23 @@ class Engine:
                         f"Column {col} has string values longer than 100 characters"
                     )
                     column_lengths[col] = currentmax
+                    is_string_length_exceeded = True
 
         # if only errors are column lengths and feature_group is not created,
         # update the feature schema to adjust string lengths and warn the user
-        # else raise error
-        if not is_fg_created and column_lengths and not is_pk_null:
-            df_features = util.adjust_string_columns(column_lengths, df_features)
-            print("new features: ", df_features)
-        elif errors:
+        # else raise error if is_pk_null or is_string_length_exceeded
+        if is_pk_null:
             raise SchemaError(
-                f"One or more data schema errors found. Please the dataframe as per the feature group schema: {errors}"
+                f"Null values found for one or more primary keys. One or more schema validation errors found: {errors}"
             )
+        elif is_string_length_exceeded:
+            if not is_fg_created:
+                df_features = util.adjust_string_columns(column_lengths, df_features)
+                print("new features: ", df_features)
+            else:
+                raise SchemaError(
+                    f"String values exceed the maximum length. One or more schema validation errors found: {errors}"
+                )
 
         return df_features
 
