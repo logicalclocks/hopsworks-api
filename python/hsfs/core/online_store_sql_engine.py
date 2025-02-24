@@ -90,7 +90,7 @@ class OnlineStoreSqlClient:
         self._online_connector = None
         self._hostname = None
         self._connection_options = None
-        self._executor: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=1)
+        self._executor: ThreadPoolExecutor = None
 
     def fetch_prepared_statements(
         self,
@@ -247,6 +247,13 @@ class OnlineStoreSqlClient:
             if self._external
             else None
         )
+        if not self._executor:
+            # Create a thread pool executor to run the async queries in parallel if an event is already running
+            self._executor = ThreadPoolExecutor(
+                max_workers=self._connection_options.get("thread_pool_workers", 1)
+                if self._connection_options
+                else 1
+            )
 
     def get_single_feature_vector(self, entry: Dict[str, Any]) -> Dict[str, Any]:
         """Retrieve single vector with parallel queries using aiomysql engine."""
@@ -580,7 +587,8 @@ class OnlineStoreSqlClient:
 
         loop = self._get_or_create_event_loop()
         if loop.is_running():
-            # Try to get running loop (KServe/async app scenario)
+            # If the event loop is currently running, we can use a thread pool executor to execute the async queries in a different thread as asyncio does not allow nested event loops.
+            # This happens when a underlying async app is running eg. Jupyter notebook, Kserve, etc.
             future = self._executor.submit(
                 lambda: asyncio.run(
                     self._execute_prep_statements(prepared_statements, entries)
