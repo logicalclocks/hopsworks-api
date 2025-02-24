@@ -90,6 +90,7 @@ class OnlineStoreSqlClient:
         self._online_connector = None
         self._hostname = None
         self._connection_options = None
+        self._executor: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=1)
 
     def fetch_prepared_statements(
         self,
@@ -246,14 +247,6 @@ class OnlineStoreSqlClient:
             if self._external
             else None
         )
-
-        if util.is_runtime_notebook():
-            _logger.debug("Running in Jupyter notebook, applying nest_asyncio")
-            import nest_asyncio
-
-            nest_asyncio.apply()
-        else:
-            _logger.debug("Running in python script. Not applying nest_asyncio")
 
     def get_single_feature_vector(self, entry: Dict[str, Any]) -> Dict[str, Any]:
         """Retrieve single vector with parallel queries using aiomysql engine."""
@@ -588,13 +581,14 @@ class OnlineStoreSqlClient:
         loop = self._get_or_create_event_loop()
         if loop.is_running():
             # Try to get running loop (KServe/async app scenario)
-            with ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(
-                    lambda: asyncio.run(
-                        self._execute_prep_statements(prepared_statements, entries)
-                    )
+            future = self._executor.submit(
+                lambda: asyncio.run(
+                    self._execute_prep_statements(prepared_statements, entries)
                 )
-                results_rows = future.result(timeout=10)
+            )
+            results_rows = future.result(
+                timeout=self.connection_options.get("query_timeout", 120)
+            )
         else:
             # No running loop (non-async app scenario)
             results_rows = loop.run_until_complete(
