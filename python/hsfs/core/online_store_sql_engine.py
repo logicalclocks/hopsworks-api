@@ -588,6 +588,8 @@ class OnlineStoreSqlClient:
             )
             results_rows = future.result(
                 timeout=self.connection_options.get("query_timeout", 120)
+                if self.connection_options
+                else 120,
             )
         else:
             # No running loop (non-async app scenario)
