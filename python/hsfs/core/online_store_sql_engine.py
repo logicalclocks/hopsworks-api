@@ -622,6 +622,7 @@ class OnlineStoreSqlClient:
         try:
             # Fetching running loop to create tasks since the event loop should already be running at this point.
             loop = asyncio.get_running_loop()
+            asyncio.set_event_loop(loop)  # Setting event loop for the current thread.
 
             # create connection pool
             await self._get_connection_pool(
