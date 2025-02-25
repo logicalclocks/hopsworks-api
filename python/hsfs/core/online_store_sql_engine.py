@@ -620,13 +620,16 @@ class OnlineStoreSqlClient:
         """Iterate over prepared statements to create async tasks
         and gather all tasks results for a given list of entries."""
         try:
+            # Fetching running loop to create tasks since the event loop should already be running at this point.
+            loop = asyncio.get_running_loop()
+
             # create connection pool
             await self._get_connection_pool(
                 len(self._prepared_statements[self.SINGLE_VECTOR_KEY])
             )
 
             tasks = [
-                asyncio.create_task(
+                loop.create_task(
                     self._query_async_sql(prepared_statements[key], entries[key]),
                     name="query_prep_statement_key" + str(key),
                 )
