@@ -19,13 +19,13 @@ pipeline {
     stage('Post webhook') {
       steps {
         // Post webhook to trigger self-hosted workflow run
-        sh 'cat inputs.json && echo "Why?" && curl -L \
+        sh 'cat inputs.json && response=$(curl -L \
             -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/repos/logicalclocks/loadtest/actions/workflows/e2e_small/dispatches \
-            -d @inputs.json'
+            https://api.github.com/repos/logicalclocks/loadtest/actions/workflows/e2e_small.yaml/dispatches \
+            -d @inputs.json) || echo "Failed to post webhook" && echo "Response: ${response}"'
       }
     }
   }
