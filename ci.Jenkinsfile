@@ -19,15 +19,17 @@ pipeline {
     stage('Post webhook') {
       steps {
         // Post webhook to trigger self-hosted workflow run
-        echo "Stop"
-        sh 'response=$(curl -L \
+        // echo "Stop"
+        def response = sh('curl -L \
             -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             https://api.github.com/repos/logicalclocks/loadtest/actions/workflows/e2e_small.yaml/dispatches \
-            -d @inputs.json) && echo $response'
-        sh 'export WORKFLOW_RUN_ID=$(echo $response | jq -r ".id")'
+            -d @inputs.json', returnStdout: true).trim()
+        // export WORKFLOW_RUN_ID=$(echo $response | jq -r '.id')
+        def jsonResponse = readJSON text: response
+        WORKFLOW_RUN_ID = jsonResponse.id
       }
     }
     stage('Wait for github action workflow to complete') {
@@ -36,7 +38,7 @@ pipeline {
           def status = 'in_progress'
           while (status == 'in_progress') {
             sleep 10
-            printenv
+            sh 'printenv'
             def response = sh('curl -L -H "Accept: application/vnd.github+json" -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/logicalclocks/loadtest/actions/runs/${WORKFLOW_RUN_ID}"', returnStdout: true).trim()
             def jsonResponse = readJSON text: response
             status = jsonResponse.status
