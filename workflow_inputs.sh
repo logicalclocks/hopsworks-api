@@ -1,16 +1,23 @@
 #!/bin/bash 
 set -e
 
+touch 'inputs.yaml'
+
+if ( [[ ${ghprbSourceBranch} == "FSTORE-" ]] || [[ ${ghprbSourceBranch} == "HWORKS-" ]] ); then
+  loadtest_branch=${ghprbSourceBranch}
+else
+  loadtest_branch="main"
+fi
+
 printenv
 
-touch 'inputs.yaml'
 yq '.ref = "main"' -i inputs.yaml
 yq '.inputs.python_max_parallel = "6"' -i inputs.yaml
 yq '.inputs.pyspark_max_parallel = "4"' -i inputs.yaml
 hopsworks_domain="10.87.41.158" yq '.inputs.hopsworks_domain = strenv(hopsworks_domain)' -i inputs.yaml
 labels="['e2e_small']" yq  '.inputs.labels = strenv(labels)' -i inputs.yaml
-hopsworks_api_branch=${BRANCH_NAME} yq '.inputs.hopsworks_api_branch = strenv(hopsworks_api_branch)' -i inputs.yaml
-loadtest_branch="main" yq '.inputs.loadtest_branch = strenv(loadtest_branch)' -i inputs.yaml
+hopsworks_api_branch=${ghprbSourceBranch} yq '.inputs.hopsworks_api_branch = strenv(hopsworks_api_branch)' -i inputs.yaml
+loadtest_branch=$loadtest_branch yq '.inputs.loadtest_branch = strenv(loadtest_branch)' -i inputs.yaml
 short_sha=$(git rev-parse --short HEAD) yq '.inputs.short_sha = strenv(short_sha)' -i inputs.yaml
 
 yq -o=json inputs.yaml > inputs.json
