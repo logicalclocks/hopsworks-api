@@ -19,7 +19,7 @@ pipeline {
     stage('Post webhook') {
       steps {
         // Post webhook to trigger self-hosted workflow run
-        sh 'cat inputs.json && echo "Hello" && curl -L \
+        sh 'cat inputs.json && echo "Why?" && curl -L \
             -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
