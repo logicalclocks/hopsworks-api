@@ -1,11 +1,12 @@
 #!/bin/bash 
-touch 'inputs.json'
-jq -n '.ref = "main"' inputs.json
-jq -n --arg hopsworks_domain "10.87.41.128" '.inputs.hopsworks_domain = $hopsworks_domain' inputs.json
-jq -n --arg python_max_parallel 6 '.inputs.python_max_parallel = $python_max_parallel' inputs.json
-jq -n --arg pyspark_max_parallel 4 '.inputs.pyspark_max_parallel = $pyspark_max_parallel' inputs.json
-jq -n --arg labels "['e2e_small']" '.inputs.labels = $labels' inputs.json
-jq -n --arg hopsworks_api_branch "main" '.inputs.hopsworks_api_branch = $hopsworks_api_branch' inputs.json
-jq -n --arg loadtest_branch "main" '.inputs.loadtest_branch = $loadtest_branch' inputs.json
+touch 'inputs.yaml'
+yq '.ref = "main"' -i inputs.yaml
+yq '.inputs.python_max_parallel = 6' -i inputs.yaml
+yq '.inputs.pyspark_max_parallel = 4' -i inputs.yaml
+hopsworks_domain="10.87.41.128" yq '.inputs.hopsworks_domain = strenv(hopsworks_domain)' -i inputs.yaml
+labels="['e2e_small']" yq  '.inputs.labels = $labels' -i inputs.yaml
+hopsworks_api_branch="main" yq  '.inputs.hopsworks_api_branch = $hopsworks_api_branch' -i inputs.yaml
+loadtest_branch="main" yq '.inputs.loadtest_branch = $loadtest_branch' -i inputs.yaml
 
+yq -o=json inputs.yaml > inputs.json
 cat inputs.json
