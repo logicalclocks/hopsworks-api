@@ -27,7 +27,7 @@ pipeline {
             -H "X-GitHub-Api-Version: 2022-11-28" \
             https://api.github.com/repos/logicalclocks/loadtest/actions/workflows/e2e_small.yaml/dispatches \
             -d @inputs.json) && echo $response'
-        sh 'export RUN_ID=$(echo $response | jq -r ".id")'
+        sh 'export WORKFLOW_RUN_ID=$(echo $response | jq -r ".id")'
       }
     }
     stage('Wait for github action workflow to complete') {
@@ -37,7 +37,7 @@ pipeline {
           while (status == 'in_progress') {
             sleep 10
             printenv
-            def response = sh(script: "curl -L -H 'Accept: application/vnd.github+json' -H \"Authorization: Bearer ${GITHUB_TOKEN}\" -H 'X-GitHub-Api-Version: 2022-11-28' https://api.github.com/repos/logicalclocks/loadtest/actions/runs/${env.RUN_ID}", returnStdout: true).trim()
+            def response = sh('curl -L -H "Accept: application/vnd.github+json" -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/logicalclocks/loadtest/actions/runs/${WORKFLOW_RUN_ID}"', returnStdout: true).trim()
             def jsonResponse = readJSON text: response
             status = jsonResponse.status
           }
@@ -48,9 +48,9 @@ pipeline {
   post {
     always {
       rm inputs.json
-      
+
       script {
-        def url = sh('curl -L -H "Accept: application/vnd.github+json" -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "X-GitHub-Api-Version: 2022-11-28" https://api.github.com/repos/logicalclocks/loadtest/actions/runs/${env.RUN_ID}/artifacts | jq -r --arg name "results_${env.RUN_ID}.xml" \'.artifacts[] | select(.name == $name) | .archive_download_url\'', returnStdout: true).trim()
+        def url = sh('curl -L -H "Accept: application/vnd.github+json" -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "X-GitHub-Api-Version: 2022-11-28" https://api.github.com/repos/logicalclocks/loadtest/actions/runs/${WORKFLOW_RUN_ID}/artifacts | jq -r --arg name "results_${WORKFLOW_RUN_ID}.xml" \'.artifacts[] | select(.name == $name) | .archive_download_url\'', returnStdout: true).trim()
         sh 'curl -L -H "Accept: application/vnd.github+json" -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "X-GitHub-Api-Version: 2022-11-28" -o results.zip "$url"'
         sh 'unzip results.zip'
       }
