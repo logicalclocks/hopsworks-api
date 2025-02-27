@@ -19,7 +19,7 @@ loadtest_prs=$(curl -L \
 loadtest_branch=$(jq -r --arg api_branch ${ghprbSourceBranch} '.[] | select(.head.ref == $api_branch)' loadtest_prs.json) || 'main'
 
 cat loadtest_prs.json
-cat loadtest_branch
+echo "${loadtest_branch}"
 
 yq '.ref = "main"' -i inputs.yaml
 yq '.inputs.python_max_parallel = "6"' -i inputs.yaml
