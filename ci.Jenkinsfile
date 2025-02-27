@@ -11,7 +11,7 @@ node("local") {
     }
     steps {
       // Post webhook to trigger self-hosted workflow run
-      sh 'curl -L \
+      sh 'cat inputs.json && curl -L \
           -X POST \
           -H "Accept: application/vnd.github+json" \
           -H "Authorization: Bearer ${GITHUB_TOKEN}" \
