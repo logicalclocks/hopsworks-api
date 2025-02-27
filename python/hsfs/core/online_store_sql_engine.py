@@ -19,6 +19,7 @@ import asyncio
 import json
 import logging
 import re
+from threading import Thread
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
 
 from hopsworks_common.core import variable_api
@@ -45,8 +46,6 @@ if HAS_SQLALCHEMY:
     from sqlalchemy import bindparam, exc, sql, text
 
 if HAS_AIOMYSQL and HAS_SQLALCHEMY:
-    from concurrent.futures import ThreadPoolExecutor
-
     from hsfs.core import util_sql
 
 
@@ -90,7 +89,6 @@ class OnlineStoreSqlClient:
         self._online_connector = None
         self._hostname = None
         self._connection_options = None
-        self._executor: ThreadPoolExecutor = None
 
     def fetch_prepared_statements(
         self,
@@ -247,13 +245,6 @@ class OnlineStoreSqlClient:
             if self._external
             else None
         )
-        if not self._executor:
-            # Create a thread pool executor to run the async queries in parallel if an event is already running
-            self._executor = ThreadPoolExecutor(
-                max_workers=self._connection_options.get("thread_pool_workers", 1)
-                if self._connection_options
-                else 1
-            )
 
     def get_single_feature_vector(self, entry: Dict[str, Any]) -> Dict[str, Any]:
         """Retrieve single vector with parallel queries using aiomysql engine."""
@@ -587,18 +578,25 @@ class OnlineStoreSqlClient:
 
         loop = self._get_or_create_event_loop()
         if loop.is_running():
-            # If the event loop is currently running, we can use a thread pool executor to execute the async queries in a different thread as asyncio does not allow nested event loops.
+            # If the event loop is currently running, we can use a new thread to execute the async queries this is done since asyncio does not allow nested event loops.
             # This happens when a underlying async app is running eg. Jupyter notebook, Kserve, etc.
-            future = self._executor.submit(
-                lambda: asyncio.run(
-                    self._execute_prep_statements(prepared_statements, entries)
-                )
+            execution_results = {}
+            async_thread = Thread(
+                target=lambda: asyncio.run(
+                    self._execute_prep_statements(
+                        prepared_statements, entries, execution_results
+                    )
+                ),
             )
-            results_rows = future.result(
+            async_thread.start()
+
+            # Wait for the async thread to finish, so that the results are available.
+            async_thread.join(
                 timeout=self.connection_options.get("query_timeout", 120)
                 if self.connection_options
                 else 120,
             )
+            results_rows = execution_results["results"]
         else:
             # No running loop (non-async app scenario)
             results_rows = loop.run_until_complete(
@@ -616,6 +614,7 @@ class OnlineStoreSqlClient:
         self,
         prepared_statements: Dict[int, str],
         entries: Union[List[Dict[str, Any]], Dict[str, Any]],
+        execution_results: Dict[str, Any] = None,
     ):
         """Iterate over prepared statements to create async tasks
         and gather all tasks results for a given list of entries."""
@@ -642,6 +641,9 @@ class OnlineStoreSqlClient:
                 if self.connection_options
                 else 120,
             )
+            if execution_results is not None and isinstance(execution_results, dict):
+                # If execution_results is provided, then the function is executed using a thread so store the results in it, so it can be accessed by the parent thread.
+                execution_results["results"] = results
         except asyncio.CancelledError as e:
             _logger.error(f"Failed executing prepared statements: {e}")
             raise e
