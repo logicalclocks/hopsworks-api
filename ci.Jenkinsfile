@@ -1,4 +1,7 @@
 pipeline {
+  agent {
+    label "local"
+  }
   stage('Clone repository') {
     checkout scm
   }
