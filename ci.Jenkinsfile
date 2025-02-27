@@ -9,14 +9,14 @@ pipeline {
     stage('Clone repository') {
       steps {
         checkout scm
+      }
+    }
     stage('Input parameters') {
       steps {
         sh "bash workflow_inputs.sh"
       }
     }
-      sh "bash workflow_inputs.sh"
-          GITHUB_TOKEN = credentials('990f5312-cd08-48ec-baf8-3b27ff551204')
-      }
+    stage('Post webhook') {
       steps {
         // Post webhook to trigger self-hosted workflow run
         sh 'cat inputs.json && curl -L \
