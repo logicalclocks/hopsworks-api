@@ -2,20 +2,24 @@ pipeline {
   agent {
     label "local"
   }
+  environment {
+    GITHUB_TOKEN = credentials('990f5312-cd08-48ec-baf8-3b27ff551204')
+  }
   stages {
     stage('Clone repository') {
-      checkout scm
-    }
+      steps {
+        checkout scm
     stage('Input parameters') {
-      sh "bash workflow_inputs.sh"
+      steps {
+        sh "bash workflow_inputs.sh"
+      }
     }
-    stage('Dispatch self-hosted workflow run') {
-      environment {
+      sh "bash workflow_inputs.sh"
           GITHUB_TOKEN = credentials('990f5312-cd08-48ec-baf8-3b27ff551204')
       }
       steps {
         // Post webhook to trigger self-hosted workflow run
-        sh 'cat inputs.json && echo "Hello World" && curl -L \
+        sh 'cat inputs.json && curl -L \
             -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
