@@ -593,7 +593,7 @@ def _serialize_featuregroup_connector(fg, query, on_demand_fg_aliases):
         connector["time_travel_type"] = None
         connector["type"] = fg.storage_connector.type
         connector["options"] = fg.storage_connector.connector_options()
-        connector["query"] = ""
+        connector["query"] = fg.query
         for on_demand_fg_alias in on_demand_fg_aliases:
             # backend attaches dynamic query to on_demand_fg_alias.on_demand_feature_group.query if any
             if on_demand_fg_alias.on_demand_feature_group.name == fg.name:
