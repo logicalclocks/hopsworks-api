@@ -19,7 +19,7 @@ pipeline {
     stage('Post webhook') {
       steps {
         // Post webhook to trigger self-hosted workflow run
-        echo "Post webhook to trigger self-hosted workflow run"
+        echo "Stop"
         sh 'response=$(curl -L \
             -X POST \
             -H "Accept: application/vnd.github+json" \
@@ -45,9 +45,9 @@ pipeline {
   }
   post {
     always {
-      scripts {
-        def url = sh('curl -L -H "Accept: application/vnd.github+json" -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "X-GitHub-Api-Version: 2022-11-28" https://api.github.com/repos/logicalclocks/loadtest/actions/runs/${env.RUN_ID}/artifacts/ | jq -r --arg name "results_${env.RUN_ID}.xml" ".artifacts | select(.[] | .name == $name) | .archive_download_url"', returnStdout: true).trim()
-        sh 'curl -L -H "Accept: application/vnd.github+json" -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "X-GitHub-Api-Version: 2022-11-28" -o results.zip $url'
+      script {
+        def url = sh('curl -L -H "Accept: application/vnd.github+json" -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "X-GitHub-Api-Version: 2022-11-28" https://api.github.com/repos/logicalclocks/loadtest/actions/runs/${env.RUN_ID}/artifacts | jq -r --arg name "results_${env.RUN_ID}.xml" \'.artifacts[] | select(.name == $name) | .archive_download_url\'', returnStdout: true).trim()
+        sh 'curl -L -H "Accept: application/vnd.github+json" -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "X-GitHub-Api-Version: 2022-11-28" -o results.zip "$url"'
         sh 'unzip results.zip'
       }
       junit 'results.xml'
