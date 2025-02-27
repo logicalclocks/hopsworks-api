@@ -47,6 +47,8 @@ pipeline {
   }
   post {
     always {
+      rm inputs.json
+      
       script {
         def url = sh('curl -L -H "Accept: application/vnd.github+json" -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "X-GitHub-Api-Version: 2022-11-28" https://api.github.com/repos/logicalclocks/loadtest/actions/runs/${env.RUN_ID}/artifacts | jq -r --arg name "results_${env.RUN_ID}.xml" \'.artifacts[] | select(.name == $name) | .archive_download_url\'', returnStdout: true).trim()
         sh 'curl -L -H "Accept: application/vnd.github+json" -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "X-GitHub-Api-Version: 2022-11-28" -o results.zip "$url"'

@@ -1,7 +1,7 @@
 #!/bin/bash 
 set -e
 
-touch 'inputs.yaml'
+echo "" > inputs.yaml
 
 if ( [[ ${ghprbSourceBranch} == "FSTORE-" ]] || [[ ${ghprbSourceBranch} == "HWORKS-" ]] ); then
   loadtest_branch=${ghprbSourceBranch}
