@@ -16,7 +16,6 @@
 
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING, Any, Dict, List, Set, Union
 
 from hopsworks_common.util import (
@@ -107,42 +106,6 @@ def build_serving_keys_from_prepared_statements(
                 )
             )
     return serving_keys
-
-
-def adjust_string_columns(column_lengths: dict, dataframe_features):
-    # dataframe_features is a list of features
-    # each feature has a schema
-    # for the column specified, update the corresponding feature schema online_type to have a max length of max_length
-    for i_feature in dataframe_features:
-        if i_feature.name in column_lengths:
-            print("updating feature: ", i_feature.name)
-            print("with length: ", column_lengths[i_feature.name])
-            i_feature.online_type = f"varchar({column_lengths[i_feature.name]})"
-    return dataframe_features
-
-
-def get_feature_from_list(feature_name, features):
-    for i_feature in features:
-        if i_feature.name == feature_name:
-            return i_feature
-    raise ValueError(f"Feature {feature_name} not found in feature list")
-
-
-def extract_numbers(input_string):
-    # Define regular expression pattern for matching numbers
-    pattern = r"\d+"
-    # Use re.findall() to find all occurrences of the pattern in the input string
-    return re.findall(pattern, input_string)
-
-
-def get_online_varchar_length(feature):
-    # returns the column length of varchar columns
-    if not feature.type == "string":
-        raise ValueError("Feature not a string type")
-    if not feature.online_type:
-        raise ValueError("Feature is not online enabled")
-
-    return int(extract_numbers(feature.online_type)[0])
 
 
 __all__ = [

@@ -142,6 +142,15 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             ge_report,
         )
 
+    # Update the original method to use the strategy pattern
+    def _validate_schema(self, feature_group, df, df_features):
+        from hsfs.core.schema_validation import DataFrameValidator
+
+        validator = DataFrameValidator.get_validator(df)
+        if validator is None:
+            return df_features
+        return validator.validate_schema(feature_group, df, df_features)
+
     def insert(
         self,
         feature_group: Union[fg.FeatureGroup, fg.ExternalFeatureGroup],
@@ -184,7 +193,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
         if validation_options.get("run_validation", False):
             # validate df schema
-            dataframe_features = engine.get_instance().validate_schema(
+            dataframe_features = self._validate_schema(
                 feature_group, feature_dataframe, dataframe_features
             )
 

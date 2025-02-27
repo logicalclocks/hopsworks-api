@@ -1685,7 +1685,13 @@ class Engine:
         return df.drop("log_id", time_col)
 
     def validate_schema(self, feature_group, df, df_features):
+        # Determine dataframe type
+        if isinstance(df, pd.DataFrame):
+            # invoke the validate_schema method from the python.py engine class
+            Engine().validate_schema(feature_group, df, df_features)
+
         errors = {}
+
         # Check if the primary key columns exist
         for pk in feature_group.primary_key:
             if pk not in df.columns:
