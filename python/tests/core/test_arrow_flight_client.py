@@ -380,12 +380,6 @@ class TestArrowFlightClient:
             key: sorted(value) for key, value in query_object["features"].items()
         }
 
-        print("####-----------------####")
-        import json
-
-        print(json.dumps(query_object))
-        print("####-----------------####")
-
         assert str(query_object_reference) == str(query_object)
 
     def test_construct_query_object_snowflake(self, mocker, backend_fixtures):
