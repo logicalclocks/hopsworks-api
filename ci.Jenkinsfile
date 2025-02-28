@@ -21,7 +21,7 @@ pipeline {
         script {
             // Post webhook to trigger self-hosted workflow run
             // echo "Stop"
-            def response = sh("""curl -L \
+            def response = sh(script: """curl -L \
                 -X POST \
                 -H "Accept: application/vnd.github+json" \
                 -H "Authorization: Bearer ${GITHUB_TOKEN}" \
