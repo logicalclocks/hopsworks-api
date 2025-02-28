@@ -49,7 +49,7 @@ pipeline {
     stage ('Find workflow run id') {
       steps {
         script {
-          def runs = sh(script: """curl -L -X GET -H "Accept: application/vnd.github+json" \
+          def runs = sh(script: """curl -L -X GET -G -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             -d "event=workflow_dispatch" -d "actor=HopsworksJenkins" \
