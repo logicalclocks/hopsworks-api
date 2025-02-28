@@ -23,7 +23,7 @@ pipeline {
     }
     stage('Wait for github action workflow to complete') {
       steps {
-        sh "bash .github/wait_for_workflow.sh"
+        sh "bash .github/wait_for_workflow_run.sh"
       }
     }
   }
