@@ -22,6 +22,7 @@ pipeline {
         script {
           // Triggering workflow dispatch event does not return an identifier which can be used, 
           // therefore the short sha will be used to identify the workflow run 
+          TIME_BEFORE_WORKFLOW_DISPATCH = sh(script: "date -u +%Y-%m-%dT%H:%M:%SZ", returnStdout: true).trim()
           SHORT_SHA = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
           HEAD_SHA = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
           echo "Short sha: ${SHORT_SHA}"
@@ -35,7 +36,7 @@ pipeline {
     stage('Post webhook') {
       steps {
         script {
-          def currentTime = sh(script: "date -u +%Y-%m-%dT%H:%M:%SZ", returnStdout: true).trim()
+          
           sh(script: """curl -L -X POST -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
@@ -50,7 +51,7 @@ pipeline {
           def runs = sh(script: """curl -L -X GET -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/repos/logicalclocks/loadtest/actions/runs?event=workflow_dispatch&actor=HopsworksJenkins&branch=${REF_LOADTEST_BRANCH}&created:>${currentTime}""", returnStdout: true).trim()
+            https://api.github.com/repos/logicalclocks/loadtest/actions/runs?event=workflow_dispatch&actor=HopsworksJenkins&branch=${REF_LOADTEST_BRANCH}&created:>${TIME_BEFORE_WORKFLOW_DISPATCH}""", returnStdout: true).trim()
           echo "Runs: ${runs}"
           WORKFLOW_RUN_ID = sh(script: """echo ${runs} | jq -r --arg short_sha "${SHORT_SHA}" '.workflow_runs[] | select(.inputs.short_sha == $short_sha) | .id'""", returnStdout: true).trim()
           echo "Workflow run id: ${WORKFLOW_RUN_ID}"
