@@ -34,6 +34,7 @@ pipeline {
             echo "JSON Response: ${jsonResponse}"
             WORKFLOW_RUN_ID = jsonResponse.id
             echo "Workflow Run ID: ${WORKFLOW_RUN_ID}"
+        } 
       }
     }
     stage('Wait for github action workflow to complete') {
