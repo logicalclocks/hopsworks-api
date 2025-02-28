@@ -49,14 +49,15 @@ pipeline {
     stage ('Find workflow run id') {
       steps {
         script {
+          TIME_AFTER_WORKFLOW_DISPATCH = sh(script: "date -u +%Y-%m-%dT%H:%M:%SZ", returnStdout: true).trim()
           def runs = sh(script: """curl -L -X GET -G -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            -d "event=workflow_dispatch" -d "actor=HopsworksJenkins" \
-            -d "branch=${REF_LOADTEST_BRANCH}" -d "created:>${TIME_BEFORE_WORKFLOW_DISPATCH}" \
+            -d "event=workflow_dispatch" -d "actor=HopsworksJenkins" -d "branch=${REF_LOADTEST_BRANCH}" \
+            -d "created:${TIME_BEFORE_WORKFLOW_DISPATCH}..${TIME_AFTER_WORKFLOW_DISPATCH}" \
             https://api.github.com/repos/logicalclocks/loadtest/actions/runs""", returnStdout: true).trim()
           echo "Runs: ${runs}"
-          WORKFLOW_RUN_ID = sh(script: """echo ${runs} | jq -r --arg short_sha "${SHORT_SHA}" '.workflow_runs[] | select(.inputs.short_sha == $short_sha) | .id'""", returnStdout: true).trim()
+          WORKFLOW_RUN_ID = sh(script: """echo ${runs} | jq -r --arg short_sha "${SHORT_SHA}" '.workflow_runs[0].id'""", returnStdout: true).trim()
           echo "Workflow run id: ${WORKFLOW_RUN_ID}"
         }
       }
