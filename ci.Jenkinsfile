@@ -51,7 +51,7 @@ pipeline {
     }
   }
   post {
-    always {
+    // always {
         sh 'rm inputs.json && rm response.json && rm workflow_response.json'
 //         sh """ curl -L -H "Accept: application/vnd.github+json" \
 //         -H "Authorization: Bearer ${GITHUB_TOKEN}" \
@@ -62,5 +62,5 @@ pipeline {
 //         sh 'unzip results.zip'
       }
 //       junit 'results.xml'
-    }
+    // }
 }
