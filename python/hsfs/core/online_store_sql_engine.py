@@ -93,10 +93,8 @@ class OnlineStoreSqlClient:
         self._async_task_thread = AsyncTaskThread()  # Thread used to run async tasks
 
     def __del__(self):
-        """
-        Close connectio
-        """
-
+        # Safely stop the async task thread.
+        # The connection pool will be closed during garbage collection by aiomysql.
         if self._async_task_thread.is_alive():
             self._async_task_thread.stop()
 
