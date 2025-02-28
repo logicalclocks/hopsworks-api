@@ -9,6 +9,7 @@ else
   loadtest_branch="main"
 fi
 
+printenv
 
 loadtest_prs=$(curl -L \
   -H "Accept: application/vnd.github+json" \

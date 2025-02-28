@@ -30,7 +30,7 @@ pipeline {
                 -d @inputs.json > response.json"""
             // export WORKFLOW_RUN_ID=$(echo $response | jq -r '.id')
             sh "cat response.json"
-            sh "export WORKFLOW_RUN_ID=$(cat response.json | jq -r '.id') && echo $WORKFLOW_RUN_ID"
+            sh 'export WORKFLOW_RUN_ID=$(cat response.json | jq -r '.id') && echo $WORKFLOW_RUN_ID'
         } 
       }
     }
@@ -50,9 +50,9 @@ pipeline {
       }
     }
   }
-//   post {
-//     always {
-//         sh 'rm inputs.json'
+  post {
+    always {
+        sh 'rm inputs.json && rm response.json && rm workflow_response.json'
 //         sh """ curl -L -H "Accept: application/vnd.github+json" \
 //         -H "Authorization: Bearer ${GITHUB_TOKEN}" \
 //         -H "X-GitHub-Api-Version: 2022-11-28" \
@@ -60,7 +60,7 @@ pipeline {
 //         sh 'url=$(cat artifacts.json | jq -r ".artifacts[0].archive_download_url") && export REPORT_URL=$url'
 //         sh 'curl -L -H "Accept: application/vnd.github+json" -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "X-GitHub-Api-Version: 2022-11-28" -o results.zip "${REPORT_URL}"'
 //         sh 'unzip results.zip'
-//       }
+      }
 //       junit 'results.xml'
-//     }
+    }
 }
