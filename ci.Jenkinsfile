@@ -52,7 +52,9 @@ pipeline {
           def runs = sh(script: """curl -L -X GET -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/repos/logicalclocks/loadtest/actions/runs?event=workflow_dispatch&actor=HopsworksJenkins&branch=${REF_LOADTEST_BRANCH}&created:>${TIME_BEFORE_WORKFLOW_DISPATCH}""", returnStdout: true).trim()
+            -d "event=workflow_dispatch" -d "actor=HopsworksJenkins" \
+            -d "branch=${REF_LOADTEST_BRANCH}" -d "created:>${TIME_BEFORE_WORKFLOW_DISPATCH}" \
+            "https://api.github.com/repos/logicalclocks/loadtest/actions/runs""", returnStdout: true).trim()
           echo "Runs: ${runs}"
           WORKFLOW_RUN_ID = sh(script: """echo ${runs} | jq -r --arg short_sha "${SHORT_SHA}" '.workflow_runs[] | select(.inputs.short_sha == $short_sha) | .id'""", returnStdout: true).trim()
           echo "Workflow run id: ${WORKFLOW_RUN_ID}"
