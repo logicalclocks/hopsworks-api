@@ -77,13 +77,35 @@ pipeline {
     }
     stage('Download artifacts') {
       steps {
-        sh "bash .github/download_artifacts.sh"
+        script {
+          def workflow_run_artifacts = sh(
+            script: """curl -L -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/logicalclocks/loadtest/actions/runs/${WORKFLOW_RUN_ID}/artifacts""",
+            returnStdout: true
+          ).trim()
+          echo "Workflow run artifacts: ${workflow_run_artifacts}"
+          def REPORT_URL = sh(
+            script: """echo ${workflow_run_artifacts} | jq -r ".artifacts[0].archive_download_url" """,
+            returnStdout: true
+          ).trim()
+          echo "Report url: ${REPORT_URL}"
+          sh(
+            script: """curl -L -H \"Accept: application/vnd.github+json\" \
+            -H \"Authorization: Bearer ${GITHUB_TOKEN}\" \
+            -H \"X-GitHub-Api-Version: 2022-11-28\" \
+            -o results.zip "${REPORT_URL}" """
+          )
+          sh "unzip results.zip"
+        }
       }
     }
   }
   post {
     always {
-      sh "bash .github/cleanup.sh"
+      sh "rm results.zip"
+      sh "rm inputs.json"
       junit 'results.xml'
     }
   }
