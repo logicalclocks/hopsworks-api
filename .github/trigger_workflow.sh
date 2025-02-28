@@ -9,5 +9,5 @@ curl -L -X POST \
     https://api.github.com/repos/logicalclocks/loadtest/actions/workflows/e2e_small.yaml/dispatches \
     -d @inputs.json > response.json
 
-cat response.json
+
 

@@ -1,6 +1,7 @@
 #!/bin/bash 
 set -e
 
+SHORT_SHA=$1
 echo "" > inputs.yaml
 
 if ( [[ ${ghprbSourceBranch} == "FSTORE-" ]] || [[ ${ghprbSourceBranch} == "HWORKS-" ]] ); then
@@ -8,8 +9,6 @@ if ( [[ ${ghprbSourceBranch} == "FSTORE-" ]] || [[ ${ghprbSourceBranch} == "HWOR
 else
   loadtest_branch="main"
 fi
-
-printenv
 
 loadtest_prs=$(curl -L \
   -H "Accept: application/vnd.github+json" \
@@ -32,7 +31,7 @@ hopsworks_domain="10.87.41.190" yq '.inputs.hopsworks_domain = strenv(hopsworks_
 labels="['e2e_small']" yq  '.inputs.labels = strenv(labels)' -i inputs.yaml
 hopsworks_api_branch=${ghprbSourceBranch} yq '.inputs.hopsworks_api_branch = strenv(hopsworks_api_branch)' -i inputs.yaml
 loadtest_branch=${loadtest_branch} yq '.inputs.loadtest_branch = strenv(loadtest_branch)' -i inputs.yaml
-short_sha=$(git rev-parse --short HEAD) yq '.inputs.short_sha = strenv(short_sha)' -i inputs.yaml
+short_sha=$SHORT_SHA yq '.inputs.short_sha = strenv(short_sha)' -i inputs.yaml
 
 yq -o=json inputs.yaml > inputs.json
 cat inputs.json

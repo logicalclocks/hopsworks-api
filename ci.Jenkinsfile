@@ -1,4 +1,6 @@
 def WORKFLOW_RUN_ID = "0"
+def SHORT_SHA = ""
+def HEAD_SHA = ""
 
 pipeline {
   agent {
@@ -15,19 +17,37 @@ pipeline {
     }
     stage('Input parameters') {
       steps {
-        sh "bash .github/workflow_inputs.sh"
+        script {
+          // Triggering workflow dispatch event does not return an identifier which can be used, 
+          // therefore the short sha will be used to identify the workflow run 
+          SHORT_SHA = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+          HEAD_SHA = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
+          echo "Short sha: ${SHORT_SHA}"
+          echo "Head sha: ${HEAD_SHA}"
+          sh "bash .github/workflow_inputs.sh ${SHORT_SHA}"
+        }
       }
     }
     stage('Post webhook') {
       steps {
         script {
-          def response = sh(script: """curl -L -X POST -H "Accept: application/vnd.github+json" \
+          sh(script: """curl -L -X POST -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             -d @inputs.json \
-            https://api.github.com/repos/logicalclocks/loadtest/actions/workflows/e2e_small.yaml/dispatches""", returnStdout: true).trim()
-          echo "Response: ${response}"
-          WORKFLOW_RUN_ID = sh(script: "echo ${response} | jq -r '.id'", returnStdout: true).trim()
+            https://api.github.com/repos/logicalclocks/loadtest/actions/workflows/e2e_small.yaml/dispatches""")
+        }
+      }
+    }
+    stage ('Find workflow run id') {
+      steps {
+        script {
+          def runs = sh(script: """curl -L -X GET -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/logicalclocks/loadtest/actions/runs?head_sha=${HEAD_SHA}""", returnStdout: true).trim()
+          echo "Runs: ${runs}"
+          WORKFLOW_RUN_ID = sh(script: "echo ${runs} | jq -r '.workflow_runs[0].id'", returnStdout: true).trim()
           echo "Workflow run id: ${WORKFLOW_RUN_ID}"
         }
       }
