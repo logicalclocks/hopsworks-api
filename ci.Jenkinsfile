@@ -55,9 +55,9 @@ pipeline {
             -d "created:${TIME_BEFORE_WORKFLOW_DISPATCH}..${TIME_AFTER_WORKFLOW_DISPATCH}" \
             -d "sort=created:desc" \
             https://api.github.com/repos/logicalclocks/loadtest/actions/runs""", returnStdout: true).trim()
-          echo "Runs: ${runs}"
+          // echo "Runs: ${runs}"
           WORKFLOW_RUN_ID = sh(script: """echo ${runs} | jq -r '.workflow_runs[0].id'""", returnStdout: true).trim()
-          echo "Workflow run id: ${WORKFLOW_RUN_ID}"
+          // echo "Workflow run id: ${WORKFLOW_RUN_ID}"
         }
       }
     }
