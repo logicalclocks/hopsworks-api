@@ -57,7 +57,6 @@ pipeline {
   }
   post {
     always {
-        steps {
         sh 'rm inputs.json'
         sh """ curl -L -H "Accept: application/vnd.github+json" \
         -H "Authorization: Bearer ${GITHUB_TOKEN}" \
@@ -69,5 +68,4 @@ pipeline {
       }
       junit 'results.xml'
     }
-  }
 }
