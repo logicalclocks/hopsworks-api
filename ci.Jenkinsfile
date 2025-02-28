@@ -52,7 +52,7 @@ pipeline {
   }
 //   post {
     // always {
-        sh 'rm inputs.json && rm response.json && rm workflow_response.json'
+        // sh 'rm inputs.json && rm response.json && rm workflow_response.json'
 //         sh """ curl -L -H "Accept: application/vnd.github+json" \
 //         -H "Authorization: Bearer ${GITHUB_TOKEN}" \
 //         -H "X-GitHub-Api-Version: 2022-11-28" \
