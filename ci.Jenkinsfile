@@ -30,7 +30,7 @@ pipeline {
                 -d @inputs.json > response.json"""
             // export WORKFLOW_RUN_ID=$(echo $response | jq -r '.id')
             sh "cat response.json"
-            sh 'export WORKFLOW_RUN_ID=$(cat response.json | jq -r '.id') && echo $WORKFLOW_RUN_ID'
+            sh 'export WORKFLOW_RUN_ID=$(cat response.json | jq -r ".id") && echo $WORKFLOW_RUN_ID'
         } 
       }
     }
