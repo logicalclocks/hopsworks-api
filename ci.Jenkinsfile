@@ -42,6 +42,7 @@ pipeline {
             -H "X-GitHub-Api-Version: 2022-11-28" \
             -d @inputs.json \
             https://api.github.com/repos/logicalclocks/loadtest/actions/workflows/e2e_small.yaml/dispatches""")
+          sh "rm inputs.json"
         }
       }
     }
@@ -97,16 +98,16 @@ pipeline {
             -H \"X-GitHub-Api-Version: 2022-11-28\" \
             -o results.zip "${REPORT_URL}" """
           )
-          sh "unzip results.zip"
+          sh "unzip results.zip && rm results.zip"
         }
       }
     }
   }
-  post {
-    always {
-      sh "rm results.zip"
-      sh "rm inputs.json"
-      junit 'results.xml'
-    }
-  }
+  // post {
+  //   always {
+  //     sh "rm results.zip"
+  //     sh "rm inputs.json"
+  //     junit 'results.xml'
+  //   }
+  // }
 }
