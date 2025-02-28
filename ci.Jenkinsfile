@@ -1,6 +1,8 @@
 def WORKFLOW_RUN_ID = "0"
 def SHORT_SHA = ""
 def HEAD_SHA = ""
+def REF_LOADTEST_BRANCH = ""
+def TIME_BEFORE_WORKFLOW_DISPATCH = ""
 
 pipeline {
   agent {
@@ -25,12 +27,15 @@ pipeline {
           echo "Short sha: ${SHORT_SHA}"
           echo "Head sha: ${HEAD_SHA}"
           sh "bash .github/workflow_inputs.sh ${SHORT_SHA}"
+          REF_LOADTEST_BRANCH = sh(script: "cat inputs.json | jq -r '.ref'", returnStdout: true).trim()
+          echo "Ref loadtest branch: ${REF_LOADTEST_BRANCH}"
         }
       }
     }
     stage('Post webhook') {
       steps {
         script {
+          def currentTime = sh(script: "date -u +%Y-%m-%dT%H:%M:%SZ", returnStdout: true).trim()
           sh(script: """curl -L -X POST -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
@@ -45,9 +50,9 @@ pipeline {
           def runs = sh(script: """curl -L -X GET -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/repos/logicalclocks/loadtest/actions/runs""", returnStdout: true).trim()
+            https://api.github.com/repos/logicalclocks/loadtest/actions/runs?event=workflow_dispatch&actor=HopsworksJenkins&branch=${REF_LOADTEST_BRANCH}&created:>${currentTime}""", returnStdout: true).trim()
           echo "Runs: ${runs}"
-          WORKFLOW_RUN_ID = sh(script: "echo ${runs} | jq -r '.workflow_runs[0].id'", returnStdout: true).trim()
+          WORKFLOW_RUN_ID = sh(script: """echo ${runs} | jq -r --arg short_sha "${SHORT_SHA}" '.workflow_runs[] | select(.inputs.short_sha == $short_sha) | .id'""", returnStdout: true).trim()
           echo "Workflow run id: ${WORKFLOW_RUN_ID}"
         }
       }
