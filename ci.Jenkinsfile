@@ -18,10 +18,9 @@ pipeline {
     }
     stage('Post webhook') {
       steps {
-        step {
-          script {
-          // Post webhook to trigger self-hosted workflow run
-          // echo "Stop"
+        script {
+            // Post webhook to trigger self-hosted workflow run
+            // echo "Stop"
             def response = sh("""curl -L \
                 -X POST \
                 -H "Accept: application/vnd.github+json" \
@@ -31,9 +30,10 @@ pipeline {
                 -d @inputs.json""", returnStdout: true).trim()
             // export WORKFLOW_RUN_ID=$(echo $response | jq -r '.id')
             def jsonResponse = readJSON text: response
+            echo "Response: ${response}"
+            echo "JSON Response: ${jsonResponse}"
             WORKFLOW_RUN_ID = jsonResponse.id
-          }
-        }
+            echo "Workflow Run ID: ${WORKFLOW_RUN_ID}"
       }
     }
     stage('Wait for github action workflow to complete') {
