@@ -54,7 +54,7 @@ pipeline {
             -H "X-GitHub-Api-Version: 2022-11-28" \
             -d "event=workflow_dispatch" -d "actor=HopsworksJenkins" \
             -d "branch=${REF_LOADTEST_BRANCH}" -d "created:>${TIME_BEFORE_WORKFLOW_DISPATCH}" \
-            "https://api.github.com/repos/logicalclocks/loadtest/actions/runs""", returnStdout: true).trim()
+            https://api.github.com/repos/logicalclocks/loadtest/actions/runs""", returnStdout: true).trim()
           echo "Runs: ${runs}"
           WORKFLOW_RUN_ID = sh(script: """echo ${runs} | jq -r --arg short_sha "${SHORT_SHA}" '.workflow_runs[] | select(.inputs.short_sha == $short_sha) | .id'""", returnStdout: true).trim()
           echo "Workflow run id: ${WORKFLOW_RUN_ID}"
