@@ -19,10 +19,10 @@ import asyncio
 import json
 import logging
 import re
-from threading import Thread
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
 
 from hopsworks_common.core import variable_api
+from hopsworks_common.util import AsyncTask, AsyncTaskThread
 from hsfs import util
 from hsfs.core import (
     feature_view_api,
@@ -89,6 +89,16 @@ class OnlineStoreSqlClient:
         self._online_connector = None
         self._hostname = None
         self._connection_options = None
+
+        self._async_task_thread = AsyncTaskThread()  # Thread used to run async tasks
+
+    def __del__(self):
+        """
+        Close connectio
+        """
+
+        if self._async_task_thread.is_alive():
+            self._async_task_thread.stop()
 
     def fetch_prepared_statements(
         self,
@@ -246,6 +256,20 @@ class OnlineStoreSqlClient:
             else None
         )
 
+        if not self._async_task_thread.is_alive():
+            # Start the async event thread if it is not already running
+            self._async_task_thread.start()
+
+        if not self.connection_pool:
+            # Acquire a connection pool that can be used with the event loop running in the async task thread.
+            # The connection pool is also not manually closed, it will be during garbage collection, by aiomysql.
+            self._connection_pool = self._async_task_thread.submit(
+                AsyncTask(
+                    self._get_connection_pool,
+                    len(self._prepared_statements[self.SINGLE_VECTOR_KEY]),
+                )
+            )
+
     def get_single_feature_vector(self, entry: Dict[str, Any]) -> Dict[str, Any]:
         """Retrieve single vector with parallel queries using aiomysql engine."""
         return self._single_vector_result(
@@ -318,10 +342,13 @@ class OnlineStoreSqlClient:
         _logger.debug(
             f"Executing prepared statements for serving vector with entries: {bind_entries}"
         )
-        results_dict = self._trigger_async_fetch_rows(
-            prepared_statement_execution, bind_entries
+        results_dict = self._async_task_thread.submit(
+            AsyncTask(
+                self._execute_prep_statements,
+                prepared_statement_execution,
+                bind_entries,
+            )
         )
-
         _logger.debug(f"Retrieved feature vectors: {results_dict}")
         _logger.debug("Constructing serving vector from results")
         for key in results_dict:
@@ -386,8 +413,10 @@ class OnlineStoreSqlClient:
             f"Executing prepared statements for batch vector with entries: {entry_values}"
         )
         # run all the prepared statements in parallel using aiomysql engine
-        parallel_results = self._trigger_async_fetch_rows(
-            prepared_stmts_to_execute, entry_values
+        parallel_results = self._async_task_thread.submit(
+            AsyncTask(
+                self._execute_prep_statements, prepared_stmts_to_execute, entry_values
+            )
         )
 
         _logger.debug(f"Retrieved feature vectors: {parallel_results}, stitching them.")
@@ -432,20 +461,6 @@ class OnlineStoreSqlClient:
                     )
                 )
         return batch_results, serving_keys_all_fg
-
-    def _get_or_create_event_loop(self):
-        try:
-            _logger.debug("Acquiring or starting event loop for async engine.")
-            loop = asyncio.get_event_loop()
-            asyncio.set_event_loop(loop)
-        except RuntimeError as ex:
-            if "There is no current event loop in thread" in str(ex):
-                _logger.debug(
-                    "No existing running event loop. Creating new event loop."
-                )
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-        return loop
 
     def refresh_mysql_connection(self):
         _logger.debug("Refreshing MySQL connection.")
@@ -539,16 +554,18 @@ class OnlineStoreSqlClient:
         ]
 
     async def _get_connection_pool(self, default_min_size: int) -> None:
-        self._connection_pool = await util_sql.create_async_engine(
+        connection_pool = await util_sql.create_async_engine(
             self._online_connector,
             self._external,
             default_min_size,
             options=self._connection_options,
             hostname=self._hostname,
         )
+        return connection_pool
 
     async def _query_async_sql(self, stmt, bind_params):
         """Query prepared statement together with bind params using aiomysql connection pool"""
+        # create connection pool
         async with self._connection_pool.acquire() as conn:
             # Execute the prepared statement
             _logger.debug(
@@ -563,11 +580,14 @@ class OnlineStoreSqlClient:
 
         return resultset
 
-    def _trigger_async_fetch_rows(
+    async def _execute_prep_statements(
         self,
         prepared_statements: Dict[int, str],
         entries: Union[List[Dict[str, Any]], Dict[str, Any]],
-    ) -> Dict[int, List[Dict[str, Any]]]:
+    ):
+        """Iterate over prepared statements to create async tasks
+        and gather all tasks results for a given list of entries."""
+
         # validate if prepared_statements and entries have the same keys
         if prepared_statements.keys() != entries.keys():
             # iterate over prepared_statements and entries to find the missing key
@@ -576,59 +596,9 @@ class OnlineStoreSqlClient:
                 if key not in entries:
                     prepared_statements.pop(key)
 
-        loop = self._get_or_create_event_loop()
-        if loop.is_running():
-            # If the event loop is currently running, we can use a new thread to execute the async queries this is done since asyncio does not allow nested event loops.
-            # This happens when a underlying async app is running eg. Jupyter notebook, Kserve, etc.
-            execution_results = {}
-            async_thread = Thread(
-                target=lambda: asyncio.run(
-                    self._execute_prep_statements(
-                        prepared_statements, entries, execution_results
-                    )
-                ),
-            )
-            async_thread.start()
-
-            # Wait for the async thread to finish, so that the results are available.
-            async_thread.join(
-                timeout=self.connection_options.get("query_timeout", 120)
-                if self.connection_options
-                else 120,
-            )
-            results_rows = execution_results["results"]
-        else:
-            # No running loop (non-async app scenario)
-            results_rows = loop.run_until_complete(
-                self._execute_prep_statements(prepared_statements, entries)
-            )
-
-        # Create a dict of results with the prepared statement index as key
-        results_dict = {}
-        for i, key in enumerate(prepared_statements):
-            results_dict[key] = results_rows[i]
-
-        return results_dict
-
-    async def _execute_prep_statements(
-        self,
-        prepared_statements: Dict[int, str],
-        entries: Union[List[Dict[str, Any]], Dict[str, Any]],
-        execution_results: Dict[str, Any] = None,
-    ):
-        """Iterate over prepared statements to create async tasks
-        and gather all tasks results for a given list of entries."""
         try:
-            # Fetching running loop to create tasks since the event loop should already be running at this point.
-            loop = asyncio.get_running_loop()
-
-            # create connection pool
-            await self._get_connection_pool(
-                len(self._prepared_statements[self.SINGLE_VECTOR_KEY])
-            )
-
             tasks = [
-                loop.create_task(
+                asyncio.create_task(
                     self._query_async_sql(prepared_statements[key], entries[key]),
                     name="query_prep_statement_key" + str(key),
                 )
@@ -641,9 +611,6 @@ class OnlineStoreSqlClient:
                 if self.connection_options
                 else 120,
             )
-            if execution_results is not None and isinstance(execution_results, dict):
-                # If execution_results is provided, then the function is executed using a thread so store the results in it, so it can be accessed by the parent thread.
-                execution_results["results"] = results
         except asyncio.CancelledError as e:
             _logger.error(f"Failed executing prepared statements: {e}")
             raise e
@@ -651,7 +618,12 @@ class OnlineStoreSqlClient:
             _logger.error(f"Query timed out: {e}")
             raise e
 
-        return results
+        # Create a dict of results with the prepared statement index as key
+        results_dict = {}
+        for i, key in enumerate(prepared_statements):
+            results_dict[key] = results[i]
+
+        return results_dict
 
     @property
     def feature_store_id(self) -> int:

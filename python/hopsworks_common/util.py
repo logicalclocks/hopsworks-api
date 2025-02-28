@@ -16,10 +16,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import itertools
 import json
 import os
+import queue
 import re
 import shutil
 import sys
@@ -713,3 +715,131 @@ def feature_view_to_json(obj):
 
             return humps.camelize(json.loads(obj.json()))
     return None
+
+
+class AsyncTask:
+    """
+    Generic class to represent an async task.
+
+    Args:
+        func (Callable): The function to run asynchronously.
+        *args: Arguments to be passed to the function.
+        **kwargs: Key word arguments to be passed to the functions.
+
+    Properties:
+        result (Any): The result of the async task.
+        event (threading.Event): The event that will be set when the async task is finished.
+    """
+
+    def __init__(self, func: Callable, *args, **kwargs):
+        self.function = func
+        self.args = args
+        self.kwargs = kwargs
+        self._event: threading.Event = threading.Event()
+        self._result: Any = None
+
+    @property
+    def result(self) -> Any:
+        """
+        The result of the async task.
+        """
+        return self._result
+
+    @result.setter
+    def result(self, value) -> None:
+        self._result = value
+
+    @property
+    def event(self) -> threading.Event:
+        """
+        The event that will be set when the async task is finished.
+        """
+        return self._event
+
+    @event.setter
+    def event(self, value) -> None:
+        self._event = value
+
+
+class AsyncTaskThread(threading.Thread):
+    """
+    Generic thread class that can be used to run async tasks in a separate thread.
+    The thread will create its own event loop and run submitted tasks in that loop.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._task_queue: queue.Queue[AsyncTask] = queue.Queue()
+        self._event_loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
+        self.stop_event = threading.Event()
+        self.daemon = True  # Setting the thread as a daemon thread by default, so it will be terminated when the main thread is terminated.
+
+    async def execute_task(self):
+        """
+        Execute the async tasks for the queue.
+        """
+        asyncio.set_event_loop(self._event_loop)
+        while not self.stop_event.is_set():
+            # Fetch a task from the queue.
+            task = self.task_queue.get()
+            # Run the task in the event loop and get the result
+            try:
+                task.result = await task.function(*task.args, **task.kwargs)
+                # Unblock the task, so the submit function can return the result.
+                task.event.set()
+            except Exception as e:
+                task.result = e
+                task.event.set()
+                raise e
+
+    def stop(self):
+        """
+        Stop the thread and close the event loop.
+        """
+        self.stop_event.set()
+        self._event_loop.stop()
+        self._event_loop.close()
+
+    def run(self):
+        """
+        Execute the async tasks for the queue.
+        """
+        asyncio.set_event_loop(self._event_loop)
+        self._event_loop.create_task(self.execute_task())
+        try:
+            self._event_loop.run_forever()
+        except Exception as e:
+            self._event_loop.stop()
+            self._event_loop.close()
+            raise e
+        finally:
+            self._event_loop.close()
+
+    def submit(self, task: AsyncTask):
+        """
+        Submit a async task to the thread and block until the execution of the function is completed.
+        """
+        # Submit a task to the queue.
+        self.task_queue.put(task)
+        # Block the execution until the task is finished.
+        task.event.wait()
+
+        if isinstance(task.result, Exception):
+            raise task.result
+        else:
+            # Return the result of the task.
+            return task.result
+
+    @property
+    def event_loop(self) -> asyncio.AbstractEventLoop:
+        """
+        The event loop used by the thread.
+        """
+        return self._event_loop
+
+    @property
+    def task_queue(self) -> queue.Queue:
+        """
+        The queue used to submit tasks to the thread.
+        """
+        return self._task_queue
