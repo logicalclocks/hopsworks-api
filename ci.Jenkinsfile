@@ -52,7 +52,7 @@ pipeline {
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             -d "event=workflow_dispatch" -d "actor=HopsworksJenkins" -d "branch=${REF_LOADTEST_BRANCH}" \
-            https://api.github.com/repos/logicalclocks/loadtest/actions/runs | jq -r '.workflow_runs[0].id""", returnStdout: true).trim()
+            https://api.github.com/repos/logicalclocks/loadtest/actions/runs | jq -r '.workflow_runs[0].id'""", returnStdout: true).trim()
           // echo "Runs: ${runs}"
           // WORKFLOW_RUN_ID = sh(script: """echo ${runs} | jq -r '.workflow_runs[0].id'""", returnStdout: true).trim()
           // echo "Workflow run id: ${WORKFLOW_RUN_ID}"
