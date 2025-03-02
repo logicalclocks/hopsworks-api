@@ -48,14 +48,13 @@ pipeline {
       steps {
         script {
           TIME_AFTER_WORKFLOW_DISPATCH = sh(script: "date -u +%Y-%m-%dT%H:%M:%SZ", returnStdout: true).trim()
-          def runs = sh(script: """curl -L -X GET -G -H "Accept: application/vnd.github+json" \
+          WORKFLOW_RUN_ID = sh(script: """curl -L -X GET -G -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             -d "event=workflow_dispatch" -d "actor=HopsworksJenkins" -d "branch=${REF_LOADTEST_BRANCH}" \
-            -d "created:${TIME_BEFORE_WORKFLOW_DISPATCH}..${TIME_AFTER_WORKFLOW_DISPATCH}" \
-            https://api.github.com/repos/logicalclocks/loadtest/actions/runs?sort=created:desc""", returnStdout: true).trim()
+            https://api.github.com/repos/logicalclocks/loadtest/actions/runs | jq -r '.workflow_runs[0].id""", returnStdout: true).trim()
           // echo "Runs: ${runs}"
-          WORKFLOW_RUN_ID = sh(script: """echo ${runs} | jq -r '.workflow_runs[0].id'""", returnStdout: true).trim()
+          // WORKFLOW_RUN_ID = sh(script: """echo ${runs} | jq -r '.workflow_runs[0].id'""", returnStdout: true).trim()
           // echo "Workflow run id: ${WORKFLOW_RUN_ID}"
         }
       }
@@ -64,15 +63,15 @@ pipeline {
       steps {
         script {
           def status = "in_progress"
-          while (status == "in_progress") {
+          while (status == "in_progress" || status == "queued") {
             sleep 10
-            workflow_payload = sh(script: """curl -L -X GET -H "Accept: application/vnd.github+json" \
+            status = sh(script: """curl -L -X GET -H "Accept: application/vnd.github+json" \
               -H "Authorization: Bearer ${GITHUB_TOKEN}" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
-              https://api.github.com/repos/logicalclocks/loadtest/actions/runs/${WORKFLOW_RUN_ID}""", returnStdout: true).trim()
-            echo "Workflow payload: ${workflow_payload}"
-            status = sh(script: "echo ${workflow_payload} | jq -r '.status'", returnStdout: true).trim()
-            echo "Status: ${status}"
+              https://api.github.com/repos/logicalclocks/loadtest/actions/runs/${WORKFLOW_RUN_ID} || jq -r '.status'""", returnStdout: true).trim()
+            // echo "Workflow payload: ${workflow_payload}"
+            // status = sh(script: "echo ${workflow_payload} | jq -r '.status'", returnStdout: true).trim()
+            // echo "Status: ${status}"
           }
         }
       }
