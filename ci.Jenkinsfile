@@ -66,12 +66,12 @@ pipeline {
           def status = "in_progress"
           while (status == "in_progress" || status == "queued") {
             sleep 10
-            workflow_payload = sh(script: """curl -L -X GET -H "Accept: application/vnd.github+json" \
+            status = sh(script: """curl -L -X GET -H "Accept: application/vnd.github+json" \
               -H "Authorization: Bearer ${GITHUB_TOKEN}" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
-              https://api.github.com/repos/logicalclocks/loadtest/actions/runs/${WORKFLOW_RUN_ID} """, returnStdout: true).trim()
-            echo "Workflow payload: ${workflow_payload}"
-            status = sh(script: "echo ${workflow_payload} | jq -r '.status'", returnStdout: true).trim()
+              https://api.github.com/repos/logicalclocks/loadtest/actions/runs/${WORKFLOW_RUN_ID} | jq -r '.status' """, returnStdout: true).trim()
+            // echo "Workflow payload: ${workflow_payload}"
+            // status = sh(script: "echo ${workflow_payload} | jq -r '.status'", returnStdout: true).trim()
             echo "Status: ${status}"
           }
         }
