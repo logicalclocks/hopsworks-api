@@ -3,6 +3,7 @@ def SHORT_SHA = ""
 def HEAD_SHA = ""
 def REF_LOADTEST_BRANCH = ""
 def TIME_BEFORE_WORKFLOW_DISPATCH = ""
+def WORKFLOW_RUN_URL = ""
 
 pipeline {
   agent {
@@ -55,7 +56,7 @@ pipeline {
             https://api.github.com/repos/logicalclocks/loadtest/actions/runs | jq -r '.workflow_runs[0].id'""", returnStdout: true).trim()
           // echo "Runs: ${runs}"
           // WORKFLOW_RUN_ID = sh(script: """echo ${runs} | jq -r '.workflow_runs[0].id'""", returnStdout: true).trim()
-          // echo "Workflow run id: ${WORKFLOW_RUN_ID}"
+          echo "Workflow run id: ${WORKFLOW_RUN_ID}"
         }
       }
     }
@@ -65,13 +66,13 @@ pipeline {
           def status = "in_progress"
           while (status == "in_progress" || status == "queued") {
             sleep 10
-            status = sh(script: """curl -L -X GET -H "Accept: application/vnd.github+json" \
+            workflow_payload = sh(script: """curl -L -X GET -H "Accept: application/vnd.github+json" \
               -H "Authorization: Bearer ${GITHUB_TOKEN}" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
-              https://api.github.com/repos/logicalclocks/loadtest/actions/runs/${WORKFLOW_RUN_ID} || jq -r '.status'""", returnStdout: true).trim()
-            // echo "Workflow payload: ${workflow_payload}"
-            // status = sh(script: "echo ${workflow_payload} | jq -r '.status'", returnStdout: true).trim()
-            // echo "Status: ${status}"
+              https://api.github.com/repos/logicalclocks/loadtest/actions/runs/${WORKFLOW_RUN_ID} """, returnStdout: true).trim()
+            echo "Workflow payload: ${workflow_payload}"
+            status = sh(script: "echo ${workflow_payload} | jq -r '.status'", returnStdout: true).trim()
+            echo "Status: ${status}"
           }
         }
       }
