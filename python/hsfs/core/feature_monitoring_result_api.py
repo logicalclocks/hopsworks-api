@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional, Union
 
 from hopsworks_common import client
+from hsfs import decorators
 from hsfs.core.feature_monitoring_result import FeatureMonitoringResult
 
 
@@ -86,6 +87,10 @@ class FeatureMonitoringResultApi:
 
         _client._send_request("DELETE", path_params)
 
+    @decorators.catch_not_found(
+        "hsfs.core.feature_monitoring_result.FeatureMonitoringResult",
+        fallback_return=[],
+    )
     def get_by_config_id(
         self,
         config_id: int,

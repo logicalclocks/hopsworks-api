@@ -22,6 +22,8 @@ from hsfs import util
 
 
 class FeatureGroupCommit:
+    NOT_FOUND_ERROR_CODE = 270227
+
     def __init__(
         self,
         commitid=None,

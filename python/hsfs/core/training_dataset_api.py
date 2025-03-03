@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import List, Optional, Union
 
 from hopsworks_common import client
-from hsfs import training_dataset
+from hsfs import decorators, training_dataset
 from hsfs.constructor import fs_query, serving_prepared_statement
 from hsfs.core import job, training_dataset_job_conf
 
@@ -48,11 +48,10 @@ class TrainingDatasetApi:
             ),
         )
 
-    def get(
-        self, name: str, version: Optional[int]
-    ) -> Union[
-        training_dataset.TrainingDataset, List[training_dataset.TrainingDataset]
-    ]:
+    @decorators.catch_not_found(
+        "hsfs.training_dataset.TrainingDataset", fallback_return=[]
+    )
+    def _get_all_training_datasets(self, name: str):
         _client = client.get_instance()
         path_params = [
             "project",
@@ -62,14 +61,39 @@ class TrainingDatasetApi:
             "trainingdatasets",
             name,
         ]
-        query_params = None if version is None else {"version": version}
-        td_list = training_dataset.TrainingDataset.from_response_json(
+        return training_dataset.TrainingDataset.from_response_json(
+            _client._send_request("GET", path_params),
+        )
+
+    @decorators.catch_not_found(
+        "hsfs.training_dataset.TrainingDataset", fallback_return=None
+    )
+    def _get_training_dataset_by_version(self, name: str, version: int):
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            self._feature_store_id,
+            "trainingdatasets",
+            name,
+        ]
+        query_params = {"version": version}
+        return training_dataset.TrainingDataset.from_response_json(
             _client._send_request("GET", path_params, query_params),
         )
-        if version is not None:
-            return td_list[0]
+
+    def get(
+        self, name: str, version: Optional[int]
+    ) -> Union[
+        training_dataset.TrainingDataset, List[training_dataset.TrainingDataset]
+    ]:
+        if version:
+            tds = self._get_training_dataset_by_version(name, version)
+            if tds:
+                return tds[0]
         else:
-            return td_list
+            return self._get_all_training_datasets(name)
 
     def get_query(
         self,
