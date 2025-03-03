@@ -22,7 +22,7 @@ import sys
 import tempfile
 import warnings
 from pathlib import Path
-from typing import Literal, Union
+from typing import Literal, Optional, Union
 
 from hopsworks import client, constants, project, version
 from hopsworks.client.exceptions import (
@@ -77,13 +77,13 @@ logging.basicConfig(
 
 
 def login(
-    host: str = None,
+    host: Optional[str] = None,
     port: int = 443,
-    project: str = None,
-    api_key_value: str = None,
-    api_key_file: str = None,
+    project: Optional[str] = None,
+    api_key_value: Optional[str] = None,
+    api_key_file: Optional[str] = None,
     hostname_verification: bool = False,
-    trust_store_path: str = None,
+    trust_store_path: Optional[str] = None,
     engine: Union[
         None,
         Literal["spark"],
@@ -433,7 +433,7 @@ def _initialize_module_apis():
     _secrets_api = secret_api.SecretsApi()
 
 
-def create_project(name: str, description: str = None, feature_store_topic: str = None):
+def create_project(name: str, description: Optional[str] = None, feature_store_topic: Optional[str] = None):
     """Create a new project.
 
     !!! warning "Not supported"

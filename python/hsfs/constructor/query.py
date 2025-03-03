@@ -283,8 +283,10 @@ class Query:
                 the join. Defaults to `[]`.
             join_type: Type of join to perform, can be `"inner"`, `"outer"`, `"left"` or
                 `"right"`. Defaults to "inner".
-            prefix: User provided prefix to avoid feature name clash. Prefix is applied to the right
-                feature group of the query. Defaults to `None`.
+            prefix: User provided prefix to avoid feature name clash. If no prefix was provided and there is feature
+                name clash then prefixes will be automatically generated and applied. Generated prefix is feature group
+                alias in the query (e.g. fg1, fg2). Prefix is applied to the right feature group of the query.
+                Defaults to `None`.
 
         # Returns
             `Query`: A new Query object representing the join.
