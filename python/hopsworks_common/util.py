@@ -723,7 +723,7 @@ class AsyncTask:
 
     Args:
         func (Callable): The function to run asynchronously.
-        *args: Arguments to be passed to the function.
+        requires_connection_pool (bool): Whether the task requires a connection pool.
         **kwargs: Key word arguments to be passed to the functions.
 
     Properties:
@@ -731,12 +731,19 @@ class AsyncTask:
         event (threading.Event): The event that will be set when the async task is finished.
     """
 
-    def __init__(self, func: Callable, *args, **kwargs):
-        self.function = func
-        self.args = args
-        self.kwargs = kwargs
+    def __init__(
+        self,
+        task_function: Callable,
+        task_args: Tuple = (),
+        requires_connection_pool=None,
+        **kwargs,
+    ):
+        self.task_function = task_function
+        self.task_args = task_args
+        self.task_kwargs = kwargs
         self._event: threading.Event = threading.Event()
         self._result: Any = None
+        self._requires_connection_pool = requires_connection_pool
 
     @property
     def result(self) -> Any:
@@ -760,18 +767,47 @@ class AsyncTask:
     def event(self, value) -> None:
         self._event = value
 
+    @property
+    def requires_connection_pool(self) -> bool:
+        """
+        Whether the task requires a connection pool.
+        """
+        return self._requires_connection_pool
+
 
 class AsyncTaskThread(threading.Thread):
     """
     Generic thread class that can be used to run async tasks in a separate thread.
     The thread will create its own event loop and run submitted tasks in that loop.
+
+    The thread also store and fetches a connection pool that can be used by the async tasks.
+
+    # Args:
+        connection_pool_initializer (Callable): A function that initializes a connection pool.
+        connection_pool_params (Tuple): The parameters to pass to the connection pool initializer.
+        *thread_args: Arguments to be passed to the thread.
+        **thread_kwargs: Key word arguments to be passed to the thread.
+
+    # Properties:
+        event_loop (asyncio.AbstractEventLoop): The event loop used by the thread.
+        task_queue (queue.Queue[AsyncTask]): The queue used to submit tasks to the thread.
+        connection_pool: The connection pool used
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        connection_pool_initializer: Callable = None,
+        connection_pool_params: Tuple = (),
+        *thread_args,
+        **thread_kwargs,
+    ):
+        super().__init__(*thread_args, **thread_kwargs)
         self._task_queue: queue.Queue[AsyncTask] = queue.Queue()
         self._event_loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
         self.stop_event = threading.Event()
+        self._connection_pool_initializer: Callable = connection_pool_initializer
+        self._connection_pool_params: Tuple = connection_pool_params
+        self._connection_pool = None
         self.daemon = True  # Setting the thread as a daemon thread by default, so it will be terminated when the main thread is terminated.
 
     async def execute_task(self):
@@ -779,12 +815,29 @@ class AsyncTaskThread(threading.Thread):
         Execute the async tasks for the queue.
         """
         asyncio.set_event_loop(self._event_loop)
+
+        if self._connection_pool_initializer:
+            self._connection_pool = await self._connection_pool_initializer(
+                *self._connection_pool_params
+            )
+
         while not self.stop_event.is_set():
             # Fetch a task from the queue.
             task = self.task_queue.get()
             # Run the task in the event loop and get the result
             try:
-                task.result = await task.function(*task.args, **task.kwargs)
+                # Check if the task requires a connection pool and pass it to the function if it does.
+                if task.requires_connection_pool:
+                    task.result = await task.task_function(
+                        *task.task_args,
+                        **task.task_kwargs,
+                        connection_pool=self.connection_pool,
+                    )
+                else:
+                    task.result = await task.task_function(
+                        *task.task_args, **task.task_kwargs
+                    )
+
                 # Unblock the task, so the submit function can return the result.
                 task.event.set()
             except Exception as e:
@@ -838,8 +891,15 @@ class AsyncTaskThread(threading.Thread):
         return self._event_loop
 
     @property
-    def task_queue(self) -> queue.Queue:
+    def task_queue(self) -> queue.Queue[AsyncTask]:
         """
         The queue used to submit tasks to the thread.
         """
         return self._task_queue
+
+    @property
+    def connection_pool(self):
+        """
+        The connection pool used by the thread.
+        """
+        return self._connection_pool

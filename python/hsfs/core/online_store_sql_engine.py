@@ -74,7 +74,6 @@ class OnlineStoreSqlClient:
         self._prefix_by_serving_index = None
         self._pkname_by_serving_index = None
         self._serving_key_by_serving_index: Dict[str, ServingKey] = {}
-        self._connection_pool = None
         self._serving_keys: Set[ServingKey] = set(serving_keys or [])
 
         self._prepared_statements: Dict[str, List[ServingPreparedStatement]] = {}
@@ -90,7 +89,7 @@ class OnlineStoreSqlClient:
         self._hostname = None
         self._connection_options = None
 
-        self._async_task_thread = AsyncTaskThread()  # Thread used to run async tasks
+        self._async_task_thread = None
 
     def __del__(self):
         # Safely stop the async task thread.
@@ -254,19 +253,15 @@ class OnlineStoreSqlClient:
             else None
         )
 
-        if not self._async_task_thread.is_alive():
-            # Start the async event thread if it is not already running
-            self._async_task_thread.start()
-
-        if not self.connection_pool:
-            # Acquire a connection pool that can be used with the event loop running in the async task thread.
-            # The connection pool is also not manually closed, it will be during garbage collection, by aiomysql.
-            self._connection_pool = self._async_task_thread.submit(
-                AsyncTask(
-                    self._get_connection_pool,
+        if not self._async_task_thread:
+            # Create the async event thread if it is not already running and start it.
+            self._async_task_thread = AsyncTaskThread(
+                connection_pool_initializer=self._get_connection_pool,
+                connection_pool_params=(
                     len(self._prepared_statements[self.SINGLE_VECTOR_KEY]),
-                )
+                ),
             )
+            self._async_task_thread.start()
 
     def get_single_feature_vector(self, entry: Dict[str, Any]) -> Dict[str, Any]:
         """Retrieve single vector with parallel queries using aiomysql engine."""
@@ -342,9 +337,12 @@ class OnlineStoreSqlClient:
         )
         results_dict = self._async_task_thread.submit(
             AsyncTask(
-                self._execute_prep_statements,
-                prepared_statement_execution,
-                bind_entries,
+                task_function=self._execute_prep_statements,
+                task_args=(
+                    prepared_statement_execution,
+                    bind_entries,
+                ),
+                requires_connection_pool=True,
             )
         )
         _logger.debug(f"Retrieved feature vectors: {results_dict}")
@@ -413,7 +411,9 @@ class OnlineStoreSqlClient:
         # run all the prepared statements in parallel using aiomysql engine
         parallel_results = self._async_task_thread.submit(
             AsyncTask(
-                self._execute_prep_statements, prepared_stmts_to_execute, entry_values
+                task_function=self._execute_prep_statements,
+                task_args=(prepared_stmts_to_execute, entry_values),
+                requires_connection_pool=True,
             )
         )
 
@@ -561,10 +561,15 @@ class OnlineStoreSqlClient:
         )
         return connection_pool
 
-    async def _query_async_sql(self, stmt, bind_params):
+    async def _query_async_sql(
+        self,
+        stmt,
+        bind_params,
+        connection_pool: aiomysql.utils._ConnectionContextManager,
+    ):
         """Query prepared statement together with bind params using aiomysql connection pool"""
         # create connection pool
-        async with self._connection_pool.acquire() as conn:
+        async with connection_pool.acquire() as conn:
             # Execute the prepared statement
             _logger.debug(
                 f"Executing prepared statement: {stmt} with bind params: {bind_params}"
@@ -582,6 +587,7 @@ class OnlineStoreSqlClient:
         self,
         prepared_statements: Dict[int, str],
         entries: Union[List[Dict[str, Any]], Dict[str, Any]],
+        connection_pool: aiomysql.utils._ConnectionContextManager,  # The connection pool required is passed as a parameter from the AsyncTaskThread.
     ):
         """Iterate over prepared statements to create async tasks
         and gather all tasks results for a given list of entries."""
@@ -597,7 +603,9 @@ class OnlineStoreSqlClient:
         try:
             tasks = [
                 asyncio.create_task(
-                    self._query_async_sql(prepared_statements[key], entries[key]),
+                    self._query_async_sql(
+                        prepared_statements[key], entries[key], connection_pool
+                    ),
                     name="query_prep_statement_key" + str(key),
                 )
                 for key in prepared_statements
@@ -751,7 +759,3 @@ class OnlineStoreSqlClient:
     @property
     def online_connector(self) -> storage_connector.StorageConnector:
         return self._online_connector
-
-    @property
-    def connection_pool(self) -> aiomysql.utils._ConnectionContextManager:
-        return self._connection_pool
