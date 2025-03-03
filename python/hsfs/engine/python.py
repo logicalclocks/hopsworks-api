@@ -1782,7 +1782,3 @@ class Engine:
     def read_feature_log(query, time_col):
         df = query.read()
         return df.drop(["log_id", time_col], axis=1)
-
-
-class SchemaError(Exception):
-    """Thrown when schemas don't match"""

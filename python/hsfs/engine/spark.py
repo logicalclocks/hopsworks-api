@@ -44,6 +44,7 @@ from hsfs.core.vector_db_client import VectorDbClient
 if HAS_NUMPY:
     import numpy as np
 
+
 try:
     import pyspark
     from pyspark import SparkFiles
