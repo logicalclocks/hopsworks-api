@@ -20,6 +20,7 @@ package com.logicalclocks.hsfs.flink.engine;
 import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.JobConfiguration;
+import com.logicalclocks.hsfs.OnlineConfig;
 import com.logicalclocks.hsfs.StatisticsConfig;
 import com.logicalclocks.hsfs.StorageConnector;
 import com.logicalclocks.hsfs.TimeTravelFormat;
@@ -93,7 +94,8 @@ public class FeatureGroupEngine extends FeatureGroupEngineBase {
                                                     List<Feature> features,
                                                     StatisticsConfig statisticsConfig,
                                                     StorageConnector storageConnector,
-                                                    String path)
+                                                    String path,
+                                                    OnlineConfig onlineConfig)
       throws IOException, FeatureStoreException {
 
     try {
@@ -115,6 +117,7 @@ public class FeatureGroupEngine extends FeatureGroupEngineBase {
             .statisticsConfig(statisticsConfig)
             .storageConnector(storageConnector)
             .path(path)
+            .onlineConfig(onlineConfig)
             .build();
       } else {
         throw e;

@@ -397,10 +397,12 @@ public class FeatureStore extends FeatureStoreBase<Query> {
                                                           List<Feature> features,
                                                           StatisticsConfig statisticsConfig,
                                                           StorageConnector storageConnector,
-                                                          String path) throws IOException, FeatureStoreException {
+                                                          String path,
+                                                          OnlineConfig onlineConfig)
+          throws IOException, FeatureStoreException {
     return featureGroupEngine.getOrCreateStreamFeatureGroup(this, name, version, description,
         primaryKeys, partitionKeys, hudiPrecombineKey, onlineEnabled, statisticsConfig, eventTime, timeTravelFormat,
-        features, storageConnector, path);
+        features, storageConnector, path, onlineConfig);
   }
 
   /**
@@ -424,7 +426,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
   public StreamFeatureGroup getOrCreateStreamFeatureGroup(String name, Integer version)
           throws IOException, FeatureStoreException {
     return featureGroupEngine.getOrCreateStreamFeatureGroup(this, name, version, null,
-            null, null, null, false, null, null, null, null, null, null);
+            null, null, null, false, null, null, null, null, null, null, null);
   }
 
   /**
@@ -457,7 +459,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
                                                           boolean onlineEnabled, String eventTime)
           throws IOException, FeatureStoreException {
     return featureGroupEngine.getOrCreateStreamFeatureGroup(this, name, version, null,
-            primaryKeys, null, null, onlineEnabled, null, eventTime, null, null, null, null);
+            primaryKeys, null, null, onlineEnabled, null, eventTime, null, null, null, null, null);
   }
 
   /**
@@ -495,7 +497,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
 
 
     return featureGroupEngine.getOrCreateStreamFeatureGroup(this, name, version, null,
-            primaryKeys, partitionKeys, null, onlineEnabled, null, eventTime, null, null, null, null);
+            primaryKeys, partitionKeys, null, onlineEnabled, null, eventTime, null, null, null, null, null);
   }
 
   /**
@@ -546,7 +548,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
           throws IOException, FeatureStoreException {
     return featureGroupEngine.getOrCreateStreamFeatureGroup(this, name, version, description,
             primaryKeys, partitionKeys, hudiPrecombineKey, onlineEnabled, statisticsConfig, eventTime, timeTravelFormat,
-            null, null, null);
+            null, null, null, null);
   }
 
   /**

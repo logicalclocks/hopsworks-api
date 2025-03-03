@@ -21,10 +21,12 @@ import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.FeatureStore;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.JobConfiguration;
+import com.logicalclocks.hsfs.OnlineConfig;
 import com.logicalclocks.hsfs.StatisticsConfig;
 import com.logicalclocks.hsfs.StorageConnector;
 import com.logicalclocks.hsfs.StreamFeatureGroup;
 import com.logicalclocks.hsfs.TimeTravelFormat;
+
 import lombok.NonNull;
 import lombok.SneakyThrows;
 
@@ -89,7 +91,8 @@ public class FeatureGroupEngine<T> extends FeatureGroupEngineBase {
                                                     List<Feature> features,
                                                     StatisticsConfig statisticsConfig,
                                                     StorageConnector storageConnector,
-                                                    String path)
+                                                    String path,
+                                                    OnlineConfig onlineConfig)
       throws IOException, FeatureStoreException {
 
     try {
@@ -111,6 +114,7 @@ public class FeatureGroupEngine<T> extends FeatureGroupEngineBase {
             .statisticsConfig(statisticsConfig)
             .storageConnector(storageConnector)
             .path(path)
+            .onlineConfig(onlineConfig)
             .build();
       } else {
         throw e;

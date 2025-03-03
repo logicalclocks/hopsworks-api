@@ -367,7 +367,7 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
                                                           StatisticsConfig statisticsConfig,
                                                           String eventTime, TimeTravelFormat timeTravelFormat,
                                                           List<Feature> features, StorageConnector storageConnector,
-                                                          String path)
+                                                          String path, OnlineConfig onlineConfig)
       throws IOException, FeatureStoreException {
     StreamFeatureGroup featureGroup;
     try {
@@ -386,6 +386,7 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
             .timeTravelFormat(timeTravelFormat)
             .statisticsConfig(statisticsConfig)
             .eventTime(eventTime)
+            .onlineConfig(onlineConfig)
             .timeTravelFormat(timeTravelFormat)
             .features(features)
             .storageConnector(storageConnector)

@@ -20,6 +20,7 @@ package com.logicalclocks.hsfs.beam;
 import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.FeatureStoreBase;
 import com.logicalclocks.hsfs.FeatureStoreException;
+import com.logicalclocks.hsfs.OnlineConfig;
 import com.logicalclocks.hsfs.StatisticsConfig;
 import com.logicalclocks.hsfs.StorageConnector;
 import com.logicalclocks.hsfs.TimeTravelFormat;
@@ -118,11 +119,13 @@ public class FeatureStore extends FeatureStoreBase<Query> {
                                                      List<Feature> features,
                                                      StatisticsConfig statisticsConfig,
                                                      StorageConnector storageConnector,
-                                                     String path) throws IOException, FeatureStoreException {
+                                                     String path,
+                                                     OnlineConfig onlineConfig)
+          throws IOException, FeatureStoreException {
 
     return featureGroupEngine.getOrCreateFeatureGroup(this, name, version, description, onlineEnabled,
         timeTravelFormat, primaryKeys, partitionKeys, eventTime, hudiPrecombineKey, features, statisticsConfig,
-        storageConnector, path);
+        storageConnector, path, onlineConfig);
   }
 
   /**

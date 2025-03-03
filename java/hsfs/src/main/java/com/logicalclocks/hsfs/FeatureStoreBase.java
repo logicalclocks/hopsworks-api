@@ -148,7 +148,9 @@ public abstract class FeatureStoreBase<T2 extends QueryBase> {
                                                             List<Feature> features,
                                                             StatisticsConfig statisticsConfig,
                                                             StorageConnector storageConnector,
-                                                            String path) throws IOException, FeatureStoreException;
+                                                            String path,
+                                                            OnlineConfig onlineConfig)
+          throws IOException, FeatureStoreException;
 
   /**
    * Get a feature group object from the feature store.

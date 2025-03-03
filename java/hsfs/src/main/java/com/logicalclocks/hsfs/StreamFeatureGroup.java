@@ -42,7 +42,7 @@ public class StreamFeatureGroup<T> extends FeatureGroupBase<List<T>> {
                             TimeTravelFormat timeTravelFormat, List<String> primaryKeys, List<String> partitionKeys,
                             String hudiPrecombineKey, boolean onlineEnabled, List<Feature> features,
                             StatisticsConfig statisticsConfig, String onlineTopicName, String eventTime,
-                            StorageConnector storageConnector, String path) {
+                            StorageConnector storageConnector, String path, OnlineConfig onlineConfig) {
     this();
     this.featureStore = featureStore;
     this.name = name;
@@ -61,6 +61,7 @@ public class StreamFeatureGroup<T> extends FeatureGroupBase<List<T>> {
     this.timeTravelFormat = timeTravelFormat;
     this.storageConnector = storageConnector;
     this.path = path;
+    this.onlineConfig = onlineConfig;
   }
 
   public StreamFeatureGroup() {
