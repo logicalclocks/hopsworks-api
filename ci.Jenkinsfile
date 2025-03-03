@@ -84,12 +84,13 @@ pipeline {
             script: """curl -L -H "Accept: application/vnd.github+json" \
               -H "Authorization: Bearer ${GITHUB_TOKEN}" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
-              "https://api.github.com/repos/logicalclocks/loadtest/actions/runs/${WORKFLOW_RUN_ID}/artifacts""",
+              https://api.github.com/repos/logicalclocks/loadtest/actions/runs/${WORKFLOW_RUN_ID}/artifacts \
+              | jq -r '.artifacts[] | select(.name == "results")'""",
             returnStdout: true
           ).trim()
           echo "Workflow run artifacts: ${workflow_run_artifacts}"
           def REPORT_URL = sh(
-            script: """echo ${workflow_run_artifacts} | jq -r ".artifacts[0].archive_download_url" """,
+            script: """echo ${workflow_run_artifacts} | jq -r '.artifacts[0].archive_download_url' """,
             returnStdout: true
           ).trim()
           echo "Report url: ${REPORT_URL}"
