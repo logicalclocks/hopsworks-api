@@ -1,10 +1,12 @@
 import re
 
 
-# Base validator class
 class DataFrameValidator:
+    # Base validator class
+
     @staticmethod
     def get_validator(df):
+        """method to get the appropriate implementation of validator for the DataFrame type"""
         import pandas as pd
 
         if isinstance(df, pd.DataFrame):
@@ -29,12 +31,16 @@ class DataFrameValidator:
         return None
 
     def validate_schema(self, feature_group, df, df_features):
-        """Common validation logic"""
+        """Common validation rules"""
         # Check if we have a validator for this DataFrame type
         validator = self.get_validator(df)
         if validator is None:
             # If no validator is found for this type, return df_features unchanged
             return df_features
+        # If this is the base class and not a subclass instance being called directly,
+        # delegate to the appropriate subclass
+        if self.__class__ == DataFrameValidator:
+            return validator.validate_schema(feature_group, df, df_features)
         errors = {}
         # Check if the primary key columns exist
         for pk in feature_group.primary_key:
@@ -108,10 +114,9 @@ class DataFrameValidator:
                 i_feature.online_type = f"varchar({column_lengths[i_feature.name]})"
         return dataframe_features
 
-    # Pandas-specific validator
-
 
 class PandasValidator(DataFrameValidator):
+    # Pandas df specific validator
     def _validate_df_specifics(self, feature_group, df, is_fg_created):
         errors = {}
         column_lengths = {}
@@ -147,8 +152,8 @@ class PandasValidator(DataFrameValidator):
         return errors, column_lengths, is_pk_null, is_string_length_exceeded
 
 
-# Polars-specific validator
 class PolarsValidator(DataFrameValidator):
+    # Polars df specific validator
     def _validate_df_specifics(self, feature_group, df, is_fg_created):
         import polars as pl
 
@@ -186,8 +191,8 @@ class PolarsValidator(DataFrameValidator):
         return errors, column_lengths, is_pk_null, is_string_length_exceeded
 
 
-# PySpark-specific validator
 class PySparkValidator(DataFrameValidator):
+    # PySpark-specific validator
     def _validate_df_specifics(self, feature_group, df, is_fg_created):
         # Import PySpark SQL functions and types
         import pyspark.sql.functions as sf
