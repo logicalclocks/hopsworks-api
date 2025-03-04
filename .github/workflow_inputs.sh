@@ -10,16 +10,17 @@ else
   loadtest_branch="main"
 fi
 
-loadtest_prs=$(curl -L -G \
+curl -L -G \
   -H "Accept: application/vnd.github+json" \
   -H "Authorization: Bearer ${GITHUB_TOKEN}" \
   -H "X-GitHub-Api-Version: 2022-11-28" \
   -d "state=open" \
-  https://api.github.com/repos/logicalclocks/loadtest/pulls) > loadtest_prs.json
+  https://api.github.com/repos/logicalclocks/loadtest/pulls > loadtest_prs.json
 
+# echo "${loadtest_prs}" > loadtest_prs.json
 cat loadtest_prs.json
 
-loadtest_branch=$(jq -r --arg api_branch ${ghprbSourceBranch} '.[] | select(.head.ref == $api_branch)' loadtest_prs.json)
+# loadtest_branch=$(jq -r --arg api_branch ${ghprbSourceBranch} '.[] | select(.head.ref == $api_branch)' loadtest_prs.json)
 
 if [ -z "${loadtest_branch}" ]; then
   loadtest_branch="main"
