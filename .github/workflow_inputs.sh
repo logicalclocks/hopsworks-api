@@ -25,8 +25,6 @@ if [ -z "${loadtest_branch}" ]; then
   loadtest_branch="main"
 fi
 
-printenv
-
 cat loadtest_prs.json
 echo "${loadtest_branch}"
 
