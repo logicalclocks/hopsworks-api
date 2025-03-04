@@ -1,8 +1,6 @@
 def WORKFLOW_RUN_ID = "0"
 def SHORT_SHA = ""
-def HEAD_SHA = ""
 def REF_LOADTEST_BRANCH = ""
-def TIME_BEFORE_WORKFLOW_DISPATCH = ""
 def WORKFLOW_RUN_URL = ""
 
 pipeline {
@@ -21,9 +19,7 @@ pipeline {
     stage('Input parameters') {
       steps {
         script {
-          TIME_BEFORE_WORKFLOW_DISPATCH = sh(script: "date -u +%Y-%m-%dT%H:%M:%SZ", returnStdout: true).trim()
           SHORT_SHA = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-          HEAD_SHA = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
           echo "Short sha: ${SHORT_SHA}"
           echo "Head sha: ${HEAD_SHA}"
           sh "bash .github/workflow_inputs.sh ${SHORT_SHA}"
@@ -35,11 +31,14 @@ pipeline {
     stage('Post webhook') {
       steps {
         script {
-          sh(script: """curl -L -X POST -H "Accept: application/vnd.github+json" \
+          def dispatch_response = sh(script: """curl -L -X POST -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             -d @inputs.json \
-            https://api.github.com/repos/logicalclocks/loadtest/actions/workflows/e2e_small.yaml/dispatches""")
+            https://api.github.com/repos/logicalclocks/loadtest/actions/workflows/e2e_small.yaml/dispatches""",
+            returnStdout: true
+          ).trim()
+          echo "Dispatch response: ${dispatch_response}"
           sh "rm inputs.json"
         }
       }
@@ -54,8 +53,6 @@ pipeline {
             -H "X-GitHub-Api-Version: 2022-11-28" \
             -d "event=workflow_dispatch" -d "actor=HopsworksJenkins" -d "branch=${REF_LOADTEST_BRANCH}" \
             https://api.github.com/repos/logicalclocks/loadtest/actions/runs | jq -r '.workflow_runs[0].id'""", returnStdout: true).trim()
-          // echo "Runs: ${runs}"
-          // WORKFLOW_RUN_ID = sh(script: """echo ${runs} | jq -r '.workflow_runs[0].id'""", returnStdout: true).trim()
           echo "Workflow run id: ${WORKFLOW_RUN_ID}"
         }
       }
@@ -70,8 +67,6 @@ pipeline {
               -H "Authorization: Bearer ${GITHUB_TOKEN}" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
               https://api.github.com/repos/logicalclocks/loadtest/actions/runs/${WORKFLOW_RUN_ID} | jq -r '.status' """, returnStdout: true).trim()
-            // echo "Workflow payload: ${workflow_payload}"
-            // status = sh(script: "echo ${workflow_payload} | jq -r '.status'", returnStdout: true).trim()
             echo "Status: ${status}"
           }
         }
