@@ -22,6 +22,7 @@ from hsfs import feature_group as fg
 from hsfs.client import exceptions
 from hsfs.core import delta_engine, feature_group_base_engine, hudi_engine
 from hsfs.core.deltastreamer_jobconf import DeltaStreamerJobConf
+from hsfs.core.schema_validation import DataFrameValidator
 
 
 class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
@@ -71,17 +72,6 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                     updated_schema.append(feat)
             return updated_schema + transformed_features
 
-    def _validate_schema(self, feature_group, df, df_features):
-        """Invoke schema validation on the input dataframe as per the data type.
-        If the validation for input data type is not implemented, return the df_features directly.
-        """
-        from hsfs.core.schema_validation import DataFrameValidator
-
-        validator = DataFrameValidator.get_validator(df)
-        if validator is None:
-            return df_features
-        return validator.validate_schema(feature_group, df, df_features)
-
     def save(
         self,
         feature_group: Union[fg.FeatureGroup, fg.ExternalFeatureGroup],
@@ -116,9 +106,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group.embedding_index, dataframe_features
         )
 
-        if validation_options.get("run_validation", False):
+        if feature_group.online_enabled and validation_options.get(
+            "run_validation", False
+        ):
             # validate df schema
-            dataframe_features = self._validate_schema(
+            dataframe_features = DataFrameValidator().validate_schema(
                 feature_group, feature_dataframe, dataframe_features
             )
 
@@ -195,9 +187,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group.embedding_index, dataframe_features
         )
 
-        if validation_options.get("run_validation", False):
+        if feature_group.online_enabled and validation_options.get(
+            "run_validation", False
+        ):
             # validate df schema
-            dataframe_features = self._validate_schema(
+            dataframe_features = DataFrameValidator().validate_schema(
                 feature_group, feature_dataframe, dataframe_features
             )
 

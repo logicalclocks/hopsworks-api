@@ -1,3 +1,4 @@
+import logging
 import re
 
 
@@ -32,10 +33,9 @@ class DataFrameValidator:
 
     def validate_schema(self, feature_group, df, df_features):
         """Common validation rules"""
-        # Check if we have a validator for this DataFrame type
         validator = self.get_validator(df)
         if validator is None:
-            # If no validator is found for this type, return df_features unchanged
+            # If no validator is found for this type, skip validation and return df_features
             return df_features
         # If this is the base class and not a subclass instance being called directly,
         # delegate to the appropriate subclass
@@ -48,30 +48,25 @@ class DataFrameValidator:
                 raise ValueError(
                     f"Primary key column {pk} is missing in input dataframe"
                 )
-
+        # Check if the event time column exists
         if feature_group.event_time and feature_group.event_time not in df.columns:
             raise ValueError(
                 f"Event time column {feature_group.event_time} is missing in input dataframe"
             )
 
-        # Execute type-specific validation
+        # Execute data type specific validation
         errors, column_lengths, is_pk_null, is_string_length_exceeded = (
             self._validate_df_specifics(feature_group, df, bool(feature_group.id))
         )
 
-        # Handle errors (common logic)
-        if is_pk_null:
+        # Handle errors
+        if is_pk_null or (is_string_length_exceeded and feature_group.id):
             raise ValueError(
-                f"Null values found for one or more primary keys. One or more schema validation errors found: {errors}"
+                f"One or more schema validation errors found for online ingestion. Data cannot be inserted. Error details ('column_name':'error description'): {errors}"
             )
         elif is_string_length_exceeded:
-            if not bool(feature_group.id):
-                df_features = self.adjust_string_columns(column_lengths, df_features)
-                print("new features: ", df_features)
-            else:
-                raise ValueError(
-                    f"String values exceed the maximum length. One or more schema validation errors found: {errors}"
-                )
+            # If the feature group is not created and string lengths exceed default, adjust the string columns
+            df_features = self.increase_string_columns(column_lengths, df_features)
 
         return df_features
 
@@ -103,15 +98,14 @@ class DataFrameValidator:
         return int(self.extract_numbers(feature.online_type)[0])
 
     @staticmethod
-    def adjust_string_columns(column_lengths: dict, dataframe_features):
-        # dataframe_features is a list of features
-        # each feature has a schema
-        # for the column specified, update the corresponding feature schema online_type to have a max length of max_length
+    def increase_string_columns(column_lengths: dict, dataframe_features):
+        # Adjusts the length of varchar columns
         for i_feature in dataframe_features:
             if i_feature.name in column_lengths:
-                print("updating feature: ", i_feature.name)
-                print("with length: ", column_lengths[i_feature.name])
                 i_feature.online_type = f"varchar({column_lengths[i_feature.name]})"
+                logging.warning(
+                    f"Column {i_feature.name} maximum string length increased to {column_lengths[i_feature.name]}"
+                )
         return dataframe_features
 
 
@@ -126,9 +120,7 @@ class PandasValidator(DataFrameValidator):
         # Check for null values in primary key columns
         for pk in feature_group.primary_key:
             if df[pk].isnull().any():
-                errors[f"primary_key_{pk}_null"] = (
-                    f"Primary key column {pk} contains null values"
-                )
+                errors[pk] = f"Primary key column {pk} contains null values"
                 is_pk_null = True
 
         # Check string lengths
@@ -143,7 +135,7 @@ class PandasValidator(DataFrameValidator):
             )
 
             if currentmax > col_max_len:
-                errors[f"column_{col}_length"] = (
+                errors[col] = (
                     f"Column {col} has string values longer than {col_max_len} characters"
                 )
                 column_lengths[col] = currentmax
@@ -165,9 +157,7 @@ class PolarsValidator(DataFrameValidator):
         # Check for null values in primary key columns
         for pk in feature_group.primary_key:
             if df[pk].is_null().any():
-                errors[f"primary_key_{pk}_null"] = (
-                    f"Primary key column {pk} contains null values"
-                )
+                errors[pk] = f"Primary key column {pk} contains null values"
                 is_pk_null = True
 
         # Check string lengths
@@ -182,7 +172,7 @@ class PolarsValidator(DataFrameValidator):
             )
 
             if currentmax > col_max_len:
-                errors[f"column_{col}_length"] = (
+                errors[col] = (
                     f"Column {col} has string values longer than {col_max_len} characters"
                 )
                 column_lengths[col] = currentmax
@@ -206,9 +196,7 @@ class PySparkValidator(DataFrameValidator):
         # Check for null values in primary key columns
         for pk in feature_group.primary_key:
             if df.filter(df[pk].isNull()).count() > 0:
-                errors[f"primary_key_{pk}_null"] = (
-                    f"Primary key column {pk} contains null values"
-                )
+                errors[pk] = f"Primary key column {pk} contains null values"
                 is_pk_null = True
 
         # Check string lengths for string columns
@@ -228,7 +216,7 @@ class PySparkValidator(DataFrameValidator):
                 )
 
                 if currentmax > col_max_len:
-                    errors[f"column_{col}_length"] = (
+                    errors[col] = (
                         f"Column {col} has string values longer than {col_max_len} characters"
                     )
                     column_lengths[col] = currentmax
