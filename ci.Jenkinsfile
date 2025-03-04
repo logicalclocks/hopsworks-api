@@ -21,7 +21,6 @@ pipeline {
         script {
           SHORT_SHA = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
           echo "Short sha: ${SHORT_SHA}"
-          echo "Head sha: ${HEAD_SHA}"
           sh "bash .github/workflow_inputs.sh ${SHORT_SHA}"
           REF_LOADTEST_BRANCH = sh(script: "cat inputs.json | jq -r '.ref'", returnStdout: true).trim()
           echo "Ref loadtest branch: ${REF_LOADTEST_BRANCH}"
