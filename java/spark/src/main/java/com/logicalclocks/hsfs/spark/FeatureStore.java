@@ -384,27 +384,6 @@ public class FeatureStore extends FeatureStoreBase<Query> {
         .build();
   }
 
-  @Override
-  public StreamFeatureGroup getOrCreateStreamFeatureGroup(@NonNull String name,
-                                                          Integer version,
-                                                          String description,
-                                                          Boolean onlineEnabled,
-                                                          TimeTravelFormat timeTravelFormat,
-                                                          List<String> primaryKeys,
-                                                          List<String> partitionKeys,
-                                                          String eventTime,
-                                                          String hudiPrecombineKey,
-                                                          List<Feature> features,
-                                                          StatisticsConfig statisticsConfig,
-                                                          StorageConnector storageConnector,
-                                                          String path,
-                                                          OnlineConfig onlineConfig)
-          throws IOException, FeatureStoreException {
-    return featureGroupEngine.getOrCreateStreamFeatureGroup(this, name, version, description,
-        primaryKeys, partitionKeys, hudiPrecombineKey, onlineEnabled, statisticsConfig, eventTime, timeTravelFormat,
-        features, storageConnector, path, onlineConfig);
-  }
-
   /**
    * Get stream feature group metadata object or create a new one if it doesn't exist.
    * This method doesn't update existing feature group metadata.
@@ -549,6 +528,68 @@ public class FeatureStore extends FeatureStoreBase<Query> {
     return featureGroupEngine.getOrCreateStreamFeatureGroup(this, name, version, description,
             primaryKeys, partitionKeys, hudiPrecombineKey, onlineEnabled, statisticsConfig, eventTime, timeTravelFormat,
             null, null, null, null);
+  }
+
+  /**
+   * Get stream feature group metadata object or create a new one if it doesn't exist.
+   * This method doesn't update existing feature group metadata.
+   *
+   * <pre>
+   * {@code
+   *        // get feature store handle
+   *        FeatureStore fs = HopsworksConnection.builder().build().getFeatureStore();
+   *        StreamFeatureGroup fg = fs.getOrCreateStreamFeatureGroup("fg_name", 1, primaryKeys,
+   *        partitionKeys, hudiPrecombineKey, true,  statisticsConfig, "datetime", timeTravelFormat,
+   *        features, storageConnector, path, onlineConfig);
+   * }
+   * </pre>
+   *
+   * @param name of the feature group to retrieve or create.
+   * @param version of the feature group to retrieve or create.
+   * @param description contents of the feature group to improve discoverability for Data Scientists
+   * @param primaryKeys  A list of feature names to be used as primary key for the
+   *                     feature group. This primary key can be a composite key of multiple
+   *                     features and will be used as joining key.
+   * @param partitionKeys A list of feature names to be used as partition key when writing the feature data to the
+   *                      offline storage.
+   * @param hudiPrecombineKey A feature name to be used as a precombine key for the `HUDI` feature group.  If feature
+   *                          group has time travel format `HUDI` and hudi precombine key was not specified then
+   *                          the first primary key of the feature group will be used as hudi precombine key.
+   * @param onlineEnabled Define whether the feature group should be made available also in the online feature store
+   *                      for low latency access.
+   * @param timeTravelFormat Format used for time travel, defaults to `"HUDI"`.
+   * @param statisticsConfig  A configuration object, to generally enable descriptive statistics computation for
+   *                          this feature group, `"correlations`" to turn on feature correlation  computation,
+   *                          `"histograms"` to compute feature value frequencies and `"exact_uniqueness"` to compute
+   *                          uniqueness, distinctness and entropy. The values should be booleans indicating the
+   *                          setting. To fully turn off statistics computation pass `statisticsConfig=false`.
+   * @param eventTime Name of the feature containing the event
+   *                 time for the features in this feature group. If eventTime is set
+   *                 the feature group can be used for point-in-time joins.
+   * @param onlineConfig Optionally, define configuration which is used to configure online table.
+   * @return FeatureGroup: The feature group metadata object.
+   * @throws IOException Generic IO exception.
+   * @throws FeatureStoreException If unable to retrieve FeatureGroup from the feature store.
+   */
+  @Override
+  public StreamFeatureGroup getOrCreateStreamFeatureGroup(@NonNull String name,
+                                                          Integer version,
+                                                          String description,
+                                                          Boolean onlineEnabled,
+                                                          TimeTravelFormat timeTravelFormat,
+                                                          List<String> primaryKeys,
+                                                          List<String> partitionKeys,
+                                                          String eventTime,
+                                                          String hudiPrecombineKey,
+                                                          List<Feature> features,
+                                                          StatisticsConfig statisticsConfig,
+                                                          StorageConnector storageConnector,
+                                                          String path,
+                                                          OnlineConfig onlineConfig)
+          throws IOException, FeatureStoreException {
+    return featureGroupEngine.getOrCreateStreamFeatureGroup(this, name, version, description,
+            primaryKeys, partitionKeys, hudiPrecombineKey, onlineEnabled, statisticsConfig, eventTime, timeTravelFormat,
+            features, storageConnector, path, onlineConfig);
   }
 
   /**
