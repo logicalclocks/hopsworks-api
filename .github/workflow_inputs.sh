@@ -32,7 +32,7 @@ labels="['e2e_small']" yq  '.inputs.labels = strenv(labels)' -i inputs.yaml
 hopsworks_api_branch=${ghprbSourceBranch} yq '.inputs.hopsworks_api_branch = strenv(hopsworks_api_branch)' -i inputs.yaml
 loadtest_branch=${loadtest_branch} yq '.inputs.loadtest_branch = strenv(loadtest_branch)' -i inputs.yaml
 short_sha=$SHORT_SHA yq '.inputs.short_sha = strenv(short_sha)' -i inputs.yaml
-repo_api_author=${ghprbPullAuthorLogin} yq '.inputs.repo_api_author = strenv(repo_api_author)' -i inputs.yaml
+user_repo_api=${ghprbPullAuthorLogin} yq '.inputs.user_repo_api = strenv(user_repo_api)' -i inputs.yaml
 
 yq -o=json inputs.yaml > inputs.json
 cat inputs.json
