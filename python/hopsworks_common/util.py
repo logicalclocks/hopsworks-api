@@ -816,11 +816,6 @@ class AsyncTaskThread(threading.Thread):
         """
         asyncio.set_event_loop(self._event_loop)
 
-        if self._connection_pool_initializer:
-            self._connection_pool = await self._connection_pool_initializer(
-                *self._connection_pool_params
-            )
-
         while not self.stop_event.is_set():
             # Fetch a task from the queue.
             task = self.task_queue.get()
@@ -858,6 +853,11 @@ class AsyncTaskThread(threading.Thread):
         Execute the async tasks for the queue.
         """
         asyncio.set_event_loop(self._event_loop)
+        # Initialize the connection pool by using loop.run_until_complete to make sure the connection pool is initialized before the event loop starts running forever.
+        if self._connection_pool_initializer:
+            self._connection_pool = self._event_loop.run_until_complete(
+                self._connection_pool_initializer(*self._connection_pool_params)
+            )
         self._event_loop.create_task(self.execute_task())
         try:
             self._event_loop.run_forever()
