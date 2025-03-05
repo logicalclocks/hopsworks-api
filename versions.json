@@ -3,15 +3,14 @@
     "version": "4.2.0-RC1",
     "title": "4.2.0-RC1",
     "aliases": [
-      "4.2"
+      "4.2",
+      "latest"
     ]
   },
   {
     "version": "4.2.0-RC0",
     "title": "4.2.0-RC0",
-    "aliases": [
-      "latest"
-    ]
+    "aliases": []
   },
   {
     "version": "4.1.8",
