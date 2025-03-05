@@ -17,7 +17,7 @@ if [[ ${ghprbPullTitle} =~ (FSTORE-[0-9]+) || ${ghprbPullTitle} =~ (HWORKS-[0-9]
 
   loadtest_branch=$(echo "${loadtest_prs}" | jq -r --arg captured_string ${captured_string} '.[] | select(.title | contains($captured_string)) | .head.ref')
   minikube_ip=$(echo "${loadtest_prs}" | jq -r --arg captured_string ${captured_string} '.[] | select(.title | contains($captured_string)) | .labels[] | select(.name | contains("10.87.")) | .name')
-  labels=$(echo "${loadtest_prs}" | jq -r --arg captured_string ${captured_string} '.[] | select(.title | contains($captured_string)) | .labels[] | select(.name | contains("e2e")) | .name')
+  labels=$(echo "${loadtest_prs}" | jq -r --arg captured_string ${captured_string} '.[] | select(.title | contains($captured_string)) | .labels[] | select(.name | contains("e2e")) | .name | join(",")')
 fi
 
 if [ -z "${loadtest_branch}" ]; then
