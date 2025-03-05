@@ -15,14 +15,14 @@ loadtest_branch=$(curl -L -G \
   -H "Authorization: Bearer ${GITHUB_TOKEN}" \
   -H "X-GitHub-Api-Version: 2022-11-28" \
   -d "state=open" \
-  https://api.github.com/repos/logicalclocks/loadtest/pulls > loadtest_prs.json \
+  https://api.github.com/repos/logicalclocks/loadtest/pulls \
   || jq -r --arg api_branch ${ghprbSourceBranch} '.[] | select(.head.ref == $api_branch)')
 
 if [ -z "${loadtest_branch}" ]; then
   loadtest_branch="main"
 fi
 
-cat loadtest_prs.json
+# cat loadtest_prs.json
 echo "${loadtest_branch}"
 
 yq '.ref = "main"' -i inputs.yaml
