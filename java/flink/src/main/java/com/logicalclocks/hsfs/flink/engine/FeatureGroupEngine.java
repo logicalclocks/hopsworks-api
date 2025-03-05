@@ -82,7 +82,8 @@ public class FeatureGroupEngine extends FeatureGroupEngineBase {
     featureGroup.setOnlineTopicName(apiFG.getOnlineTopicName());
   }
 
-  public StreamFeatureGroup getOrCreateFeatureGroup(FeatureStore featureStore, @NonNull String name,
+  public StreamFeatureGroup getOrCreateFeatureGroup(FeatureStore featureStore,
+                                                    @NonNull String name,
                                                     Integer version,
                                                     String description,
                                                     Boolean onlineEnabled,

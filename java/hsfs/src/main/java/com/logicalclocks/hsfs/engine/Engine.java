@@ -85,7 +85,8 @@ public class Engine<T> extends EngineBase {
     kafkaProps.put("value.serializer", "org.apache.kafka.common.serialization.ByteArraySerializer");
     kafkaProps.putAll(getKafkaConfig(streamFeatureGroup, writeOptions));
 
-    KafkaRecordSerializer kafkaRecordSerializer = new KafkaRecordSerializer(streamFeatureGroup);
+    KafkaRecordSerializer kafkaRecordSerializer = new KafkaRecordSerializer(streamFeatureGroup,
+            (long) featureData.size());
 
     try (KafkaProducer<byte[], byte[]> producer = new KafkaProducer<>(kafkaProps)) {
       for (Object input : featureData) {
