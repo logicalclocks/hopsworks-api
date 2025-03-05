@@ -97,7 +97,7 @@ pipeline {
             -H \"X-GitHub-Api-Version: 2022-11-28\" \
             -o results.zip "${REPORT_URL}" """
           )
-          sh "unzip results.zip && rm results.zip"
+          sh """if [ -f results.xml ]; then rm results.xml; fi && unzip results.zip && rm results.zip"""
         }
       }
     }
