@@ -41,8 +41,6 @@ if [ -z "${loadtest_branch}" ]; then
     echo "Found labels: ${labels}"
   fi
 
-echo "${loadtest_branch}"
-
 # .ref is the name of the branch where the workflow dispatch will be sent.
 yq '.ref = "jenkins-ci"' -i inputs.yaml
 
