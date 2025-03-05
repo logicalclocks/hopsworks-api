@@ -106,11 +106,9 @@ pipeline {
       }
     }
   }
-  // post {
-  //   always {
-  //     sh "rm results.zip"
-  //     sh "rm inputs.json"
-  //     junit 'results.xml'
-  //   }
-  // }
+  post {
+    always {
+      junit 'results.xml'
+    }
+  }
 }
