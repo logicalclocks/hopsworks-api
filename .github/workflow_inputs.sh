@@ -25,7 +25,7 @@ fi
 # cat loadtest_prs.json
 echo "${loadtest_branch}"
 
-yq '.ref = "main"' -i inputs.yaml
+yq '.ref = "jenkins-ci"' -i inputs.yaml
 yq '.inputs.max_parallel = "8"' -i inputs.yaml
 hopsworks_domain="10.87.40.126" yq '.inputs.hopsworks_domain = strenv(hopsworks_domain)' -i inputs.yaml
 labels="['e2e_small']" yq  '.inputs.labels = strenv(labels)' -i inputs.yaml
