@@ -10,12 +10,17 @@ else
   loadtest_branch="main"
 fi
 
-# loadtest_branch=$(curl -L -G \
-#   -H "Accept: application/vnd.github+json" \
-#   -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-#   -H "X-GitHub-Api-Version: 2022-11-28" \
-#   -d "state=open" \
-#   https://api.github.com/repos/logicalclocks/loadtest/pulls \
+loadtest_prs=$(curl -L -G \
+  -H "Accept: application/vnd.github+json" \
+  -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  -d "state=open" \
+  https://api.github.com/repos/logicalclocks/loadtest/pulls)
+
+echo ${loadtest_prs}
+
+loadtest_pr=$(echo ${loadtest_prs} | jq -r --arg api_branch ${ghprbSourceBranch} '.[] | select(.head.ref == $api_branch)')
+echo ${loadtest_pr}
 #   || jq -r --arg api_branch ${ghprbSourceBranch} '.[] | select(.head.ref == $api_branch)')
 
 # if [ -z "${loadtest_branch}" ]; then
