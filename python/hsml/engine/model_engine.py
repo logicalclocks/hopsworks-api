@@ -278,6 +278,8 @@ class ModelEngine:
               files.append(items)
               offset += limit
               items = self._dataset_api.list(dataset_model_path, sort_by="NAME:desc", offset=offset, limit=limit)["items"]
+
+            print(files)
             for item in files:
                 _, file_name = os.path.split(item["attributes"]["path"])
                 # Get highest version folder
