@@ -29,7 +29,7 @@ if [ -z "${loadtest_branch}" ]; then
 
   if [ -z "${minikube_ip}" ]; then
     echo "No minikube ip found in labels, using default staging cluster" 
-    minikube_ip"10.87.41.126" # Make it domain name instead of ip
+    minikube_ip="stagingmain.devnet.hops.works" # Make it domain name instead of ip
   else
     echo "Found minikube ip in loadtest PR labels: ${minikube_ip}"
   fi
@@ -42,9 +42,9 @@ if [ -z "${loadtest_branch}" ]; then
   fi
 
 # .ref is the name of the branch where the workflow dispatch will be sent.
-yq '.ref = "jenkins-ci"' -i inputs.yaml
+yq '.ref = "main"' -i inputs.yaml
 
-yq '.inputs.max_parallel = "8"' -i inputs.yaml
+yq '.inputs.max_parallel = "5"' -i inputs.yaml
 hopsworks_domain=$minikube_ip yq '.inputs.hopsworks_domain = strenv(hopsworks_domain)' -i inputs.yaml
 labels=$labels yq  '.inputs.labels = strenv(labels)' -i inputs.yaml
 hopsworks_api_branch=${ghprbSourceBranch} yq '.inputs.hopsworks_api_branch = strenv(hopsworks_api_branch)' -i inputs.yaml

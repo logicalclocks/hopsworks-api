@@ -3,7 +3,7 @@ def SHORT_SHA = ""
 def REF_LOADTEST_BRANCH = ""
 def WORKFLOW_RUN_URL = ""
 
-pipeline {
+pipeline("E2E workflows") {
   agent {
     label "local"
   }
