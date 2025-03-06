@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2023. Hopsworks AB
+ *  Copyright (c) 2025. Hopsworks AB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -15,19 +15,11 @@
  *
  */
 
-package com.logicalclocks.hsfs.flink;
+package com.logicalclocks.hsfs;
 
-import com.logicalclocks.hsfs.Feature;
-import com.logicalclocks.hsfs.FeatureStoreBase;
-import com.logicalclocks.hsfs.FeatureStoreException;
-import com.logicalclocks.hsfs.OnlineConfig;
-import com.logicalclocks.hsfs.StatisticsConfig;
-import com.logicalclocks.hsfs.StorageConnector;
-import com.logicalclocks.hsfs.TimeTravelFormat;
-import com.logicalclocks.hsfs.flink.constructor.Query;
-import com.logicalclocks.hsfs.flink.engine.FeatureViewEngine;
-import com.logicalclocks.hsfs.flink.engine.FeatureGroupEngine;
-
+import com.logicalclocks.hsfs.constructor.Query;
+import com.logicalclocks.hsfs.engine.FeatureGroupEngine;
+import com.logicalclocks.hsfs.engine.FeatureViewEngine;
 import com.logicalclocks.hsfs.metadata.StorageConnectorApi;
 import lombok.NonNull;
 
@@ -75,12 +67,20 @@ public class FeatureStore extends FeatureStoreBase<Query> {
   }
 
   @Override
-  public StreamFeatureGroup createStreamFeatureGroup(@NonNull String name, Integer version, String description,
-                                                     Boolean onlineEnabled, TimeTravelFormat timeTravelFormat,
-                                                     List<String> primaryKeys, List<String> partitionKeys,
-                                                     String eventTime, String hudiPrecombineKey, List<Feature> features,
-                                                     StatisticsConfig statisticsConfig,
-                                                     StorageConnector storageConnector, String path) {
+  public StreamFeatureGroup createStreamFeatureGroup(@NonNull String name,
+                                                   Integer version,
+                                                   String description,
+                                                   Boolean onlineEnabled,
+                                                   TimeTravelFormat timeTravelFormat,
+                                                   List<String> primaryKeys,
+                                                   List<String> partitionKeys,
+                                                   String eventTime,
+                                                   String hudiPrecombineKey,
+                                                   List<Feature> features,
+                                                   StatisticsConfig statisticsConfig,
+                                                   StorageConnector storageConnector,
+                                                   String path) {
+
     return new StreamFeatureGroup.StreamFeatureGroupBuilder()
         .featureStore(this)
         .name(name)
