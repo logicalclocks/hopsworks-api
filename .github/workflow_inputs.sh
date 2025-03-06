@@ -28,10 +28,10 @@ if [ -z "${loadtest_branch}" ]; then
   fi
 
   if [ -z "${minikube_ip}" ]; then
-    echo "No minikube ip found, using default staging cluster" 
+    echo "No minikube ip found in labels, using default staging cluster" 
     minikube_ip"10.87.41.126" # Make it domain name instead of ip
   else
-    echo "Found minikube ip: ${minikube_ip}"
+    echo "Found minikube ip in loadtest PR labels: ${minikube_ip}"
   fi
 
   if [ -z "${labels}" ]; then
