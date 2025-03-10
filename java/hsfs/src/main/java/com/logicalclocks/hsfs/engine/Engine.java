@@ -100,15 +100,52 @@ public class Engine<T> extends EngineBase {
   }
 
 
+  private Object normalize(Object value, Schema targetSchema) {
+    if (value == null) {
+      return null;
+    }
+    switch (targetSchema.getType()) {
+      case RECORD:
+        // Create a new record with the target schema
+        GenericRecord newRecord = new GenericData.Record(targetSchema);
+        GenericRecord oldRecord = (GenericRecord) value;
+        for (Schema.Field field : targetSchema.getFields()) {
+          // Recursively normalize each field based on its target schema
+          Object fieldValue = oldRecord.get(field.name());
+          newRecord.put(field.name(), normalize(fieldValue, field.schema()));
+        }
+        return newRecord;
+      case ARRAY:
+        Collection<?> oldArray = (Collection<?>) value;
+        List<Object> newArray = new ArrayList<>();
+        // Normalize each element using the array’s element type
+        for (Object item : oldArray) {
+          newArray.add(normalize(item, targetSchema.getElementType()));
+        }
+        return newArray;
+      case UNION:
+        // For a union, pick the non-null branch if value is non-null.
+        // You might need additional logic to pick the right branch.
+        for (Schema s : targetSchema.getTypes()) {
+          if (s.getType() == Schema.Type.NULL) {
+            continue;
+          }
+          return normalize(value, s);
+        }
+        throw new RuntimeException("Cannot normalize value for union schema: " + targetSchema);
+      default:
+        // For primitives (or already matching types), return the value directly.
+        return value;
+    }
+  }
+
   private GenericRecord convertPojoToGenericRecord(Object input,
                                                    Schema featureGroupSchema,
                                                    Schema encodedFeatureGroupSchema,
                                                    Map<String, Schema> complexFeatureSchemas)
-      throws NoSuchFieldException, IllegalAccessException, FeatureStoreException, IOException {
+          throws NoSuchFieldException, IllegalAccessException, FeatureStoreException, IOException {
 
     // Generate the genericRecord without nested serialization.
-    // Users have the option of providing directly a GenericRecord.
-    // If that's the case we also expect nested structures to be generic records.
     GenericRecord plainRecord;
     if (input instanceof GenericRecord) {
       plainRecord = (GenericRecord) input;
@@ -118,19 +155,23 @@ public class Engine<T> extends EngineBase {
 
     // Apply nested serialization for complex features
     GenericRecord encodedRecord = new GenericData.Record(encodedFeatureGroupSchema);
-    for (Schema.Field field: encodedFeatureGroupSchema.getFields()) {
+    for (Schema.Field field : encodedFeatureGroupSchema.getFields()) {
       if (complexFeatureSchemas.containsKey(field.name())) {
         Schema complexFieldSchema = complexFeatureSchemas.get(field.name());
-        GenericDatumWriter<Object> complexFeatureDatumWriter = new GenericDatumWriter<>(complexFieldSchema);
+        Object fieldValue = plainRecord.get(field.name());
+        // Normalize the field to match the expected schema exactly.
+        Object normalizedValue = normalize(fieldValue, complexFieldSchema);
 
+        GenericDatumWriter<Object> complexFeatureDatumWriter = new GenericDatumWriter<>(complexFieldSchema);
         try (ByteArrayOutputStream complexFeatureByteArrayOutputStream = new ByteArrayOutputStream()) {
           BinaryEncoder complexFeatureBinaryEncoder =
-              new EncoderFactory().binaryEncoder(complexFeatureByteArrayOutputStream, null);
-          complexFeatureDatumWriter.write(plainRecord.get(field.name()), complexFeatureBinaryEncoder);
+                  new EncoderFactory().binaryEncoder(complexFeatureByteArrayOutputStream, null);
+          complexFeatureDatumWriter.write(normalizedValue, complexFeatureBinaryEncoder);
           complexFeatureBinaryEncoder.flush();
 
-          // Replace the field in the generic record with the serialized version
-          encodedRecord.put(field.name(), ByteBuffer.wrap(complexFeatureByteArrayOutputStream.toByteArray()));
+          // Replace the field with the serialized (double-serialized) bytes.
+          encodedRecord.put(field.name(),
+                  ByteBuffer.wrap(complexFeatureByteArrayOutputStream.toByteArray()));
         }
       } else {
         encodedRecord.put(field.name(), plainRecord.get(field.name()));
