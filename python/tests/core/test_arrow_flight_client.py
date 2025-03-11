@@ -71,6 +71,10 @@ class TestArrowFlightClient:
             "hsfs.core.feature_view_engine.FeatureViewEngine._create_training_data_metadata",
             return_value=td,
         )
+        mocker.patch(
+            "hsfs.core.feature_view_api.FeatureViewApi.get_training_dataset_by_version",
+            return_value=td,
+        )
 
         fg = self._arrange_featuregroup_mocks(backend_fixtures)
         mocker.patch(

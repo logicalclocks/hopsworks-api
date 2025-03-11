@@ -102,7 +102,7 @@ class ExecutionEngine:
         # Returns
             `Optional[Execution]`: The final execution or `None` if the timeout is exceeded.
         # Raises
-            `RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         start_time = datetime.now()
 

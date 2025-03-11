@@ -26,6 +26,7 @@ from hsfs.split_statistics import SplitStatistics
 
 class Statistics:
     DEFAULT_ROW_PERCENTAGE = 1.0
+    NOT_FOUND_ERROR_CODE = 270228
 
     def __init__(
         self,

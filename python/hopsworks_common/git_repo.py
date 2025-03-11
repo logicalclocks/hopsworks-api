@@ -116,7 +116,7 @@ class GitRepo:
         # Returns
             `List[GitFileStatus]`
         # Raises
-            `RestAPIError` in case the backend fails to retrieve the status.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._git_api._status(self.id)
 
@@ -126,7 +126,7 @@ class GitRepo:
         !!! danger "Potentially dangerous operation"
             This operation deletes the cloned git repository from the filesystem.
         # Raises
-            `RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._git_api._delete_repo(self.id)
 
@@ -138,7 +138,7 @@ class GitRepo:
             branch: name of the branch
             create: if true will create a new branch and check it out
         # Raises
-            `RestAPIError` in case the backend fails to retrieve the commits.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if create:
             self._git_api._create(self.id, branch=branch, checkout=True)
@@ -151,7 +151,7 @@ class GitRepo:
         # Arguments
             commit: hash of the commit
         # Raises
-            `RestAPIError` in case the backend fails to retrieve the commits.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._git_api._checkout(self.id, commit=commit)
 
@@ -162,7 +162,7 @@ class GitRepo:
         # Arguments
             files: list of files or GitFileStatus objects to checkout
         # Raises
-            `RestAPIError` in case the backend fails to checkout the files.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._git_api._checkout_files(self.id, files)
 
@@ -173,7 +173,7 @@ class GitRepo:
         # Arguments
             branch: name of the branch
         # Raises
-            `RestAPIError` in case the backend fails to delete the branch.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._git_api._delete(self.id, branch)
 
@@ -186,7 +186,7 @@ class GitRepo:
             all: automatically stage files that have been modified and deleted, but new files are not affected
             files: list of new files to add and commit
         # Raises
-            `RestAPIError` in case the backend fails to perform the commit.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._git_api._commit(self.id, message, all=all, files=files)
 
@@ -198,7 +198,7 @@ class GitRepo:
             branch: name of the branch
             remote: name of the remote
         # Raises
-            `RestAPIError` in case the backend fails to retrieve the commits.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._git_api._push(self.id, branch, force=False, remote=remote)
 
@@ -210,7 +210,7 @@ class GitRepo:
             branch: name of the branch
             remote: name of the remote
         # Raises
-            `RestAPIError` in case the backend fails to retrieve the commits.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._git_api._pull(self.id, branch, force=False, remote=remote)
 
@@ -245,9 +245,9 @@ class GitRepo:
         # Arguments
             branch: name of the branch
         # Returns
-            `List[GitCommit]`
+            `List[GitCommit]`: The list of commits for this repo
         # Raises
-            `RestAPIError` in case the backend fails to retrieve the commits.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._git_api._get_commits(self.id, branch)
 
@@ -274,7 +274,7 @@ class GitRepo:
         # Returns
             `GitRemote`
         # Raises
-            `RestAPIError` in case the backend fails to add the remote.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._git_remote_api._add(self.id, name, url)
 
@@ -284,9 +284,9 @@ class GitRepo:
         # Arguments
             name: name of the remote
         # Returns
-            `GitRemote`
+            `GitRemote`: The git remote metadata object or `None` if it does not exist.
         # Raises
-            `RestAPIError` in case the backend fails to get the remote.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._git_remote_api._get(self.id, name)
 
@@ -296,7 +296,7 @@ class GitRepo:
         # Returns
             `List[GitRemote]`
         # Raises
-            `RestAPIError` in case the backend fails to retrieve the remotes.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._git_remote_api._get_remotes(self.id)
 

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 
-from hopsworks_common import client, tag, usage
+from hopsworks_common import client, decorators, tag, usage
 
 
 class TagsApi:
@@ -76,6 +76,7 @@ class TagsApi:
         _client._send_request("DELETE", path_params)
 
     @usage.method_logger
+    @decorators.catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
     def get(self, metadata_instance, name: str = None, training_dataset_version=None):
         """Get the tags of a training dataset or feature group.
 
