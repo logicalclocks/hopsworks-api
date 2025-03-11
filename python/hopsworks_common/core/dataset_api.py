@@ -645,7 +645,7 @@ class DatasetApi:
         return inode_lst["count"], inode.Inode.from_response_json(inode_lst)
 
     @usage.method_logger
-    def list(self, remote_path, sort_by=None, limit=1000):
+    def list(self, remote_path, sort_by=None, offset=0, limit=1000):
         """List all files in a directory in datasets.
 
         :param remote_path: path to list
@@ -659,7 +659,7 @@ class DatasetApi:
         # they seem to handle paths differently and return different results, which prevents the merge at the moment (2024-09-03), due to the requirement of backwards-compatibility
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "dataset", remote_path]
-        query_params = {"action": "listing", "sort_by": sort_by, "limit": limit}
+        query_params = {"action": "listing", "sort_by": sort_by, "limit": limit, "offset": offset}
         headers = {"content-type": "application/json"}
         return _client._send_request(
             "GET", path_params, headers=headers, query_params=query_params
