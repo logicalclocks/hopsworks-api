@@ -28,9 +28,7 @@ import com.logicalclocks.hsfs.flink.FeatureStore;
 import org.apache.flink.streaming.api.datastream.DataStream;
 
 import java.io.IOException;
-import java.util.Date;
 import java.util.List;
-import java.util.Map;
 
 public class FeatureViewEngine extends FeatureViewEngineBase<Query, FeatureView, FeatureStore, StreamFeatureGroup,
     DataStream<?>> {
@@ -49,27 +47,25 @@ public class FeatureViewEngine extends FeatureViewEngineBase<Query, FeatureView,
     return featureView;
   }
 
-  @Override
-  public Query getBatchQuery(FeatureView featureView, Date date, Date date1, Boolean withLabels, Integer integer)
-      throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public String getBatchQueryString(FeatureView featureView, Date startTime, Date endTime, Integer trainingDataVersion)
-      throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
   public FeatureView getOrCreateFeatureView(FeatureStore featureStore, String name, Integer version, Query query,
-      String description, List<String> labels) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public DataStream getBatchData(FeatureView featureView, Date startTime, Date endTime, Map<String, String> readOptions,
-      Integer trainingDataVersion) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
+                                            String description, List<String> labels)
+      throws FeatureStoreException, IOException {
+    FeatureView featureView;
+    try {
+      featureView = get(featureStore, name, version, FeatureView.class);
+    } catch (IOException | FeatureStoreException e) {
+      if (e.getMessage().contains("Error: 404") && e.getMessage().contains("\"errorCode\":270181")) {
+        featureView = new FeatureView.FeatureViewBuilder(featureStore)
+            .name(name)
+            .version(version)
+            .query(query)
+            .description(description)
+            .labels(labels)
+            .build();
+      } else {
+        throw e;
+      }
+    }
+    return featureView;
   }
 }
