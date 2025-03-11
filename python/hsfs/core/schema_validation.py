@@ -66,7 +66,7 @@ class DataFrameValidator:
         # Handle errors
         if is_pk_null or (is_string_length_exceeded and feature_group.id):
             raise ValueError(
-                f"One or more schema validation errors found for online ingestion. Data cannot be inserted. Error details ('column_name':'error description'): {errors}"
+                f"One or more schema validation errors found for online ingestion. For details about the validation, refer to the documentation(https://docs.hopsworks.ai/latest/user_guides/fs/feature_group/data_types/#string-online-data-types). Error details ('column_name':'error description'): {errors}"
             )
         elif is_string_length_exceeded:
             # If the feature group is not created and string lengths exceed default, adjust the string columns
