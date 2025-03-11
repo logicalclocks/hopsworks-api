@@ -36,8 +36,6 @@ import com.logicalclocks.hsfs.TimeTravelFormat;
 import com.logicalclocks.hsfs.beam.engine.BeamProducer;
 import com.logicalclocks.hsfs.beam.engine.FeatureGroupEngine;
 
-import org.apache.beam.sdk.values.PCollection;
-
 import lombok.Builder;
 import lombok.NonNull;
 
