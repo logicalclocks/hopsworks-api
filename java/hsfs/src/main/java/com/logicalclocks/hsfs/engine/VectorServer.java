@@ -292,11 +292,6 @@ public class VectorServer {
 
   public void initPreparedStatement(FeatureViewBase featureViewBase, boolean batch, boolean external)
       throws FeatureStoreException, IOException, ClassNotFoundException {
-    // check if this training dataset has transformation functions attached and throw exception if any
-    if (featureViewApi.getTransformationFunctions(featureViewBase).size() > 0) {
-      throw new FeatureStoreException("This feature view has transformation functions attached and "
-          + "serving must performed from a Python application");
-    }
     List<ServingPreparedStatement> servingPreparedStatements =
         featureViewApi.getServingPreparedStatement(featureViewBase, batch);
     initPreparedStatement(featureViewBase.getFeatureStore(), featureViewBase.getFeatures(),
