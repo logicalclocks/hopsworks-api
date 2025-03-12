@@ -46,9 +46,7 @@ from retrying import retry
 if HAS_POLARS:
     import polars as pl
 
-
 _logger = logging.getLogger(__name__)
-
 
 _arrow_flight_instance = None
 
@@ -91,17 +89,15 @@ def _is_no_commits_found_error(exception):
 
 
 def _should_retry_healthcheck(exception):
-    return (
-        isinstance(exception, pyarrow._flight.FlightUnavailableError)
-        or isinstance(exception, pyarrow._flight.FlightTimedOutError)
+    return isinstance(exception, pyarrow._flight.FlightUnavailableError) or isinstance(
+        exception, pyarrow._flight.FlightTimedOutError
     )
 
 
 def _should_retry_certificate_registration(exception):
-    return (
-        _should_retry_healthcheck(exception)
-        or _is_feature_query_service_queue_full_error(exception)
-    )
+    return _should_retry_healthcheck(
+        exception
+    ) or _is_feature_query_service_queue_full_error(exception)
 
 
 # Avoid unnecessary client init
@@ -207,7 +203,9 @@ class ArrowFlightClient:
 
         try:
             self._health_check()
-            if "get-version" in [action.type for action in self._connection.list_actions()]:
+            if "get-version" in [
+                action.type for action in self._connection.list_actions()
+            ]:
                 self._server_version = self._get_server_version()
             else:
                 self._server_version = None
@@ -522,6 +520,7 @@ class ArrowFlightClient:
             print("Error calling action:", e)
 
     def create_query_object(self, query, query_str, on_demand_fg_aliases=None):
+        selected_features = [feat.name for feat in query.features]
         if on_demand_fg_aliases is None:
             on_demand_fg_aliases = []
         features = {}
@@ -531,7 +530,9 @@ class ArrowFlightClient:
             fg_connector = _serialize_featuregroup_connector(
                 fg, query, on_demand_fg_aliases
             )
-            features[fg_name] = [feat.name for feat in fg.features]
+            features[fg_name] = [
+                feat.name for feat in fg.features if feat.name in selected_features
+            ]
             connectors[fg_name] = fg_connector
         filters = _serialize_filter_expression(query.filters, query)
 
@@ -592,11 +593,22 @@ def _serialize_featuregroup_connector(fg, query, on_demand_fg_aliases):
         connector["time_travel_type"] = None
         connector["type"] = fg.storage_connector.type
         connector["options"] = fg.storage_connector.connector_options()
-        connector["query"] = fg.query[:-1] if fg.query.endswith(";") else fg.query
+        connector["query"] = fg.query
         for on_demand_fg_alias in on_demand_fg_aliases:
+            # backend attaches dynamic query to on_demand_fg_alias.on_demand_feature_group.query if any
             if on_demand_fg_alias.on_demand_feature_group.name == fg.name:
+                connector["query"] = (
+                    on_demand_fg_alias.on_demand_feature_group.query
+                    if fg.query is None
+                    else fg.query
+                )
                 connector["alias"] = on_demand_fg_alias.alias
                 break
+        connector["query"] = (
+            connector["query"][:-1]
+            if connector["query"].endswith(";")
+            else connector["query"]
+        )
         if query._left_feature_group == fg:
             connector["filters"] = _serialize_filter_expression(
                 query._filter, query, True
