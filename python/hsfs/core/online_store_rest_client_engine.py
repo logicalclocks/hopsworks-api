@@ -15,6 +15,8 @@
 #
 from __future__ import annotations
 
+import base64
+from datetime import datetime
 import itertools
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -32,6 +34,9 @@ class OnlineStoreRestClientEngine:
     RETURN_TYPE_FEATURE_VALUE_LIST = "feature_value_list"
     RETURN_TYPE_RESPONSE_JSON = "response_json"  # as a python dict
     MISSING_STATUS = "MISSING"
+    BINARY_TYPE = "binary"
+    DATE_TYPE = "date"
+    FEATURE_TYPE_TO_DECODE = [BINARY_TYPE, DATE_TYPE]
 
     def __init__(
         self,
@@ -78,9 +83,20 @@ class OnlineStoreRestClientEngine:
                     self._is_inference_helpers_list.append(True)
                 elif not feat.training_helper_column:
                     self._is_inference_helpers_list.append(False)
+        self._feature_to_decode = self.get_feature_to_decode(features)
         _logger.debug(
             f"Mapping fg_id to feature names: {self._feature_names_per_fg_id}."
         )
+
+    def get_feature_to_decode(self, features: List[td_feature_mod.TrainingDatasetFeature]) -> Dict[int, str]:
+        """Get the feature to decode from the RonDB Rest Server Feature Store API.
+        
+        """
+        feature_to_decode = {}
+        for feat in features:
+            if feat.type in self.FEATURE_TYPE_TO_DECODE:
+                feature_to_decode[self._ordered_feature_names.index(feat.name)] = feat.type
+        return feature_to_decode
 
     def build_base_payload(
         self,
@@ -127,6 +143,17 @@ class OnlineStoreRestClientEngine:
 
         _logger.debug(f"Base payload: {base_payload}")
         return base_payload
+    
+    def decode_rdrs_feature_values(self, feature_values: List[Any]) -> List[Any]:
+        """Decode the response from the RonDB Rest Server Feature Store API.
+        
+        """
+        for feature_index, data_type in self._feature_to_decode.items():
+            if data_type == self.BINARY_TYPE and feature_values[feature_index] is not None:
+                feature_values[feature_index] = base64.b64decode(feature_values[feature_index])
+            elif data_type == self.DATE_TYPE and feature_values[feature_index] is not None:
+                feature_values[feature_index] = datetime.strptime(feature_values[feature_index], "%Y-%m-%d").date()
+        return feature_values
 
     def get_single_feature_vector(
         self,
@@ -185,7 +212,6 @@ class OnlineStoreRestClientEngine:
         response = self._online_store_rest_client_api.get_single_raw_feature_vector(
             payload=payload
         )
-
         if return_type != self.RETURN_TYPE_RESPONSE_JSON:
             return self.convert_rdrs_response_to_feature_value_row(
                 row_feature_values=response["features"],
@@ -309,6 +335,7 @@ class OnlineStoreRestClientEngine:
             A dictionary with the feature names as keys and the feature values as values. Values types are not guaranteed to
             match the feature type in the metadata. Timestamp SQL types are converted to python datetime.
         """
+        row_feature_values = self.decode_rdrs_feature_values(row_feature_values)
         if drop_missing and (
             detailed_status is None and row_feature_values is not None
         ):
