@@ -37,6 +37,41 @@ class ProjectApi:
         except RestAPIError:
             return False
 
+    def _get_owned_projects(self):
+        """Get all projects owned by the current user
+
+        # Returns
+            `List[Project]`: List of Project objects
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If unable to get the project teams
+        """
+        project_team_json = self._get_project_teams()
+        projects = []
+        if project_team_json:
+            # This information can be retrieved calling the /users/profile endpoint but is avoided as that
+            # requires an API key to have the USER scope which is not guaranteed on serverless
+            # Until there is a better solution this code is used to get the current user_id to check project ownership
+            current_user_uid = project_team_json[0]['user']['uid']
+            for project_team in project_team_json:
+                if project_team["project"]["owner"]["uid"] == current_user_uid:
+                    projects.append(self._get_project(project_team["project"]["name"]))
+        return projects
+
+
+    def _get_project_teams(self):
+        """Get all project teams for this user.
+
+        # Returns
+            `str`: List of Project teams
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If unable to get the project teams
+        """
+        _client = client.get_instance()
+        path_params = [
+            "project",
+        ]
+        return _client._send_request("GET", path_params)
+
     def _get_projects(self):
         """Get all projects accessible by the user.
 
@@ -45,11 +80,7 @@ class ProjectApi:
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If unable to get the projects
         """
-        _client = client.get_instance()
-        path_params = [
-            "project",
-        ]
-        project_team_json = _client._send_request("GET", path_params)
+        project_team_json = self._get_project_teams()
         projects = []
         for project_team in project_team_json:
             projects.append(self._get_project(project_team["project"]["name"]))
