@@ -28,7 +28,7 @@ def pandas_df():
                         for _ in range(random.randint(1, 100))
                     )
                 )
-                for i in range(3)
+                for _ in range(3)
             ],
         }
     )
@@ -47,7 +47,7 @@ def polars_df():
                         for _ in range(random.randint(1, 100))
                     )
                 )
-                for i in range(3)
+                for _ in range(3)
             ],
         }
     )
@@ -138,9 +138,7 @@ class TestSchemaValidator:
         self, pandas_df, feature_group_created, mocker
     ):
         pandas_df.loc[0, "string_col"] = "a" * 101
-        with pytest.raises(
-            ValueError, match="Column string_col has string values longer than 100"
-        ):
+        with pytest.raises(ValueError, match="String length exceeded"):
             DataFrameValidator().validate_schema(
                 feature_group_created, pandas_df, feature_group_created.features
             )
@@ -149,9 +147,7 @@ class TestSchemaValidator:
         self, pandas_df, feature_group_created, mocker
     ):
         pandas_df.loc[0, "string_col"] = "a" * 101
-        with pytest.raises(
-            ValueError, match="Column string_col has string values longer"
-        ):
+        with pytest.raises(ValueError, match="String length exceeded"):
             DataFrameValidator().validate_schema(
                 feature_group_created, pandas_df, feature_group_created.features
             )
@@ -159,11 +155,29 @@ class TestSchemaValidator:
     def test_validate_schema_feature_group_not_created(
         self, pandas_df, feature_group_data
     ):
+        # test with non existing feature group with no explicit features
+        # arrange
         pandas_df.loc[0, "string_col"] = "a" * 101
+        initial_features = [
+            Feature("primary_key", "int"),
+            Feature("event_time", "string"),
+            Feature("string_col", "string"),
+        ]
+        feature_group_data.features = []
+        df_features = DataFrameValidator().validate_schema(
+            feature_group_data, pandas_df, initial_features
+        )
+        assert df_features[2].online_type == "varchar(101)"
+
+    def test_validate_schema_feature_group_with_features_not_created(
+        self, pandas_df, feature_group_data
+    ):
+        # test with feature group with explicit features
         df_features = DataFrameValidator().validate_schema(
             feature_group_data, pandas_df, feature_group_data.features
         )
-        assert df_features[2].online_type == "varchar(101)"
+        # assert that the online type of the string_col feature is same as explcitly set in the feature group
+        assert df_features[2].online_type == "varchar(200)"
 
     def test_pk_null_string_length_exceeded(self, pandas_df, feature_group_data):
         pandas_df.loc[0, "primary_key"] = None
@@ -180,5 +194,18 @@ class TestSchemaValidator:
         df_features = PandasValidator().validate_schema(
             feature_group_data, pandas_df, feature_group_data.features
         )
+        # assert no changes were made
         assert df_features == feature_group_data.features
-        assert "Feature group is not online enabled. Skipping validation" in caplog.text
+
+    def test_should_not_update_nonvarchar(self, pandas_df, feature_group_data):
+        # Test that the validator does not update the online type of a non-varchar column
+        # arrange
+        # set string_col feature online type to text
+        feature_group_data.features[2].online_type = "text"
+        pandas_df.loc[0, "string_col"] = "b" * 1001
+        # act
+        df_features = PandasValidator().validate_schema(
+            feature_group_data, pandas_df, feature_group_data.features
+        )
+
+        assert df_features == feature_group_data.features

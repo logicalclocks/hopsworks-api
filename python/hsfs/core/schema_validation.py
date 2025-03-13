@@ -54,7 +54,7 @@ class DataFrameValidator:
                 )
         # Execute data type specific validation
         errors, column_lengths, is_pk_null, is_string_length_exceeded = (
-            self._validate_df_specifics(feature_group, df, bool(feature_group.id))
+            self._validate_df_specifics(feature_group, df)
         )
 
         # Handle errors
@@ -68,7 +68,7 @@ class DataFrameValidator:
 
         return df_features
 
-    def _validate_df_specifics(self, feature_group, df, is_fg_created):
+    def _validate_df_specifics(self, feature_group, df):
         """To be implemented by subclasses"""
         raise NotImplementedError("Subclasses must implement this method")
 
@@ -77,7 +77,8 @@ class DataFrameValidator:
         for i_feature in features:
             if i_feature.name == feature_name:
                 return i_feature
-        raise ValueError(f"Feature {feature_name} not found in feature list")
+
+        return None
 
     @staticmethod
     def extract_numbers(input_string):
@@ -87,13 +88,14 @@ class DataFrameValidator:
         return re.findall(pattern, input_string)
 
     def get_online_varchar_length(self, feature):
-        # returns the column length of varchar columns
-        if not feature.type == "string":
-            raise ValueError("Feature not a string type")
-        if not feature.online_type:
-            raise ValueError("Feature is not online enabled")
-
-        return int(self.extract_numbers(feature.online_type)[0])
+        # check of online_type is not null and starts with varchar
+        if (
+            feature
+            and feature.online_type
+            and feature.online_type.startswith("varchar")
+        ):
+            return int(self.extract_numbers(feature.online_type)[0])
+        return None
 
     @staticmethod
     def increase_string_columns(column_lengths: dict, dataframe_features):
@@ -109,7 +111,7 @@ class DataFrameValidator:
 
 class PandasValidator(DataFrameValidator):
     # Pandas df specific validator
-    def _validate_df_specifics(self, feature_group, df, is_fg_created):
+    def _validate_df_specifics(self, feature_group, df):
         errors = {}
         column_lengths = {}
         is_pk_null = False
@@ -118,7 +120,7 @@ class PandasValidator(DataFrameValidator):
         # Check for null values in primary key columns
         for pk in feature_group.primary_key:
             if df[pk].isnull().any():
-                errors[pk] = f"Primary key column {pk} contains null values"
+                errors[pk] = f"Primary key column {pk} contains null values."
                 is_pk_null = True
 
         # Check string lengths
@@ -128,13 +130,13 @@ class PandasValidator(DataFrameValidator):
                 self.get_online_varchar_length(
                     self.get_feature_from_list(col, feature_group.features)
                 )
-                if is_fg_created
+                if feature_group.features
                 else 100
             )
 
-            if currentmax > col_max_len:
+            if col_max_len is not None and currentmax > col_max_len:
                 errors[col] = (
-                    f"Column {col} has string values longer than {col_max_len} characters"
+                    f"String length exceeded. Column {col} has string values longer than maximum colum limit of {col_max_len} characters."
                 )
                 column_lengths[col] = currentmax
                 is_string_length_exceeded = True
@@ -144,7 +146,7 @@ class PandasValidator(DataFrameValidator):
 
 class PolarsValidator(DataFrameValidator):
     # Polars df specific validator
-    def _validate_df_specifics(self, feature_group, df, is_fg_created):
+    def _validate_df_specifics(self, feature_group, df):
         import polars as pl
 
         errors = {}
@@ -155,7 +157,7 @@ class PolarsValidator(DataFrameValidator):
         # Check for null values in primary key columns
         for pk in feature_group.primary_key:
             if df[pk].is_null().any():
-                errors[pk] = f"Primary key column {pk} contains null values"
+                errors[pk] = f"Primary key column {pk} contains null values."
                 is_pk_null = True
 
         # Check string lengths
@@ -165,13 +167,13 @@ class PolarsValidator(DataFrameValidator):
                 self.get_online_varchar_length(
                     self.get_feature_from_list(col, feature_group.features)
                 )
-                if is_fg_created
+                if feature_group.features
                 else 100
             )
 
-            if currentmax > col_max_len:
+            if col_max_len is not None and currentmax > col_max_len:
                 errors[col] = (
-                    f"Column {col} has string values longer than {col_max_len} characters"
+                    f"String length exceeded. Column {col} has string values longer than maximum colum limit of {col_max_len} characters."
                 )
                 column_lengths[col] = currentmax
                 is_string_length_exceeded = True
@@ -181,7 +183,7 @@ class PolarsValidator(DataFrameValidator):
 
 class PySparkValidator(DataFrameValidator):
     # PySpark-specific validator
-    def _validate_df_specifics(self, feature_group, df, is_fg_created):
+    def _validate_df_specifics(self, feature_group, df):
         # Import PySpark SQL functions and types
         import pyspark.sql.functions as sf
         from pyspark.sql.types import StringType
@@ -194,7 +196,7 @@ class PySparkValidator(DataFrameValidator):
         # Check for null values in primary key columns
         for pk in feature_group.primary_key:
             if df.filter(df[pk].isNull()).count() > 0:
-                errors[pk] = f"Primary key column {pk} contains null values"
+                errors[pk] = f"Primary key column {pk} contains null values."
                 is_pk_null = True
 
         # Check string lengths for string columns
@@ -209,13 +211,13 @@ class PySparkValidator(DataFrameValidator):
                     self.get_online_varchar_length(
                         self.get_feature_from_list(col, feature_group.features)
                     )
-                    if is_fg_created
+                    if feature_group.features
                     else 100
                 )
 
-                if currentmax > col_max_len:
+                if col_max_len is not None and currentmax > col_max_len:
                     errors[col] = (
-                        f"Column {col} has string values longer than {col_max_len} characters"
+                        f"String length exceeded. Column {col} has string values longer than maximum colum limit of {col_max_len} characters."
                     )
                     column_lengths[col] = currentmax
                     is_string_length_exceeded = True
