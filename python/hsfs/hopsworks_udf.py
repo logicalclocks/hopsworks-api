@@ -105,7 +105,7 @@ def udf(
         `HopsworksUdf`: The metadata object for hopsworks UDF's.
 
     # Raises
-        `hsfs.client.exceptions.FeatureStoreException` : If unable to create UDF.
+        `hopsworks.client.exceptions.FeatureStoreException` : If unable to create UDF.
     """
 
     def wrapper(func: Callable) -> HopsworksUdf:
@@ -310,7 +310,7 @@ class HopsworksUdf:
             output_types: `list`. List of python types.
 
         # Raises
-            `hsfs.client.exceptions.FeatureStoreException` : If the any of the output type is invalid
+            `hopsworks.client.exceptions.FeatureStoreException` : If any of the output type is invalid
         """
         convert_output_types = []
         output_types = (
@@ -704,7 +704,7 @@ def renaming_wrapper(*args):
         # Returns
             `HopsworksUdf`: Meta data class for the user defined function.
         # Raises
-            `FeatureStoreException: If the provided number of features do not match the number of arguments in the defined UDF or if the provided feature names are not strings.
+            `hopsworks.client.exceptions.FeatureStoreException`: If the provided number of features do not match the number of arguments in the defined UDF or if the provided feature names are not strings.
         """
 
         if len(features) != len(self.transformation_features):

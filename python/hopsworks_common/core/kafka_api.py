@@ -18,11 +18,15 @@ from __future__ import annotations
 
 import json
 import socket
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional, Union
 
-from hopsworks_common import client, constants, kafka_schema, kafka_topic, usage
-from hopsworks_common.client.exceptions import KafkaException
-from hopsworks_common.client.external import Client
+from hopsworks_common import (
+    client,
+    constants,
+    kafka_schema,
+    kafka_topic,
+    usage,
+)
 
 
 class KafkaApi:
@@ -57,7 +61,7 @@ class KafkaApi:
         # Returns
             `KafkaTopic`: The KafkaTopic object
         # Raises
-            `RestAPIError`: If unable to create the topic
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
 
@@ -113,7 +117,7 @@ class KafkaApi:
         # Returns
             `KafkaSchema`: The KafkaSchema object
         # Raises
-            `RestAPIError`: If unable to create the schema
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
 
@@ -139,23 +143,21 @@ class KafkaApi:
         return self.get_schema(schema.subject, schema.version)
 
     @usage.method_logger
-    def get_topic(self, name: str):
+    def get_topic(self, name: str) -> Optional[kafka_topic.KafkaTopic]:
         """Get kafka topic by name.
 
         # Arguments
             name: name of the topic
         # Returns
-            `KafkaTopic`: The KafkaTopic object
+            `KafkaTopic`: The KafkaTopic object or `None` if not found
         # Raises
-            `RestAPIError`: If unable to get the topic
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         topics = self.get_topics()
 
         for topic in topics:
             if topic.name == name:
                 return topic
-
-        raise KafkaException("No topic named {} could be found".format(name))
 
     @usage.method_logger
     def get_topics(self):
@@ -164,7 +166,7 @@ class KafkaApi:
         # Returns
             `List[KafkaTopic]`: List of KafkaTopic objects
         # Raises
-            `RestAPIError`: If unable to get the topics
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "kafka", "topics"]
@@ -214,7 +216,7 @@ class KafkaApi:
         # Returns
             `List[str]`: List of registered subjects
         # Raises
-            `RestAPIError`: If unable to get the subjects
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         topics = self.get_topics()
 
@@ -234,7 +236,7 @@ class KafkaApi:
         # Returns
             `List[KafkaSchema]`: List of KafkaSchema objects
         # Raises
-            `RestAPIError`: If unable to get the schemas
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = [
@@ -255,27 +257,23 @@ class KafkaApi:
         return schemas
 
     @usage.method_logger
-    def get_schema(self, subject: str, version: int):
+    def get_schema(
+        self, subject: str, version: int
+    ) -> Optional[kafka_schema.KafkaSchema]:
         """Get schema given subject name and version.
 
         # Arguments
             subject: subject name
             version: version number
         # Returns
-            `KafkaSchema`: KafkaSchema object
+            `KafkaSchema`: KafkaSchema object or `None` if it does not exist.
         # Raises
-            `RestAPIError`: If unable to get the schema
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         schemas = self.get_schemas(subject)
         for schema in schemas:
             if schema.version == version:
                 return schema
-
-        raise KafkaException(
-            "No schema for subject {} and version {} could be found".format(
-                subject, version
-            )
-        )
 
     def _get_schema_details(self, subject: str, version: int):
         """Get the schema details.
@@ -321,7 +319,7 @@ class KafkaApi:
         """
         return constants.KAFKA_SSL_CONFIG.SSL
 
-    def get_default_config(self):
+    def get_default_config(self, internal_kafka: Optional[bool] = None):
         """Get the configuration to set up a Producer or Consumer for a Kafka broker using confluent-kafka.
 
         ```python
@@ -342,7 +340,7 @@ class KafkaApi:
         # Returns
             `dict`: The kafka configuration
         # Raises
-            `RestAPIError`: If unable to get the kafka configuration.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         _client = client.get_instance()
@@ -355,19 +353,14 @@ class KafkaApi:
             constants.KAFKA_CONSUMER_CONFIG.GROUP_ID_CONFIG: "my-group-id",
             constants.KAFKA_SSL_CONFIG.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG: "none",
         }
-        if type(_client) is Client:
-            config[constants.KAFKA_PRODUCER_CONFIG.BOOTSTRAP_SERVERS_CONFIG] = ",".join(
-                [
-                    endpoint.replace("EXTERNAL://", "")
-                    for endpoint in self._get_broker_endpoints(externalListeners=True)
-                ]
+
+        if internal_kafka is not None:
+            config["bootstrap.servers"] = ",".join(
+                self._get_broker_endpoints(externalListeners=not internal_kafka)
             )
         else:
-            config[constants.KAFKA_PRODUCER_CONFIG.BOOTSTRAP_SERVERS_CONFIG] = ",".join(
-                [
-                    endpoint.replace("INTERNAL://", "")
-                    for endpoint in self._get_broker_endpoints(externalListeners=False)
-                ]
+            config["bootstrap.servers"] = ",".join(
+                self._get_broker_endpoints(externalListeners=_client._is_external())
             )
 
         return config

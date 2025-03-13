@@ -84,7 +84,7 @@ class DatasetApi:
         # Returns
             `str`: Path to downloaded file
         # Raises
-            `RestAPIError`: If unable to download the file
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = [
@@ -191,7 +191,7 @@ class DatasetApi:
         # Returns
             `str`: Path to uploaded file or directory
         # Raises
-            `RestAPIError`: If unable to upload the file or directory
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         # local path could be absolute or relative,
@@ -430,7 +430,7 @@ class DatasetApi:
         # Returns
             `bool`: True if exists, otherwise False
         # Raises
-            `RestAPIError`: If unable to check existence for the path
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         try:
             self._get(path)
@@ -455,7 +455,7 @@ class DatasetApi:
         # Arguments
             path: path to remove
         # Raises
-            `RestAPIError`: If unable to remove the path
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "dataset", path]
@@ -467,7 +467,7 @@ class DatasetApi:
         # Arguments
             remote_path: path to remove
         # Raises
-            `RestAPIError`: If unable to remove the path
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self.remove(remote_path)
 
@@ -491,7 +491,7 @@ class DatasetApi:
         # Returns
             `str`: Path to created directory
         # Raises
-            `RestAPIError`: If unable to create the directory
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "dataset", path]
@@ -526,7 +526,7 @@ class DatasetApi:
             destination_path: the destination path
             overwrite: overwrite destination if exists
         # Raises
-            `RestAPIError`: If unable to perform the copy
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if self.exists(destination_path):
             if overwrite:
@@ -571,7 +571,7 @@ class DatasetApi:
             destination_path: the destination path
             overwrite: overwrite destination if exists
         # Raises
-            `RestAPIError`: If unable to perform the move
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if self.exists(destination_path):
             if overwrite:
@@ -645,7 +645,7 @@ class DatasetApi:
         return inode_lst["count"], inode.Inode.from_response_json(inode_lst)
 
     @usage.method_logger
-    def list(self, remote_path, sort_by=None, limit=1000):
+    def list(self, remote_path, sort_by=None, offset=0, limit=1000):
         """List all files in a directory in datasets.
 
         :param remote_path: path to list
@@ -659,7 +659,7 @@ class DatasetApi:
         # they seem to handle paths differently and return different results, which prevents the merge at the moment (2024-09-03), due to the requirement of backwards-compatibility
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "dataset", remote_path]
-        query_params = {"action": "listing", "sort_by": sort_by, "limit": limit}
+        query_params = {"action": "listing", "sort_by": sort_by, "limit": limit, "offset": offset}
         headers = {"content-type": "application/json"}
         return _client._send_request(
             "GET", path_params, headers=headers, query_params=query_params
@@ -744,7 +744,7 @@ class DatasetApi:
 
         # Wait for zip file to appear. When it does, check that parent dir zipState is not set to CHOWNING
         count = 0
-        while timeout is None:
+        while True:
             if action == "zip":
                 zip_path = remote_path + ".zip"
                 # Get the status of the zipped file
@@ -771,7 +771,7 @@ class DatasetApi:
                     return True
             time.sleep(1)
             count += 1
-            if count >= timeout:
+            if timeout is not None and count >= timeout:
                 self._log.info(
                     f"Timeout of {timeout} seconds exceeded while {action} {remote_path}."
                 )

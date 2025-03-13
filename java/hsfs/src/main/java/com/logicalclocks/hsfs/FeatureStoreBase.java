@@ -142,7 +142,7 @@ public abstract class FeatureStoreBase<T2 extends QueryBase> {
                                                 List<String> labels) throws FeatureStoreException, IOException;
 
   /**
-   * Get a external feature group object from the feature store.
+   * Get an external feature group object from the feature store.
    *
    * @param name    the name of the feature group
    * @param version the version of the feature group
@@ -154,7 +154,7 @@ public abstract class FeatureStoreBase<T2 extends QueryBase> {
       throws FeatureStoreException, IOException;
 
   /**
-   * Get a external feature group object with default version `1` from the feature store.
+   * Get an external feature group object with default version `1` from the feature store.
    *
    * @param name the name of the feature group
    * @return ExternalFeatureGroup

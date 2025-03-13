@@ -164,6 +164,12 @@ class EmbeddingFeature:
 
     @property
     def dimenstion(self):
+        """This one is excluded from the docs as the name is misspelled but kept to avoid breaking the API
+        int: The dimensionality of the embedding feature."""
+        return self._dimension
+
+    @property
+    def dimension(self):
         """int: The dimensionality of the embedding feature."""
         return self._dimension
 
@@ -214,7 +220,7 @@ class EmbeddingFeature:
         Convert the EmbeddingFeature object to a dictionary.
 
         Returns:
-            dict: A dictionary representation of the EmbeddingFeature object.
+            `dict`: A dictionary representation of the EmbeddingFeature object.
         """
         d = {
             "name": self._name,
@@ -333,11 +339,11 @@ class EmbeddingIndex:
                 The keys are attribute values of the `hsfs.core.opensearch.OpensearchRequestOption` class.
 
         # Returns
-            int: The number of records in the feature group.
+            `int`: The number of records in the feature group.
 
-        # Raises:
-            ValueError: If the feature group is not initialized.
-            FeaturestoreException: If an error occurs during the count operation.
+        # Raises
+            `ValueError`: If the feature group is not initialized.
+            `hopsworks.client.exceptions.FeatureStoreException`: If an error occurs during the count operation.
         """
         if self._vector_db_client is None:
             self._vector_db_client = VectorDbClient(self._feature_group.select_all())
@@ -384,7 +390,7 @@ class EmbeddingIndex:
         Convert the EmbeddingIndex object to a dictionary.
 
         Returns:
-            dict: A dictionary representation of the EmbeddingIndex object.
+            `dict`: A dictionary representation of the EmbeddingIndex object.
         """
         return {
             "indexName": self._index_name,

@@ -22,7 +22,7 @@ import sys
 import tempfile
 import warnings
 from pathlib import Path
-from typing import Literal, Union
+from typing import Literal, Optional, Union
 
 from hopsworks import client, constants, project, version
 from hopsworks.client.exceptions import (
@@ -77,14 +77,21 @@ logging.basicConfig(
 
 
 def login(
-    host: str = None,
+    host: Optional[str] = None,
     port: int = 443,
-    project: str = None,
-    api_key_value: str = None,
-    api_key_file: str = None,
+    project: Optional[str] = None,
+    api_key_value: Optional[str] = None,
+    api_key_file: Optional[str] = None,
     hostname_verification: bool = False,
-    trust_store_path: str = None,
-    engine: Union[None, Literal["spark"], Literal["python"], Literal["training"], Literal["spark-no-metastore"], Literal["spark-delta"]] = None,
+    trust_store_path: Optional[str] = None,
+    engine: Union[
+        None,
+        Literal["spark"],
+        Literal["python"],
+        Literal["training"],
+        Literal["spark-no-metastore"],
+        Literal["spark-delta"],
+    ] = None,
 ) -> project.Project:
     """Connect to [Serverless Hopsworks](https://app.hopsworks.ai) by calling the `hopsworks.login()` function with no arguments.
 
@@ -111,7 +118,7 @@ def login(
         ```
 
     In addition to setting function arguments directly, `hopsworks.login()` also reads the environment variables:
-    HOPSWORKS_HOST, HOPSWORKS_PORT, HOPSWORKS_PROJECT, HOPSWORKS_API_KEY, HOPSWORKS_HOSTNAME_VERIFICATION and HOPSWORKS_TRUST_STORE_PATH.
+    HOPSWORKS_HOST, HOPSWORKS_PORT, HOPSWORKS_PROJECT, HOPSWORKS_API_KEY, HOPSWORKS_HOSTNAME_VERIFICATION, HOPSWORKS_TRUST_STORE_PATH and HOPSWORKS_ENGINE.
 
     The function arguments do however take precedence over the environment variables in case both are set.
 
@@ -133,8 +140,8 @@ def login(
     # Returns
         `Project`: The Project object to perform operations on
     # Raises
-        `RestAPIError`: If unable to connect to Hopsworks
-        `HopsworksSSLClientError`: If SSLError is raised from underlying requests library
+        `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        `hopsworks.client.exceptions.HopsworksSSLClientError`: If SSLError is raised from underlying requests library
     """
 
     global _connected_project
@@ -144,9 +151,15 @@ def login(
 
     global _hw_connection
 
+    # If project argument not defined, get HOPSWORKS_ENGINE environment variable
+    if engine is None and "HOPSWORKS_ENGINE" in os.environ:
+        engine = os.environ["HOPSWORKS_ENGINE"]
+
     # If inside hopsworks, just return the current project for now
     if "REST_ENDPOINT" in os.environ:
-        _hw_connection = _hw_connection(hostname_verification=hostname_verification, engine=engine)
+        _hw_connection = _hw_connection(
+            hostname_verification=hostname_verification, engine=engine
+        )
         _connected_project = _hw_connection.get_project()
         _initialize_module_apis()
         print("\nLogged in to project, explore it here " + _connected_project.get_url())
@@ -328,7 +341,12 @@ def _get_cached_api_key_path():
 
 def _prompt_project(valid_connection, project, is_app):
     if project is None:
-        saas_projects = valid_connection._project_api._get_projects()
+        if is_app:
+            # On Serverless we filter out projects owned by other users to make sure automatic login
+            # without a prompt still happens when users add showcase projects created by other users
+            saas_projects = valid_connection._project_api._get_owned_projects()
+        else:
+            saas_projects = valid_connection._project_api._get_projects()
         if len(saas_projects) == 0:
             if is_app:
                 raise ProjectException("Could not find any project")
@@ -420,7 +438,7 @@ def _initialize_module_apis():
     _secrets_api = secret_api.SecretsApi()
 
 
-def create_project(name: str, description: str = None, feature_store_topic: str = None):
+def create_project(name: str, description: Optional[str] = None, feature_store_topic: Optional[str] = None):
     """Create a new project.
 
     !!! warning "Not supported"

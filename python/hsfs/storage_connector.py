@@ -51,6 +51,7 @@ class StorageConnector(ABC):
     KAFKA = "KAFKA"
     GCS = "GCS"
     BIGQUERY = "BIGQUERY"
+    NOT_FOUND_ERROR_CODE = 270042
 
     def __init__(
         self,
@@ -202,13 +203,14 @@ class StorageConnector(ABC):
         For inaccessible feature groups, only a minimal information is returned.
 
         # Returns
-            `ExplicitProvenance.Links`: the feature groups generated using this
-            storage connector
+            `Links`: the feature groups generated using this storage connector or `None` if none were created
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
-        return self._storage_connector_api.get_feature_groups_provenance(self)
+        links = self._storage_connector_api.get_feature_groups_provenance(self)
+        if not links.is_empty():
+            return links
 
     def get_feature_groups(self):
         """Get the feature groups using this storage connector, based on explicit
@@ -216,19 +218,21 @@ class StorageConnector(ABC):
         For more items use the base method - get_feature_groups_provenance
 
         # Returns
-            `List[FeatureGroup]: List of feature groups.
+            `List[FeatureGroup]`: List of feature groups.
         """
         feature_groups_provenance = self.get_feature_groups_provenance()
 
-        if feature_groups_provenance.inaccessible or feature_groups_provenance.deleted:
+        if feature_groups_provenance and (
+            feature_groups_provenance.inaccessible or feature_groups_provenance.deleted
+        ):
             _logger.info(
                 "There are deleted or inaccessible feature groups. For more details access `get_feature_groups_provenance`"
             )
 
-        if feature_groups_provenance.accessible:
+        if feature_groups_provenance and feature_groups_provenance.accessible:
             return feature_groups_provenance.accessible
         else:
-            return None
+            return []
 
 
 class HopsFSConnector(StorageConnector):
@@ -342,7 +346,9 @@ class S3Connector(StorageConnector):
     @property
     def path(self) -> Optional[str]:
         """If the connector refers to a path (e.g. S3) - return the path of the connector"""
-        return posixpath.join("s3://" + self._bucket, *os.path.split(self._path if self._path else ""))
+        return posixpath.join(
+            "s3://" + self._bucket, *os.path.split(self._path if self._path else "")
+        )
 
     @property
     def arguments(self) -> Optional[Dict[str, Any]]:
@@ -1338,16 +1344,61 @@ class KafkaConnector(StorageConnector):
 
         return config
 
+    def _read_pem(self, file_name):
+        with open(file_name, "r") as file:
+            return file.read()
+
     def spark_options(self) -> Dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional arguments.
         This is done by just adding 'kafka.' prefix to kafka_options.
         https://spark.apache.org/docs/latest/structured-streaming-kafka-integration.html#kafka-specific-configurations
         """
-        config = {}
-        for key, value in self.kafka_options().items():
-            config[f"{KafkaConnector.SPARK_FORMAT}.{key}"] = value
+        from packaging import version
 
-        return config
+        spark_config = {}
+
+        kafka_options = self.kafka_options()
+
+        for key, value in kafka_options.items():
+            if key in [
+                "ssl.truststore.location",
+                "ssl.truststore.password",
+                "ssl.keystore.location",
+                "ssl.keystore.password",
+                "ssl.key.password",
+            ] and version.parse(
+                engine.get_instance().get_spark_version()
+            ) >= version.parse("3.2.0"):
+                # We can only use this in the newer version of Spark which depend on Kafka > 2.7.0
+                # Kafka 2.7.0 adds support for providing the SSL credentials as PEM objects.
+                if not self._pem_files_created:
+                    (
+                        ca_chain_path,
+                        client_cert_path,
+                        client_key_path,
+                    ) = client.get_instance()._write_pem(
+                        kafka_options["ssl.keystore.location"],
+                        kafka_options["ssl.keystore.password"],
+                        kafka_options["ssl.truststore.location"],
+                        kafka_options["ssl.truststore.password"],
+                        f"kafka_sc_{client.get_instance()._project_id}_{self._id}",
+                    )
+                    self._pem_files_created = True
+                    spark_config["kafka.ssl.truststore.certificates"] = self._read_pem(
+                        ca_chain_path
+                    )
+                    spark_config["kafka.ssl.keystore.certificate.chain"] = (
+                        self._read_pem(client_cert_path)
+                    )
+                    spark_config["kafka.ssl.keystore.key"] = self._read_pem(
+                        client_key_path
+                    )
+                    spark_config["kafka.ssl.truststore.type"] = "PEM"
+                    spark_config["kafka.ssl.keystore.type"] = "PEM"
+            else:
+                spark_config[f"{KafkaConnector.SPARK_FORMAT}.{key}"] = value
+
+        return spark_config
 
     def read(
         self,

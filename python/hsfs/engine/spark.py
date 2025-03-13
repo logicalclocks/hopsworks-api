@@ -19,7 +19,6 @@ import copy
 import json
 import os
 import re
-import shutil
 import uuid
 import warnings
 from datetime import date, datetime, timezone
@@ -1121,22 +1120,18 @@ class Engine:
 
         # for external clients, download the file
         if client._is_external():
-            tmp_file = os.path.join(SparkFiles.getRootDirectory(), file_name)
+            tmp_file = f"/tmp/{file_name}"
             print("Reading key file from storage connector.")
             response = self._dataset_api.read_content(file, util.get_dataset_type(file))
 
             with open(tmp_file, "wb") as f:
                 f.write(response.content)
-        else:
-            self._spark_context.addFile(file)
 
-            # The file is not added to the driver current working directory
-            # We should add it manually by copying from the download location
-            # The file will be added to the executors current working directory
-            # before the next task is executed
-            shutil.copy(SparkFiles.get(file_name), file_name)
+            file = f"file://{tmp_file}"
 
-        return file_name
+        self._spark_context.addFile(file)
+
+        return SparkFiles.get(file_name)
 
     def profile(
         self,
@@ -1416,7 +1411,7 @@ class Engine:
         # Returns
             `DataFrame`: A spark dataframe with the transformed data.
         # Raises
-            `FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
+            `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
         dropped_features = set()
         transformations = []
@@ -1680,6 +1675,9 @@ class Engine:
     def read_feature_log(query, time_col):
         df = query.read()
         return df.drop("log_id", time_col)
+
+    def get_spark_version(self):
+        return self._spark_session.version
 
 
 class SchemaError(Exception):

@@ -33,7 +33,6 @@ from hsfs import (
     usage,
     util,
 )
-from hsfs.client import exceptions
 from hsfs.constructor.query import Query
 from hsfs.core import (
     feature_group_api,
@@ -153,10 +152,10 @@ class FeatureStore:
                 return the `version=1`.
 
         # Returns
-            `FeatureGroup`: The feature group metadata object.
+            `FeatureGroup`: The feature group metadata object or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: If unable to retrieve feature group from the feature store.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if version is None:
             warnings.warn(
@@ -168,7 +167,8 @@ class FeatureStore:
             )
             version = self.DEFAULT_VERSION
         feature_group_object = self._feature_group_api.get(self.id, name, version)
-        feature_group_object.feature_store = self
+        if feature_group_object:
+            feature_group_object.feature_store = self
         return feature_group_object
 
     def get_feature_groups(
@@ -203,7 +203,7 @@ class FeatureStore:
             `FeatureGroup`: List of feature group metadata objects.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: If unable to retrieve feature group from the feature store.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         feature_group_object = self._feature_group_api.get(self.id, name, None)
         for fg_object in feature_group_object:
@@ -214,12 +214,12 @@ class FeatureStore:
     def get_on_demand_feature_group(
         self, name: str, version: int = None
     ) -> feature_group.ExternalFeatureGroup:
-        """Get a external feature group entity from the feature store.
+        """Get an external feature group entity from the feature store.
 
         !!! warning "Deprecated"
             `get_on_demand_feature_group` method is deprecated. Use the `get_external_feature_group` method instead.
 
-        Getting a external feature group from the Feature Store means getting its
+        Getting an external feature group from the Feature Store means getting its
         metadata handle so you can subsequently read the data into a Spark or
         Pandas DataFrame or use the `Query`-API to perform joins between feature groups.
 
@@ -229,10 +229,10 @@ class FeatureStore:
                 defaults to `None` and will return the `version=1`.
 
         # Returns
-            `ExternalFeatureGroup`: The external feature group metadata object.
+            `ExternalFeatureGroup`: The external feature group metadata object or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: If unable to retrieve feature group from the feature store.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self.get_external_feature_group(name, version)
 
@@ -240,9 +240,9 @@ class FeatureStore:
     def get_external_feature_group(
         self, name: str, version: int = None
     ) -> feature_group.ExternalFeatureGroup:
-        """Get a external feature group entity from the feature store.
+        """Get an external feature group entity from the feature store.
 
-        Getting a external feature group from the Feature Store means getting its
+        Getting an external feature group from the Feature Store means getting its
         metadata handle so you can subsequently read the data into a Spark or
         Pandas DataFrame or use the `Query`-API to perform joins between feature groups.
 
@@ -259,10 +259,10 @@ class FeatureStore:
                 defaults to `None` and will return the `version=1`.
 
         # Returns
-            `ExternalFeatureGroup`: The external feature group metadata object.
+            `ExternalFeatureGroup`: The external feature group metadata object or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: If unable to retrieve feature group from the feature store.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         if version is None:
@@ -279,7 +279,8 @@ class FeatureStore:
             name,
             version,
         )
-        feature_group_object.feature_store = self
+        if feature_group_object:
+            feature_group_object.feature_store = self
         return feature_group_object
 
     @usage.method_logger
@@ -291,7 +292,7 @@ class FeatureStore:
         !!! warning "Deprecated"
             `get_on_demand_feature_groups` method is deprecated. Use the `get_external_feature_groups` method instead.
 
-        Getting a external feature group from the Feature Store means getting its
+        Getting an external feature group from the Feature Store means getting its
         metadata handle so you can subsequently read the data into a Spark or
         Pandas DataFrame or use the `Query`-API to perform joins between feature groups.
 
@@ -302,7 +303,7 @@ class FeatureStore:
             `ExternalFeatureGroup`: List of external feature group metadata objects.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: If unable to retrieve feature group from the feature store.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self.get_external_feature_groups(name)
 
@@ -312,7 +313,7 @@ class FeatureStore:
     ) -> List[feature_group.ExternalFeatureGroup]:
         """Get a list of all versions of an external feature group entity from the feature store.
 
-        Getting a external feature group from the Feature Store means getting its
+        Getting an external feature group from the Feature Store means getting its
         metadata handle so you can subsequently read the data into a Spark or
         Pandas DataFrame or use the `Query`-API to perform joins between feature groups.
 
@@ -331,7 +332,7 @@ class FeatureStore:
             `ExternalFeatureGroup`: List of external feature group metadata objects.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: If unable to retrieve feature group from the feature store.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         feature_group_object = self._feature_group_api.get(
             feature_store_id=self.id, name=name, version=None
@@ -365,7 +366,7 @@ class FeatureStore:
             `TrainingDataset`: The training dataset metadata object.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: If unable to retrieve training dataset from the feature store.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         if version is None:
@@ -397,7 +398,7 @@ class FeatureStore:
             `TrainingDataset`: List of training dataset metadata objects.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: If unable to retrieve feature group from the feature store.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._training_dataset_api.get(name, None)
 
@@ -816,46 +817,37 @@ class FeatureStore:
         # Returns
             `FeatureGroup`. The feature group metadata object.
         """
-        try:
-            feature_group_object = self._feature_group_api.get(self.id, name, version)
-            feature_group_object.feature_store = self
-            return feature_group_object
-        except exceptions.RestAPIError as e:
-            if (
-                e.response.json().get("errorCode", "") == 270009
-                and e.response.status_code == 404
-            ):
-                feature_group_object = feature_group.FeatureGroup(
-                    name=name,
-                    version=version,
-                    description=description,
-                    online_enabled=online_enabled,
-                    time_travel_format=time_travel_format,
-                    partition_key=partition_key or [],
-                    primary_key=primary_key or [],
-                    foreign_key=foreign_key or [],
-                    embedding_index=embedding_index,
-                    hudi_precombine_key=hudi_precombine_key,
-                    featurestore_id=self._id,
-                    featurestore_name=self._name,
-                    features=features or [],
-                    statistics_config=statistics_config,
-                    event_time=event_time,
-                    stream=stream,
-                    expectation_suite=expectation_suite,
-                    parents=parents or [],
-                    topic_name=topic_name,
-                    notification_topic_name=notification_topic_name,
-                    transformation_functions=transformation_functions,
-                    online_config=online_config,
-                    offline_backfill_every_hr=offline_backfill_every_hr,
-                    storage_connector=storage_connector,
-                    path=path,
-                )
-                feature_group_object.feature_store = self
-                return feature_group_object
-            else:
-                raise e
+        feature_group_object = self._feature_group_api.get(self.id, name, version)
+        if not feature_group_object:
+            feature_group_object = feature_group.FeatureGroup(
+                name=name,
+                version=version,
+                description=description,
+                online_enabled=online_enabled,
+                time_travel_format=time_travel_format,
+                partition_key=partition_key or [],
+                primary_key=primary_key or [],
+                foreign_key=foreign_key or [],
+                embedding_index=embedding_index,
+                hudi_precombine_key=hudi_precombine_key,
+                featurestore_id=self._id,
+                featurestore_name=self._name,
+                features=features or [],
+                statistics_config=statistics_config,
+                event_time=event_time,
+                stream=stream,
+                expectation_suite=expectation_suite,
+                parents=parents or [],
+                topic_name=topic_name,
+                notification_topic_name=notification_topic_name,
+                transformation_functions=transformation_functions,
+                online_config=online_config,
+                offline_backfill_every_hr=offline_backfill_every_hr,
+                storage_connector=storage_connector,
+                path=path,
+            )
+        feature_group_object.feature_store = self
+        return feature_group_object
 
     @usage.method_logger
     def create_on_demand_feature_group(
@@ -882,7 +874,7 @@ class FeatureStore:
         topic_name: Optional[str] = None,
         notification_topic_name: Optional[str] = None,
     ) -> feature_group.ExternalFeatureGroup:
-        """Create a external feature group metadata object.
+        """Create an external feature group metadata object.
 
         !!! warning "Deprecated"
             `create_on_demand_feature_group` method is deprecated. Use the `create_external_feature_group` method instead.
@@ -1007,7 +999,7 @@ class FeatureStore:
             ]
         ] = None,
     ) -> feature_group.ExternalFeatureGroup:
-        """Create a external feature group metadata object.
+        """Create an external feature group metadata object.
 
         !!! example
             ```python
@@ -1262,32 +1254,26 @@ class FeatureStore:
         # Returns
             `SpineGroup`. The spine group metadata object.
         """
-        try:
-            spine = self._feature_group_api.get(self.id, name, version)
-            spine.feature_store = self
+        spine = self._feature_group_api.get(self.id, name, version)
+        if spine:
             spine.dataframe = dataframe
+            spine.feature_store = self
             return spine
-        except exceptions.RestAPIError as e:
-            if (
-                e.response.json().get("errorCode", "") == 270009
-                and e.response.status_code == 404
-            ):
-                spine = feature_group.SpineGroup(
-                    name=name,
-                    version=version,
-                    description=description,
-                    primary_key=primary_key or [],
-                    foreign_key=foreign_key or [],
-                    event_time=event_time,
-                    features=features or [],
-                    dataframe=dataframe,
-                    featurestore_id=self._id,
-                    featurestore_name=self._name,
-                )
-                spine.feature_store = self
-                return spine._save()
-            else:
-                raise e
+        else:
+            spine = feature_group.SpineGroup(
+                name=name,
+                version=version,
+                description=description,
+                primary_key=primary_key or [],
+                foreign_key=foreign_key or [],
+                event_time=event_time,
+                features=features or [],
+                dataframe=dataframe,
+                featurestore_id=self._id,
+                featurestore_name=self._name,
+            )
+            spine.feature_store = self
+            return spine._save()
 
     def create_training_dataset(
         self,
@@ -1743,26 +1729,20 @@ class FeatureStore:
         # Returns:
             `FeatureView`: The feature view metadata object.
         """
-        try:
-            return self._feature_view_engine.get(name, version)
-        except exceptions.RestAPIError as e:
-            if (
-                e.response.json().get("errorCode", "") == 270181
-                and e.response.status_code == 404
-            ):
-                return self.create_feature_view(
-                    name=name,
-                    query=query,
-                    version=version,
-                    description=description,
-                    labels=labels or [],
-                    inference_helper_columns=inference_helper_columns or [],
-                    training_helper_columns=training_helper_columns or [],
-                    transformation_functions=transformation_functions or [],
-                    logging_enabled=logging_enabled,
-                )
-            else:
-                raise e
+        fv_object = self._feature_view_engine.get(name, version)
+        if not fv_object:
+            fv_object = self.create_feature_view(
+                name=name,
+                query=query,
+                version=version,
+                description=description,
+                labels=labels or [],
+                inference_helper_columns=inference_helper_columns or [],
+                training_helper_columns=training_helper_columns or [],
+                transformation_functions=transformation_functions or [],
+                logging_enabled=logging_enabled,
+            )
+        return fv_object
 
     @usage.method_logger
     def get_feature_view(
@@ -1790,10 +1770,10 @@ class FeatureStore:
                 return the `version=1`.
 
         # Returns
-            `FeatureView`: The feature view metadata object.
+            `FeatureView`: The feature view metadata object or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: If unable to retrieve feature view from the feature store.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if version is None:
             warnings.warn(
@@ -1830,7 +1810,7 @@ class FeatureStore:
             `FeatureView`: List of feature view metadata objects.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: If unable to retrieve feature view from the feature store.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine.get(name)
 
