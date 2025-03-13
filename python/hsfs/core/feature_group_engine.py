@@ -106,8 +106,10 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group.embedding_index, dataframe_features
         )
 
-        if feature_group.online_enabled and validation_options.get(
-            "run_validation", False
+        if (
+            feature_group.online_enabled
+            and not feature_group.embedding_index
+            and validation_options.get("run_validation", False)
         ):
             # validate df schema
             dataframe_features = DataFrameValidator().validate_schema(
@@ -187,8 +189,10 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group.embedding_index, dataframe_features
         )
 
-        if feature_group.online_enabled and validation_options.get(
-            "run_validation", False
+        if (
+            feature_group.online_enabled
+            and not feature_group.embedding_index
+            and validation_options.get("run_validation", False)
         ):
             # validate df schema
             dataframe_features = DataFrameValidator().validate_schema(

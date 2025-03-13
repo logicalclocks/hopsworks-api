@@ -52,12 +52,6 @@ class DataFrameValidator:
                 raise ValueError(
                     f"Primary key column {pk} is missing in input dataframe"
                 )
-        # Check if the event time column exists
-        if feature_group.event_time and feature_group.event_time not in df.columns:
-            raise ValueError(
-                f"Event time column {feature_group.event_time} is missing in input dataframe"
-            )
-
         # Execute data type specific validation
         errors, column_lengths, is_pk_null, is_string_length_exceeded = (
             self._validate_df_specifics(feature_group, df, bool(feature_group.id))

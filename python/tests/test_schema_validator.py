@@ -125,17 +125,6 @@ class TestSchemaValidator:
                 feature_group_data, pandas_df, feature_group_data.features
             )
 
-    def test_validate_schema_event_time_missing(self, pandas_df, feature_group_data):
-        EVT_TIME = "missing_event_time"
-        feature_group_data.event_time = EVT_TIME
-        with pytest.raises(
-            ValueError,
-            match=f"Event time column {EVT_TIME} is missing in input dataframe",
-        ):
-            DataFrameValidator().validate_schema(
-                feature_group_data, pandas_df, feature_group_data.features
-            )
-
     def test_validate_schema_primary_key_null(self, pandas_df, feature_group_data):
         pandas_df.loc[0, "primary_key"] = None
         with pytest.raises(
