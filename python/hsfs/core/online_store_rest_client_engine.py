@@ -88,10 +88,12 @@ class OnlineStoreRestClientEngine:
             f"Mapping fg_id to feature names: {self._feature_names_per_fg_id}."
         )
 
-    def get_feature_to_decode(self, features: List[td_feature_mod.TrainingDatasetFeature]) -> Dict[int, str]:
+    def get_feature_to_decode(
+        self, features: List[td_feature_mod.TrainingDatasetFeature]
+    ) -> Dict[int, str]:
         """Get a mapping of feature indices to their types for features that need decoding.
 
-        This method identifies features that have types requiring special decoding from the RonDB Rest Server 
+        This method identifies features that have types requiring special decoding from the RonDB Rest Server
         response and maps their position in the ordered feature list to their type.
 
         # Arguments
@@ -104,7 +106,9 @@ class OnlineStoreRestClientEngine:
         feature_to_decode = {}
         for feat in features:
             if feat.type in self.FEATURE_TYPE_TO_DECODE:
-                feature_to_decode[self._ordered_feature_names.index(feat.name)] = feat.type
+                feature_to_decode[self._ordered_feature_names.index(feat.name)] = (
+                    feat.type
+                )
         return feature_to_decode
 
     def build_base_payload(
@@ -160,14 +164,24 @@ class OnlineStoreRestClientEngine:
             feature_values: List of feature values from the RonDB Rest Server
 
         # Returns:
-            List of decoded feature values with binary values base64 decoded and date strings 
+            List of decoded feature values with binary values base64 decoded and date strings
             converted to datetime.date objects
         """
         for feature_index, data_type in self._feature_to_decode.items():
-            if data_type == self.BINARY_TYPE and feature_values[feature_index] is not None:
-                feature_values[feature_index] = base64.b64decode(feature_values[feature_index])
-            elif data_type == self.DATE_TYPE and feature_values[feature_index] is not None:
-                feature_values[feature_index] = datetime.strptime(feature_values[feature_index], "%Y-%m-%d").date()
+            if (
+                data_type == self.BINARY_TYPE
+                and feature_values[feature_index] is not None
+            ):
+                feature_values[feature_index] = base64.b64decode(
+                    feature_values[feature_index]
+                )
+            elif (
+                data_type == self.DATE_TYPE
+                and feature_values[feature_index] is not None
+            ):
+                feature_values[feature_index] = datetime.strptime(
+                    feature_values[feature_index], "%Y-%m-%d"
+                ).date()
         return feature_values
 
     def get_single_feature_vector(
