@@ -16,9 +16,9 @@
 from __future__ import annotations
 
 import base64
-from datetime import datetime
 import itertools
 import logging
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from hsfs import training_dataset_feature as td_feature_mod
@@ -143,7 +143,7 @@ class OnlineStoreRestClientEngine:
 
         _logger.debug(f"Base payload: {base_payload}")
         return base_payload
-    
+
     def decode_rdrs_feature_values(self, feature_values: List[Any]) -> List[Any]:
         """Decode the response from the RonDB Rest Server Feature Store API.
         
