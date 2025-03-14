@@ -341,7 +341,12 @@ def _get_cached_api_key_path():
 
 def _prompt_project(valid_connection, project, is_app):
     if project is None:
-        saas_projects = valid_connection._project_api._get_projects()
+        if is_app:
+            # On Serverless we filter out projects owned by other users to make sure automatic login
+            # without a prompt still happens when users add showcase projects created by other users
+            saas_projects = valid_connection._project_api._get_owned_projects()
+        else:
+            saas_projects = valid_connection._project_api._get_projects()
         if len(saas_projects) == 0:
             if is_app:
                 raise ProjectException("Could not find any project")
