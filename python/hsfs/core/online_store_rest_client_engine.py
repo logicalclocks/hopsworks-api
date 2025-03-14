@@ -89,8 +89,17 @@ class OnlineStoreRestClientEngine:
         )
 
     def get_feature_to_decode(self, features: List[td_feature_mod.TrainingDatasetFeature]) -> Dict[int, str]:
-        """Get the feature to decode from the RonDB Rest Server Feature Store API.
-        
+        """Get a mapping of feature indices to their types for features that need decoding.
+
+        This method identifies features that have types requiring special decoding from the RonDB Rest Server 
+        response and maps their position in the ordered feature list to their type.
+
+        # Arguments
+            features: List of TrainingDatasetFeature objects containing feature metadata
+
+        # Returns
+            Dict[int, str]: A dictionary mapping feature indices to their type strings for features
+                that require decoding. The indices correspond to the position in _ordered_feature_names.
         """
         feature_to_decode = {}
         for feat in features:
@@ -145,8 +154,14 @@ class OnlineStoreRestClientEngine:
         return base_payload
 
     def decode_rdrs_feature_values(self, feature_values: List[Any]) -> List[Any]:
-        """Decode the response from the RonDB Rest Server Feature Store API.
-        
+        """Decode binary and date values from the RonDB Rest Server response.
+
+        # Arguments:
+            feature_values: List of feature values from the RonDB Rest Server
+
+        # Returns:
+            List of decoded feature values with binary values base64 decoded and date strings 
+            converted to datetime.date objects
         """
         for feature_index, data_type in self._feature_to_decode.items():
             if data_type == self.BINARY_TYPE and feature_values[feature_index] is not None:
