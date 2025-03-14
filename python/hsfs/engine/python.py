@@ -1707,6 +1707,8 @@ class Engine:
                 predictions[f.name] = cast_column_to_offline_type(
                     predictions[f.name], f.type
                 )
+            # Addin the prefix prediction_ to the prediction columns
+            predictions = predictions.add_prefix("predicted_")
             if not set(predictions.columns).intersection(set(features.columns)):
                 features = pd.concat([features, predictions], axis=1)
 
@@ -1723,6 +1725,28 @@ class Engine:
             features[k] = pd.Series(v)
         # _cast_column_to_offline_type cannot cast string type
         features[model_col_name] = features[model_col_name].astype(pd.StringDtype())
+
+        logging_feature_group_features = [feat.name for feat in fg.features]
+        missing_logging_features = set(logging_feature_group_features).difference(
+            set(features.columns)
+        )
+        additional_logging_features = set(features.columns).difference(
+            set(logging_feature_group_features)
+        )
+
+        if additional_logging_features:
+            _logger.info(
+                f"The following columns : `{'`, `'.join(additional_logging_features)}` are additional columns in the logged {'untransformed' if 'untransformed' in fg.name else 'transformed'} dataframe and is not present in the logging feature groups. They will be ignored."
+            )
+
+        if missing_logging_features:
+            _logger.info(
+                f"The following columns : `{'`, `'.join(missing_logging_features)}` are missing in the logged {'untransformed' if 'untransformed' in fg.name else 'transformed'} dataframe. Setting them to None."
+            )
+            # Set missing columns to None
+            for col in missing_logging_features:
+                features[col] = None
+
         return features[[feat.name for feat in fg.features]]
 
     @staticmethod
