@@ -14,7 +14,8 @@ if [[ ${ghprbPullTitle} =~ (FSTORE-[0-9]+) || ${ghprbPullTitle} =~ (HWORKS-[0-9]
     -H "X-GitHub-Api-Version: 2022-11-28" \
     -d "state=open" \
     https://api.github.com/repos/logicalclocks/loadtest/pulls)
-
+  
+  echo "Loadtest PRs: ${loadtest_prs}"
   loadtest_branch=$(echo "${loadtest_prs}" | jq -r --arg captured_string ${captured_string} '.[] | select(.title | contains($captured_string)) | .head.ref')
   minikube_ip=$(echo "${loadtest_prs}" | jq -r --arg captured_string ${captured_string} '.[] | select(.title | contains($captured_string)) | .labels[] | select(.name | contains("10.87.")) | .name')
   labels=$(echo "${loadtest_prs}" | jq -r --arg captured_string ${captured_string} '.[] | select(.title | contains($captured_string)) | .labels[] | select(.name | contains("e2e")) | .name' | paste -sd ",")
