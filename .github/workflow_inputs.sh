@@ -42,7 +42,10 @@ if [ -z "${loadtest_branch}" ]; then
   fi
 
 # .ref is the name of the branch where the workflow dispatch will be sent.
-loadtest_base_ref=$(echo "${ghprbTargetBranch}" | sed 's/branch-//')
+# We use the target branch of the PR in hopsworks-api to determine the base ref in loadtest.
+# Sed command is necessary due to the different conventions between the two repos.
+loadtest_base_ref=$(echo "${ghprbTargetBranch}" | sed 's/branch-//') 
+
 echo "Found base ref: ${loadtest_base_ref}"
 loadtest_base_ref="${loadtest_base_ref}" yq '.ref = strenv(loadtest_base_ref)' -i inputs.yaml
 
