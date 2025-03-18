@@ -563,8 +563,8 @@ class Query:
                 )
         if has_embedding and len(self.featuregroups) > 1:
             raise FeatureStoreException(
-                "Reading from query containing embedding and join is not supported."
-                " Use `feature_view.get_feature_vector(s) instead."
+                "Reading from query containing join of feature group with embedding index from online storage is not supported. "
+                "Use `feature_view.get_feature_vector(s)` instead."
             )
 
     @classmethod
