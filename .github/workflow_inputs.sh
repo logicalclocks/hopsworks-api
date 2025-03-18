@@ -42,7 +42,9 @@ if [ -z "${loadtest_branch}" ]; then
   fi
 
 # .ref is the name of the branch where the workflow dispatch will be sent.
-yq '.ref = "main"' -i inputs.yaml
+loadtest_base_ref=$(echo "${ghprbTargetBranch}" | sed 's/branch-//')
+echo "Found base ref: ${loadtest_base_ref}"
+loadtest_base_ref="${loadtest_base_ref}" yq '.ref = strenv(loadtest_base_ref)' -i inputs.yaml
 
 yq '.inputs.max_parallel = "5"' -i inputs.yaml
 hopsworks_domain=$minikube_ip yq '.inputs.hopsworks_domain = strenv(hopsworks_domain)' -i inputs.yaml
