@@ -351,7 +351,7 @@ class TestArrowFlightClient:
         test_fg1 = feature_group.FeatureGroup.from_response_json(json1)
         mocker.patch("hsfs.constructor.query.Query.to_string", return_value="")
         mocker.patch("hsfs.constructor.query.Query._to_string", return_value="")
-        query = test_fg1.select_except(["intt"]).filter(Feature("intt") > 500)
+        query = test_fg1.filter(Feature("intt") > 500)
 
         # Act
         query_object = arrow_flight_client.get_instance().create_query_object(
