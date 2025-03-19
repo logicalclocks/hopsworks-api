@@ -45,7 +45,9 @@ if [ -z "${loadtest_branch}" ]; then
 # We use the target branch of the PR in hopsworks-api to determine the base ref in loadtest.
 # Sed command is necessary due to the different conventions between the two repos.
 loadtest_base_ref=$(echo "${ghprbTargetBranch}" | sed 's/branch-//') 
-# echo "Found base ref: ${loadtest_base_ref}"
+echo "Found base ref: ${loadtest_base_ref}"
+
+## Uncomment the following line to use a specific base ref, it must be a branch on the loadtest repo from the org.
 loadtest_base_ref="HWORKS-1552"
 echo "Setting base ref: ${loadtest_base_ref}"
 
