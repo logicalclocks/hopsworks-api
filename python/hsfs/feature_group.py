@@ -4087,7 +4087,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
                   listeners of the Hopsworks Kafka Cluster. Defaults to `False` and
                   will use external listeners when connecting from outside of Hopsworks.
             validation_options: Additional validation options as key-value pairs, defaults to `{}`.
-                * key `run_validation` boolean value, set to `False` to skip validation temporarily on ingestion.
+                * key `run_validation` boolean value, set to `False` to skip validation temporarily on ingestion. Also applicable for pre-insert schema validations.
                 * key `save_report` boolean value, set to `False` to skip upload of the validation report to Hopsworks.
                 * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
                 * key `fetch_expectation_suite` a boolean value, by default `True`, to control whether the expectation
