@@ -47,6 +47,8 @@ if [ -z "${loadtest_branch}" ]; then
 loadtest_base_ref=$(echo "${ghprbTargetBranch}" | sed 's/branch-//') 
 # echo "Found base ref: ${loadtest_base_ref}"
 loadtest_base_ref="HWORKS-1552"
+echo "Setting base ref: ${loadtest_base_ref}"
+
 loadtest_base_ref="${loadtest_base_ref}" yq '.ref = strenv(loadtest_base_ref)' -i inputs.yaml
 
 yq '.inputs.max_parallel = "5"' -i inputs.yaml
