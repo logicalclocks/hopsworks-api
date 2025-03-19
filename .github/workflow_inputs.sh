@@ -48,8 +48,8 @@ loadtest_base_ref=$(echo "${ghprbTargetBranch}" | sed 's/branch-//')
 echo "Found base ref: ${loadtest_base_ref}"
 
 ## Uncomment the following line to use a specific base ref, it must be a branch on the loadtest repo from the org.
-loadtest_base_ref="HWORKS-1552"
-echo "Setting base ref: ${loadtest_base_ref}"
+# loadtest_base_ref="HWORKS-1552"
+# echo "Setting base ref: ${loadtest_base_ref}"
 
 loadtest_base_ref="${loadtest_base_ref}" yq '.ref = strenv(loadtest_base_ref)' -i inputs.yaml
 
