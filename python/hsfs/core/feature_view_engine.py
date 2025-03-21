@@ -1075,6 +1075,74 @@ class FeatureViewEngine:
     ):
         return f"{feature_group._get_project_name()}_{feature_group.name}_{feature_group.version}_{feature_name}"
 
+    def _primary_keys_from_join(self, joins, check_duplicate):
+        query_pks = set()
+        for join in joins:
+            query = join.query
+            select_features = [feature.name for feature in join.query._left_features]
+            for feature in query._left_feature_group.features:
+                if feature.primary:
+                    if feature.name not in select_features:
+                        f_name = self.generate_fully_qualied_feature_name(
+                            query._left_feature_group, feature.name
+                        )
+                        if check_duplicate:
+                            # TODO: THis is not correct we must check the entire feature views selected features for duplicates need to adapt.
+                            f_name = self._check_if_exists_with_prefix(
+                                f_name, query_pks
+                            )
+                        query_pks.add(f_name)
+                    else:
+                        f_name = (
+                            feature.name
+                            if join.prefix is None
+                            else join.prefix + feature.name
+                        )
+                        if check_duplicate:
+                            # TODO: THis is not correct we must check the entire feature views selected features for duplicates need to adapt.
+                            f_name = self._check_if_exists_with_prefix(
+                                f_name, query_pks
+                            )
+                    query_pks.add(f_name)
+            if query._joins:
+                sub_query_pks = self._primary_keys_from_join(
+                    query._joins, check_duplicate
+                )
+                query_pks.update(sub_query_pks)
+        return query_pks
+
+    def _event_time_from_join(self, joins, check_duplicate):
+        query_ets = set()
+        for join in joins:
+            query = join.query
+            select_features = [feature.name for feature in join.query._left_features]
+            if join.query._left_feature_group.event_time:
+                if join.query._left_feature_group.event_time not in select_features:
+                    f_name = self.generate_fully_qualied_feature_name(
+                        join.query._left_feature_group,
+                        join.query._left_feature_group.event_time,
+                    )
+                    if check_duplicate:
+                        # TODO: THis is not correct we must check the entire feature views selected features for duplicates need to adapt.
+                        f_name = self._check_if_exists_with_prefix(f_name, query_ets)
+                    query_ets.add(f_name)
+                else:
+                    f_name = (
+                        join.query._left_feature_group.event_time
+                        if join.prefix is None
+                        else join.prefix + join.query._left_feature_group.event_time
+                    )
+                    if check_duplicate:
+                        # TODO: THis is not correct we must check the entire feature views selected features for duplicates need to adapt.
+                        f_name = self._check_if_exists_with_prefix(f_name, query_ets)
+                    query_ets.add(f_name)
+            if query._joins:
+                sub_query_ets = self._event_time_from_join(
+                    query._joins, check_duplicate
+                )
+                query_ets.update(sub_query_ets)
+        return query_ets
+
     def _get_primary_keys_from_query(self, fv_query_obj, check_duplicate=True):
         # Patch for now to check there is a need to use the fully qualified name
         select_features = [feature.name for feature in fv_query_obj._left_features]
@@ -1089,26 +1157,9 @@ class FeatureViewEngine:
                 if feature.primary
             ]
         )
-        for _join in fv_query_obj._joins:
-            select_features = [feature.name for feature in _join.query._left_features]
-            for feature in _join.query._left_feature_group.features:
-                if feature.primary:
-                    if feature.name not in select_features:
-                        f_name = self.generate_fully_qualied_feature_name(
-                            _join.query._left_feature_group, feature.name
-                        )
-                        if check_duplicate:
-                            f_name = self._check_if_exists_with_prefix(f_name, fv_pks)
-                        fv_pks.add(f_name)
-                    else:
-                        f_name = (
-                            feature.name
-                            if _join.prefix is None
-                            else _join.prefix + feature.name
-                        )
-                        if check_duplicate:
-                            f_name = self._check_if_exists_with_prefix(f_name, fv_pks)
-                        fv_pks.add(f_name)
+        fv_pks.update(
+            self._primary_keys_from_join(fv_query_obj._joins, check_duplicate)
+        )
 
         return list(fv_pks)
 
@@ -1127,26 +1178,9 @@ class FeatureViewEngine:
             else:
                 fv_events.add(fv_query_obj._left_feature_group.event_time)
 
-        for _join in fv_query_obj._joins:
-            select_features = [feature.name for feature in _join.query._left_features]
-            if _join.query._left_feature_group.event_time:
-                if _join.query._left_feature_group.event_time not in select_features:
-                    f_name = self.generate_fully_qualied_feature_name(
-                        _join.query._left_feature_group,
-                        _join.query._left_feature_group.event_time,
-                    )
-                    if check_duplicate:
-                        f_name = self._check_if_exists_with_prefix(f_name, fv_events)
-                    fv_events.add(f_name)
-                else:
-                    f_name = (
-                        _join.query._left_feature_group.event_time
-                        if _join.prefix is None
-                        else _join.prefix + _join.query._left_feature_group.event_time
-                    )
-                    if check_duplicate:
-                        f_name = self._check_if_exists_with_prefix(f_name, fv_events)
-                    fv_events.add(f_name)
+        fv_events.update(
+            self._event_time_from_join(fv_query_obj._joins, check_duplicate)
+        )
 
         return list(fv_events)
 
