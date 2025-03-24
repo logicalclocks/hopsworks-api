@@ -277,7 +277,7 @@ class Feature:
         return self.json()
 
     def __repr__(self) -> str:
-        return f"Feature({self._name!r}, {self._type!r}, {self._description!r}, {self._primary}, {self._foreign}, {self._partition}, {self._online_type!r}, {self._default_value!r}, {self._feature_group_id!r}, use_fully_qualified_name={self._use_fully_qualified_name})"
+        return f"Feature({self._name!r}, {self._type!r}, {self._description!r}, {self._primary}, {self._foreign}, {self._partition}, {self._online_type!r}, {self._default_value!r}, {self._feature_group_id!r})"
 
     def __hash__(self) -> int:
         return hash(f"{self.feature_group_id}_{self.name}")

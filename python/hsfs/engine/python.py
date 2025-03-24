@@ -609,7 +609,7 @@ class Engine:
             else:
                 print(
                     "Data type could not be inferred for column '"
-                    + col
+                    + col.split(".")[-1]
                     + "'. Defaulting to 'String'",
                     file=sys.stderr,
                 )
@@ -617,7 +617,7 @@ class Engine:
 
             stat = self._convert_pandas_statistics(stats[col], dataType)
             stat["isDataTypeInferred"] = "false"
-            stat["column"] = col
+            stat["column"] = col.split(".")[-1]
             stat["completeness"] = 1
 
             final_stats.append(stat)
