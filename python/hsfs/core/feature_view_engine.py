@@ -1172,7 +1172,7 @@ class FeatureViewEngine:
         }
 
         pk_names = {
-            self.generate_fully_qualied_feature_name(root_feature_group, pk_name)
+            util.generate_fully_qualied_feature_name(root_feature_group, pk_name)
             if pk_name not in root_feature_group_selected_features_name
             else pk_name
             for pk_name in root_feature_group_primary_keys_names
@@ -1203,7 +1203,7 @@ class FeatureViewEngine:
         root_feature_group_event_time = root_feature_group.event_time
 
         et_names = {
-            self.generate_fully_qualied_feature_name(
+            util.generate_fully_qualied_feature_name(
                 root_feature_group, root_feature_group_event_time
             )
             if root_feature_group_event_time
