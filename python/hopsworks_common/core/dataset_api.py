@@ -667,7 +667,7 @@ class DatasetApi:
         offset: int = 0,
         limit: int = 1000,
     ):
-        """**Depreacted**, use `list_files` instead.
+        """**Deprecated**, use `list_files` instead.
 
         List contents of a directory in the Hopsworks Filesystem.
 
