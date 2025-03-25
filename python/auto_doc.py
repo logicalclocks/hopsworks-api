@@ -137,7 +137,18 @@ PAGES = {
     "api/datasets.md": {
         "dataset_api_handle": ["hopsworks.project.Project.get_dataset_api"],
         "dataset_methods": keras_autodoc.get_methods(
-            "hopsworks.core.dataset_api.DatasetApi", exclude=EXCLUDE_METHODS + ["get", "add", "get_tags", "delete", "path_exists", "rm", "list", "list_files"]
+            "hopsworks.core.dataset_api.DatasetApi",
+            exclude=EXCLUDE_METHODS
+            + [
+                "get",
+                "add",
+                "get_tags",
+                "delete",
+                "path_exists",
+                "rm",
+                "list",
+                "list_files",
+            ],
         ),
     },
     "api/kafka_topic.md": {
