@@ -632,7 +632,9 @@ class DatasetApi:
 
     @usage.method_logger
     def list_files(self, path: str, offset: int, limit: int):
-        """List contents of a directory in the Hopsworks Filesystem.
+        """**Deprecated**
+
+        List contents of a directory in the Hopsworks Filesystem.
 
         # Arguments
             path: path to the directory to list the contents of.
@@ -667,7 +669,7 @@ class DatasetApi:
         offset: int = 0,
         limit: int = 1000,
     ):
-        """**Deprecated**, use `list_files` instead.
+        """**Deprecated**
 
         List contents of a directory in the Hopsworks Filesystem.
 
