@@ -1072,15 +1072,6 @@ class FeatureViewEngine:
         )
         return util.get_hostname_replaced_url(path)
 
-    def generate_fully_qualied_feature_name(
-        self, feature_group: feature_group.FeatureGroup, feature_name: str
-    ):
-        """
-        Generate the fully qualified feature name for a feature. The fully qualified name is created by concatenating
-        the project name, feature group name, feature group version and feature name.
-        """
-        return f"{feature_group._get_project_name()}_{feature_group.name}_{feature_group.version}_{feature_name}"
-
     def _primary_keys_from_join(
         self, joins: List[Join], check_duplicate: bool, pk_names: set[str]
     ) -> set[str]:
@@ -1102,7 +1093,7 @@ class FeatureViewEngine:
             }
 
             sub_query_pk_names = {
-                self.generate_fully_qualied_feature_name(
+                util.generate_fully_qualified_feature_name(
                     sub_query_feature_group, pk_name
                 )
                 if pk_name not in sub_query_selected_feature_names
@@ -1137,7 +1128,7 @@ class FeatureViewEngine:
             sub_query_event_time = sub_query_feature_group.event_time
 
             sub_query_event_time = (
-                self.generate_fully_qualied_feature_name(
+                util.generate_fully_qualified_feature_name(
                     sub_query_feature_group, sub_query_event_time
                 )
                 if sub_query_event_time not in sub_query_selected_feature_names
