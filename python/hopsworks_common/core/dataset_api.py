@@ -439,7 +439,7 @@ class DatasetApi:
             return False
 
     def path_exists(self, remote_path: str):
-        """**Deprecated**
+        """**Deprecated**, use `exists` instead.
 
         Check if a path exists in datasets.
 
