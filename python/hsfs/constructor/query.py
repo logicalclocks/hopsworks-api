@@ -283,8 +283,10 @@ class Query:
                 the join. Defaults to `[]`.
             join_type: Type of join to perform, can be `"inner"`, `"outer"`, `"left"` or
                 `"right"`. Defaults to "inner".
-            prefix: User provided prefix to avoid feature name clash. Prefix is applied to the right
-                feature group of the query. Defaults to `None`.
+            prefix: User provided prefix to avoid feature name clash. If no prefix was provided and there is feature
+                name clash then prefixes will be automatically generated and applied. Generated prefix is feature group
+                alias in the query (e.g. fg1, fg2). Prefix is applied to the right feature group of the query.
+                Defaults to `None`.
 
         # Returns
             `Query`: A new Query object representing the join.
@@ -561,8 +563,8 @@ class Query:
                 )
         if has_embedding and len(self.featuregroups) > 1:
             raise FeatureStoreException(
-                "Reading from query containing embedding and join is not supported."
-                " Use `feature_view.get_feature_vector(s) instead."
+                "Reading from query containing join of feature group with embedding index from online storage is not supported. "
+                "Use `feature_view.get_feature_vector(s)` instead."
             )
 
     @classmethod
