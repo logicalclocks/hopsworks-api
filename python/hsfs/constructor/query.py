@@ -142,36 +142,35 @@ class Query:
 
         return sql_query, online_conn
 
-    def check_ambiguous_features(self) -> None:
+    def check_and_warn_ambiguous_features(self) -> None:
         self._ambiguous_features_in_query = self.get_ambiguous_features()
         if self._ambiguous_features_in_query:
             ambiguous_features_warning_str = (
-                "Ambiguous features found in the query. The feature(s) "
+                "Ambiguous features detected while constructing the query. The "
             )
             for (
                 feature_group_name,
                 features,
             ) in self._ambiguous_features_in_query.items():
-                feature_names = "`, `".join(features)
-                ambiguous_features_warning_str += (
-                    f"`{feature_names}` in feature group `{feature_group_name}`, "
-                )
-            ambiguous_features_warning_str += "is ambiguous. Automatically prefixing the features selected in these feature groups with the feature group name."
-            _logger.warning(ambiguous_features_warning_str)
+                feature_names = "`, `".join(sorted(features))
+                ambiguous_features_warning_str += f"feature(s) - `{feature_names}` from feature group `{feature_group_name}` "
+            ambiguous_features_warning_str += "have ambiguous names. Automatically prefixing the names of features selected in these feature groups with the feature group name."
+            _logger.warning(ambiguous_features_warning_str.strip())
 
-    def get_ambiguous_features_in_joins(
+    def _get_ambiguous_features_in_joins(
         self,
         joins: List[join.Join],
         selected_features: set[str],
         ambiguous_feature_feature_group_mapping: Dict[str, set[str]],
     ) -> tuple[Dict[str, set[str]], set[str]]:
         """
-        Function that extracts all the ambiguous features in the joins of the query. The function will return a dictionary with feature group name of the ambiguous features as key and list of ambiguous features as value.
+        Function that extracts all the selected features and ambiguous features in the joins of the query.
+        The function will return a list of selected features and a dictionary with feature group name of the ambiguous features as key and list of ambiguous features as value.
 
         # Arguments
             `joins` : List of joins in the query.
             `selected_features` : List of selected features in the query.
-            `feature_group_ambiegeous_feature_mapping` : Dictionary with feature group name of the ambiguous features as key and list of ambiguous features as value.
+            `ambiguous_feature_feature_group_mapping` : Dictionary with feature group name of the ambiguous features as key and list of ambiguous features as value.
 
         # Returns
             `Dict[str, List[str]]`: Dictionary with feature group name of the ambiguous features as key and list of ambiguous features as value.
@@ -205,7 +204,7 @@ class Query:
                 (
                     subquery_ambiguous_feature_feature_group_mapping,
                     subquery_selected_features,
-                ) = self.get_ambiguous_features_in_joins(
+                ) = self._get_ambiguous_features_in_joins(
                     query.joins,
                     selected_features,
                     ambiguous_feature_feature_group_mapping,
@@ -229,7 +228,7 @@ class Query:
         selected_features = {feature.name for feature in self._left_features}
 
         ambiguous_feature_feature_group_mapping, selected_features = (
-            self.get_ambiguous_features_in_joins(
+            self._get_ambiguous_features_in_joins(
                 self._joins, selected_features, ambiguous_feature_feature_group_mapping
             )
         )
@@ -284,6 +283,7 @@ class Query:
             return engine.get_instance().read_vector_db(
                 self._left_feature_group, dataframe_type=dataframe_type
             )
+        self.check_and_warn_ambiguous_features()
 
         if not read_options:
             read_options = {}
@@ -399,8 +399,6 @@ class Query:
                 prefix,
             )
         )
-
-        self.check_ambiguous_features()
 
         return self
 

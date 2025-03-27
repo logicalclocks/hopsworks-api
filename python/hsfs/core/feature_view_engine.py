@@ -494,6 +494,7 @@ class FeatureViewEngine:
                 training_helper_columns=training_helper_columns,
                 spine=spine,
             )
+            query.check_and_warn_ambiguous_features()
             split_df = engine.get_instance().get_training_data(
                 td_updated,
                 feature_view_obj,
