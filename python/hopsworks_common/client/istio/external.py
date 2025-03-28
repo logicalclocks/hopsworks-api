@@ -28,11 +28,12 @@ class Client(istio.Client):
         api_key_value,
         hostname_verification=None,
         trust_store_path=None,
+        scheme="http",
     ):
         """Initializes a client in an external environment such as AWS Sagemaker."""
         self._host = host
         self._port = port
-        self._base_url = "http://" + self._host + ":" + str(self._port)
+        self._base_url = f"{scheme}://{self._host}:{str(self._port)}"
         self._project_name = project
 
         self._auth = auth.ApiKeyAuth(api_key_value)

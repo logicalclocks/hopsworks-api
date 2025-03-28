@@ -25,7 +25,7 @@ from hopsworks_common.client.istio import external, hopsworks
 _client: Union[hopsworks.Client, external.Client, None] = None
 
 
-def init(host, port, project=None, api_key_value=None):
+def init(host, port, project=None, api_key_value=None, scheme="http"):
     global _client
 
     if _client:
@@ -33,7 +33,7 @@ def init(host, port, project=None, api_key_value=None):
     if not _main._is_external():
         _client = hopsworks.Client(host, port)
     else:
-        _client = external.Client(host, port, project, api_key_value)
+        _client = external.Client(host, port, project, api_key_value, scheme=scheme)
 
 
 def get_instance() -> Union[hopsworks.Client, external.Client, None]:
