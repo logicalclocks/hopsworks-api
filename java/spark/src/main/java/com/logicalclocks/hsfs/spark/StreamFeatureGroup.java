@@ -31,6 +31,7 @@ import org.apache.spark.sql.SaveMode;
 import org.apache.spark.sql.streaming.StreamingQuery;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.logicalclocks.hsfs.DataSource;
 import com.logicalclocks.hsfs.EntityEndpointType;
 import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.FeatureGroupBase;
@@ -85,11 +86,12 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
     this.eventTime = eventTime;
     this.onlineConfig = onlineConfig;
     this.storageConnector = storageConnector;
-    this.path = path;
+    this.dataSource.setPath(path);
   }
 
   public StreamFeatureGroup() {
     this.type = "streamFeatureGroupDTO";
+    this.dataSource = new DataSource();
   }
 
   // used for updates

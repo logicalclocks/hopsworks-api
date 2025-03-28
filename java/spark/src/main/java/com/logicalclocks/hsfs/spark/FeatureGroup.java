@@ -22,6 +22,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.logicalclocks.hsfs.spark.constructor.Query;
 import com.logicalclocks.hsfs.spark.engine.FeatureGroupEngine;
 import com.logicalclocks.hsfs.spark.engine.StatisticsEngine;
+import com.logicalclocks.hsfs.DataSource;
 import com.logicalclocks.hsfs.EntityEndpointType;
 import com.logicalclocks.hsfs.Feature;
 
@@ -88,11 +89,12 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
     this.eventTime = eventTime;
     this.onlineConfig = onlineConfig;
     this.storageConnector = storageConnector;
-    this.path = path;
+    this.dataSource.setPath(path);
   }
 
   public FeatureGroup() {
     this.type = "cachedFeaturegroupDTO";
+    this.dataSource = new DataSource();
   }
 
   public FeatureGroup(FeatureStore featureStore, Integer id) {
