@@ -116,7 +116,7 @@ class ModelServingApi:
                     _client = client.get_instance()
                     client.istio.init(
                         endpoint.get_any_host(),
-                        port,
+                        port.number,
                         _client._project_name,
                         _client._auth._token,  # reuse hopsworks client token
                     )
