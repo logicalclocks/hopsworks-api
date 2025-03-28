@@ -104,12 +104,19 @@ class ModelServingApi:
                 endpoint = get_endpoint_by_type(
                     inference_endpoints, INFERENCE_ENDPOINTS.ENDPOINT_TYPE_LOAD_BALANCER
                 )
+
+                port = (
+                    endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTPS)
+                    if INFERENCE_ENDPOINTS.PORT_NAME_HTTPS in endpoint.ports
+                    else endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTP)
+                )
+
                 if endpoint is not None:
                     # if load balancer (external ip) available
                     _client = client.get_instance()
                     client.istio.init(
                         endpoint.get_any_host(),
-                        endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTP).number,
+                        port,
                         _client._project_name,
                         _client._auth._token,  # reuse hopsworks client token
                     )
