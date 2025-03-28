@@ -72,6 +72,7 @@ from hsfs.core import (
     validation_report_engine,
     validation_result_engine,
 )
+from hsfs.core import data_source as ds
 from hsfs.core import feature_monitoring_config as fmc
 from hsfs.core import feature_monitoring_result as fmr
 from hsfs.core.constants import (
@@ -141,8 +142,13 @@ class FeatureGroupBase:
                 Dict[str, Any],
             ]
         ] = None,
+        data_source: Optional[
+            Union[
+                ds.DataSource,
+                Dict[str, Any],
+            ]
+        ] = None,
         storage_connector: Union[sc.StorageConnector, Dict[str, Any]] = None,
-        path: Optional[str] = None,
         **kwargs,
     ) -> None:
         self._version = version
@@ -159,7 +165,6 @@ class FeatureGroupBase:
         self._feature_store_id = featurestore_id
         self._feature_store = None
         self._variable_api: VariableApi = VariableApi()
-        self._path = path
 
         if storage_connector is not None and isinstance(storage_connector, dict):
             self._storage_connector = sc.StorageConnector.from_response_json(
@@ -172,6 +177,15 @@ class FeatureGroupBase:
             if isinstance(online_config, dict)
             else online_config
         )
+
+        if data_source:
+            self._data_source = (
+                ds.DataSource.from_response_json(data_source)
+                if isinstance(data_source, dict)
+                else data_source
+            )
+        else:
+            self._data_source = ds.DataSource()
 
         self._multi_part_insert: bool = False
         self._embedding_index = embedding_index
@@ -2105,10 +2119,6 @@ class FeatureGroupBase:
         self._online_enabled = online_enabled
 
     @property
-    def path(self) -> Optional[str]:
-        return self._path
-
-    @property
     def storage_connector(self) -> "sc.StorageConnector":
         return self._storage_connector
 
@@ -2144,6 +2154,10 @@ class FeatureGroupBase:
     @deprecated.setter
     def deprecated(self, deprecated: bool) -> None:
         self._deprecated = deprecated
+
+    @property
+    def data_source(self) -> Optional[ds.DataSource]:
+        return self._data_source
 
     @property
     def subject(self) -> Dict[str, Any]:
@@ -2306,7 +2320,12 @@ class FeatureGroup(FeatureGroupBase):
         ] = None,
         offline_backfill_every_hr: Optional[Union[str, int]] = None,
         storage_connector: Union[sc.StorageConnector, Dict[str, Any]] = None,
-        path: Optional[str] = None,
+        data_source: Optional[
+            Union[
+                ds.DataSource,
+                Dict[str, Any],
+            ]
+        ] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -2325,7 +2344,7 @@ class FeatureGroup(FeatureGroupBase):
             deprecated=deprecated,
             online_config=online_config,
             storage_connector=storage_connector,
-            path=path,
+            data_source=data_source,
         )
         self._feature_store_name: Optional[str] = featurestore_name
         self._description: Optional[str] = description
@@ -3694,8 +3713,9 @@ class FeatureGroup(FeatureGroupBase):
             "transformationFunctions": [
                 tf.to_dict() for tf in self._transformation_functions
             ],
-            "path": self._path,
         }
+        if self._data_source:
+            fg_meta_dict["dataSource"] = self._data_source.to_dict()
         if self._online_config:
             fg_meta_dict["onlineConfig"] = self._online_config.to_dict()
         if self.embedding_index:
@@ -3886,9 +3906,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
     def __init__(
         self,
         storage_connector: Union[sc.StorageConnector, Dict[str, Any]],
-        query: Optional[str] = None,
         data_format: Optional[str] = None,
-        path: Optional[str] = None,
         options: Optional[Dict[str, Any]] = None,
         name: Optional[str] = None,
         version: Optional[int] = None,
@@ -3925,6 +3943,12 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 Dict[str, Any],
             ]
         ] = None,
+        data_source: Optional[
+            Union[
+                ds.DataSource,
+                Dict[str, Any],
+            ]
+        ] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -3943,14 +3967,13 @@ class ExternalFeatureGroup(FeatureGroupBase):
             deprecated=deprecated,
             online_config=online_config,
             storage_connector=storage_connector,
-            path=path,
+            data_source=data_source,
         )
 
         self._feature_store_name = featurestore_name
         self._description = description
         self._created = created
         self._creator = user.User.from_response_json(creator)
-        self._query = query
         self._data_format = data_format.upper() if data_format else None
 
         self._features = [
@@ -4359,9 +4382,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
             "version": self._version,
             "features": self._features,
             "featurestoreId": self._feature_store_id,
-            "query": self._query,
             "dataFormat": self._data_format,
-            "path": self._path,
             "options": [{"name": k, "value": v} for k, v in self._options.items()]
             if self._options
             else None,
@@ -4376,6 +4397,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
             "notificationTopicName": self.notification_topic_name,
             "deprecated": self.deprecated,
         }
+        if self._data_source:
+            fg_meta_dict["dataSource"] = self._data_source.to_dict()
         if self._online_config:
             fg_meta_dict["onlineConfig"] = self._online_config.to_dict()
         if self.embedding_index:
@@ -4389,10 +4412,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
     @property
     def description(self) -> Optional[str]:
         return self._description
-
-    @property
-    def query(self) -> Optional[str]:
-        return self._query
 
     @property
     def data_format(self) -> Optional[str]:
@@ -4432,7 +4451,6 @@ class SpineGroup(FeatureGroupBase):
         ] = None,
         query: Optional[str] = None,
         data_format: Optional[str] = None,
-        path: Optional[str] = None,
         options: Dict[str, Any] = None,
         name: Optional[str] = None,
         version: Optional[int] = None,
@@ -4466,6 +4484,12 @@ class SpineGroup(FeatureGroupBase):
                 Dict[str, Any],
             ]
         ] = None,
+        data_source: Optional[
+            Union[
+                ds.DataSource,
+                Dict[str, Any],
+            ]
+        ] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -4481,6 +4505,7 @@ class SpineGroup(FeatureGroupBase):
             topic_name=topic_name,
             deprecated=deprecated,
             online_config=online_config,
+            data_source=data_source,
         )
 
         self._feature_store_name = featurestore_name

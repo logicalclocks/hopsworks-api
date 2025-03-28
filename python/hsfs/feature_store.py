@@ -41,6 +41,7 @@ from hsfs.core import (
     storage_connector_api,
     training_dataset_api,
     transformation_function_engine,
+    data_source,
 )
 from hsfs.decorators import typechecked
 from hsfs.embedding import EmbeddingIndex
@@ -672,7 +673,7 @@ class FeatureStore:
             online_config=online_config,
             offline_backfill_every_hr=offline_backfill_every_hr,
             storage_connector=storage_connector,
-            path=path,
+            data_source=data_source.DataSource(path=path),
         )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -844,7 +845,7 @@ class FeatureStore:
                 online_config=online_config,
                 offline_backfill_every_hr=offline_backfill_every_hr,
                 storage_connector=storage_connector,
-                path=path,
+                data_source=data_source.DataSource(path=path),
             )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -945,9 +946,7 @@ class FeatureStore:
         """
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,
-            query=query,
             data_format=data_format,
-            path=path,
             options=options or {},
             storage_connector=storage_connector,
             version=version,
@@ -962,6 +961,7 @@ class FeatureStore:
             expectation_suite=expectation_suite,
             topic_name=topic_name,
             notification_topic_name=notification_topic_name,
+            data_source=data_source.DataSource(query=query, path=path),
         )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -1108,9 +1108,7 @@ class FeatureStore:
         """
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,
-            query=query,
             data_format=data_format,
-            path=path,
             options=options or {},
             storage_connector=storage_connector,
             version=version,
@@ -1128,6 +1126,7 @@ class FeatureStore:
             topic_name=topic_name,
             notification_topic_name=notification_topic_name,
             online_config=online_config,
+            data_source=data_source.DataSource(query=query, path=path),
         )
         feature_group_object.feature_store = self
         return feature_group_object

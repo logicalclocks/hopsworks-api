@@ -194,11 +194,11 @@ class Engine:
     def register_external_temporary_table(self, external_fg, alias):
         if not isinstance(external_fg, fg_mod.SpineGroup):
             external_dataset = external_fg.storage_connector.read(
-                external_fg.query,
+                external_fg._data_source.query,
                 external_fg.data_format,
                 external_fg.options,
                 external_fg.storage_connector._get_path(
-                    external_fg.path
+                    external_fg._data_source.path
                 ),  # cant rely on location since this method can be used before FG is saved
             )
         else:

@@ -215,9 +215,9 @@ public class SparkEngine extends EngineBase {
   public Dataset<Row> registerOnDemandTemporaryTable(ExternalFeatureGroup onDemandFeatureGroup, String alias)
       throws FeatureStoreException, IOException {
     Dataset<Row> dataset = storageConnectorUtils.read(onDemandFeatureGroup.getStorageConnector(),
-        onDemandFeatureGroup.getQuery(), onDemandFeatureGroup.getDataFormat() != null
+        onDemandFeatureGroup.getDataSource().getQuery(), onDemandFeatureGroup.getDataFormat() != null
             ? onDemandFeatureGroup.getDataFormat().toString() : null, getOnDemandOptions(onDemandFeatureGroup),
-        onDemandFeatureGroup.getStorageConnector().getPath(onDemandFeatureGroup.getPath()));
+        onDemandFeatureGroup.getStorageConnector().getPath(onDemandFeatureGroup.getDataSource().getPath()));
 
     dataset.createOrReplaceTempView(alias);
     return dataset;
