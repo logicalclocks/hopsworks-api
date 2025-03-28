@@ -17,7 +17,7 @@ import warnings
 
 from hopsworks_common import version
 from hsfs import feature_view, training_dataset_feature
-from hsfs.constructor import fs_query, query
+from hsfs.constructor import query
 from hsfs.feature_store import FeatureStore
 from hsfs.hopsworks_udf import udf
 from hsfs.transformation_function import TransformationType
@@ -155,10 +155,11 @@ class TestFeatureView:
             "hopsworks_common.client.get_connection", return_value=mocked_connection
         )
         mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine")
-        json = backend_fixtures["fs_query"]["get"]["response"]
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+        json = backend_fixtures["query"]["get"]["response"]
 
         # Act
-        q = fs_query.FsQuery.from_response_json(json)
+        q = query.Query.from_response_json(json)
 
         @udf(int)
         def test(col1):

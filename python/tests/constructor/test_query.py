@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+import logging
 import warnings
 
 import pytest
@@ -403,3 +404,237 @@ class TestQuery:
 
         # Assert
         assert q._get_featuregroup_by_feature(TestQuery.fg3["id"]) == TestQuery.fg3
+
+    def test_get_ambiguous_features_star_schema(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        # Act
+        q = (
+            TestQuery.fg1.select_all()
+            .join(TestQuery.fg2.select_all())
+            .join(TestQuery.fg3.select_all())
+        )
+
+        ambiguous_features = q.get_ambiguous_features()
+
+        expected_ambiguous_features = {
+            TestQuery.fg2.name: [
+                "id"
+            ],  # 'id' is ambiguous with the features selected in the parent query `fg1.select_features()`
+            TestQuery.fg3.name: [
+                "id",
+                "tf_name",
+                "tf1_name",
+            ],  # "id", "tf_name", "tf1_name" is ambiguous with the features selected in the parent query `fg1.select_features().join(fg2.select_features())`
+        }
+
+        assert sorted(ambiguous_features.keys()) == sorted(
+            expected_ambiguous_features.keys()
+        )
+
+        for fg_name in ambiguous_features.keys():
+            assert sorted(ambiguous_features[fg_name]) == sorted(
+                expected_ambiguous_features[fg_name]
+            )
+
+    def test_get_ambiguous_features_snowflake_schema(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        # Act
+        q = TestQuery.fg1.select_all().join(
+            TestQuery.fg2.select_all().join(TestQuery.fg3.select_all())
+        )
+
+        ambiguous_features = q.get_ambiguous_features()
+
+        expected_ambiguous_features = {
+            TestQuery.fg2.name: [
+                "id"
+            ],  # 'id' is ambiguous with the features selected in the parent query `fg1.select_features()`
+            TestQuery.fg3.name: [
+                "id",
+                "tf_name",
+                "tf1_name",
+            ],  # "id", "tf_name", "tf1_name" is ambiguous with the features selected in the parent query `fg1.select_features().join(fg2.select_features())`
+        }
+
+        assert sorted(ambiguous_features.keys()) == sorted(
+            expected_ambiguous_features.keys()
+        )
+
+        for fg_name in ambiguous_features.keys():
+            assert sorted(ambiguous_features[fg_name]) == sorted(
+                expected_ambiguous_features[fg_name]
+            )
+
+    def test_get_ambiguous_features_no_ambiguous_features(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        # Act
+        q = (
+            TestQuery.fg1.select_all()
+            .join(TestQuery.fg2.select_all(), prefix="fg2_")
+            .join(TestQuery.fg3.select_all(), prefix="fg3_")
+        )
+
+        ambiguous_features = q.get_ambiguous_features()
+
+        assert ambiguous_features == {}
+
+    def test_get_ambiguous_features_in_joins_star_schema(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        # Act
+        q = (
+            TestQuery.fg1.select_all()
+            .join(TestQuery.fg2.select_all())
+            .join(TestQuery.fg3.select_all())
+        )
+        selected_features_in_root_query = {"id", "label", "tf_name"}
+        ambiguous_features_group_feature_mapping, selected_features = (
+            q._get_ambiguous_features_in_joins(
+                q._joins, selected_features_in_root_query, {}
+            )
+        )
+
+        expected_ambiguous_features_group_feature_mapping = {
+            TestQuery.fg2.name: [
+                "id"
+            ],  # 'id' is ambiguous with the features selected in the parent query `fg1.select_features()`
+            TestQuery.fg3.name: [
+                "id",
+                "tf_name",
+                "tf1_name",
+            ],  # "id", "tf_name", "tf1_name" is ambiguous with the features selected in the parent query `fg1.select_features().join(fg2.select_features())`
+        }
+
+        assert selected_features == set(
+            ["id", "label", "tf_name"]
+            + ["id", "tf1_name"]
+            + ["id", "tf_name", "tf1_name", "tf3_name"]
+        )
+        assert sorted(ambiguous_features_group_feature_mapping.keys()) == sorted(
+            expected_ambiguous_features_group_feature_mapping.keys()
+        )
+
+        for fg_name in ambiguous_features_group_feature_mapping.keys():
+            assert sorted(ambiguous_features_group_feature_mapping[fg_name]) == sorted(
+                expected_ambiguous_features_group_feature_mapping[fg_name]
+            )
+
+    def test_get_ambiguous_features_in_joins_snowflake_schema(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        # Act
+        q = (
+            TestQuery.fg1.select_all()
+            .join(TestQuery.fg2.select_all())
+            .join(TestQuery.fg3.select_all())
+        )
+
+        selected_features_in_root_query = {"id", "label", "tf_name"}
+        ambiguous_features_group_feature_mapping, selected_features = (
+            q._get_ambiguous_features_in_joins(
+                q._joins, selected_features_in_root_query, {}
+            )
+        )
+
+        expected_ambiguous_features_group_feature_mapping = {
+            TestQuery.fg2.name: [
+                "id"
+            ],  # 'id' is ambiguous with the features selected in the parent query `fg1.select_features()`
+            TestQuery.fg3.name: [
+                "id",
+                "tf_name",
+                "tf1_name",
+            ],  # "id", "tf_name", "tf1_name" is ambiguous with the features selected in the parent query `fg1.select_features().join(fg2.select_features())`
+        }
+
+        assert selected_features == set(
+            ["id", "label", "tf_name"]
+            + ["id", "tf1_name"]
+            + ["id", "tf_name", "tf1_name", "tf3_name"]
+        )
+        assert sorted(ambiguous_features_group_feature_mapping.keys()) == sorted(
+            expected_ambiguous_features_group_feature_mapping.keys()
+        )
+
+        for fg_name in ambiguous_features_group_feature_mapping.keys():
+            assert sorted(ambiguous_features_group_feature_mapping[fg_name]) == sorted(
+                expected_ambiguous_features_group_feature_mapping[fg_name]
+            )
+
+    def test_get_ambiguous_features_in_joins_no_ambiguity(self, mocker):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        # Act
+        q = (
+            TestQuery.fg1.select_all()
+            .join(TestQuery.fg2.select_all(), prefix="fg2_")
+            .join(TestQuery.fg3.select_all(), prefix="fg3_")
+        )
+        selected_features_in_root_query = {"id", "label", "tf_name"}
+        ambiguous_features_group_feature_mapping, selected_features = (
+            q._get_ambiguous_features_in_joins(
+                q._joins, selected_features_in_root_query, {}
+            )
+        )
+
+        assert selected_features == set(
+            ["id", "label", "tf_name"]
+            + ["fg2_id", "fg2_tf1_name"]
+            + ["fg3_id", "fg3_tf_name", "fg3_tf1_name", "fg3_tf3_name"]
+        )
+        assert ambiguous_features_group_feature_mapping == {}
+
+    def test_check_and_warn_ambiguous_features_snowflake_schema(self, mocker, caplog):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        # Act
+        q = TestQuery.fg1.select_all().join(
+            TestQuery.fg2.select_all().join(TestQuery.fg3.select_all())
+        )
+
+        with caplog.at_level(logging.WARNING):
+            q.check_and_warn_ambiguous_features()
+
+        assert (
+            "Ambiguous features detected while constructing the query. The feature(s) - `id` from feature group `test2` feature(s) - `id`, `tf1_name`, `tf_name` from feature group `test3` have ambiguous names. Automatically prefixing the names of features selected in these feature groups with the feature group name."
+            in caplog.text
+        )
+
+    def test_check_and_warn_ambiguous_features_star_schema(self, mocker, caplog):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        # Act
+        q = (
+            TestQuery.fg1.select_all()
+            .join(TestQuery.fg2.select_all())
+            .join(TestQuery.fg3.select_all())
+        )
+
+        with caplog.at_level(logging.WARNING):
+            q.check_and_warn_ambiguous_features()
+
+        assert (
+            "Ambiguous features detected while constructing the query. The feature(s) - `id` from feature group `test2` feature(s) - `id`, `tf1_name`, `tf_name` from feature group `test3` have ambiguous names. Automatically prefixing the names of features selected in these feature groups with the feature group name."
+            in caplog.text
+        )
+
+    def test_check_and_warn_ambiguous_features_no_ambiguity(self, mocker, caplog):
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        # Act
+        q = (
+            TestQuery.fg1.select_all()
+            .join(TestQuery.fg2.select_all(), prefix="fg2_")
+            .join(TestQuery.fg3.select_all(), prefix="fg3_")
+        )
+
+        with caplog.at_level(logging.WARNING):
+            q.check_and_warn_ambiguous_features()
+
+        assert (
+            "Ambiguous features detected while constructing the query. "
+            not in caplog.text
+        )

@@ -28,15 +28,7 @@ import sys
 import threading
 import time
 from datetime import date, datetime, timezone
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Literal,
-    Optional,
-    Tuple,
-    Union,
-)
+from typing import TYPE_CHECKING, Any, Callable, Dict, Literal, Optional, Tuple, Union
 from urllib.parse import urljoin, urlparse
 
 import humps
@@ -53,6 +45,10 @@ if HAS_PANDAS:
 
 
 FEATURE_STORE_NAME_SUFFIX = "_featurestore"
+
+
+if TYPE_CHECKING:
+    from hsfs import feature_group
 
 
 class Encoder(json.JSONEncoder):
@@ -715,6 +711,16 @@ def feature_view_to_json(obj):
 
             return humps.camelize(json.loads(obj.json()))
     return None
+
+
+def generate_fully_qualified_feature_name(
+    feature_group: feature_group.FeatureGroup, feature_name: str
+):
+    """
+    Generate the fully qualified feature name for a feature. The fully qualified name is created by concatenating
+    the project name, feature group name, feature group version and feature name.
+    """
+    return f"{feature_group._get_project_name()}_{feature_group.name}_{feature_group.version}_{feature_name}"
 
 
 class AsyncTask:

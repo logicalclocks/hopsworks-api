@@ -56,6 +56,7 @@ class Feature:
             ]
         ] = None,
         on_demand: bool = False,
+        use_fully_qualified_name=False,
         **kwargs,
     ) -> None:
         self._name = util.autofix_feature_name(name)
@@ -67,6 +68,7 @@ class Feature:
         self._hudi_precombine_key = hudi_precombine_key
         self._online_type = online_type
         self._default_value = default_value
+        self._use_fully_qualified_name = use_fully_qualified_name
         if feature_group is not None:
             self._feature_group_id = feature_group.id
         else:
@@ -100,6 +102,7 @@ class Feature:
             "defaultValue": self._default_value,
             "featureGroupId": self._feature_group_id,
             "onDemand": self.on_demand,
+            "useFullyQualifiedName": self._use_fully_qualified_name,
         }
 
     def json(self) -> str:

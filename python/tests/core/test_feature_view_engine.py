@@ -81,6 +81,11 @@ fg4 = feature_group.FeatureGroup(
     stream=False,
 )
 
+fg1._feature_store_name = "test_fs1"
+fg2._feature_store_name = "test_fs2"
+fg3._feature_store_name = "test_fs3"
+fg4._feature_store_name = "test_fs4"
+
 query = fg1.select_all()
 
 
@@ -703,6 +708,8 @@ class TestFeatureViewEngine:
             stream=False,
         )
 
+        fg._feature_store_name = "test_transformations_fs"
+
         @udf(return_type=[int, int], drop=["feature1"])
         def transform_feature_drop(feature1):
             return pd.DataFrame({"a": feature1 + 1, "b": feature1 + 2})
@@ -906,6 +913,8 @@ class TestFeatureViewEngine:
             id=14,
             stream=False,
         )
+
+        fg._feature_store_name = "test_transformations_fs"
 
         @udf(return_type=[int, int], drop=["feature1"])
         def transform_feature_drop(feature1):
