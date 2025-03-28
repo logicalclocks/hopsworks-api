@@ -107,7 +107,7 @@ class ModelServingApi:
 
                 port = (
                     endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTPS)
-                    if INFERENCE_ENDPOINTS.PORT_NAME_HTTPS in endpoint.ports
+                    if endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTPS)
                     else endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTP)
                 )
 
