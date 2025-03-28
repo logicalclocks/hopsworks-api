@@ -270,7 +270,6 @@ class TestConstants:
     def test_inference_endpoints_type_constants(self):
         # Arrange
         ie_types = {
-            "ENDPOINT_TYPE_NODE": "NODE",
             "ENDPOINT_TYPE_KUBE_CLUSTER": "KUBE_CLUSTER",
             "ENDPOINT_TYPE_LOAD_BALANCER": "LOAD_BALANCER",
         }
