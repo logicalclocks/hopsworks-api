@@ -35,13 +35,13 @@ from hsfs import (
 )
 from hsfs.constructor.query import Query
 from hsfs.core import (
+    data_source,
     feature_group_api,
     feature_group_engine,
     feature_view_engine,
     storage_connector_api,
     training_dataset_api,
     transformation_function_engine,
-    data_source,
 )
 from hsfs.decorators import typechecked
 from hsfs.embedding import EmbeddingIndex

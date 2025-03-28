@@ -86,7 +86,7 @@ class DataSource:
     @query.setter
     def query(self, query: str) -> None:
         self._query = query
-    
+
     @property
     def database(self) -> Optional[str]:
         return self._database

@@ -54,6 +54,7 @@ from hsfs import (
 )
 from hsfs.constructor import filter, query
 from hsfs.constructor.filter import Filter, Logic
+from hsfs.core import data_source as ds
 from hsfs.core import (
     deltastreamer_jobconf,
     expectation_suite_engine,
@@ -72,7 +73,6 @@ from hsfs.core import (
     validation_report_engine,
     validation_result_engine,
 )
-from hsfs.core import data_source as ds
 from hsfs.core import feature_monitoring_config as fmc
 from hsfs.core import feature_monitoring_result as fmr
 from hsfs.core.constants import (
