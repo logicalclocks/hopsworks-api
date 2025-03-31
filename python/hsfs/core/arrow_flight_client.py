@@ -520,7 +520,6 @@ class ArrowFlightClient:
             print("Error calling action:", e)
 
     def create_query_object(self, query, query_str, on_demand_fg_aliases=None):
-        selected_features = [feat.name for feat in query.features]
         if on_demand_fg_aliases is None:
             on_demand_fg_aliases = []
         features = {}
@@ -530,9 +529,7 @@ class ArrowFlightClient:
             fg_connector = _serialize_featuregroup_connector(
                 fg, query, on_demand_fg_aliases
             )
-            features[fg_name] = [
-                feat.name for feat in fg.features if feat.name in selected_features
-            ]
+            features[fg_name] = [feat.name for feat in fg.features]
             connectors[fg_name] = fg_connector
         filters = _serialize_filter_expression(query.filters, query)
 
