@@ -291,7 +291,7 @@ class FeatureGroupBase:
 
 
             # select all features exclude primary key and event time
-            from hsfs.feature import Feature
+            from hopsworks.hsfs.feature import Feature
             fg = fs.create_feature_group(
                     "fg",
                     features=[
@@ -467,7 +467,7 @@ class FeatureGroupBase:
             fs = ...
 
             # get the Feature Group instance
-            from hsfs.feature import Feature
+            from hopsworks.hsfs.feature import Feature
             fg = fs.create_feature_group(
                     "fg",
                     features=[
@@ -514,7 +514,7 @@ class FeatureGroupBase:
             fs = ...
 
             # get the Feature Group instance
-            from hsfs.feature import Feature
+            from hopsworks.hsfs.feature import Feature
             fg = fs.create_feature_group(
                     "fg",
                     features=[
@@ -561,7 +561,7 @@ class FeatureGroupBase:
         Selects all features and returns the resulting `Query` with the applied filter.
         !!! example
             ```python
-            from hsfs.feature import Feature
+            from hopsworks.hsfs.feature import Feature
 
             # connect to the Feature Store
             fs = ...
@@ -2630,7 +2630,7 @@ class FeatureGroup(FeatureGroupBase):
             k: The number of nearest neighbors to retrieve (default is 10).
             filter: A filter expression to restrict the search space (optional).
             options: The options used for the request to the vector database.
-                The keys are attribute values of the `hsfs.core.opensearch.OpensearchRequestOption` class.
+                The keys are attribute values of the `hopsworks.hsfs.core.opensearch.OpensearchRequestOption` class.
 
         # Returns
             A list of tuples representing the nearest neighbors.
@@ -2741,7 +2741,7 @@ class FeatureGroup(FeatureGroupBase):
                 When using the `python` engine, write_options can contain the
                 following entries:
                 * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
+                [hopsworks.hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
                   to configure the Hopsworks Job used to write data into the
                   feature group.
                 * key `wait_for_job` and value `True` or `False` to configure
@@ -2947,7 +2947,7 @@ class FeatureGroup(FeatureGroupBase):
                 When using the `python` engine, write_options can contain the
                 following entries:
                 * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
+                [hopsworks.hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
                   to configure the Hopsworks Job used to write data into the
                   feature group.
                 * key `wait_for_job` and value `True` or `False` to configure
@@ -2987,7 +2987,7 @@ class FeatureGroup(FeatureGroupBase):
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: e.g fail to create feature group, dataframe schema does not match
                 existing feature group schema, etc.
-            `hsfs.client.exceptions.DataValidationException`: If data validation fails and the expectation
+            `hopsworks.hsfs.client.exceptions.DataValidationException`: If data validation fails and the expectation
                 suite `validation_ingestion_policy` is set to `STRICT`. Data is NOT ingested.
         """
         if storage and self.stream:
@@ -3122,7 +3122,7 @@ class FeatureGroup(FeatureGroupBase):
                 When using the `python` engine, write_options can contain the
                 following entries:
                 * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
+                [hopsworks.hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
                   to configure the Hopsworks Job used to write data into the
                   feature group.
                 * key `wait_for_job` and value `True` or `False` to configure
@@ -4104,7 +4104,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: e.g fail to create feature group, dataframe schema does not match
                 existing feature group schema, etc.
-            `hsfs.client.exceptions.DataValidationException`: If data validation fails and the expectation
+            `hopsworks.hsfs.client.exceptions.DataValidationException`: If data validation fails and the expectation
                 suite `validation_ingestion_policy` is set to `STRICT`. Data is NOT ingested.
 
         """
@@ -4271,7 +4271,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
             k: The number of nearest neighbors to retrieve (default is 10).
             filter: A filter expression to restrict the search space (optional).
             options: The options used for the request to the vector database.
-                The keys are attribute values of the `hsfs.core.opensearch.OpensearchRequestOption` class.
+                The keys are attribute values of the `hopsworks.hsfs.core.opensearch.OpensearchRequestOption` class.
         # Returns
             A list of tuples representing the nearest neighbors.
             Each tuple contains: `(The similarity score, A list of feature values)`
