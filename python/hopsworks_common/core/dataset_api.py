@@ -400,12 +400,12 @@ class DatasetApi:
         )
 
     def _get(self, path: str):
-        """Get dataset.
+        """Get dataset metadata.
 
-        :param path: path to check
-        :type path: str
-        :return: dataset metadata
-        :rtype: dict
+        # Arguments
+            path: path to check
+        # Returns
+            `dict`: dataset metadata
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "dataset", path]
@@ -413,12 +413,14 @@ class DatasetApi:
         return _client._send_request("GET", path_params, headers=headers)
 
     def get(self, path: str):
-        """Get dataset.
+        """**Deprecated**
 
-        :param path: path to check
-        :type path: str
-        :return: dataset metadata
-        :rtype: dict
+        Get dataset metadata.
+
+        # Arguments
+            path: path to check
+        # Returns
+            `dict`: dataset metadata
         """
         return self._get(path)
 
@@ -429,8 +431,6 @@ class DatasetApi:
             path: path to check
         # Returns
             `bool`: True if exists, otherwise False
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         try:
             self._get(path)
@@ -439,12 +439,14 @@ class DatasetApi:
             return False
 
     def path_exists(self, remote_path: str):
-        """Check if a path exists in datasets.
+        """**Deprecated**, use `exists` instead.
 
-        :param remote_path: path to check
-        :type remote_path: str
-        :return: boolean whether path exists
-        :rtype: bool
+        Check if a path exists in datasets.
+
+        # Arguments
+            remote_path: path to check
+        # Returns
+            `bool`: True if exists, otherwise False
         """
         return self.exists(remote_path)
 
@@ -462,7 +464,9 @@ class DatasetApi:
         return _client._send_request("DELETE", path_params)
 
     def rm(self, remote_path: str):
-        """Remove a path in the Hopsworks Filesystem.
+        """**Deprecated**, use `remove` instead.
+
+        Remove a path in the Hopsworks Filesystem.
 
         # Arguments
             remote_path: path to remove
@@ -526,6 +530,7 @@ class DatasetApi:
             destination_path: the destination path
             overwrite: overwrite destination if exists
         # Raises
+            `hopsworks.client.exceptions.DatasetException`: If the destination path already exists and overwrite is not set to True
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if self.exists(destination_path):
@@ -571,6 +576,7 @@ class DatasetApi:
             destination_path: the destination path
             overwrite: overwrite destination if exists
         # Raises
+            `hopsworks.client.exceptions.DatasetException`: If the destination path already exists and overwrite is not set to True
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if self.exists(destination_path):
@@ -625,7 +631,18 @@ class DatasetApi:
             chunk_number += 1
 
     @usage.method_logger
-    def list_files(self, path, offset, limit):
+    def list_files(self, path: str, offset: int, limit: int):
+        """**Deprecated**
+
+        List contents of a directory in the Hopsworks Filesystem.
+
+        # Arguments
+            path: path to the directory to list the contents of.
+            offset: the number of Inodes to skip.
+            limit: max number of the returned Inodes.
+        # Returns
+            `tuple[int, list[hopsworks.core.inode.Inode]]`: count of Inodes in the directory and the list of them.
+        """
         _client = client.get_instance()
         path_params = [
             "project",
@@ -645,21 +662,33 @@ class DatasetApi:
         return inode_lst["count"], inode.Inode.from_response_json(inode_lst)
 
     @usage.method_logger
-    def list(self, remote_path, sort_by=None, offset=0, limit=1000):
-        """List all files in a directory in datasets.
+    def list(
+        self,
+        remote_path: str,
+        sort_by: str | None = None,
+        offset: int = 0,
+        limit: int = 1000,
+    ):
+        """**Deprecated**
 
-        :param remote_path: path to list
-        :type remote_path: str
-        :param sort_by: sort string
-        :type sort_by: str
-        :param limit: max number of returned files
-        :type limit: int
+        List contents of a directory in the Hopsworks Filesystem.
+
+        # Arguments
+            remote_path: path to the directory to list the contents of.
+            sort_by: sort string, for example `"ID:asc"`.
+            offset: the number of entities to skip.
+            limit: max number of the returned entities.
         """
         # this method is probably to be merged with list_files
         # they seem to handle paths differently and return different results, which prevents the merge at the moment (2024-09-03), due to the requirement of backwards-compatibility
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "dataset", remote_path]
-        query_params = {"action": "listing", "sort_by": sort_by, "limit": limit, "offset": offset}
+        query_params = {
+            "action": "listing",
+            "sort_by": sort_by,
+            "limit": limit,
+            "offset": offset,
+        }
         headers = {"content-type": "application/json"}
         return _client._send_request(
             "GET", path_params, headers=headers, query_params=query_params
@@ -684,13 +713,16 @@ class DatasetApi:
 
         return _client._send_request("GET", path_params, query_params, stream=True)
 
-    def chmod(self, remote_path, permissions):
-        """Chmod operation on file or directory in datasets.
+    def chmod(self, remote_path: str, permissions: str):
+        """Change permissions of a file or a directory in the Hopsworks Filesystem.
 
-        :param remote_path: path to chmod
-        :type remote_path: str
-        :param permissions: permissions string, for example u+x
-        :type permissions: str
+        # Arguments
+            remote_path: path to change the permissions of.
+            permissions: permissions string, for example `"u+x"`.
+        # Returns
+            `dict`: the updated dataset metadata
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "dataset", remote_path]
@@ -721,6 +753,9 @@ class DatasetApi:
 
         # Returns
             `bool`: whether the operation completed in the specified timeout; if non-blocking, always returns True.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         _client = client.get_instance()
@@ -789,6 +824,9 @@ class DatasetApi:
 
         # Returns
             `bool`: whether the operation completed in the specified timeout; if non-blocking, always returns True.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._archive(remote_path, block=block, timeout=timeout, action="unzip")
 
@@ -809,6 +847,9 @@ class DatasetApi:
 
         # Returns
             `bool`: whether the operation completed in the specified timeout; if non-blocking, always returns True.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._archive(
             remote_path,
@@ -820,18 +861,18 @@ class DatasetApi:
 
     # region Dataset Tags
 
-    def add(self, path, name, value):
-        """Attach a name/value tag to a model.
+    def add(self, path: str, name: str, value: str):
+        """**Deprecated**
+
+        Attach a name/value tag to a model.
 
         A tag consists of a name/value pair. Tag names are unique identifiers.
         The value of a tag can be any valid json - primitives, arrays or json objects.
 
-        :param path: path to add the tag
-        :type path: str
-        :param name: name of the tag to be added
-        :type name: str
-        :param value: value of the tag to be added
-        :type value: str
+        # Arguments
+            path: path to add the tag
+            name: name of the tag to be added
+            value: value of the tag to be added
         """
         _client = client.get_instance()
         path_params = [
@@ -847,15 +888,16 @@ class DatasetApi:
         json_value = json.dumps(value)
         _client._send_request("PUT", path_params, headers=headers, data=json_value)
 
-    def delete(self, path, name):
-        """Delete a tag.
+    def delete(self, path: str, name: str):
+        """**Deprecated**
+
+        Delete a tag.
 
         Tag names are unique identifiers.
 
-        :param path: path to delete the tags
-        :type path: str
-        :param name: name of the tag to be removed
-        :type name: str
+        # Arguments
+            path: path to delete the tags
+            name: name of the tag to be removed
         """
         _client = client.get_instance()
         path_params = [
@@ -869,17 +911,19 @@ class DatasetApi:
         ]
         _client._send_request("DELETE", path_params)
 
-    def get_tags(self, path, name: str = None):
-        """Get the tags.
+    def get_tags(self, path: str, name: str | None = None):
+        """**Deprecated**
+
+        Get the tags.
 
         Gets all tags if no tag name is specified.
 
-        :param path: path to get the tags
-        :type path: str
-        :param name: tag name
-        :type name: str
-        :return: dict of tag name/values
-        :rtype: dict
+        # Arguments
+            path: path to get the tags
+            name: tag name
+
+        # Returns
+            `dict`: tag names and values
         """
         _client = client.get_instance()
         path_params = [

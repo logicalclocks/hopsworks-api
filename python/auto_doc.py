@@ -40,15 +40,6 @@ PAGES = {
     "api/udf.md": {
         "udf": ["hopsworks.udf"],
     },
-    "api/connection.md": {
-        "connection": ["hopsworks.connection.Connection.connection"],
-        "connection_properties": keras_autodoc.get_properties(
-            "hopsworks.connection.Connection"
-        ),
-        "connection_methods": keras_autodoc.get_methods(
-            "hopsworks.connection.Connection", exclude=EXCLUDE_METHODS
-        ),
-    },
     "api/projects.md": {
         "project_create": ["hopsworks.create_project"],
         "project_properties": keras_autodoc.get_properties("hopsworks.project.Project"),
@@ -146,7 +137,18 @@ PAGES = {
     "api/datasets.md": {
         "dataset_api_handle": ["hopsworks.project.Project.get_dataset_api"],
         "dataset_methods": keras_autodoc.get_methods(
-            "hopsworks.core.dataset_api.DatasetApi", exclude=EXCLUDE_METHODS
+            "hopsworks.core.dataset_api.DatasetApi",
+            exclude=EXCLUDE_METHODS
+            + [
+                "get",
+                "add",
+                "get_tags",
+                "delete",
+                "path_exists",
+                "rm",
+                "list",
+                "list_files",
+            ],
         ),
     },
     "api/kafka_topic.md": {
@@ -278,7 +280,7 @@ PAGES = {
     },
     "api/feature_store_api.md": {
         "fs": ["hsfs.feature_store.FeatureStore"],
-        "fs_get": ["hsfs.connection.Connection.get_feature_store"],
+        "fs_get": ["hopsworks.project.Project.get_feature_store"],
         "fs_properties": keras_autodoc.get_properties(
             "hsfs.feature_store.FeatureStore"
         ),
@@ -549,7 +551,7 @@ PAGES = {
     },
     # Model registry
     "model-registry/model_registry_api.md": {
-        "mr_get": ["hsml.connection.Connection.get_model_registry"],
+        "mr_get": ["hopsworks.project.Project.get_model_registry"],
         "mr_modules": keras_autodoc.get_properties(
             "hsml.model_registry.ModelRegistry",
             exclude=[
@@ -602,7 +604,7 @@ PAGES = {
     },
     # Model Serving
     "model-serving/model_serving_api.md": {
-        "ms_get": ["hsml.connection.Connection.get_model_serving"],
+        "ms_get": ["hopsworks.project.Project.get_model_serving"],
         "ms_properties": keras_autodoc.get_properties(
             "hsml.model_serving.ModelServing"
         ),
@@ -611,7 +613,7 @@ PAGES = {
         ),
     },
     "model-serving/deployment_api.md": {
-        "ms_get_model_serving": ["hsml.connection.Connection.get_model_serving"],
+        "ms_get_model_serving": ["hopsworks.project.Project.get_model_serving"],
         "ms_get_deployments": [
             "hsml.model_serving.ModelServing.get_deployment",
             "hsml.model_serving.ModelServing.get_deployment_by_id",
@@ -626,7 +628,7 @@ PAGES = {
         ),
     },
     "model-serving/predictor_api.md": {
-        "ms_get_model_serving": ["hsml.connection.Connection.get_model_serving"],
+        "ms_get_model_serving": ["hopsworks.project.Project.get_model_serving"],
         "ms_create_predictor": ["hsml.model_serving.ModelServing.create_predictor"],
         "pred_properties": keras_autodoc.get_properties("hsml.predictor.Predictor"),
         "pred_methods": keras_autodoc.get_methods(
@@ -635,7 +637,7 @@ PAGES = {
         ),
     },
     "model-serving/transformer_api.md": {
-        "ms_get_model_serving": ["hsml.connection.Connection.get_model_serving"],
+        "ms_get_model_serving": ["hopsworks.project.Project.get_model_serving"],
         "ms_create_transformer": ["hsml.model_serving.ModelServing.create_transformer"],
         "trans_properties": keras_autodoc.get_properties(
             "hsml.transformer.Transformer"
