@@ -424,7 +424,7 @@ class Query:
         !!! example
             ```python
 
-            from hsfs.feature import Feature
+            from hopsworks.hsfs.feature import Feature
 
             query.filter(Feature("weekly_sales") > 1000)
             query.filter(Feature("name").like("max%"))

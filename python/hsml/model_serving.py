@@ -269,7 +269,7 @@ class ModelServing:
 
             # or
 
-            from hsml.transformer import Transformer
+            from hopsworks.hsml.transformer import Transformer
 
             my_transformer = Transformer(script_file)
             ```
