@@ -143,38 +143,37 @@ class Query:
         return sql_query, online_conn
 
     def check_and_warn_ambiguous_features(self) -> None:
+        """
+        Function that fetches ambiguous features from a query and displays a warning.
+        """
         self._ambiguous_features_in_query = self.get_ambiguous_features()
         if self._ambiguous_features_in_query:
             ambiguous_features_warning_str = (
-                "Ambiguous features detected while constructing the query. The "
+                "Ambiguous features detected during query construction."
             )
             for (
-                feature_group_name,
-                features,
+                feature,
+                feature_group_names,
             ) in self._ambiguous_features_in_query.items():
-                feature_names = "`, `".join(sorted(features))
-                ambiguous_features_warning_str += f"feature(s) - `{feature_names}` from feature group `{feature_group_name}` "
-            ambiguous_features_warning_str += "have ambiguous names. Automatically prefixing the names of features selected in these feature groups with the feature group name."
+                ambiguous_features_warning_str += f"The feature `{feature}` is present in feature groups {sorted(feature_group_names)}. "
+            ambiguous_features_warning_str += "Automatically prefixing features selected using these feature groups with the feature group name."
             _logger.warning(ambiguous_features_warning_str.strip())
 
-    def _get_ambiguous_features_in_joins(
+    def _extract_feature_to_feature_group_mapping_joins(
         self,
         joins: List[join.Join],
-        selected_features: set[str],
         ambiguous_feature_feature_group_mapping: Dict[str, set[str]],
     ) -> tuple[Dict[str, set[str]], set[str]]:
         """
-        Function that extracts all the selected features and ambiguous features in the joins of the query.
-        The function will return a list of selected features and a dictionary with feature group name of the ambiguous features as key and list of ambiguous features as value.
+        Function that extracts all the features in the list of joins and maps them to the feature group they are selected from.
+        The function will return a dictionary that maps the feature names to the set of feature group names they are selected from.
 
         # Arguments
             `joins` : List of joins in the query.
-            `selected_features` : List of selected features in the query.
-            `ambiguous_feature_feature_group_mapping` : Dictionary with feature group name of the ambiguous features as key and list of ambiguous features as value.
+            `ambiguous_feature_feature_group_mapping` : Dictionary with feature name to feature group names.
 
         # Returns
-            `Dict[str, List[str]]`: Dictionary with feature group name of the ambiguous features as key and list of ambiguous features as value.
-            `set[str]`: Set of selected features in the query.
+            `Dict[str, List[str]]`: Dictionary with feature name as key and set of feature groups they are selected from as value.
         """
         for query_join in joins:
             query = query_join._query
@@ -185,53 +184,47 @@ class Query:
                 for feature in query._left_features
             }
 
-            ambiguous_names = {
-                feature_name
-                for feature_name in join_features
-                if feature_name in selected_features
-            }
-
-            if ambiguous_names:
-                ambiguous_feature_feature_group_mapping[
-                    query._left_feature_group.name
-                ] = ambiguous_feature_feature_group_mapping.get(
-                    query._left_feature_group.name, set()
-                ).union(ambiguous_names)
-
-            selected_features.update(join_features)
+            for feature in join_features:
+                ambiguous_feature_feature_group_mapping[feature] = (
+                    ambiguous_feature_feature_group_mapping.get(
+                        feature, set()
+                    ).union([query._left_feature_group.name])
+                )
 
             if query.joins:
-                (
-                    subquery_ambiguous_feature_feature_group_mapping,
-                    subquery_selected_features,
-                ) = self._get_ambiguous_features_in_joins(
-                    query.joins,
-                    selected_features,
-                    ambiguous_feature_feature_group_mapping,
+                ambiguous_feature_feature_group_mapping = (
+                    self._extract_feature_to_feature_group_mapping_joins(
+                        query.joins,
+                        ambiguous_feature_feature_group_mapping,
+                    )
                 )
-                ambiguous_feature_feature_group_mapping.update(
-                    subquery_ambiguous_feature_feature_group_mapping
-                )
-                selected_features.update(subquery_selected_features)
 
-        return ambiguous_feature_feature_group_mapping, selected_features
+        return ambiguous_feature_feature_group_mapping
 
     def get_ambiguous_features(self: Query) -> Dict[str, set[str]]:
         """
-        Function to check ambiguous features in the query. The function will return a dictionary with feature group name of the ambiguous features as key and list of ambiguous features as value.
+        Function to check ambiguous features in the query. The function will return a dictionary with feature name of the ambiguous features as key and list feature groups they are in as value.
 
         # Returns
-            `Dict[str, List[str]]`: Dictionary with feature group name of the ambiguous features as key and list of ambiguous features as value.
+            `Dict[str, List[str]]`: Dictionary with ambiguous feature name as key and corresponding set of feature group names as value.
         """
-        ambiguous_feature_feature_group_mapping: Dict[str, set[str]] = {}
+        query_feature_feature_group_mapping: Dict[str, set[str]] = {}
 
-        selected_features = {feature.name for feature in self._left_features}
+        query_feature_feature_group_mapping = {
+            feature.name: set([self._left_feature_group.name])
+            for feature in self._left_features
+        }
 
-        ambiguous_feature_feature_group_mapping, selected_features = (
-            self._get_ambiguous_features_in_joins(
-                self._joins, selected_features, ambiguous_feature_feature_group_mapping
-            )
+        query_feature_feature_group_mapping = self._extract_feature_to_feature_group_mapping_joins(
+            joins=self._joins,
+            ambiguous_feature_feature_group_mapping=query_feature_feature_group_mapping,
         )
+
+        ambiguous_feature_feature_group_mapping = {}
+
+        for feature_name, feature_groups in query_feature_feature_group_mapping.items():
+            if len(feature_groups) > 1:
+                ambiguous_feature_feature_group_mapping[feature_name] = feature_groups
 
         return ambiguous_feature_feature_group_mapping
 
