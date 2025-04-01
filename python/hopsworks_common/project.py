@@ -128,7 +128,7 @@ class Project:
         # Arguments
             name: Project name of the feature store.
         # Returns
-            `hsfs.feature_store.FeatureStore`: The Feature Store API
+            `hopsworks.hsfs.feature_store.FeatureStore`: The Feature Store API
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -147,7 +147,7 @@ class Project:
             ```
 
         # Returns
-            `hsml.model_registry.ModelRegistry`: The Model Registry API
+            `hopsworks.hsml.model_registry.ModelRegistry`: The Model Registry API
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -166,7 +166,7 @@ class Project:
             ```
 
         # Returns
-            `hsml.model_serving.ModelServing`: The Model Serving API
+            `hopsworks.hsml.model_serving.ModelServing`: The Model Serving API
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
