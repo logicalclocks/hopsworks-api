@@ -256,7 +256,7 @@ class FeatureView:
         !!! example
             ```python
             # delete a feature view and all associated metadata
-            from hsfs.feature_view import FeatureView
+            from hopsworks.hsfs.feature_view import FeatureView
 
             FeatureView.clean(
                 feature_store_id=1,
@@ -1461,7 +1461,7 @@ class FeatureView:
                 * key `use_spark` and value `True` to materialize training dataset
                   with Spark instead of [Hopsworks Feature Query Service](https://docs.hopsworks.ai/latest/setup_installation/common/arrow_flight_duckdb/).
                 * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
+                [hopsworks.hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
                   to configure the Hopsworks Job used to compute the training dataset.
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the save call should return only
@@ -1734,7 +1734,7 @@ class FeatureView:
                 * key `use_spark` and value `True` to materialize training dataset
                   with Spark instead of [Hopsworks Feature Query Service](https://docs.hopsworks.ai/latest/setup_installation/common/arrow_flight_duckdb/).
                 * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
+                [hopsworks.hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
                   to configure the Hopsworks Job used to compute the training dataset.
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the save call should return only
@@ -2002,7 +2002,7 @@ class FeatureView:
                 * key `use_spark` and value `True` to materialize training dataset
                   with Spark instead of [Hopsworks Feature Query Service](https://docs.hopsworks.ai/latest/setup_installation/common/arrow_flight_duckdb/).
                 * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
+                [hopsworks.hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
                   to configure the Hopsworks Job used to compute the training dataset.
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the save call should return only
@@ -2121,7 +2121,7 @@ class FeatureView:
                 * key `use_spark` and value `True` to materialize training dataset
                   with Spark instead of [Hopsworks Feature Query Service](https://docs.hopsworks.ai/latest/setup_installation/common/arrow_flight_duckdb/).
                 * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
+                [hopsworks.hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
                   to configure the Hopsworks Job used to compute the training dataset.
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the save call should return only
@@ -2246,7 +2246,7 @@ class FeatureView:
                 * key `"arrow_flight_config"` to pass a dictionary of arrow flight configurations.
                   For example: `{"arrow_flight_config": {"timeout": 900}}`.
                 * key `spark` and value an object of type
-                  [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
+                  [hopsworks.hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
                   to configure the Hopsworks Job used to compute the training dataset.
                 Defaults to `{}`.
             spine: Spine dataframe with primary key, event time and
@@ -2413,7 +2413,7 @@ class FeatureView:
                 * key `"arrow_flight_config"` to pass a dictionary of arrow flight configurations.
                   For example: `{"arrow_flight_config": {"timeout": 900}}`
                 * key `spark` and value an object of type
-                  [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
+                  [hopsworks.hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
                   to configure the Hopsworks Job used to compute the training dataset.
                 Defaults to `{}`.
             spine: Spine dataframe with primary key, event time and
@@ -2620,7 +2620,7 @@ class FeatureView:
                 * key `"arrow_flight_config"` to pass a dictionary of arrow flight configurations.
                   For example: `{"arrow_flight_config": {"timeout": 900}}`
                 * key `spark` and value an object of type
-                  [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
+                  [hopsworks.hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
                   to configure the Hopsworks Job used to compute the training dataset.
                 Defaults to `{}`.
             spine: Spine dataframe with primary key, event time and
@@ -3691,7 +3691,7 @@ class FeatureView:
             training_dataset_version: Version of the training dataset. If training dataset version is definied in
                 `init_serving` or `init_batch_scoring`, or model has training dataset version,
                 or training dataset version was cached, then the version will be used, otherwise defaults to None.
-            model: `hsml.model.Model` Hopsworks model associated with the log. Defaults to None.
+            model: `hopsworks.hsml.model.Model` Hopsworks model associated with the log. Defaults to None.
 
         # Returns
             `list[Job]` job information for feature insertion if python engine is used
