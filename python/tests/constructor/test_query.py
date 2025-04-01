@@ -418,9 +418,18 @@ class TestQuery:
         ambiguous_features = q.get_ambiguous_features()
 
         expected_ambiguous_features = {
-            "id": [TestQuery.fg1.name, TestQuery.fg2.name, TestQuery.fg3.name],
-            "tf_name": [TestQuery.fg1.name, TestQuery.fg3.name],
-            "tf1_name": [TestQuery.fg2.name, TestQuery.fg3.name],
+            "id": [
+                f"{fg.name} version {fg.version}"
+                for fg in [TestQuery.fg1, TestQuery.fg2, TestQuery.fg3]
+            ],
+            "tf_name": [
+                f"{fg.name} version {fg.version}"
+                for fg in [TestQuery.fg1, TestQuery.fg3]
+            ],
+            "tf1_name": [
+                f"{fg.name} version {fg.version}"
+                for fg in [TestQuery.fg2, TestQuery.fg3]
+            ],
         }
 
         assert sorted(ambiguous_features.keys()) == sorted(
@@ -443,9 +452,18 @@ class TestQuery:
         ambiguous_features = q.get_ambiguous_features()
 
         expected_ambiguous_features = {
-            "id": [TestQuery.fg1.name, TestQuery.fg2.name, TestQuery.fg3.name],
-            "tf_name": [TestQuery.fg1.name, TestQuery.fg3.name],
-            "tf1_name": [TestQuery.fg2.name, TestQuery.fg3.name],
+            "id": [
+                f"{fg.name} version {fg.version}"
+                for fg in [TestQuery.fg1, TestQuery.fg2, TestQuery.fg3]
+            ],
+            "tf_name": [
+                f"{fg.name} version {fg.version}"
+                for fg in [TestQuery.fg1, TestQuery.fg3]
+            ],
+            "tf1_name": [
+                f"{fg.name} version {fg.version}"
+                for fg in [TestQuery.fg2, TestQuery.fg3]
+            ],
         }
 
         assert sorted(ambiguous_features.keys()) == sorted(
@@ -481,9 +499,9 @@ class TestQuery:
             .join(TestQuery.fg3.select_all())
         )
         feature_to_feature_group_mapping_root_fg = {
-            "id": {TestQuery.fg1.name},
-            "label": {TestQuery.fg1.name},
-            "tf_name": {TestQuery.fg1.name},
+            "id": {f"{TestQuery.fg1.name} version {TestQuery.fg1.version}"},
+            "label": {f"{TestQuery.fg1.name} version {TestQuery.fg1.version}"},
+            "tf_name": {f"{TestQuery.fg1.name} version {TestQuery.fg1.version}"},
         }
         feature_to_feature_group_mapping = (
             q._extract_feature_to_feature_group_mapping_joins(
@@ -492,11 +510,20 @@ class TestQuery:
         )
 
         expected_feature_to_feature_group_mapping = {
-            "id": [TestQuery.fg1.name, TestQuery.fg2.name, TestQuery.fg3.name],
-            "label": [TestQuery.fg1.name],
-            "tf_name": [TestQuery.fg1.name, TestQuery.fg3.name],
-            "tf1_name": [TestQuery.fg2.name, TestQuery.fg3.name],
-            "tf3_name": [TestQuery.fg3.name],
+            "id": [
+                f"{fg.name} version {fg.version}"
+                for fg in [TestQuery.fg1, TestQuery.fg2, TestQuery.fg3]
+            ],
+            "label": {f"{TestQuery.fg1.name} version {TestQuery.fg1.version}"},
+            "tf_name": [
+                f"{fg.name} version {fg.version}"
+                for fg in [TestQuery.fg1, TestQuery.fg3]
+            ],
+            "tf1_name": [
+                f"{fg.name} version {fg.version}"
+                for fg in [TestQuery.fg2, TestQuery.fg3]
+            ],
+            "tf3_name": {f"{TestQuery.fg3.name} version {TestQuery.fg3.version}"},
         }
 
         assert sorted(feature_to_feature_group_mapping.keys()) == sorted(
@@ -521,9 +548,9 @@ class TestQuery:
         )
 
         feature_to_feature_group_mapping_root_fg = {
-            "id": {TestQuery.fg1.name},
-            "label": {TestQuery.fg1.name},
-            "tf_name": {TestQuery.fg1.name},
+            "id": {f"{TestQuery.fg1.name} version {TestQuery.fg1.version}"},
+            "label": {f"{TestQuery.fg1.name} version {TestQuery.fg1.version}"},
+            "tf_name": {f"{TestQuery.fg1.name} version {TestQuery.fg1.version}"},
         }
         feature_to_feature_group_mapping = (
             q._extract_feature_to_feature_group_mapping_joins(
@@ -532,11 +559,20 @@ class TestQuery:
         )
 
         expected_feature_to_feature_group_mapping = {
-            "id": [TestQuery.fg1.name, TestQuery.fg2.name, TestQuery.fg3.name],
-            "label": [TestQuery.fg1.name],
-            "tf_name": [TestQuery.fg1.name, TestQuery.fg3.name],
-            "tf1_name": [TestQuery.fg2.name, TestQuery.fg3.name],
-            "tf3_name": [TestQuery.fg3.name],
+            "id": [
+                f"{fg.name} version {fg.version}"
+                for fg in [TestQuery.fg1, TestQuery.fg2, TestQuery.fg3]
+            ],
+            "label": {f"{TestQuery.fg1.name} version {TestQuery.fg1.version}"},
+            "tf_name": [
+                f"{fg.name} version {fg.version}"
+                for fg in [TestQuery.fg1, TestQuery.fg3]
+            ],
+            "tf1_name": [
+                f"{fg.name} version {fg.version}"
+                for fg in [TestQuery.fg2, TestQuery.fg3]
+            ],
+            "tf3_name": {f"{TestQuery.fg3.name} version {TestQuery.fg3.version}"},
         }
 
         assert sorted(feature_to_feature_group_mapping.keys()) == sorted(
@@ -558,9 +594,9 @@ class TestQuery:
             .join(TestQuery.fg3.select_all(), prefix="fg3_")
         )
         feature_to_feature_group_mapping_root_fg = {
-            "id": {TestQuery.fg1.name},
-            "label": {TestQuery.fg1.name},
-            "tf_name": {TestQuery.fg1.name},
+            "id": {f"{TestQuery.fg1.name} version {TestQuery.fg1.version}"},
+            "label": {f"{TestQuery.fg1.name} version {TestQuery.fg1.version}"},
+            "tf_name": {f"{TestQuery.fg1.name} version {TestQuery.fg1.version}"},
         }
         feature_to_feature_group_mapping = (
             q._extract_feature_to_feature_group_mapping_joins(
@@ -569,15 +605,15 @@ class TestQuery:
         )
 
         expected_feature_to_feature_group_mapping = {
-            "id": [TestQuery.fg1.name],
-            "label": [TestQuery.fg1.name],
-            "tf_name": [TestQuery.fg1.name],
-            "fg2_id": [TestQuery.fg2.name],
-            "fg2_tf1_name": [TestQuery.fg2.name],
-            "fg3_id": [TestQuery.fg3.name],
-            "fg3_tf_name": [TestQuery.fg3.name],
-            "fg3_tf1_name": [TestQuery.fg3.name],
-            "fg3_tf3_name": [TestQuery.fg3.name],
+            "id": {f"{TestQuery.fg1.name} version {TestQuery.fg1.version}"},
+            "label": {f"{TestQuery.fg1.name} version {TestQuery.fg1.version}"},
+            "tf_name": {f"{TestQuery.fg1.name} version {TestQuery.fg1.version}"},
+            "fg2_id": {f"{TestQuery.fg2.name} version {TestQuery.fg2.version}"},
+            "fg2_tf1_name": {f"{TestQuery.fg2.name} version {TestQuery.fg2.version}"},
+            "fg3_id": {f"{TestQuery.fg3.name} version {TestQuery.fg3.version}"},
+            "fg3_tf_name": {f"{TestQuery.fg3.name} version {TestQuery.fg3.version}"},
+            "fg3_tf1_name": {f"{TestQuery.fg3.name} version {TestQuery.fg3.version}"},
+            "fg3_tf3_name": {f"{TestQuery.fg3.name} version {TestQuery.fg3.version}"},
         }
 
         assert sorted(feature_to_feature_group_mapping.keys()) == sorted(
@@ -601,7 +637,7 @@ class TestQuery:
             q.check_and_warn_ambiguous_features()
 
         assert (
-            "Ambiguous features detected during query construction.The feature `id` is present in feature groups ['test1', 'test2', 'test3']. The feature `tf_name` is present in feature groups ['test1', 'test3']. The feature `tf1_name` is present in feature groups ['test2', 'test3']. Automatically prefixing features selected using these feature groups with the feature group name."
+            "Ambiguous features detected during query construction.The feature `id` is present in feature groups ['test1 version 1', 'test2 version 1', 'test3 version 1']. The feature `tf_name` is present in feature groups ['test1 version 1', 'test3 version 1']. The feature `tf1_name` is present in feature groups ['test2 version 1', 'test3 version 1']. Automatically prefixing features selected using these feature groups with the feature group name."
             in caplog.text
         )
 
@@ -619,7 +655,7 @@ class TestQuery:
             q.check_and_warn_ambiguous_features()
 
         assert (
-            "Ambiguous features detected during query construction.The feature `id` is present in feature groups ['test1', 'test2', 'test3']. The feature `tf_name` is present in feature groups ['test1', 'test3']. The feature `tf1_name` is present in feature groups ['test2', 'test3']. Automatically prefixing features selected using these feature groups with the feature group name."
+            "Ambiguous features detected during query construction.The feature `id` is present in feature groups ['test1 version 1', 'test2 version 1', 'test3 version 1']. The feature `tf_name` is present in feature groups ['test1 version 1', 'test3 version 1']. The feature `tf1_name` is present in feature groups ['test2 version 1', 'test3 version 1']. Automatically prefixing features selected using these feature groups with the feature group name."
             in caplog.text
         )
 

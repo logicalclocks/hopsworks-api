@@ -166,14 +166,14 @@ class Query:
     ) -> tuple[Dict[str, set[str]], set[str]]:
         """
         Function that extracts all the features in the list of joins and maps them to the feature group they are selected from.
-        The function will return a dictionary that maps the feature names to the set of feature group names they are selected from.
+        The function will return a dictionary that maps the feature names to the set of feature group names and version they are selected from.
 
         # Arguments
             `joins` : List of joins in the query.
-            `ambiguous_feature_feature_group_mapping` : Dictionary with feature name to feature group names.
+            `ambiguous_feature_feature_group_mapping` : Dictionary with feature name to feature group names and version.
 
         # Returns
-            `Dict[str, List[str]]`: Dictionary with feature name as key and set of feature groups they are selected from as value.
+            `Dict[str, List[str]]`: Dictionary with feature name as key and set of feature groups name and version they are selected from as value.
         """
         for query_join in joins:
             query = query_join._query
@@ -188,7 +188,11 @@ class Query:
                 ambiguous_feature_feature_group_mapping[feature] = (
                     ambiguous_feature_feature_group_mapping.get(
                         feature, set()
-                    ).union([query._left_feature_group.name])
+                    ).union(
+                        [
+                            f"{query._left_feature_group.name} version {query._left_feature_group.version}"
+                        ]
+                    )
                 )
 
             if query.joins:
@@ -206,12 +210,16 @@ class Query:
         Function to check ambiguous features in the query. The function will return a dictionary with feature name of the ambiguous features as key and list feature groups they are in as value.
 
         # Returns
-            `Dict[str, List[str]]`: Dictionary with ambiguous feature name as key and corresponding set of feature group names as value.
+            `Dict[str, List[str]]`: Dictionary with ambiguous feature name as key and corresponding set of feature group names and version as value.
         """
         query_feature_feature_group_mapping: Dict[str, set[str]] = {}
 
         query_feature_feature_group_mapping = {
-            feature.name: set([self._left_feature_group.name])
+            feature.name: set(
+                [
+                    f"{self._left_feature_group.name} version {self._left_feature_group.version}"
+                ]
+            )
             for feature in self._left_features
         }
 
