@@ -87,7 +87,7 @@ class ModelServingApi:
             if not client._is_external():
                 # if internal, get node port
                 endpoint = get_endpoint_by_type(
-                    inference_endpoints, INFERENCE_ENDPOINTS.ENDPOINT_TYPE_NODE
+                    inference_endpoints, INFERENCE_ENDPOINTS.ENDPOINT_TYPE_KUBE_CLUSTER
                 )
                 if endpoint is not None:
                     client.istio.init(
@@ -97,41 +97,34 @@ class ModelServingApi:
                 else:
                     raise ValueError(
                         "Istio ingress endpoint of type '"
-                        + INFERENCE_ENDPOINTS.ENDPOINT_TYPE_NODE
+                        + INFERENCE_ENDPOINTS.ENDPOINT_TYPE_KUBE_CLUSTER
                         + "' not found"
                     )
             else:  # if external
                 endpoint = get_endpoint_by_type(
                     inference_endpoints, INFERENCE_ENDPOINTS.ENDPOINT_TYPE_LOAD_BALANCER
                 )
+
+                port = (
+                    endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTPS)
+                    if endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTPS)
+                    else endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTP)
+                )
+
                 if endpoint is not None:
                     # if load balancer (external ip) available
                     _client = client.get_instance()
                     client.istio.init(
                         endpoint.get_any_host(),
-                        endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTP).number,
+                        port.number,
                         _client._project_name,
                         _client._auth._token,  # reuse hopsworks client token
+                        scheme="https"
+                        if endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTPS)
+                        else "http",
                     )
                     return
-                # in case there's not load balancer, check if node port is open
-                endpoint = get_endpoint_by_type(
-                    inference_endpoints, INFERENCE_ENDPOINTS.ENDPOINT_TYPE_NODE
-                )
-                if endpoint is not None:
-                    # if node port available
-                    _client = client.get_instance()
-                    host = _client.host
-                    port = endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTP).number
-                    if self._is_host_port_open(host, port):
-                        # and it is open
-                        client.istio.init(
-                            host,
-                            port,
-                            _client._project_name,
-                            _client._auth._token,  # reuse hopsworks client token
-                        )
-                        return
+
                 # otherwise, fallback to hopsworks client
                 print(
                     "External IP not configured for the Istio ingress gateway, the Hopsworks client will be used for model inference instead"
