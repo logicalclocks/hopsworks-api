@@ -116,10 +116,10 @@ class EmbeddingFeature:
     # Arguments
         name: The name of the embedding feature.
         dimension: The dimensionality of the embedding feature.
-        similarity_function_type: The type of similarity function used for the embedding feature.
+        similarity_function_type: `hopsworks.hsfs.embedding.SimilarityFunctionType` The type of similarity function used for the embedding feature.
           Available functions are `L2`, `COSINE`, and `DOT_PRODUCT`.
           (default is `SimilarityFunctionType.L2`).
-        model: `hsml.model.Model` A Model in hsml.
+        model: `hopsworks.hsml.model.Model` A Model in hsml.
         feature_group: The feature group object that contains the embedding feature.
         embedding_index: `EmbeddingIndex` The index for managing embedding features.
     """
@@ -180,7 +180,7 @@ class EmbeddingFeature:
 
     @property
     def model(self):
-        """hsml.model.Model: The Model in hsml."""
+        """hopsworks.hsml.model.Model: The Model in hsml."""
         return self._model
 
     @property
@@ -295,7 +295,7 @@ class EmbeddingIndex:
             name: The name of the embedding feature.
             dimension: The dimensionality of the embedding feature.
             similarity_function_type: The type of similarity function to be used.
-            model (hsml.model.Model, optional): The hsml model used to generate the embedding.
+            model: `hopsworks.hsml.model.Model, optional` The hsml model used to generate the embedding.
                 Defaults to None.
         """
         self._features[name] = EmbeddingFeature(
@@ -304,13 +304,13 @@ class EmbeddingIndex:
 
     def get_embedding(self, name):
         """
-        Returns the `hsfs.embedding.EmbeddingFeature` object associated with the feature name.
+        Returns the `hopsworks.hsfs.embedding.EmbeddingFeature` object associated with the feature name.
 
         # Arguments
             name (str): The name of the embedding feature.
 
         # Returns
-            `hsfs.embedding.EmbeddingFeature` object
+            `hopsworks.hsfs.embedding.EmbeddingFeature` object
         """
         feat = self._features.get(name)
         if feat:
@@ -320,10 +320,10 @@ class EmbeddingIndex:
 
     def get_embeddings(self):
         """
-        Returns the list of `hsfs.embedding.EmbeddingFeature` objects associated with the index.
+        Returns the list of `hopsworks.hsfs.embedding.EmbeddingFeature` objects associated with the index.
 
         # Returns
-            A list of `hsfs.embedding.EmbeddingFeature` objects
+            A list of `hopsworks.hsfs.embedding.EmbeddingFeature` objects
         """
         for feat in self._features.values():
             feat.feature_group = self._feature_group
@@ -336,7 +336,7 @@ class EmbeddingIndex:
 
         # Arguments
             options: The options used for the request to the vector database.
-                The keys are attribute values of the `hsfs.core.opensearch.OpensearchRequestOption` class.
+                The keys are attribute values of the `hopsworks.hsfs.core.opensearch.OpensearchRequestOption` class.
 
         # Returns
             `int`: The number of records in the feature group.
