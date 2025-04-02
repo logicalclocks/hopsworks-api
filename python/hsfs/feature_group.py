@@ -446,8 +446,8 @@ class FeatureGroupBase:
             self.primary_key + self.partition_key + self.foreign_key + [self.event_time]
         )
         _logger.info(
-            f"Using {[f.name for f in query.features]} as features for the query."
-            "To include primary key and event time use `select_all`."
+            f"Using {[f.name for f in query.features]} from feature group `{self.name}` as features for the query."
+            " To include primary key and event time use `select_all`."
         )
 
         return query
