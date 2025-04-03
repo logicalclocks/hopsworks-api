@@ -2453,7 +2453,7 @@ class TestSpark:
         f = feature.Feature(name="col1", type="str")
         f1 = feature.Feature(name="col2", type="str")
         f2 = feature.Feature(
-            name="test_fs_test_1_event_time", type="str", use_fully_qualified_name=True
+            name="event_time", type="str", use_fully_qualified_name=True
         )
 
         fg = feature_group.FeatureGroup(
