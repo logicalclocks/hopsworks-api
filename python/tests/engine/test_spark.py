@@ -2425,6 +2425,61 @@ class TestSpark:
         assert mock_spark_engine_time_series_split.call_count == 1
         assert mock_spark_engine_random_split.call_count == 0
 
+    def test_split_df_time_split_query_features_fully_qualified_name(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.constructor.query.Query.read")
+        mock_spark_engine_time_series_split = mocker.patch(
+            "hsfs.engine.spark.Engine._time_series_split"
+        )
+        mock_spark_engine_random_split = mocker.patch(
+            "hsfs.engine.spark.Engine._random_split"
+        )
+
+        spark_engine = spark.Engine()
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"col1": 1},
+            train_start=1000000000,
+            train_end=2000000000,
+            test_end=3000000000,
+        )
+
+        f = feature.Feature(name="col1", type="str")
+        f1 = feature.Feature(name="col2", type="str")
+        f2 = feature.Feature(
+            name="test_fs_test_1_event_time", type="str", use_fully_qualified_name=True
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            event_time="event_time",
+            featurestore_name="test_fs",
+        )
+
+        q = query.Query(left_feature_group=fg, left_features=[f, f1, f2])
+
+        # Act
+        spark_engine._split_df(
+            query_obj=q,
+            training_dataset=td,
+            read_options={},
+        )
+
+        # Assert
+        assert mock_spark_engine_time_series_split.call_count == 1
+        assert mock_spark_engine_random_split.call_count == 0
+
     def test_random_split(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
