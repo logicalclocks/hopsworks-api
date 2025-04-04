@@ -19,6 +19,7 @@ import copy
 import json
 import os
 import re
+import shutil
 import uuid
 import warnings
 from datetime import date, datetime, timezone
@@ -828,7 +829,10 @@ class Engine:
             event_time_feature = [
                 _feature
                 for _feature in query_obj.features
-                if _feature.name == event_time
+                if (
+                    _feature.name == event_time
+                    and _feature._feature_group_id == query_obj._left_feature_group.id
+                )
             ]
 
             if not event_time_feature:
@@ -1131,18 +1135,22 @@ class Engine:
 
         # for external clients, download the file
         if client._is_external():
-            tmp_file = f"/tmp/{file_name}"
+            tmp_file = os.path.join(SparkFiles.getRootDirectory(), file_name)
             print("Reading key file from storage connector.")
             response = self._dataset_api.read_content(file, util.get_dataset_type(file))
 
             with open(tmp_file, "wb") as f:
                 f.write(response.content)
+        else:
+            self._spark_context.addFile(file)
 
-            file = f"file://{tmp_file}"
+            # The file is not added to the driver current working directory
+            # We should add it manually by copying from the download location
+            # The file will be added to the executors current working directory
+            # before the next task is executed
+            shutil.copy(SparkFiles.get(file_name), file_name)
 
-        self._spark_context.addFile(file)
-
-        return SparkFiles.get(file_name)
+        return file_name
 
     def profile(
         self,
@@ -1686,9 +1694,6 @@ class Engine:
     def read_feature_log(query, time_col):
         df = query.read()
         return df.drop("log_id", time_col)
-
-    def get_spark_version(self):
-        return self._spark_session.version
 
 
 class SchemaError(Exception):

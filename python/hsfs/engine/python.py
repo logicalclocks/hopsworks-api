@@ -978,7 +978,10 @@ class Engine:
             event_time_feature = [
                 _feature
                 for _feature in query_obj.features
-                if _feature.name == event_time
+                if (
+                    _feature.name == event_time
+                    and _feature._feature_group_id == query_obj._left_feature_group.id
+                )
             ]
 
             if not event_time_feature:
