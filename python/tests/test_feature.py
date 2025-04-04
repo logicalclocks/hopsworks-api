@@ -15,7 +15,7 @@
 #
 
 
-from hsfs import feature
+from hsfs import feature, feature_group
 
 
 class TestFeature:
@@ -102,3 +102,83 @@ class TestFeature:
         assert spaced_feature.name == "col_1"
         assert upper_feature.name == "col1"
         assert both_feature.name == "bravo_col"
+
+    def test_get_fully_qualified_feature_name_without_prefix_and_without_use_fqn(self):
+        # Arrange
+        f = feature.Feature("feature_name")
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            event_time="event_time",
+            featurestore_name="test_fs",
+        )
+
+        # Act
+        result = f._get_fully_qualified_feature_name(fg)
+
+        # Assert
+        assert result == "feature_name"
+
+    def test_get_fully_qualified_feature_name_with_prefix_and_without_use_fqn(self):
+        # Arrange
+        f = feature.Feature("feature_name")
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            event_time="event_time",
+            featurestore_name="test_fs",
+        )
+
+        # Act
+        result = f._get_fully_qualified_feature_name(fg, prefix="prefix_")
+
+        # Assert
+        assert result == "prefix_feature_name"
+
+    def test_get_fully_qualified_feature_name_without_prefix_and_with_use_fqn(self):
+        # Arrange
+        f = feature.Feature("feature_name", use_fully_qualified_name=True)
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            event_time="event_time",
+            featurestore_name="test_fs",
+        )
+
+        # Act
+        result = f._get_fully_qualified_feature_name(fg)
+
+        # Assert
+        assert result == "test_fs_test_1_feature_name"
+
+    def test_get_fully_qualified_feature_name_with_prefix_and_with_use_fqn(self):
+        # Arrange
+        f = feature.Feature("feature_name", use_fully_qualified_name=True)
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            event_time="event_time",
+            featurestore_name="test_fs",
+        )
+
+        # Act
+        result = f._get_fully_qualified_feature_name(fg, prefix="prefix_")
+
+        # Assert
+        assert result == "test_fs_test_1_feature_name"

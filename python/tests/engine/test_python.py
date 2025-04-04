@@ -1977,6 +1977,81 @@ class TestPython:
         assert isinstance(result["train"], pd.DataFrame)
         assert isinstance(result["test"], pd.DataFrame)
 
+    def test_prepare_transform_split_df_time_split_query_features_fully_qualified_name(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.constructor.query.Query.read")
+        mock_python_engine_time_series_split = mocker.patch(
+            "hsfs.engine.python.Engine._time_series_split"
+        )
+        mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine"
+        )
+        mock_feature_view = mocker.patch("hsfs.feature_view.FeatureView")
+
+        python_engine = python.Engine()
+
+        d = {
+            "col1": [1, 2],
+            "col2": [3, 4],
+            "test_fs_test_1_event_time": [1000000000, 2000000000],
+        }
+        df = pd.DataFrame(data=d)
+
+        mock_python_engine_time_series_split.return_value = {
+            "train": df.loc[df["col1"] == 1],
+            "test": df.loc[df["col1"] == 2],
+        }
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"col1": None, "col2": None},
+            label=["f", "f_wrong"],
+            id=10,
+            train_start=1000000000,
+            train_end=2000000000,
+            test_end=3000000000,
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            event_time="event_time",
+            featurestore_name="test_fs",
+        )
+
+        f = feature.Feature(name="col1", type="str")
+        f1 = feature.Feature(name="col2", type="str")
+        f2 = feature.Feature(
+            name="event_time", type="str", use_fully_qualified_name=True
+        )
+
+        q = query.Query(left_feature_group=fg, left_features=[f, f1, f2])
+
+        # Act
+        result = python_engine._prepare_transform_split_df(
+            query_obj=q,
+            training_dataset_obj=td,
+            feature_view_obj=mock_feature_view,
+            read_option=None,
+            dataframe_type="default",
+        )
+
+        # Assert
+        assert mock_python_engine_time_series_split.call_count == 1
+        assert isinstance(result["train"], pd.DataFrame)
+        assert isinstance(result["test"], pd.DataFrame)
+
     def test_random_split(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
