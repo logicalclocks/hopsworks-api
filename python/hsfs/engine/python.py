@@ -58,6 +58,7 @@ from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
 from hopsworks_common.decorators import uses_great_expectations, uses_polars
 from hsfs import (
+    engine,
     feature,
     feature_view,
     transformation_function,
@@ -67,6 +68,7 @@ from hsfs import storage_connector as sc
 from hsfs.constructor import query
 from hsfs.core import (
     dataset_api,
+    delta_engine,
     feature_group_api,
     feature_view_api,
     ingestion_job_conf,
@@ -815,6 +817,18 @@ class Engine:
             return self._write_dataframe_kafka(
                 feature_group, dataframe, offline_write_options
             )
+        elif engine.get_type() == "python":
+            if (
+                not online_enabled and not feature_group.stream
+            ) and feature_group.time_travel_format == "DELTA":
+                delta_engine_instance = delta_engine.DeltaEngine(
+                    feature_group.feature_store_id,
+                    feature_group.feature_store_name,
+                    feature_group,
+                    None,
+                    None,
+                )
+                delta_engine_instance.save_delta_fg(dataframe, {}, validation_id)
         else:
             # for backwards compatibility
             return self.legacy_save_dataframe(
