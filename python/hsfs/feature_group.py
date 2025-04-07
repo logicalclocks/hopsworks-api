@@ -108,7 +108,6 @@ if HAS_NUMPY:
 if HAS_POLARS:
     import polars as pl
 
-
 _logger = logging.getLogger(__name__)
 
 
@@ -2689,10 +2688,36 @@ class FeatureGroup(FeatureGroupBase):
             self._offline_backfill_every_hr = None
 
         else:
-            # initialized by user
-            # for python engine we always use stream feature group
-            if engine.get_type() == "python":
-                self._stream = True
+            # Set time travel format and streaming based on engine type and online status
+            if time_travel_format is None:
+                # Default time travel format when none specified
+                if engine.get_type() == "python":
+                    if online_enabled:
+                        # Python engine with online enabled uses HUDI streaming
+                        self._time_travel_format = "HUDI"
+                        self._stream = True
+                    else:
+                        # Python engine without online uses DELTA
+                        self._time_travel_format = "DELTA"
+                else:
+                    # Non-Python engines default to HUDI
+                    self._time_travel_format = "HUDI"
+
+            elif time_travel_format == "HUDI":
+                # HUDI format specified
+                self._time_travel_format = "HUDI"
+                if engine.get_type() == "python":
+                    self._stream = True
+
+            elif time_travel_format == "DELTA":
+                # DELTA format specified
+                self._time_travel_format = "DELTA"
+                if online_enabled and engine.get_type() == "python":
+                    self._stream = True
+
+            else:
+                # Any other format specified
+                self._time_travel_format = time_travel_format
 
             self.primary_key = primary_key
             self.foreign_key = foreign_key
