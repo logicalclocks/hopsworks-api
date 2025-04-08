@@ -12,6 +12,7 @@ from hsfs.core.schema_validation import (
     PolarsValidator,
     PySparkValidator,
 )
+from hsfs.engine import spark
 from hsfs.feature import Feature
 
 
@@ -54,11 +55,27 @@ def polars_df():
 
 
 @pytest.fixture
-def spark_df(mocker):
-    from pyspark.sql import DataFrame
+def spark_df():
+    import random
+    import string
 
-    # mock spark DataFrame object
-    return mocker.MagicMock(spec=DataFrame)
+    from pyspark.sql import Row
+
+    spark_engine = spark.Engine()
+    string_values = [
+        "".join(
+            random.choice(string.ascii_letters) for _ in range(random.randint(1, 100))
+        )
+        for _ in range(3)
+    ]
+
+    data = [
+        Row(primary_key=1, event_time="2021-01-01", string_col=string_values[0]),
+        Row(primary_key=2, event_time="2021-01-02", string_col=string_values[1]),
+        Row(primary_key=3, event_time="2021-01-03", string_col=string_values[2]),
+    ]
+
+    return spark_engine._spark_session.createDataFrame(data)
 
 
 @pytest.fixture
@@ -102,62 +119,63 @@ def feature_group_created():
     return fg_existing
 
 
-class TestSchemaValidator:
-    def test_get_validator_pandas(self, pandas_df, mocker):
-        validator = DataFrameValidator.get_validator(pandas_df)
-        assert isinstance(validator, PandasValidator)
-
-    def test_get_validator_polars(self, polars_df):
-        validator = DataFrameValidator.get_validator(polars_df)
-        assert isinstance(validator, PolarsValidator)
-
-    def test_get_validator_spark(self, spark_df):
-        validator = DataFrameValidator.get_validator(spark_df)
-        assert isinstance(validator, PySparkValidator)
-
-    def test_validate_schema_primary_key_missing(self, pandas_df, feature_group_data):
+# Base class for common test behavior
+class BaseDataFrameTest:
+    def test_primary_key_missing(self, df, feature_group_data):
         KEY = "missing_key"
         feature_group_data.primary_key = [KEY]
         with pytest.raises(
             ValueError, match=f"Primary key column {KEY} is missing in input dataframe"
         ):
             DataFrameValidator().validate_schema(
-                feature_group_data, pandas_df, feature_group_data.features
+                feature_group_data, df, feature_group_data.features
             )
 
-    def test_validate_schema_primary_key_null(self, pandas_df, feature_group_data):
-        pandas_df.loc[0, "primary_key"] = None
+    def test_feature_group_with_features_not_created(self, df, feature_group_data):
+        # test with feature group with explicit features
+        df_features = DataFrameValidator().validate_schema(
+            feature_group_data, df, feature_group_data.features
+        )
+        # assert that the online type of the string_col feature is same as explcitly set in the feature group
+        assert df_features[2].online_type == "varchar(200)"
+
+
+class TestPandasDataframe(BaseDataFrameTest):
+    @pytest.fixture
+    def df(self, pandas_df):
+        return pandas_df
+
+    def test_get_validator_pandas(self, df):
+        validator = DataFrameValidator.get_validator(df)
+        assert isinstance(validator, PandasValidator)
+
+    def test_primary_key_null(self, df, feature_group_data):
+        df.loc[0, "primary_key"] = None
         with pytest.raises(
             ValueError, match="Primary key column primary_key contains null values"
         ):
             DataFrameValidator().validate_schema(
-                feature_group_data, pandas_df, feature_group_data.features
+                feature_group_data, df, feature_group_data.features
             )
 
-    def test_validate_schema_string_length_exceeded(
-        self, pandas_df, feature_group_created, mocker
-    ):
-        pandas_df.loc[0, "string_col"] = "a" * 101
+    def test_string_length_exceeded(self, df, feature_group_created, mocker):
+        df.loc[0, "string_col"] = "a" * 101
         with pytest.raises(ValueError, match="String length exceeded"):
             DataFrameValidator().validate_schema(
-                feature_group_created, pandas_df, feature_group_created.features
+                feature_group_created, df, feature_group_created.features
             )
 
-    def test_validate_schema_feature_group_created(
-        self, pandas_df, feature_group_created, mocker
-    ):
-        pandas_df.loc[0, "string_col"] = "a" * 101
+    def test_feature_group_created(self, df, feature_group_created, mocker):
+        df.loc[0, "string_col"] = "a" * 101
         with pytest.raises(ValueError, match="String length exceeded"):
             DataFrameValidator().validate_schema(
-                feature_group_created, pandas_df, feature_group_created.features
+                feature_group_created, df, feature_group_created.features
             )
 
-    def test_validate_schema_feature_group_not_created(
-        self, pandas_df, feature_group_data
-    ):
+    def test_feature_group_not_created(self, df, feature_group_data):
         # test with non existing feature group with no explicit features
         # arrange
-        pandas_df.loc[0, "string_col"] = "a" * 101
+        df.loc[0, "string_col"] = "a" * 101
         initial_features = [
             Feature("primary_key", "int"),
             Feature("event_time", "string"),
@@ -165,47 +183,232 @@ class TestSchemaValidator:
         ]
         feature_group_data.features = []
         df_features = DataFrameValidator().validate_schema(
-            feature_group_data, pandas_df, initial_features
+            feature_group_data, df, initial_features
         )
         assert df_features[2].online_type == "varchar(101)"
 
-    def test_validate_schema_feature_group_with_features_not_created(
-        self, pandas_df, feature_group_data
-    ):
-        # test with feature group with explicit features
-        df_features = DataFrameValidator().validate_schema(
-            feature_group_data, pandas_df, feature_group_data.features
-        )
-        # assert that the online type of the string_col feature is same as explcitly set in the feature group
-        assert df_features[2].online_type == "varchar(200)"
-
-    def test_pk_null_string_length_exceeded(self, pandas_df, feature_group_data):
-        pandas_df.loc[0, "primary_key"] = None
-        pandas_df.loc[0, "string_col"] = "a" * 101
+    def test_pk_null_string_length_exceeded(self, df, feature_group_data):
+        df.loc[0, "primary_key"] = None
+        df.loc[0, "string_col"] = "a" * 101
         with pytest.raises(
             ValueError, match="One or more schema validation errors found"
         ):
             DataFrameValidator().validate_schema(
-                feature_group_data, pandas_df, feature_group_data.features
+                feature_group_data, df, feature_group_data.features
             )
 
-    def test_offline_fg(self, pandas_df, feature_group_data, caplog):
+    def test_offline_fg(self, df, feature_group_data, caplog):
         feature_group_data.online_enabled = False
         df_features = PandasValidator().validate_schema(
-            feature_group_data, pandas_df, feature_group_data.features
+            feature_group_data, df, feature_group_data.features
         )
         # assert no changes were made
         assert df_features == feature_group_data.features
 
-    def test_should_not_update_nonvarchar(self, pandas_df, feature_group_data):
+    def test_should_not_update_nonvarchar(self, df, feature_group_data):
         # Test that the validator does not update the online type of a non-varchar column
         # arrange
         # set string_col feature online type to text
         feature_group_data.features[2].online_type = "text"
-        pandas_df.loc[0, "string_col"] = "b" * 1001
+        df.loc[0, "string_col"] = "b" * 1001
         # act
         df_features = PandasValidator().validate_schema(
-            feature_group_data, pandas_df, feature_group_data.features
+            feature_group_data, df, feature_group_data.features
         )
 
+        assert df_features == feature_group_data.features
+
+
+class TestPolarsDataframe(BaseDataFrameTest):
+    @pytest.fixture
+    def df(self, polars_df):
+        return polars_df
+
+    def _modify_row(self, df, row_idx, **kwargs):
+        """Helper method to modify a specific row in a Polars DataFrame."""
+        expressions = []
+
+        for column, value in kwargs.items():
+            expressions.append(
+                pl.when(pl.col("index") == row_idx)
+                .then(pl.lit(value))
+                .otherwise(pl.col(column))
+                .alias(column)
+            )
+
+        if not expressions:
+            return df
+
+        return df.with_row_index().with_columns(expressions).drop("index")
+
+    def test_get_validator_polars(self, df):
+        validator = DataFrameValidator.get_validator(df)
+        assert isinstance(validator, PolarsValidator)
+
+    def test_primary_key_null(self, df, feature_group_data):
+        modified_df = self._modify_row(df, 0, primary_key=None)
+        with pytest.raises(
+            ValueError, match="Primary key column primary_key contains null values"
+        ):
+            DataFrameValidator().validate_schema(
+                feature_group_data, modified_df, feature_group_data.features
+            )
+
+    def test_string_length_exceeded(self, df, feature_group_created, mocker):
+        modified_df = self._modify_row(df, 0, string_col="a" * 101)
+        with pytest.raises(ValueError, match="String length exceeded"):
+            DataFrameValidator().validate_schema(
+                feature_group_created, modified_df, feature_group_created.features
+            )
+
+    def test_feature_group_created(self, df, feature_group_created, mocker):
+        modified_df = self._modify_row(df, 0, string_col="a" * 101)
+        with pytest.raises(ValueError, match="String length exceeded"):
+            DataFrameValidator().validate_schema(
+                feature_group_created, modified_df, feature_group_created.features
+            )
+
+    def test_feature_group_not_created(self, df, feature_group_data):
+        # test with non existing feature group with no explicit features
+        # arrange
+        modified_df = self._modify_row(df, 0, string_col="a" * 101)
+        initial_features = [
+            Feature("primary_key", "int"),
+            Feature("event_time", "string"),
+            Feature("string_col", "string"),
+        ]
+        feature_group_data.features = []
+        df_features = DataFrameValidator().validate_schema(
+            feature_group_data, modified_df, initial_features
+        )
+        assert df_features[2].online_type == "varchar(101)"
+
+    def test_pk_null_string_length_exceeded(self, df, feature_group_data):
+        modified_df = self._modify_row(df, 0, primary_key=None, string_col="a" * 101)
+        with pytest.raises(
+            ValueError, match="One or more schema validation errors found"
+        ):
+            DataFrameValidator().validate_schema(
+                feature_group_data, modified_df, feature_group_data.features
+            )
+
+    def test_offline_fg(self, df, feature_group_data, caplog):
+        feature_group_data.online_enabled = False
+        df_features = DataFrameValidator().validate_schema(
+            feature_group_data, df, feature_group_data.features
+        )
+        # assert no changes were made
+        assert df_features == feature_group_data.features
+
+    def test_should_not_update_nonvarchar(self, df, feature_group_data):
+        # Test that the validator does not update the online type of a non-varchar column
+        # arrange
+        # set string_col feature online type to text
+        feature_group_data.features[2].online_type = "text"
+        modified_df = self._modify_row(df, 0, string_col="b" * 1001)
+        # act
+        df_features = DataFrameValidator().validate_schema(
+            feature_group_data, modified_df, feature_group_data.features
+        )
+        assert df_features == feature_group_data.features
+
+
+class TestSparkDataframe(BaseDataFrameTest):
+    @pytest.fixture
+    def df(self, spark_df):
+        return spark_df
+
+    def _modify_row(self, df, row_idx, **kwargs):
+        """Helper method to modify a specific row in a Spark DataFrame."""
+        from pyspark.sql.functions import col, lit, row_number, when
+        from pyspark.sql.window import Window
+
+        # Create a window spec for row numbering
+        window_spec = Window.orderBy(
+            "primary_key"
+        )  # Change this to an appropriate ordering column
+
+        # Add row numbers
+        df_with_row_nr = df.withColumn("row_nr", row_number().over(window_spec))
+
+        # Apply modifications for each column
+        result_df = df_with_row_nr
+        for column, value in kwargs.items():
+            result_df = result_df.withColumn(
+                column,
+                when(col("row_nr") == row_idx + 1, lit(value)).otherwise(col(column)),
+            )
+
+        # Remove the row_nr column
+        return result_df.drop("row_nr")
+
+    def test_get_validator_spark(self, spark_df):
+        validator = DataFrameValidator.get_validator(spark_df)
+        assert isinstance(validator, PySparkValidator)
+
+    def test_primary_key_null(self, df, feature_group_data):
+        modified_df = self._modify_row(df, 0, primary_key=None)
+        with pytest.raises(
+            ValueError, match="Primary key column primary_key contains null values"
+        ):
+            DataFrameValidator().validate_schema(
+                feature_group_data, modified_df, feature_group_data.features
+            )
+
+    def test_string_length_exceeded(self, df, feature_group_created, mocker):
+        modified_df = self._modify_row(df, 0, string_col="a" * 101)
+        with pytest.raises(ValueError, match="String length exceeded"):
+            DataFrameValidator().validate_schema(
+                feature_group_created, modified_df, feature_group_created.features
+            )
+
+    def test_feature_group_created(self, df, feature_group_created, mocker):
+        modified_df = self._modify_row(df, 0, string_col="a" * 101)
+        with pytest.raises(ValueError, match="String length exceeded"):
+            DataFrameValidator().validate_schema(
+                feature_group_created, modified_df, feature_group_created.features
+            )
+
+    def test_feature_group_not_created(self, df, feature_group_data):
+        # test with non existing feature group with no explicit features
+        # arrange
+        modified_df = self._modify_row(df, 0, string_col="a" * 101)
+        initial_features = [
+            Feature("primary_key", "int"),
+            Feature("event_time", "string"),
+            Feature("string_col", "string"),
+        ]
+        feature_group_data.features = []
+        df_features = DataFrameValidator().validate_schema(
+            feature_group_data, modified_df, initial_features
+        )
+        assert df_features[2].online_type == "varchar(101)"
+
+    def test_pk_null_string_length_exceeded(self, df, feature_group_data):
+        modified_df = self._modify_row(df, 0, primary_key=None, string_col="a" * 101)
+        with pytest.raises(
+            ValueError, match="One or more schema validation errors found"
+        ):
+            DataFrameValidator().validate_schema(
+                feature_group_data, modified_df, feature_group_data.features
+            )
+
+    def test_offline_fg(self, df, feature_group_data):
+        feature_group_data.online_enabled = False
+        df_features = DataFrameValidator().validate_schema(
+            feature_group_data, df, feature_group_data.features
+        )
+        # assert no changes were made
+        assert df_features == feature_group_data.features
+
+    def test_should_not_update_nonvarchar(self, df, feature_group_data):
+        # Test that the validator does not update the online type of a non-varchar column
+        # arrange
+        # set string_col feature online type to text
+        feature_group_data.features[2].online_type = "text"
+        modified_df = self._modify_row(df, 0, string_col="b" * 1001)
+        # act
+        df_features = DataFrameValidator().validate_schema(
+            feature_group_data, modified_df, feature_group_data.features
+        )
         assert df_features == feature_group_data.features
