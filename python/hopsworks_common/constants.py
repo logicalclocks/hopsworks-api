@@ -191,7 +191,6 @@ class RESOURCES:
     MIN_GPUS = 0
     MAX_CORES = 2
     MAX_MEMORY = 1024
-    MAX_GPUS = 0
 
 
 class KAFKA_TOPIC:

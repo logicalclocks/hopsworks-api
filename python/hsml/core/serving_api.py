@@ -337,26 +337,6 @@ class ServingApi:
             and kserve_installed["successMessage"] == "true"
         )
 
-    def get_resource_limits(self):
-        """Get resource limits for model serving"""
-
-        _client = client.get_instance()
-
-        path_params = ["variables", "kube_serving_max_cores_allocation"]
-        max_cores = _client._send_request("GET", path_params)
-
-        path_params = ["variables", "kube_serving_max_memory_allocation"]
-        max_memory = _client._send_request("GET", path_params)
-
-        path_params = ["variables", "kube_serving_max_gpus_allocation"]
-        max_gpus = _client._send_request("GET", path_params)
-
-        return {
-            "cores": float(max_cores["successMessage"]),
-            "memory": int(max_memory["successMessage"]),
-            "gpus": int(max_gpus["successMessage"]),
-        }
-
     def get_num_instances_limits(self):
         """Get number of instances limits for model serving"""
 

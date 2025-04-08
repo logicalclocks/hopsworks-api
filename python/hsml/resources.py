@@ -130,62 +130,18 @@ class ComponentResources(ABC):
             RESOURCES.MIN_GPUS,
         )
         self._limits = util.get_obj_from_json(limits, Resources) or Resources(
-            *self._get_default_resource_limits()
+            RESOURCES.MAX_CORES, RESOURCES.MAX_MEMORY, RESOURCES.MIN_GPUS
         )
-        self._fill_missing_resources(self._limits, *self._get_default_resource_limits())
-
-        # validate both requests and limits
-        self._validate_resources(self._requests, self._limits)
+        self._fill_missing_resources(
+            self._limits,
+            max(self._requests.cores, RESOURCES.MAX_CORES),
+            max(self._requests.memory, RESOURCES.MAX_MEMORY),
+            self._requests.gpus,
+        )
 
     def describe(self):
         """Print a description of the resource configuration"""
         util.pretty_print(self)
-
-    def _get_default_resource_limits(self):
-        max_resources = client.get_serving_resource_limits()
-        # cores limit
-        if max_resources["cores"] == -1:  # no limit
-            max_cores = (
-                RESOURCES.MAX_CORES
-                if RESOURCES.MAX_CORES >= self._requests.cores
-                else self._requests.cores
-            )
-        else:
-            max_cores = (
-                RESOURCES.MAX_CORES
-                if RESOURCES.MAX_CORES <= max_resources["cores"]
-                and RESOURCES.MAX_CORES >= self._requests.cores
-                else max_resources["cores"]
-            )
-        # memory limit
-        if max_resources["memory"] == -1:  # no limit
-            max_memory = (
-                RESOURCES.MAX_MEMORY
-                if RESOURCES.MAX_MEMORY >= self._requests.memory
-                else self._requests.memory
-            )
-        else:
-            max_memory = (
-                RESOURCES.MAX_MEMORY
-                if RESOURCES.MAX_MEMORY <= max_resources["memory"]
-                and RESOURCES.MAX_MEMORY >= self._requests.memory
-                else max_resources["memory"]
-            )
-        # gpus limit
-        if max_resources["gpus"] == -1:  # no limit
-            max_gpus = (
-                RESOURCES.MAX_GPUS
-                if RESOURCES.MAX_GPUS >= self._requests.gpus
-                else self._requests.gpus
-            )
-        else:
-            max_gpus = (
-                RESOURCES.MAX_GPUS
-                if RESOURCES.MAX_GPUS <= max_resources["gpus"]
-                and RESOURCES.MAX_GPUS >= self._requests.gpus
-                else max_resources["gpus"]
-            )
-        return max_cores, max_memory, max_gpus
 
     @classmethod
     def _fill_missing_resources(cls, resources, cores, memory, gpus):
@@ -195,68 +151,6 @@ class ComponentResources(ABC):
             resources.memory = memory
         if resources.gpus is None:
             resources.gpus = gpus
-
-    @classmethod
-    def _validate_resources(cls, requests, limits):
-        # limits
-        max_resources = client.get_serving_resource_limits()
-        if max_resources["cores"] > -1:
-            if limits.cores <= 0:
-                raise ValueError("Limit number of cores must be greater than 0 cores.")
-            if limits.cores > max_resources["cores"]:
-                raise ValueError(
-                    "Limit number of cores cannot exceed the maximum of "
-                    + str(max_resources["cores"])
-                    + " cores."
-                )
-        if max_resources["memory"] > -1:
-            if limits.memory <= 0:
-                raise ValueError("Limit memory resources must be greater than 0 MB.")
-            if limits.memory > max_resources["memory"]:
-                raise ValueError(
-                    "Limit memory resources cannot exceed the maximum of "
-                    + str(max_resources["memory"])
-                    + " MB."
-                )
-        if max_resources["gpus"] > -1:
-            if limits.gpus < 0:
-                raise ValueError(
-                    "Limit number of gpus must be greater than or equal to 0 gpus."
-                )
-            if limits.gpus > max_resources["gpus"]:
-                raise ValueError(
-                    "Limit number of gpus cannot exceed the maximum of "
-                    + str(max_resources["gpus"])
-                    + " gpus."
-                )
-
-        # requests
-        if requests.cores <= 0:
-            raise ValueError("Requested number of cores must be greater than 0 cores.")
-        if limits.cores > -1 and requests.cores > limits.cores:
-            raise ValueError(
-                "Requested number of cores cannot exceed the limit of "
-                + str(limits.cores)
-                + " cores."
-            )
-        if requests.memory <= 0:
-            raise ValueError("Requested memory resources must be greater than 0 MB.")
-        if limits.memory > -1 and requests.memory > limits.memory:
-            raise ValueError(
-                "Requested memory resources cannot exceed the limit of "
-                + str(limits.memory)
-                + " MB."
-            )
-        if requests.gpus < 0:
-            raise ValueError(
-                "Requested number of gpus must be greater than or equal to 0 gpus."
-            )
-        if limits.gpus > -1 and requests.gpus > limits.gpus:
-            raise ValueError(
-                "Requested number of gpus cannot exceed the limit of "
-                + str(limits.gpus)
-                + " gpus."
-            )
 
     @classmethod
     def from_response_json(cls, json_dict):

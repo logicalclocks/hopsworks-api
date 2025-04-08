@@ -21,7 +21,6 @@ from hsml import resources, transformer
 from hsml.constants import RESOURCES
 
 
-SERVING_RESOURCE_LIMITS = {"cores": 2, "memory": 1024, "gpus": 2}
 SERVING_NUM_INSTANCES_NO_LIMIT = [-1]
 SERVING_NUM_INSTANCES_SCALE_TO_ZERO = [0]
 SERVING_NUM_INSTANCES_ONE = [0]
@@ -113,7 +112,7 @@ class TestTransformer:
         assert t.resources.requests.gpus == RESOURCES.MIN_GPUS
         assert t.resources.limits.cores == RESOURCES.MAX_CORES
         assert t.resources.limits.memory == RESOURCES.MAX_MEMORY
-        assert t.resources.limits.gpus == RESOURCES.MAX_GPUS
+        assert t.resources.limits.gpus == RESOURCES.MIN_GPUS
 
     # constructor
 
@@ -138,7 +137,7 @@ class TestTransformer:
         assert t.resources.requests.gpus == RESOURCES.MIN_GPUS
         assert t.resources.limits.cores == RESOURCES.MAX_CORES
         assert t.resources.limits.memory == RESOURCES.MAX_MEMORY
-        assert t.resources.limits.gpus == RESOURCES.MAX_GPUS
+        assert t.resources.limits.gpus == RESOURCES.MIN_GPUS
 
     def test_constructor_default_resources_when_scale_to_zero_is_required(
         self, mocker, backend_fixtures
@@ -163,7 +162,7 @@ class TestTransformer:
         assert t.resources.requests.gpus == RESOURCES.MIN_GPUS
         assert t.resources.limits.cores == RESOURCES.MAX_CORES
         assert t.resources.limits.memory == RESOURCES.MAX_MEMORY
-        assert t.resources.limits.gpus == RESOURCES.MAX_GPUS
+        assert t.resources.limits.gpus == RESOURCES.MIN_GPUS
 
     # validate resources
 
@@ -297,10 +296,6 @@ class TestTransformer:
     # auxiliary methods
 
     def _mock_serving_variables(self, mocker, num_instances, force_scale_to_zero=False):
-        mocker.patch(
-            "hopsworks_common.client.get_serving_resource_limits",
-            return_value=SERVING_RESOURCE_LIMITS,
-        )
         mocker.patch(
             "hopsworks_common.client.get_serving_num_instances_limits",
             return_value=num_instances,
