@@ -29,8 +29,8 @@ import pandas as pd
 from hopsworks_common import client
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import engine
-from hsfs.core import storage_connector_api
-
+from hsfs.core import storage_connector_api, data_source_api
+from hsfs.core import data_source as ds
 
 if HAS_NUMPY:
     import numpy as np
@@ -51,6 +51,7 @@ class StorageConnector(ABC):
     KAFKA = "KAFKA"
     GCS = "GCS"
     BIGQUERY = "BIGQUERY"
+    RDS = "RDS"
     NOT_FOUND_ERROR_CODE = 270042
 
     def __init__(
@@ -67,6 +68,7 @@ class StorageConnector(ABC):
         self._featurestore_id = featurestore_id
 
         self._storage_connector_api = storage_connector_api.StorageConnectorApi()
+        self._data_source_api = data_source_api.DataSourceApi()
 
     @classmethod
     def from_response_json(
@@ -78,6 +80,8 @@ class StorageConnector(ABC):
         "RedshiftConnector",
         "AdlsConnector",
         "SnowflakeConnector",
+        "BigQueryConnector",
+        "RdsConnector",
     ]:
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -96,6 +100,8 @@ class StorageConnector(ABC):
         "RedshiftConnector",
         "AdlsConnector",
         "SnowflakeConnector",
+        "BigQueryConnector",
+        "RdsConnector",
     ]:
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -233,6 +239,18 @@ class StorageConnector(ABC):
             return feature_groups_provenance.accessible
         else:
             return []
+        
+    def get_databases(self):
+        return self._data_source_api.get_databases(self._featurestore_id, self._name)
+    
+    def get_tables(self, database: str):
+        return self._data_source_api.get_tables(self._featurestore_id, self._name, database)
+    
+    def get_data(self, data_source: ds.DataSource):
+        return self._data_source_api.get_data(self._featurestore_id, self._name, data_source)
+    
+    def get_metadata(self, data_source: ds.DataSource):
+        return self._data_source_api.get_metadata(self._featurestore_id, self._name, data_source)
 
 
 class HopsFSConnector(StorageConnector):
@@ -1769,3 +1787,62 @@ class BigQueryConnector(StorageConnector):
         return engine.get_instance().read(
             self, self.BIGQUERY_FORMAT, options, path, dataframe_type
         )
+
+class RdsConnector(StorageConnector):
+    type = StorageConnector.RDS
+
+    def __init__(
+        self,
+        id: Optional[int],
+        name: str,
+        featurestore_id: int,
+        description: Optional[str] = None,
+        # members specific to type of connector
+        host: Optional[str] = None,
+        port: Optional[int] = None,
+        database: Optional[str] = None,
+        user: Optional[str] = None,
+        password: Optional[str] = None,
+        arguments: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._host = host
+        self._port = port
+        self._database = database
+        self._user = user
+        self._password = password
+        self._arguments = (
+            {opt["name"]: opt["value"] for opt in arguments} if arguments else {}
+        )
+
+    @property
+    def host(self) -> Optional[str]:
+        return self._host
+
+    @property
+    def port(self) -> Optional[int]:
+        return self._port
+
+    @property
+    def database(self) -> Optional[str]:
+        return self._database
+
+    @property
+    def user(self) -> Optional[str]:
+        return self._user
+
+    @property
+    def password(self) -> Optional[str]:
+        return self._password
+
+    @property
+    def arguments(self) -> Dict[str, Any]:
+        """Additional options"""
+        return self._arguments
+
+    def spark_options(self) -> Dict[str, Any]:
+        """Return prepared options to be passed to Spark, based on the additional
+        arguments.
+        """
+        return {}

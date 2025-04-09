@@ -55,17 +55,13 @@ class DataSource:
 
         json_decamelized: dict = humps.decamelize(json_dict)
 
-        if "count" not in json_decamelized:
+        if "items" not in json_decamelized:
             return cls(**json_decamelized)
-        elif json_decamelized["count"] == 1:
-            return cls(**json_decamelized["items"][0])
-        elif json_decamelized["count"] > 1:
+        else:
             return [
                 cls(**item)
                 for item in json_decamelized["items"]
             ]
-        else:
-            return None
 
     def to_dict(self):
         return {
