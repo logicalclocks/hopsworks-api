@@ -176,7 +176,7 @@ class PolarsValidator(DataFrameValidator):
 
             if col_max_len is not None and currentmax > col_max_len:
                 errors[col] = (
-                    f"String length exceeded. Column {col} has string values longer than maximum colum limit of {col_max_len} characters."
+                    f"String length exceeded. Column {col} has string values longer than maximum column limit of {col_max_len} characters."
                 )
                 column_lengths[col] = currentmax
                 is_string_length_exceeded = True
