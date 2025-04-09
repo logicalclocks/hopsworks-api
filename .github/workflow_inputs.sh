@@ -14,7 +14,7 @@ if [[ ${ghprbPullTitle} =~ (FSTORE-[0-9]+) || ${ghprbPullTitle} =~ (HWORKS-[0-9]
     -H "X-GitHub-Api-Version: 2022-11-28" \
     -d "state=open" \
     https://api.github.com/repos/logicalclocks/loadtest/pulls)
-
+  
   loadtest_branch=$(echo "${loadtest_prs}" | jq -r --arg captured_string ${captured_string} '.[] | select(.title | contains($captured_string)) | .head.ref')
   minikube_ip=$(echo "${loadtest_prs}" | jq -r --arg captured_string ${captured_string} '.[] | select(.title | contains($captured_string)) | .labels[] | select(.name | contains("10.87.")) | .name')
   labels=$(echo "${loadtest_prs}" | jq -r --arg captured_string ${captured_string} '.[] | select(.title | contains($captured_string)) | .labels[] | select(.name | contains("e2e")) | .name' | paste -sd ",")
@@ -42,7 +42,16 @@ if [ -z "${loadtest_branch}" ]; then
   fi
 
 # .ref is the name of the branch where the workflow dispatch will be sent.
-yq '.ref = "main"' -i inputs.yaml
+# We use the target branch of the PR in hopsworks-api to determine the base ref in loadtest.
+# Sed command is necessary due to the different conventions between the two repos.
+loadtest_base_ref=$(echo "${ghprbTargetBranch}" | sed 's/branch-//') 
+echo "Found base ref: ${loadtest_base_ref}"
+
+## Uncomment the following line to use a specific base ref, it must be a branch on the loadtest repo from the org.
+# loadtest_base_ref="HWORKS-1552"
+# echo "Setting base ref: ${loadtest_base_ref}"
+
+loadtest_base_ref="${loadtest_base_ref}" yq '.ref = strenv(loadtest_base_ref)' -i inputs.yaml
 
 yq '.inputs.max_parallel = "5"' -i inputs.yaml
 hopsworks_domain=$minikube_ip yq '.inputs.hopsworks_domain = strenv(hopsworks_domain)' -i inputs.yaml

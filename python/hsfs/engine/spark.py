@@ -19,7 +19,6 @@ import copy
 import json
 import os
 import re
-import shutil
 import uuid
 import warnings
 from datetime import date, datetime, timezone
@@ -826,7 +825,13 @@ class Engine:
             == TrainingDatasetSplit.TIME_SERIES_SPLIT
         ):
             event_time = query_obj._left_feature_group.event_time
-            if event_time not in [_feature.name for _feature in query_obj.features]:
+            event_time_feature = [
+                _feature
+                for _feature in query_obj.features
+                if _feature.name == event_time
+            ]
+
+            if not event_time_feature:
                 query_obj.append_feature(
                     query_obj._left_feature_group.__getattr__(event_time)
                 )
@@ -837,6 +842,11 @@ class Engine:
                     drop_event_time=True,
                 )
             else:
+                # Use the fully qualified name of the event time feature if required
+                event_time = event_time_feature[0]._get_fully_qualified_feature_name(
+                    feature_group=query_obj._left_feature_group
+                )
+
                 return self._time_series_split(
                     training_dataset,
                     query_obj.read(read_options=read_options),
@@ -1121,22 +1131,18 @@ class Engine:
 
         # for external clients, download the file
         if client._is_external():
-            tmp_file = os.path.join(SparkFiles.getRootDirectory(), file_name)
+            tmp_file = f"/tmp/{file_name}"
             print("Reading key file from storage connector.")
             response = self._dataset_api.read_content(file, util.get_dataset_type(file))
 
             with open(tmp_file, "wb") as f:
                 f.write(response.content)
-        else:
-            self._spark_context.addFile(file)
 
-            # The file is not added to the driver current working directory
-            # We should add it manually by copying from the download location
-            # The file will be added to the executors current working directory
-            # before the next task is executed
-            shutil.copy(SparkFiles.get(file_name), file_name)
+            file = f"file://{tmp_file}"
 
-        return file_name
+        self._spark_context.addFile(file)
+
+        return SparkFiles.get(file_name)
 
     def profile(
         self,
@@ -1680,6 +1686,9 @@ class Engine:
     def read_feature_log(query, time_col):
         df = query.read()
         return df.drop("log_id", time_col)
+
+    def get_spark_version(self):
+        return self._spark_session.version
 
 
 class SchemaError(Exception):

@@ -442,12 +442,15 @@ class FeatureGroupBase:
         # Returns
             `Query`. A query object with all features of the feature group.
         """
-        query = self.select_except(
-            self.primary_key + self.partition_key + self.foreign_key + [self.event_time]
-        )
+        select_features = self.primary_key + self.foreign_key + [self.event_time]
+        if not isinstance(self, ExternalFeatureGroup):
+            select_features = select_features + self.partition_key
+
+        query = self.select_except(select_features)
+
         _logger.info(
-            f"Using {[f.name for f in query.features]} as features for the query."
-            "To include primary key and event time use `select_all`."
+            f"Using {[f.name for f in query.features]} from feature group `{self.name}` as features for the query."
+            " To include primary key and event time use `select_all`."
         )
 
         return query
