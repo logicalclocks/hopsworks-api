@@ -16,7 +16,6 @@
 
 import copy
 
-import pytest
 from hsml import resources
 from hsml.constants import RESOURCES
 from mock import call
