@@ -18,7 +18,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, Union
 
 import humps
-from hopsworks_common import client, util
+from hopsworks_common import util
 from hopsworks_common.constants import RESOURCES, Default
 
 
