@@ -36,6 +36,9 @@ class DataFrameValidator:
         if feature_group.online_enabled is False:
             logging.warning("Feature group is not online enabled. Skipping validation")
             return df_features
+        if feature_group._embedding_index is not None:
+            logging.warning("Feature group is embedding type. Skipping validation")
+            return df_features
 
         validator = self.get_validator(df)
         if validator is None:
