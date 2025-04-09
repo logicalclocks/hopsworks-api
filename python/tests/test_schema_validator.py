@@ -31,7 +31,8 @@ def pandas_df():
                 )
                 for _ in range(3)
             ],
-        }
+        },
+        dtype=pd.StringDtype(),
     )
 
 

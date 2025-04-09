@@ -127,7 +127,7 @@ class PandasValidator(DataFrameValidator):
                 is_pk_null = True
 
         # Check string lengths
-        for col in df.select_dtypes(include=["object"]).columns:
+        for col in df.select_dtypes(include=["object", "string"]).columns:
             currentmax = df[col].str.len().max()
             col_max_len = (
                 self.get_online_varchar_length(
