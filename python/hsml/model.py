@@ -270,7 +270,7 @@ class Model:
         return predictor.deploy()
 
     @usage.method_logger
-    def set_tag(self, name: str, value: Union[str, dict]):
+    def add_tag(self, name: str, value: Union[str, dict]):
         """Attach a tag to a model.
 
         A tag consists of a <name,value> pair. Tag names are unique identifiers across the whole cluster.
@@ -279,10 +279,22 @@ class Model:
         # Arguments
             name: Name of the tag to be added.
             value: Value of the tag to be added.
+
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to add the tag.
         """
+        self._model_engine.set_tag(model_instance=self, name=name, value=value)
 
+    @usage.method_logger
+    def set_tag(self, name: str, value: Union[str, dict]):
+        """
+        Deprecated: Use add_tag instead.
+        """
+        warnings.warn(
+            "The set_tag method is deprecated. Please use add_tag instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._model_engine.set_tag(model_instance=self, name=name, value=value)
 
     @usage.method_logger

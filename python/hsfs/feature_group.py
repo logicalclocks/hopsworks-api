@@ -463,8 +463,8 @@ class FeatureGroupBase:
         query = self.select_except(select_features)
 
         _logger.info(
-            f"Using {[f.name for f in query.features]} as features for the query."
-            "To include primary key and event time use `select_all`."
+            f"Using {[f.name for f in query.features]} from feature group `{self.name}` as features for the query."
+            " To include primary key and event time use `select_all`."
         )
 
         return query

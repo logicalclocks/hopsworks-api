@@ -32,6 +32,8 @@ from hsfs import (
 )
 from hsfs.client import exceptions
 from hsfs.constructor.filter import Filter, Logic
+from hsfs.constructor.join import Join
+from hsfs.constructor.query import Query
 from hsfs.core import (
     feature_view_api,
     query_constructor_api,
@@ -1070,52 +1072,150 @@ class FeatureViewEngine:
         )
         return util.get_hostname_replaced_url(path)
 
-    def _get_primary_keys_from_query(self, fv_query_obj, check_duplicate=True):
-        fv_pks = set(
-            [
-                feature.name
-                for feature in fv_query_obj._left_feature_group.features
-                if feature.primary
+    def _primary_keys_from_join(
+        self, joins: List[Join], check_duplicate: bool, pk_names: set[str]
+    ) -> set[str]:
+        """
+        Recursive function that extracts the primary keys from the join objects and returns them as a set.
+        """
+        for join in joins:
+            sub_query = join.query
+            join_prefix = join.prefix
+
+            sub_query_selected_feature_names = [
+                feature.name for feature in join.query._left_features
             ]
-        )
-        for _join in fv_query_obj._joins:
-            fv_pks.update(
-                [
-                    (
-                        self._check_if_exists_with_prefix(feature.name, fv_pks)
-                        if check_duplicate
-                        else feature.name
-                    )
-                    if _join.prefix is None
-                    else _join.prefix + feature.name
-                    for feature in _join.query._left_feature_group.features
-                    if feature.primary
-                ]
+            sub_query_feature_group = sub_query._left_feature_group
+            sub_query_pk_names = {
+                feature.name
+                for feature in sub_query_feature_group.features
+                if feature.primary
+            }
+
+            sub_query_pk_names = {
+                util.generate_fully_qualified_feature_name(
+                    sub_query_feature_group, pk_name
+                )
+                if pk_name not in sub_query_selected_feature_names
+                else (pk_name if not join_prefix else join_prefix + pk_name)
+                for pk_name in sub_query_pk_names
+            }
+
+            if check_duplicate:
+                for sub_query_pk_name in sub_query_pk_names:
+                    self._check_if_exists_with_prefix(sub_query_pk_name, pk_names)
+
+            pk_names.update(sub_query_pk_names)
+
+            if sub_query._joins:
+                sub_query_pks = self._primary_keys_from_join(
+                    sub_query._joins, check_duplicate, pk_names
+                )
+                pk_names.update(sub_query_pks)
+        return pk_names
+
+    def _event_time_from_join(
+        self, joins: List[Join], check_duplicate: bool, et_names: set[str]
+    ) -> set[str]:
+        for join in joins:
+            sub_query = join.query
+            join_prefix = join.prefix
+
+            sub_query_selected_feature_names = [
+                feature.name for feature in join.query._left_features
+            ]
+            sub_query_feature_group = sub_query._left_feature_group
+            sub_query_event_time = sub_query_feature_group.event_time
+
+            sub_query_event_time = (
+                util.generate_fully_qualified_feature_name(
+                    sub_query_feature_group, sub_query_event_time
+                )
+                if sub_query_event_time not in sub_query_selected_feature_names
+                else (
+                    join_prefix + sub_query_event_time
+                    if join_prefix
+                    else sub_query_event_time
+                )
             )
 
-        return list(fv_pks)
+            if check_duplicate:
+                self._check_if_exists_with_prefix(sub_query_event_time, et_names)
 
-    def _get_eventtimes_from_query(self, fv_query_obj, check_duplicate=True):
-        fv_events = set()
-        if fv_query_obj._left_feature_group.event_time:
-            fv_events.update([fv_query_obj._left_feature_group.event_time])
-        for _join in fv_query_obj._joins:
-            if _join.query._left_feature_group.event_time:
-                fv_events.update(
-                    [
-                        (
-                            self._check_if_exists_with_prefix(
-                                _join.query._left_feature_group.event_time, fv_events
-                            )
-                            if check_duplicate
-                            else _join.query._left_feature_group.event_time
-                        )
-                        if _join.prefix is None
-                        else _join.prefix + _join.query._left_feature_group.event_time
-                    ]
+            et_names.add(sub_query_event_time)
+
+            if sub_query._joins:
+                sub_query_ets = self._event_time_from_join(
+                    sub_query._joins, check_duplicate, et_names
                 )
+                et_names.update(sub_query_ets)
+        return et_names
 
-        return list(fv_events)
+    def _get_primary_keys_from_query(
+        self, query: Query, check_duplicate: bool = True
+    ) -> List[str]:
+        """
+        Function that checks the primary keys from the query object and returns them as a list.
+
+        #Arguments:
+            fv_query_obj : `Query`. Query object from which the primary keys are extracted.
+            check_duplicate : `bool`. Flag to check if the primary keys are duplicated in the query.
+        """
+        root_feature_group_selected_features_name = {
+            feature.name for feature in query._left_features
+        }
+
+        root_feature_group = query._left_feature_group
+
+        root_feature_group_primary_keys_names = {
+            feature.name for feature in root_feature_group.features if feature.primary
+        }
+
+        pk_names = {
+            util.generate_fully_qualified_feature_name(root_feature_group, pk_name)
+            if pk_name not in root_feature_group_selected_features_name
+            else pk_name
+            for pk_name in root_feature_group_primary_keys_names
+        }
+
+        pk_names.update(
+            self._primary_keys_from_join(query._joins, check_duplicate, pk_names)
+        )
+
+        return list(pk_names)
+
+    def _get_eventtimes_from_query(
+        self, query: Query, check_duplicate: bool = True
+    ) -> List[str]:
+        """
+        Function that checks the event times from the query object and returns them as a list.
+
+        #Arguments:
+            fv_query_obj : `Query`. Query object from which the event times are extracted.
+            check_duplicate : `bool`. Flag to check if the event times are duplicated in the query.
+        """
+        root_feature_group_selected_features_name = {
+            feature.name for feature in query._left_features
+        }
+
+        root_feature_group = query._left_feature_group
+
+        root_feature_group_event_time = root_feature_group.event_time
+
+        et_names = {
+            util.generate_fully_qualified_feature_name(
+                root_feature_group, root_feature_group_event_time
+            )
+            if root_feature_group_event_time
+            not in root_feature_group_selected_features_name
+            else root_feature_group_event_time
+        }
+
+        et_names.update(
+            self._event_time_from_join(query._joins, check_duplicate, et_names)
+        )
+
+        return list(et_names)
 
     def _check_if_exists_with_prefix(self, f_name, f_set):
         if f_name in f_set:
