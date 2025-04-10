@@ -1630,6 +1630,44 @@ class Engine:
     def is_connector_type_supported(type):
         return True
 
+    @staticmethod
+    def extract_logging_features(logging_features, feature_logging, fv):
+        fg = feature_logging.get_feature_group(transformed=False)
+        training_dataset_schema = fv.get_training_dataset_schema()
+        td_predictions = [
+            feature for feature in training_dataset_schema if feature.label
+        ]
+
+        untransformed_feature_names = [feature.name for feature in fg.features]
+        untransformed_logging_feature_names = [
+            col
+            for col in logging_features.columns
+            if col in untransformed_feature_names
+        ]
+        untransformed_logging_features = logging_features.select(
+            *[untransformed_logging_feature_names]
+        )
+
+        transformed_feature_names = [feature.name for feature in fg.features]
+        transformed_logging_feature_names = [
+            col for col in logging_features.columns if col in transformed_feature_names
+        ]
+        transformed_logging_features = logging_features.select(
+            *[transformed_logging_feature_names]
+        )
+
+        td_prediction_names = [feature.name for feature in td_predictions]
+        td_prediction_logging_feature_names = [
+            col for col in logging_features.columns if col in td_prediction_names
+        ]
+        logging_predictions = logging_features[td_prediction_logging_feature_names]
+
+        return (
+            untransformed_logging_features,
+            transformed_logging_features,
+            logging_predictions,
+        )
+
     def get_feature_logging_df(
         self,
         features: Union[
@@ -1637,13 +1675,21 @@ class Engine:
         ],
         fg: fg_mod.FeatureGroup = None,
         td_features: List[str] = None,
+        td_serving_keys=None,
+        td_helper_columns=None,
+        td_request_parameters=None,
+        td_event_time=None,
         td_predictions: List[training_dataset_feature.TrainingDatasetFeature] = None,
         td_col_name: Optional[str] = None,
         time_col_name: Optional[str] = None,
         model_col_name: Optional[str] = None,
         predictions: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
-        training_dataset_version: Optional[int] = None,
+        helper_columns=None,
+        request_parameters=None,
+        event_time=None,
+        serving_keys=None,
         hsml_model: str = None,
+        training_dataset_version: Optional[int] = None,
         **kwargs,
     ):
         # do not take prediction separately because spark ml framework usually return feature together with the prediction
@@ -1678,6 +1724,21 @@ class Engine:
 
     def get_spark_version(self):
         return self._spark_session.version
+
+    def check_supported_dataframe(self, dataframe: Any) -> bool:
+        """
+        Check if a dataframe is supported by the engine.
+
+        Both Pandas and Spark dataframes are supported in the Spark Engine.
+
+        # Arguments:
+            dataframe `Any`: A dataframe to check.
+
+        # Returns:
+            `bool`: True if the dataframe is supported, False otherwise.
+        """
+        if isinstance(dataframe, DataFrame) or isinstance(dataframe, pd.DataFrame):
+            return True
 
 
 class SchemaError(Exception):
