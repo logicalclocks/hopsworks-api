@@ -189,7 +189,9 @@ class DeltaEngine:
             is_delta_table = False
 
         if not is_delta_table:
-            deltars_write(location, dataset)
+            deltars_write(
+                location, dataset, partition_by=self._feature_group.partition_key
+            )
         else:
             source_alias = (
                 f"{self._feature_group.name}_{self._feature_group.version}_source"
