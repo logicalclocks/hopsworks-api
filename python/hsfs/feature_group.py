@@ -2024,7 +2024,7 @@ class FeatureGroupBase:
             self._event_time = None
             return
         elif isinstance(feature_name, str):
-            self._event_time = feature_name
+            self._event_time = util.autofix_feature_name(feature_name)
             return
         elif isinstance(feature_name, list) and len(feature_name) == 1:
             if isinstance(feature_name[0], str):
@@ -2034,7 +2034,7 @@ class FeatureGroupBase:
                     DeprecationWarning,
                     stacklevel=2,
                 )
-                self._event_time = feature_name[0]
+                self._event_time = util.autofix_feature_name(feature_name[0])
                 return
 
         raise ValueError(
