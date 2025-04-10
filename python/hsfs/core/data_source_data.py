@@ -24,6 +24,7 @@ from typing import (
 import humps
 from hsfs import feature
 
+
 class DataSourceData:
     """
     Metadata object used to provide Data source data information for a feature group.

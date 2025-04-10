@@ -29,8 +29,9 @@ import pandas as pd
 from hopsworks_common import client
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import engine
-from hsfs.core import storage_connector_api, data_source_api
 from hsfs.core import data_source as ds
+from hsfs.core import data_source_api, storage_connector_api
+
 
 if HAS_NUMPY:
     import numpy as np
@@ -239,16 +240,16 @@ class StorageConnector(ABC):
             return feature_groups_provenance.accessible
         else:
             return []
-        
+
     def get_databases(self):
         return self._data_source_api.get_databases(self._featurestore_id, self._name)
-    
+
     def get_tables(self, database: str):
         return self._data_source_api.get_tables(self._featurestore_id, self._name, database)
-    
+
     def get_data(self, data_source: ds.DataSource):
         return self._data_source_api.get_data(self._featurestore_id, self._name, data_source)
-    
+
     def get_metadata(self, data_source: ds.DataSource):
         return self._data_source_api.get_metadata(self._featurestore_id, self._name, data_source)
 

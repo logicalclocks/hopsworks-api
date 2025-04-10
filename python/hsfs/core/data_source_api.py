@@ -19,6 +19,7 @@ from hopsworks_common import client
 from hsfs.core import data_source as ds
 from hsfs.core import data_source_data as dsd
 
+
 class DataSourceApi:
 
     def get_databases(self, feature_store_id: int, name: str) -> list[str]:
@@ -35,7 +36,7 @@ class DataSourceApi:
         ]
 
         return _client._send_request("GET", path_params)
-    
+
     def get_tables(self, feature_store_id: int, name: str, database: str) -> list[ds.DataSource]:
         _client = client.get_instance()
         path_params = [
@@ -54,7 +55,7 @@ class DataSourceApi:
         return ds.DataSource.from_response_json(
             _client._send_request("GET", path_params, query_params)
         )
-    
+
     def get_data(self, feature_store_id: int, name: str, data_source: ds.DataSource) -> dsd.DataSourceData:
         _client = client.get_instance()
         path_params = [
@@ -73,7 +74,7 @@ class DataSourceApi:
         return dsd.DataSourceData.from_response_json(
             _client._send_request("GET", path_params, query_params)
         )
-    
+
 
     def get_metadata(self, feature_store_id: int, name: str, data_source: ds.DataSource) -> dict:
         _client = client.get_instance()
