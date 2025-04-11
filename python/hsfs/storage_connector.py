@@ -578,6 +578,22 @@ class RedshiftConnector(StorageConnector):
                 [k + ("" if v is None else "=" + v) for k, v in self._arguments.items()]
             )
         return self._arguments
+    
+    def connector_options(self) -> Dict[str, Any]:
+        """Return options to be passed to an external Redshift connector library"""
+        props = {
+            "host": self._cluster_identifier + "." + self._database_endpoint,
+            "port": self._database_port,
+            "database": self._database_name,
+        }
+        if self._database_user_name:
+            props["user"] = self._database_user_name
+        if self._database_password:
+            props["password"] = self._database_password
+        if self._iam_role:
+            props["iam_role"] = self._iam_role
+            props["iam"] = "True"
+        return props
 
     def spark_options(self) -> Dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional
@@ -1847,3 +1863,16 @@ class RdsConnector(StorageConnector):
         arguments.
         """
         return {}
+    
+    def connector_options(self) -> Dict[str, Any]:
+        """Return options to be passed to an external RDS connector library"""
+        props = {
+            "host": self.host,
+            "port": self.port,
+            "database": self.database,
+        }
+        if self.user:
+            props["user"] = self.user
+        if self.password:
+            props["password"] = self.password
+        return props

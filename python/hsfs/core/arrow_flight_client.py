@@ -151,6 +151,8 @@ class ArrowFlightClient:
     SUPPORTED_EXTERNAL_CONNECTORS = [
         StorageConnector.SNOWFLAKE,
         StorageConnector.BIGQUERY,
+        StorageConnector.REDSHIFT,
+        StorageConnector.RDS,
     ]
     READ_ERROR = "Could not read data using Hopsworks Query Service."
     WRITE_ERROR = 'Could not write data using Hopsworks Query Service. If the issue persists, use write_options={"use_spark": True} instead.'
