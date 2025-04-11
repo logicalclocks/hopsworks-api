@@ -578,7 +578,7 @@ class RedshiftConnector(StorageConnector):
                 [k + ("" if v is None else "=" + v) for k, v in self._arguments.items()]
             )
         return self._arguments
-    
+
     def connector_options(self) -> Dict[str, Any]:
         """Return options to be passed to an external Redshift connector library"""
         props = {
@@ -1863,7 +1863,7 @@ class RdsConnector(StorageConnector):
         arguments.
         """
         return {}
-    
+
     def connector_options(self) -> Dict[str, Any]:
         """Return options to be passed to an external RDS connector library"""
         props = {
