@@ -99,7 +99,6 @@ class TestConstants:
             "MIN_NUM_INSTANCES": 1,
             "MIN_CORES": 0.2,
             "MIN_MEMORY": 32,
-            "GPUS": 0,
         }
 
         # Assert
@@ -124,6 +123,11 @@ class TestConstants:
             expected_constants=max_resources,
             prefix="MAX",
         )
+
+    def test_resources_gpu_constants(self):
+        # Assert
+        assert hasattr(constants.RESOURCES, "GPUS")
+        assert constants.RESOURCES.GPUS == 0
 
     # KAFKA_TOPIC
 
