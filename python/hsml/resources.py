@@ -121,16 +121,16 @@ class ComponentResources(ABC):
     ):
         self._num_instances = num_instances
         self._requests = util.get_obj_from_json(requests, Resources) or Resources(
-            RESOURCES.MIN_CORES, RESOURCES.MIN_MEMORY, RESOURCES.MIN_GPUS
+            RESOURCES.MIN_CORES, RESOURCES.MIN_MEMORY, RESOURCES.GPUS
         )
         self._fill_missing_resources(
             self._requests,
             RESOURCES.MIN_CORES,
             RESOURCES.MIN_MEMORY,
-            RESOURCES.MIN_GPUS,
+            RESOURCES.GPUS,
         )
         self._limits = util.get_obj_from_json(limits, Resources) or Resources(
-            RESOURCES.MAX_CORES, RESOURCES.MAX_MEMORY, RESOURCES.MIN_GPUS
+            RESOURCES.MAX_CORES, RESOURCES.MAX_MEMORY, RESOURCES.GPUS
         )
         self._fill_missing_resources(
             self._limits,

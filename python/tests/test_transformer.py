@@ -109,10 +109,10 @@ class TestTransformer:
         assert t.resources.num_instances == RESOURCES.MIN_NUM_INSTANCES
         assert t.resources.requests.cores == RESOURCES.MIN_CORES
         assert t.resources.requests.memory == RESOURCES.MIN_MEMORY
-        assert t.resources.requests.gpus == RESOURCES.MIN_GPUS
+        assert t.resources.requests.gpus == RESOURCES.GPUS
         assert t.resources.limits.cores == RESOURCES.MAX_CORES
         assert t.resources.limits.memory == RESOURCES.MAX_MEMORY
-        assert t.resources.limits.gpus == RESOURCES.MIN_GPUS
+        assert t.resources.limits.gpus == RESOURCES.GPUS
 
     # constructor
 
@@ -134,10 +134,10 @@ class TestTransformer:
         assert t.resources.num_instances == RESOURCES.MIN_NUM_INSTANCES
         assert t.resources.requests.cores == RESOURCES.MIN_CORES
         assert t.resources.requests.memory == RESOURCES.MIN_MEMORY
-        assert t.resources.requests.gpus == RESOURCES.MIN_GPUS
+        assert t.resources.requests.gpus == RESOURCES.GPUS
         assert t.resources.limits.cores == RESOURCES.MAX_CORES
         assert t.resources.limits.memory == RESOURCES.MAX_MEMORY
-        assert t.resources.limits.gpus == RESOURCES.MIN_GPUS
+        assert t.resources.limits.gpus == RESOURCES.GPUS
 
     def test_constructor_default_resources_when_scale_to_zero_is_required(
         self, mocker, backend_fixtures
@@ -159,10 +159,10 @@ class TestTransformer:
         assert t.resources.num_instances == 0
         assert t.resources.requests.cores == RESOURCES.MIN_CORES
         assert t.resources.requests.memory == RESOURCES.MIN_MEMORY
-        assert t.resources.requests.gpus == RESOURCES.MIN_GPUS
+        assert t.resources.requests.gpus == RESOURCES.GPUS
         assert t.resources.limits.cores == RESOURCES.MAX_CORES
         assert t.resources.limits.memory == RESOURCES.MAX_MEMORY
-        assert t.resources.limits.gpus == RESOURCES.MIN_GPUS
+        assert t.resources.limits.gpus == RESOURCES.GPUS
 
     # validate resources
 
