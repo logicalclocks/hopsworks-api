@@ -27,6 +27,7 @@ import shutil
 import sys
 import threading
 import time
+import warnings
 from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING, Any, Callable, Dict, Literal, Optional, Tuple, Union
 from urllib.parse import urljoin, urlparse
@@ -121,8 +122,24 @@ def validate_embedding_feature_type(embedding_index, schema):
             )
 
 
-def autofix_feature_name(name: str) -> str:
+def autofix_feature_name(name: str, warn: bool = False) -> str:
     # replace spaces with underscores and enforce lower case
+    if warn and any(re.finditer("[A-Z]", name)):
+        warnings.warn(
+            "The feature name `{}` contains upper case letters. "
+            "Feature names are sanitized to lower case in the feature store.".format(
+                name
+            ),
+            stacklevel=1,
+        )
+    if warn and " " in name:
+        warnings.warn(
+            "The feature name `{}` contains spaces. "
+            "Feature names are sanitized to use underscore '_' in the feature store.".format(
+                name
+            ),
+            stacklevel=1,
+        )
     return name.lower().replace(" ", "_")
 
 

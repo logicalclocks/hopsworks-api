@@ -63,7 +63,7 @@ class Feature:
         use_fully_qualified_name=False,
         **kwargs,
     ) -> None:
-        self._name = util.autofix_feature_name(name)
+        self._name = util.autofix_feature_name(name, warn=True)
         self._type = type
         self._description = description
         self._primary = primary
