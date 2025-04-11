@@ -27,6 +27,7 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSink;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.logicalclocks.hsfs.DataSource;
 import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.FeatureStoreException;
@@ -77,11 +78,12 @@ public class StreamFeatureGroup extends FeatureGroupBase<DataStream<?>> {
     this.eventTime = eventTime;
     this.onlineConfig = onlineConfig;
     this.storageConnector = storageConnector;
-    this.path = path;
+    this.dataSource.setPath(path);
   }
 
   public StreamFeatureGroup() {
     this.type = "streamFeatureGroupDTO";
+    this.dataSource = new DataSource();
   }
 
   // used for updates
