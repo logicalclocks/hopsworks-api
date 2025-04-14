@@ -601,6 +601,8 @@
       "featurestoreId": 67,
       "dataSource": {
         "query": "select * from Customer",
+        "database": "test_database",
+        "group": "test_schema",
         "path": ""
       },
       "dataFormat": null,
