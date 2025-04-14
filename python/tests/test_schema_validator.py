@@ -3,8 +3,8 @@ import string
 from unittest import mock
 
 import pandas as pd
-import polars as pl
 import pytest
+from hopsworks_common.core.constants import HAS_POLARS
 from hsfs import engine, feature_group
 from hsfs.core.schema_validation import (
     DataFrameValidator,
@@ -14,6 +14,10 @@ from hsfs.core.schema_validation import (
 )
 from hsfs.engine import spark
 from hsfs.feature import Feature
+
+
+if HAS_POLARS:
+    import polars as pl
 
 
 @pytest.fixture
@@ -247,6 +251,7 @@ class TestPandasDataframe(BaseDataFrameTest):
         assert isinstance(validator, PandasValidator)
 
 
+@pytest.mark.skipif(not HAS_POLARS, reason="polars not installed")
 class TestPolarsDataframe(BaseDataFrameTest):
     @pytest.fixture
     def df(self, polars_df):
