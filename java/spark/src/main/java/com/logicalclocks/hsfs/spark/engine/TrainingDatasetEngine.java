@@ -19,6 +19,7 @@ package com.logicalclocks.hsfs.spark.engine;
 
 import com.google.common.collect.Maps;
 import com.logicalclocks.hsfs.spark.constructor.Query;
+import com.logicalclocks.hsfs.DataSource;
 import com.logicalclocks.hsfs.EntityEndpointType;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.Storage;
@@ -96,8 +97,10 @@ public class TrainingDatasetEngine {
     } else {
       path = new Path(trainingDataset.getLocation(), trainingDataset.getName()).toString();
     }
-    return storageConnectorUtils.read(trainingDataset.getStorageConnector(), null,
-        trainingDataset.getDataFormat().toString(), readOptions, path);
+    DataSource dataSource = new DataSource();
+    dataSource.setQuery(path);
+    return storageConnectorUtils.read(trainingDataset.getStorageConnector(), dataSource,
+        trainingDataset.getDataFormat().toString(), readOptions);
   }
 
   public void addTag(TrainingDataset trainingDataset, String name, Object value)

@@ -30,6 +30,7 @@ import com.logicalclocks.hsfs.metadata.HopsworksInternalClient;
 import com.logicalclocks.hsfs.spark.constructor.Query;
 import com.logicalclocks.hsfs.spark.engine.hudi.HudiEngine;
 import com.logicalclocks.hsfs.DataFormat;
+import com.logicalclocks.hsfs.DataSource;
 import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.HudiOperationType;
@@ -214,10 +215,14 @@ public class SparkEngine extends EngineBase {
 
   public Dataset<Row> registerOnDemandTemporaryTable(ExternalFeatureGroup onDemandFeatureGroup, String alias)
       throws FeatureStoreException, IOException {
+    DataSource dataSource = onDemandFeatureGroup.getDataSource();
+    dataSource.setPath(onDemandFeatureGroup.getStorageConnector().getPath(
+        onDemandFeatureGroup.getDataSource().getQuery()));
+
     Dataset<Row> dataset = storageConnectorUtils.read(onDemandFeatureGroup.getStorageConnector(),
-        onDemandFeatureGroup.getDataSource().getQuery(), onDemandFeatureGroup.getDataFormat() != null
-            ? onDemandFeatureGroup.getDataFormat().toString() : null, getOnDemandOptions(onDemandFeatureGroup),
-        onDemandFeatureGroup.getStorageConnector().getPath(onDemandFeatureGroup.getDataSource().getPath()));
+        dataSource,
+        onDemandFeatureGroup.getDataFormat() != null ? onDemandFeatureGroup.getDataFormat().toString() : null,
+        getOnDemandOptions(onDemandFeatureGroup));
 
     dataset.createOrReplaceTempView(alias);
     return dataset;
@@ -726,7 +731,8 @@ public class SparkEngine extends EngineBase {
     return path;
   }
 
-  private void setupS3ConnectorHadoopConf(StorageConnector.S3Connector storageConnector) {
+  private void setupS3ConnectorHadoopConf(StorageConnector.S3Connector storageConnector)
+      throws IOException, FeatureStoreException {
     if (!Strings.isNullOrEmpty(storageConnector.getAccessKey())) {
       sparkSession.sparkContext().hadoopConfiguration()
           .set(Constants.S3_ACCESS_KEY_ENV, storageConnector.getAccessKey());

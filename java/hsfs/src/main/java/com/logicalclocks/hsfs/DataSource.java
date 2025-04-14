@@ -35,22 +35,22 @@ public class DataSource extends RestDto<DataSource> {
 
   @Getter
   @Setter
-  private String query;
+  private String query = "";
 
   @Getter
   @Setter
-  private String database;
+  private String database = "";
 
   @Getter
   @Setter
-  private String group;
+  private String group = "";
 
   @Getter
   @Setter
-  private String table;
+  private String table = "";
 
   @Getter
   @Setter
-  private String path;
+  private String path = "";
 
 }
