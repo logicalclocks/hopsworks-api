@@ -1686,7 +1686,10 @@ class Engine:
 
         now = datetime.now()
         metadata = {
-            td_col_name: [training_dataset_version for _ in range(size)],
+            td_col_name: [
+                training_dataset_version if training_dataset_version else pd.NA
+                for _ in range(size)
+            ],
             model_col_name: [hsml_model for _ in range(size)],
             time_col_name: pd.Series([now for _ in range(size)]),
             "log_id": [str(uuid.uuid4()) for _ in range(size)],
@@ -1698,32 +1701,158 @@ class Engine:
         return metadata
 
     @staticmethod
+    def extract_logging_features(logging_features, feature_logging, fv):
+        fg = feature_logging.get_feature_group(transformed=False)
+        training_dataset_schema = fv.get_training_dataset_schema()
+        td_predictions = [
+            feature for feature in training_dataset_schema if feature.label
+        ]
+
+        untransformed_feature_names = [feature.name for feature in fg.features]
+        untransformed_logging_feature_names = [
+            col
+            for col in logging_features.columns
+            if col in untransformed_feature_names
+        ]
+        untransformed_logging_features = logging_features[
+            untransformed_logging_feature_names
+        ]
+
+        transformed_feature_names = [feature.name for feature in fg.features]
+        transformed_logging_feature_names = [
+            col for col in logging_features.columns if col in transformed_feature_names
+        ]
+        transformed_logging_features = logging_features[
+            transformed_logging_feature_names
+        ]
+
+        td_prediction_names = [feature.name for feature in td_predictions]
+        td_prediction_logging_feature_names = [
+            col for col in logging_features.columns if col in td_prediction_names
+        ]
+        logging_predictions = logging_features[td_prediction_logging_feature_names]
+
+        return (
+            untransformed_logging_features,
+            transformed_logging_features,
+            logging_predictions,
+        )
+
+    @staticmethod
     def get_feature_logging_df(
+        logging_data,
         features: Union[pd.DataFrame, list[list], np.ndarray],
         fg: FeatureGroup = None,
         td_features: List[str] = None,
         td_predictions: List[TrainingDatasetFeature] = None,
+        td_serving_keys=None,
+        td_helper_columns=None,
+        td_request_parameters=None,
+        td_event_time=None,
         td_col_name: Optional[str] = None,
         time_col_name: Optional[str] = None,
         model_col_name: Optional[str] = None,
         predictions: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
+        helper_columns=None,
+        request_parameters=None,
+        event_time=None,
+        serving_keys=None,
         training_dataset_version: Optional[int] = None,
         hsml_model: str = None,
     ) -> pd.DataFrame:
+        """
+        Function that gets logged features and combines it into a dataframe with the required features.
+
+        By default the logging dataframe contains the following data:
+            - Logging metadata.
+            - Logging features.
+            - Extra logging paramters provided by the user.
+            - Serving keys.
+            - Training Helper columns.
+            - Inference Helper columns.
+            - Predictions.
+            - Event time.
+            - Request parameters.
+        """
+        for f in td_predictions:
+            if f.name in logging_data.columns:
+                logging_data = logging_data.rename(
+                    columns={f.name: f"predicted_{f.name}"}
+                )
+
+        logging_data = Engine._convert_feature_log_to_df(
+            logging_data, [f.name for f in fg.features]
+        )
+
         features = Engine._convert_feature_log_to_df(features, td_features)
-        if td_predictions:
+
+        if td_predictions and predictions:
             predictions = Engine._convert_feature_log_to_df(
                 predictions, [f.name for f in td_predictions]
             )
-            for f in td_predictions:
-                predictions[f.name] = cast_column_to_offline_type(
-                    predictions[f.name], f.type
+            if len(predictions) != len(features):
+                raise FeatureStoreException(
+                    f"Length of predictions {len(predictions)} does not match length of features {len(features)}."
                 )
+            # Addin the prefix prediction_ to the prediction columns
+            predictions = predictions.add_prefix("predicted_")
             if not set(predictions.columns).intersection(set(features.columns)):
                 features = pd.concat([features, predictions], axis=1)
 
+        if td_serving_keys:
+            serving_keys = Engine._convert_feature_log_to_df(
+                serving_keys, [f.name for f in td_serving_keys]
+            )
+            if len(predictions) != len(features):
+                raise FeatureStoreException(
+                    f"Length of predictions {len(predictions)} does not match length of features {len(features)}."
+                )
+            if not set(serving_keys.columns).intersection(set(features.columns)):
+                features = pd.concat([features, serving_keys], axis=1)
+
+        if td_helper_columns:
+            helper_columns = Engine._convert_feature_log_to_df(
+                helper_columns, [f.name for f in td_serving_keys]
+            )
+            if len(predictions) != len(features):
+                raise FeatureStoreException(
+                    f"Length of predictions {len(predictions)} does not match length of features {len(features)}."
+                )
+            if not set(helper_columns.columns).intersection(set(features.columns)):
+                features = pd.concat([features, helper_columns], axis=1)
+
+        if td_event_time and event_time:
+            event_time = Engine._convert_feature_log_to_df(event_time, [td_event_time])
+            event_time[td_event_time] = cast_column_to_offline_type(
+                event_time[td_event_time], "timestamp"
+            )
+            if len(event_time) == 1:
+                event_time = event_time.loc[
+                    event_time.index.repeat(len(features))
+                ].reset_index()
+            if len(event_time) != len(features):
+                raise FeatureStoreException(
+                    f"Length of event_time {len(event_time)} does not match length of features {len(features)}."
+                )
+            if not set(event_time.columns).intersection(set(features.columns)):
+                features = pd.concat([features, event_time], axis=1)
+
+        if td_request_parameters:
+            if len(request_parameters) == 1:
+                request_parameters = request_parameters.loc[
+                    request_parameters.index.repeat(len(features))
+                ].reset_index()
+
+            if len(request_parameters) != len(features):
+                raise FeatureStoreException(
+                    f"Length of request_parameters {len(request_parameters)} does not match length of features {len(features)}."
+                )
+            features["request_parameters"] = request_parameters.to_dict(
+                orient="records"
+            )
+
         logging_metadata = Engine.get_logging_metadata(
-            size=len(features),
+            size=len(features) + len(logging_data),
             td_col_name=td_col_name,
             time_col_name=time_col_name,
             model_col_name=model_col_name,
@@ -1731,10 +1860,40 @@ class Engine:
             hsml_model=hsml_model,
         )
 
+        if (logging_data is not None and not logging_data.empty) and (
+            features is not None and not features.empty
+        ):
+            features = pd.concat([logging_data, features], axis=0)
+        elif logging_data is not None and not logging_data.empty:
+            features = logging_data
+
         for k, v in logging_metadata.items():
             features[k] = pd.Series(v)
+
         # _cast_column_to_offline_type cannot cast string type
-        features[model_col_name] = features[model_col_name].astype(pd.StringDtype())
+        logging_feature_group_features = [feat.name for feat in fg.features]
+        missing_logging_features = set(logging_feature_group_features).difference(
+            set(features.columns)
+        )
+        additional_logging_features = set(features.columns).difference(
+            set(logging_feature_group_features)
+        )
+
+        if additional_logging_features:
+            _logger.info(
+                f"The following columns : `{'`, `'.join(additional_logging_features)}` are additional columns in the logged {'untransformed' if 'untransformed' in fg.name else 'transformed'} dataframe and is not present in the logging feature groups. They will be ignored."
+            )
+
+        if missing_logging_features:
+            _logger.info(
+                f"The following columns : `{'`, `'.join(missing_logging_features)}` are missing in the logged {'untransformed' if 'untransformed' in fg.name else 'transformed'} dataframe. Setting them to None."
+            )
+            # Set missing columns to None
+            for col in missing_logging_features:
+                features[col] = None
+
+        for f in fg.features:
+            features[f.name] = cast_column_to_offline_type(features[f.name], f.type)
         return features[[feat.name for feat in fg.features]]
 
     @staticmethod
@@ -1794,3 +1953,20 @@ class Engine:
     def read_feature_log(query, time_col):
         df = query.read()
         return df.drop(["log_id", time_col], axis=1)
+
+    def check_supported_dataframe(self, dataframe: Any) -> bool:
+        """
+        Check if a dataframe is supported by the engine.
+
+        Both Pandas and Polars dataframes are supported in the Python Engine.
+
+        # Arguments:
+            dataframe `Any`: A dataframe to check.
+
+        # Returns:
+            `bool`: True if the dataframe is supported, False otherwise.
+        """
+        if (HAS_POLARS and isinstance(dataframe, pl.DataFrame)) or (
+            HAS_PANDAS and isinstance(dataframe, pd.DataFrame)
+        ):
+            return True
