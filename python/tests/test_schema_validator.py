@@ -41,6 +41,7 @@ def pandas_df():
 
 
 @pytest.fixture
+@pytest.mark.skipif(not HAS_POLARS, reason="polars not installed")
 def polars_df():
     return pl.DataFrame(
         {
