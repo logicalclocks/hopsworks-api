@@ -59,10 +59,6 @@ class ModelServingApi:
         # istio client
         self._istio_init_if_available()
 
-        # resource limits
-        max_resources = self._serving_api.get_resource_limits()
-        client.set_serving_resource_limits(max_resources)
-
         # num instances limits
         num_instances_range = self._serving_api.get_num_instances_limits()
         client.set_serving_num_instances_limits(num_instances_range)
