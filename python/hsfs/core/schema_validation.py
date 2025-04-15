@@ -1,6 +1,11 @@
 import logging
 import re
 
+from hopsworks_common.core.constants import HAS_POLARS
+
+
+logger = logging.getLogger(__name__)
+
 
 class DataFrameValidator:
     # Base validator class
@@ -13,13 +18,11 @@ class DataFrameValidator:
         if isinstance(df, pd.DataFrame):
             return PandasValidator()
 
-        try:
+        if HAS_POLARS:
             import polars as pl
 
             if isinstance(df, pl.DataFrame):
                 return PolarsValidator()
-        except ImportError:
-            pass
 
         try:
             from pyspark.sql import DataFrame as SparkDataFrame
@@ -34,10 +37,10 @@ class DataFrameValidator:
     def validate_schema(self, feature_group, df, df_features):
         """Common validation rules"""
         if feature_group.online_enabled is False:
-            logging.warning("Feature group is not online enabled. Skipping validation")
+            logger.warning("Feature group is not online enabled. Skipping validation")
             return df_features
         if feature_group._embedding_index is not None:
-            logging.warning("Feature group is embedding type. Skipping validation")
+            logger.warning("Feature group is embedding type. Skipping validation")
             return df_features
 
         validator = self.get_validator(df)
@@ -102,12 +105,18 @@ class DataFrameValidator:
 
     @staticmethod
     def increase_string_columns(column_lengths: dict, dataframe_features):
+        def round_up_to_hundred(num):
+            import math
+
+            return math.ceil(num / 100) * 100
+
         # Adjusts the length of varchar columns
         for i_feature in dataframe_features:
             if i_feature.name in column_lengths:
-                i_feature.online_type = f"varchar({column_lengths[i_feature.name]})"
-                logging.warning(
-                    f"Column {i_feature.name} maximum string length increased to {column_lengths[i_feature.name]}"
+                char_limit = round_up_to_hundred(column_lengths[i_feature.name])
+                i_feature.online_type = f"varchar({char_limit})"
+                logger.warning(
+                    f"Maximum string length for column {i_feature.name} increased to {char_limit} in online table."
                 )
         return dataframe_features
 

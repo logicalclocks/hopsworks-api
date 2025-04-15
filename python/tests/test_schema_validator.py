@@ -180,7 +180,7 @@ class BaseDataFrameTest:
         df_features = DataFrameValidator().validate_schema(
             feature_group_data, modified_df, initial_features
         )
-        assert df_features[2].online_type == "varchar(101)"
+        assert df_features[2].online_type == "varchar(200)"
 
     def test_pk_null_string_length_exceeded(self, df, feature_group_data):
         modified_df = self._modify_row(df, 0, primary_key=None, string_col="a" * 101)
