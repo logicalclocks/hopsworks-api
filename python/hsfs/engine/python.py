@@ -1674,7 +1674,10 @@ class Engine:
 
         now = datetime.now()
         metadata = {
-            td_col_name: [training_dataset_version for _ in range(size)],
+            td_col_name: [
+                training_dataset_version if training_dataset_version else pd.NA
+                for _ in range(size)
+            ],
             model_col_name: [hsml_model for _ in range(size)],
             time_col_name: pd.Series([now for _ in range(size)]),
             "log_id": [str(uuid.uuid4()) for _ in range(size)],
@@ -1759,16 +1762,22 @@ class Engine:
             - Event time.
             - Request parameters.
         """
-        logging_data = Engine._convert_feature_log_to_df(logging_data)
+        for f in td_predictions:
+            if f.name in logging_data.columns:
+                logging_data = logging_data.rename(
+                    columns={f.name: f"predicted_{f.name}"}
+                )
+
+        logging_data = Engine._convert_feature_log_to_df(
+            logging_data, [f.name for f in fg.features]
+        )
+
         features = Engine._convert_feature_log_to_df(features, td_features)
-        if td_predictions:
+
+        if td_predictions and predictions:
             predictions = Engine._convert_feature_log_to_df(
                 predictions, [f.name for f in td_predictions]
             )
-            for f in td_predictions:
-                predictions[f.name] = cast_column_to_offline_type(
-                    predictions[f.name], f.type
-                )
             if len(predictions) != len(features):
                 raise FeatureStoreException(
                     f"Length of predictions {len(predictions)} does not match length of features {len(features)}."
@@ -1782,10 +1791,6 @@ class Engine:
             serving_keys = Engine._convert_feature_log_to_df(
                 serving_keys, [f.name for f in td_serving_keys]
             )
-            for f in td_serving_keys:
-                serving_keys[f.name] = cast_column_to_offline_type(
-                    serving_keys[f.name], f.type
-                )
             if len(predictions) != len(features):
                 raise FeatureStoreException(
                     f"Length of predictions {len(predictions)} does not match length of features {len(features)}."
@@ -1797,10 +1802,6 @@ class Engine:
             helper_columns = Engine._convert_feature_log_to_df(
                 helper_columns, [f.name for f in td_serving_keys]
             )
-            for f in td_helper_columns:
-                helper_columns[f.name] = cast_column_to_offline_type(
-                    helper_columns[f.name], f.type
-                )
             if len(predictions) != len(features):
                 raise FeatureStoreException(
                     f"Length of predictions {len(predictions)} does not match length of features {len(features)}."
@@ -1808,7 +1809,7 @@ class Engine:
             if not set(helper_columns.columns).intersection(set(features.columns)):
                 features = pd.concat([features, helper_columns], axis=1)
 
-        if td_event_time:
+        if td_event_time and event_time:
             event_time = Engine._convert_feature_log_to_df(event_time, [td_event_time])
             event_time[td_event_time] = cast_column_to_offline_type(
                 event_time[td_event_time], "timestamp"
@@ -1825,10 +1826,6 @@ class Engine:
                 features = pd.concat([features, event_time], axis=1)
 
         if td_request_parameters:
-            for f in td_request_parameters:
-                request_parameters[f.name] = cast_column_to_offline_type(
-                    request_parameters[f.name], f.type
-                )
             if len(request_parameters) == 1:
                 request_parameters = request_parameters.loc[
                     request_parameters.index.repeat(len(features))
@@ -1843,7 +1840,7 @@ class Engine:
             )
 
         logging_metadata = Engine.get_logging_metadata(
-            size=len(features),
+            size=len(features) + len(logging_data),
             td_col_name=td_col_name,
             time_col_name=time_col_name,
             model_col_name=model_col_name,
@@ -1851,13 +1848,17 @@ class Engine:
             hsml_model=hsml_model,
         )
 
+        if (logging_data is not None and not logging_data.empty) and (
+            features is not None and not features.empty
+        ):
+            features = pd.concat([logging_data, features], axis=0)
+        elif logging_data is not None and not logging_data.empty:
+            features = logging_data
+
         for k, v in logging_metadata.items():
             features[k] = pd.Series(v)
+
         # _cast_column_to_offline_type cannot cast string type
-        features[model_col_name] = features[model_col_name].astype(pd.StringDtype())
-
-        features = pd.concat([logging_data, features], axis=0)
-
         logging_feature_group_features = [feat.name for feat in fg.features]
         missing_logging_features = set(logging_feature_group_features).difference(
             set(features.columns)
@@ -1879,6 +1880,8 @@ class Engine:
             for col in missing_logging_features:
                 features[col] = None
 
+        for f in fg.features:
+            features[f.name] = cast_column_to_offline_type(features[f.name], f.type)
         return features[[feat.name for feat in fg.features]]
 
     @staticmethod

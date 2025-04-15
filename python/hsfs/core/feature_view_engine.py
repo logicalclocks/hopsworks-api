@@ -1358,18 +1358,18 @@ class FeatureViewEngine:
 
         else:
             # TODO : This loop can be removed after we combine into one single feature group.
-            for transformed, logs, predicts in [
+            for transformed, log, predicts in [
                 (False, untransformed_features, predictions),
                 (True, transformed_features, predictions),
             ]:
                 fg = feature_logging.get_feature_group(transformed)
-                if logs is None:
+                if log is None and logs is None:
                     continue
                 results.append(
                     fg.insert(
                         self._get_feature_logging_data(
                             logging_data=logs,
-                            features_rows=logs,
+                            features_rows=log,
                             feature_logging=feature_logging,
                             transformed=transformed,
                             fv=fv,
@@ -1405,12 +1405,12 @@ class FeatureViewEngine:
     ):
         fg = feature_logging.get_feature_group(transformed)
         training_dataset_schema = fv.get_training_dataset_schema()
-        td_predictions = (
-            [feature for feature in training_dataset_schema if feature.label]
-            if predictions
-            else None
-        )
+        td_predictions = [
+            feature for feature in training_dataset_schema if feature.label
+        ]
+
         td_predictions_names = set([feature.name for feature in td_predictions])
+
         if transformed:
             td_features = [
                 feature.name
