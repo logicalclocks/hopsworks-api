@@ -98,7 +98,7 @@ public class TrainingDatasetEngine {
       path = new Path(trainingDataset.getLocation(), trainingDataset.getName()).toString();
     }
     DataSource dataSource = new DataSource();
-    dataSource.setQuery(path);
+    dataSource.setPath(path);
     return storageConnectorUtils.read(trainingDataset.getStorageConnector(), dataSource,
         trainingDataset.getDataFormat().toString(), readOptions);
   }

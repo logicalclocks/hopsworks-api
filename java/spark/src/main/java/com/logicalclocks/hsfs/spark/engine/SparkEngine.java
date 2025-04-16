@@ -217,7 +217,7 @@ public class SparkEngine extends EngineBase {
       throws FeatureStoreException, IOException {
     DataSource dataSource = onDemandFeatureGroup.getDataSource();
     dataSource.setPath(onDemandFeatureGroup.getStorageConnector().getPath(
-        onDemandFeatureGroup.getDataSource().getQuery()));
+        onDemandFeatureGroup.getDataSource().getPath()));
 
     Dataset<Row> dataset = storageConnectorUtils.read(onDemandFeatureGroup.getStorageConnector(),
         dataSource,

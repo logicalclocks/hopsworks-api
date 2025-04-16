@@ -601,14 +601,14 @@ def _serialize_featuregroup_connector(fg, query, on_demand_fg_aliases):
         connector["time_travel_type"] = None
         connector["type"] = fg.storage_connector.type
         connector["options"] = _get_connector_options(fg)
-        connector["query"] = fg._data_source.query
+        connector["query"] = fg.data_source.query
         for on_demand_fg_alias in on_demand_fg_aliases:
             # backend attaches dynamic query to on_demand_fg_alias.on_demand_feature_group.query if any
             if on_demand_fg_alias.on_demand_feature_group.name == fg.name:
                 connector["query"] = (
-                    on_demand_fg_alias.on_demand_feature_group._data_source.query
-                    if fg._data_source.query is None
-                    else fg._data_source.query
+                    on_demand_fg_alias.on_demand_feature_group.data_source.query
+                    if fg.data_source.query is None
+                    else fg.data_source.query
                 )
                 connector["alias"] = on_demand_fg_alias.alias
                 break
@@ -650,7 +650,7 @@ def _get_connector_options(fg):
     # same as in the backend (maybe move to common?)
     option_map = {}
 
-    datasource = fg._data_source
+    datasource = fg.data_source
     connector = fg.storage_connector
     connector_type = connector.type
 

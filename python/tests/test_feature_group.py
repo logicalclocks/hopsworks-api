@@ -694,9 +694,9 @@ class TestExternalFeatureGroup:
 
         # Assert
         assert isinstance(fg.storage_connector, storage_connector.StorageConnector)
-        assert fg._data_source.query == "Select * from "
+        assert fg.data_source.query == "Select * from "
         assert fg.data_format == "HUDI"
-        assert fg._data_source.path == "test_path"
+        assert fg.data_source.path == "test_path"
         assert fg.options == {"test_name": "test_value"}
         assert fg.name == "external_fg_test"
         assert fg.version == 1
@@ -728,9 +728,9 @@ class TestExternalFeatureGroup:
         assert len(fg_list) == 1
         fg = fg_list[0]
         assert isinstance(fg.storage_connector, storage_connector.StorageConnector)
-        assert fg._data_source.query == "Select * from "
+        assert fg.data_source.query == "Select * from "
         assert fg.data_format == "HUDI"
-        assert fg._data_source.path == "test_path"
+        assert fg.data_source.path == "test_path"
         assert fg.options == {"test_name": "test_value"}
         assert fg.name == "external_fg_test"
         assert fg.version == 1
@@ -760,9 +760,9 @@ class TestExternalFeatureGroup:
 
         # Assert
         assert isinstance(fg.storage_connector, storage_connector.StorageConnector)
-        assert fg._data_source.query is None
+        assert fg.data_source.query is None
         assert fg.data_format is None
-        assert fg._data_source.path is None
+        assert fg.data_source.path is None
         assert fg.options is None
         assert fg.name is None
         assert fg.version is None
