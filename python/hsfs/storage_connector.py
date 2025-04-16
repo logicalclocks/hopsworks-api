@@ -1807,6 +1807,7 @@ class BigQueryConnector(StorageConnector):
 
 class RdsConnector(StorageConnector):
     type = StorageConnector.RDS
+    JDBC_FORMAT = "jdbc"
 
     def __init__(
         self,
@@ -1862,7 +1863,11 @@ class RdsConnector(StorageConnector):
         """Return prepared options to be passed to Spark, based on the additional
         arguments.
         """
-        return {}
+        return {
+            "user":  self.user,
+            "password":  self.password,
+            "driver":  "org.postgresql.Driver"
+        }
 
     def connector_options(self) -> Dict[str, Any]:
         """Return options to be passed to an external RDS connector library"""
@@ -1876,3 +1881,46 @@ class RdsConnector(StorageConnector):
         if self.password:
             props["password"] = self.password
         return props
+    
+    def read(
+        self,
+        query: str,
+        data_format: Optional[str] = None,
+        options: Optional[Dict[str, Any]] = None,
+        path: Optional[str] = None,
+        dataframe_type: str = "default",
+    ) -> Union[
+        TypeVar("pyspark.sql.DataFrame"),
+        TypeVar("pyspark.RDD"),
+        pd.DataFrame,
+        np.ndarray,
+        pl.DataFrame,
+    ]:
+        """Reads a query into a dataframe using the storage connector.
+
+        # Arguments
+            query: A SQL query to be read.
+            data_format: Not relevant for RDS based connectors.
+            options: Any additional key/value options to be passed to the RDS connector.
+            path: Not relevant for RDS based connectors.
+            dataframe_type: str, optional. The type of the returned dataframe.
+                Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
+                Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
+
+        # Returns
+            `DataFrame`.
+        """
+        self.refetch()
+        options = (
+            {**self.spark_options(), **options}
+            if options is not None
+            else self.spark_options()
+        )
+        if query:
+            options["query"] = query
+        
+        options["url"] = f"jdbc:postgresql://{self.host}:{self.port}/{self.database}"
+
+        return engine.get_instance().read(
+            self, self.JDBC_FORMAT, options, None, dataframe_type
+        )

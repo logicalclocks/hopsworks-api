@@ -616,6 +616,7 @@ public abstract class StorageConnector {
           + "/" + databaseName);
       options.put("user", getUser());
       options.put("password", getPassword());
+      options.put("driver", "org.postgresql.Driver");
       if (arguments != null && !arguments.isEmpty()) {
         Map<String, String> argOptions = arguments.stream()
             .collect(Collectors.toMap(Option::getName, Option::getValue));
