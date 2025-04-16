@@ -129,8 +129,8 @@ def public(
     # Arguments
         paths: the import paths under which the entity is publically available; effectively results in generation of aliases in all of the paths for the entity.
         as_alias: make the alias of the specified name.
-        deprecated: make the alias deprected; use of the entity outside hopsworks will print a warning, saying that it is going to be removed from the public API in one of the future releases. See `deprecated` decorator for the implementation of construction of the deprecated objects.
-        available_until: the first hopsworks release in which the entity will become unavailable, defaults to `None`; if the release is known, it is reoprted to the external user in the warning and `deprected` becomes set up.
+        deprecated: make the alias deprecated; use of the entity outside hopsworks will print a warning, saying that it is going to be removed from the public API in one of the future releases. See `deprecated` decorator for the implementation of construction of the deprecated objects.
+        available_until: the first hopsworks release in which the entity will become unavailable, defaults to `None`; if the release is known, it is reported to the external user in the warning and `deprecated` becomes set up.
     """
 
     if available_until:
