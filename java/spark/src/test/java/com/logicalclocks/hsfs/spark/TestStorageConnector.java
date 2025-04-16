@@ -209,6 +209,7 @@ public class TestStorageConnector {
       Map<String, String> expectedOptions = new HashMap<>();
       expectedOptions.put("query", query);
       expectedOptions.put("url", "jdbc:postgresql://null:null/test_database");
+      expectedOptions.put("driver", "org.postgresql.Driver");
       expectedOptions.put("user", null);
       expectedOptions.put("password", null);
 
