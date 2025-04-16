@@ -34,6 +34,31 @@ class DataFrameValidator:
 
         return None
 
+    def _format_error_dict(self, errors):
+        """Format error dictionary as a readable table string."""
+        if not errors:
+            return "{}"
+
+        # Find maximum column name length for alignment
+        col_width = max(len(col) for col in errors.keys()) + 2
+
+        # Create table headers and separator
+        result = ["", "Error details:"]
+        result.append(f"{'Column':<{col_width}} | Error Description")
+        result.append(f"{'-' * col_width}-+-{'-' * 50}")
+
+        # Add each error row
+        for col, desc in errors.items():
+            result.append(f"{col:<{col_width}} | {desc}")
+
+        return "\n".join(result)
+
+    def _raise_validation_error(self, errors):
+        """Raise a formatted validation error."""
+        base_message = "One or more schema validation errors found for online ingestion. For details about the validation, refer to the documentation(https://docs.hopsworks.ai/latest/user_guides/fs/feature_group/data_types/#string-online-data-types)."
+        formatted_errors = self._format_error_dict(errors)
+        raise ValueError(f"{base_message}{formatted_errors}")
+
     def validate_schema(self, feature_group, df, df_features):
         """Common validation rules"""
         if feature_group.online_enabled is False:
@@ -65,9 +90,7 @@ class DataFrameValidator:
 
         # Handle errors
         if is_pk_null or (is_string_length_exceeded and feature_group.id):
-            raise ValueError(
-                f"One or more schema validation errors found for online ingestion. For details about the validation, refer to the documentation(https://docs.hopsworks.ai/latest/user_guides/fs/feature_group/data_types/#string-online-data-types). Error details ('column_name':'error description'): {errors}"
-            )
+            self._raise_validation_error(errors)
         elif is_string_length_exceeded:
             # If the feature group is not created and string lengths exceed default, adjust the string columns
             df_features = self.increase_string_columns(column_lengths, df_features)
