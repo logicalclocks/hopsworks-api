@@ -104,7 +104,7 @@ def collect_managed(root):
             if im.deprecated:
                 available_until = ""
                 if im.available_until:
-                    available_until = f'available_until="{im.available.until}"'
+                    available_until = f'available_until="{im.available_until}"'
                 original = f"hopsworks.internal.aliases.deprecated({available_until})({original})"
             managed[pkg] += f"{alias} = {original}\n"
     return managed
