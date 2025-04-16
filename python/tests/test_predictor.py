@@ -28,7 +28,6 @@ from hsml import (
 from hsml.constants import MODEL, PREDICTOR, RESOURCES
 
 
-SERVING_RESOURCE_LIMITS = {"cores": 2, "memory": 1024, "gpus": 2}
 SERVING_NUM_INSTANCES_NO_LIMIT = [-1]
 SERVING_NUM_INSTANCES_SCALE_TO_ZERO = [0]
 SERVING_NUM_INSTANCES_ONE = [0]
@@ -716,10 +715,6 @@ class TestPredictor:
         is_saas_connection=False,
         is_kserve_installed=True,
     ):
-        mocker.patch(
-            "hopsworks_common.client.get_serving_resource_limits",
-            return_value=SERVING_RESOURCE_LIMITS,
-        )
         mocker.patch(
             "hopsworks_common.client.get_serving_num_instances_limits",
             return_value=num_instances,
