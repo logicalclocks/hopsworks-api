@@ -673,8 +673,8 @@ def _get_connector_options(fg):
     elif connector_type == StorageConnector.BIGQUERY:
         option_map = {
             "key_path": connector.key_path,
-            "project_id": connector.query_project,
-            "dataset_id": datasource.database,
+            "project_id": datasource.database,
+            "dataset_id": datasource.group,
             "parent_project": connector.parent_project,
         }
         option_map = {**connector._arguments, **option_map}
