@@ -173,8 +173,7 @@ class Publisher:
     """Publish all of the names defined inside this context.
 
     This class is intended for bulk publishing of entitities which are to be declared in the begining of a module, so that publish is not usable; in other cases, use publish instead.
-    Note that it is impossible to create an alias for a variable, i.e., it is impossible to make a change of a variable in one module to propogate to another variable in another module.
-
+    Note that it is impossible to create an alias for a variable, i.e., it is impossible to make a change of a variable in one module to propagate to another variable in another module.
     If you need to deprecate an alias, use `public` instead.
 
     # Arguments
