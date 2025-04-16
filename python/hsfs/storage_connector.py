@@ -1881,7 +1881,7 @@ class RdsConnector(StorageConnector):
         if self.password:
             props["password"] = self.password
         return props
-    
+
     def read(
         self,
         query: str,
@@ -1918,7 +1918,7 @@ class RdsConnector(StorageConnector):
         )
         if query:
             options["query"] = query
-        
+
         options["url"] = f"jdbc:postgresql://{self.host}:{self.port}/{self.database}"
 
         return engine.get_instance().read(
