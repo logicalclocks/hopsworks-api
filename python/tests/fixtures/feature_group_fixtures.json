@@ -599,9 +599,13 @@
           "defaultValue": null,
           "featureGroupId": 13}],
       "featurestoreId": 67,
-      "query": "select * from Customer",
+      "dataSource": {
+        "query": "select * from Customer",
+        "database": "test_database",
+        "group": "test_schema",
+        "path": ""
+      },
       "dataFormat": null,
-      "path": "",
       "options": null,
       "storageConnector": {"id": 4,
         "name": "snowflake",

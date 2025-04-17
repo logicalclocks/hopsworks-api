@@ -17,6 +17,7 @@
 
 package com.logicalclocks.hsfs.spark.constructor;
 
+import com.logicalclocks.hsfs.DataSource;
 import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.FeatureStoreException;
@@ -74,7 +75,10 @@ public class Query extends QueryBase<Query, StreamFeatureGroup, Dataset<Row>> {
       StorageConnector.JdbcConnector onlineConnector =
           storageConnectorApi.getOnlineStorageConnector(
               leftFeatureGroup.getFeatureStore(), StorageConnector.JdbcConnector.class);
-      return storageConnectorUtils.read(onlineConnector, fsQuery.getStorageQuery(Storage.ONLINE));
+
+      DataSource dataSource = leftFeatureGroup.getDataSource();
+      dataSource.setQuery(fsQuery.getStorageQuery(Storage.ONLINE));
+      return storageConnectorUtils.read(onlineConnector, dataSource, null);
     } else {
       fsQuery.registerOnDemandFeatureGroups();
       fsQuery.registerHudiFeatureGroups(readOptions);

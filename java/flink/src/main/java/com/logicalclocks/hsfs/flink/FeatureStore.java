@@ -208,6 +208,11 @@ public class FeatureStore extends FeatureStoreBase<Query> {
   }
 
   @Override
+  public Object getRdsConnector(String name) throws FeatureStoreException, IOException {
+    throw new UnsupportedOperationException("Not supported for Beam");
+  }
+
+  @Override
   public Object getS3Connector(String name) throws FeatureStoreException, IOException {
     throw new UnsupportedOperationException("Not supported for Flink");
   }

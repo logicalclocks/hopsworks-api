@@ -18,6 +18,7 @@
 package com.logicalclocks.hsfs.spark.util;
 
 import com.google.common.base.Strings;
+import com.logicalclocks.hsfs.DataSource;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.StorageConnector;
 import com.logicalclocks.hsfs.spark.engine.SparkEngine;
@@ -41,38 +42,39 @@ public class StorageConnectorUtils {
    * Reads path into a spark dataframe using the HopsFsConnector.
    *
    * @param connector HopsFsConnector object.
+   * @param dataSource Data source object.
    * @param dataFormat specify the file format to be read, e.g. `csv`, `parquet`.
    * @param options Any additional key/value options to be passed to the connector.
-   * @param path Path to be read from within the storage connector. .
    * @return Spark dataframe.
    * @throws FeatureStoreException If unable to retrieve StorageConnector from the feature store.
    * @throws IOException Generic IO exception.
    */
-  public Dataset<Row> read(StorageConnector.HopsFsConnector connector,
-                           String dataFormat, Map<String, String> options, String path)
+  public Dataset<Row> read(StorageConnector.HopsFsConnector connector, DataSource dataSource,
+                           String dataFormat, Map<String, String> options)
       throws FeatureStoreException, IOException {
-    return SparkEngine.getInstance().read(connector, dataFormat, options, path);
+    return SparkEngine.getInstance().read(connector, dataFormat, options, dataSource.getPath());
   }
 
   /**
    * Reads path into a spark dataframe using the S3Connector.
    *
    * @param connector S3Connector object.
+   * @param dataSource Data source object.
    * @param dataFormat specify the file format to be read, e.g. `csv`, `parquet`.
    * @param options Any additional key/value options to be passed to the connector.
-   * @param path Path to be read from within the bucket.
    * @return Spark dataframe.
    * @throws FeatureStoreException If unable to retrieve StorageConnector from the feature store.
    * @throws IOException Generic IO exception.
    */
-  public Dataset<Row> read(StorageConnector.S3Connector connector, String dataFormat,
-                           Map<String, String> options, String path) throws FeatureStoreException, IOException {
+  public Dataset<Row> read(StorageConnector.S3Connector connector, DataSource dataSource, String dataFormat,
+                           Map<String, String> options) throws FeatureStoreException, IOException {
     connector.update();
-    Map<String, String> readOptions = connector.sparkOptions();
+    Map<String, String> readOptions = connector.sparkOptions(dataSource);
     // merge user spark options on top of default spark options
     if (options != null && !options.isEmpty()) {
       readOptions.putAll(options);
     }
+    String path = dataSource.getPath();
     if (path != null && !path.startsWith("s3://")) {
       path = connector.getPath(path);
       logger.info(String.format("Prepending default bucket specified on connector, final path: %s", path));
@@ -84,15 +86,21 @@ public class StorageConnectorUtils {
    * Reads query into a spark dataframe using the RedshiftConnector.
    *
    * @param connector Storage connector object.
-   * @param query SQL query string.
+   * @param dataSource Data source object.
+   * @param options Any additional key/value options to be passed to the connector.
    * @return Spark dataframe.
    * @throws FeatureStoreException If unable to retrieve StorageConnector from the feature store.
    * @throws IOException Generic IO exception.
    */
-  public Dataset<Row> read(StorageConnector.RedshiftConnector connector, String query)
-      throws FeatureStoreException, IOException {
+  public Dataset<Row> read(StorageConnector.RedshiftConnector connector, DataSource dataSource,
+      Map<String, String> options) throws FeatureStoreException, IOException {
     connector.update();
-    Map<String, String> readOptions = connector.sparkOptions();
+    Map<String, String> readOptions = connector.sparkOptions(dataSource);
+    // merge user spark options on top of default spark options
+    if (options != null && !options.isEmpty()) {
+      readOptions.putAll(options);
+    }
+    String query = dataSource.getQuery();
     if (!Strings.isNullOrEmpty(query)) {
       readOptions.put("query", query);
     }
@@ -103,15 +111,16 @@ public class StorageConnectorUtils {
    * Reads path into a spark dataframe using the AdlsConnector.
    *
    * @param connector AdlsConnector object.
+   * @param dataSource Data source object.
    * @param dataFormat specify the file format to be read, e.g. `csv`, `parquet`.
    * @param options Any additional key/value options to be passed to the connector.
-   * @param path Path to be read from within the storage connector.
    * @return Spark dataframe.
    * @throws FeatureStoreException If unable to retrieve StorageConnector from the feature store.
    * @throws IOException Generic IO exception.
    */
-  public Dataset<Row> read(StorageConnector.AdlsConnector connector, String dataFormat, Map<String, String> options,
-      String path) throws FeatureStoreException, IOException {
+  public Dataset<Row> read(StorageConnector.AdlsConnector connector, DataSource dataSource,
+      String dataFormat, Map<String, String> options) throws FeatureStoreException, IOException {
+    String path = dataSource.getPath();
     if (path != null && (!path.startsWith("abfss://") || !path.startsWith("adl://"))) {
       path = connector.getPath(path);
       logger.info(String.format("Using default container specified on connector, final path: %s", path));
@@ -123,14 +132,20 @@ public class StorageConnectorUtils {
    * Reads query into a spark dataframe using the SnowflakeConnector.
    *
    * @param connector SnowflakeConnector object.
-   * @param query SQL query string.
+   * @param dataSource Data source object.
+   * @param options Any additional key/value options to be passed to the connector.
    * @return Spark dataframe.
    * @throws FeatureStoreException If unable to retrieve StorageConnector from the feature store.
    * @throws IOException Generic IO exception.
    */
-  public Dataset<Row> read(StorageConnector.SnowflakeConnector connector, String query)
-      throws FeatureStoreException, IOException {
-    Map<String, String> readOptions = connector.sparkOptions();
+  public Dataset<Row> read(StorageConnector.SnowflakeConnector connector, DataSource dataSource,
+      Map<String, String> options) throws FeatureStoreException, IOException {
+    Map<String, String> readOptions = connector.sparkOptions(dataSource);
+    // merge user spark options on top of default spark options
+    if (options != null && !options.isEmpty()) {
+      readOptions.putAll(options);
+    }
+    String query = dataSource.getQuery();
     if (!Strings.isNullOrEmpty(query)) {
       // if table also specified we override to use query
       readOptions.remove(Constants.SNOWFLAKE_TABLE);
@@ -143,35 +158,41 @@ public class StorageConnectorUtils {
    * Reads query into a spark dataframe using the JdbcConnector.
    *
    * @param connector JdbcConnector object.
-   * @param query SQL query string.
+   * @param dataSource Data source object.
+   * @param options Any additional key/value options to be passed to the connector.
    * @return Spark dataframe.
    * @throws FeatureStoreException If unable to retrieve StorageConnector from the feature store.
    * @throws IOException Generic IO exception.
    */
-  public Dataset<Row> read(StorageConnector.JdbcConnector connector, String query)
-      throws FeatureStoreException, IOException {
+  public Dataset<Row> read(StorageConnector.JdbcConnector connector, DataSource dataSource,
+      Map<String, String> options) throws FeatureStoreException, IOException {
     connector.update();
-    Map<String, String> readOptions = connector.sparkOptions();
+    Map<String, String> readOptions = connector.sparkOptions(dataSource);
+    // merge user spark options on top of default spark options
+    if (options != null && !options.isEmpty()) {
+      readOptions.putAll(options);
+    }
+    String query = dataSource.getQuery();
     if (!Strings.isNullOrEmpty(query)) {
       readOptions.put("query", query);
     }
-    return SparkEngine.getInstance().read(connector.refetch(), Constants.JDBC_FORMAT, readOptions, null);
+    return SparkEngine.getInstance().read(connector, Constants.JDBC_FORMAT, readOptions, null);
   }
 
   /**
    * Reads a path into a spark dataframe using the GcsConnector.
    *
    * @param connector GcsConnector object.
+   * @param dataSource Data source object.
    * @param dataFormat Specify the file format to be read, e.g. `csv`, `parquet`.
    * @param options Any additional key/value options to be passed to the connector.
-   * @param path Path to be read from within the storage connector.
    * @return Spark dataframe.
    * @throws FeatureStoreException If unable to retrieve StorageConnector from the feature store.
    * @throws IOException Generic IO exception.
    */
-  public Dataset<Row> read(StorageConnector.GcsConnector connector, String dataFormat,
-                           Map<String, String> options, String path)
-      throws FeatureStoreException, IOException {
+  public Dataset<Row> read(StorageConnector.GcsConnector connector, DataSource dataSource, String dataFormat,
+      Map<String, String> options) throws FeatureStoreException, IOException {
+    String path = dataSource.getPath();
     if (path != null && !path.startsWith("gs://")) {
       path = connector.getPath(path);
       logger.info(String.format("Prepending default bucket specified on connector, final path: %s", path));
@@ -183,17 +204,16 @@ public class StorageConnectorUtils {
    * Reads a query or a path into a spark dataframe using the sBigqueryConnector.
    *
    * @param connector BigqueryConnector object.
-   * @param query SQL query string.
+   * @param dataSource Data source object.
    * @param options Any additional key/value options to be passed to the connector.
-   * @param path Path to the table be read from within the storage connector.
    * @return Spark dataframe.
    * @throws FeatureStoreException If unable to retrieve StorageConnector from the feature store.
    * @throws IOException Generic IO exception.
    */
-  public Dataset<Row> read(StorageConnector.BigqueryConnector connector, String query,
-                           Map<String, String> options, String path) throws FeatureStoreException, IOException {
+  public Dataset<Row> read(StorageConnector.BigqueryConnector connector, DataSource dataSource,
+      Map<String, String> options) throws FeatureStoreException, IOException {
 
-    Map<String, String> readOptions = connector.sparkOptions();
+    Map<String, String> readOptions = connector.sparkOptions(dataSource);
 
     // Base64 encode the credentials file
     String localKeyPath = SparkEngine.getInstance().addFile(connector.getKeyPath());
@@ -205,8 +225,12 @@ public class StorageConnectorUtils {
       readOptions.putAll(options);
     }
 
+    String query = dataSource.getQuery();
+    String path = dataSource.getPath();
     if (!Strings.isNullOrEmpty(query)) {
       path = query;
+    } else if (!Strings.isNullOrEmpty(dataSource.getTable())) {
+      path = dataSource.getTable();
     } else if (!Strings.isNullOrEmpty(connector.getQueryTable())) {
       path = connector.getQueryTable();
     } else if (!Strings.isNullOrEmpty(path)) {
@@ -220,37 +244,62 @@ public class StorageConnectorUtils {
   }
 
   /**
-   * Reads a query or a path into a spark dataframe using the storage connector.
+   * Reads a query or a path into a spark dataframe using the sBigqueryConnector.
    *
-   * @param connector Storage connector object.
-   * @param query SQL query string.
-   * @param dataFormat When reading from object stores such as S3, HopsFS and ADLS, specify the file format to be read,
-   *                  e.g. `csv`, `parquet`.
+   * @param connector RdsConnector object.
+   * @param dataSource Data source object.
    * @param options Any additional key/value options to be passed to the connector.
-   * @param path Path to be read from within the bucket of the storage connector. Not relevant for JDBC or database
-   *             based connectors such as Snowflake, JDBC or Redshift.
    * @return Spark dataframe.
    * @throws FeatureStoreException If unable to retrieve StorageConnector from the feature store.
    * @throws IOException Generic IO exception.
    */
-  public Dataset<Row> read(StorageConnector connector, String query, String dataFormat, Map<String, String> options,
-                           String path) throws FeatureStoreException, IOException {
+  public Dataset<Row> read(StorageConnector.RdsConnector connector, DataSource dataSource,
+      Map<String, String> options) throws FeatureStoreException, IOException {
+    connector.update();
+    Map<String, String> readOptions = connector.sparkOptions(dataSource);
+    // merge user spark options on top of default spark options
+    if (options != null && !options.isEmpty()) {
+      readOptions.putAll(options);
+    }
+    String query = dataSource.getQuery();
+    if (!Strings.isNullOrEmpty(query)) {
+      readOptions.put("query", query);
+    }
+    return SparkEngine.getInstance().read(connector, Constants.JDBC_FORMAT, readOptions, null);
+  }
+
+  /**
+   * Reads a query or a path into a spark dataframe using the storage connector.
+   *
+   * @param connector Storage connector object.
+   * @param dataSource Data source object.
+   * @param dataFormat When reading from object stores such as S3, HopsFS and ADLS, specify the file format to be read,
+   *                  e.g. `csv`, `parquet`.
+   * @param options Any additional key/value options to be passed to the connector.
+   * @return Spark dataframe.
+   * @throws FeatureStoreException If unable to retrieve StorageConnector from the feature store.
+   * @throws IOException Generic IO exception.
+   */
+  public Dataset<Row> read(StorageConnector connector, DataSource dataSource, String dataFormat,
+      Map<String, String> options) throws FeatureStoreException, IOException {
     if (connector instanceof StorageConnector.HopsFsConnector) {
-      return read((StorageConnector.HopsFsConnector) connector, dataFormat, options, path);
+      return read((StorageConnector.HopsFsConnector) connector, dataSource, dataFormat, options);
     } else if (connector instanceof  StorageConnector.S3Connector) {
-      return read((StorageConnector.S3Connector) connector, dataFormat, options, path);
+      return read((StorageConnector.S3Connector) connector, dataSource, dataFormat, options);
     } else if (connector instanceof StorageConnector.RedshiftConnector) {
-      return read((StorageConnector.RedshiftConnector) connector, query);
+      return read((StorageConnector.RedshiftConnector) connector, dataSource, options);
     } else if (connector instanceof StorageConnector.AdlsConnector) {
-      return read((StorageConnector.AdlsConnector) connector, dataFormat, options, path);
+      return read((StorageConnector.AdlsConnector) connector, dataSource, dataFormat, options);
     } else if (connector instanceof StorageConnector.SnowflakeConnector) {
-      return read((StorageConnector.SnowflakeConnector) connector, query);
+      return read((StorageConnector.SnowflakeConnector) connector, dataSource, options);
     } else if (connector instanceof StorageConnector.JdbcConnector) {
-      return read((StorageConnector.JdbcConnector) connector, query);
+      return read((StorageConnector.JdbcConnector) connector, dataSource, options);
     } else if (connector instanceof StorageConnector.GcsConnector) {
-      return read((StorageConnector.GcsConnector) connector, dataFormat, options, path);
+      return read((StorageConnector.GcsConnector) connector, dataSource, dataFormat, options);
     } else if (connector instanceof StorageConnector.BigqueryConnector) {
-      return read((StorageConnector.BigqueryConnector) connector, query, options, path);
+      return read((StorageConnector.BigqueryConnector) connector, dataSource, options);
+    } else if (connector instanceof StorageConnector.RdsConnector) {
+      return read((StorageConnector.RdsConnector) connector, dataSource, options);
     } else if (connector instanceof StorageConnector.KafkaConnector) {
       throw new NotSupportedException("Reading a Kafka Stream into a static Spark Dataframe is not supported.");
     } else {
