@@ -677,7 +677,6 @@ def _get_connector_options(fg):
             "dataset_id": datasource.group,
             "parent_project": connector.parent_project,
         }
-        option_map = {**connector._arguments, **option_map}
     elif connector_type == StorageConnector.REDSHIFT:
         option_map = {
             "host": connector.cluster_identifier + "." + connector.database_endpoint,
@@ -691,7 +690,6 @@ def _get_connector_options(fg):
         if connector.iam_role:
             option_map["iam_role"] = connector.iam_role
             option_map["iam"] = "True"
-        option_map = {**connector._arguments, **option_map}
     elif connector_type == StorageConnector.RDS:
         option_map = {
             "host": connector.host,
@@ -702,7 +700,6 @@ def _get_connector_options(fg):
             option_map["user"] = connector.user
         if connector.password:
             option_map["password"] = connector.password
-        option_map = {**connector._arguments, **option_map}
     elif connector_type == StorageConnector.S3:
         option_map = {
             "access_key": connector.access_key,
