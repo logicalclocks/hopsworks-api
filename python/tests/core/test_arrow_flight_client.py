@@ -439,7 +439,8 @@ class TestArrowFlightClient:
                     "options": {
                         "user": "test_user",
                         "account": "test_url",
-                        "database": "test_database/test_schema",
+                        "database": "test_database",
+                        "schema": "test_schema",
                         "password": "test_password",
                         "warehouse": "test_warehouse",
                         "application": "test_application",

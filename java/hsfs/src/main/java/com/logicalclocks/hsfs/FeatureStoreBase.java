@@ -197,6 +197,8 @@ public abstract class FeatureStoreBase<T2 extends QueryBase> {
 
   public abstract Object getGcsConnector(String name) throws FeatureStoreException, IOException;
 
+  public abstract Object getRdsConnector(String name) throws FeatureStoreException, IOException;
+
   /**
    * Get a training dataset object from the selected feature store.
    *
