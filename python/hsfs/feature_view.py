@@ -3691,7 +3691,7 @@ class FeatureView:
         transformed_features: Union[
             pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
         ] = None,
-        helper_columns: Union[
+        inference_helper_columns: Union[
             pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
         ] = None,
         request_parameters: Union[
@@ -3701,6 +3701,9 @@ class FeatureView:
             pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
         ] = None,
         serving_keys: Union[
+            pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
+        ] = None,
+        extra_logging_features: Union[
             pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
         ] = None,
         write_options: Optional[Dict[str, Any]] = None,
@@ -3758,11 +3761,12 @@ class FeatureView:
                         transformed_features,
                         predictions,
                         logging_data,
-                        helper_columns,
+                        inference_helper_columns,
                         request_parameters,
                         event_time,
                         serving_keys,
-                    ]
+                    ],
+                    feature_view_obj=self,
                 )
             )
             self.enable_logging(extra_log_columns=logging_features)
@@ -3773,7 +3777,7 @@ class FeatureView:
             untransformed_features=untransformed_features,
             transformed_features=transformed_features,
             predictions=predictions,
-            helper_columns=helper_columns,
+            helper_columns=inference_helper_columns,
             request_parameters=request_parameters,
             event_time=event_time,
             serving_keys=serving_keys,
@@ -3784,6 +3788,7 @@ class FeatureView:
                 or (model.training_dataset_version if model else None)
                 or self.get_last_accessed_training_dataset()
             ),
+            extra_logging_features=extra_logging_features,
             hsml_model=model,
             logger=self._feature_logger,
         )
@@ -4170,14 +4175,14 @@ class FeatureView:
         if self._request_parameters is None:
             feature_names = [feature.name for feature in self.features]
             self._request_parameters = []
-            self._request_parameters.extend(
-                [
-                    feature_name
-                    for tf in self._on_demand_transformation_functions
-                    for feature_name in tf.hopsworks_udf.transformation_features
-                    if feature_name not in feature_names
-                ]
-            )
+            for tf in self._on_demand_transformation_functions:
+                for feature_name in tf.hopsworks_udf.transformation_features:
+                    if (
+                        feature_name not in feature_names
+                        and feature_name not in self._request_parameters
+                    ):
+                        self._request_parameters.append(feature_name)
+
         return self._request_parameters
 
     @property

@@ -1644,7 +1644,7 @@ class Engine:
             if isinstance(feature_log, pl.DataFrame):
                 return feature_log.clone().to_pandas()
             elif isinstance(feature_log, pd.DataFrame):
-                return feature_log.copy(deep=False)
+                return feature_log.copy(deep=False).reset_index(drop=True)
 
     @staticmethod
     def _validate_logging_list(feature_log, cols):
@@ -1738,6 +1738,7 @@ class Engine:
         td_request_parameters=None,
         td_event_time=None,
         td_col_name: Optional[str] = None,
+        td_extra_logging_features: Optional[str] = None,
         time_col_name: Optional[str] = None,
         model_col_name: Optional[str] = None,
         predictions: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
@@ -1745,6 +1746,7 @@ class Engine:
         request_parameters=None,
         event_time=None,
         serving_keys=None,
+        extra_logging_features=None,
         training_dataset_version: Optional[int] = None,
         hsml_model: str = None,
     ) -> pd.DataFrame:
@@ -1762,59 +1764,68 @@ class Engine:
             - Event time.
             - Request parameters.
         """
-        for f in td_predictions:
-            if f.name in logging_data.columns:
-                logging_data = logging_data.rename(
-                    columns={f.name: f"predicted_{f.name}"}
-                )
-
-        logging_data = Engine._convert_feature_log_to_df(
-            logging_data, [f.name for f in fg.features]
-        )
-
+        logging_feature_group_features = [feat.name for feat in fg.features]
         features = Engine._convert_feature_log_to_df(features, td_features)
-
-        if td_predictions and predictions:
-            predictions = Engine._convert_feature_log_to_df(
-                predictions, [f.name for f in td_predictions]
+        if logging_data is not None:
+            logging_data = Engine._convert_feature_log_to_df(
+                logging_data, [f.name for f in fg.features]
             )
-            if len(predictions) != len(features):
+            if len(features) == 0 and len(logging_data) > 0:
+                features = logging_data
+            elif len(logging_data) != len(features):
+                # TODO : Make this error message proper.
                 raise FeatureStoreException(
-                    f"Length of predictions {len(predictions)} does not match length of features {len(features)}."
+                    f"Length of logging data {len(logging_data)} does not match length of features {len(features)}."
                 )
-            # Addin the prefix prediction_ to the prediction columns
-            predictions = predictions.add_prefix("predicted_")
-            if not set(predictions.columns).intersection(set(features.columns)):
-                features = pd.concat([features, predictions], axis=1)
+            else:
+                for col in logging_data.columns:
+                    if col not in features.columns:
+                        features[col] = logging_data[col]
 
-        if td_serving_keys:
+        if td_predictions:
+            if predictions is not None:
+                predictions = Engine._convert_feature_log_to_df(
+                    predictions, [f.name for f in td_predictions]
+                )
+                if len(predictions) != len(features):
+                    raise FeatureStoreException(
+                        f"Length of predictions {len(predictions)} does not match length of features {len(features)}."
+                    )
+                # Addin the prefix prediction_ to the prediction columns
+                if not set(predictions.columns).intersection(set(features.columns)):
+                    features = pd.concat([features, predictions], axis=1)
+            for f in td_predictions:
+                if f.name in features.columns:
+                    features = features.rename(columns={f.name: f"predicted_{f.name}"})
+
+        if td_serving_keys and serving_keys is not None:
             serving_keys = Engine._convert_feature_log_to_df(
-                serving_keys, [f.name for f in td_serving_keys]
+                serving_keys, [f.feature_name for f in td_serving_keys]
             )
-            if len(predictions) != len(features):
+            if len(serving_keys) != len(features):
                 raise FeatureStoreException(
-                    f"Length of predictions {len(predictions)} does not match length of features {len(features)}."
+                    f"Length of predictions {len(serving_keys)} does not match length of features {len(features)}."
                 )
             if not set(serving_keys.columns).intersection(set(features.columns)):
                 features = pd.concat([features, serving_keys], axis=1)
 
-        if td_helper_columns:
+        if td_helper_columns and helper_columns is not None:
             helper_columns = Engine._convert_feature_log_to_df(
-                helper_columns, [f.name for f in td_serving_keys]
+                helper_columns, [f_name for f_name in td_helper_columns]
             )
-            if len(predictions) != len(features):
+            if len(helper_columns) != len(features):
                 raise FeatureStoreException(
-                    f"Length of predictions {len(predictions)} does not match length of features {len(features)}."
+                    f"Length of predictions {len(helper_columns)} does not match length of features {len(features)}."
                 )
             if not set(helper_columns.columns).intersection(set(features.columns)):
                 features = pd.concat([features, helper_columns], axis=1)
 
-        if td_event_time and event_time:
+        if td_event_time and event_time is not None:
             event_time = Engine._convert_feature_log_to_df(event_time, [td_event_time])
             event_time[td_event_time] = cast_column_to_offline_type(
                 event_time[td_event_time], "timestamp"
             )
-            if len(event_time) == 1:
+            if len(event_time) == 1 and len(features) > 1:
                 event_time = event_time.loc[
                     event_time.index.repeat(len(features))
                 ].reset_index()
@@ -1826,21 +1837,67 @@ class Engine:
                 features = pd.concat([features, event_time], axis=1)
 
         if td_request_parameters:
-            if len(request_parameters) == 1:
-                request_parameters = request_parameters.loc[
-                    request_parameters.index.repeat(len(features))
-                ].reset_index()
-
-            if len(request_parameters) != len(features):
-                raise FeatureStoreException(
-                    f"Length of request_parameters {len(request_parameters)} does not match length of features {len(features)}."
+            if request_parameters is not None:
+                request_parameters = Engine._convert_feature_log_to_df(
+                    request_parameters, td_request_parameters
                 )
-            features["request_parameters"] = request_parameters.to_dict(
-                orient="records"
+                if len(request_parameters) == 1 and len(features) > 1:
+                    request_parameters = request_parameters.loc[
+                        request_parameters.index.repeat(len(features))
+                    ].reset_index()
+
+                if len(request_parameters) != len(features):
+                    raise FeatureStoreException(
+                        f"Length of request_parameters {len(request_parameters)} does not match length of features {len(features)}."
+                    )
+                features["request_parameters"] = request_parameters.apply(
+                    lambda x: x.to_json(), axis=1
+                )
+                request_parameters_columns = [
+                    col
+                    for col in td_request_parameters
+                    if col in logging_feature_group_features
+                ]
+                for col in request_parameters_columns:
+                    features[col] = request_parameters[col]
+            else:
+                if "request_parameters" not in features.columns:
+                    request_parameters_columns = [
+                        col for col in features.columns if col in td_request_parameters
+                    ]
+                    for rq in td_request_parameters:
+                        if rq not in features.columns:
+                            features[rq] = None
+                    if len(request_parameters_columns) > 0:
+                        features["request_parameters"] = features[
+                            td_request_parameters
+                        ].apply(lambda x: x.to_json(), axis=1)
+                else:
+                    features["request_parameters"] = features[
+                        "request_parameters"
+                    ].astype(str)
+
+            request_parameters_not_columns = [
+                col
+                for col in td_request_parameters
+                if col not in logging_feature_group_features
+            ]
+            if request_parameters_not_columns:
+                features.drop(request_parameters_not_columns, axis=1, inplace=True)
+
+        if extra_logging_features is not None:
+            extra_logging_features = Engine._convert_feature_log_to_df(
+                extra_logging_features, td_extra_logging_features
             )
+            if len(extra_logging_features) != len(features):
+                raise FeatureStoreException(
+                    f"Length of event_time {len(extra_logging_features)} does not match length of features {len(features)}."
+                )
+            if not set(td_extra_logging_features).intersection(set(features.columns)):
+                features = pd.concat([features, extra_logging_features], axis=1)
 
         logging_metadata = Engine.get_logging_metadata(
-            size=len(features) + len(logging_data),
+            size=len(features),
             td_col_name=td_col_name,
             time_col_name=time_col_name,
             model_col_name=model_col_name,
@@ -1848,18 +1905,10 @@ class Engine:
             hsml_model=hsml_model,
         )
 
-        if (logging_data is not None and not logging_data.empty) and (
-            features is not None and not features.empty
-        ):
-            features = pd.concat([logging_data, features], axis=0)
-        elif logging_data is not None and not logging_data.empty:
-            features = logging_data
-
         for k, v in logging_metadata.items():
             features[k] = pd.Series(v)
 
         # _cast_column_to_offline_type cannot cast string type
-        logging_feature_group_features = [feat.name for feat in fg.features]
         missing_logging_features = set(logging_feature_group_features).difference(
             set(features.columns)
         )

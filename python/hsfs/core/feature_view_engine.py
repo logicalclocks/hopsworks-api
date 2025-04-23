@@ -1229,6 +1229,7 @@ class FeatureViewEngine:
 
     def get_logging_feature_from_dataframe(
         self,
+        feature_view_obj: feature_view.FeatureView,
         dataframes: List[
             Union[
                 pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
@@ -1246,10 +1247,15 @@ class FeatureViewEngine:
         """
         logging_features = []
         logging_feature_names = []
+        label_features = [
+            feature.name for feature in feature_view_obj.features if feature.label
+        ]
         for df in dataframes:
             if df is not None and engine.get_instance().check_supported_dataframe(df):
                 features = engine.get_instance().parse_schema_feature_group(df)
                 for feature in features:
+                    if feature.name in label_features:
+                        feature.name = "predicted_" + feature.name
                     if feature.name not in logging_feature_names:
                         logging_feature_names.append(feature.name)
                         logging_features.append(feature)
@@ -1313,6 +1319,9 @@ class FeatureViewEngine:
         ] = None,
         event_time: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
         serving_keys: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
+        extra_logging_features: Optional[
+            Union[pd.DataFrame, list[list], np.ndarray]
+        ] = None,
         write_options: Optional[Dict[str, Any]] = None,
         training_dataset_version: Optional[int] = None,
         hsml_model=None,
@@ -1378,6 +1387,7 @@ class FeatureViewEngine:
                             request_parameters=request_parameters,
                             event_time=event_time,
                             serving_keys=serving_keys,
+                            extra_logging_features=extra_logging_features,
                             training_dataset_version=training_dataset_version,
                             hsml_model=hsml_model,
                             return_list=False,
@@ -1399,6 +1409,7 @@ class FeatureViewEngine:
         request_parameters,
         event_time,
         serving_keys,
+        extra_logging_features,
         training_dataset_version,
         hsml_model,
         return_list=False,
@@ -1425,17 +1436,20 @@ class FeatureViewEngine:
             ]
 
         td_serving_keys = (
-            [sk.feature_name for sk in fv.serving_keys if sk.required]
-            if serving_keys
+            [sk for sk in fv.serving_keys if sk.required]
+            if serving_keys is not None and len(serving_keys) > 0
             else None
         )
         td_helper_columns = (
-            fv.training_helper_columns + fv.inference_helper_columns
-            if helper_columns
+            fv.inference_helper_columns
+            if helper_columns is not None and len(helper_columns) > 0
             else None
         )
-        td_request_parameters = fv.request_parameters if request_parameters else None
+        td_request_parameters = fv.request_parameters
         td_event_time = fv.query._left_feature_group.event_time
+        td_extra_logging_features = [
+            f.name for f in fv.feature_logging.extra_logging_columns
+        ]
 
         if return_list:
             return engine.get_instance().get_feature_logging_list(
@@ -1463,6 +1477,7 @@ class FeatureViewEngine:
                 td_helper_columns=td_helper_columns,
                 td_request_parameters=td_request_parameters,
                 td_event_time=td_event_time,
+                td_extra_logging_features=td_extra_logging_features,
                 td_col_name=FeatureViewEngine._LOG_TD_VERSION,
                 time_col_name=FeatureViewEngine._LOG_TIME,
                 model_col_name=FeatureViewEngine._HSML_MODEL,
@@ -1471,6 +1486,7 @@ class FeatureViewEngine:
                 request_parameters=request_parameters,
                 event_time=event_time,
                 serving_keys=serving_keys,
+                extra_logging_features=extra_logging_features,
                 training_dataset_version=training_dataset_version,
                 hsml_model=self.get_hsml_model_value(hsml_model)
                 if hsml_model
