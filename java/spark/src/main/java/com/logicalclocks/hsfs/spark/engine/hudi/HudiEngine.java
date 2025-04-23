@@ -32,12 +32,18 @@ import com.logicalclocks.hsfs.spark.StreamFeatureGroup;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hudi.common.model.HoodieCommitMetadata;
+import org.apache.hudi.common.model.HoodieFailedWritesCleaningPolicy;
+import org.apache.hudi.common.table.HoodieTableConfig;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.common.table.timeline.HoodieInstant;
 import org.apache.hudi.common.table.timeline.HoodieTimeline;
 import org.apache.hudi.HoodieDataSourceHelpers;
 
+import org.apache.hudi.common.table.timeline.versioning.v2.CommitMetadataSerDeV2;
 import org.apache.hudi.common.util.Option;
+import org.apache.hudi.config.HoodieWriteConfig;
+import org.apache.hudi.hadoop.fs.HadoopFSUtils;
+import org.apache.hudi.metadata.HoodieMetadataWriteUtils;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.parquet.Strings;
 import org.apache.spark.sql.SparkSession;
@@ -49,6 +55,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.json.JSONArray;
 import scala.collection.Seq;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.text.ParseException;
 import java.util.HashMap;
@@ -56,21 +63,33 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Arrays;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class HudiEngine {
+  
+  private static Logger LOG = Logger.getLogger(HudiEngine.class.getName());
 
   public static final String HUDI_SPARK_FORMAT = "org.apache.hudi";
 
   protected static final String HUDI_BASE_PATH = "hoodie.base.path";
   protected static final String HUDI_TABLE_NAME = "hoodie.table.name";
+  protected static final String HUDI_TABLE_TYPE = "hoodie.datasource.write.table.type";
   protected static final String HUDI_TABLE_STORAGE_TYPE = "hoodie.datasource.write.storage.type";
   protected static final String HUDI_TABLE_OPERATION = "hoodie.datasource.write.operation";
+  
+  protected static final String HUDI_TABLE_RECORD_KEY_FIELD = "hoodie.table.recordkey.fields";
+  protected static final String HUDI_TABLE_PARTITION_KEY_FIELDS = "hoodie.table.partition.fields";
+  protected static final String HUDI_TABLE_KEY_GENERATOR_CLASS = "hoodie.table.keygenerator.class";
+  protected static final String HUDI_TABLE_PRECOMBINE_FIELD = "hoodie.table.precombine.field";
+  protected static final String HUDI_TABLE_BASE_FILE_FORMAT = "hoodie.table.base.file.format";
+  protected static final String HUDI_TABLE_METADATA_PARTITIONS = "hoodie.table.metadata.partitions";
 
   protected static final String HUDI_KEY_GENERATOR_OPT_KEY = "hoodie.datasource.write.keygenerator.class";
   protected static final String HUDI_COMPLEX_KEY_GENERATOR_OPT_VAL = "org.apache.hudi.keygen.CustomKeyGenerator";
-  protected static final String HUDI_RECORD_KEY = "hoodie.datasource.write.recordkey.field";
+  protected static final String HUDI_WRITE_RECORD_KEY = "hoodie.datasource.write.recordkey.field";
   protected static final String HUDI_PARTITION_FIELD = "hoodie.datasource.write.partitionpath.field";
-  protected static final String HUDI_PRECOMBINE_FIELD = "hoodie.datasource.write.precombine.field";
+  protected static final String HUDI_WRITE_PRECOMBINE_FIELD = "hoodie.datasource.write.precombine.field";
 
   protected static final String HUDI_HIVE_SYNC_ENABLE = "hoodie.datasource.hive_sync.enable";
   protected static final String HUDI_HIVE_SYNC_TABLE = "hoodie.datasource.hive_sync.table";
@@ -104,7 +123,7 @@ public class HudiEngine {
   protected static final String PAYLOAD_CLASS_OPT_KEY = "hoodie.datasource.write.payload.class";
   protected static final String PAYLOAD_CLASS_OPT_VAL = "org.apache.hudi.common.model.EmptyHoodieRecordPayload";
 
-  protected static final String HUDI_KAFKA_TOPIC = "hoodie.deltastreamer.source.kafka.topic";
+  protected static final String HUDI_KAFKA_TOPIC = "hoodie.streamer.source.kafka.topic";
   protected static final String COMMIT_METADATA_KEYPREFIX_OPT_KEY = "hoodie.datasource.write.commitmeta.key.prefix";
   protected static final String DELTASTREAMER_CHECKPOINT_KEY = "deltastreamer.checkpoint.key";
   protected static final String INITIAL_CHECKPOINT_STRING = "initialCheckPointString";
@@ -200,27 +219,23 @@ public class HudiEngine {
       throw new FeatureStoreException("No commit information was found for this feature group");
     }
   }
-
-  public void registerTemporaryTable(SparkSession sparkSession, FeatureGroupAlias featureGroupAlias,
-                                     Map<String, String> readOptions) {
-
-  }
-
+  
   private FeatureGroupCommit getLastCommitMetadata(SparkSession sparkSession, String basePath)
       throws IOException, FeatureStoreException, ParseException {
     FileSystem hopsfsConf = FileSystem.get(sparkSession.sparkContext().hadoopConfiguration());
     HoodieTimeline commitTimeline = HoodieDataSourceHelpers.allCompletedCommitsCompactions(hopsfsConf, basePath);
     Option<HoodieInstant> lastInstant = commitTimeline.lastInstant();
     if (lastInstant.isPresent()) {
-      fgCommitMetadata.setCommitDateString(lastInstant.get().getTimestamp());
+      fgCommitMetadata.setCommitDateString(lastInstant.get().getCompletionTime());
       fgCommitMetadata.setCommitTime(
-          FeatureGroupUtils.getTimeStampFromDateString(lastInstant.get().getTimestamp()));
+          FeatureGroupUtils.getTimeStampFromDateString(lastInstant.get().getCompletionTime()));
       fgCommitMetadata.setLastActiveCommitTime(
-          FeatureGroupUtils.getTimeStampFromDateString(commitTimeline.firstInstant().get().getTimestamp())
+          FeatureGroupUtils.getTimeStampFromDateString(commitTimeline.firstInstant().get().getCompletionTime())
       );
 
       byte[] commitsToReturn = commitTimeline.getInstantDetails(lastInstant.get()).get();
-      HoodieCommitMetadata commitMetadata = HoodieCommitMetadata.fromBytes(commitsToReturn, HoodieCommitMetadata.class);
+      HoodieCommitMetadata commitMetadata = new CommitMetadataSerDeV2().deserialize(lastInstant.get(),
+          new ByteArrayInputStream(commitsToReturn), () -> false, HoodieCommitMetadata.class);
       fgCommitMetadata.setRowsUpdated(commitMetadata.fetchTotalUpdateRecordsWritten());
       fgCommitMetadata.setRowsInserted(commitMetadata.fetchTotalInsertRecordsWritten());
       fgCommitMetadata.setRowsDeleted(commitMetadata.getTotalRecordsDeleted());
@@ -229,22 +244,28 @@ public class HudiEngine {
       return null;
     }
   }
+  
+  private String getPrimaryColumns(FeatureGroupBase featureGroup) {
+    String primaryColumns = utils.getPrimaryColumns(featureGroup).mkString(",");
+    if (!Strings.isNullOrEmpty(featureGroup.getEventTime())) {
+      primaryColumns = primaryColumns + "," + featureGroup.getEventTime();
+    }
+    return primaryColumns;
+  }
 
   private Map<String, String> setupHudiWriteOpts(FeatureGroupBase featureGroup, HudiOperationType operation,
                                                  Map<String, String> writeOptions)
       throws FeatureStoreException {
     Map<String, String> hudiArgs = new HashMap<String, String>();
 
+    hudiArgs.put(HUDI_TABLE_TYPE, HUDI_COPY_ON_WRITE);
     hudiArgs.put(HUDI_TABLE_STORAGE_TYPE, HUDI_COPY_ON_WRITE);
 
     hudiArgs.put(HUDI_KEY_GENERATOR_OPT_KEY, HUDI_COMPLEX_KEY_GENERATOR_OPT_VAL);
-
-    // primary keys
-    String primaryColumns = utils.getPrimaryColumns(featureGroup).mkString(",");
-    if (!Strings.isNullOrEmpty(featureGroup.getEventTime())) {
-      primaryColumns = primaryColumns + "," + featureGroup.getEventTime();
-    }
-    hudiArgs.put(HUDI_RECORD_KEY, primaryColumns);
+    hudiArgs.put(HUDI_TABLE_KEY_GENERATOR_CLASS, HUDI_COMPLEX_KEY_GENERATOR_OPT_VAL);
+    
+    hudiArgs.put(HUDI_WRITE_RECORD_KEY, getPrimaryColumns(featureGroup));
+    hudiArgs.put(HUDI_TABLE_RECORD_KEY_FIELD, getPrimaryColumns(featureGroup));
 
     // table name
     String tableName = utils.getFgName(featureGroup);
@@ -253,11 +274,14 @@ public class HudiEngine {
     // partition keys
     Seq<String> partitionColumns = utils.getPartitionColumns(featureGroup);
     if (!partitionColumns.isEmpty()) {
-      hudiArgs.put(HUDI_PARTITION_FIELD, partitionColumns.mkString(":SIMPLE,") + ":SIMPLE");
+      String partitionPath = partitionColumns.mkString(":SIMPLE,") + ":SIMPLE";
+      hudiArgs.put(HUDI_TABLE_PARTITION_KEY_FIELDS, partitionPath);
+      hudiArgs.put(HUDI_PARTITION_FIELD, partitionPath);
       hudiArgs.put(HUDI_HIVE_SYNC_PARTITION_FIELDS, partitionColumns.mkString(","));
       hudiArgs.put(HIVE_PARTITION_EXTRACTOR_CLASS_OPT_KEY, DEFAULT_HIVE_PARTITION_EXTRACTOR_CLASS_OPT_VAL);
     } else {
       hudiArgs.put(HUDI_PARTITION_FIELD, "");
+      hudiArgs.put(HUDI_TABLE_PARTITION_KEY_FIELDS, "");
       hudiArgs.put(HIVE_PARTITION_EXTRACTOR_CLASS_OPT_KEY, HIVE_NON_PARTITION_EXTRACTOR_CLASS_OPT_VAL);
     }
 
@@ -265,7 +289,10 @@ public class HudiEngine {
     String precombineKey = features.stream().filter(Feature::getHudiPrecombineKey).findFirst()
         .orElseThrow(() -> new FeatureStoreException("Can't find hudi precombine key")).getName();
 
-    hudiArgs.put(HUDI_PRECOMBINE_FIELD, precombineKey);
+    hudiArgs.put(HUDI_WRITE_PRECOMBINE_FIELD, precombineKey);
+    hudiArgs.put(HUDI_TABLE_PRECOMBINE_FIELD, precombineKey);
+    hudiArgs.put(HUDI_TABLE_BASE_FILE_FORMAT, "PARQUET");
+    hudiArgs.put(HUDI_TABLE_METADATA_PARTITIONS, "files");
 
     // Hive args
     hudiArgs.put(HUDI_HIVE_SYNC_ENABLE, "true");
@@ -278,6 +305,8 @@ public class HudiEngine {
       hudiArgs.put(HUDI_TABLE_OPERATION, operation.getValue());
     }
     hudiArgs.putAll(HUDI_DEFAULT_PARALLELISM);
+    
+    hudiArgs.put("hoodie.metadata.enable", "true");
 
     // Overwrite with user provided options if any
     if (writeOptions != null && !writeOptions.isEmpty()) {
@@ -317,10 +346,32 @@ public class HudiEngine {
 
   private void createEmptyTable(SparkSession sparkSession, StreamFeatureGroup streamFeatureGroup)
       throws IOException, FeatureStoreException {
-    Configuration configuration = sparkSession.sparkContext().hadoopConfiguration();
     Properties properties = new Properties();
     properties.putAll(setupHudiWriteOpts(streamFeatureGroup, null, null));
-    HoodieTableMetaClient.initTableAndGetMetaClient(configuration, streamFeatureGroup.getLocation(), properties);
+    properties.setProperty(HoodieTableConfig.NAME.key(), utils.getFgName(streamFeatureGroup));
+    LOG.log(Level.INFO, "Creating empty table with properties: " + properties);
+    Configuration configuration = sparkSession.sparkContext().hadoopConfiguration();
+    HoodieTableMetaClient metaClient = HoodieTableMetaClient.newTableBuilder()
+        .fromProperties(properties)
+        .setTableType(HUDI_COPY_ON_WRITE)
+        .setTableName(utils.getFgName(streamFeatureGroup))
+        .initTable(HadoopFSUtils.getStorageConfWithCopy(configuration), streamFeatureGroup.getLocation());
+    
+    //create metadata
+    HoodieWriteConfig hudiWriteConfig = HoodieWriteConfig.newBuilder()
+        .withProperties(properties)
+        .withPath(streamFeatureGroup.getLocation())
+        .forTable(utils.getFgName(streamFeatureGroup))
+        .build();
+    
+    HoodieWriteConfig hoodieWriteConfig = HoodieMetadataWriteUtils.createMetadataWriteConfig(hudiWriteConfig,
+        HoodieFailedWritesCleaningPolicy.EAGER);
+    
+    HoodieTableMetaClient.newTableBuilder()
+        .fromProperties(hoodieWriteConfig.getProps())
+        .setTableName(hoodieWriteConfig.getTableName())
+        .setTableType(hoodieWriteConfig.getTableType())
+        .initTable(HadoopFSUtils.getStorageConfWithCopy(configuration), hoodieWriteConfig.getBasePath());
   }
 
   public void reconcileHudiSchema(SparkSession sparkSession,
@@ -373,7 +424,6 @@ public class HudiEngine {
 
   public void streamToHoodieTable(SparkSession sparkSession, StreamFeatureGroup streamFeatureGroup,
                                   Map<String, String> writeOptions) throws Exception {
-
     Map<String, String> hudiWriteOpts = setupHudiWriteOpts(streamFeatureGroup, HudiOperationType.UPSERT,
         writeOptions);
     hudiWriteOpts.put(PROJECT_ID, String.valueOf(streamFeatureGroup.getFeatureStore().getProjectId()));
@@ -390,7 +440,7 @@ public class HudiEngine {
     hudiWriteOpts.put(FEATURE_GROUP_COMPLEX_FEATURES,
         new JSONArray(streamFeatureGroup.getComplexFeatures()).toString());
     hudiWriteOpts.put(DELTA_SOURCE_ORDERING_FIELD_OPT_KEY,
-        hudiWriteOpts.get(HUDI_PRECOMBINE_FIELD));
+        hudiWriteOpts.get(HUDI_WRITE_PRECOMBINE_FIELD));
 
     // set consumer group id
     hudiWriteOpts.put(ConsumerConfig.GROUP_ID_CONFIG, String.valueOf(streamFeatureGroup.getId()));
@@ -409,6 +459,9 @@ public class HudiEngine {
       // set "kafka.auto.offset.reset": "earliest"
       hudiWriteOpts.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
     }
+    
+    // Testing...
+    hudiWriteOpts.put("hoodie.streamer.source.kafka.append.offsets", "true");
 
     deltaStreamerConfig.streamToHoodieTable(hudiWriteOpts, sparkSession);
     FeatureGroupCommit fgCommit = getLastCommitMetadata(sparkSession, streamFeatureGroup.getLocation());

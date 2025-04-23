@@ -28,8 +28,8 @@
         <lombok.plugin.version>1.18.20.0</lombok.plugin.version>
         <fasterxml.jackson.databind.version>2.10.0</fasterxml.jackson.databind.version>
         <deequ.version>1.1.0.6-SNAPSHOT</deequ.version>
-        <spark.version>3.1.1.3</spark.version>
-        <hudi.version>0.12.3.2</hudi.version>
+        <spark.version>3.5.5</spark.version>
+        <hudi.version>1.0.2</hudi.version>
         <awssdk.version>2.10.40</awssdk.version>
         <scala.version>2.12.10</scala.version>
         <scala-short.version>2.12</scala-short.version>
@@ -39,9 +39,9 @@
         <junit.version>5.9.1</junit.version>
         <surefire-plugin.version>2.22.0</surefire-plugin.version>
         <mockito.version>4.3.1</mockito.version>
-        <avro.version>1.8.2</avro.version>
+        <avro.version>1.11.4</avro.version>
 
-        <artifact.spark.version>spark3.1</artifact.spark.version>
+        <artifact.spark.version>spark3.5</artifact.spark.version>
 
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <delombok.output>${project.basedir}/delombok</delombok.output>
@@ -294,11 +294,12 @@
         <profile>
             <id>spark-3.5</id>
             <properties>
-                <spark.version>3.5.3</spark.version>
+                <spark.version>3.5.5</spark.version>
                 <deequ.version>2.0.7-spark-3.5</deequ.version>
                 <artifact.spark.version>spark3.5</artifact.spark.version>
                 <fasterxml.jackson.databind.version>2.15.2</fasterxml.jackson.databind.version>
-                <avro.version>1.11.2</avro.version>
+                <avro.version>1.11.4</avro.version>
+                <kafka.version>3.4.1</kafka.version>
             </properties>
         </profile>
     </profiles>
