@@ -161,6 +161,13 @@ class BaseDataFrameTest:
                 feature_group_created, modified_df, feature_group_created.features
             )
 
+    def test_fg_features_string_length_exceeded(self, df, feature_group_data):
+        modified_df = self._modify_row(df, 0, string_col="a" * 301)
+        with pytest.raises(ValueError, match="String length exceeded"):
+            DataFrameValidator().validate_schema(
+                feature_group_data, modified_df, feature_group_data.features
+            )
+
     def test_feature_group_created(self, df, feature_group_created, mocker):
         modified_df = self._modify_row(df, 0, string_col="a" * 101)
         with pytest.raises(ValueError, match="String length exceeded"):

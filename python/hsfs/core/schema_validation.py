@@ -89,7 +89,9 @@ class DataFrameValidator:
         )
 
         # Handle errors
-        if is_pk_null or (is_string_length_exceeded and feature_group.id):
+        if is_pk_null or (
+            is_string_length_exceeded and (feature_group.id or feature_group.features)
+        ):
             self._raise_validation_error(errors)
         elif is_string_length_exceeded:
             # If the feature group is not created and string lengths exceed default, adjust the string columns
