@@ -26,5 +26,6 @@ public enum StorageConnectorType {
   SNOWFLAKE,
   KAFKA,
   GCS,
-  BIGQUERY
+  BIGQUERY,
+  RDS
 }

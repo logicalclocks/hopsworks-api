@@ -308,6 +308,11 @@ public class FeatureStore extends FeatureStoreBase<Query> {
   }
 
   @Override
+  public Object getRdsConnector(String name) throws FeatureStoreException, IOException {
+    throw new UnsupportedOperationException("Not supported for Beam");
+  }
+
+  @Override
   public TrainingDatasetBase getTrainingDataset(@NonNull String name, @NonNull Integer version)
       throws FeatureStoreException, IOException {
     throw new UnsupportedOperationException("Not supported for Beam");
