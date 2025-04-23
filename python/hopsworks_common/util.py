@@ -124,7 +124,7 @@ def validate_embedding_feature_type(embedding_index, schema):
 
 def autofix_feature_name(name: str, warn: bool = False) -> str:
     # replace spaces with underscores and enforce lower case
-    if warn and any(re.finditer("[A-Z]", name)):
+    if warn and contains_uppercase(name):
         warnings.warn(
             "The feature name `{}` contains upper case letters. "
             "Feature names are sanitized to lower case in the feature store.".format(
@@ -132,7 +132,7 @@ def autofix_feature_name(name: str, warn: bool = False) -> str:
             ),
             stacklevel=1,
         )
-    if warn and " " in name:
+    if warn and contains_whitespace(name):
         warnings.warn(
             "The feature name `{}` contains spaces. "
             "Feature names are sanitized to use underscore '_' in the feature store.".format(
@@ -141,6 +141,14 @@ def autofix_feature_name(name: str, warn: bool = False) -> str:
             stacklevel=1,
         )
     return name.lower().replace(" ", "_")
+
+
+def contains_uppercase(name: str) -> bool:
+    return any(re.finditer("[A-Z]", name))
+
+
+def contains_whitespace(name: str) -> bool:
+    return " " in name
 
 
 def feature_group_name(
