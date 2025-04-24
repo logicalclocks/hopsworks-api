@@ -109,7 +109,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         if (
             feature_group.online_enabled
             and not feature_group.embedding_index
-            and validation_options.get("online_schema_validation", False)
+            and validation_options.get("online_schema_validation", True)
         ):
             # validate df schema
             dataframe_features = DataFrameValidator().validate_schema(
@@ -192,7 +192,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         if (
             feature_group.online_enabled
             and not feature_group.embedding_index
-            and validation_options.get("online_schema_validation", False)
+            and validation_options.get("online_schema_validation", True)
         ):
             # validate df schema
             dataframe_features = DataFrameValidator().validate_schema(
