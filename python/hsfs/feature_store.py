@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import datetime
+from datetime import timedelta
 import warnings
 from typing import Any, Dict, List, Optional, TypeVar, Union
 
@@ -559,6 +560,8 @@ class FeatureStore:
                 Dict[str, Any],
             ]
         ] = None,
+        ttl: Optional[Union[int, float, timedelta]] = None,
+        ttl_enabled: Optional[bool] = None,
     ) -> feature_group.FeatureGroup:
         """Create a feature group metadata object.
 
@@ -587,7 +590,8 @@ class FeatureStore:
                     online_enabled=True,
                     event_time='date',
                     transformation_functions=transformation_functions,
-                    online_config={'table_space': 'ts_1', 'online_comments': ['NDB_TABLE=READ_BACKUP=1']}
+                    online_config={'table_space': 'ts_1', 'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
+                    ttl=timedelta(days=7)  # features will be deleted after 7 days
                 )
             ```
 
@@ -645,7 +649,6 @@ class FeatureStore:
                 !!! note "Event time data type restriction"
                     The supported data types for the event time column are: `timestamp`, `date` and `bigint`.
 
-
             stream: Optionally, Define whether the feature group should support real time stream writing capabilities.
                 Stream enabled Feature Groups have unified single API for writing streaming features transparently
                 to both online and offline store.
@@ -672,6 +675,11 @@ class FeatureStore:
                 the data for the external feature group
             data_source: The data source specifying the location of the data. Overrides the path and query arguments when specified.
 
+            ttl: Optional time-to-live duration for features in this group. Can be specified as:
+                - An integer or float representing seconds
+                - A timedelta object
+                Features older than the TTL will be automatically removed. Defaults to None (no TTL).
+            ttl_enabled: Optionally, enable TTL for this feature group. Defaults to True if ttl is set.
         # Returns
             `FeatureGroup`. The feature group metadata object.
         """
@@ -703,6 +711,9 @@ class FeatureStore:
             offline_backfill_every_hr=offline_backfill_every_hr,
             storage_connector=storage_connector,
             data_source=data_source,
+            data_source=data_source.DataSource(path=path),
+            ttl=ttl,
+            ttl_enabled=ttl_enabled,
         )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -748,6 +759,8 @@ class FeatureStore:
                 Dict[str, Any],
             ]
         ] = None,
+        ttl: Optional[Union[int, float, timedelta]] = None,
+        ttl_enabled: Optional[bool] = None,
     ) -> Union[
         feature_group.FeatureGroup,
         feature_group.ExternalFeatureGroup,
@@ -768,7 +781,8 @@ class FeatureStore:
                     online_enabled=True,
                     event_time="timestamp",
                     transformation_functions=transformation_functions,
-                    online_config={'table_space': 'ts_1', 'online_comments': ['NDB_TABLE=READ_BACKUP=1']}
+                    online_config={'table_space': 'ts_1', 'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
+                    ttl=timedelta(days=30),
                     )
             ```
 
@@ -827,7 +841,6 @@ class FeatureStore:
                 !!! note "Event time data type restriction"
                     The supported data types for the event time column are: `timestamp`, `date` and `bigint`.
 
-
             stream: Optionally, Define whether the feature group should support real time stream writing capabilities.
                 Stream enabled Feature Groups have unified single API for writing streaming features transparently
                 to both online and offline store.
@@ -851,6 +864,11 @@ class FeatureStore:
                 the data for the external feature group
             data_source: The data source specifying the location of the data. Overrides the path and query arguments when specified.
 
+            ttl: Optional time-to-live duration for features in this group. Can be specified as:
+                - An integer or float representing seconds
+                - A timedelta object
+                Features older than the TTL will be automatically removed. Defaults to None (no TTL).
+            ttl_enabled: Optionally, enable TTL for this feature group. Defaults to True if ttl is set.
         # Returns
             `FeatureGroup`. The feature group metadata object.
         """
@@ -884,6 +902,9 @@ class FeatureStore:
                 offline_backfill_every_hr=offline_backfill_every_hr,
                 storage_connector=storage_connector,
                 data_source=data_source,
+                data_source=data_source.DataSource(path=path),
+                ttl=ttl,
+                ttl_enabled=ttl_enabled,
             )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -918,6 +939,8 @@ class FeatureStore:
                 Dict[str, Any],
             ]
         ] = None,
+        ttl: Optional[Union[int, float, timedelta]] = None,
+        ttl_enabled: Optional[bool] = None,
     ) -> feature_group.ExternalFeatureGroup:
         """Create an external feature group metadata object.
 
@@ -985,6 +1008,11 @@ class FeatureStore:
 
 
 
+            ttl: Optionally, set the time-to-live (TTL) for the feature group.
+                The feature group will be deleted after the specified time period.
+                Defaults to `None`.
+            ttl_enabled: Optionally, enable TTL for the feature group.
+                Defaults to `True` if ttl is set.
 
         # Returns
             `ExternalFeatureGroup`. The external feature group metadata object.
@@ -1009,6 +1037,9 @@ class FeatureStore:
             topic_name=topic_name,
             notification_topic_name=notification_topic_name,
             data_source=data_source,
+            data_source=data_source.DataSource(query=query, path=path),
+            ttl=ttl,
+            ttl_enabled=ttl_enabled,
         )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -1051,6 +1082,8 @@ class FeatureStore:
                 Dict[str, Any],
             ]
         ] = None,
+        ttl: Optional[Union[int, float, timedelta]] = None,
+        ttl_enabled: Optional[bool] = None,
     ) -> feature_group.ExternalFeatureGroup:
         """Create an external feature group metadata object.
 
@@ -1066,7 +1099,8 @@ class FeatureStore:
                                 query=query,
                                 storage_connector=connector,
                                 primary_key=['ss_store_sk'],
-                                event_time='sale_date'
+                                event_time='sale_date',
+                                ttl=timedelta(days=30),
                                 )
             ```
 
@@ -1088,7 +1122,8 @@ class FeatureStore:
                     primary_key=['ss_store_sk'],
                     event_time='sale_date',
                     online_enabled=True,
-                    online_config={'table_space': 'ts_1', 'online_comments': ['NDB_TABLE=READ_BACKUP=1']}
+                    online_config={'table_space': 'ts_1', 'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
+                    ttl=timedelta(days=30),
                     )
         external_fg.save()
 
@@ -1156,6 +1191,11 @@ class FeatureStore:
                 are inserted or updated on the online feature store. If left undefined no notifications are sent.
             online_config: Optionally, define configuration which is used to configure online table.
             data_source: The data source specifying the location of the data. Overrides the path and query arguments when specified.
+            ttl: Optionally, set the time-to-live (TTL) for the feature group.
+                The feature group will be deleted after the specified time period.
+                Defaults to `None`.
+            ttl_enabled: Optionally, enable TTL for the feature group.
+                Defaults to `True` if ttl is set.
 
         # Returns
             `ExternalFeatureGroup`. The external feature group metadata object.
@@ -1183,6 +1223,9 @@ class FeatureStore:
             notification_topic_name=notification_topic_name,
             online_config=online_config,
             data_source=data_source,
+            data_source=data_source.DataSource(query=query, path=path),
+            ttl=ttl,
+            ttl_enabled=ttl_enabled,
         )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -1224,7 +1267,7 @@ class FeatureStore:
                                 description="Physical shop sales features",
                                 primary_key=['ss_store_sk'],
                                 event_time='sale_date',
-                                dataframe=spine_df
+                                dataframe=spine_df,
                                 )
             ```
 
