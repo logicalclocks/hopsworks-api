@@ -100,7 +100,7 @@ if HAS_POLARS:
         "double": pl.Float64,
     }
 
-    _polars_online_dtype_mapping = {
+    polars_online_dtype_mapping = {
         "bigint": pl.Int64,
         "int": pl.Int32,
         "smallint": pl.Int16,
@@ -118,8 +118,8 @@ if HAS_PANDAS:
         "int": pd.Int32Dtype(),
         "smallint": pd.Int16Dtype(),
         "tinyint": pd.Int8Dtype(),
-        "float": np.dtype("float32"),
-        "double": np.dtype("float64"),
+        "float": pd.Float32Dtype(),
+        "double": pd.Float64Dtype(),
     }
 
     pandas_online_dtype_mapping = {
@@ -127,8 +127,8 @@ if HAS_PANDAS:
         "int": pd.Int32Dtype(),
         "smallint": pd.Int16Dtype(),
         "tinyint": pd.Int8Dtype(),
-        "float": np.dtype("float32"),
-        "double": np.dtype("float64"),
+        "float": pd.Float32Dtype(),
+        "double": pd.Float64Dtype(),
     }
 
 
@@ -215,7 +215,7 @@ def cast_pandas_column_to_offline_type(
     ):
         return feature_column.apply(
             lambda x: (ast.literal_eval(x) if isinstance(x, str) else x)
-            if (x is not None and x != "")
+            if (x is not None and not pd.isnull(x) and x != "")
             else None
         )
     elif offline_type == "string":

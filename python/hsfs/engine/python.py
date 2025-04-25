@@ -1880,7 +1880,7 @@ class Engine:
             request_parameters_not_columns = [
                 col
                 for col in td_request_parameters
-                if col not in logging_feature_group_features
+                if col not in logging_feature_group_features and col in features.columns
             ]
             if request_parameters_not_columns:
                 features.drop(request_parameters_not_columns, axis=1, inplace=True)
@@ -1927,7 +1927,7 @@ class Engine:
             )
             # Set missing columns to None
             for col in missing_logging_features:
-                features[col] = None
+                features[col] = pd.NA
 
         for f in fg.features:
             features[f.name] = cast_column_to_offline_type(features[f.name], f.type)
