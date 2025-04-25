@@ -523,3 +523,16 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_group_id=feature_group.id,
             )
         )
+
+    def update_ttl(self, feature_group, ttl, enabled):
+        """Updates the TTL configuration of a feature group."""
+        copy_feature_group = fg.FeatureGroup.from_response_json(feature_group.to_dict())
+        
+        if ttl is not None:
+            copy_feature_group.ttl = ttl
+        if enabled is not None:
+            copy_feature_group.ttl_enabled = enabled
+        
+        self._feature_group_api.update_metadata(
+            feature_group, copy_feature_group, "updateMetadata"
+        )
