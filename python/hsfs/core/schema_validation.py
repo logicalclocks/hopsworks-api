@@ -1,6 +1,7 @@
 import logging
 import re
 
+import pandas as pd
 from hopsworks_common.core.constants import HAS_POLARS
 
 
@@ -13,8 +14,6 @@ class DataFrameValidator:
     @staticmethod
     def get_validator(df):
         """method to get the appropriate implementation of validator for the DataFrame type"""
-        import pandas as pd
-
         if isinstance(df, pd.DataFrame):
             return PandasValidator()
 
@@ -147,6 +146,12 @@ class DataFrameValidator:
 
 
 class PandasValidator(DataFrameValidator):
+    @staticmethod
+    def get_string_columns(df):
+        return [
+            col for col in df.columns if pd.api.types.is_string_dtype(df[col].dropna())
+        ]
+
     # Pandas df specific validator
     def _validate_df_specifics(self, feature_group, df):
         errors = {}
@@ -161,7 +166,8 @@ class PandasValidator(DataFrameValidator):
                 is_pk_null = True
 
         # Check string lengths
-        for col in df.select_dtypes(include=["object", "string"]).columns:
+        string_columns = self.get_string_columns(df)
+        for col in string_columns:
             currentmax = df[col].str.len().max()
             col_max_len = (
                 self.get_online_varchar_length(
@@ -198,7 +204,7 @@ class PolarsValidator(DataFrameValidator):
                 is_pk_null = True
 
         # Check string lengths
-        for col in df.select(pl.col(pl.Utf8)).columns:
+        for col in df.select(pl.col(pl.String)).columns:
             currentmax = df[col].str.len_chars().max()
             col_max_len = (
                 self.get_online_varchar_length(

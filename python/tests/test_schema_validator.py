@@ -258,6 +258,26 @@ class TestPandasDataframe(BaseDataFrameTest):
         validator = DataFrameValidator.get_validator(df)
         assert isinstance(validator, PandasValidator)
 
+    def test_string_column_detection(self):
+        df = pd.DataFrame(
+            {
+                "pk": [1, 2, 3, 4, 5],
+                "obj": [[1, 2], ["a", "b"], {"key": "value"}, None, [5, 6]],
+                "string1": pd.Series(
+                    ["hello", "world", "python", None, "test"], dtype="object"
+                ),
+                "string2": pd.Series(
+                    ["dasd", "dfsadsfa", "dsadwasd", None, "tedfdsfdgst"],
+                    dtype="string",
+                ),
+                "mixed": ["hello", 2.0, pd.Timestamp.now(), None, pd.Timestamp.now()],
+            }
+        )
+        # act
+        string_cols = PandasValidator.get_string_columns(df)
+        # validate that only 'val' is detected as a string column
+        assert ["string1", "string2"] == string_cols
+
 
 @pytest.mark.skipif(not HAS_POLARS, reason="polars not installed")
 class TestPolarsDataframe(BaseDataFrameTest):
