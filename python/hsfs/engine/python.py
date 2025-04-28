@@ -985,9 +985,19 @@ class Engine:
             ]
 
             if not event_time_feature:
-                query_obj.append_feature(
-                    query_obj._left_feature_group.__getattr__(event_time)
+                # Event time feature not in query manually adding event_time of root feature group.
+                # Using fully qualified name of the event time feature to avoid ambiguity.
+
+                event_time_feature = query_obj._left_feature_group.__getattr__(
+                    event_time
                 )
+                event_time_feature.use_fully_qualified_name = True
+
+                query_obj.append_feature(event_time_feature)
+                event_time = event_time_feature._get_fully_qualified_feature_name(
+                    feature_group=query_obj._left_feature_group
+                )
+
                 result_dfs = self._time_series_split(
                     query_obj.read(
                         read_options=read_option, dataframe_type=dataframe_type
