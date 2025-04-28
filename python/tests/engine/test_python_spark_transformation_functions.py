@@ -610,6 +610,72 @@ class TestPythonSparkTransformationFunctions:
             td, spark_df, expected_spark_df, transformation_functions
         )
 
+    def test_apply_builtin_label_encoder(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.core.statistics_engine.StatisticsEngine._save_statistics")
+        spark_engine = spark.Engine()
+
+        schema = StructType(
+            [
+                StructField("col_0", IntegerType(), True),
+                StructField("col_1", StringType(), True),
+                StructField("col_2", BooleanType(), True),
+            ]
+        )
+        df = pd.DataFrame(
+            data={
+                "col_0": [1, 2, 3],
+                "col_1": ["test_1", "test_2", "test_3"],
+                "col_2": [True, False, True],
+            }
+        )
+        spark_df = spark_engine._spark_session.createDataFrame(df, schema=schema)
+
+        expected_schema = StructType(
+            [
+                StructField("col_0", IntegerType(), True),
+                StructField("col_2", BooleanType(), True),
+                StructField("label_encoder_col_1", IntegerType(), True),
+            ]
+        )
+        expected_df = pd.DataFrame(
+            data={
+                "col_0": [1, 2, 3],
+                "col_2": [True, False, True],
+                "label_encoder_col_1": [0, 1, 0],
+            }
+        )
+        expected_spark_df = spark_engine._spark_session.createDataFrame(
+            expected_df, schema=expected_schema
+        )
+
+        # Arrange
+        from hsfs.builtin_transformations import label_encoder
+
+        td = self._create_training_dataset()
+
+        transformation_functions = [
+            transformation_function.TransformationFunction(
+                hopsworks_udf=label_encoder("col_1"),
+                featurestore_id=99,
+                transformation_type=TransformationType.MODEL_DEPENDENT,
+            )
+        ]
+
+        extended_statistics = {"unique_values": ["test_1", "test_2"]}
+        transformation_functions[0].transformation_statistics = [
+            FeatureDescriptiveStatistics(
+                feature_name="col_0", extended_statistics=extended_statistics
+            )
+        ]
+
+        # Assert
+        self._validate_on_python_engine(td, df, expected_df, transformation_functions)
+        self._validate_on_spark_engine(
+            td, spark_df, expected_spark_df, transformation_functions
+        )
+
     def test_apply_plus_one_int_python(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")

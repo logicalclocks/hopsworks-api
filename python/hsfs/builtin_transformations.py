@@ -45,7 +45,9 @@ def robust_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Serie
 
 @udf(int, drop=["feature"], mode="pandas")
 def label_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
-    unique_data = sorted([value for value in statistics.feature.unique_values])
+    unique_data = sorted(
+        [value for value in statistics.feature.unique_values if not pd.isna(value)]
+    )
     value_to_index = {value: index for index, value in enumerate(unique_data)}
     # Unknown categories not present in training dataset are encoded as -1.
     return pd.Series(
