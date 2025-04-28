@@ -91,19 +91,6 @@ def is_kserve_installed() -> bool:
     return _kserve_installed
 
 
-_serving_resource_limits = None
-
-
-def set_serving_resource_limits(max_resources):
-    global _serving_resource_limits
-    _serving_resource_limits = max_resources
-
-
-def get_serving_resource_limits():
-    global _serving_resource_limits
-    return _serving_resource_limits
-
-
 _serving_num_instances_limits = None
 
 

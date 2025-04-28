@@ -92,9 +92,11 @@
         ],
         "connectionString": "jdbc:hopshive://10.0.2.15:9085/test_project_featurestore;auth=noSasl;ssl=true;twoWay=true;"
       },
-      "query": "Select * from ",
+      "dataSource": {
+        "query": "Select * from ",
+        "path": "test_path"
+      },
       "dataFormat": "HUDI",
-      "path": "test_path",
       "options": [{"name":  "test_name", "value":  "test_value"}]
     },
     "method": "GET",
@@ -205,9 +207,11 @@
           ],
           "connectionString": "jdbc:hopshive://10.0.2.15:9085/test_project_featurestore;auth=noSasl;ssl=true;twoWay=true;"
         },
-        "query": "Select * from ",
+        "dataSource": {
+          "query": "Select * from ",
+          "path": "test_path"
+        },
         "dataFormat": "HUDI",
-        "path": "test_path",
         "options": [{"name":  "test_name", "value":  "test_value"}]
       }
     ],
