@@ -626,7 +626,7 @@ class TestPythonSparkTransformationFunctions:
         df = pd.DataFrame(
             data={
                 "col_0": [1, 2, 3],
-                "col_1": ["test_1", "test_2", "test_3"],
+                "col_1": ["test_1", "test_2", "test_1"],
                 "col_2": [True, False, True],
             }
         )
@@ -636,14 +636,14 @@ class TestPythonSparkTransformationFunctions:
             [
                 StructField("col_0", IntegerType(), True),
                 StructField("col_2", BooleanType(), True),
-                StructField("label_encoder_col_1", IntegerType(), True),
+                StructField("label_encoder_col_1_", IntegerType(), True),
             ]
         )
         expected_df = pd.DataFrame(
             data={
                 "col_0": [1, 2, 3],
                 "col_2": [True, False, True],
-                "label_encoder_col_1": [0, 1, 0],
+                "label_encoder_col_1_": [0, 1, 0],
             }
         )
         expected_spark_df = spark_engine._spark_session.createDataFrame(
@@ -666,7 +666,7 @@ class TestPythonSparkTransformationFunctions:
         extended_statistics = {"unique_values": ["test_1", "test_2"]}
         transformation_functions[0].transformation_statistics = [
             FeatureDescriptiveStatistics(
-                feature_name="col_0", extended_statistics=extended_statistics
+                feature_name="col_1", extended_statistics=extended_statistics
             )
         ]
 
