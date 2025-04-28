@@ -37,14 +37,14 @@ public class BeamEngine extends EngineBase {
   private static BeamEngine INSTANCE = null;
   private FeatureGroupUtils featureGroupUtils = new FeatureGroupUtils();
 
-  public static synchronized BeamEngine getInstance() throws FeatureStoreException {
+  public static synchronized BeamEngine getInstance() {
     if (INSTANCE == null) {
       INSTANCE = new BeamEngine();
     }
     return INSTANCE;
   }
 
-  private BeamEngine() throws FeatureStoreException {
+  private BeamEngine() {
   }
 
   public BeamProducer insertStream(StreamFeatureGroup streamFeatureGroup, Map<String, String> writeOptions)
@@ -87,8 +87,6 @@ public class BeamEngine extends EngineBase {
 
     StorageConnector.KafkaConnector storageConnector =
         storageConnectorApi.getKafkaStorageConnector(featureGroup.getFeatureStore(), external);
-    storageConnector.setSslTruststoreLocation(addFile(storageConnector.getSslTruststoreLocation()));
-    storageConnector.setSslKeystoreLocation(addFile(storageConnector.getSslKeystoreLocation()));
 
     Map<String, String> config = storageConnector.kafkaOptions();
 
