@@ -148,9 +148,24 @@ class DataFrameValidator:
 class PandasValidator(DataFrameValidator):
     @staticmethod
     def get_string_columns(df):
-        return [
-            col for col in df.columns if pd.api.types.is_string_dtype(df[col].dropna())
-        ]
+        if pd.__version__.startswith("2."):
+            # For pandas 2+, use is_string_dtype api
+            return [
+                col
+                for col in df.columns
+                if pd.api.types.is_string_dtype(df[col].dropna())
+            ]
+        else:
+            # For pandas 1.x,  is_string_dtype api is not compatible, so check each row if its a string
+            string_cols = []
+            for col in df.select_dtypes(include=["object", "string"]).columns:
+                # Skip empty columns
+                if df[col].count() == 0:
+                    continue
+                # Check if ALL non-null values are strings
+                if df[col].dropna().map(lambda x: isinstance(x, str)).all():
+                    string_cols.append(col)
+            return string_cols
 
     # Pandas df specific validator
     def _validate_df_specifics(self, feature_group, df):
