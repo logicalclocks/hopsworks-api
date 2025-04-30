@@ -1921,16 +1921,31 @@ class Engine:
                 f"The following columns : `{'`, `'.join(additional_logging_features)}` are additional columns in the logged {'untransformed' if 'untransformed' in fg.name else 'transformed'} dataframe and is not present in the logging feature groups. They will be ignored."
             )
 
+        for f in fg.features:
+            if f.name in features.columns:
+                features[f.name] = cast_column_to_offline_type(features[f.name], f.type)
+
         if missing_logging_features:
             _logger.info(
                 f"The following columns : `{'`, `'.join(missing_logging_features)}` are missing in the logged {'untransformed' if 'untransformed' in fg.name else 'transformed'} dataframe. Setting them to None."
             )
             # Set missing columns to None
             for col in missing_logging_features:
-                features[col] = pd.NA
+                features[col] = None
 
-        for f in fg.features:
-            features[f.name] = cast_column_to_offline_type(features[f.name], f.type)
+        missing_event_time_feature = [
+            feature.name
+            for feature in fg.features
+            if (feature.type == "timestamp" or feature.type == "date")
+            and feature.name in missing_logging_features
+        ]
+
+        # Replace NaT with None for event time feature as pd.NaT is not serializable by fastavro.
+        if missing_event_time_feature:
+            features[missing_event_time_feature] = features[
+                missing_event_time_feature
+            ].replace({pd.NaT: None})
+
         return features[[feat.name for feat in fg.features]]
 
     @staticmethod
