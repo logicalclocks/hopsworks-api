@@ -2043,11 +2043,11 @@ class FeatureGroupBase:
             feature_group_id=self._id,
         )
 
-    def get_alert(self, alert_id: Optional[int] = None):
+    def get_alert(self, alert_id: int):
         """Get an alert for this feature group by ID.
 
         # Arguments
-            alert_id: int, optional. The id of the alert to get. If not specified, all alerts are returned.
+            alert_id: The id of the alert to get.
         # Returns
             `FeatureGroupAlert`: The alert object.
         # Raises
