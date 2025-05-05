@@ -17,7 +17,7 @@
 import logging
 import time
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from hopsworks_common import alert_receiver, alert_route, client
 
@@ -79,7 +79,7 @@ class AlertsEngine:
         return None
 
     def await_route(
-        self, receiver_name: str, match: list[dict], timeout: Optional[float] = 120
+        self, receiver_name: str, match: List[dict], timeout: Optional[float] = 120
     ):
         """
         Waits for a route to be created. This is useful when creating a new route
