@@ -761,10 +761,10 @@ class AlertsApi:
     def create_alert_receiver(
         self,
         name: str,
-        email_configs: list[alert_receiver.EmailConfig] = None,
-        slack_configs: list[alert_receiver.SlackConfig] = None,
-        pagerduty_configs: list[alert_receiver.PagerDutyConfig] = None,
-        webhook_configs: list[alert_receiver.WebhookConfig] = None,
+        email_configs: List[alert_receiver.EmailConfig] = None,
+        slack_configs: List[alert_receiver.SlackConfig] = None,
+        pagerduty_configs: List[alert_receiver.PagerDutyConfig] = None,
+        webhook_configs: List[alert_receiver.WebhookConfig] = None,
     ):
         """
         Create a new alert receiver.
