@@ -113,7 +113,7 @@ class AlertsEngine:
         self._log.info("Route created.")
         return route
 
-    def _get_route(self, name: str, match: list[dict]):
+    def _get_route(self, name: str, match: List[dict]):
         _client = client.get_instance()
         # should only wait for project receivers
         if not name.startswith(f"{_client._project_name}__"):
