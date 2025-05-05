@@ -261,6 +261,8 @@ class Project:
     def get_alert(self, alert_id: int):
         """Get an alert for the project by ID.
 
+        # Arguments
+            alert_id: The ID of the alert.
         # Returns
             `ProjectAlert`: The ProjectAlert object.
         """

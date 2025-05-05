@@ -3495,8 +3495,6 @@ class FeatureView:
     def get_alerts(self):
         """Get all alerts for this feature view.
 
-        # Arguments
-            alert_id: int, optional. The id of the alert to get. If not specified, all alerts are returned.
         # Returns
             List[FeatureViewAlert] or Alert.
         # Raises
@@ -3508,11 +3506,11 @@ class FeatureView:
             feature_view_version=self._version,
         )
 
-    def get_alert(self, alert_id: Optional[int] = None):
+    def get_alert(self, alert_id: int):
         """Get an alert for this feature view by ID.
 
         # Arguments
-            alert_id: int, optional. The id of the alert to get. If not specified, all alerts are returned.
+            alert_id: The id of the alert to get..
         # Returns
             A single FeatureViewAlert object is returned.
         # Raises

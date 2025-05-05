@@ -389,9 +389,11 @@ class Job:
         return self._alerts_api.get_job_alerts(self._name)
 
     @usage.method_logger
-    def get_alert(self, alert_id: Optional[int] = None):
+    def get_alert(self, alert_id: int):
         """Get an alert for the job by ID.
 
+        # Arguments
+            alert_id: ID of the alert
         # Returns
             `JobAlert`: list of JobAlert objects
         # Raises
