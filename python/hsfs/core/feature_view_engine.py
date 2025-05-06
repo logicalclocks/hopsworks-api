@@ -1374,6 +1374,8 @@ class FeatureViewEngine:
                 fg = feature_logging.get_feature_group(transformed)
                 if log is None and logs is None:
                     continue
+                if engine.get_type().startswith("spark"):
+                    fg.stream = False  # Setting stream to directly write to offline logging feature group
                 results.append(
                     fg.insert(
                         self._get_feature_logging_data(
