@@ -138,20 +138,21 @@ class GitApi:
         return self._git_provider_api._get_providers()
 
     @usage.method_logger
-    def get_provider(self, provider: str) -> Optional[git_provider.GitProvider]:
+    def get_provider(self, provider: str, host: str = None) -> Optional[git_provider.GitProvider]:
         """Get the configured Git provider
 
         # Arguments
             provider: Name of git provider. Valid values are "GitHub", "GitLab" and "BitBucket".
+            host: Optional host for the git provider e.g. github.com for GitHub, gitlab.com for GitLab, bitbucket.org for BitBucket
         # Returns
             `GitProvider`: The git provider or `None` if it does not exist.
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        return self._git_provider_api._get_provider(provider)
+        return self._git_provider_api._get_provider(provider, host)
 
     @usage.method_logger
-    def set_provider(self, provider: str, username: str, token: str):
+    def set_provider(self, provider: str, username: str, token: str, host: str):
         """Configure a Git provider
 
         ```python
@@ -169,10 +170,11 @@ class GitApi:
             provider: Name of git provider. Valid values are "GitHub", "GitLab" and "BitBucket".
             username: Username for the git provider service
             token: Token to set for the git provider service
+            host: host for the git provider e.g. github.com for GitHub, gitlab.com for GitLab, bitbucket.org for BitBucket
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        self._git_provider_api._set_provider(provider, username, token)
+        self._git_provider_api._set_provider(provider, username, token, host)
 
     @usage.method_logger
     def get_repo(self, name: str, path: str = None) -> Optional[git_repo.GitRepo]:

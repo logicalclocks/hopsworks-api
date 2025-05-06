@@ -60,6 +60,11 @@ class GitProvider:
         """Name of the provider, can be GitHub, GitLab or BitBucket"""
         return self._git_provider
 
+    @property
+    def host(self):
+        """Host of the provider, can be for example github.com for GitHub, gitlab.com for GitLab or bitbucket.org for BitBucket"""
+        return self._host
+
     @usage.method_logger
     def delete(self):
         """Remove the git provider configuration.
@@ -67,7 +72,7 @@ class GitProvider:
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        self._git_provider_api._delete_provider(self.git_provider)
+        self._git_provider_api._delete_provider(self.git_provider, self.host)
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
