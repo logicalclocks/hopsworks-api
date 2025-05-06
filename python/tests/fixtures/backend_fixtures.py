@@ -24,6 +24,8 @@ import pytest
 FIXTURES_DIR = os.path.dirname(os.path.abspath(__file__))
 
 FIXTURES = [
+    "alert_receiver",
+    "alert_route",
     "execution",
     "expectation_suite",
     "external_feature_group",
