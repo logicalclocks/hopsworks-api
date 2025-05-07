@@ -15,9 +15,9 @@
 #
 from __future__ import annotations
 
+import datetime
 from unittest.mock import call
 
-import datetime
 import hopsworks_common
 import numpy
 import pandas as pd
