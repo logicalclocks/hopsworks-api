@@ -651,7 +651,7 @@ class Engine:
         dataframe: Union[RDD, DataFrame],
     ):
         """
-        Deserializes 'value' column from binary using avro schema and unpacks it into columns.
+        Deserializes 'value' column from binary using avro schema.
         """
         decoded_dataframe = dataframe.withColumn(
             "value", from_avro("value", feature_group._get_encoded_avro_schema())

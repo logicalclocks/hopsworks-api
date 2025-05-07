@@ -326,9 +326,11 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
     # deserialize dataframe so that it can be properly saved
     deserialized_df = engine.get_instance()._deserialize_from_avro(entity, filtered_df)
 
-    # Keep only the latest record per id
+    # de-duplicate records
+    # timestamp cannot be relied on to order the records in case of duplicates, if they are produced together they would have the same timestamp.
+    # Instead use offset to order the records, they are strictly increasing within a partition and since we use primary keys for generating Kafka message keys duplicates are guaranteed to be in the same partition.
     window = Window.partitionBy([f"value.{key}" for key in entity.primary_key]) \
-                .orderBy(col("timestamp").desc())
+                .orderBy(col("offset").desc())
     deduped_df = deserialized_df.withColumn("row_num", row_number().over(window)) \
                 .filter("row_num = 1") \
                 .drop("row_num")
