@@ -658,18 +658,16 @@ class Engine:
         )
 
         """Decodes all complex type features from binary using their avro type as schema."""
-        for field in json.loads(feature_group.avro_schema)["fields"]:
-            name = field["name"]
-            full_field = f"value.{name}"
-
-            if name in feature_group.get_complex_features():
-                decoded_dataframe = decoded_dataframe.withColumn(
-                    full_field, from_avro(col(full_field), feature_group._get_feature_avro_schema(name))
-                )
-            else:
-                decoded_dataframe = decoded_dataframe.withColumn(full_field, col(full_field))
-
-        return decoded_dataframe
+        return decoded_dataframe.select(
+            [
+                from_avro(
+                    field_name, feature_group._get_feature_avro_schema(field_name.removeprefix("value."))
+                ).alias(field_name)
+                if field_name.startswith("value.") and field_name.removeprefix("value.") in feature_group.get_complex_features()
+                else field_name
+                for field_name in decoded_dataframe.columns
+            ]
+        )
 
     def get_training_data(
         self,
