@@ -1,6 +1,7 @@
 import logging
 import re
 
+import pandas as pd
 from hopsworks_common.core.constants import HAS_POLARS
 
 
@@ -13,8 +14,6 @@ class DataFrameValidator:
     @staticmethod
     def get_validator(df):
         """method to get the appropriate implementation of validator for the DataFrame type"""
-        import pandas as pd
-
         if isinstance(df, pd.DataFrame):
             return PandasValidator()
 
@@ -147,6 +146,27 @@ class DataFrameValidator:
 
 
 class PandasValidator(DataFrameValidator):
+    @staticmethod
+    def get_string_columns(df):
+        if pd.__version__.startswith("2."):
+            # For pandas 2+, use is_string_dtype api
+            return [
+                col
+                for col in df.columns
+                if pd.api.types.is_string_dtype(df[col].dropna())
+            ]
+        else:
+            # For pandas 1.x,  is_string_dtype api is not compatible, so check each row if its a string
+            string_cols = []
+            for col in df.select_dtypes(include=["object", "string"]).columns:
+                # Skip empty columns
+                if df[col].count() == 0:
+                    continue
+                # Check if ALL non-null values are strings
+                if df[col].dropna().map(lambda x: isinstance(x, str)).all():
+                    string_cols.append(col)
+            return string_cols
+
     # Pandas df specific validator
     def _validate_df_specifics(self, feature_group, df):
         errors = {}
@@ -161,7 +181,8 @@ class PandasValidator(DataFrameValidator):
                 is_pk_null = True
 
         # Check string lengths
-        for col in df.select_dtypes(include=["object", "string"]).columns:
+        string_columns = self.get_string_columns(df)
+        for col in string_columns:
             currentmax = df[col].str.len().max()
             col_max_len = (
                 self.get_online_varchar_length(
@@ -198,7 +219,7 @@ class PolarsValidator(DataFrameValidator):
                 is_pk_null = True
 
         # Check string lengths
-        for col in df.select(pl.col(pl.Utf8)).columns:
+        for col in df.select(pl.col(pl.String)).columns:
             currentmax = df[col].str.len_chars().max()
             col_max_len = (
                 self.get_online_varchar_length(
