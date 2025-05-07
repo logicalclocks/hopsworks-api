@@ -13,7 +13,8 @@ import fsspec.implementations.arrow as pfs
 hopsfs = pfs.HadoopFileSystem("default", user=os.environ["HADOOP_USER_NAME"])
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructField, StructType, _parse_datatype_string
-from pyspark.sql.functions import max, expr
+from pyspark.sql.functions import col, max, expr, row_number
+from pyspark.sql.window import Window
 
 import hopsworks
 
@@ -325,9 +326,19 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
     # deserialize dataframe so that it can be properly saved
     deserialized_df = engine.get_instance()._deserialize_from_avro(entity, filtered_df)
 
+    # Keep only the latest record per id
+    window = Window.partitionBy([f"value.{key}" for key in entity.primary_key]) \
+                .orderBy(col("timestamp").desc())
+    deduped_df = deserialized_df.withColumn("row_num", row_number().over(window)) \
+                .filter("row_num = 1") \
+                .drop("row_num")
+
+    # get only the feture values (remove kafka metadata)
+    deduped_df = deduped_df.select("value.*")
+
     # insert data
     entity.stream = False # to make sure we dont write to kafka
-    entity.insert(deserialized_df, storage="offline")
+    entity.insert(deduped_df, storage="offline")
 
     # update offsets
     df_offsets = (df if limit > filtered_df.count() else filtered_df).groupBy('partition').agg(max('offset').alias('offset')).collect()

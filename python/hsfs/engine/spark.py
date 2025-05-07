@@ -653,21 +653,23 @@ class Engine:
         """
         Deserializes 'value' column from binary using avro schema and unpacks it into columns.
         """
-        decoded_dataframe = dataframe.select(
-            from_avro("value", feature_group._get_encoded_avro_schema()).alias("value")
-        ).select(col("value.*"))
+        decoded_dataframe = dataframe.withColumn(
+            "value", from_avro("value", feature_group._get_encoded_avro_schema())
+        )
 
         """Decodes all complex type features from binary using their avro type as schema."""
-        return decoded_dataframe.select(
-            [
-                field["name"]
-                if field["name"] not in feature_group.get_complex_features()
-                else from_avro(
-                    field["name"], feature_group._get_feature_avro_schema(field["name"])
-                ).alias(field["name"])
-                for field in json.loads(feature_group.avro_schema)["fields"]
-            ]
-        )
+        for field in json.loads(feature_group.avro_schema)["fields"]:
+            name = field["name"]
+            full_field = f"value.{name}"
+
+            if name in feature_group.get_complex_features():
+                decoded_dataframe = decoded_dataframe.withColumn(
+                    full_field, from_avro(col(full_field), feature_group._get_feature_avro_schema(name))
+                )
+            else:
+                decoded_dataframe = decoded_dataframe.withColumn(full_field, col(full_field))
+
+        return decoded_dataframe
 
     def get_training_data(
         self,
