@@ -650,24 +650,36 @@ class Engine:
         feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
         dataframe: Union[RDD, DataFrame],
     ):
+        data_column = "value"
         """
-        Deserializes 'value' column from binary using avro schema.
+        Step 1: Deserializes 'value' column from binary using avro schema.
         """
         decoded_dataframe = dataframe.withColumn(
-            "value", from_avro("value", feature_group._get_encoded_avro_schema())
+            data_column, from_avro(data_column, feature_group._get_encoded_avro_schema())
         )
 
-        """Decodes all complex type features from binary using their avro type as schema."""
-        return decoded_dataframe.select(
-            [
-                from_avro(
-                    field_name, feature_group._get_feature_avro_schema(field_name.removeprefix("value."))
+        """
+        Step 2: Replace complex fields in the 'value' column
+        """
+        new_value_fields = []
+        for field in json.loads(feature_group.avro_schema)["fields"]:
+            field_name = field["name"]
+            if field_name in feature_group.get_complex_features():
+                # re-apply from_avro on the nested field
+                decoded_field = from_avro(
+                    col(f"{data_column}.{field_name}"),
+                    feature_group._get_feature_avro_schema(field_name)
                 ).alias(field_name)
-                if field_name.startswith("value.") and field_name.removeprefix("value.") in feature_group.get_complex_features()
-                else field_name
-                for field_name in decoded_dataframe.columns
-            ]
-        )
+            else:
+                decoded_field = col(f"{data_column}.{field_name}").alias(field_name)
+            new_value_fields.append(decoded_field)
+
+        """
+        Step 3: Rebuild the "value" struct
+        """
+        updated_value_col = struct(*new_value_fields).alias(data_column)
+
+        return decoded_dataframe.select(*[col(c) for c in decoded_dataframe.columns if c != data_column], updated_value_col)
 
     def get_training_data(
         self,
