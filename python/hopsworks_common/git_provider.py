@@ -27,6 +27,7 @@ class GitProvider:
         username=None,
         token=None,
         git_provider=None,
+        host=None,
         url=None,
         name=None,
         type=None,
@@ -38,7 +39,7 @@ class GitProvider:
     ):
         self._username = username
         self._git_provider = git_provider
-
+        self._host = host
         self._git_provider_api = git_provider_api.GitProviderApi()
 
     @classmethod
@@ -81,4 +82,4 @@ class GitProvider:
         return self.json()
 
     def __repr__(self):
-        return f"GitProvider({self._username!r}, {self._git_provider!r})"
+        return f"GitProvider({self._username!r}, {self._host!r}, {self._git_provider!r})"
