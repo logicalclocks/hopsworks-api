@@ -3491,8 +3491,6 @@ class TestSpark:
 
     def test_read_stream_kafka_message_format_avro(self, mocker):
         # Arrange
-        mocker.patch("pyspark.context.SparkContext")
-
         spark_engine = spark.Engine()
 
         mock_stream = mocker.Mock()
@@ -3504,7 +3502,7 @@ class TestSpark:
             "offset": ["test_offset", "test_offset"],
             "timestamp": ["test_timestamp", "test_timestamp"],
             "timestampType": ["test_timestampType", "test_timestampType"],
-            "value": ['{"name": "value1"}', '{"name": "value2"}'],
+            "value": [b"21212121", b"12121212"],
             "x": [True, False],
         }
         df = pd.DataFrame(data=d)
@@ -3522,25 +3520,20 @@ class TestSpark:
                             }"""
 
         # Act
-        with pytest.raises(
-            TypeError
-        ) as e_info:  # todo look into this (from_avro has to be mocked)
-            spark_engine._read_stream_kafka(
-                stream=mock_stream,
-                message_format="avro",
-                schema=schema_string,
-                include_metadata=True,
-            )
+        result = spark_engine._read_stream_kafka(
+            stream=mock_stream,
+            message_format="avro",
+            schema=schema_string,
+            include_metadata=False,
+        )
 
         # Assert
-        assert str(e_info.value) == "'JavaPackage' object is not callable"
-        # assert result.schema == expected_spark_df.schema
-        # assert result.collect() == expected_spark_df.collect()
+        assert len(result.columns) == 1
+        assert "name" in result.columns
+        assert result.schema["name"].dataType == StringType()
 
     def test_read_stream_kafka_message_format_avro_include_metadata(self, mocker):
         # Arrange
-        mocker.patch("pyspark.context.SparkContext")
-
         spark_engine = spark.Engine()
 
         mock_stream = mocker.Mock()
@@ -3551,7 +3544,7 @@ class TestSpark:
             "offset": ["test_offset", "test_offset"],
             "timestamp": ["test_timestamp", "test_timestamp"],
             "timestampType": ["test_timestampType", "test_timestampType"],
-            "value": ['{"name": "value1"}', '{"name": "value2"}'],
+            "value": [b"21212121", b"12121212"],
             "x": [True, False],
         }
         df = pd.DataFrame(data=d)
@@ -3569,20 +3562,17 @@ class TestSpark:
                             }"""
 
         # Act
-        with pytest.raises(
-            TypeError
-        ) as e_info:  # todo look into this (from_avro has to be mocked)
-            spark_engine._read_stream_kafka(
-                stream=mock_stream,
-                message_format="avro",
-                schema=schema_string,
-                include_metadata=True,
-            )
+        result = spark_engine._read_stream_kafka(
+            stream=mock_stream,
+            message_format="avro",
+            schema=schema_string,
+            include_metadata=True,
+        )
 
         # Assert
-        assert str(e_info.value) == "'JavaPackage' object is not callable"
-        # assert result.schema == expected_spark_df.schema
-        # assert result.collect() == expected_spark_df.collect()
+        assert len(result.columns) == 7
+        assert "name" in result.columns
+        assert result.schema["name"].dataType == StringType()
 
     def test_add_file(self, mocker):
         # Arrange
