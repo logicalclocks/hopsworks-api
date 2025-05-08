@@ -56,7 +56,13 @@ class GitProviderApi:
             if p.git_provider.lower() == provider.lower():
                 if host is None or p.host == host:
                     matching.append(p)
-        return matching
+        if len(matching) == 1:
+            return matching[0]
+        elif len(matching) > 1:
+            raise GitException(
+                "Multiple git providers are configured. Set the host keyword to specify the provider to use"
+            )
+        return None
 
     def _set_provider(self, provider: str, username: str, token: str, host: str):
         _client = client.get_instance()
