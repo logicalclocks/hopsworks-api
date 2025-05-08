@@ -15,14 +15,14 @@
 #
 from __future__ import annotations
 
+import datetime
+import json
 from unittest.mock import call
 
-import datetime
 import hopsworks_common
 import numpy
 import pandas as pd
 import pytest
-import json
 from hsfs import (
     expectation_suite,
     feature,
