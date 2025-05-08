@@ -17,10 +17,12 @@ from __future__ import annotations
 
 from unittest.mock import call
 
+import datetime
 import hopsworks_common
 import numpy
 import pandas as pd
 import pytest
+import json
 from hsfs import (
     expectation_suite,
     feature,
@@ -1651,7 +1653,6 @@ class TestSpark:
             == '{"fields":[{"metadata":{},"name":"key","nullable":false,"type":"binary"},{"metadata":{},"name":"value","nullable":false,"type":"binary"}],"type":"struct"}'
         )
 
-    """ Need spark to run these tests properly
     def test_deserialize_from_avro(self, mocker):
         # Arrange
         spark_engine = spark.Engine()
@@ -1692,7 +1693,24 @@ class TestSpark:
         )
 
         # Assert
-        assert deserialized_df.schema.json() == '{"fields":[{"metadata":{},"name":"account_id","nullable":true,"type":"string"},{"metadata":{},"name":"last_played_games","nullable":true,"type":{"containsNull":true,"elementType":"string","type":"array"}},{"metadata":{},"name":"event_time","nullable":true,"type":"timestamp"}],"type":"struct"}'
+        expected_schema = json.loads('''{
+            "fields": [
+                {"metadata": {}, "name": "key", "nullable": true, "type": "binary"},
+                {"metadata": {}, "name": "value", "nullable": false, "type": {
+                    "fields": [
+                        {"metadata": {}, "name": "account_id", "nullable": true, "type": "string"},
+                        {"metadata": {}, "name": "last_played_games", "nullable": true, "type": {
+                            "containsNull": true, "elementType": "string", "type": "array"}},
+                        {"metadata": {}, "name": "event_time", "nullable": true, "type": "timestamp"}
+                    ],
+                    "type": "struct"
+                }}
+            ],
+            "type": "struct"
+        }''')
+
+        actual_schema = json.loads(deserialized_df.schema.json())
+        assert actual_schema == expected_schema
 
     def test_serialize_deserialize_avro(self, mocker):
         # Arrange
@@ -1742,9 +1760,8 @@ class TestSpark:
 
         # Assert
         assert serialized_df.schema.json() == '{"fields":[{"metadata":{},"name":"key","nullable":false,"type":"binary"},{"metadata":{},"name":"value","nullable":false,"type":"binary"}],"type":"struct"}'
-        assert df.schema == deserialized_df.schema
-        assert df.collect() == deserialized_df.collect()
-    """
+        assert df.schema == deserialized_df.schema["value"].dataType
+        assert df.collect() == deserialized_df.select("value.*").collect()
 
     def test_get_training_data(self, mocker):
         # Arrange

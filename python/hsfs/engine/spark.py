@@ -606,6 +606,7 @@ class Engine:
         self,
         feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
         dataframe: Union[RDD, DataFrame],
+        serialized_column: str = "value",
     ):
         """Encodes all complex type features to binary using their avro type as schema."""
         encoded_dataframe = dataframe.select(
@@ -641,7 +642,7 @@ class Engine:
                         ]
                     ),
                     feature_group._get_encoded_avro_schema(),
-                ).alias("value"),
+                ).alias(serialized_column),
             ]
         )
 
@@ -649,13 +650,13 @@ class Engine:
         self,
         feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
         dataframe: Union[RDD, DataFrame],
+        serialized_column: str = "value",
     ):
-        data_column = "value"
         """
         Step 1: Deserializes 'value' column from binary using avro schema.
         """
         decoded_dataframe = dataframe.withColumn(
-            data_column, from_avro(data_column, feature_group._get_encoded_avro_schema())
+            serialized_column, from_avro(serialized_column, feature_group._get_encoded_avro_schema())
         )
 
         """
@@ -667,19 +668,19 @@ class Engine:
             if field_name in feature_group.get_complex_features():
                 # re-apply from_avro on the nested field
                 decoded_field = from_avro(
-                    col(f"{data_column}.{field_name}"),
+                    col(f"{serialized_column}.{field_name}"),
                     feature_group._get_feature_avro_schema(field_name)
                 ).alias(field_name)
             else:
-                decoded_field = col(f"{data_column}.{field_name}").alias(field_name)
+                decoded_field = col(f"{serialized_column}.{field_name}").alias(field_name)
             new_value_fields.append(decoded_field)
 
         """
         Step 3: Rebuild the "value" struct
         """
-        updated_value_col = struct(*new_value_fields).alias(data_column)
+        updated_value_col = struct(*new_value_fields).alias(serialized_column)
 
-        return decoded_dataframe.select(*[col(c) for c in decoded_dataframe.columns if c != data_column], updated_value_col)
+        return decoded_dataframe.select(*[col(c) for c in decoded_dataframe.columns if c != serialized_column], updated_value_col)
 
     def get_training_data(
         self,
