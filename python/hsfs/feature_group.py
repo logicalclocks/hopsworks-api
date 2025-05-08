@@ -1900,7 +1900,9 @@ class FeatureGroupBase:
 
     @primary_key.setter
     def primary_key(self, new_primary_key: List[str]) -> None:
-        self._primary_key = [util.autofix_feature_name(pk) for pk in new_primary_key]
+        self._primary_key = [
+            util.autofix_feature_name(pk, warn=True) for pk in new_primary_key
+        ]
 
     def get_statistics(
         self,
@@ -2038,7 +2040,7 @@ class FeatureGroupBase:
             self._event_time = None
             return
         elif isinstance(feature_name, str):
-            self._event_time = feature_name
+            self._event_time = util.autofix_feature_name(feature_name, warn=True)
             return
         elif isinstance(feature_name, list) and len(feature_name) == 1:
             if isinstance(feature_name[0], str):
@@ -2048,7 +2050,7 @@ class FeatureGroupBase:
                     DeprecationWarning,
                     stacklevel=2,
                 )
-                self._event_time = feature_name[0]
+                self._event_time = util.autofix_feature_name(feature_name[0], warn=True)
                 return
 
         raise ValueError(
@@ -2404,7 +2406,7 @@ class FeatureGroup(FeatureGroupBase):
             self.foreign_key = foreign_key
             self.partition_key = partition_key
             self._hudi_precombine_key = (
-                util.autofix_feature_name(hudi_precombine_key)
+                util.autofix_feature_name(hudi_precombine_key, warn=True)
                 if hudi_precombine_key is not None
                 and (
                     self._time_travel_format is None
@@ -2786,6 +2788,7 @@ class FeatureGroup(FeatureGroupBase):
                 * key `run_validation` boolean value, set to `False` to skip validation temporarily on ingestion.
                 * key `save_report` boolean value, set to `False` to skip upload of the validation report to Hopsworks.
                 * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
+                * key `online_schema_validation` boolean value, set to `True` to validate the schema for online ingestion.
             wait: Wait for job and online ingestion to finish before returning, defaults to `False`.
                 Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
 
@@ -2994,6 +2997,7 @@ class FeatureGroup(FeatureGroupBase):
                 * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
                 * key `fetch_expectation_suite` a boolean value, by default `True`, to control whether the expectation
                    suite of the feature group should be fetched before every insert.
+                * key `online_schema_validation` boolean value, set to `True` to validate the schema for online ingestion.
             wait: Wait for job and online ingestion to finish before returning, defaults to `False`.
                 Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
@@ -3843,12 +3847,14 @@ class FeatureGroup(FeatureGroupBase):
     @partition_key.setter
     def partition_key(self, new_partition_key: List[str]) -> None:
         self._partition_key = [
-            util.autofix_feature_name(pk) for pk in new_partition_key
+            util.autofix_feature_name(pk, warn=True) for pk in new_partition_key
         ]
 
     @hudi_precombine_key.setter
     def hudi_precombine_key(self, hudi_precombine_key: str) -> None:
-        self._hudi_precombine_key = util.autofix_feature_name(hudi_precombine_key)
+        self._hudi_precombine_key = util.autofix_feature_name(
+            hudi_precombine_key, warn=True
+        )
 
     @stream.setter
     def stream(self, stream: bool) -> None:
