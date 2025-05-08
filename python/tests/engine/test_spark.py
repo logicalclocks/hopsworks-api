@@ -1719,8 +1719,8 @@ class TestSpark:
         now = datetime.datetime.now()
 
         fg_data = []
-        fg_data.append(("ekarson", ["GRAVITY RUSH 2", "KING'S QUEST"], pd.Timestamp(now.timestamp())))
-        fg_data.append(("ratmilkdrinker", ["NBA 2K", "CALL OF DUTY"], pd.Timestamp(now.timestamp())))
+        fg_data.append(("ekarson", ["GRAVITY RUSH 2", "KING'S QUEST"], pd.Timestamp(now)))
+        fg_data.append(("ratmilkdrinker", ["NBA 2K", "CALL OF DUTY"], pd.Timestamp(now)))
         pandas_df = pd.DataFrame(fg_data, columns =["account_id", "last_played_games", "event_time"])
 
         df = spark_engine._spark_session.createDataFrame(pandas_df)
