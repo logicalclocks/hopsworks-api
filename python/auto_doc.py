@@ -555,6 +555,12 @@ PAGES = {
     "api/similarity_function_type_api.md": {
         "similarity_function_type": ["hsfs.embedding.SimilarityFunctionType"],
     },
+    "api/search.md": {
+        "search_api_handle": ["hopsworks.project.Project.get_search_api"],
+        "search_methods": keras_autodoc.get_methods(
+            "hopsworks.core.search_api.SearchApi", exclude=EXCLUDE_METHODS
+        ),
+    },
     # Model registry
     "model-registry/model_registry_api.md": {
         "mr_get": ["hopsworks.project.Project.get_model_registry"],
