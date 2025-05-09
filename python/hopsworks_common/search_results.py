@@ -1146,7 +1146,7 @@ class FeatureSearchResult:
 class TrainingdatasetsSearchResult:
     def __init__(self, result: FeaturestoreSearchResultBase):
         self._trainingdatasets = result.trainingdatasets
-        self._trainingdatasetsfrom = result.trainingdatasets_from
+        self._trainingdatasets_from = result.trainingdatasets_from
         self._trainingdatasets_total = result.trainingdatasets_total
 
     @property
