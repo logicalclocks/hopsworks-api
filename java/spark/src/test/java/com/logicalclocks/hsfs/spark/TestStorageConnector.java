@@ -378,12 +378,13 @@ public class TestStorageConnector {
 
     @Test
     public void testGcsConnectorCredentials() throws IOException, FeatureStoreException {
+      // Arrange
+      HopsworksClient hopsworksClient = Mockito.mock(HopsworksClient.class);
+      hopsworksClient.setInstance(new HopsworksClient(Mockito.mock(HopsworksHttpClient.class), "host"));
+
       // Act
       SparkEngine.getInstance().setupConnectorHadoopConf(gcsConnector);
       SparkContext sc = SparkEngine.getInstance().getSparkSession().sparkContext();
-
-      HopsworksClient hopsworksClient = Mockito.mock(HopsworksClient.class);
-      hopsworksClient.setInstance(new HopsworksClient(Mockito.mock(HopsworksHttpClient.class), "host"));
 
       // Assert
       Assertions.assertEquals(
