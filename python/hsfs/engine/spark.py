@@ -1712,12 +1712,9 @@ class Engine:
 
         logging_feature_group_features = [feat.name for feat in fg.features]
         if features is not None:
-            df = self.convert_to_default_dataframe(
-                features, [f.name for f in fg.features]
-            )
+            df = self.convert_to_default_dataframe(features, td_features)
         else:
             df = None
-
         if logging_data is not None:
             logging_data = self.convert_to_default_dataframe(logging_data)
 
@@ -1738,6 +1735,7 @@ class Engine:
                 missing_columns = [
                     col for col in logging_data.columns if col not in df.columns
                 ]
+                missing_columns.append("row_id")
                 df = df.join(logging_data.select(*missing_columns), "row_id")
                 df = df.drop("row_id")
 
@@ -1756,11 +1754,17 @@ class Engine:
                 predictions = predictions.withColumn(
                     "row_id", monotonically_increasing_id()
                 )
-                df = df.join(predictions, "row_id")
+                missing_columns = [
+                    col for col in predictions.columns if col not in df.columns
+                ]
+                missing_columns.append("row_id")
+                df = df.join(predictions.select(*missing_columns), "row_id")
+            for f in td_predictions:
+                df = df.withColumnRenamed(f.name, "predicted_" + f.name)
 
         if td_serving_keys and serving_keys is not None:
             serving_keys = self.convert_to_default_dataframe(
-                serving_keys, column_names=[f.name for f in td_serving_keys]
+                serving_keys, column_names=[f.feature_name for f in td_serving_keys]
             )
             if serving_keys.count() != df.count():
                 raise FeatureStoreException(
@@ -1769,11 +1773,15 @@ class Engine:
             serving_keys = serving_keys.withColumn(
                 "row_id", monotonically_increasing_id()
             )
-            df = df.join(serving_keys, "row_id")
+            missing_columns = [
+                col for col in serving_keys.columns if col not in df.columns
+            ]
+            missing_columns.append("row_id")
+            df = df.join(serving_keys.select(*missing_columns), "row_id")
 
         if td_helper_columns and helper_columns is not None:
             helper_columns = self.convert_to_default_dataframe(
-                helper_columns, column_names=[f.name for f in td_helper_columns]
+                helper_columns, column_names=td_helper_columns
             )
             if helper_columns.count() != df.count():
                 raise FeatureStoreException(
@@ -1782,7 +1790,11 @@ class Engine:
             helper_columns = helper_columns.withColumn(
                 "row_id", monotonically_increasing_id()
             )
-            df = df.join(helper_columns, "row_id")
+            missing_columns = [
+                col for col in helper_columns.columns if col not in df.columns
+            ]
+            missing_columns.append("row_id")
+            df = df.join(helper_columns.select(*missing_columns), "row_id")
 
         if td_event_time and event_time is not None:
             event_time = self.convert_to_default_dataframe(
@@ -1801,7 +1813,11 @@ class Engine:
                 event_time = event_time.withColumn(
                     "row_id", monotonically_increasing_id()
                 )
-                df = df.join(event_time, "row_id")
+                missing_columns = [
+                    col for col in event_time.columns if col not in df.columns
+                ]
+                missing_columns.append("row_id")
+                df = df.join(event_time.select(*missing_columns), "row_id")
 
         if td_request_parameters:
             if request_parameters is not None:
@@ -1841,6 +1857,7 @@ class Engine:
                             for col in td_request_parameters
                             if col not in request_parameters.columns
                         ]
+                        missing_rp_in_df.append("row_id")
                         request_parameters = request_parameters.join(
                             df.select(*missing_rp_in_df), "row_id"
                         )
@@ -1850,7 +1867,10 @@ class Engine:
                                 column_name, lit(None)
                             )
                     request_parameters = request_parameters.withColumn(
-                        "request_parameters", to_json(struct(col("*")))
+                        "request_parameters",
+                        to_json(
+                            struct(*[col(rq_col) for rq_col in td_request_parameters])
+                        ),
                     )
                 request_parameter_columns = [
                     col
@@ -1868,7 +1888,7 @@ class Engine:
         if td_extra_logging_features and extra_logging_features is not None:
             extra_logging_features = self.convert_to_default_dataframe(
                 extra_logging_features,
-                column_names=[f.name for f in td_extra_logging_features],
+                column_names=td_extra_logging_features,
             )
             if extra_logging_features.count() != df.count():
                 raise FeatureStoreException(
@@ -1877,7 +1897,11 @@ class Engine:
             extra_logging_features = extra_logging_features.withColumn(
                 "row_id", monotonically_increasing_id()
             )
-            df = df.join(extra_logging_features, "row_id")
+            missing_columns = [
+                col for col in extra_logging_features.columns if col not in df.columns
+            ]
+            missing_columns.append("row_id")
+            df = df.join(extra_logging_features.select(*missing_columns), "row_id")
 
         uuid_udf = udf(lambda: str(uuid.uuid4()), StringType())
 

@@ -1811,7 +1811,7 @@ class Engine:
 
         if td_helper_columns and helper_columns is not None:
             helper_columns = Engine._convert_feature_log_to_df(
-                helper_columns, [f_name for f_name in td_helper_columns]
+                helper_columns, td_helper_columns
             )
             if len(helper_columns) != len(features):
                 raise FeatureStoreException(

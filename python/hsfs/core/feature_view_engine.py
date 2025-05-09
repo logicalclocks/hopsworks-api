@@ -1439,13 +1439,11 @@ class FeatureViewEngine:
 
         td_serving_keys = (
             [sk for sk in fv.serving_keys if sk.required]
-            if serving_keys is not None and len(serving_keys) > 0
+            if serving_keys is not None
             else None
         )
         td_helper_columns = (
-            fv.inference_helper_columns
-            if helper_columns is not None and len(helper_columns) > 0
-            else None
+            fv.inference_helper_columns if helper_columns is not None else None
         )
         td_request_parameters = fv.request_parameters
         td_event_time = fv.query._left_feature_group.event_time
