@@ -44,7 +44,13 @@ PAGES = {
         "project_create": ["hopsworks.create_project"],
         "project_properties": keras_autodoc.get_properties("hopsworks.project.Project"),
         "project_methods": keras_autodoc.get_methods(
-            "hopsworks.project.Project", exclude=EXCLUDE_METHODS + ["get_jobs_api"]
+            "hopsworks.project.Project", exclude=EXCLUDE_METHODS + ["get_jobs_api", "get_alerts_api"]
+        ),
+    },
+    "api/alerts.md": {
+        "alerts_api_handle": ["hopsworks.project.Project.get_alerts_api"],
+        "alert_methods": keras_autodoc.get_methods(
+            "hopsworks.core.alerts_api.AlertsApi", exclude=EXCLUDE_METHODS
         ),
     },
     "api/jobs.md": {
