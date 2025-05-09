@@ -84,9 +84,10 @@ class SearchApi:
         _from: int = 0,
         size: int = 100,
     ):
-        return search_results.FeaturestoreSearchResult.from_response_json(
+        result = search_results.FeaturestoreSearchResult.from_response_json(
             self._search(search_term, "FEATUREGROUP", _from, size)
-        ).featuregroups
+        )
+        return search_results.FeatureGroupSearchResult(result)
 
     def featuregroup_search_by_tag(
         self,
@@ -94,9 +95,10 @@ class SearchApi:
         _from: int = 0,
         size: int = 1,
     ):
-        return search_results.FeaturestoreSearchResultByTag.from_response_json(
+        result = search_results.FeaturestoreSearchResultByTag.from_response_json(
             self._search(search_term, "FEATUREGROUP", _from, size)
-        ).featuregroups
+        )
+        return search_results.FeatureGroupSearchResult(result)
 
     def featuregroup_search_by_tag_key(
         self,
@@ -104,9 +106,10 @@ class SearchApi:
         _from: int = 0,
         size: int = 1,
     ):
-        return search_results.FeaturestoreSearchResultByTagKey.from_response_json(
+        result = search_results.FeaturestoreSearchResultByTagKey.from_response_json(
             self._search(search_term, "FEATUREGROUP", _from, size)
-        ).featuregroups
+        )
+        return search_results.FeatureGroupSearchResult(result)
 
     def featuregroup_search_by_tag_value(
         self,
@@ -114,9 +117,10 @@ class SearchApi:
         _from: int = 0,
         size: int = 1,
     ):
-        return search_results.FeaturestoreSearchResultByTagValue.from_response_json(
+        result = search_results.FeaturestoreSearchResultByTagValue.from_response_json(
             self._search(search_term, "FEATUREGROUP", _from, size)
-        ).featuregroups
+        )
+        return search_results.FeatureGroupSearchResult(result)
 
     def featuregroup_search_by_keyword(
         self,
@@ -124,9 +128,10 @@ class SearchApi:
         _from: int = 0,
         size: int = 1,
     ):
-        return search_results.FeaturestoreSearchResultByKeyWord.from_response_json(
+        result = search_results.FeaturestoreSearchResultByKeyWord.from_response_json(
             self._search(search_term, "FEATUREGROUP", _from, size)
-        ).featuregroups
+        )
+        return search_results.FeatureGroupSearchResult(result)
 
     # FEATUREVIEW
     def featureview_search(
@@ -135,9 +140,10 @@ class SearchApi:
         _from: int = 0,
         size: int = 100,
     ):
-        return search_results.FeaturestoreSearchResult.from_response_json(
+        result = search_results.FeaturestoreSearchResult.from_response_json(
             self._search(search_term, "FEATUREVIEW", _from, size)
-        ).feature_views
+        )
+        return search_results.FeatureViewSearchResult(result)
 
     def featureview_search_by_tag(
         self,
@@ -145,9 +151,10 @@ class SearchApi:
         _from: int = 0,
         size: int = 1,
     ):
-        return search_results.FeaturestoreSearchResultByTag.from_response_json(
+        result = search_results.FeaturestoreSearchResultByTag.from_response_json(
             self._search(search_term, "FEATUREVIEW", _from, size)
-        ).feature_views
+        )
+        return search_results.FeatureViewSearchResult(result)
 
     def featureview_search_by_tag_key(
         self,
@@ -155,9 +162,10 @@ class SearchApi:
         _from: int = 0,
         size: int = 1,
     ):
-        return search_results.FeaturestoreSearchResultByTagKey.from_response_json(
+        result = search_results.FeaturestoreSearchResultByTagKey.from_response_json(
             self._search(search_term, "FEATUREVIEW", _from, size)
-        ).feature_views
+        )
+        return search_results.FeatureViewSearchResult(result)
 
     def featureview_search_by_tag_value(
         self,
@@ -165,9 +173,10 @@ class SearchApi:
         _from: int = 0,
         size: int = 1,
     ):
-        return search_results.FeaturestoreSearchResultByTagValue.from_response_json(
+        result = search_results.FeaturestoreSearchResultByTagValue.from_response_json(
             self._search(search_term, "FEATUREVIEW", _from, size)
-        ).feature_views
+        )
+        return search_results.FeatureViewSearchResult(result)
 
     def featureview_search_by_keyword(
         self,
@@ -175,9 +184,10 @@ class SearchApi:
         _from: int = 0,
         size: int = 1,
     ):
-        return search_results.FeaturestoreSearchResultByKeyWord.from_response_json(
+        result = search_results.FeaturestoreSearchResultByKeyWord.from_response_json(
             self._search(search_term, "FEATUREVIEW", _from, size)
-        ).feature_views
+        )
+        return search_results.FeatureViewSearchResult(result)
 
     # TRAININGDATASET
     def trainingdataset_search(
@@ -186,9 +196,10 @@ class SearchApi:
         _from: int = 0,
         size: int = 100,
     ):
-        return search_results.FeaturestoreSearchResult.from_response_json(
+        result = search_results.FeaturestoreSearchResult.from_response_json(
             self._search(search_term, "TRAININGDATASET", _from, size)
-        ).trainingdatasets
+        )
+        return search_results.TrainingdatasetsSearchResult(result)
 
     def trainingdataset_search_by_tag(
         self,
@@ -196,9 +207,10 @@ class SearchApi:
         _from: int = 0,
         size: int = 1,
     ):
-        return search_results.FeaturestoreSearchResultByTag.from_response_json(
+        result = search_results.FeaturestoreSearchResultByTag.from_response_json(
             self._search(search_term, "TRAININGDATASET", _from, size)
-        ).trainingdatasets
+        )
+        return search_results.TrainingdatasetsSearchResult(result)
 
     def trainingdataset_search_by_tag_key(
         self,
@@ -206,9 +218,10 @@ class SearchApi:
         _from: int = 0,
         size: int = 1,
     ):
-        return search_results.FeaturestoreSearchResultByTagKey.from_response_json(
+        result = search_results.FeaturestoreSearchResultByTagKey.from_response_json(
             self._search(search_term, "TRAININGDATASET", _from, size)
-        ).trainingdatasets
+        )
+        return search_results.TrainingdatasetsSearchResult(result)
 
     def trainingdataset_search_by_tag_value(
         self,
@@ -216,9 +229,10 @@ class SearchApi:
         _from: int = 0,
         size: int = 1,
     ):
-        return search_results.FeaturestoreSearchResultByTagValue.from_response_json(
+        result = search_results.FeaturestoreSearchResultByTagValue.from_response_json(
             self._search(search_term, "TRAININGDATASET", _from, size)
-        ).trainingdatasets
+        )
+        return search_results.TrainingdatasetsSearchResult(result)
 
     def trainingdataset_search_by_keyword(
         self,
@@ -226,9 +240,10 @@ class SearchApi:
         _from: int = 0,
         size: int = 1,
     ):
-        return search_results.FeaturestoreSearchResultByKeyWord.from_response_json(
+        result = search_results.FeaturestoreSearchResultByKeyWord.from_response_json(
             self._search(search_term, "TRAININGDATASET", _from, size)
-        ).trainingdatasets
+        )
+        return search_results.TrainingdatasetsSearchResult(result)
 
     # FEATURE
     def feature_search(
@@ -237,9 +252,10 @@ class SearchApi:
         _from: int = 0,
         size: int = 100,
     ):
-        return search_results.FeaturestoreSearchResult.from_response_json(
+        result = search_results.FeaturestoreSearchResult.from_response_json(
             self._search(search_term, "FEATURE", _from, size)
-        ).features
+        )
+        return search_results.FeatureSearchResult(result)
 
 
     def _search(self, search_term: str, doc_type: DOC_TYPE_ARG, _from: int, size: int):

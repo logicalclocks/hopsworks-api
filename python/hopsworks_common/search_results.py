@@ -431,6 +431,10 @@ class FeatureGroupResult(FeaturestoreResult):
             self._featurestore_id, self._name, self._version
         )
 
+    def __repr__(self) -> str:
+        return f"FeatureGroupResult(name={self.name}, version={self.version}, description={self.description}, featurestore_id={self.featurestore_id}, created={self.created}, parent_project_id={self.parent_project_id}, parent_project_name={self.parent_project_name}, access_projects={self.access_projects}, highlights={self.highlights}, creator={self.creator})"
+
+
 
 class FeatureViewResult(FeaturestoreResult):
     def __init__(
@@ -467,6 +471,9 @@ class FeatureViewResult(FeaturestoreResult):
     def get_feature_view(self):
         return self._feature_view_api.get_by_name_version(self._name, self._version)
 
+    def __repr__(self) -> str:
+        return f"FeatureViewResult(name={self.name}, version={self.version}, description={self.description}, featurestore_id={self.featurestore_id}, created={self.created}, parent_project_id={self.parent_project_id}, parent_project_name={self.parent_project_name}, access_projects={self.access_projects}, highlights={self.highlights}, creator={self.creator})"
+
 
 class TrainingDatasetResult(FeaturestoreResult):
     def __init__(
@@ -502,6 +509,9 @@ class TrainingDatasetResult(FeaturestoreResult):
 
     def get_training_dataset(self):
         return self._feature_view_api.get_training_datasets(self._name, self._version)
+
+    def __repr__(self) -> str:
+        return f"TrainingDatasetResult(name={self.name}, version={self.version}, description={self.description}, featurestore_id={self.featurestore_id}, created={self.created}, parent_project_id={self.parent_project_id}, parent_project_name={self.parent_project_name}, access_projects={self.access_projects}, highlights={self.highlights}, creator={self.creator})"
 
 
 class FeaturestoreSearchResultBase:
@@ -564,42 +574,42 @@ class FeaturestoreSearchResultBase:
 
     @property
     def featuregroups_from(self) -> Optional[list]:
-        """List of features."""
+        """Results from."""
         return self._featuregroups_from
 
     @property
     def featuregroups_total(self) -> Optional[list]:
-        """List of features."""
+        """Total found."""
         return self._featuregroups_total
 
     @property
     def feature_views_from(self) -> Optional[list]:
-        """List of features."""
+        """Results from."""
         return self._feature_views_from
 
     @property
     def feature_views_total(self) -> Optional[list]:
-        """List of features."""
+        """Total found."""
         return self._feature_views_total
 
     @property
     def trainingdatasets_from(self) -> Optional[list]:
-        """List of features."""
+        """Results from."""
         return self._trainingdatasets_from
 
     @property
     def trainingdatasets_total(self) -> Optional[list]:
-        """List of features."""
+        """Total found."""
         return self._trainingdatasets_total
 
     @property
     def features_from(self) -> Optional[list]:
-        """List of features."""
+        """Results from."""
         return self._features_from
 
     @property
     def features_total(self) -> Optional[list]:
-        """List of features."""
+        """Total found."""
         return self._features_total
 
     def json(self) -> dict:
@@ -1017,3 +1027,155 @@ class FeaturestoreSearchResultByKeyWord(FeaturestoreSearchResultBase):
             features_from,
             features_total,
         )
+
+
+class FeatureGroupSearchResult:
+    def __init__(self, result: FeaturestoreSearchResultBase):
+        self._featuregroups = result.featuregroups
+        self._featuregroups_from = result.featuregroups_from
+        self._featuregroups_total = result.featuregroups_total
+
+    @property
+    def featuregroups(self) -> Optional[list]:
+        """List of feature groups."""
+        return self._featuregroups
+
+    @property
+    def featuregroups_from(self) -> Optional[list]:
+        """Result from."""
+        return self._featuregroups_from
+
+    @property
+    def featuregroups_total(self) -> Optional[list]:
+        """Total feature groups found."""
+        return self._featuregroups_total
+
+    def json(self) -> dict:
+        return json.dumps(self, cls=util.Encoder)
+
+    def to_dict(self) -> dict:
+        return {
+            "featuregroups": [fg.to_dict() for fg in self.featuregroups],
+            "featuregroups_from": self.featuregroups_from,
+            "featuregroups_total": self.featuregroups_total,
+        }
+
+    def __str__(self) -> str:
+        return self.json()
+
+    def __repr__(self) -> str:
+        return f"FeatureGroupSearchResult(featuregroups={self.featuregroups}, featuregroups_from={self.featuregroups_from}, featuregroups_total={self.featuregroups_total})"
+
+
+class FeatureViewSearchResult:
+    def __init__(self, result: FeaturestoreSearchResultBase):
+        self._feature_views = result.feature_views
+        self._feature_views_from = result.feature_views_from
+        self._feature_views_total = result.feature_views_total
+
+    @property
+    def feature_views(self) -> Optional[list]:
+        """List of feature views."""
+        return self._feature_views
+
+    @property
+    def feature_views_from(self) -> Optional[list]:
+        """Result from."""
+        return self._feature_views_from
+
+    @property
+    def feature_views_total(self) -> Optional[list]:
+        """Total feature views found."""
+        return self._feature_views_total
+
+    def json(self) -> dict:
+        return json.dumps(self, cls=util.Encoder)
+
+    def to_dict(self) -> dict:
+        return {
+            "feature_views": [fg.to_dict() for fg in self.feature_views],
+            "feature_views_from": self.feature_views_from,
+            "feature_views_total": self.feature_views_total,
+        }
+
+    def __str__(self) -> str:
+        return self.json()
+
+    def __repr__(self) -> str:
+        return f"FeatureViewSearchResult(feature_views={self.feature_views}, feature_views_from={self.feature_views_from}, feature_views_total={self.feature_views_total})"
+
+
+class FeatureSearchResult:
+    def __init__(self, result: FeaturestoreSearchResultBase):
+        self._features = result.features
+        self._features_from = result.features_from
+        self._features_total = result.features_total
+
+    @property
+    def features(self) -> Optional[list]:
+        """List of featurs."""
+        return self._features
+
+    @property
+    def features_from(self) -> Optional[list]:
+        """Result from."""
+        return self._features_from
+
+    @property
+    def features_total(self) -> Optional[list]:
+        """Total features found."""
+        return self._features_total
+
+    def json(self) -> dict:
+        return json.dumps(self, cls=util.Encoder)
+
+    def to_dict(self) -> dict:
+        return {
+            "features": [fg.to_dict() for fg in self.features],
+            "features_from": self.features_from,
+            "features_total": self.features_total,
+        }
+
+    def __str__(self) -> str:
+        return self.json()
+
+    def __repr__(self) -> str:
+        return f"FeatureSearchResult(features={self.features}, features_from={self.features_from}, features_total={self.features_total})"
+
+
+class TrainingdatasetsSearchResult:
+    def __init__(self, result: FeaturestoreSearchResultBase):
+        self._trainingdatasets = result.trainingdatasets
+        self._trainingdatasetsfrom = result.trainingdatasets_from
+        self._trainingdatasets_total = result.trainingdatasets_total
+
+    @property
+    def trainingdatasets(self) -> Optional[list]:
+        """List of featurs."""
+        return self._trainingdatasets
+
+    @property
+    def trainingdatasets_from(self) -> Optional[list]:
+        """Result from."""
+        return self._trainingdatasets_from
+
+    @property
+    def trainingdatasets_total(self) -> Optional[list]:
+        """Total training datasets found."""
+        return self._trainingdatasets_total
+
+    def json(self) -> dict:
+        return json.dumps(self, cls=util.Encoder)
+
+    def to_dict(self) -> dict:
+        return {
+            "trainingdatasets": [td.to_dict() for td in self.trainingdatasets],
+            "trainingdatasets_from": self.trainingdatasets_from,
+            "trainingdatasets_total": self.trainingdatasets_total,
+        }
+
+    def __str__(self) -> str:
+        return self.json()
+
+    def __repr__(self) -> str:
+        return f"TrainingdatasetsSearchResult(trainingdatasets={self.trainingdatasets}, trainingdatasets_from={self.trainingdatasets_from}, trainingdatasets_total={self.trainingdatasets_total})"
