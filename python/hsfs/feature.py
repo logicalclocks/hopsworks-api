@@ -125,7 +125,7 @@ class Feature:
         # Returns:
             str: The fully qualified feature name.
         """
-        if self._use_fully_qualified_name:
+        if self.use_fully_qualified_name:
             return util.generate_fully_qualified_feature_name(
                 feature_group=feature_group, feature_name=self._name
             )
@@ -133,6 +133,15 @@ class Feature:
             return prefix + self._name
         else:
             return self._name
+
+    @property
+    def use_fully_qualified_name(self) -> bool:
+        """Use fully qualified name for the feature when generating dataframes for training/batch data."""
+        return self._use_fully_qualified_name
+
+    @use_fully_qualified_name.setter
+    def use_fully_qualified_name(self, use_fully_qualified_name: bool) -> None:
+        self._use_fully_qualified_name = use_fully_qualified_name
 
     def json(self) -> str:
         return json.dumps(self, cls=util.Encoder)

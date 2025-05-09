@@ -1888,6 +1888,7 @@ class TestPython:
             id=10,
             event_time="event_time",
             features=[f, f1, f2],
+            featurestore_name="test_fs",
         )
 
         q = query.Query(left_feature_group=fg, left_features=[])
@@ -1947,19 +1948,21 @@ class TestPython:
             test_end=3000000000,
         )
 
+        f = feature.Feature(name="col1", type="str")
+        f1 = feature.Feature(name="col2", type="str")
+        f2 = feature.Feature(name="event_time", type="str")
+
         fg = feature_group.FeatureGroup(
             name="test",
             version=1,
             featurestore_id=99,
             primary_key=[],
             partition_key=[],
+            features=[f, f1, f2],
             id=10,
             event_time="event_time",
+            featurestore_name="test_fs",
         )
-
-        f = feature.Feature(name="col1", type="str")
-        f1 = feature.Feature(name="col2", type="str")
-        f2 = feature.Feature(name="event_time", type="str")
 
         q = query.Query(left_feature_group=fg, left_features=[f, f1, f2])
 
@@ -2019,21 +2022,22 @@ class TestPython:
             test_end=3000000000,
         )
 
+        f = feature.Feature(name="col1", type="str")
+        f1 = feature.Feature(name="col2", type="str")
+        f2 = feature.Feature(
+            name="event_time", type="str", use_fully_qualified_name=True
+        )
+
         fg = feature_group.FeatureGroup(
             name="test",
             version=1,
             featurestore_id=99,
             primary_key=[],
+            features=[f, f1, f2],
             partition_key=[],
             id=10,
             event_time="event_time",
             featurestore_name="test_fs",
-        )
-
-        f = feature.Feature(name="col1", type="str")
-        f1 = feature.Feature(name="col2", type="str")
-        f2 = feature.Feature(
-            name="event_time", type="str", use_fully_qualified_name=True
         )
 
         q = query.Query(left_feature_group=fg, left_features=[f, f1, f2])
