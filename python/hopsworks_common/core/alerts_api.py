@@ -100,7 +100,7 @@ class AlertsApi:
     @usage.method_logger
     def get_alerts(self) -> List[alert.ProjectAlert]:
         """
-        Get all alerts.
+        Get all project alerts.
         ```python
 
         import hopsworks
@@ -113,7 +113,7 @@ class AlertsApi:
 
         ```
         # Returns
-            `Alert`: The a list of alerts.
+            `Alert`: List of alerts.
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -131,7 +131,7 @@ class AlertsApi:
     )
     def get_alert(self, alert_id: int) -> Optional[alert.ProjectAlert]:
         """
-        Get a specific alert by ID.
+        Get a specific project alert by ID.
         ```python
 
         import hopsworks
@@ -140,7 +140,7 @@ class AlertsApi:
 
         alerts_api = project.get_alerts_api()
 
-        alert = alerts_api.get_alerts(alert_id=1)
+        alert = alerts_api.get_alert(alert_id=1)
 
         ```
         # Arguments
@@ -176,7 +176,7 @@ class AlertsApi:
         # Arguments
             job_name: The name of the job.
         # Returns
-            `Alert`: The alert object or a list of alerts.
+            `Alert`: List of alerts.
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -201,14 +201,14 @@ class AlertsApi:
 
         alerts_api = project.get_alerts_api()
 
-        job_alerts = alerts_api.get_job_alerts(job_name="my_job", alert_id=1)
+        job_alerts = alerts_api.get_job_alert(job_name="my_job", alert_id=1)
 
         ```
         # Arguments
             job_name: The name of the job.
             alert_id: The ID of the alert to retrieve.
         # Returns
-            `Alert`: The alert object or a list of alerts.
+            `Alert`: The alert object.
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -250,7 +250,7 @@ class AlertsApi:
             feature_store_id: The ID of the feature store.
             feature_group_id: The ID of the feature group.
         # Returns
-            `Alert`: The alert object or a list of alerts.
+            `Alert`: List of alerts.
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -290,7 +290,7 @@ class AlertsApi:
 
         alerts_api = project.get_alerts_api()
 
-        feature_group_alerts = alerts_api.get_feature_group_alerts(feature_store_id=1, feature_group_id=1, alert_id=1)
+        feature_group_alerts = alerts_api.get_feature_group_alert(feature_store_id=1, feature_group_id=1, alert_id=1)
 
         ```
         # Arguments
@@ -298,7 +298,7 @@ class AlertsApi:
             feature_group_id: The ID of the feature group.
             alert_id: The ID of the alert to retrieve.
         # Returns
-            `Alert`: The alert object or a list of alerts.
+            `Alert`: The alert object.
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -385,7 +385,7 @@ class AlertsApi:
 
         alerts_api = project.get_alerts_api()
 
-        feature_view_alerts = alerts_api.get_feature_view_alerts(feature_store_id=1, feature_view_name="my_feature_view", feature_view_version=1, alert_id=1)
+        feature_view_alerts = alerts_api.get_feature_view_alert(feature_store_id=1, feature_view_name="my_feature_view", feature_view_version=1, alert_id=1)
 
         ```
         # Arguments
@@ -394,7 +394,7 @@ class AlertsApi:
             feature_view_version: The version of the feature view.
             alert_id: The ID of the alert to retrieve.
         # Returns
-            `Alert`: The alert object or a list of alerts.
+            `Alert`: The alert object.
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -709,7 +709,7 @@ class AlertsApi:
 
         ```
         # Returns
-            `AlertReceiver`: List ofhe alert receivers.
+            `AlertReceiver`: List of alert receivers.
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
