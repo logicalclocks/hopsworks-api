@@ -194,11 +194,11 @@ class Engine:
     def register_external_temporary_table(self, external_fg, alias):
         if not isinstance(external_fg, fg_mod.SpineGroup):
             external_dataset = external_fg.storage_connector.read(
-                external_fg.query,
+                external_fg.data_source.query,
                 external_fg.data_format,
                 external_fg.options,
                 external_fg.storage_connector._get_path(
-                    external_fg.path
+                    external_fg.data_source.path
                 ),  # cant rely on location since this method can be used before FG is saved
             )
         else:
@@ -294,9 +294,11 @@ class Engine:
 
         if isinstance(dataframe, DataFrame):
             upper_case_features = [
-                c for c in dataframe.columns if any(re.finditer("[A-Z]", c))
+                c for c in dataframe.columns if util.contains_uppercase(c)
             ]
-            space_features = [c for c in dataframe.columns if " " in c]
+            space_features = [
+                c for c in dataframe.columns if util.contains_whitespace(c)
+            ]
             if len(upper_case_features) > 0:
                 warnings.warn(
                     "The ingested dataframe contains upper case letters in feature names: `{}`. "

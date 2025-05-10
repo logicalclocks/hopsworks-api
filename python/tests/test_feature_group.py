@@ -640,7 +640,7 @@ class TestFeatureGroup:
             overwrite=False,
             operation="upsert",
             storage=None,
-            write_options={"wait_for_job": False, 'wait_for_online_ingestion': False},
+            write_options={"wait_for_job": False, "wait_for_online_ingestion": False},
             validation_options={"save_report": True},
             transformation_context=None,
             transform=True,
@@ -677,7 +677,7 @@ class TestFeatureGroup:
             overwrite=False,
             operation="upsert",
             storage=None,
-            write_options={"wait_for_job": False, 'wait_for_online_ingestion': False},
+            write_options={"wait_for_job": False, "wait_for_online_ingestion": False},
             validation_options={"save_report": False},
             transformation_context=None,
             transform=True,
@@ -694,9 +694,9 @@ class TestExternalFeatureGroup:
 
         # Assert
         assert isinstance(fg.storage_connector, storage_connector.StorageConnector)
-        assert fg.query == "Select * from "
+        assert fg.data_source.query == "Select * from "
         assert fg.data_format == "HUDI"
-        assert fg.path == "test_path"
+        assert fg.data_source.path == "test_path"
         assert fg.options == {"test_name": "test_value"}
         assert fg.name == "external_fg_test"
         assert fg.version == 1
@@ -728,9 +728,9 @@ class TestExternalFeatureGroup:
         assert len(fg_list) == 1
         fg = fg_list[0]
         assert isinstance(fg.storage_connector, storage_connector.StorageConnector)
-        assert fg.query == "Select * from "
+        assert fg.data_source.query == "Select * from "
         assert fg.data_format == "HUDI"
-        assert fg.path == "test_path"
+        assert fg.data_source.path == "test_path"
         assert fg.options == {"test_name": "test_value"}
         assert fg.name == "external_fg_test"
         assert fg.version == 1
@@ -760,9 +760,9 @@ class TestExternalFeatureGroup:
 
         # Assert
         assert isinstance(fg.storage_connector, storage_connector.StorageConnector)
-        assert fg.query is None
+        assert fg.data_source.query is None
         assert fg.data_format is None
-        assert fg.path is None
+        assert fg.data_source.path is None
         assert fg.options is None
         assert fg.name is None
         assert fg.version is None
@@ -987,3 +987,44 @@ class TestExternalFeatureGroup:
 
         # Assert
         engine_instance.assert_called_once()
+
+    def test_upper_case_primary_key_event_time(self, mocker, backend_fixtures, caplog):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type")
+        json = backend_fixtures["feature_store"]["get"]["response"]
+
+        features = [
+            feature.Feature(name="PrimaryKey", type="int"),
+            feature.Feature(name="Event_Time", type="timestamp"),
+            feature.Feature(name="feat", type="int"),
+        ]
+
+        # Act
+        fs = feature_store.FeatureStore.from_response_json(json)
+        with warnings.catch_warnings(record=True) as warning_record:
+            new_fg = fs.create_feature_group(
+                name="fg_name",
+                version=1,
+                description="fg_description",
+                event_time="Event_Time",
+                primary_key=["PrimaryKey"],
+                features=features,
+            )
+
+        assert len(warning_record) == 2
+        assert (
+            "The feature name `Event_Time` contains upper case letters. Feature names are sanitized to lower case in the feature store."
+            == str(warning_record[0].message)
+        )
+        assert (
+            "The feature name `PrimaryKey` contains upper case letters. Feature names are sanitized to lower case in the feature store."
+            == str(warning_record[1].message)
+        )
+
+        # Assert
+        assert new_fg.event_time == "event_time"
+        assert new_fg.primary_key == ["primarykey"]
+        assert new_fg.features[0].name == "primarykey"
+        assert new_fg.features[1].name == "event_time"
+        assert new_fg.features[2].name == "feat"

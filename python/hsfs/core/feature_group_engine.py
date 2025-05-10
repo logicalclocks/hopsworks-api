@@ -22,6 +22,7 @@ from hsfs import feature_group as fg
 from hsfs.client import exceptions
 from hsfs.core import delta_engine, feature_group_base_engine, hudi_engine
 from hsfs.core.deltastreamer_jobconf import DeltaStreamerJobConf
+from hsfs.core.schema_validation import DataFrameValidator
 
 
 class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
@@ -105,6 +106,16 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group.embedding_index, dataframe_features
         )
 
+        if (
+            feature_group.online_enabled
+            and not feature_group.embedding_index
+            and validation_options.get("online_schema_validation", True)
+        ):
+            # validate df schema
+            dataframe_features = DataFrameValidator().validate_schema(
+                feature_group, feature_dataframe, dataframe_features
+            )
+
         self.save_feature_group_metadata(
             feature_group, dataframe_features, write_options
         )
@@ -177,6 +188,16 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         util.validate_embedding_feature_type(
             feature_group.embedding_index, dataframe_features
         )
+
+        if (
+            feature_group.online_enabled
+            and not feature_group.embedding_index
+            and validation_options.get("online_schema_validation", True)
+        ):
+            # validate df schema
+            dataframe_features = DataFrameValidator().validate_schema(
+                feature_group, feature_dataframe, dataframe_features
+            )
 
         if not feature_group._id:
             # only save metadata if feature group does not exist
