@@ -1365,8 +1365,13 @@ class VectorServer:
     ):
         """
         Function that applies both on-demand and model dependent transformation to the input dictonary
+
+        Returns:
+            feature_vector: The untransformed feature vector with untransformed features.
+            encoded_feature_dict: The transformed feature vector with transformed features.
         """
-        encoded_feature_dict = row_dict
+        feature_dict = row_dict
+        encoded_feature_dict = None
 
         if transform or on_demand_features:
             # Check for any missing request parameters
@@ -1375,17 +1380,17 @@ class VectorServer:
             )
 
             # Apply on-demand transformations
-            encoded_feature_dict = self.apply_on_demand_transformations(
+            feature_dict = self.apply_on_demand_transformations(
                 row_dict, request_parameter, transformation_context
             )
 
         if transform:
             # Apply model dependent transformations
             encoded_feature_dict = self.apply_model_dependent_transformations(
-                encoded_feature_dict, transformation_context
+                feature_dict, transformation_context
             )
 
-        return encoded_feature_dict
+        return feature_dict, encoded_feature_dict
 
     def apply_return_value_handlers(
         self, row_dict: Dict[str, Any], client: Literal["rest", "sql"]

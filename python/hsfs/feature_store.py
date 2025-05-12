@@ -1672,6 +1672,7 @@ class FeatureStore:
             List[Union[TransformationFunction, HopsworksUdf]]
         ] = None,
         logging_enabled: Optional[bool] = False,
+        extra_log_columns: Union[feature.Feature, Dict[str, str]] = None,
     ) -> feature_view.FeatureView:
         """Create a feature view metadata object and saved it to hopsworks.
 
@@ -1776,6 +1777,7 @@ class FeatureStore:
             transformation_functions=transformation_functions or {},
             featurestore_name=self._name,
             logging_enabled=logging_enabled,
+            extra_log_columns=extra_log_columns,
         )
         return self._feature_view_engine.save(feat_view)
 
@@ -1791,6 +1793,7 @@ class FeatureStore:
         training_helper_columns: Optional[List[str]] = None,
         transformation_functions: Optional[Dict[str, TransformationFunction]] = None,
         logging_enabled: Optional[bool] = False,
+        extra_log_columns: Union[feature.Feature, Dict[str, str]] = None,
     ) -> feature_view.FeatureView:
         """Get feature view metadata object or create a new one if it doesn't exist. This method doesn't update
         existing feature view metadata object.
@@ -1856,6 +1859,7 @@ class FeatureStore:
                 training_helper_columns=training_helper_columns or [],
                 transformation_functions=transformation_functions or [],
                 logging_enabled=logging_enabled,
+                extra_log_columns=extra_log_columns,
             )
         return fv_object
 

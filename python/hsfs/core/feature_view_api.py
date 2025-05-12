@@ -410,6 +410,7 @@ class FeatureViewApi:
         self,
         feature_view_name: str,
         feature_view_version: int,
+        feature_logging_object: FeatureLogging = None,
     ):
         _client = client.get_instance()
         path_params = self._base_path + [
@@ -418,7 +419,9 @@ class FeatureViewApi:
             feature_view_version,
             self._LOGGING,
         ]
-        _client._send_request("PUT", path_params, {})
+        headers = {"content-type": "application/json"}
+        data = feature_logging_object.json() if feature_logging_object else {}
+        _client._send_request("PUT", path_params, {}, headers=headers, data=data)
 
     def pause_feature_logging(
         self,

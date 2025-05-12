@@ -85,6 +85,8 @@ try:
 except ImportError:
     pass
 
+import logging
+
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import (
@@ -114,6 +116,8 @@ if HAS_GREAT_EXPECTATIONS:
 
 if HAS_AVRO:
     import avro
+
+_logger = logging.getLogger(__name__)
 
 
 class Engine:
@@ -257,11 +261,11 @@ class Engine:
             "Dataframe type `{}` not supported on this platform.".format(dataframe_type)
         )
 
-    def convert_to_default_dataframe(self, dataframe):
+    def convert_to_default_dataframe(self, dataframe, column_names=None):
         if isinstance(dataframe, list):
-            dataframe = self.convert_list_to_spark_dataframe(dataframe)
+            dataframe = self.convert_list_to_spark_dataframe(dataframe, column_names)
         elif HAS_NUMPY and isinstance(dataframe, np.ndarray):
-            dataframe = self.convert_numpy_to_spark_dataframe(dataframe)
+            dataframe = self.convert_numpy_to_spark_dataframe(dataframe, column_names)
         elif HAS_PANDAS and isinstance(dataframe, pd.DataFrame):
             dataframe = self.convert_pandas_to_spark_dataframe(dataframe)
         elif isinstance(dataframe, RDD):
@@ -324,7 +328,7 @@ class Engine:
             dt = dt.replace(tzinfo=utc)
         return dt.astimezone(utc).replace(tzinfo=local_tz)
 
-    def convert_list_to_spark_dataframe(self, dataframe):
+    def convert_list_to_spark_dataframe(self, dataframe, column_names=None):
         if HAS_NUMPY:
             return self.convert_numpy_to_spark_dataframe(np.array(dataframe))
         try:
@@ -355,10 +359,14 @@ class Engine:
                 for d in dataframe[i]
             ]
         return self._spark_session.createDataFrame(
-            dataframe, ["col_" + str(n) for n in range(num_cols)]
+            dataframe,
+            [
+                "col_" + str(n) if column_names is None else column_names[n]
+                for n in range(num_cols)
+            ],
         )
 
-    def convert_numpy_to_spark_dataframe(self, dataframe):
+    def convert_numpy_to_spark_dataframe(self, dataframe, column_names=None):
         if dataframe.ndim != 2:
             raise TypeError(
                 "Cannot convert numpy array that do not have two dimensions to a dataframe. "
@@ -368,7 +376,7 @@ class Engine:
         if HAS_PANDAS:
             dataframe_dict = {}
             for n_col in range(num_cols):
-                c = "col_" + str(n_col)
+                c = "col_" + str(n_col) if column_names is None else column_names[n_col]
                 dataframe_dict[c] = dataframe[:, n_col]
             return self.convert_pandas_to_spark_dataframe(pd.DataFrame(dataframe_dict))
         # convert timestamps to current timezone
@@ -380,7 +388,11 @@ class Engine:
                     [self.utc_disguised_as_local(d.item()) for d in dataframe[:, n_col]]
                 )
         return self._spark_session.createDataFrame(
-            dataframe.tolist(), ["col_" + str(n) for n in range(num_cols)]
+            dataframe.tolist(),
+            [
+                "col_" + str(n) if column_names is None else column_names[n]
+                for n in range(num_cols)
+            ],
         )
 
     def convert_pandas_to_spark_dataframe(self, dataframe):
@@ -1670,34 +1682,284 @@ class Engine:
     def is_connector_type_supported(type):
         return True
 
+    @staticmethod
+    def extract_logging_features(logging_features, feature_logging, fv):
+        fg = feature_logging.get_feature_group(transformed=False)
+        training_dataset_schema = fv.get_training_dataset_schema()
+        td_predictions = [
+            feature for feature in training_dataset_schema if feature.label
+        ]
+
+        untransformed_feature_names = [feature.name for feature in fg.features]
+        untransformed_logging_feature_names = [
+            col
+            for col in logging_features.columns
+            if col in untransformed_feature_names
+        ]
+        untransformed_logging_features = logging_features.select(
+            *[untransformed_logging_feature_names]
+        )
+
+        transformed_feature_names = [feature.name for feature in fg.features]
+        transformed_logging_feature_names = [
+            col for col in logging_features.columns if col in transformed_feature_names
+        ]
+        transformed_logging_features = logging_features.select(
+            *[transformed_logging_feature_names]
+        )
+
+        td_prediction_names = [feature.name for feature in td_predictions]
+        td_prediction_logging_feature_names = [
+            col for col in logging_features.columns if col in td_prediction_names
+        ]
+        logging_predictions = logging_features[td_prediction_logging_feature_names]
+
+        return (
+            untransformed_logging_features,
+            transformed_logging_features,
+            logging_predictions,
+        )
+
     def get_feature_logging_df(
         self,
+        logging_data,
         features: Union[
             pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
         ],
         fg: fg_mod.FeatureGroup = None,
         td_features: List[str] = None,
-        td_predictions: List[training_dataset_feature.TrainingDatasetFeature] = None,
+        td_predictions=None,
+        td_serving_keys=None,
+        td_helper_columns=None,
+        td_request_parameters=None,
+        td_event_time=None,
         td_col_name: Optional[str] = None,
+        td_extra_logging_features: Optional[str] = None,
         time_col_name: Optional[str] = None,
         model_col_name: Optional[str] = None,
         predictions: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
+        helper_columns=None,
+        request_parameters=None,
+        event_time=None,
+        serving_keys=None,
+        extra_logging_features=None,
         training_dataset_version: Optional[int] = None,
         hsml_model: str = None,
-        **kwargs,
     ):
         # do not take prediction separately because spark ml framework usually return feature together with the prediction
         # and it is costly to join them back
-        df = self.convert_to_default_dataframe(features)
+        from pyspark.sql import Window
+        from pyspark.sql.functions import monotonically_increasing_id, row_number
+
+        logging_feature_group_features = [feat.name for feat in fg.features]
+        if features is not None:
+            df = self.convert_to_default_dataframe(features, td_features)
+        else:
+            df = None
+        if logging_data is not None:
+            logging_data = self.convert_to_default_dataframe(logging_data)
+
+            if (df is None or df.count() == 0) and logging_data.count() > 0:
+                df = logging_data
+            elif df is not None and df.count() != logging_data.count():
+                raise FeatureStoreException(
+                    "The number of rows in the logging data and the feature data do not match."
+                )
+            else:
+                from pyspark.sql.functions import monotonically_increasing_id
+
+                logging_data = logging_data.withColumn(
+                    "row_id",
+                    row_number().over(Window.orderBy(monotonically_increasing_id())),
+                )
+                df = df.withColumn(
+                    "row_id",
+                    row_number().over(Window.orderBy(monotonically_increasing_id())),
+                )
+
+                missing_columns = [
+                    col for col in logging_data.columns if col not in df.columns
+                ]
+                missing_columns.append("row_id")
+                df = df.join(logging_data.select(*missing_columns), "row_id")
+                df = df.drop("row_id")
+
+        if "row_id" not in df.columns:
+            df = df.withColumn(
+                "row_id",
+                row_number().over(Window.orderBy(monotonically_increasing_id())),
+            )
         if td_predictions:
+            if predictions is not None:
+                predictions = self.convert_to_default_dataframe(
+                    predictions, column_names=[f.name for f in td_predictions]
+                )
+                if predictions.count() != df.count():
+                    raise FeatureStoreException(
+                        f"Length of predictions {predictions.count()} does not match length of features {df.count()}."
+                    )
+                predictions = predictions.withColumn(
+                    "row_id",
+                    row_number().over(Window.orderBy(monotonically_increasing_id())),
+                )
+                missing_columns = [
+                    col for col in predictions.columns if col not in df.columns
+                ]
+                missing_columns.append("row_id")
+                df = df.join(predictions.select(*missing_columns), "row_id")
             for f in td_predictions:
-                if f.name not in df.columns:
-                    df = df.withColumn(
-                        f.name,
-                        lit(None).cast(
-                            Engine._convert_offline_type_to_spark_type(f.type)
+                df = df.withColumnRenamed(f.name, "predicted_" + f.name)
+
+        if td_serving_keys and serving_keys is not None:
+            serving_keys = self.convert_to_default_dataframe(
+                serving_keys, column_names=[f.feature_name for f in td_serving_keys]
+            )
+            if serving_keys.count() != df.count():
+                raise FeatureStoreException(
+                    f"Length of serving keys {serving_keys.count()} does not match length of features {df.count()}."
+                )
+            serving_keys = serving_keys.withColumn(
+                "row_id",
+                row_number().over(Window.orderBy(monotonically_increasing_id())),
+            )
+            missing_columns = [
+                col for col in serving_keys.columns if col not in df.columns
+            ]
+            missing_columns.append("row_id")
+            df = df.join(serving_keys.select(*missing_columns), "row_id")
+
+        if td_helper_columns and helper_columns is not None:
+            helper_columns = self.convert_to_default_dataframe(
+                helper_columns, column_names=td_helper_columns
+            )
+            if helper_columns.count() != df.count():
+                raise FeatureStoreException(
+                    f"Length of helper columns {helper_columns.count()} does not match length of features {df.count()}."
+                )
+            helper_columns = helper_columns.withColumn(
+                "row_id",
+                row_number().over(Window.orderBy(monotonically_increasing_id())),
+            )
+            missing_columns = [
+                col for col in helper_columns.columns if col not in df.columns
+            ]
+            missing_columns.append("row_id")
+            df = df.join(helper_columns.select(*missing_columns), "row_id")
+
+        if td_event_time and event_time is not None:
+            event_time = self.convert_to_default_dataframe(
+                event_time, column_names=[td_event_time]
+            )
+            if event_time.count() != df.count():
+                raise FeatureStoreException(
+                    f"Length of event time {event_time.count()} does not match length of features {df.count()}."
+                )
+            elif event_time.count() == 0:
+                df = df.withColumn(
+                    td_event_time,
+                    lit(event_time.first()[td_event_time]).cast(TimestampType()),
+                )
+            else:
+                event_time = event_time.withColumn(
+                    "row_id",
+                    row_number().over(Window.orderBy(monotonically_increasing_id())),
+                )
+                missing_columns = [
+                    col for col in event_time.columns if col not in df.columns
+                ]
+                missing_columns.append("row_id")
+                df = df.join(event_time.select(*missing_columns), "row_id")
+
+        if td_request_parameters:
+            if request_parameters is not None:
+                request_parameters = self.convert_to_default_dataframe(
+                    request_parameters, column_names=td_request_parameters
+                )
+            if (
+                request_parameters is not None
+                and request_parameters.count() != df.count()
+            ):
+                raise FeatureStoreException(
+                    f"Length of request parameters {request_parameters.count()} does not match length of features {df.count()}."
+                )
+            elif request_parameters is not None and request_parameters.count() == 1:
+                request_parameters_json = request_parameters.toJSON().first()
+                df = df.withColumn("request_parameters", lit(request_parameters_json))
+            else:
+                if "request_parameters" not in df.columns:
+                    from pyspark.sql.functions import col, struct, to_json
+
+                    if request_parameters is None:
+                        df_request_parameter_columns = [
+                            column_name
+                            for column_name in df.columns
+                            if column_name in td_request_parameters
+                        ]
+                        request_parameters = df.select(*df_request_parameter_columns)
+                        request_parameters = request_parameters.withColumn(
+                            "row_id",
+                            row_number().over(
+                                Window.orderBy(monotonically_increasing_id())
+                            ),
+                        )
+                    else:
+                        request_parameters = request_parameters.withColumn(
+                            "row_id",
+                            row_number().over(
+                                Window.orderBy(monotonically_increasing_id())
+                            ),
+                        )
+                        missing_rp_in_df = [
+                            col
+                            for col in td_request_parameters
+                            if col not in request_parameters.columns
+                        ]
+                        missing_rp_in_df.append("row_id")
+                        request_parameters = request_parameters.join(
+                            df.select(*missing_rp_in_df), "row_id"
+                        )
+                    for column_name in td_request_parameters:
+                        if column_name not in request_parameters.columns:
+                            request_parameters = request_parameters.withColumn(
+                                column_name, lit(None)
+                            )
+                    request_parameters = request_parameters.withColumn(
+                        "request_parameters",
+                        to_json(
+                            struct(*[col(rq_col) for rq_col in td_request_parameters])
                         ),
                     )
+                request_parameter_columns = [
+                    col
+                    for col in request_parameters.columns
+                    if col in logging_feature_group_features
+                    and col in td_request_parameters
+                    and col not in df.columns
+                ]
+                request_parameter_columns.append("request_parameters")
+                request_parameter_columns.append("row_id")
+                df = df.join(
+                    request_parameters.select(*request_parameter_columns), "row_id"
+                )
+
+        if td_extra_logging_features and extra_logging_features is not None:
+            extra_logging_features = self.convert_to_default_dataframe(
+                extra_logging_features,
+                column_names=td_extra_logging_features,
+            )
+            if extra_logging_features.count() != df.count():
+                raise FeatureStoreException(
+                    f"Length of extra logging features {extra_logging_features.count()} does not match length of features {df.count()}."
+                )
+            extra_logging_features = extra_logging_features.withColumn(
+                "row_id",
+                row_number().over(Window.orderBy(monotonically_increasing_id())),
+            )
+            missing_columns = [
+                col for col in extra_logging_features.columns if col not in df.columns
+            ]
+            missing_columns.append("row_id")
+            df = df.join(extra_logging_features.select(*missing_columns), "row_id")
 
         uuid_udf = udf(lambda: str(uuid.uuid4()), StringType())
 
@@ -1708,6 +1970,36 @@ class Engine:
         df = df.withColumn(time_col_name, lit(now).cast(TimestampType()))
         df = df.withColumn("log_id", uuid_udf())
 
+        df = df.drop("row_id")
+
+        missing_logging_features = set(logging_feature_group_features) - set(df.columns)
+        additional_logging_features = set(df.columns) - set(
+            logging_feature_group_features
+        )
+
+        if additional_logging_features:
+            _logger.info(
+                f"The following columns : `{'`, `'.join(additional_logging_features)}` are additional columns in the logged {'untransformed' if 'untransformed' in fg.name else 'transformed'} dataframe and is not present in the logging feature groups. They will be ignored."
+            )
+        if missing_logging_features:
+            _logger.info(
+                f"The following columns : `{'`, `'.join(missing_logging_features)}` are missing in the logged {'untransformed' if 'untransformed' in fg.name else 'transformed'} dataframe. Setting them to None."
+            )
+        for f in fg.features:
+            if f.name in missing_logging_features:
+                try:
+                    offline_type = Engine._convert_offline_type_to_spark_type(f.type)
+                except FeatureStoreException:
+                    offline_type = f.type
+                try:
+                    df = df.withColumn(
+                        f.name,
+                        lit(None).cast(offline_type),
+                    )
+                except pyspark.errors.ParseException as e:
+                    raise FeatureStoreException(
+                        f"Feature '{f.name}' cannot be set as Null. Cast into type '{f.type}' failed."
+                    ) from e
         # Select the required columns
         return df.select(*[feat.name for feat in fg.features])
 
@@ -1718,6 +2010,21 @@ class Engine:
 
     def get_spark_version(self):
         return self._spark_session.version
+
+    def check_supported_dataframe(self, dataframe: Any) -> bool:
+        """
+        Check if a dataframe is supported by the engine.
+
+        Both Pandas and Spark dataframes are supported in the Spark Engine.
+
+        # Arguments:
+            dataframe `Any`: A dataframe to check.
+
+        # Returns:
+            `bool`: True if the dataframe is supported, False otherwise.
+        """
+        if isinstance(dataframe, DataFrame) or isinstance(dataframe, pd.DataFrame):
+            return True
 
 
 class SchemaError(Exception):
