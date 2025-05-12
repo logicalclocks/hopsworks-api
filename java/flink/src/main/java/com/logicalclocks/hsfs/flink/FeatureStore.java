@@ -174,6 +174,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
       throws FeatureStoreException, IOException {
     return featureGroupEngine.getStreamFeatureGroup(this, name, version);
   }
+
   /**
    * Get a feature view object from the selected feature store.
    *
@@ -261,5 +262,10 @@ public class FeatureStore extends FeatureStoreBase<Query> {
   public FeatureView getOrCreateFeatureView(String name, Query query, Integer version)
       throws FeatureStoreException, IOException {
     return featureViewEngine.getOrCreateFeatureView(this, name, version, query, null, null);
+  }
+
+  @Override
+  public Object getRdsConnector(String name) throws FeatureStoreException, IOException {
+    return null;
   }
 }

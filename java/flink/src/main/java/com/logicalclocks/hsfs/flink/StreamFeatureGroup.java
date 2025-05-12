@@ -22,16 +22,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import com.logicalclocks.hsfs.DataSource;
 import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.FeatureGroupBase;
+import com.logicalclocks.hsfs.FeatureStoreException;
+import com.logicalclocks.hsfs.JobConfiguration;
 import com.logicalclocks.hsfs.OnlineConfig;
 import com.logicalclocks.hsfs.StatisticsConfig;
 import com.logicalclocks.hsfs.StorageConnector;
-import com.logicalclocks.hsfs.FeatureStoreException;
-import com.logicalclocks.hsfs.JobConfiguration;
 import com.logicalclocks.hsfs.TimeTravelFormat;
-import com.logicalclocks.hsfs.flink.constructor.Query;
 import com.logicalclocks.hsfs.flink.engine.FeatureGroupEngine;
+import com.logicalclocks.hsfs.flink.constructor.Query;
 
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSink;

@@ -61,8 +61,8 @@ public class StreamFeatureGroup<T> extends FeatureGroupBase<List<T>> {
     this.eventTime = eventTime;
     this.timeTravelFormat = timeTravelFormat;
     this.storageConnector = storageConnector;
-    this.path = path;
     this.onlineConfig = onlineConfig;
+    this.dataSource.setPath(path);
   }
 
   public StreamFeatureGroup() {

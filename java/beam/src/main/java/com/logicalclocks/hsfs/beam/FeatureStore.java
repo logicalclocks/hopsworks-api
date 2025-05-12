@@ -270,4 +270,10 @@ public class FeatureStore extends FeatureStoreBase<Query> {
       throws FeatureStoreException, IOException {
     return featureViewEngine.getOrCreateFeatureView(this, name, version, query, null, null);
   }
+
+
+  @Override
+  public Object getRdsConnector(String name) throws FeatureStoreException, IOException {
+    return null;
+  }
 }

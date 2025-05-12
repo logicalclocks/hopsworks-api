@@ -19,11 +19,7 @@ package com.logicalclocks.hsfs.spark.engine;
 
 import com.google.common.collect.Maps;
 import com.logicalclocks.hsfs.spark.constructor.Query;
-<<<<<<< HEAD
 import com.logicalclocks.hsfs.DataSource;
-import com.logicalclocks.hsfs.EntityEndpointType;
-=======
->>>>>>> 1d1b9d216 (Add create feature view and training datasets in java client)
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.metadata.TrainingDatasetApi;
 import com.logicalclocks.hsfs.spark.TrainingDataset;
