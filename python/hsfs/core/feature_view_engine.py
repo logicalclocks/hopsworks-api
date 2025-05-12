@@ -25,6 +25,7 @@ from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import HAS_NUMPY
 from hsfs import (
     engine,
+    feature,
     feature_group,
     feature_view,
     training_dataset_feature,
@@ -59,7 +60,7 @@ class FeatureViewEngine:
 
     _LOG_TD_VERSION = "td_version"
     _LOG_TIME = "log_time"
-    _HSML_MODEL = "hsml_model"
+    _HSML_MODEL = "hopsworks_model"
 
     def __init__(self, feature_store_id):
         self._feature_store_id = feature_store_id
@@ -1226,8 +1227,68 @@ class FeatureViewEngine:
         else:
             return f_name
 
-    def enable_feature_logging(self, fv):
-        self._feature_view_api.enable_feature_logging(fv.name, fv.version)
+    def get_logging_feature_from_dataframe(
+        self,
+        feature_view_obj: feature_view.FeatureView,
+        dataframes: List[
+            Union[
+                pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
+            ]
+        ] = None,
+    ) -> List[feature.Feature]:
+        """
+        Function to extract features from logging features
+
+        #Arguments:
+            transformed_features : `DataFrame`. Transformed features dataframe.
+            untransformed_features : `DataFrame`. Untransformed features dataframe.
+        #Returns:
+            `List[feature.Feature]`. List of features extracted from the logging features.
+        """
+        logging_features = []
+        logging_feature_names = []
+        label_features = [
+            feature.name for feature in feature_view_obj.features if feature.label
+        ]
+        for df in dataframes:
+            if df is not None and engine.get_instance().check_supported_dataframe(df):
+                features = engine.get_instance().parse_schema_feature_group(df)
+                for feature in features:
+                    if feature.name in label_features:
+                        feature.name = "predicted_" + feature.name
+                    if feature.name not in logging_feature_names:
+                        logging_feature_names.append(feature.name)
+                        logging_features.append(feature)
+        return logging_features
+
+    def enable_feature_logging(
+        self, fv, extra_log_columns: Union[feature.Feature, Dict[str, Any]] = None
+    ):
+        """
+        Function to enable feature logging for a feature view. This function creates logging feature groups for the feature view.
+
+        #Arguments:
+            fv : `FeatureView`. Feature view object to enable feature logging for.
+            extra_log_columns : `List[feature.Feature]`. List of features to be logged.
+
+        #Returns:
+            `FeatureView`. Feature view object with feature logging enabled.
+        """
+        logging_features = (
+            [
+                feature.Feature.from_response_json(feat)
+                if isinstance(feat, dict)
+                else feat
+                for feat in extra_log_columns
+            ]
+            if extra_log_columns
+            else []
+        )
+
+        feature_logging = FeatureLogging(extra_logging_columns=logging_features)
+        self._feature_view_api.enable_feature_logging(
+            fv.name, fv.version, feature_logging
+        )
         fv.logging_enabled = True
         return fv
 
@@ -1244,6 +1305,7 @@ class FeatureViewEngine:
         self,
         fv: feature_view.FeatureView,
         feature_logging: FeatureLogging,
+        logs: Union[pd.DataFrame, TypeVar("pyspark.sql.DataFrame")] = None,
         untransformed_features: Union[
             pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
         ] = None,
@@ -1251,12 +1313,25 @@ class FeatureViewEngine:
             pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
         ] = None,
         predictions: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
+        helper_columns: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
+        request_parameters: Optional[
+            Union[pd.DataFrame, list[list], np.ndarray]
+        ] = None,
+        event_time: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
+        serving_keys: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
+        extra_logging_features: Optional[
+            Union[pd.DataFrame, list[list], np.ndarray]
+        ] = None,
         write_options: Optional[Dict[str, Any]] = None,
         training_dataset_version: Optional[int] = None,
         hsml_model=None,
         logger: FeatureLogger = None,
     ):
-        if untransformed_features is None and transformed_features is None:
+        if (
+            logs is None
+            and untransformed_features is None
+            and transformed_features is None
+        ):
             return
 
         default_write_options = {
@@ -1270,6 +1345,7 @@ class FeatureViewEngine:
                 **{
                     key: (
                         self._get_feature_logging_data(
+                            logging_data=logs,
                             features_rows=features,
                             feature_logging=feature_logging,
                             transformed=transformed,
@@ -1290,21 +1366,30 @@ class FeatureViewEngine:
             )
 
         else:
-            for transformed, features in [
-                (False, untransformed_features),
-                (True, transformed_features),
+            # TODO : This loop can be removed after we combine into one single feature group.
+            for transformed, log, predicts in [
+                (False, untransformed_features, predictions),
+                (True, transformed_features, predictions),
             ]:
                 fg = feature_logging.get_feature_group(transformed)
-                if features is None:
+                if log is None and logs is None:
                     continue
+                if engine.get_type().startswith("spark"):
+                    fg.stream = False  # Setting stream to directly write to offline logging feature group
                 results.append(
                     fg.insert(
                         self._get_feature_logging_data(
-                            features_rows=features,
+                            logging_data=logs,
+                            features_rows=log,
                             feature_logging=feature_logging,
                             transformed=transformed,
                             fv=fv,
-                            predictions=predictions,
+                            predictions=predicts,
+                            helper_columns=helper_columns,
+                            request_parameters=request_parameters,
+                            event_time=event_time,
+                            serving_keys=serving_keys,
+                            extra_logging_features=extra_logging_features,
                             training_dataset_version=training_dataset_version,
                             hsml_model=hsml_model,
                             return_list=False,
@@ -1316,11 +1401,17 @@ class FeatureViewEngine:
 
     def _get_feature_logging_data(
         self,
+        logging_data,
         features_rows,
         feature_logging,
         transformed,
-        fv,
+        fv: feature_view.FeatureView,
         predictions,
+        helper_columns,
+        request_parameters,
+        event_time,
+        serving_keys,
+        extra_logging_features,
         training_dataset_version,
         hsml_model,
         return_list=False,
@@ -1330,7 +1421,9 @@ class FeatureViewEngine:
         td_predictions = [
             feature for feature in training_dataset_schema if feature.label
         ]
+
         td_predictions_names = set([feature.name for feature in td_predictions])
+
         if transformed:
             td_features = [
                 feature.name
@@ -1343,6 +1436,20 @@ class FeatureViewEngine:
                 for feature in fv.features
                 if feature.name not in td_predictions_names
             ]
+
+        td_serving_keys = (
+            [sk for sk in fv.serving_keys if sk.required]
+            if serving_keys is not None
+            else None
+        )
+        td_helper_columns = (
+            fv.inference_helper_columns if helper_columns is not None else None
+        )
+        td_request_parameters = fv.request_parameters
+        td_event_time = fv.query._left_feature_group.event_time
+        td_extra_logging_features = [
+            f.name for f in fv.feature_logging.extra_logging_columns
+        ]
 
         if return_list:
             return engine.get_instance().get_feature_logging_list(
@@ -1361,14 +1468,25 @@ class FeatureViewEngine:
             )
         else:
             return engine.get_instance().get_feature_logging_df(
+                logging_data,
                 features_rows,
                 fg=fg,
                 td_features=td_features,
                 td_predictions=td_predictions,
+                td_serving_keys=td_serving_keys,
+                td_helper_columns=td_helper_columns,
+                td_request_parameters=td_request_parameters,
+                td_event_time=td_event_time,
+                td_extra_logging_features=td_extra_logging_features,
                 td_col_name=FeatureViewEngine._LOG_TD_VERSION,
                 time_col_name=FeatureViewEngine._LOG_TIME,
                 model_col_name=FeatureViewEngine._HSML_MODEL,
                 predictions=predictions,
+                helper_columns=helper_columns,
+                request_parameters=request_parameters,
+                event_time=event_time,
+                serving_keys=serving_keys,
+                extra_logging_features=extra_logging_features,
                 training_dataset_version=training_dataset_version,
                 hsml_model=self.get_hsml_model_value(hsml_model)
                 if hsml_model
