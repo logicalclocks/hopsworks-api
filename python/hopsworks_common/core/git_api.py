@@ -546,7 +546,7 @@ class GitApi:
             _client._send_request("GET", path_params, headers=headers)
         )
 
-   def _get_default_provider_host(provider: str) -> str:
+    def _get_default_provider_host(self, provider: str) -> str:
         """Get the default host name for the given provider"""
         if provider == "GitHub":
             return "github.com"
