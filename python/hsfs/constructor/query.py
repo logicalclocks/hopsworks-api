@@ -289,7 +289,6 @@ class Query:
         if not read_options:
             read_options = {}
         sql_query, online_conn = self._prep_read(online, read_options)
-
         schema = None
         if (
             read_options

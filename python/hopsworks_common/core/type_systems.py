@@ -19,7 +19,7 @@ from __future__ import annotations
 import ast
 import datetime
 import decimal
-from typing import TYPE_CHECKING, Literal, Union
+from typing import TYPE_CHECKING, Literal, NewType, Union
 
 import pytz
 from hopsworks_common.core.constants import (
@@ -100,7 +100,7 @@ if HAS_POLARS:
         "double": pl.Float64,
     }
 
-    _polars_online_dtype_mapping = {
+    polars_online_dtype_mapping = {
         "bigint": pl.Int64,
         "int": pl.Int32,
         "smallint": pl.Int16,
@@ -118,8 +118,8 @@ if HAS_PANDAS:
         "int": pd.Int32Dtype(),
         "smallint": pd.Int16Dtype(),
         "tinyint": pd.Int8Dtype(),
-        "float": np.dtype("float32"),
-        "double": np.dtype("float64"),
+        "float": pd.Float32Dtype(),
+        "double": pd.Float64Dtype(),
     }
 
     pandas_online_dtype_mapping = {
@@ -127,9 +127,40 @@ if HAS_PANDAS:
         "int": pd.Int32Dtype(),
         "smallint": pd.Int16Dtype(),
         "tinyint": pd.Int8Dtype(),
-        "float": np.dtype("float32"),
-        "double": np.dtype("float64"),
+        "float": pd.Float32Dtype(),
+        "double": pd.Float64Dtype(),
     }
+
+
+def create_extended_type(base_type: type) -> "ExtendedType":
+    """
+    This is wrapper function to create a new class that extends the base_type class with a new attribute that can be used to store metadata.
+
+    Args:
+        base_type : The base class to extend
+    """
+
+    class ExtendedType(base_type):
+        """
+        This is a class that extends the base_type class with a new attribute `hopsworks_meta_data` that can be used to store metadata.
+        """
+
+        @property
+        def hopsworks_meta_data(self):
+            if not hasattr(self, "_hopsworks_meta_data"):
+                return None
+            return self._hopsworks_meta_data
+
+        @hopsworks_meta_data.setter
+        def hopsworks_meta_data(self, meta_data: dict):
+            self._hopsworks_meta_data = meta_data
+
+    return ExtendedType
+
+
+ExtendedType = NewType(
+    "ExtendedType", create_extended_type(type)
+)  # Adding new type for type hinting and static analysis.
 
 
 def convert_pandas_dtype_to_offline_type(arrow_type: str) -> str:
@@ -184,7 +215,7 @@ def cast_pandas_column_to_offline_type(
     ):
         return feature_column.apply(
             lambda x: (ast.literal_eval(x) if isinstance(x, str) else x)
-            if (x is not None and x != "")
+            if (x is not None and not pd.isnull(x) and x != "")
             else None
         )
     elif offline_type == "string":

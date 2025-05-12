@@ -134,6 +134,7 @@ class FeatureView:
         featurestore_name: Optional[str] = None,
         serving_keys: Optional[List[skm.ServingKey]] = None,
         logging_enabled: Optional[bool] = False,
+        extra_log_columns: Optional[List[Feature], Dict[str, str]] = None,
         **kwargs,
     ) -> None:
         self._name = name
@@ -184,6 +185,7 @@ class FeatureView:
             )
 
         self._features = []
+        self._request_parameters = None
         self._feature_view_engine: feature_view_engine.FeatureViewEngine = (
             feature_view_engine.FeatureViewEngine(featurestore_id)
         )
@@ -201,10 +203,18 @@ class FeatureView:
         self._statistics_engine = statistics_engine.StatisticsEngine(
             featurestore_id, self.ENTITY_TYPE
         )
-        self._logging_enabled = logging_enabled
+        self._logging_enabled = True if extra_log_columns else logging_enabled
         self._feature_logging = None
         self._alert_api = alerts_api.AlertsApi()
 
+        self._extra_log_columns: List[Feature] = (
+            [
+                Feature.from_response_json(feat) if isinstance(feat, dict) else feat
+                for feat in extra_log_columns
+            ]
+            if extra_log_columns
+            else None
+        )
         if self._id:
             self._init_feature_monitoring_engine()
 
@@ -3718,7 +3728,9 @@ class FeatureView:
             return_type=return_type,
         )
 
-    def enable_logging(self) -> None:
+    def enable_logging(
+        self, extra_log_columns: Union[Feature, Dict[str, str]] = None
+    ) -> None:
         """Enable feature logging for the current feature view.
 
         This method activates logging of features.
@@ -3737,17 +3749,35 @@ class FeatureView:
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
-        fv = self._feature_view_engine.enable_feature_logging(self)
+        fv = self._feature_view_engine.enable_feature_logging(self, extra_log_columns)
         self._feature_logging = self._feature_view_engine.get_feature_logging(fv)
         return fv
 
     def log(
         self,
+        logging_data: Union[
+            pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
+        ] = None,
         untransformed_features: Union[
             pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
         ] = None,
         predictions: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
         transformed_features: Union[
+            pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
+        ] = None,
+        inference_helper_columns: Union[
+            pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
+        ] = None,
+        request_parameters: Union[
+            pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
+        ] = None,
+        event_time: Union[
+            pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
+        ] = None,
+        serving_keys: Union[
+            pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
+        ] = None,
+        extra_logging_features: Union[
             pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
         ] = None,
         write_options: Optional[Dict[str, Any]] = None,
@@ -3760,6 +3790,7 @@ class FeatureView:
             values in `predictions` will be ignored.
 
         # Arguments
+            logging_dataframe: The features to be logged, this can contain both transformed features, untransfored features and predictions. Can be a pandas DataFrame, a list of lists, or a numpy ndarray.
             untransformed_features: The untransformed features to be logged. Can be a pandas DataFrame, a list of lists, or a numpy ndarray.
             prediction: The predictions to be logged. Can be a pandas DataFrame, a list of lists, or a numpy ndarray. Defaults to None.
             transformed_features: The transformed features to be logged. Can be a pandas DataFrame, a list of lists, or a numpy ndarray.
@@ -3796,20 +3827,42 @@ class FeatureView:
                 "Feature logging is not enabled. It may take longer to enable logging before logging the features. You can call `feature_view.enable_logging()` to enable logging beforehand.",
                 stacklevel=1,
             )
-            self.enable_logging()
+            # TODO : MOVE THIS TO THE ENGINE
+            logging_features = (
+                self._feature_view_engine.get_logging_feature_from_dataframe(
+                    dataframes=[
+                        untransformed_features,
+                        transformed_features,
+                        predictions,
+                        logging_data,
+                        inference_helper_columns,
+                        request_parameters,
+                        event_time,
+                        serving_keys,
+                    ],
+                    feature_view_obj=self,
+                )
+            )
+            self.enable_logging(extra_log_columns=logging_features)
         return self._feature_view_engine.log_features(
             self,
-            self.feature_logging,
-            untransformed_features,
-            transformed_features,
-            predictions,
-            write_options,
+            feature_logging=self.feature_logging,
+            logs=logging_data,
+            untransformed_features=untransformed_features,
+            transformed_features=transformed_features,
+            predictions=predictions,
+            helper_columns=inference_helper_columns,
+            request_parameters=request_parameters,
+            event_time=event_time,
+            serving_keys=serving_keys,
+            write_options=write_options,
             training_dataset_version=(
                 training_dataset_version
                 or self._serving_training_dataset_version
                 or (model.training_dataset_version if model else None)
                 or self.get_last_accessed_training_dataset()
             ),
+            extra_logging_features=extra_logging_features,
             hsml_model=model,
             logger=self._feature_logger,
         )
@@ -4023,6 +4076,7 @@ class FeatureView:
             "loggingEnabled": self._logging_enabled,
             "transformationFunctions": self._transformation_functions,
             "type": "featureViewDTO",
+            "extraLogColumns": self._extra_log_columns,
         }
 
     def get_training_dataset_schema(
@@ -4179,6 +4233,31 @@ class FeatureView:
             for feature in self.features
             if feature.on_demand_transformation_function
         }
+
+    @property
+    def _on_demand_transformation_functions(self) -> List[TransformationFunction]:
+        """Get all on-demand transformations in the feature view"""
+        return [
+            feature.on_demand_transformation_function
+            for feature in self.features
+            if feature.on_demand_transformation_function
+        ]
+
+    @property
+    def request_parameters(self) -> List[str]:
+        """Get request parameters required for the for on-demand transformations atatched to the feature view."""
+        if self._request_parameters is None:
+            feature_names = [feature.name for feature in self.features]
+            self._request_parameters = []
+            for tf in self._on_demand_transformation_functions:
+                for feature_name in tf.hopsworks_udf.transformation_features:
+                    if (
+                        feature_name not in feature_names
+                        and feature_name not in self._request_parameters
+                    ):
+                        self._request_parameters.append(feature_name)
+
+        return self._request_parameters
 
     @property
     def schema(self) -> List[training_dataset_feature.TrainingDatasetFeature]:
