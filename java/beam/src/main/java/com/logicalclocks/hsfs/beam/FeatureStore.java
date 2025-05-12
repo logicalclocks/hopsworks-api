@@ -273,7 +273,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
 
 
   @Override
-  public Object getRdsConnector(String name) throws FeatureStoreException, IOException {
-    return null;
+  public StorageConnector.RdsConnector getRdsConnector(String name) throws FeatureStoreException, IOException {
+    return storageConnectorApi.getByName(this, name, StorageConnector.RdsConnector.class);
   }
 }
