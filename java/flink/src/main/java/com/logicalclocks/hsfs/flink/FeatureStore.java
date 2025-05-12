@@ -174,7 +174,6 @@ public class FeatureStore extends FeatureStoreBase<Query> {
       throws FeatureStoreException, IOException {
     return featureGroupEngine.getStreamFeatureGroup(this, name, version);
   }
-
   /**
    * Get a feature view object from the selected feature store.
    *

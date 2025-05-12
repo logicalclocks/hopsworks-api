@@ -248,6 +248,8 @@ public abstract class FeatureStoreBase<T2 extends QueryBase> {
     return storageConnectorApi.getByName(this, name, StorageConnector.JdbcConnector.class);
   }
 
+  public abstract Object getRdsConnector(String name) throws FeatureStoreException, IOException;
+
   /**
    * Get a previously created JDBC compliant storage connector from the feature store
    * to connect to the online feature store.

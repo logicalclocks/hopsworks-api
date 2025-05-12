@@ -75,11 +75,12 @@ public class StreamFeatureGroup extends FeatureGroupBase<DataStream<?>> {
     this.eventTime = eventTime;
     this.onlineConfig = onlineConfig;
     this.storageConnector = storageConnector;
-    this.path = path;
+    this.dataSource.setPath(path);
   }
 
   public StreamFeatureGroup() {
     this.type = "streamFeatureGroupDTO";
+    this.dataSource = new DataSource();
   }
 
   // used for updates

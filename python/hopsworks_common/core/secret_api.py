@@ -109,9 +109,9 @@ class SecretsApi:
 
         import hopsworks
 
-        connection = hopsworks.connection()
+        project = hopsworks.login()
 
-        secrets_api = connection.get_secrets_api()
+        secrets_api = hopsworks.get_secrets_api()
 
         secret = secrets_api.create_secret("my_secret", "Fk3MoPlQXCQvPo")
 

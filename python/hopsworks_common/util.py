@@ -27,16 +27,9 @@ import shutil
 import sys
 import threading
 import time
+import warnings
 from datetime import date, datetime, timezone
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Literal,
-    Optional,
-    Tuple,
-    Union,
-)
+from typing import TYPE_CHECKING, Any, Callable, Dict, Literal, Optional, Tuple, Union
 from urllib.parse import urljoin, urlparse
 
 import humps
@@ -53,6 +46,10 @@ if HAS_PANDAS:
 
 
 FEATURE_STORE_NAME_SUFFIX = "_featurestore"
+
+
+if TYPE_CHECKING:
+    from hsfs import feature_group
 
 
 class Encoder(json.JSONEncoder):
@@ -125,9 +122,33 @@ def validate_embedding_feature_type(embedding_index, schema):
             )
 
 
-def autofix_feature_name(name: str) -> str:
+def autofix_feature_name(name: str, warn: bool = False) -> str:
     # replace spaces with underscores and enforce lower case
+    if warn and contains_uppercase(name):
+        warnings.warn(
+            "The feature name `{}` contains upper case letters. "
+            "Feature names are sanitized to lower case in the feature store.".format(
+                name
+            ),
+            stacklevel=1,
+        )
+    if warn and contains_whitespace(name):
+        warnings.warn(
+            "The feature name `{}` contains spaces. "
+            "Feature names are sanitized to use underscore '_' in the feature store.".format(
+                name
+            ),
+            stacklevel=1,
+        )
     return name.lower().replace(" ", "_")
+
+
+def contains_uppercase(name: str) -> bool:
+    return any(re.finditer("[A-Z]", name))
+
+
+def contains_whitespace(name: str) -> bool:
+    return " " in name
 
 
 def feature_group_name(
@@ -717,6 +738,16 @@ def feature_view_to_json(obj):
     return None
 
 
+def generate_fully_qualified_feature_name(
+    feature_group: feature_group.FeatureGroup, feature_name: str
+):
+    """
+    Generate the fully qualified feature name for a feature. The fully qualified name is created by concatenating
+    the project name, feature group name, feature group version and feature name.
+    """
+    return f"{feature_group._get_project_name()}_{feature_group.name}_{feature_group.version}_{feature_name}"
+
+
 class AsyncTask:
     """
     Generic class to represent an async task.
@@ -816,11 +847,6 @@ class AsyncTaskThread(threading.Thread):
         """
         asyncio.set_event_loop(self._event_loop)
 
-        if self._connection_pool_initializer:
-            self._connection_pool = await self._connection_pool_initializer(
-                *self._connection_pool_params
-            )
-
         while not self.stop_event.is_set():
             # Fetch a task from the queue.
             task = self.task_queue.get()
@@ -858,6 +884,11 @@ class AsyncTaskThread(threading.Thread):
         Execute the async tasks for the queue.
         """
         asyncio.set_event_loop(self._event_loop)
+        # Initialize the connection pool by using loop.run_until_complete to make sure the connection pool is initialized before the event loop starts running forever.
+        if self._connection_pool_initializer:
+            self._connection_pool = self._event_loop.run_until_complete(
+                self._connection_pool_initializer(*self._connection_pool_params)
+            )
         self._event_loop.create_task(self.execute_task())
         try:
             self._event_loop.run_forever()

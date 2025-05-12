@@ -141,7 +141,7 @@ public abstract class FeatureGroupBase<T> {
 
   @Getter
   @Setter
-  protected String path;
+  protected DataSource dataSource;
 
   @JsonIgnore
   // These are only used in the client. In the server they are aggregated in the `features` field

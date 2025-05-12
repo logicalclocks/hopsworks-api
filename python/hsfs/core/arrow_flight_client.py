@@ -46,9 +46,7 @@ from retrying import retry
 if HAS_POLARS:
     import polars as pl
 
-
 _logger = logging.getLogger(__name__)
-
 
 _arrow_flight_instance = None
 
@@ -91,17 +89,15 @@ def _is_no_commits_found_error(exception):
 
 
 def _should_retry_healthcheck(exception):
-    return (
-        isinstance(exception, pyarrow._flight.FlightUnavailableError)
-        or isinstance(exception, pyarrow._flight.FlightTimedOutError)
+    return isinstance(exception, pyarrow._flight.FlightUnavailableError) or isinstance(
+        exception, pyarrow._flight.FlightTimedOutError
     )
 
 
 def _should_retry_certificate_registration(exception):
-    return (
-        _should_retry_healthcheck(exception)
-        or _is_feature_query_service_queue_full_error(exception)
-    )
+    return _should_retry_healthcheck(
+        exception
+    ) or _is_feature_query_service_queue_full_error(exception)
 
 
 # Avoid unnecessary client init
@@ -155,6 +151,8 @@ class ArrowFlightClient:
     SUPPORTED_EXTERNAL_CONNECTORS = [
         StorageConnector.SNOWFLAKE,
         StorageConnector.BIGQUERY,
+        StorageConnector.REDSHIFT,
+        StorageConnector.RDS,
     ]
     READ_ERROR = "Could not read data using Hopsworks Query Service."
     WRITE_ERROR = 'Could not write data using Hopsworks Query Service. If the issue persists, use write_options={"use_spark": True} instead.'
@@ -207,7 +205,9 @@ class ArrowFlightClient:
 
         try:
             self._health_check()
-            if "get-version" in [action.type for action in self._connection.list_actions()]:
+            if "get-version" in [
+                action.type for action in self._connection.list_actions()
+            ]:
                 self._server_version = self._get_server_version()
             else:
                 self._server_version = None
@@ -531,7 +531,16 @@ class ArrowFlightClient:
             fg_connector = _serialize_featuregroup_connector(
                 fg, query, on_demand_fg_aliases
             )
-            features[fg_name] = [feat.name for feat in fg.features]
+            if isinstance(fg, feature_group.ExternalFeatureGroup):
+                selected_features = []
+                for feat in query.features:
+                    if feat._feature_group_id == fg.id:
+                        selected_features.append(feat.name)
+                features[fg_name] = [
+                    feat.name for feat in fg.features if feat.name in selected_features
+                ]
+            else:
+                features[fg_name] = [feat.name for feat in fg.features]
             connectors[fg_name] = fg_connector
         filters = _serialize_filter_expression(query.filters, query)
 
@@ -591,12 +600,23 @@ def _serialize_featuregroup_connector(fg, query, on_demand_fg_aliases):
     if isinstance(fg, feature_group.ExternalFeatureGroup):
         connector["time_travel_type"] = None
         connector["type"] = fg.storage_connector.type
-        connector["options"] = fg.storage_connector.connector_options()
-        connector["query"] = fg.query[:-1] if fg.query.endswith(";") else fg.query
+        connector["options"] = _get_connector_options(fg)
+        connector["query"] = fg.data_source.query
         for on_demand_fg_alias in on_demand_fg_aliases:
+            # backend attaches dynamic query to on_demand_fg_alias.on_demand_feature_group.query if any
             if on_demand_fg_alias.on_demand_feature_group.name == fg.name:
+                connector["query"] = (
+                    on_demand_fg_alias.on_demand_feature_group.data_source.query
+                    if fg.data_source.query is None
+                    else fg.data_source.query
+                )
                 connector["alias"] = on_demand_fg_alias.alias
                 break
+        connector["query"] = (
+            connector["query"][:-1]
+            if connector["query"].endswith(";")
+            else connector["query"]
+        )
         if query._left_feature_group == fg:
             connector["filters"] = _serialize_filter_expression(
                 query._filter, query, True
@@ -610,9 +630,7 @@ def _serialize_featuregroup_connector(fg, query, on_demand_fg_aliases):
     elif fg.time_travel_format == "DELTA":
         connector["time_travel_type"] = "delta"
         connector["type"] = fg.storage_connector.type
-        connector["options"] = fg.storage_connector.connector_options()
-        if fg.storage_connector.type == StorageConnector.S3:
-            connector["options"]["path"] = fg.location
+        connector["options"] = _get_connector_options(fg)
         connector["query"] = ""
         if query._left_feature_group == fg:
             connector["filters"] = _serialize_filter_expression(
@@ -628,6 +646,76 @@ def _serialize_featuregroup_connector(fg, query, on_demand_fg_aliases):
         connector["time_travel_type"] = "hudi"
     return connector
 
+def _get_connector_options(fg):
+    # same as in the backend (maybe move to common?)
+    option_map = {}
+
+    datasource = fg.data_source
+    connector = fg.storage_connector
+    connector_type = connector.type
+
+    if connector_type == StorageConnector.SNOWFLAKE:
+        option_map = {
+            "user": connector.user,
+            "account": connector.account,
+            "database": datasource.database,
+            "schema": datasource.group,
+        }
+        if connector.password:
+            option_map["password"] = connector.password
+        else:
+            option_map["authenticator"] = "oauth"
+            option_map["token"] = connector.token
+        if connector.warehouse:
+            option_map["warehouse"] = connector.warehouse
+        if connector.application:
+            option_map["application"] = connector.application
+    elif connector_type == StorageConnector.BIGQUERY:
+        option_map = {
+            "key_path": connector.key_path,
+            "project_id": datasource.database,
+            "dataset_id": datasource.group,
+            "parent_project": connector.parent_project,
+        }
+    elif connector_type == StorageConnector.REDSHIFT:
+        option_map = {
+            "host": connector.cluster_identifier + "." + connector.database_endpoint,
+            "port": connector.database_port,
+            "database": datasource.database,
+        }
+        if connector.database_user_name:
+            option_map["user"] = connector.database_user_name
+        if connector.database_password:
+            option_map["password"] = connector.database_password
+        if connector.iam_role:
+            option_map["iam_role"] = connector.iam_role
+            option_map["iam"] = "True"
+    elif connector_type == StorageConnector.RDS:
+        option_map = {
+            "host": connector.host,
+            "port": connector.port,
+            "database": datasource.database,
+        }
+        if connector.user:
+            option_map["user"] = connector.user
+        if connector.password:
+            option_map["password"] = connector.password
+    elif connector_type == StorageConnector.S3:
+        option_map = {
+            "access_key": connector.access_key,
+            "secret_key": connector.secret_key,
+            "session_token": connector.session_token,
+            "region": connector.region,
+        }
+        if connector.arguments.get("fs.s3a.endpoint"):
+            option_map["endpoint"] = connector.arguments.get("fs.s3a.endpoint")
+        option_map["path"] = fg.location
+    else:
+        raise FeatureStoreException(
+            f"Arrow Flight doesn't support connector of type: {connector_type}"
+        )
+
+    return option_map
 
 def _serialize_featuregroup_name(fg):
     return f"{fg._get_project_name()}.{fg.name}_{fg.version}"

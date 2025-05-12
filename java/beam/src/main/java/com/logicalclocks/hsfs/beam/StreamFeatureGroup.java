@@ -28,6 +28,7 @@ import com.logicalclocks.hsfs.StorageConnector;
 import com.logicalclocks.hsfs.beam.constructor.Query;
 import org.apache.beam.sdk.values.PCollection;
 
+import com.logicalclocks.hsfs.DataSource;
 import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.OnlineConfig;
@@ -68,11 +69,12 @@ public class StreamFeatureGroup extends FeatureGroupBase<PCollection<Object>> {
     this.eventTime = eventTime;
     this.onlineConfig = onlineConfig;
     this.storageConnector = storageConnector;
-    this.path = path;
+    this.dataSource.setPath(path);
   }
 
   public StreamFeatureGroup() {
     this.type = "streamFeatureGroupDTO";
+    this.dataSource = new DataSource();
   }
 
   // used for updates

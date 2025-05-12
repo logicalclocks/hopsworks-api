@@ -54,6 +54,7 @@ from hsfs import (
 )
 from hsfs.constructor import filter, query
 from hsfs.constructor.filter import Filter, Logic
+from hsfs.core import data_source as ds
 from hsfs.core import (
     deltastreamer_jobconf,
     expectation_suite_engine,
@@ -141,8 +142,13 @@ class FeatureGroupBase:
                 Dict[str, Any],
             ]
         ] = None,
+        data_source: Optional[
+            Union[
+                ds.DataSource,
+                Dict[str, Any],
+            ]
+        ] = None,
         storage_connector: Union[sc.StorageConnector, Dict[str, Any]] = None,
-        path: Optional[str] = None,
         **kwargs,
     ) -> None:
         self._version = version
@@ -159,7 +165,6 @@ class FeatureGroupBase:
         self._feature_store_id = featurestore_id
         self._feature_store = None
         self._variable_api: VariableApi = VariableApi()
-        self._path = path
 
         if storage_connector is not None and isinstance(storage_connector, dict):
             self._storage_connector = sc.StorageConnector.from_response_json(
@@ -172,6 +177,15 @@ class FeatureGroupBase:
             if isinstance(online_config, dict)
             else online_config
         )
+
+        if data_source:
+            self._data_source = (
+                ds.DataSource.from_response_json(data_source)
+                if isinstance(data_source, dict)
+                else data_source
+            )
+        else:
+            self._data_source = ds.DataSource()
 
         self._multi_part_insert: bool = False
         self._embedding_index = embedding_index
@@ -442,12 +456,15 @@ class FeatureGroupBase:
         # Returns
             `Query`. A query object with all features of the feature group.
         """
-        query = self.select_except(
-            self.primary_key + self.partition_key + self.foreign_key + [self.event_time]
-        )
+        select_features = self.primary_key + self.foreign_key + [self.event_time]
+        if not isinstance(self, ExternalFeatureGroup):
+            select_features = select_features + self.partition_key
+
+        query = self.select_except(select_features)
+
         _logger.info(
-            f"Using {[f.name for f in query.features]} as features for the query."
-            "To include primary key and event time use `select_all`."
+            f"Using {[f.name for f in query.features]} from feature group `{self.name}` as features for the query."
+            " To include primary key and event time use `select_all`."
         )
 
         return query
@@ -1883,7 +1900,9 @@ class FeatureGroupBase:
 
     @primary_key.setter
     def primary_key(self, new_primary_key: List[str]) -> None:
-        self._primary_key = [util.autofix_feature_name(pk) for pk in new_primary_key]
+        self._primary_key = [
+            util.autofix_feature_name(pk, warn=True) for pk in new_primary_key
+        ]
 
     def get_statistics(
         self,
@@ -2021,7 +2040,7 @@ class FeatureGroupBase:
             self._event_time = None
             return
         elif isinstance(feature_name, str):
-            self._event_time = feature_name
+            self._event_time = util.autofix_feature_name(feature_name, warn=True)
             return
         elif isinstance(feature_name, list) and len(feature_name) == 1:
             if isinstance(feature_name[0], str):
@@ -2031,7 +2050,7 @@ class FeatureGroupBase:
                     DeprecationWarning,
                     stacklevel=2,
                 )
-                self._event_time = feature_name[0]
+                self._event_time = util.autofix_feature_name(feature_name[0], warn=True)
                 return
 
         raise ValueError(
@@ -2102,10 +2121,6 @@ class FeatureGroupBase:
         self._online_enabled = online_enabled
 
     @property
-    def path(self) -> Optional[str]:
-        return self._path
-
-    @property
     def storage_connector(self) -> "sc.StorageConnector":
         return self._storage_connector
 
@@ -2141,6 +2156,10 @@ class FeatureGroupBase:
     @deprecated.setter
     def deprecated(self, deprecated: bool) -> None:
         self._deprecated = deprecated
+
+    @property
+    def data_source(self) -> Optional[ds.DataSource]:
+        return self._data_source
 
     @property
     def subject(self) -> Dict[str, Any]:
@@ -2303,7 +2322,12 @@ class FeatureGroup(FeatureGroupBase):
         ] = None,
         offline_backfill_every_hr: Optional[Union[str, int]] = None,
         storage_connector: Union[sc.StorageConnector, Dict[str, Any]] = None,
-        path: Optional[str] = None,
+        data_source: Optional[
+            Union[
+                ds.DataSource,
+                Dict[str, Any],
+            ]
+        ] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -2322,7 +2346,7 @@ class FeatureGroup(FeatureGroupBase):
             deprecated=deprecated,
             online_config=online_config,
             storage_connector=storage_connector,
-            path=path,
+            data_source=data_source,
         )
         self._feature_store_name: Optional[str] = featurestore_name
         self._description: Optional[str] = description
@@ -2382,7 +2406,7 @@ class FeatureGroup(FeatureGroupBase):
             self.foreign_key = foreign_key
             self.partition_key = partition_key
             self._hudi_precombine_key = (
-                util.autofix_feature_name(hudi_precombine_key)
+                util.autofix_feature_name(hudi_precombine_key, warn=True)
                 if hudi_precombine_key is not None
                 and (
                     self._time_travel_format is None
@@ -2764,6 +2788,7 @@ class FeatureGroup(FeatureGroupBase):
                 * key `run_validation` boolean value, set to `False` to skip validation temporarily on ingestion.
                 * key `save_report` boolean value, set to `False` to skip upload of the validation report to Hopsworks.
                 * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
+                * key `online_schema_validation` boolean value, set to `True` to validate the schema for online ingestion.
             wait: Wait for job and online ingestion to finish before returning, defaults to `False`.
                 Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
 
@@ -2972,6 +2997,7 @@ class FeatureGroup(FeatureGroupBase):
                 * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
                 * key `fetch_expectation_suite` a boolean value, by default `True`, to control whether the expectation
                    suite of the feature group should be fetched before every insert.
+                * key `online_schema_validation` boolean value, set to `True` to validate the schema for online ingestion.
             wait: Wait for job and online ingestion to finish before returning, defaults to `False`.
                 Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
@@ -3691,8 +3717,9 @@ class FeatureGroup(FeatureGroupBase):
             "transformationFunctions": [
                 tf.to_dict() for tf in self._transformation_functions
             ],
-            "path": self._path,
         }
+        if self._data_source:
+            fg_meta_dict["dataSource"] = self._data_source.to_dict()
         if self._online_config:
             fg_meta_dict["onlineConfig"] = self._online_config.to_dict()
         if self.embedding_index:
@@ -3820,12 +3847,14 @@ class FeatureGroup(FeatureGroupBase):
     @partition_key.setter
     def partition_key(self, new_partition_key: List[str]) -> None:
         self._partition_key = [
-            util.autofix_feature_name(pk) for pk in new_partition_key
+            util.autofix_feature_name(pk, warn=True) for pk in new_partition_key
         ]
 
     @hudi_precombine_key.setter
     def hudi_precombine_key(self, hudi_precombine_key: str) -> None:
-        self._hudi_precombine_key = util.autofix_feature_name(hudi_precombine_key)
+        self._hudi_precombine_key = util.autofix_feature_name(
+            hudi_precombine_key, warn=True
+        )
 
     @stream.setter
     def stream(self, stream: bool) -> None:
@@ -3883,9 +3912,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
     def __init__(
         self,
         storage_connector: Union[sc.StorageConnector, Dict[str, Any]],
-        query: Optional[str] = None,
         data_format: Optional[str] = None,
-        path: Optional[str] = None,
         options: Optional[Dict[str, Any]] = None,
         name: Optional[str] = None,
         version: Optional[int] = None,
@@ -3922,6 +3949,12 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 Dict[str, Any],
             ]
         ] = None,
+        data_source: Optional[
+            Union[
+                ds.DataSource,
+                Dict[str, Any],
+            ]
+        ] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -3940,14 +3973,13 @@ class ExternalFeatureGroup(FeatureGroupBase):
             deprecated=deprecated,
             online_config=online_config,
             storage_connector=storage_connector,
-            path=path,
+            data_source=data_source,
         )
 
         self._feature_store_name = featurestore_name
         self._description = description
         self._created = created
         self._creator = user.User.from_response_json(creator)
-        self._query = query
         self._data_format = data_format.upper() if data_format else None
 
         self._features = [
@@ -4356,9 +4388,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
             "version": self._version,
             "features": self._features,
             "featurestoreId": self._feature_store_id,
-            "query": self._query,
             "dataFormat": self._data_format,
-            "path": self._path,
             "options": [{"name": k, "value": v} for k, v in self._options.items()]
             if self._options
             else None,
@@ -4373,6 +4403,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
             "notificationTopicName": self.notification_topic_name,
             "deprecated": self.deprecated,
         }
+        if self._data_source:
+            fg_meta_dict["dataSource"] = self._data_source.to_dict()
         if self._online_config:
             fg_meta_dict["onlineConfig"] = self._online_config.to_dict()
         if self.embedding_index:
@@ -4386,10 +4418,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
     @property
     def description(self) -> Optional[str]:
         return self._description
-
-    @property
-    def query(self) -> Optional[str]:
-        return self._query
 
     @property
     def data_format(self) -> Optional[str]:
@@ -4429,7 +4457,6 @@ class SpineGroup(FeatureGroupBase):
         ] = None,
         query: Optional[str] = None,
         data_format: Optional[str] = None,
-        path: Optional[str] = None,
         options: Dict[str, Any] = None,
         name: Optional[str] = None,
         version: Optional[int] = None,
@@ -4463,6 +4490,12 @@ class SpineGroup(FeatureGroupBase):
                 Dict[str, Any],
             ]
         ] = None,
+        data_source: Optional[
+            Union[
+                ds.DataSource,
+                Dict[str, Any],
+            ]
+        ] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -4478,6 +4511,7 @@ class SpineGroup(FeatureGroupBase):
             topic_name=topic_name,
             deprecated=deprecated,
             online_config=online_config,
+            data_source=data_source,
         )
 
         self._feature_store_name = featurestore_name
