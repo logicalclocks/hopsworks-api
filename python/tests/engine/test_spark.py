@@ -2353,6 +2353,7 @@ class TestSpark:
             id=10,
             event_time="event_time",
             features=[f, f1, f2],
+            featurestore_name="test_fs",
         )
 
         q = query.Query(left_feature_group=fg, left_features=None)
@@ -2403,8 +2404,10 @@ class TestSpark:
             featurestore_id=99,
             primary_key=[],
             partition_key=[],
+            features=[f, f1, f2],
             id=10,
             event_time="event_time",
+            featurestore_name="test_fs",
         )
 
         q = query.Query(left_feature_group=fg, left_features=[f, f1, f2])
@@ -2457,6 +2460,7 @@ class TestSpark:
             featurestore_id=99,
             primary_key=[],
             partition_key=[],
+            features=[f, f1, f2],
             id=10,
             event_time="event_time",
             featurestore_name="test_fs",
