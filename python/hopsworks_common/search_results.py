@@ -41,18 +41,22 @@ class Creator:
 
     @property
     def username(self) -> str:
+        """Username of the creator."""
         return self._username
 
     @property
     def firstname(self) -> str:
+        """First name of the creator."""
         return self._firstname
 
     @property
     def lastname(self) -> str:
+        """Last name of the creator."""
         return self._lastname
 
     @property
     def email(self) -> str:
+        """Email of the creator."""
         return self._email
 
     def json(self) -> dict:
@@ -88,10 +92,12 @@ class Tag:
 
     @property
     def key(self) -> str:
+        """Key of the tag."""
         return self._key
 
     @property
     def value(self) -> str:
+        """Value of the tag."""
         return self._value
 
     def json(self) -> dict:
@@ -125,10 +131,12 @@ class FeatureHighlights:
 
     @property
     def name(self) -> str:
+        """Name of the feature highlight."""
         return self._name
 
     @property
     def description(self) -> str:
+        """Description of the feature highlight."""
         return self._description
 
     def json(self) -> dict:
@@ -177,25 +185,31 @@ class Highlight:
 
     @property
     def name(self) -> str:
+        """Name of the highlight."""
         return self._name
 
     @property
     def description(self) -> str:
+        """Description of the highlight."""
         return self._description
 
     @property
     def features(self) -> Optional[list]:
+        """List of features."""
         return self._features
 
     @property
     def tags(self) -> Optional[list]:
+        """List of tags."""
         return self._tags
 
     @property
     def other_xattrs(self) -> Optional[dict]:
+        """Other xattrs."""
         return self._other_xattrs
 
     def json(self) -> dict:
+        """Convert the object to JSON format."""
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self) -> dict:
@@ -254,46 +268,57 @@ class FeaturestoreResult:
 
     @property
     def name(self) -> str:
+        """Name."""
         return self._name
 
     @property
     def version(self) -> int:
+        """Version."""
         return self._version
 
     @property
     def description(self) -> str:
+        """Description."""
         return self._description
 
     @property
     def featurestore_id(self) -> int:
+        """Featurestore ID."""
         return self._featurestore_id
 
     @property
     def created(self) -> str:
+        """Created timestamp."""
         return self._created
 
     @property
     def parent_project_id(self) -> int:
+        """Parent project ID."""
         return self._parent_project_id
 
     @property
     def parent_project_name(self) -> str:
+        """Parent project name."""
         return self._parent_project_name
 
     @property
     def access_projects(self) -> Optional[dict]:
+        """Projects that can access this result."""
         return self._access_projects
 
     @property
     def highlights(self) -> Optional[Highlight]:
+        """Highlights of the result."""
         return self._highlights
 
     @property
     def creator(self) -> Optional[Creator]:
+        """Creator of the result."""
         return self._creator
 
     @property
     def elastic_id(self) -> str:
+        """Elastic ID of the result."""
         return self._elastic_id
 
     def json(self) -> dict:
@@ -355,11 +380,27 @@ class FeatureResult(FeaturestoreResult):
         self._feature_group_api = feature_group_api.FeatureGroupApi()
 
     def get_feature_group(self):
+        """
+        Get the feature group instance associated with this feature.
+
+        Returns:
+            FeatureGroup: The feature group instance.
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
         return self._feature_group_api.get(
             self._featurestore_id, self._featuregroup, self._version
         )
 
     def get_feature(self):
+        """
+        Get the feature instance associated with this feature result.
+
+        Returns:
+            Feature: The feature instance.
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
         fg = self._feature_group_api.get(
             self._featurestore_id, self._featuregroup, self._version
         )
@@ -367,6 +408,7 @@ class FeatureResult(FeaturestoreResult):
 
     @property
     def featuregroup(self) -> str:
+        """Feature group name."""
         return self._featuregroup
 
     def json(self) -> dict:
@@ -427,6 +469,14 @@ class FeatureGroupResult(FeaturestoreResult):
         self._feature_group_api = feature_group_api.FeatureGroupApi()
 
     def get_feature_group(self):
+        """
+        Get the feature group instance associated with this feature group result.
+
+        Returns:
+            FeatureGroup: The feature group instance.
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
         return self._feature_group_api.get(
             self._featurestore_id, self._name, self._version
         )
@@ -469,6 +519,14 @@ class FeatureViewResult(FeaturestoreResult):
         self._feature_view_api = feature_view_api.FeatureViewApi(self._featurestore_id)
 
     def get_feature_view(self):
+        """
+        Get the feature view instance associated with this feature view result.
+
+        Returns:
+            FeatureView: The feature view instance.
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
         return self._feature_view_api.get_by_name_version(self._name, self._version)
 
     def __repr__(self) -> str:
@@ -508,6 +566,14 @@ class TrainingDatasetResult(FeaturestoreResult):
         self._feature_view_api = feature_view_api.FeatureViewApi(self._featurestore_id)
 
     def get_training_dataset(self):
+        """
+        Get the training dataset instance associated with this training dataset result.
+
+        Returns:
+            TrainingDataset: The training dataset instance.
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
         return self._feature_view_api.get_training_datasets(self._name, self._version)
 
     def __repr__(self) -> str:
@@ -1143,7 +1209,7 @@ class FeatureSearchResult:
         return f"FeatureSearchResult(features={self.features}, features_from={self.features_from}, features_total={self.features_total})"
 
 
-class TrainingdatasetsSearchResult:
+class TrainingdatasetSearchResult:
     def __init__(self, result: FeaturestoreSearchResultBase):
         self._trainingdatasets = result.trainingdatasets
         self._trainingdatasets_from = result.trainingdatasets_from
@@ -1151,7 +1217,7 @@ class TrainingdatasetsSearchResult:
 
     @property
     def trainingdatasets(self) -> Optional[list]:
-        """List of featurs."""
+        """List of training datasets."""
         return self._trainingdatasets
 
     @property
