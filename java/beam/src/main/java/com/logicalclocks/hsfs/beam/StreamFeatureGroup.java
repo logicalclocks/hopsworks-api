@@ -18,28 +18,24 @@
 package com.logicalclocks.hsfs.beam;
 
 import java.io.IOException;
-import java.text.ParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import com.logicalclocks.hsfs.FeatureStoreException;
+import com.logicalclocks.hsfs.JobConfiguration;
+import com.logicalclocks.hsfs.StorageConnector;
+import com.logicalclocks.hsfs.beam.constructor.Query;
 import org.apache.beam.sdk.values.PCollection;
 
 import com.logicalclocks.hsfs.DataSource;
 import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.FeatureGroupBase;
-import com.logicalclocks.hsfs.FeatureStoreException;
-import com.logicalclocks.hsfs.HudiOperationType;
-import com.logicalclocks.hsfs.JobConfiguration;
 import com.logicalclocks.hsfs.OnlineConfig;
 import com.logicalclocks.hsfs.StatisticsConfig;
-import com.logicalclocks.hsfs.Storage;
-import com.logicalclocks.hsfs.StorageConnector;
 import com.logicalclocks.hsfs.TimeTravelFormat;
 import com.logicalclocks.hsfs.beam.engine.BeamProducer;
 import com.logicalclocks.hsfs.beam.engine.FeatureGroupEngine;
-import com.logicalclocks.hsfs.constructor.QueryBase;
-import com.logicalclocks.hsfs.metadata.Statistics;
 
 import lombok.Builder;
 import lombok.NonNull;
@@ -95,176 +91,30 @@ public class StreamFeatureGroup extends FeatureGroupBase<PCollection<Object>> {
     this.id = id;
   }
 
-  @Override
-  public PCollection<Object> read() throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
+  /**
+   * Save the feature group metadata on Hopsworks.
+   * This method is idempotent, if the feature group already exists the method does nothing.
+   *
+   * @throws FeatureStoreException
+   * @throws IOException
+   */
+  public void save() throws FeatureStoreException, IOException {
+    save(null, null);
   }
 
-  @Override
-  public PCollection<Object> read(boolean online) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public PCollection<Object> read(Map<String, String> readOptions) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public PCollection<Object> read(boolean online, Map<String, String> readOptions)
+  /**
+   * Save the feature group metadata on Hopsworks.
+   * This method is idempotent, if the feature group already exists, the method does nothing
+   *
+   * @param writeOptions Options to provide to the materialization job
+   * @param materializationJobConfiguration Resource configuration for the materialization job
+   * @throws FeatureStoreException
+   * @throws IOException
+   */
+  public void save(Map<String, String> writeOptions, JobConfiguration materializationJobConfiguration)
       throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public PCollection<Object> read(String wallclockTime) throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public PCollection<Object> read(String wallclockTime, Map<String, String> readOptions)
-      throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public QueryBase asOf(String wallclockTime) throws FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public QueryBase asOf(String wallclockTime, String excludeUntil) throws FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void show(int numRows) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void show(int numRows, boolean online) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void insert(PCollection<Object> featureData) throws IOException, FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void insert(PCollection<Object> featureData, Map<String, String> writeOptions)
-      throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void insert(PCollection<Object> featureData, Storage storage)
-      throws IOException, FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void insert(PCollection<Object> featureData, boolean overwrite)
-      throws IOException, FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void insert(PCollection<Object> featureData, Storage storage, boolean overwrite)
-      throws IOException, FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void insert(PCollection<Object> featureData, boolean online, Map<String, String> writeOptions)
-      throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void insert(PCollection<Object> featureData, HudiOperationType hudiOperationType)
-      throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void insert(PCollection<Object> featureData, Storage storage, boolean online,
-      HudiOperationType hudiOperationType, Map<String, String> writeOptions)
-      throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void insert(PCollection<Object> featureData, JobConfiguration jobConfiguration)
-      throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void insert(PCollection<Object> featureData, boolean online, Map<String, String> writeOptions,
-      JobConfiguration jobConfiguration) throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void commitDeleteRecord(PCollection<Object> featureData)
-      throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void commitDeleteRecord(PCollection<Object> featureData, Map<String, String> writeOptions)
-      throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public Map<Long, Map<String, String>> commitDetails() throws IOException, FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public Map<Long, Map<String, String>> commitDetails(Integer integer)
-      throws IOException, FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public Map<Long, Map<String, String>> commitDetails(String limit)
-      throws IOException, FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public Map<Long, Map<String, String>> commitDetails(String wallclockTime, Integer limit)
-      throws IOException, FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public QueryBase selectFeatures(List<Feature> features) {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public QueryBase select(List<String> features) {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public QueryBase selectAll() {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public QueryBase selectExceptFeatures(List<Feature> features) {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public QueryBase selectExcept(List<String> features) {
-    throw new UnsupportedOperationException("Not supported for Beam");
+    featureGroupEngine.save(this, partitionKeys, hudiPrecombineKey,
+        writeOptions, materializationJobConfiguration);
   }
 
   /**
@@ -304,96 +154,65 @@ public class StreamFeatureGroup extends FeatureGroupBase<PCollection<Object>> {
   }
 
   @Override
-  public Object insertStream(PCollection<Object> featureData, String queryName) throws Exception {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
   public Object insertStream(PCollection<Object> featureData, Map<String, String> writeOptions) throws Exception {
-    return null;
-  }
-
-  @Override
-  public Object insertStream(PCollection<Object> featureData, String queryName, Map<String, String> writeOptions)
-      throws Exception {
     throw new UnsupportedOperationException("Not supported for Beam");
   }
 
-  @Override
-  public Object insertStream(PCollection<Object> featureData, String queryName, String outputMode) throws Exception {
-    throw new UnsupportedOperationException("Not supported for Beam");
+  /**
+   * Select a subset of features of the feature group and return a query object. The query can be used to construct
+   * joins of feature groups or create a feature view with a subset of features of the feature group.
+   * @param features List of Feature meta data objects.
+   * @return Query object.
+   */
+  public Query selectFeatures(List<Feature> features) {
+    return new Query(this, features);
   }
 
-  @Override
-  public Object insertStream(PCollection<Object> featureData, String queryName, String outputMode,
-      String checkpointLocation) throws Exception {
-    throw new UnsupportedOperationException("Not supported for Beam");
+  /**
+   * Select a subset of features of the feature group and return a query object. The query can be used to construct
+   * joins of feature groups or create a feature view with a subset of features of the feature group.
+   * @param features List of Feature names.
+   * @return Query object.
+   */
+  public Query select(List<String> features) {
+    // Create a feature object for each string feature given by the user.
+    // For the query building each feature need only the name set.
+    List<Feature> featureObjList = features.stream().map(Feature::new).collect(Collectors.toList());
+    return selectFeatures(featureObjList);
   }
 
-  @Override
-  public Object insertStream(PCollection<Object> featureData,String queryName, String outputMode,
-      boolean awaitTermination, Long timeout) throws Exception {
-    throw new UnsupportedOperationException("Not supported for Beam");
+  /**
+   * Select all features of the feature group and return a query object. The query can be used to construct
+   * joins of feature groups or create a feature view with a subset of features of the feature group.
+   * @return Query object.
+   */
+  public Query selectAll() {
+    return new Query(this, getFeatures());
   }
 
-  @Override
-  public Object insertStream(PCollection<Object> featureData, String queryName, String outputMode,
-      boolean awaitTermination, Long timeout, String checkpointLocation) throws Exception {
-    throw new UnsupportedOperationException("Not supported for Beam");
+  /**
+   * Select all features including primary key and event time feature of the feature group except provided `features`
+   * and return a query object.
+   * The query can be used to construct joins of feature groups or create a feature view with a subset of features of
+   * the feature group.
+   * @param features List of Feature meta data objects.
+   * @return Query object.
+   */
+  public Query selectExceptFeatures(List<Feature> features) {
+    List<String> exceptFeatures = features.stream().map(Feature::getName).collect(Collectors.toList());
+    return selectExcept(exceptFeatures);
   }
 
-  @Override
-  public Object insertStream(PCollection<Object> featureData, String queryName, String outputMode,
-      boolean awaitTermination, Long timeout, String checkpointLocation, Map<String, String> writeOptions)
-      throws Exception {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public Object insertStream(PCollection<Object> featureData, String queryName, String outputMode,
-      boolean awaitTermination, String checkpointLocation) throws Exception {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public Object insertStream(PCollection<Object> featureData, String queryName, String outputMode,
-      boolean awaitTermination, Long timeout, String checkpointLocation, Map<String, String> writeOptions,
-      JobConfiguration jobConfiguration) throws Exception {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void updateFeatures(List<Feature> feature) throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void updateFeatures(Feature feature) throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void appendFeatures(List<Feature> feature) throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void appendFeatures(Feature feature) throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public Statistics computeStatistics() throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public Statistics computeStatistics(String wallclockTime) throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public Statistics getStatistics() throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
+  /**
+   * Select all features including primary key and event time feature of the feature group except provided `features`
+   * and return a query object.
+   * The query can be used to construct joins of feature groups or create a feature view with a subset of features of
+   * the feature group.
+   * @param features List of Feature names.
+   * @return Query object.
+   */
+  public Query selectExcept(List<String> features) {
+    return new Query(this,
+        getFeatures().stream().filter(f -> !features.contains(f.getName())).collect(Collectors.toList()));
   }
 }

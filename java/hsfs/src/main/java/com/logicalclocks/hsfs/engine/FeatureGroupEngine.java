@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2023. Hopsworks AB
+ *  Copyright (c) 2025. Hopsworks AB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -15,36 +15,27 @@
  *
  */
 
-package com.logicalclocks.hsfs.flink.engine;
+package com.logicalclocks.hsfs.engine;
 
 import com.logicalclocks.hsfs.Feature;
+import com.logicalclocks.hsfs.FeatureStore;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.JobConfiguration;
 import com.logicalclocks.hsfs.OnlineConfig;
 import com.logicalclocks.hsfs.StatisticsConfig;
 import com.logicalclocks.hsfs.StorageConnector;
+import com.logicalclocks.hsfs.StreamFeatureGroup;
 import com.logicalclocks.hsfs.TimeTravelFormat;
-import com.logicalclocks.hsfs.engine.FeatureGroupEngineBase;
 
-import com.logicalclocks.hsfs.flink.FeatureStore;
-import com.logicalclocks.hsfs.flink.StreamFeatureGroup;
 import lombok.NonNull;
 import lombok.SneakyThrows;
-import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.streaming.api.datastream.DataStreamSink;
 
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
-public class FeatureGroupEngine extends FeatureGroupEngineBase {
-
-  @SneakyThrows
-  public DataStreamSink<?> insertStream(StreamFeatureGroup streamFeatureGroup, DataStream<?> featureData,
-      Map<String, String> writeOptions) {
-    return FlinkEngine.getInstance().writeDataStream(streamFeatureGroup, featureData,  writeOptions);
-  }
+public class FeatureGroupEngine<T> extends FeatureGroupEngineBase {
 
   public StreamFeatureGroup getStreamFeatureGroup(FeatureStore featureStore, String fgName, Integer fgVersion)
       throws IOException, FeatureStoreException {
@@ -82,8 +73,13 @@ public class FeatureGroupEngine extends FeatureGroupEngineBase {
     featureGroup.setOnlineTopicName(apiFG.getOnlineTopicName());
   }
 
-  public StreamFeatureGroup getOrCreateFeatureGroup(FeatureStore featureStore,
-                                                    @NonNull String name,
+  @SneakyThrows
+  public List<Object> insertStream(StreamFeatureGroup streamFeatureGroup, List<T> featureData,
+                                        Map<String, String> writeOptions) {
+    return Engine.getInstance().writeStream(streamFeatureGroup, featureData,  writeOptions);
+  }
+
+  public StreamFeatureGroup getOrCreateFeatureGroup(FeatureStore featureStore, @NonNull String name,
                                                     Integer version,
                                                     String description,
                                                     Boolean onlineEnabled,
