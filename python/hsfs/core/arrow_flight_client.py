@@ -531,16 +531,7 @@ class ArrowFlightClient:
             fg_connector = _serialize_featuregroup_connector(
                 fg, query, on_demand_fg_aliases
             )
-            if isinstance(fg, feature_group.ExternalFeatureGroup):
-                selected_features = []
-                for feat in query.features:
-                    if feat._feature_group_id == fg.id:
-                        selected_features.append(feat.name)
-                features[fg_name] = [
-                    feat.name for feat in fg.features if feat.name in selected_features
-                ]
-            else:
-                features[fg_name] = [feat.name for feat in fg.features]
+            features[fg_name] = [feat.name for feat in fg.features]
             connectors[fg_name] = fg_connector
         filters = _serialize_filter_expression(query.filters, query)
 
