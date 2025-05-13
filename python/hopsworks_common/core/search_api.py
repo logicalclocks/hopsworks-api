@@ -235,7 +235,7 @@ class SearchApi:
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
-            `FeaturestoreSearchResult`: The results.
+            `FeatureGroupSearchResult`: The results.
         # Raises
             `ValueError`: If the search term is not provided.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
@@ -272,7 +272,7 @@ class SearchApi:
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
-            `FeaturestoreSearchResult`: The results.
+            `FeatureGroupSearchResult`: The results.
         # Raises
             `ValueError`: If the search term is not provided.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
@@ -309,7 +309,7 @@ class SearchApi:
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
-            `FeaturestoreSearchResult`: The results.
+            `FeatureGroupSearchResult`: The results.
         # Raises
             `ValueError`: If the search term is not provided.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
@@ -346,7 +346,7 @@ class SearchApi:
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
-            `FeaturestoreSearchResult`: The results.
+            `FeatureGroupSearchResult`: The results.
         # Raises
             `ValueError`: If the search term is not provided.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
@@ -383,7 +383,7 @@ class SearchApi:
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
-            `FeaturestoreSearchResult`: The results.
+            `FeatureGroupSearchResult`: The results.
         # Raises
             `ValueError`: If the search term is not provided.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
@@ -421,7 +421,7 @@ class SearchApi:
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
-            `FeaturestoreSearchResult`: The results.
+            `FeatureViewSearchResult`: The results.
         # Raises
             `ValueError`: If the search term is not provided.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
@@ -458,7 +458,7 @@ class SearchApi:
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
-            `FeaturestoreSearchResult`: The results.
+            `FeatureViewSearchResult`: The results.
         # Raises
             `ValueError`: If the search term is not provided.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
@@ -495,7 +495,7 @@ class SearchApi:
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
-            `FeaturestoreSearchResult`: The results.
+            `FeatureViewSearchResult`: The results.
         # Raises
             `ValueError`: If the search term is not provided.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
@@ -532,7 +532,7 @@ class SearchApi:
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
-            `FeaturestoreSearchResult`: The results.
+            `FeatureViewSearchResult`: The results.
         # Raises
             `ValueError`: If the search term is not provided.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
@@ -569,7 +569,7 @@ class SearchApi:
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
-            `FeaturestoreSearchResult`: The results.
+            `FeatureViewSearchResult`: The results.
         # Raises
             `ValueError`: If the search term is not provided.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
@@ -607,7 +607,7 @@ class SearchApi:
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
-            `FeaturestoreSearchResult`: The results.
+            `TrainingdatasetSearchResult`: The results.
         # Raises
             `ValueError`: If the search term is not provided.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
@@ -615,7 +615,7 @@ class SearchApi:
         result = search_results.FeaturestoreSearchResult.from_response_json(
             self._search(search_term, "TRAININGDATASET", offset, limit)
         )
-        return search_results.TrainingdatasetsSearchResult(result)
+        return search_results.TrainingdatasetSearchResult(result)
 
     def trainingdataset_search_by_tag(
         self,
@@ -644,7 +644,7 @@ class SearchApi:
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
-            `FeaturestoreSearchResult`: The results.
+            `TrainingdatasetSearchResult`: The results.
         # Raises
             `ValueError`: If the search term is not provided.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
@@ -652,7 +652,7 @@ class SearchApi:
         result = search_results.FeaturestoreSearchResultByTag.from_response_json(
             self._search(search_term, "TRAININGDATASET", offset, limit)
         )
-        return search_results.TrainingdatasetsSearchResult(result)
+        return search_results.TrainingdatasetSearchResult(result)
 
     def trainingdataset_search_by_tag_key(
         self,
@@ -681,7 +681,7 @@ class SearchApi:
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
-            `FeaturestoreSearchResult`: The results.
+            `TrainingdatasetSearchResult`: The results.
         # Raises
             `ValueError`: If the search term is not provided.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
@@ -689,7 +689,7 @@ class SearchApi:
         result = search_results.FeaturestoreSearchResultByTagKey.from_response_json(
             self._search(search_term, "TRAININGDATASET", offset, limit)
         )
-        return search_results.TrainingdatasetsSearchResult(result)
+        return search_results.TrainingdatasetSearchResult(result)
 
     def trainingdataset_search_by_tag_value(
         self,
@@ -718,7 +718,7 @@ class SearchApi:
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
-            `FeaturestoreSearchResult`: The results.
+            `TrainingdatasetSearchResult`: The results.
         # Raises
             `ValueError`: If the search term is not provided.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
@@ -726,7 +726,7 @@ class SearchApi:
         result = search_results.FeaturestoreSearchResultByTagValue.from_response_json(
             self._search(search_term, "TRAININGDATASET", offset, limit)
         )
-        return search_results.TrainingdatasetsSearchResult(result)
+        return search_results.TrainingdatasetSearchResult(result)
 
     def trainingdataset_search_by_keyword(
         self,
@@ -755,7 +755,7 @@ class SearchApi:
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
-            `FeaturestoreSearchResult`: The results.
+            `TrainingdatasetSearchResult`: The results.
         # Raises
             `ValueError`: If the search term is not provided.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
@@ -763,7 +763,7 @@ class SearchApi:
         result = search_results.FeaturestoreSearchResultByKeyWord.from_response_json(
             self._search(search_term, "TRAININGDATASET", offset, limit)
         )
-        return search_results.TrainingdatasetsSearchResult(result)
+        return search_results.TrainingdatasetSearchResult(result)
 
     # FEATURE
     def feature_search(
@@ -796,7 +796,7 @@ class SearchApi:
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
-            `FeaturestoreSearchResult`: The results.
+            `FeatureSearchResult`: The results.
         # Raises
             `ValueError`: If the search term is not provided.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
