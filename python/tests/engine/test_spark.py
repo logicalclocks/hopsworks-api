@@ -15,6 +15,8 @@
 #
 from __future__ import annotations
 
+import datetime
+import json
 from unittest.mock import call
 
 import hopsworks_common
@@ -1651,7 +1653,6 @@ class TestSpark:
             == '{"fields":[{"metadata":{},"name":"key","nullable":false,"type":"binary"},{"metadata":{},"name":"value","nullable":false,"type":"binary"}],"type":"struct"}'
         )
 
-    """ Need spark to run these tests properly
     def test_deserialize_from_avro(self, mocker):
         # Arrange
         spark_engine = spark.Engine()
@@ -1692,7 +1693,24 @@ class TestSpark:
         )
 
         # Assert
-        assert deserialized_df.schema.json() == '{"fields":[{"metadata":{},"name":"account_id","nullable":true,"type":"string"},{"metadata":{},"name":"last_played_games","nullable":true,"type":{"containsNull":true,"elementType":"string","type":"array"}},{"metadata":{},"name":"event_time","nullable":true,"type":"timestamp"}],"type":"struct"}'
+        expected_schema = json.loads('''{
+            "fields": [
+                {"metadata": {}, "name": "key", "nullable": true, "type": "binary"},
+                {"metadata": {}, "name": "value", "nullable": false, "type": {
+                    "fields": [
+                        {"metadata": {}, "name": "account_id", "nullable": true, "type": "string"},
+                        {"metadata": {}, "name": "last_played_games", "nullable": true, "type": {
+                            "containsNull": true, "elementType": "string", "type": "array"}},
+                        {"metadata": {}, "name": "event_time", "nullable": true, "type": "timestamp"}
+                    ],
+                    "type": "struct"
+                }}
+            ],
+            "type": "struct"
+        }''')
+
+        actual_schema = json.loads(deserialized_df.schema.json())
+        assert actual_schema == expected_schema
 
     def test_serialize_deserialize_avro(self, mocker):
         # Arrange
@@ -1701,8 +1719,8 @@ class TestSpark:
         now = datetime.datetime.now()
 
         fg_data = []
-        fg_data.append(("ekarson", ["GRAVITY RUSH 2", "KING'S QUEST"], pd.Timestamp(now.timestamp())))
-        fg_data.append(("ratmilkdrinker", ["NBA 2K", "CALL OF DUTY"], pd.Timestamp(now.timestamp())))
+        fg_data.append(("ekarson", ["GRAVITY RUSH 2", "KING'S QUEST"], pd.Timestamp(now)))
+        fg_data.append(("ratmilkdrinker", ["NBA 2K", "CALL OF DUTY"], pd.Timestamp(now)))
         pandas_df = pd.DataFrame(fg_data, columns =["account_id", "last_played_games", "event_time"])
 
         df = spark_engine._spark_session.createDataFrame(pandas_df)
@@ -1742,9 +1760,8 @@ class TestSpark:
 
         # Assert
         assert serialized_df.schema.json() == '{"fields":[{"metadata":{},"name":"key","nullable":false,"type":"binary"},{"metadata":{},"name":"value","nullable":false,"type":"binary"}],"type":"struct"}'
-        assert df.schema == deserialized_df.schema
-        assert df.collect() == deserialized_df.collect()
-    """
+        assert df.schema == deserialized_df.schema["value"].dataType
+        assert df.collect() == deserialized_df.select("value.*").collect()
 
     def test_get_training_data(self, mocker):
         # Arrange
@@ -3478,8 +3495,6 @@ class TestSpark:
 
     def test_read_stream_kafka_message_format_avro(self, mocker):
         # Arrange
-        mocker.patch("pyspark.context.SparkContext")
-
         spark_engine = spark.Engine()
 
         mock_stream = mocker.Mock()
@@ -3491,7 +3506,7 @@ class TestSpark:
             "offset": ["test_offset", "test_offset"],
             "timestamp": ["test_timestamp", "test_timestamp"],
             "timestampType": ["test_timestampType", "test_timestampType"],
-            "value": ['{"name": "value1"}', '{"name": "value2"}'],
+            "value": [b"21212121", b"12121212"],
             "x": [True, False],
         }
         df = pd.DataFrame(data=d)
@@ -3509,25 +3524,20 @@ class TestSpark:
                             }"""
 
         # Act
-        with pytest.raises(
-            TypeError
-        ) as e_info:  # todo look into this (from_avro has to be mocked)
-            spark_engine._read_stream_kafka(
-                stream=mock_stream,
-                message_format="avro",
-                schema=schema_string,
-                include_metadata=True,
-            )
+        result = spark_engine._read_stream_kafka(
+            stream=mock_stream,
+            message_format="avro",
+            schema=schema_string,
+            include_metadata=False,
+        )
 
         # Assert
-        assert str(e_info.value) == "'JavaPackage' object is not callable"
-        # assert result.schema == expected_spark_df.schema
-        # assert result.collect() == expected_spark_df.collect()
+        assert len(result.columns) == 1
+        assert "name" in result.columns
+        assert result.schema["name"].dataType == StringType()
 
     def test_read_stream_kafka_message_format_avro_include_metadata(self, mocker):
         # Arrange
-        mocker.patch("pyspark.context.SparkContext")
-
         spark_engine = spark.Engine()
 
         mock_stream = mocker.Mock()
@@ -3538,7 +3548,7 @@ class TestSpark:
             "offset": ["test_offset", "test_offset"],
             "timestamp": ["test_timestamp", "test_timestamp"],
             "timestampType": ["test_timestampType", "test_timestampType"],
-            "value": ['{"name": "value1"}', '{"name": "value2"}'],
+            "value": [b"21212121", b"12121212"],
             "x": [True, False],
         }
         df = pd.DataFrame(data=d)
@@ -3556,20 +3566,17 @@ class TestSpark:
                             }"""
 
         # Act
-        with pytest.raises(
-            TypeError
-        ) as e_info:  # todo look into this (from_avro has to be mocked)
-            spark_engine._read_stream_kafka(
-                stream=mock_stream,
-                message_format="avro",
-                schema=schema_string,
-                include_metadata=True,
-            )
+        result = spark_engine._read_stream_kafka(
+            stream=mock_stream,
+            message_format="avro",
+            schema=schema_string,
+            include_metadata=True,
+        )
 
         # Assert
-        assert str(e_info.value) == "'JavaPackage' object is not callable"
-        # assert result.schema == expected_spark_df.schema
-        # assert result.collect() == expected_spark_df.collect()
+        assert len(result.columns) == 7
+        assert "name" in result.columns
+        assert result.schema["name"].dataType == StringType()
 
     def test_add_file(self, mocker):
         # Arrange
