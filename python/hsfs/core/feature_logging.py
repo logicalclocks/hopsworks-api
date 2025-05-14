@@ -1,8 +1,10 @@
 import json
-from typing import Any, Dict
+import warnings
+from typing import Any, Dict, List, Optional
 
 import humps
 from hsfs import feature_group, util
+from hsfs.feature import Feature
 
 
 class FeatureLogging:
@@ -10,13 +12,15 @@ class FeatureLogging:
 
     def __init__(
         self,
-        id: int,
-        transformed_features: "feature_group.FeatureGroup",
-        untransformed_features: "feature_group.FeatureGroup",
+        id: int = None,
+        transformed_features: "feature_group.FeatureGroup" = None,
+        untransformed_features: "feature_group.FeatureGroup" = None,
+        extra_logging_columns: Optional[List[Feature]] = None,
     ):
         self._id = id
         self._transformed_features = transformed_features
         self._untransformed_features = untransformed_features
+        self._extra_logging_columns = extra_logging_columns
 
     @classmethod
     def from_response_json(cls, json_dict: Dict[str, Any]) -> "FeatureLogging":
@@ -31,8 +35,16 @@ class FeatureLogging:
             untransformed_features = FeatureGroup.from_response_json(
                 untransformed_features
             )
+        extra_logging_columns = json_decamelized.get("extra_logging_columns")
+        if extra_logging_columns:
+            extra_logging_columns = [
+                Feature.from_response_json(feature) for feature in extra_logging_columns
+            ]
         return cls(
-            json_decamelized.get("id"), transformed_features, untransformed_features
+            json_decamelized.get("id"),
+            transformed_features,
+            untransformed_features,
+            extra_logging_columns,
         )
 
     def update(self, others):
@@ -48,8 +60,21 @@ class FeatureLogging:
     def untransformed_features(self) -> "feature_group.FeatureGroup":
         return self._untransformed_features
 
-    def get_feature_group(self, transformed):
+    @property
+    def extra_logging_columns(self) -> Optional[List[Feature]]:
+        return self._extra_logging_columns
+
+    def get_feature_group(self, transformed: Optional[bool] = None):
+        if transformed is not None:
+            warnings.warn(
+                "Providing ´transformed´ while fetching logging feature group is deprecated"
+                + " and will be dropped in future versions. Transformed and untransformed features are now logged in the same feature group.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         if transformed:
+            if self._transformed_features is None:
+                return self._untransformed_features
             return self._transformed_features
         else:
             return self._untransformed_features
@@ -61,8 +86,9 @@ class FeatureLogging:
     def to_dict(self):
         return {
             "id": self._id,
-            "transformed_log_fg": self._transformed_features,
-            "untransformed_log_fg": self._untransformed_features,
+            "transformedLogFg": self._transformed_features,
+            "untransformedLogFg": self._untransformed_features,
+            "extraLoggingColumns": self._extra_logging_columns,
         }
 
     def json(self) -> Dict[str, Any]:
