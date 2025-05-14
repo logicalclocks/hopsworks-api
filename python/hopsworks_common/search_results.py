@@ -19,7 +19,7 @@ from typing import Optional
 
 import humps
 from hopsworks_common import util
-from hsfs.core import feature_group_api, feature_view_api
+from hsfs.core import feature_group_api, feature_view_api, training_dataset_api
 
 
 class Creator:
@@ -563,7 +563,7 @@ class TrainingDatasetResult(FeaturestoreResult):
             elastic_id,
             **kwargs,
         )
-        self._feature_view_api = feature_view_api.FeatureViewApi(self._featurestore_id)
+        self._training_dataset_api = training_dataset_api.TrainingDatasetApi(self._featurestore_id)
 
     def get_training_dataset(self):
         """
@@ -574,7 +574,7 @@ class TrainingDatasetResult(FeaturestoreResult):
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self._feature_view_api.get_training_datasets(self._name, self._version)
+        return self._training_dataset_api.get(self._name, self._version)
 
     def __repr__(self) -> str:
         return f"TrainingDatasetResult(name={self.name}, version={self.version}, description={self.description}, featurestore_id={self.featurestore_id}, created={self.created}, parent_project_id={self.parent_project_id}, parent_project_name={self.parent_project_name}, access_projects={self.access_projects}, highlights={self.highlights}, creator={self.creator})"
