@@ -20,7 +20,10 @@ from typing import Literal, get_args
 from hopsworks_common import client, search_results
 
 
-DOC_TYPE_ARG = Literal["FEATUREGROUP", "FEATUREVIEW", "TRAININGDATASET", "FEATURE","ALL"]
+DOC_TYPE_ARG = Literal[
+    "FEATUREGROUP", "FEATUREVIEW", "TRAININGDATASET", "FEATURE", "ALL"
+]
+FILTER_BY_ARG = Literal["tag", "tag_key", "tag_value", "keyword"]
 
 
 class SearchApi:
@@ -30,6 +33,7 @@ class SearchApi:
     def featurestore_search(
         self,
         search_term: str,
+        filter_by: FILTER_BY_ARG = None,
         offset: int = 0,
         limit: int = 100,
     ):
@@ -51,166 +55,24 @@ class SearchApi:
         ```
         # Arguments
             search_term: the term to search for.
+            filter_by: filter results by a specific field (default is None).
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
             `FeaturestoreSearchResult`: The results.
         # Raises
-            `ValueError`: If the search term is not provided.
+            `ValueError`: If the search term is not provided or if the filter_by is not one of the allowed values.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        return search_results.FeaturestoreSearchResult.from_response_json(
-            self._search(search_term, "ALL", offset, limit)
-        )
-
-    def featurestore_search_by_tag(
-        self,
-        search_term: str,
-        offset: int = 0,
-        limit: int = 1,
-    ):
-        """
-        Search by tag.
-        ```python
-
-        import hopsworks
-
-        project = hopsworks.login()
-
-        search_api = project.get_search_api()
-
-        result = search_api.featurestore_search_by_tag("tag")
-
-        # get feature group instance
-        featuregroup = result.featuregroups[0].get_feature_group()
-
-        ```
-        # Arguments
-            search_term: the term to search for.
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-        # Returns
-            `FeaturestoreSearchResult`: The results.
-        # Raises
-            `ValueError`: If the search term is not provided.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        """
-        return search_results.FeaturestoreSearchResultByTag.from_response_json(
-            self._search(search_term, "ALL", offset, limit)
-        )
-
-    def featurestore_search_by_tag_key(
-        self,
-        search_term: str,
-        offset: int = 0,
-        limit: int = 1,
-    ):
-        """
-        Search by tag key.
-        ```python
-
-        import hopsworks
-
-        project = hopsworks.login()
-
-        search_api = project.get_search_api()
-
-        result = search_api.featurestore_search_by_tag_key("tag_key")
-
-        # get feature group instance
-        featuregroup = result.featuregroups[0].get_feature_group()
-
-        ```
-        # Arguments
-            search_term: the term to search for.
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-        # Returns
-            `FeaturestoreSearchResult`: The results.
-        # Raises
-            `ValueError`: If the search term is not provided.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        """
-        return search_results.FeaturestoreSearchResultByTagKey.from_response_json(
-            self._search(search_term, "ALL", offset, limit)
-        )
-
-    def featurestore_search_by_tag_value(
-        self,
-        search_term: str,
-        offset: int = 0,
-        limit: int = 1,
-    ):
-        """
-        Search by tag value.
-        ```python
-
-        import hopsworks
-
-        project = hopsworks.login()
-
-        search_api = project.get_search_api()
-
-        result = search_api.featurestore_search_by_tag_value("tag_value")
-
-        # get feature group instance
-        featuregroup = result.featuregroups[0].get_feature_group()
-
-        ```
-        # Arguments
-            search_term: the term to search for.
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-        # Returns
-            `FeaturestoreSearchResult`: The results.
-        # Raises
-            `ValueError`: If the search term is not provided.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        """
-        return search_results.FeaturestoreSearchResultByTagValue.from_response_json(
-            self._search(search_term, "ALL", offset, limit)
-        )
-
-    def featurestore_search_by_keyword(
-        self,
-        search_term: str,
-        offset: int = 0,
-        limit: int = 1,
-    ):
-        """
-        Search by keyword.
-        ```python
-
-        import hopsworks
-
-        project = hopsworks.login()
-
-        search_api = project.get_search_api()
-
-        result = search_api.featurestore_search_by_keyword("keyword")
-
-        # get feature group instance
-        featuregroup = result.featuregroups[0].get_feature_group()
-
-        ```
-        # Arguments
-            search_term: the term to search for.
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-        # Returns
-            `FeaturestoreSearchResult`: The results.
-        # Raises
-            `ValueError`: If the search term is not provided.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        """
-        return search_results.FeaturestoreSearchResultByKeyWord.from_response_json(
-            self._search(search_term, "ALL", offset, limit)
+        return self._search(
+            search_term, "ALL", filter_by=filter_by, offset=offset, limit=limit
         )
 
     # FEATUREGROUP
     def featuregroup_search(
         self,
         search_term: str,
+        filter_by: FILTER_BY_ARG = None,
         offset: int = 0,
         limit: int = 100,
     ):
@@ -232,171 +94,30 @@ class SearchApi:
         ```
         # Arguments
             search_term: the term to search for.
+            filter_by: filter results by a specific field (default is None).
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
             `FeatureGroupSearchResult`: The results.
         # Raises
-            `ValueError`: If the search term is not provided.
+            `ValueError`: If the search term is not provided or if the filter_by is not one of the allowed values.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        result = search_results.FeaturestoreSearchResult.from_response_json(
-            self._search(search_term, "FEATUREGROUP", offset, limit)
+        return search_results.FeatureGroupSearchResult(
+            self._search(
+                search_term,
+                "FEATUREGROUP",
+                filter_by=filter_by,
+                offset=offset,
+                limit=limit,
+            )
         )
-        return search_results.FeatureGroupSearchResult(result)
-
-    def featuregroup_search_by_tag(
-        self,
-        search_term: str,
-        offset: int = 0,
-        limit: int = 1,
-    ):
-        """
-        Search for feature group by tag.
-        ```python
-
-        import hopsworks
-
-        project = hopsworks.login()
-
-        search_api = project.get_search_api()
-
-        result = search_api.featuregroup_search_by_tag("tag")
-
-        # get feature group instance
-        featuregroup = result.featuregroups[0].get_feature_group()
-
-        ```
-        # Arguments
-            search_term: the term to search for.
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-        # Returns
-            `FeatureGroupSearchResult`: The results.
-        # Raises
-            `ValueError`: If the search term is not provided.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        """
-        result = search_results.FeaturestoreSearchResultByTag.from_response_json(
-            self._search(search_term, "FEATUREGROUP", offset, limit)
-        )
-        return search_results.FeatureGroupSearchResult(result)
-
-    def featuregroup_search_by_tag_key(
-        self,
-        search_term: str,
-        offset: int = 0,
-        limit: int = 1,
-    ):
-        """
-        Search for feature group by tag key.
-        ```python
-
-        import hopsworks
-
-        project = hopsworks.login()
-
-        search_api = project.get_search_api()
-
-        result = search_api.featuregroup_search_by_tag_key("tag_key")
-
-        # get feature group instance
-        featuregroup = result.featuregroups[0].get_feature_group()
-
-        ```
-        # Arguments
-            search_term: the term to search for.
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-        # Returns
-            `FeatureGroupSearchResult`: The results.
-        # Raises
-            `ValueError`: If the search term is not provided.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        """
-        result = search_results.FeaturestoreSearchResultByTagKey.from_response_json(
-            self._search(search_term, "FEATUREGROUP", offset, limit)
-        )
-        return search_results.FeatureGroupSearchResult(result)
-
-    def featuregroup_search_by_tag_value(
-        self,
-        search_term: str,
-        offset: int = 0,
-        limit: int = 1,
-    ):
-        """
-        Search for feature group by tag value.
-        ```python
-
-        import hopsworks
-
-        project = hopsworks.login()
-
-        search_api = project.get_search_api()
-
-        result = search_api.featuregroup_search_by_tag_value("tag_value")
-
-        # get feature group instance
-        featuregroup = result.featuregroups[0].get_feature_group()
-
-        ```
-        # Arguments
-            search_term: the term to search for.
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-        # Returns
-            `FeatureGroupSearchResult`: The results.
-        # Raises
-            `ValueError`: If the search term is not provided.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        """
-        result = search_results.FeaturestoreSearchResultByTagValue.from_response_json(
-            self._search(search_term, "FEATUREGROUP", offset, limit)
-        )
-        return search_results.FeatureGroupSearchResult(result)
-
-    def featuregroup_search_by_keyword(
-        self,
-        search_term: str,
-        offset: int = 0,
-        limit: int = 1,
-    ):
-        """
-        Search for feature group by keyword.
-        ```python
-
-        import hopsworks
-
-        project = hopsworks.login()
-
-        search_api = project.get_search_api()
-
-        result = search_api.featuregroup_search_by_keyword("keyword")
-
-        # get feature group instance
-        featuregroup = result.featuregroups[0].get_feature_group()
-
-        ```
-        # Arguments
-            search_term: the term to search for.
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-        # Returns
-            `FeatureGroupSearchResult`: The results.
-        # Raises
-            `ValueError`: If the search term is not provided.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        """
-        result = search_results.FeaturestoreSearchResultByKeyWord.from_response_json(
-            self._search(search_term, "FEATUREGROUP", offset, limit)
-        )
-        return search_results.FeatureGroupSearchResult(result)
 
     # FEATUREVIEW
     def featureview_search(
         self,
         search_term: str,
+        filter_by: FILTER_BY_ARG = None,
         offset: int = 0,
         limit: int = 100,
     ):
@@ -418,171 +139,30 @@ class SearchApi:
         ```
         # Arguments
             search_term: the term to search for.
+            filter_by: filter results by a specific field (default is None).
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
             `FeatureViewSearchResult`: The results.
         # Raises
-            `ValueError`: If the search term is not provided.
+            `ValueError`: If the search term is not provided or if the filter_by is not one of the allowed values.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        result = search_results.FeaturestoreSearchResult.from_response_json(
-            self._search(search_term, "FEATUREVIEW", offset, limit)
+        return search_results.FeatureViewSearchResult(
+            self._search(
+                search_term,
+                "FEATUREVIEW",
+                filter_by=filter_by,
+                offset=offset,
+                limit=limit,
+            )
         )
-        return search_results.FeatureViewSearchResult(result)
-
-    def featureview_search_by_tag(
-        self,
-        search_term: str,
-        offset: int = 0,
-        limit: int = 1,
-    ):
-        """
-        Search for feature views by tag.
-        ```python
-
-        import hopsworks
-
-        project = hopsworks.login()
-
-        search_api = project.get_search_api()
-
-        result = search_api.featureview_search_by_tag("tag")
-
-        # get feature view instance
-        featureview = result.feature_views[0].get_feature_view()
-
-        ```
-        # Arguments
-            search_term: the term to search for.
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-        # Returns
-            `FeatureViewSearchResult`: The results.
-        # Raises
-            `ValueError`: If the search term is not provided.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        """
-        result = search_results.FeaturestoreSearchResultByTag.from_response_json(
-            self._search(search_term, "FEATUREVIEW", offset, limit)
-        )
-        return search_results.FeatureViewSearchResult(result)
-
-    def featureview_search_by_tag_key(
-        self,
-        search_term: str,
-        offset: int = 0,
-        limit: int = 1,
-    ):
-        """
-        Search for feature views by tag key.
-        ```python
-
-        import hopsworks
-
-        project = hopsworks.login()
-
-        search_api = project.get_search_api()
-
-        result = search_api.featureview_search_by_tag_key("tag_key")
-
-        # get feature view instance
-        featureview = result.feature_views[0].get_feature_view()
-
-        ```
-        # Arguments
-            search_term: the term to search for.
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-        # Returns
-            `FeatureViewSearchResult`: The results.
-        # Raises
-            `ValueError`: If the search term is not provided.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        """
-        result = search_results.FeaturestoreSearchResultByTagKey.from_response_json(
-            self._search(search_term, "FEATUREVIEW", offset, limit)
-        )
-        return search_results.FeatureViewSearchResult(result)
-
-    def featureview_search_by_tag_value(
-        self,
-        search_term: str,
-        offset: int = 0,
-        limit: int = 1,
-    ):
-        """
-        Search for feature views by tag value.
-        ```python
-
-        import hopsworks
-
-        project = hopsworks.login()
-
-        search_api = project.get_search_api()
-
-        result = search_api.featureview_search_by_tag_value("tag_value")
-
-        # get feature view instance
-        featureview = result.feature_views[0].get_feature_view()
-
-        ```
-        # Arguments
-            search_term: the term to search for.
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-        # Returns
-            `FeatureViewSearchResult`: The results.
-        # Raises
-            `ValueError`: If the search term is not provided.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        """
-        result = search_results.FeaturestoreSearchResultByTagValue.from_response_json(
-            self._search(search_term, "FEATUREVIEW", offset, limit)
-        )
-        return search_results.FeatureViewSearchResult(result)
-
-    def featureview_search_by_keyword(
-        self,
-        search_term: str,
-        offset: int = 0,
-        limit: int = 1,
-    ):
-        """
-        Search for feature views by keyword.
-        ```python
-
-        import hopsworks
-
-        project = hopsworks.login()
-
-        search_api = project.get_search_api()
-
-        result = search_api.featureview_search_by_keyword("keyword")
-
-        # get feature view instance
-        featureview = result.feature_views[0].get_feature_view()
-
-        ```
-        # Arguments
-            search_term: the term to search for.
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-        # Returns
-            `FeatureViewSearchResult`: The results.
-        # Raises
-            `ValueError`: If the search term is not provided.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        """
-        result = search_results.FeaturestoreSearchResultByKeyWord.from_response_json(
-            self._search(search_term, "FEATUREVIEW", offset, limit)
-        )
-        return search_results.FeatureViewSearchResult(result)
 
     # TRAININGDATASET
     def trainingdataset_search(
         self,
         search_term: str,
+        filter_by: FILTER_BY_ARG = None,
         offset: int = 0,
         limit: int = 100,
     ):
@@ -604,166 +184,24 @@ class SearchApi:
         ```
         # Arguments
             search_term: the term to search for.
+            filter_by: filter results by a specific field (default is None).
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
             `TrainingdatasetSearchResult`: The results.
         # Raises
-            `ValueError`: If the search term is not provided.
+            `ValueError`: If the search term is not provided or if the filter_by is not one of the allowed values.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        result = search_results.FeaturestoreSearchResult.from_response_json(
-            self._search(search_term, "TRAININGDATASET", offset, limit)
+        return search_results.TrainingdatasetSearchResult(
+            self._search(
+                search_term,
+                "TRAININGDATASET",
+                filter_by=filter_by,
+                offset=offset,
+                limit=limit,
+            )
         )
-        return search_results.TrainingdatasetSearchResult(result)
-
-    def trainingdataset_search_by_tag(
-        self,
-        search_term: str,
-        offset: int = 0,
-        limit: int = 1,
-    ):
-        """
-        Search for training datasets by tag.
-        ```python
-
-        import hopsworks
-
-        project = hopsworks.login()
-
-        search_api = project.get_search_api()
-
-        result = search_api.trainingdataset_search_by_tag("tag")
-
-        # get training datasets instance
-        trainingdataset = result.trainingdatasets[0].get_training_dataset()
-
-        ```
-        # Arguments
-            search_term: the term to search for.
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-        # Returns
-            `TrainingdatasetSearchResult`: The results.
-        # Raises
-            `ValueError`: If the search term is not provided.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        """
-        result = search_results.FeaturestoreSearchResultByTag.from_response_json(
-            self._search(search_term, "TRAININGDATASET", offset, limit)
-        )
-        return search_results.TrainingdatasetSearchResult(result)
-
-    def trainingdataset_search_by_tag_key(
-        self,
-        search_term: str,
-        offset: int = 0,
-        limit: int = 1,
-    ):
-        """
-        Search for training datasets by tag key.
-        ```python
-
-        import hopsworks
-
-        project = hopsworks.login()
-
-        search_api = project.get_search_api()
-
-        result = search_api.trainingdataset_search_by_tag_key("tag_key")
-
-        # get training datasets instance
-        trainingdataset = result.trainingdatasets[0].get_training_dataset()
-
-        ```
-        # Arguments
-            search_term: the term to search for.
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-        # Returns
-            `TrainingdatasetSearchResult`: The results.
-        # Raises
-            `ValueError`: If the search term is not provided.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        """
-        result = search_results.FeaturestoreSearchResultByTagKey.from_response_json(
-            self._search(search_term, "TRAININGDATASET", offset, limit)
-        )
-        return search_results.TrainingdatasetSearchResult(result)
-
-    def trainingdataset_search_by_tag_value(
-        self,
-        search_term: str,
-        offset: int = 0,
-        limit: int = 1,
-    ):
-        """
-        Search for training datasets by tag value.
-        ```python
-
-        import hopsworks
-
-        project = hopsworks.login()
-
-        search_api = project.get_search_api()
-
-        result = search_api.trainingdataset_search_by_tag_value("tag_value")
-
-        # get training datasets instance
-        trainingdataset = result.trainingdatasets[0].get_training_dataset()
-
-        ```
-        # Arguments
-            search_term: the term to search for.
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-        # Returns
-            `TrainingdatasetSearchResult`: The results.
-        # Raises
-            `ValueError`: If the search term is not provided.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        """
-        result = search_results.FeaturestoreSearchResultByTagValue.from_response_json(
-            self._search(search_term, "TRAININGDATASET", offset, limit)
-        )
-        return search_results.TrainingdatasetSearchResult(result)
-
-    def trainingdataset_search_by_keyword(
-        self,
-        search_term: str,
-        offset: int = 0,
-        limit: int = 1,
-    ):
-        """
-        Search for training datasets by keyword.
-        ```python
-
-        import hopsworks
-
-        project = hopsworks.login()
-
-        search_api = project.get_search_api()
-
-        result = search_api.trainingdataset_search_by_keyword("keyword")
-
-        # get training datasets instance
-        trainingdataset = result.trainingdatasets[0].get_training_dataset()
-
-        ```
-        # Arguments
-            search_term: the term to search for.
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
-        # Returns
-            `TrainingdatasetSearchResult`: The results.
-        # Raises
-            `ValueError`: If the search term is not provided.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        """
-        result = search_results.FeaturestoreSearchResultByKeyWord.from_response_json(
-            self._search(search_term, "TRAININGDATASET", offset, limit)
-        )
-        return search_results.TrainingdatasetSearchResult(result)
 
     # FEATURE
     def feature_search(
@@ -801,18 +239,27 @@ class SearchApi:
             `ValueError`: If the search term is not provided.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        result = search_results.FeaturestoreSearchResult.from_response_json(
-            self._search(search_term, "FEATURE", offset, limit)
-        )
+        result = self._search(search_term, "FEATURE", filter_by=None, offset=offset, limit=limit)
+
         return search_results.FeatureSearchResult(result)
 
-
-    def _search(self, search_term: str, doc_type: DOC_TYPE_ARG, offset: int, limit: int):
+    def _search(
+        self,
+        search_term: str,
+        doc_type: DOC_TYPE_ARG,
+        filter_by: FILTER_BY_ARG,
+        offset: int,
+        limit: int,
+    ):
         if not search_term:
             raise ValueError("Search term not provided.")
         if doc_type not in get_args(DOC_TYPE_ARG):
             raise ValueError(
                 f"doc_type must be one of the following {get_args(DOC_TYPE_ARG)}."
+            )
+        if filter_by is not None and filter_by not in get_args(FILTER_BY_ARG):
+            raise ValueError(
+                f"filter_by must be one of the following {get_args(FILTER_BY_ARG)}."
             )
 
         _client = client.get_instance()
@@ -825,6 +272,27 @@ class SearchApi:
         ]
         headers = {"content-type": "application/json"}
         query_params = {"docType": doc_type, "from": offset, "size": limit}
-        return _client._send_request(
+
+        result = _client._send_request(
             "GET", path_params, query_params=query_params, headers=headers
         )
+
+        if filter_by == "tag":
+            return search_results.FeaturestoreSearchResultByTag.from_response_json(
+                result
+            )
+        elif filter_by == "tag_key":
+            return search_results.FeaturestoreSearchResultByTagKey.from_response_json(
+                result
+            )
+        elif filter_by == "tag_value":
+            return search_results.FeaturestoreSearchResultByTagValue.from_response_json(
+                result
+            )
+        elif filter_by == "keyword":
+            return search_results.FeaturestoreSearchResultByKeyWord.from_response_json(
+                result
+            )
+
+        # Default case
+        return search_results.FeaturestoreSearchResult.from_response_json(result)

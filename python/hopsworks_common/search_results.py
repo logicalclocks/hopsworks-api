@@ -640,42 +640,42 @@ class FeaturestoreSearchResultBase:
 
     @property
     def featuregroups_from(self) -> Optional[list]:
-        """Results from."""
+        """Results from offset."""
         return self._featuregroups_from
 
     @property
     def featuregroups_total(self) -> Optional[list]:
-        """Total found."""
+        """Total feature groups found."""
         return self._featuregroups_total
 
     @property
     def feature_views_from(self) -> Optional[list]:
-        """Results from."""
+        """Results from offset."""
         return self._feature_views_from
 
     @property
     def feature_views_total(self) -> Optional[list]:
-        """Total found."""
+        """Total feature views found."""
         return self._feature_views_total
 
     @property
     def trainingdatasets_from(self) -> Optional[list]:
-        """Results from."""
+        """Results from offset."""
         return self._trainingdatasets_from
 
     @property
     def trainingdatasets_total(self) -> Optional[list]:
-        """Total found."""
+        """Total training datasets found."""
         return self._trainingdatasets_total
 
     @property
     def features_from(self) -> Optional[list]:
-        """Results from."""
+        """Features from offset."""
         return self._features_from
 
     @property
     def features_total(self) -> Optional[list]:
-        """Total found."""
+        """Total features found."""
         return self._features_total
 
     def json(self) -> dict:
@@ -701,7 +701,7 @@ class FeaturestoreSearchResultBase:
         return self.json()
 
     def __repr__(self) -> str:
-        return f"FeaturestoreSearchResult(featuregroups={self.featuregroups}, feature_views={self.feature_views}, trainingdatasets={self.trainingdatasets}, features={self.features})"
+        return f"FeaturestoreSearchResult(featuregroups={self.featuregroups}, feature_views={self.feature_views}, trainingdatasets={self.trainingdatasets}, features={self.features}, featuregroups_from={self.featuregroups_from}, featuregroups_total={self.featuregroups_total}, feature_views_from={self.feature_views_from}, feature_views_total={self.feature_views_total}, trainingdatasets_from={self.trainingdatasets_from}, trainingdatasets_total={self.trainingdatasets_total}, features_from={self.features_from}, features_total={self.features_total})"
 
 
 class FeaturestoreSearchResult(FeaturestoreSearchResultBase):
@@ -1108,7 +1108,7 @@ class FeatureGroupSearchResult:
 
     @property
     def featuregroups_from(self) -> Optional[list]:
-        """Result from."""
+        """Result from offset."""
         return self._featuregroups_from
 
     @property
@@ -1146,7 +1146,7 @@ class FeatureViewSearchResult:
 
     @property
     def feature_views_from(self) -> Optional[list]:
-        """Result from."""
+        """Result from offset."""
         return self._feature_views_from
 
     @property
@@ -1184,7 +1184,7 @@ class FeatureSearchResult:
 
     @property
     def features_from(self) -> Optional[list]:
-        """Result from."""
+        """Result from offset."""
         return self._features_from
 
     @property
@@ -1222,7 +1222,7 @@ class TrainingdatasetSearchResult:
 
     @property
     def trainingdatasets_from(self) -> Optional[list]:
-        """Result from."""
+        """Result from offset."""
         return self._trainingdatasets_from
 
     @property
