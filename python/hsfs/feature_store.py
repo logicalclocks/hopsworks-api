@@ -35,7 +35,7 @@ from hsfs import (
 )
 from hsfs.constructor.query import Query
 from hsfs.core import (
-    data_source,
+    data_source as ds,
     feature_group_api,
     feature_group_engine,
     feature_view_engine,
@@ -533,6 +533,12 @@ class FeatureStore:
             storage_connector.StorageConnector, Dict[str, Any]
         ] = None,
         path: Optional[str] = None,
+        data_source: Optional[
+            Union[
+                ds.DataSource,
+                Dict[str, Any],
+            ]
+        ] = None,
     ) -> feature_group.FeatureGroup:
         """Create a feature group metadata object.
 
@@ -644,10 +650,13 @@ class FeatureStore:
                 with the data source.
             path: The location within the scope of the storage connector, from where to read
                 the data for the external feature group
+            data_source: The data source specifying the location of the data. Overrides the path and query arguments when specified.
 
         # Returns
             `FeatureGroup`. The feature group metadata object.
         """
+        if not data_source:
+            data_source = ds.DataSource(path=path)
         feature_group_object = feature_group.FeatureGroup(
             name=name,
             version=version,
@@ -673,7 +682,7 @@ class FeatureStore:
             online_config=online_config,
             offline_backfill_every_hr=offline_backfill_every_hr,
             storage_connector=storage_connector,
-            data_source=data_source.DataSource(path=path),
+            data_source=data_source,
         )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -713,6 +722,12 @@ class FeatureStore:
             storage_connector.StorageConnector, Dict[str, Any]
         ] = None,
         path: Optional[str] = None,
+        data_source: Optional[
+            Union[
+                ds.DataSource,
+                Dict[str, Any],
+            ]
+        ] = None,
     ) -> Union[
         feature_group.FeatureGroup,
         feature_group.ExternalFeatureGroup,
@@ -814,12 +829,15 @@ class FeatureStore:
                 with the data source.
             path: The location within the scope of the storage connector, from where to read
                 the data for the external feature group
+            data_source: The data source specifying the location of the data. Overrides the path and query arguments when specified.
 
         # Returns
             `FeatureGroup`. The feature group metadata object.
         """
         feature_group_object = self._feature_group_api.get(self.id, name, version)
         if not feature_group_object:
+            if not data_source:
+                data_source = ds.DataSource(path=path)
             feature_group_object = feature_group.FeatureGroup(
                 name=name,
                 version=version,
@@ -845,7 +863,7 @@ class FeatureStore:
                 online_config=online_config,
                 offline_backfill_every_hr=offline_backfill_every_hr,
                 storage_connector=storage_connector,
-                data_source=data_source.DataSource(path=path),
+                data_source=data_source,
             )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -874,6 +892,12 @@ class FeatureStore:
         ] = None,
         topic_name: Optional[str] = None,
         notification_topic_name: Optional[str] = None,
+        data_source: Optional[
+            Union[
+                ds.DataSource,
+                Dict[str, Any],
+            ]
+        ] = None,
     ) -> feature_group.ExternalFeatureGroup:
         """Create an external feature group metadata object.
 
@@ -936,6 +960,7 @@ class FeatureStore:
             expectation_suite: Optionally, attach an expectation suite to the feature
                 group which dataframes should be validated against upon insertion.
                 Defaults to `None`.
+            data_source: The data source specifying the location of the data. Overrides the path and query arguments when specified.
 
 
 
@@ -944,6 +969,8 @@ class FeatureStore:
         # Returns
             `ExternalFeatureGroup`. The external feature group metadata object.
         """
+        if not data_source:
+            data_source = ds.DataSource(query=query, path=path)
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,
             data_format=data_format,
@@ -961,7 +988,7 @@ class FeatureStore:
             expectation_suite=expectation_suite,
             topic_name=topic_name,
             notification_topic_name=notification_topic_name,
-            data_source=data_source.DataSource(query=query, path=path),
+            data_source=data_source,
         )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -995,6 +1022,12 @@ class FeatureStore:
         online_config: Optional[
             Union[
                 OnlineConfig,
+                Dict[str, Any],
+            ]
+        ] = None,
+        data_source: Optional[
+            Union[
+                ds.DataSource,
                 Dict[str, Any],
             ]
         ] = None,
@@ -1102,10 +1135,13 @@ class FeatureStore:
             notification_topic_name: Optionally, define the name of the topic used for sending notifications when entries
                 are inserted or updated on the online feature store. If left undefined no notifications are sent.
             online_config: Optionally, define configuration which is used to configure online table.
+            data_source: The data source specifying the location of the data. Overrides the path and query arguments when specified.
 
         # Returns
             `ExternalFeatureGroup`. The external feature group metadata object.
         """
+        if not data_source:
+            data_source = ds.DataSource(query=query, path=path)
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,
             data_format=data_format,
@@ -1126,7 +1162,7 @@ class FeatureStore:
             topic_name=topic_name,
             notification_topic_name=notification_topic_name,
             online_config=online_config,
-            data_source=data_source.DataSource(query=query, path=path),
+            data_source=data_source,
         )
         feature_group_object.feature_store = self
         return feature_group_object
