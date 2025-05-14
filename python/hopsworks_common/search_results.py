@@ -951,7 +951,7 @@ class FeaturestoreSearchResultByTagValue(FeaturestoreSearchResultBase):
                 and "tags" in fg["highlights"]
                 and any(
                     [
-                        "<em>" in val.split(":")[0]
+                        "<em>" in val.split(":")[1]
                         for tag in fg["highlights"]["tags"]
                         for val in tag["value"].split(",")
                     ]
@@ -968,7 +968,7 @@ class FeaturestoreSearchResultByTagValue(FeaturestoreSearchResultBase):
                 and "tags" in fv["highlights"]
                 and any(
                     [
-                        "<em>" in val.split(":")[0]
+                        "<em>" in val.split(":")[1]
                         for tag in fv["highlights"]["tags"]
                         for val in tag["value"].split(",")
                     ]
@@ -985,7 +985,7 @@ class FeaturestoreSearchResultByTagValue(FeaturestoreSearchResultBase):
                 and "tags" in td["highlights"]
                 and any(
                     [
-                        "<em>" in val.split(":")[0]
+                        "<em>" in val.split(":")[1]
                         for tag in td["highlights"]["tags"]
                         for val in tag["value"].split(",")
                     ]
@@ -1002,7 +1002,7 @@ class FeaturestoreSearchResultByTagValue(FeaturestoreSearchResultBase):
                 and "tags" in f["highlights"]
                 and any(
                     [
-                        "<em>" in val.split(":")[0]
+                        "<em>" in val.split(":")[1]
                         for tag in f["highlights"]["tags"]
                         for val in tag["value"].split(",")
                     ]
