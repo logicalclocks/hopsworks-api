@@ -485,7 +485,6 @@ class FeatureGroupResult(FeaturestoreResult):
         return f"FeatureGroupResult(name={self.name}, version={self.version}, description={self.description}, featurestore_id={self.featurestore_id}, created={self.created}, parent_project_id={self.parent_project_id}, parent_project_name={self.parent_project_name}, access_projects={self.access_projects}, highlights={self.highlights}, creator={self.creator})"
 
 
-
 class FeatureViewResult(FeaturestoreResult):
     def __init__(
         self,
@@ -563,7 +562,9 @@ class TrainingDatasetResult(FeaturestoreResult):
             elastic_id,
             **kwargs,
         )
-        self._training_dataset_api = training_dataset_api.TrainingDatasetApi(self._featurestore_id)
+        self._training_dataset_api = training_dataset_api.TrainingDatasetApi(
+            self._featurestore_id
+        )
 
     def get_training_dataset(self):
         """
@@ -849,7 +850,7 @@ class FeaturestoreSearchResultByTagKey(FeaturestoreSearchResultBase):
                 and "tags" in fg["highlights"]
                 and any(
                     [
-                        "<em>" in tag["value"].split(":")[0]
+                        ["<em>" in val.split(":")[0] for val in tag["value"].split(",")]
                         for tag in fg["highlights"]["tags"]
                     ]
                 )
@@ -865,7 +866,7 @@ class FeaturestoreSearchResultByTagKey(FeaturestoreSearchResultBase):
                 and "tags" in fv["highlights"]
                 and any(
                     [
-                        "<em>" in tag["value"].split(":")[0]
+                        ["<em>" in val.split(":")[0] for val in tag["value"].split(",")]
                         for tag in fv["highlights"]["tags"]
                     ]
                 )
@@ -881,7 +882,7 @@ class FeaturestoreSearchResultByTagKey(FeaturestoreSearchResultBase):
                 and "tags" in td["highlights"]
                 and any(
                     [
-                        "<em>" in tag["value"].split(":")[0]
+                        ["<em>" in val.split(":")[0] for val in tag["value"].split(",")]
                         for tag in td["highlights"]["tags"]
                     ]
                 )
@@ -897,7 +898,7 @@ class FeaturestoreSearchResultByTagKey(FeaturestoreSearchResultBase):
                 and "tags" in f["highlights"]
                 and any(
                     [
-                        "<em>" in tag["value"].split(":")[0]
+                        ["<em>" in val.split(":")[0] for val in tag["value"].split(",")]
                         for tag in f["highlights"]["tags"]
                     ]
                 )
@@ -946,7 +947,7 @@ class FeaturestoreSearchResultByTagValue(FeaturestoreSearchResultBase):
                 and "tags" in fg["highlights"]
                 and any(
                     [
-                        "<em>" in tag["value"].split(":")[1]
+                        ["<em>" in val.split(":")[1] for val in tag["value"].split(",")]
                         for tag in fg["highlights"]["tags"]
                     ]
                 )
@@ -962,7 +963,7 @@ class FeaturestoreSearchResultByTagValue(FeaturestoreSearchResultBase):
                 and "tags" in fv["highlights"]
                 and any(
                     [
-                        "<em>" in tag["value"].split(":")[1]
+                        ["<em>" in val.split(":")[1] for val in tag["value"].split(",")]
                         for tag in fv["highlights"]["tags"]
                     ]
                 )
@@ -978,7 +979,7 @@ class FeaturestoreSearchResultByTagValue(FeaturestoreSearchResultBase):
                 and "tags" in td["highlights"]
                 and any(
                     [
-                        "<em>" in tag["value"].split(":")[1]
+                        ["<em>" in val.split(":")[1] for val in tag["value"].split(",")]
                         for tag in td["highlights"]["tags"]
                     ]
                 )
@@ -994,7 +995,7 @@ class FeaturestoreSearchResultByTagValue(FeaturestoreSearchResultBase):
                 and "tags" in f["highlights"]
                 and any(
                     [
-                        "<em>" in tag["value"].split(":")[1]
+                        ["<em>" in val.split(":")[1] for val in tag["value"].split(",")]
                         for tag in f["highlights"]["tags"]
                     ]
                 )
