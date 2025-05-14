@@ -36,6 +36,8 @@ from hsfs import (
 from hsfs.constructor.query import Query
 from hsfs.core import (
     data_source as ds,
+)
+from hsfs.core import (
     feature_group_api,
     feature_group_engine,
     feature_view_engine,
