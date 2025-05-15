@@ -23,7 +23,7 @@ from hopsworks_common import client, search_results
 DOC_TYPE_ARG = Literal[
     "FEATUREGROUP", "FEATUREVIEW", "TRAININGDATASET", "FEATURE", "ALL"
 ]
-FILTER_BY_ARG = Literal["tag", "tag_key", "tag_value", "keyword"]
+FILTER_BY_ARG = Literal["tag", "tag_name", "tag_key", "tag_value", "keyword"]
 
 
 class SearchApi:
@@ -239,7 +239,9 @@ class SearchApi:
             `ValueError`: If the search term is not provided.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        result = self._search(search_term, "FEATURE", filter_by=None, offset=offset, limit=limit)
+        result = self._search(
+            search_term, "FEATURE", filter_by=None, offset=offset, limit=limit
+        )
 
         return search_results.FeatureSearchResult(result)
 
@@ -279,6 +281,10 @@ class SearchApi:
 
         if filter_by == "tag":
             return search_results.FeaturestoreSearchResultByTag.from_response_json(
+                result
+            )
+        elif filter_by == "tag_name":
+            return search_results.FeaturestoreSearchResultByTagName.from_response_json(
                 result
             )
         elif filter_by == "tag_key":
