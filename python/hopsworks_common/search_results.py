@@ -19,7 +19,6 @@ from typing import Optional
 
 import humps
 from hopsworks_common import util
-from hsfs.core import feature_group_api, feature_view_api, training_dataset_api
 
 
 class Creator:
@@ -376,6 +375,8 @@ class FeatureResult(FeaturestoreResult):
             elastic_id,
             **kwargs,
         )
+        from hsfs.core import feature_group_api
+
         self._featuregroup = featuregroup
         self._feature_group_api = feature_group_api.FeatureGroupApi()
 
@@ -466,7 +467,6 @@ class FeatureGroupResult(FeaturestoreResult):
             elastic_id,
             **kwargs,
         )
-        self._feature_group_api = feature_group_api.FeatureGroupApi()
 
     def get_feature_group(self):
         """
@@ -477,7 +477,9 @@ class FeatureGroupResult(FeaturestoreResult):
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self._feature_group_api.get(
+        from hsfs.core import feature_group_api
+
+        return feature_group_api.FeatureGroupApi().get(
             self._featurestore_id, self._name, self._version
         )
 
@@ -515,7 +517,6 @@ class FeatureViewResult(FeaturestoreResult):
             elastic_id,
             **kwargs,
         )
-        self._feature_view_api = feature_view_api.FeatureViewApi(self._featurestore_id)
 
     def get_feature_view(self):
         """
@@ -526,7 +527,11 @@ class FeatureViewResult(FeaturestoreResult):
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self._feature_view_api.get_by_name_version(self._name, self._version)
+        from hsfs.core import feature_view_api
+
+        return feature_view_api.FeatureViewApi(
+            self._featurestore_id
+        ).get_by_name_version(self._name, self._version)
 
     def __repr__(self) -> str:
         return f"FeatureViewResult(name={self.name}, version={self.version}, description={self.description}, featurestore_id={self.featurestore_id}, created={self.created}, parent_project_id={self.parent_project_id}, parent_project_name={self.parent_project_name}, access_projects={self.access_projects}, highlights={self.highlights}, creator={self.creator})"
@@ -562,9 +567,6 @@ class TrainingDatasetResult(FeaturestoreResult):
             elastic_id,
             **kwargs,
         )
-        self._training_dataset_api = training_dataset_api.TrainingDatasetApi(
-            self._featurestore_id
-        )
 
     def get_training_dataset(self):
         """
@@ -575,7 +577,11 @@ class TrainingDatasetResult(FeaturestoreResult):
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self._training_dataset_api.get(self._name, self._version)
+        from hsfs.core import training_dataset_api
+
+        return training_dataset_api.TrainingDatasetApi(self._featurestore_id).get(
+            self._name, self._version
+        )
 
     def __repr__(self) -> str:
         return f"TrainingDatasetResult(name={self.name}, version={self.version}, description={self.description}, featurestore_id={self.featurestore_id}, created={self.created}, parent_project_id={self.parent_project_id}, parent_project_name={self.parent_project_name}, access_projects={self.access_projects}, highlights={self.highlights}, creator={self.creator})"
@@ -777,7 +783,9 @@ class FeaturestoreSearchResultByTag(FeaturestoreSearchResultBase):
             [
                 FeatureGroupResult.from_response_json(fg)
                 for fg in featuregroups
-                if "highlights" in fg and "tags" in fg["highlights"]
+                if "highlights" in fg
+                and "tags" in fg["highlights"]
+                and len(fg["highlights"]["tags"]) > 0
             ]
             if featuregroups
             else []
@@ -786,7 +794,9 @@ class FeaturestoreSearchResultByTag(FeaturestoreSearchResultBase):
             [
                 FeatureViewResult.from_response_json(fv)
                 for fv in feature_views
-                if "highlights" in fv and "tags" in fv["highlights"]
+                if "highlights" in fv
+                and "tags" in fv["highlights"]
+                and len(fv["highlights"]["tags"]) > 0
             ]
             if feature_views
             else []
@@ -795,7 +805,9 @@ class FeaturestoreSearchResultByTag(FeaturestoreSearchResultBase):
             [
                 TrainingDatasetResult.from_response_json(td)
                 for td in trainingdatasets
-                if "highlights" in td and "tags" in td["highlights"]
+                if "highlights" in td
+                and "tags" in td["highlights"]
+                and len(td["highlights"]["tags"]) > 0
             ]
             if trainingdatasets
             else []
@@ -804,7 +816,98 @@ class FeaturestoreSearchResultByTag(FeaturestoreSearchResultBase):
             [
                 FeatureResult.from_response_json(f)
                 for f in features
-                if "highlights" in f and "tags" in f["highlights"]
+                if "highlights" in f
+                and "tags" in f["highlights"]
+                and len(f["highlights"]["tags"]) > 0
+            ]
+            if features
+            else []
+        )
+        super().__init__(
+            _featuregroups,
+            _feature_views,
+            _trainingdatasets,
+            _features,
+            featuregroups_from,
+            featuregroups_total,
+            feature_views_from,
+            feature_views_total,
+            trainingdatasets_from,
+            trainingdatasets_total,
+            features_from,
+            features_total,
+        )
+
+
+class FeaturestoreSearchResultByTagName(FeaturestoreSearchResultBase):
+    def __init__(
+        self,
+        featuregroups=None,
+        feature_views=None,
+        trainingdatasets=None,
+        features=None,
+        featuregroups_from=None,
+        featuregroups_total=None,
+        feature_views_from=None,
+        feature_views_total=None,
+        trainingdatasets_from=None,
+        trainingdatasets_total=None,
+        features_from=None,
+        features_total=None,
+        **kwargs,
+    ):
+        _featuregroups = (
+            [
+                FeatureGroupResult.from_response_json(fg)
+                for fg in featuregroups
+                if "highlights" in fg
+                and "tags" in fg["highlights"]
+                and any(
+                    "key" in tag and tag["key"] and "<em>" in tag["key"]
+                    for tag in fg["highlights"]["tags"]
+                )
+            ]
+            if featuregroups
+            else []
+        )
+        _feature_views = (
+            [
+                FeatureViewResult.from_response_json(fv)
+                for fv in feature_views
+                if "highlights" in fv
+                and "tags" in fv["highlights"]
+                and any(
+                    "key" in tag and tag["key"] and "<em>" in tag["key"]
+                    for tag in fv["highlights"]["tags"]
+                )
+            ]
+            if feature_views
+            else []
+        )
+        _trainingdatasets = (
+            [
+                TrainingDatasetResult.from_response_json(td)
+                for td in trainingdatasets
+                if "highlights" in td
+                and "tags" in td["highlights"]
+                and any(
+                    "key" in tag and tag["key"] and "<em>" in tag["key"]
+                    for tag in td["highlights"]["tags"]
+                )
+            ]
+            if trainingdatasets
+            else []
+        )
+        _features = (
+            [
+                FeatureResult.from_response_json(f)
+                for f in features
+                if "highlights" in f
+                and "tags" in f["highlights"]
+                and any(
+                    "key" in tag and tag["key"] and "<em>" in tag["key"]
+                    for tag in f["highlights"]["tags"]
+                )
             ]
             if features
             else []
@@ -852,7 +955,9 @@ class FeaturestoreSearchResultByTagKey(FeaturestoreSearchResultBase):
                     [
                         "<em>" in val.split(":")[0]
                         for tag in fg["highlights"]["tags"]
+                        if "value" in tag and isinstance(tag["value"], str)
                         for val in tag["value"].split(",")
+                        if ":" in val
                     ]
                 )
             ]
@@ -866,10 +971,15 @@ class FeaturestoreSearchResultByTagKey(FeaturestoreSearchResultBase):
                 if "highlights" in fv
                 and "tags" in fv["highlights"]
                 and any(
+                    "value" in tag and tag["value"] for tag in fv["highlights"]["tags"]
+                )
+                and any(
                     [
                         "<em>" in val.split(":")[0]
                         for tag in fv["highlights"]["tags"]
+                        if "value" in tag and isinstance(tag["value"], str)
                         for val in tag["value"].split(",")
+                        if ":" in val
                     ]
                 )
             ]
@@ -883,10 +993,15 @@ class FeaturestoreSearchResultByTagKey(FeaturestoreSearchResultBase):
                 if "highlights" in td
                 and "tags" in td["highlights"]
                 and any(
+                    "value" in tag and tag["value"] for tag in td["highlights"]["tags"]
+                )
+                and any(
                     [
                         "<em>" in val.split(":")[0]
                         for tag in td["highlights"]["tags"]
+                        if "value" in tag and isinstance(tag["value"], str)
                         for val in tag["value"].split(",")
+                        if ":" in val
                     ]
                 )
             ]
@@ -900,10 +1015,15 @@ class FeaturestoreSearchResultByTagKey(FeaturestoreSearchResultBase):
                 if "highlights" in f
                 and "tags" in f["highlights"]
                 and any(
+                    "value" in tag and tag["value"] for tag in f["highlights"]["tags"]
+                )
+                and any(
                     [
                         "<em>" in val.split(":")[0]
                         for tag in f["highlights"]["tags"]
+                        if "value" in tag and isinstance(tag["value"], str)
                         for val in tag["value"].split(",")
+                        if ":" in val
                     ]
                 )
             ]
@@ -953,7 +1073,9 @@ class FeaturestoreSearchResultByTagValue(FeaturestoreSearchResultBase):
                     [
                         "<em>" in val.split(":")[1]
                         for tag in fg["highlights"]["tags"]
+                        if "value" in tag and isinstance(tag["value"], str)
                         for val in tag["value"].split(",")
+                        if ":" in val
                     ]
                 )
             ]
@@ -970,7 +1092,9 @@ class FeaturestoreSearchResultByTagValue(FeaturestoreSearchResultBase):
                     [
                         "<em>" in val.split(":")[1]
                         for tag in fv["highlights"]["tags"]
+                        if "value" in tag and isinstance(tag["value"], str)
                         for val in tag["value"].split(",")
+                        if ":" in val
                     ]
                 )
             ]
@@ -987,7 +1111,9 @@ class FeaturestoreSearchResultByTagValue(FeaturestoreSearchResultBase):
                     [
                         "<em>" in val.split(":")[1]
                         for tag in td["highlights"]["tags"]
+                        if "value" in tag and isinstance(tag["value"], str)
                         for val in tag["value"].split(",")
+                        if ":" in val
                     ]
                 )
             ]
@@ -1004,7 +1130,9 @@ class FeaturestoreSearchResultByTagValue(FeaturestoreSearchResultBase):
                     [
                         "<em>" in val.split(":")[1]
                         for tag in f["highlights"]["tags"]
+                        if "value" in tag and isinstance(tag["value"], str)
                         for val in tag["value"].split(",")
+                        if ":" in val
                     ]
                 )
             ]
