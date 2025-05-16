@@ -245,6 +245,20 @@ class StorageConnector(ABC):
         return self._data_source_api.get_databases(self._featurestore_id, self._name)
 
     def get_tables(self, database: str):
+        if not database:
+            if self.type == StorageConnector.REDSHIFT:
+                database = self.database_name
+            elif self.type == StorageConnector.SNOWFLAKE:
+                database = self.database
+            elif self.type == StorageConnector.BIGQUERY:
+                database = self.query_project
+            elif self.type == StorageConnector.RDS:
+                database = self.database
+            else:
+                raise ValueError(
+                    "Database name is required for this connector type. "
+                    "Please provide a database name."
+                )
         return self._data_source_api.get_tables(self._featurestore_id, self._name, database)
 
     def get_data(self, data_source: ds.DataSource):

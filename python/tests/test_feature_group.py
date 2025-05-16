@@ -773,7 +773,7 @@ class TestExternalFeatureGroup:
         assert fg.created is None
         assert fg.creator is None
         assert fg.id == 15
-        assert fg.features is None
+        assert fg.features == []
         assert fg.location is None
         assert isinstance(fg.statistics_config, statistics_config.StatisticsConfig)
         assert fg.event_time is None
