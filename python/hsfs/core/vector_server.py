@@ -128,12 +128,17 @@ class VectorServer:
                 feat.label
                 or feat.training_helper_column
                 or feat.on_demand_transformation_function
+                or feat.inference_helper_column
             )
         ]
         self._on_demand_feature_vector_col_name = [
             feat.name
             for feat in features
-            if not (feat.label or feat.training_helper_column)
+            if not (
+                feat.label
+                or feat.training_helper_column
+                or feat.inference_helper_column
+            )
         ]
         self._inference_helper_col_name = [
             feat.name for feat in features if feat.inference_helper_column
