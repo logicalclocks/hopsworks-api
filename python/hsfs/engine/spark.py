@@ -606,6 +606,7 @@ class Engine:
         self,
         feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
         dataframe: Union[RDD, DataFrame],
+        serialized_column: str = "value",
     ):
         """Encodes all complex type features to binary using their avro type as schema."""
         encoded_dataframe = dataframe.select(
@@ -641,7 +642,7 @@ class Engine:
                         ]
                     ),
                     feature_group._get_encoded_avro_schema(),
-                ).alias("value"),
+                ).alias(serialized_column),
             ]
         )
 
@@ -649,25 +650,37 @@ class Engine:
         self,
         feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
         dataframe: Union[RDD, DataFrame],
+        serialized_column: str = "value",
     ):
         """
-        Deserializes 'value' column from binary using avro schema and unpacks it into columns.
+        Step 1: Deserializes 'value' column from binary using avro schema.
         """
-        decoded_dataframe = dataframe.select(
-            from_avro("value", feature_group._get_encoded_avro_schema()).alias("value")
-        ).select(col("value.*"))
-
-        """Decodes all complex type features from binary using their avro type as schema."""
-        return decoded_dataframe.select(
-            [
-                field["name"]
-                if field["name"] not in feature_group.get_complex_features()
-                else from_avro(
-                    field["name"], feature_group._get_feature_avro_schema(field["name"])
-                ).alias(field["name"])
-                for field in json.loads(feature_group.avro_schema)["fields"]
-            ]
+        decoded_dataframe = dataframe.withColumn(
+            serialized_column, from_avro(serialized_column, feature_group._get_encoded_avro_schema())
         )
+
+        """
+        Step 2: Replace complex fields in the 'value' column
+        """
+        new_value_fields = []
+        for field in json.loads(feature_group.avro_schema)["fields"]:
+            field_name = field["name"]
+            if field_name in feature_group.get_complex_features():
+                # re-apply from_avro on the nested field
+                decoded_field = from_avro(
+                    col(f"{serialized_column}.{field_name}"),
+                    feature_group._get_feature_avro_schema(field_name)
+                ).alias(field_name)
+            else:
+                decoded_field = col(f"{serialized_column}.{field_name}").alias(field_name)
+            new_value_fields.append(decoded_field)
+
+        """
+        Step 3: Rebuild the "value" struct
+        """
+        updated_value_col = struct(*new_value_fields).alias(serialized_column)
+
+        return decoded_dataframe.select(*[col(c) for c in decoded_dataframe.columns if c != serialized_column], updated_value_col)
 
     def get_training_data(
         self,
@@ -830,13 +843,23 @@ class Engine:
             event_time_feature = [
                 _feature
                 for _feature in query_obj.features
-                if _feature.name == event_time
+                if (
+                    _feature.name == event_time
+                    and _feature._feature_group_id == query_obj._left_feature_group.id
+                )
             ]
 
             if not event_time_feature:
-                query_obj.append_feature(
-                    query_obj._left_feature_group.__getattr__(event_time)
+                event_time_feature = query_obj._left_feature_group.__getattr__(
+                    event_time
                 )
+                event_time_feature.use_fully_qualified_name = True
+
+                query_obj.append_feature(event_time_feature)
+                event_time = event_time_feature._get_fully_qualified_feature_name(
+                    feature_group=query_obj._left_feature_group
+                )
+
                 return self._time_series_split(
                     training_dataset,
                     query_obj.read(read_options=read_options),
