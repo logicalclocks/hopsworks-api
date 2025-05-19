@@ -1900,28 +1900,60 @@ class Engine:
         logging_data: Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray] = None,
         logging_feature_group_features: List[feature.Feature] = None,
         transformed_features: Optional[
-            Tuple[Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray], List[str]]
+            Tuple[
+                Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray],
+                List[str],
+                str,
+            ]
         ] = None,
         untransformed_features: Optional[
-            Tuple[Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray], List[str]]
+            Tuple[
+                Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray],
+                List[str],
+                str,
+            ]
         ] = None,
         predictions: Optional[
-            Tuple[Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray], List[str]]
+            Tuple[
+                Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray],
+                List[str],
+                str,
+            ]
         ] = None,
         serving_keys: Optional[
-            Tuple[Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray], List[str]]
+            Tuple[
+                Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray],
+                List[str],
+                str,
+            ]
         ] = None,
         helper_columns: Optional[
-            Tuple[Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray], List[str]]
+            Tuple[
+                Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray],
+                List[str],
+                str,
+            ]
         ] = None,
         request_parameters: Optional[
-            Tuple[Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray], List[str]]
+            Tuple[
+                Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray],
+                List[str],
+                str,
+            ]
         ] = None,
         event_time: Optional[
-            Tuple[Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray], List[str]]
+            Tuple[
+                Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray],
+                List[str],
+                str,
+            ]
         ] = None,
         extra_logging_features: Optional[
-            Tuple[Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray], List[str]]
+            Tuple[
+                Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray],
+                List[str],
+                str,
+            ]
         ] = None,
         td_col_name: Optional[str] = None,
         time_col_name: Optional[str] = None,
@@ -1936,8 +1968,8 @@ class Engine:
         if any(
             (HAS_PANDAS and isinstance(data, pd.DataFrame))
             or (HAS_POLARS and isinstance(data, pl.DataFrame))
-            for data, _ in [
-                (logging_data, logging_feature_group_feature_names),
+            for data, _, _ in [
+                (logging_data, logging_feature_group_feature_names, "logging_data"),
                 transformed_features,
                 untransformed_features,
                 predictions,
@@ -1966,8 +1998,8 @@ class Engine:
                 hsml_model=hsml_model,
             ).to_dict(orient="records")
         log_vectors: List[Dict[Any, str]] = None
-        for data, feature_names in [
-            (logging_data, logging_feature_group_feature_names),
+        for data, feature_names, log_component_name in [
+            (logging_data, logging_feature_group_feature_names, "logging_data"),
             transformed_features,
             untransformed_features,
             predictions,
@@ -1980,7 +2012,12 @@ class Engine:
             # convert features to dict
             if data is None:
                 continue
-            Engine._validate_logging_list(data, feature_names)
+            try:
+                Engine._validate_logging_list(data, feature_names)
+            except AssertionError as e:
+                raise FeatureStoreException(
+                    f"Error logging data `{log_component_name}` do not have all required features. Please check the `{log_component_name}` to ensure that it has the following features : {feature_names}."
+                ) from e
             if log_vectors is None:
                 log_vectors = [
                     dict(zip(feature_names, row)) if not isinstance(row, dict) else row
@@ -1992,7 +2029,7 @@ class Engine:
             elif len(data) != len(log_vectors):
                 if len(log_vectors) != len(data):
                     raise FeatureStoreException(
-                        "Length of logging data provided do not match. Please check the logging data to make sure all data has the same length."
+                        f"Length of `{log_component_name}` provided do not match other arguments. Please check the logging data to make sure that all arguments have the same length."
                     )
             else:
                 for log_vector, row in zip(log_vectors, data):
@@ -2003,7 +2040,7 @@ class Engine:
                     )
 
         # rename prediction columns
-        _, predictions_feature_names = predictions
+        _, predictions_feature_names, _ = predictions
         if predictions_feature_names:
             for log_vector in log_vectors:
                 for feature_name in predictions_feature_names:
