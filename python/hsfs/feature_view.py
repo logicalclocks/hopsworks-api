@@ -439,6 +439,8 @@ class FeatureView:
 
         if feature_logger:
             self._feature_logger = feature_logger
+            if not self.logging_enabled:
+                self.enable_logging()
             self._feature_logger.init(self)
         else:
             # reset feature logger in case init_serving is called again without feature logger
