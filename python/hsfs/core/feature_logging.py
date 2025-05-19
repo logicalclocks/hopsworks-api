@@ -1,4 +1,5 @@
 import json
+import warnings
 from typing import Any, Dict, List, Optional
 
 import humps
@@ -63,8 +64,17 @@ class FeatureLogging:
     def extra_logging_columns(self) -> Optional[List[Feature]]:
         return self._extra_logging_columns
 
-    def get_feature_group(self, transformed):
+    def get_feature_group(self, transformed: Optional[bool] = None):
+        if transformed is not None:
+            warnings.warn(
+                "Providing ´transformed´ while fetching logging feature group is deprecated"
+                + " and will be dropped in future versions. Transformed and untransformed features are now logged in the same feature group.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         if transformed:
+            if self._transformed_features is None:
+                return self._untransformed_features
             return self._transformed_features
         else:
             return self._untransformed_features
