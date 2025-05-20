@@ -1833,9 +1833,8 @@ class Engine:
                 logging_df.drop(
                     [
                         feature
-                        for feature in request_parameter_columns
-                        if feature in avaiable_request_parameters
-                        and feature not in logging_feature_group_feature_names
+                        for feature in avaiable_request_parameters
+                        if feature not in logging_feature_group_feature_names
                     ],
                     axis=1,
                     inplace=True,
@@ -2047,6 +2046,23 @@ class Engine:
                     log_vector[f"predicted_{feature_name}"] = log_vector.pop(
                         feature_name
                     )
+
+        # Create a json column for request parameters
+        _, request_parameter_names, _ = request_parameters
+        if request_parameter_names:
+            for log_vector in log_vectors:
+                avaiable_request_parameters = [
+                    feature
+                    for feature in request_parameter_names
+                    if feature in log_vector
+                ]
+                if avaiable_request_parameters:
+                    log_vector["request_parameters"] = json.dumps(
+                        {k: log_vector[k] for k in avaiable_request_parameters}
+                    )
+                    for feature in avaiable_request_parameters:
+                        if feature not in logging_feature_group_feature_names:
+                            _ = log_vector.pop(feature)
 
         # get metadata
         for row in log_vectors:
