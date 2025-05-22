@@ -191,6 +191,7 @@ class FeatureView:
         )
         self.__vector_server: Optional[vector_server.VectorServer] = None
         self.__batch_scoring_server: Optional[vector_server.VectorServer] = None
+        self.__feature_groups: List[feature_group.FeatureGroup] = None
         self._serving_keys = serving_keys if serving_keys else []
         self._prefix_serving_key_map = {}
         self._primary_keys: Set[str] = set()  # Lazy initialized via serving keys
@@ -4201,3 +4202,11 @@ class FeatureView:
                 feature_store_name=self._feature_store_name,
             )
         return self.__batch_scoring_server
+
+    @property
+    def _feature_groups(self) -> List[feature_group.FeatureGroup]:
+        if not self.__feature_groups:
+            self.__feature_groups = (
+                self._feature_view_engine._get_feature_group_from_query(self.query)
+            )
+        return self.__feature_groups
