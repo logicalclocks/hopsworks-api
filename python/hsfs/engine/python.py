@@ -974,7 +974,14 @@ class Engine:
             == TrainingDatasetSplit.TIME_SERIES_SPLIT
         ):
             event_time = query_obj._left_feature_group.event_time
-            if event_time not in [_feature.name for _feature in query_obj.features]:
+
+            event_time_feature = [
+                _feature
+                for _feature in query_obj.features
+                if _feature.name == event_time
+            ]
+
+            if not event_time_feature:
                 query_obj.append_feature(
                     query_obj._left_feature_group.__getattr__(event_time)
                 )
@@ -987,6 +994,11 @@ class Engine:
                     drop_event_time=True,
                 )
             else:
+                # Use the fully qualified name of the event time feature if required
+                event_time = event_time_feature[0]._get_fully_qualified_feature_name(
+                    feature_group=query_obj._left_feature_group
+                )
+
                 result_dfs = self._time_series_split(
                     query_obj.read(
                         read_options=read_option, dataframe_type=dataframe_type

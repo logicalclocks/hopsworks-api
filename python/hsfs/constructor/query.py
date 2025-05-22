@@ -180,7 +180,9 @@ class Query:
             join_prefix = query_join.prefix
 
             join_features = {
-                feature.name if not join_prefix else join_prefix + feature.name
+                feature._get_fully_qualified_feature_name(
+                    feature_group=query._left_feature_group, prefix=join_prefix
+                )
                 for feature in query._left_features
             }
 
@@ -215,7 +217,9 @@ class Query:
         query_feature_feature_group_mapping: Dict[str, set[str]] = {}
 
         query_feature_feature_group_mapping = {
-            feature.name: set(
+            feature._get_fully_qualified_feature_name(
+                feature_group=self._left_feature_group
+            ): set(
                 [
                     f"{self._left_feature_group.name} version {self._left_feature_group.version}"
                 ]
