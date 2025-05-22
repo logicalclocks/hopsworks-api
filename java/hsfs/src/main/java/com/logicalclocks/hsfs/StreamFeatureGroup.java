@@ -67,6 +67,7 @@ public class StreamFeatureGroup<T> extends FeatureGroupBase<List<T>> {
 
   public StreamFeatureGroup() {
     this.type = "streamFeatureGroupDTO";
+    this.dataSource = new DataSource();
   }
 
   // used for updates
