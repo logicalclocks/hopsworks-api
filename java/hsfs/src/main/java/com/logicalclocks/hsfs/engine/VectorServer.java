@@ -81,7 +81,6 @@ public class VectorServer {
   private HashSet<String> servingKeys;
 
   private StorageConnectorApi storageConnectorApi = new StorageConnectorApi();
-  private Schema.Parser parser = new Schema.Parser();
   private FeatureViewApi featureViewApi = new FeatureViewApi();
 
   private Map<Integer, Map<String, DatumReader<Object>>> featureGroupDatumReaders;
@@ -476,7 +475,7 @@ public class VectorServer {
         }
 
         DatumReader<Object> datumReader =
-            new GenericDatumReader<>(parser.parse(f.getFeaturegroup().getFeatureAvroSchema(featureName)));
+            new GenericDatumReader<>(new Schema.Parser().parse(f.getFeaturegroup().getFeatureAvroSchema(featureName)));
         featureGroupMap.put(f.getName(), datumReader);
 
         featureSchemaMap.put(f.getFeaturegroup().getId(), featureGroupMap);
