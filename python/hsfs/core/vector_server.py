@@ -1384,7 +1384,7 @@ class VectorServer:
                                 if isinstance(feature_value, bytes)
                                 else b64decode(feature_value)
                             ),
-                            avro_schema.writer_schema.to_json(),
+                            avro_schema.writers_schema.to_json(),
                         )
                         # embedded features are deserialized already but not complex features stored in Opensearch
                         if (
