@@ -442,9 +442,12 @@ class FeatureGroupBase:
         # Returns
             `Query`. A query object with all features of the feature group.
         """
-        query = self.select_except(
-            self.primary_key + self.partition_key + self.foreign_key + [self.event_time]
-        )
+        select_features = self.primary_key + self.foreign_key + [self.event_time]
+        if not isinstance(self, ExternalFeatureGroup):
+            select_features = select_features + self.partition_key
+
+        query = self.select_except(select_features)
+
         _logger.info(
             f"Using {[f.name for f in query.features]} from feature group `{self.name}` as features for the query."
             " To include primary key and event time use `select_all`."
@@ -1883,7 +1886,9 @@ class FeatureGroupBase:
 
     @primary_key.setter
     def primary_key(self, new_primary_key: List[str]) -> None:
-        self._primary_key = [util.autofix_feature_name(pk) for pk in new_primary_key]
+        self._primary_key = [
+            util.autofix_feature_name(pk, warn=True) for pk in new_primary_key
+        ]
 
     def get_statistics(
         self,
@@ -2021,7 +2026,7 @@ class FeatureGroupBase:
             self._event_time = None
             return
         elif isinstance(feature_name, str):
-            self._event_time = feature_name
+            self._event_time = util.autofix_feature_name(feature_name, warn=True)
             return
         elif isinstance(feature_name, list) and len(feature_name) == 1:
             if isinstance(feature_name[0], str):
@@ -2031,7 +2036,7 @@ class FeatureGroupBase:
                     DeprecationWarning,
                     stacklevel=2,
                 )
-                self._event_time = feature_name[0]
+                self._event_time = util.autofix_feature_name(feature_name[0], warn=True)
                 return
 
         raise ValueError(
@@ -2382,7 +2387,7 @@ class FeatureGroup(FeatureGroupBase):
             self.foreign_key = foreign_key
             self.partition_key = partition_key
             self._hudi_precombine_key = (
-                util.autofix_feature_name(hudi_precombine_key)
+                util.autofix_feature_name(hudi_precombine_key, warn=True)
                 if hudi_precombine_key is not None
                 and (
                     self._time_travel_format is None
@@ -3820,12 +3825,14 @@ class FeatureGroup(FeatureGroupBase):
     @partition_key.setter
     def partition_key(self, new_partition_key: List[str]) -> None:
         self._partition_key = [
-            util.autofix_feature_name(pk) for pk in new_partition_key
+            util.autofix_feature_name(pk, warn=True) for pk in new_partition_key
         ]
 
     @hudi_precombine_key.setter
     def hudi_precombine_key(self, hudi_precombine_key: str) -> None:
-        self._hudi_precombine_key = util.autofix_feature_name(hudi_precombine_key)
+        self._hudi_precombine_key = util.autofix_feature_name(
+            hudi_precombine_key, warn=True
+        )
 
     @stream.setter
     def stream(self, stream: bool) -> None:
