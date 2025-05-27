@@ -10,8 +10,8 @@
     "version": "4.2.5",
     "title": "4.2.5",
     "aliases": [
-      "4.2",
-      "latest"
+      "latest",
+      "4.2"
     ]
   },
   {
@@ -94,11 +94,16 @@
     ]
   },
   {
-    "version": "3.9.0-RC4",
-    "title": "3.9.0-RC4",
+    "version": "3.9.0-RC5",
+    "title": "3.9.0-RC5",
     "aliases": [
       "3.9"
     ]
+  },
+  {
+    "version": "3.9.0-RC4",
+    "title": "3.9.0-RC4",
+    "aliases": []
   },
   {
     "version": "3.9.0-RC3",
