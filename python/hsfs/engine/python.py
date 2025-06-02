@@ -1814,7 +1814,9 @@ class Engine:
                 logging_df["request_parameters"] = (
                     "{}"
                     if request_parameter.empty
-                    else request_parameter.apply(lambda x: x.to_json(), axis=1)
+                    else request_parameter.apply(
+                        lambda x: json.dumps(x.to_dict()), axis=1
+                    )
                 )
 
                 logging_df.drop(
@@ -1996,7 +1998,7 @@ class Engine:
             extra_logging_features,
         ]:
             # convert features to dict
-            if data is None:
+            if not data:
                 continue
             try:
                 Engine._validate_logging_list(data, feature_names)
