@@ -553,6 +553,7 @@ class FeatureView:
         on_demand_features: Optional[bool] = True,
         request_parameters: Optional[Dict[str, Any]] = None,
         transformation_context: Dict[str, Any] = None,
+        logging_data: bool = True,
     ) -> Union[List[Any], pd.DataFrame, np.ndarray, pl.DataFrame]:
         """Returns assembled feature vector from online feature store.
             Call [`feature_view.init_serving`](#init_serving) before this method if the following configurations are needed.
@@ -661,6 +662,7 @@ class FeatureView:
             on_demand_features=on_demand_features,
             request_parameters=request_parameters,
             transformation_context=transformation_context,
+            logging_data=logging_data,
         )
 
     def get_feature_vectors(
@@ -892,7 +894,7 @@ class FeatureView:
         if self._vector_server is None:
             self.init_serving(external=external, init_rest_client=force_rest_client)
         return self._vector_server.get_inference_helpers(
-            self, entry, return_type, force_rest_client, force_sql_client
+            entry, return_type, force_rest_client, force_sql_client
         )
 
     def _get_vector_db_result(
@@ -3758,7 +3760,10 @@ class FeatureView:
     def log(
         self,
         logging_data: Union[
-            pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
+            pd.DataFrame,
+            list[list],
+            np.ndarray,
+            TypeVar("pyspark.sql.DataFrame"),
         ] = None,
         untransformed_features: Union[
             pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
