@@ -53,6 +53,7 @@ if HAS_NUMPY:
 
 if TYPE_CHECKING:
     import polars as pl
+    from hsfs.core.feature_logging import LoggingMetaData
 
 
 class FeatureViewEngine:
@@ -1499,6 +1500,10 @@ class FeatureViewEngine:
         return_list: bool = False,
     ):
         training_dataset_schema = fv.get_training_dataset_schema()
+
+        logging_meta_data: LoggingMetaData = getattr(
+            logging_data, "hopsworks_logging_meta_data", None
+        )
         td_predictions = [
             feature for feature in training_dataset_schema if feature.label
         ]
@@ -1544,24 +1549,36 @@ class FeatureViewEngine:
                 logging_data=logging_data,
                 logging_feature_group_features=logging_feature_group_features,
                 transformed_features=(
-                    transformed_features,
+                    transformed_features or logging_meta_data.transformed_features,
                     td_transformed_features,
                     "transformed_features",
                 ),
                 untransformed_features=(
-                    untransformed_features,
+                    untransformed_features or logging_meta_data.untransformed_features,
                     td_features,
                     "untransformed_features",
                 ),
                 predictions=(predictions, list(td_predictions_names), "predictions"),
-                serving_keys=(serving_keys, td_serving_keys, "serving_keys"),
-                helper_columns=(helper_columns, td_helper_columns, "helper_columns"),
+                serving_keys=(
+                    serving_keys or logging_meta_data.serving_keys,
+                    td_serving_keys,
+                    "serving_keys",
+                ),
+                helper_columns=(
+                    helper_columns or logging_meta_data.inference_helper,
+                    td_helper_columns,
+                    "helper_columns",
+                ),
                 request_parameters=(
-                    request_parameters,
+                    request_parameters or logging_meta_data.request_parameters,
                     td_request_parameters,
                     "request_parameters",
                 ),
-                event_time=(event_time, td_event_time, "event_time"),
+                event_time=(
+                    event_time or logging_meta_data.event_time,
+                    td_event_time,
+                    "event_time",
+                ),
                 extra_logging_features=(
                     extra_logging_features,
                     td_extra_logging_features,
@@ -1579,13 +1596,28 @@ class FeatureViewEngine:
             return engine.get_instance().get_feature_logging_df(
                 logging_data=logging_data,
                 logging_feature_group_features=logging_feature_group_features,
-                transformed_features=(transformed_features, td_transformed_features),
-                untransformed_features=(untransformed_features, td_features),
+                transformed_features=(
+                    transformed_features or logging_meta_data.transformed_features,
+                    td_transformed_features,
+                ),
+                untransformed_features=(
+                    untransformed_features or logging_meta_data.untransformed_features,
+                    td_features,
+                ),
                 predictions=(predictions, list(td_predictions_names)),
-                serving_keys=(serving_keys, td_serving_keys),
-                helper_columns=(helper_columns, td_helper_columns),
-                request_parameters=(request_parameters, td_request_parameters),
-                event_time=(event_time, td_event_time),
+                serving_keys=(
+                    serving_keys or logging_meta_data.serving_keys,
+                    td_serving_keys,
+                ),
+                helper_columns=(
+                    helper_columns or logging_meta_data.inference_helper,
+                    td_helper_columns,
+                ),
+                request_parameters=(
+                    request_parameters or logging_meta_data.request_parameters,
+                    td_request_parameters,
+                ),
+                event_time=(event_time or logging_meta_data.event_time, td_event_time),
                 extra_logging_features=(
                     extra_logging_features,
                     td_extra_logging_features,

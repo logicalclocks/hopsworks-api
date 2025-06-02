@@ -19,7 +19,7 @@ from __future__ import annotations
 import ast
 import datetime
 import decimal
-from typing import TYPE_CHECKING, Literal, NewType, Union
+from typing import TYPE_CHECKING, Literal, NewType, Optional, Union
 
 import pytz
 from hopsworks_common.core.constants import (
@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     import numpy as np
     import pandas as pd
     import polars as pl
+    from hsfs.core.feature_logging import LoggingMetaData
 
 if HAS_PYARROW:
     import pyarrow as pa
@@ -142,18 +143,20 @@ def create_extended_type(base_type: type) -> "ExtendedType":
 
     class ExtendedType(base_type):
         """
-        This is a class that extends the base_type class with a new attribute `hopsworks_meta_data` that can be used to store metadata.
+        This is a class that extends the base_type class with a new attribute `hopsworks_logging_meta_data` that can be used to store metadata.
         """
 
-        @property
-        def hopsworks_meta_data(self):
-            if not hasattr(self, "_hopsworks_meta_data"):
-                return None
-            return self._hopsworks_meta_data
+        _is_extended_type = True
 
-        @hopsworks_meta_data.setter
-        def hopsworks_meta_data(self, meta_data: dict):
-            self._hopsworks_meta_data = meta_data
+        @property
+        def hopsworks_logging_meta_data(self) -> Optional[LoggingMetaData]:
+            if not hasattr(self, "_hopsworks_logging_meta_data"):
+                return None
+            return self._hopsworks_logging_meta_data
+
+        @hopsworks_logging_meta_data.setter
+        def hopsworks_logging_meta_data(self, meta_data: LoggingMetaData):
+            self._hopsworks_logging_meta_data = meta_data
 
     return ExtendedType
 
