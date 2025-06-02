@@ -34,6 +34,7 @@ from hopsworks_common.core.constants import (
     numpy_not_installed_message,
     polars_not_installed_message,
 )
+from hopsworks_common.core.type_systems import create_extended_type
 from hsfs import (
     feature_view,
     training_dataset,
@@ -51,6 +52,7 @@ from hsfs.core import (
 from hsfs.core import (
     transformation_function_engine as tf_engine_mod,
 )
+from hsfs.core.feature_logging import LoggingMetaData
 from hsfs.hopsworks_udf import UDFExecutionMode
 
 
@@ -155,6 +157,7 @@ class VectorServer:
         self._valid_serving_keys: Set[str] = set()
         self._serving_initialized: bool = False
         self.__all_features_on_demand: Optional[bool] = None
+        self._feature_view_logging_enabled: bool = False
 
     def init_serving(
         self,
@@ -170,6 +173,8 @@ class VectorServer:
         default_client: Optional[Literal["rest", "sql"]] = None,
     ):
         self._training_dataset_version = training_dataset_version
+        self._feature_view_logging_enabled = entity.logging_enabled
+        self._root_feature_group = entity.query._left_feature_group
         if options is not None:
             reset_rest_client = reset_rest_client or options.get(
                 self.RESET_REST_CLIENT_OPTIONS_KEY, False
@@ -276,6 +281,7 @@ class VectorServer:
         self.sql_client.init_prepared_statements(
             entity,
             inference_helper_columns,
+            with_logging_meta_data=self._feature_view_logging_enabled,
         )
         self.sql_client.init_async_mysql_connection(options=options)
 
@@ -380,10 +386,17 @@ class VectorServer:
         on_demand_features: Optional[bool] = True,
         request_parameters: Optional[Dict[str, Any]] = None,
         transformation_context: Dict[str, Any] = None,
+        logging_data: bool = True,
     ) -> Union[pd.DataFrame, pl.DataFrame, np.ndarray, List[Any], Dict[str, Any]]:
         """Assembles serving vector from online feature store."""
         online_client_choice = self.which_client_and_ensure_initialised(
             force_rest_client=force_rest_client, force_sql_client=force_sql_client
+        )
+
+        logging_meta_data = (
+            LoggingMetaData()
+            if self._feature_view_logging_enabled and logging_data
+            else None
         )
 
         # Adding values in entry to request_parameters if it is not explicitly mentioned so that on-demand feature can be computed using the values in entry if they are not present in retrieved feature vector. This happens when no features can be retrieved from the feature view since the serving key is not yet there.
@@ -409,7 +422,9 @@ class VectorServer:
             )
         else:
             _logger.debug("get_feature_vector Online SQL client")
-            serving_vector = self.sql_client.get_single_feature_vector(rondb_entry)
+            serving_vector = self.sql_client.get_single_feature_vector(
+                rondb_entry, self._feature_view_logging_enabled and logging_data
+            )
 
         self._raise_transformation_warnings(
             transform=transform, on_demand_features=on_demand_features
@@ -425,7 +440,21 @@ class VectorServer:
             on_demand_features=on_demand_features,
             request_parameters=request_parameters,
             transformation_context=transformation_context,
+            logging_meta_data=logging_meta_data,
         )
+
+        if logging_meta_data is not None:
+            logging_meta_data.serving_keys.append(entry)
+            logging_meta_data.request_parameters.append(request_parameters or {})
+            logging_meta_data.event_time.append(
+                serving_vector.get(self._root_feature_group.event_time, None)
+            )
+            logging_meta_data.inference_helper.append(
+                [
+                    serving_vector.get(col, None)
+                    for col in self._inference_helper_col_name
+                ]
+            )
 
         return self.handle_feature_vector_return_type(
             vector,
@@ -434,6 +463,7 @@ class VectorServer:
             return_type=return_type,
             transform=transform,
             on_demand_feature=on_demand_features,
+            logging_meta_data=logging_meta_data,
         )
 
     def get_feature_vectors(
@@ -451,6 +481,7 @@ class VectorServer:
         transform: bool = True,
         on_demand_features: Optional[bool] = True,
         transformation_context: Dict[str, Any] = None,
+        logging_data: bool = True,
     ) -> Union[pd.DataFrame, pl.DataFrame, np.ndarray, List[Any], List[Dict[str, Any]]]:
         """Assembles serving vector from online feature store."""
         if passed_features is None:
@@ -473,6 +504,12 @@ class VectorServer:
             or not entries
             or len(request_parameters) == len(entries)
         ), "Request Parameters should be a Dictionary, None, empty or have the same length as the entries if they are not None or empty."
+
+        logging_meta_data = (
+            LoggingMetaData()
+            if self._feature_view_logging_enabled and logging_data
+            else None
+        )
 
         # Adding values in entry to request_parameters if it is not explicitly mentioned so that on-demand feature can be computed using the values in entry if they are not present in retrieved feature vector.
         if request_parameters and entries:
@@ -529,7 +566,9 @@ class VectorServer:
         elif len(rondb_entries) > 0:
             # get result row
             _logger.debug("get_batch_feature_vectors through SQL client")
-            batch_results, _ = self.sql_client.get_batch_feature_vectors(rondb_entries)
+            batch_results, _ = self.sql_client.get_batch_feature_vectors(
+                rondb_entries, self._feature_view_logging_enabled and logging_data
+            )
         else:
             _logger.debug("Empty entries for rondb, skipping fetching.")
             batch_results = []
@@ -546,6 +585,10 @@ class VectorServer:
             if isinstance(request_parameters, dict)
             else request_parameters
         )
+
+        if logging_meta_data is not None:
+            logging_meta_data.serving_keys.extend(entries)
+            logging_meta_data.request_parameters.extend(request_parameters)
         for (
             idx,
             passed_values,
@@ -579,7 +622,19 @@ class VectorServer:
                 on_demand_features=on_demand_features,
                 request_parameters=request_parameter,
                 transformation_context=transformation_context,
+                logging_meta_data=logging_meta_data,
             )
+
+            if logging_meta_data is not None:
+                logging_meta_data.event_time.append(
+                    result_dict.get(self._root_feature_group.event_time, None)
+                )
+                logging_meta_data.inference_helper.append(
+                    [
+                        result_dict.get(col, None)
+                        for col in self._inference_helper_col_name
+                    ]
+                )
 
             if vector is not None:
                 vectors.append(vector)
@@ -591,6 +646,7 @@ class VectorServer:
             return_type=return_type,
             transform=transform,
             on_demand_feature=transform,
+            logging_meta_data=logging_meta_data,
         )
 
     def assemble_feature_vector(
@@ -604,6 +660,7 @@ class VectorServer:
         on_demand_features: bool,
         request_parameters: Optional[Dict[str, Any]] = None,
         transformation_context: Dict[str, Any] = None,
+        logging_meta_data: LoggingMetaData = None,
     ) -> Optional[List[Any]]:
         """Assembles serving vector from online feature store."""
         # Errors in batch requests are returned as None values
@@ -650,23 +707,24 @@ class VectorServer:
             len(self.model_dependent_transformation_functions) > 0
             or len(self.on_demand_transformation_functions) > 0
         ):
-            self.apply_transformation(
-                result_dict,
+            feature_dict, encoded_feature_dict = self.apply_transformation(
+                result_dict.copy(),
                 request_parameters or {},
                 transformation_context,
                 transform=transform,
                 on_demand_features=on_demand_features,
+                logging_meta_data=logging_meta_data,
             )
 
         _logger.debug("Assembled and transformed dict feature vector: %s", result_dict)
         if transform:
             return [
-                result_dict.get(fname, None)
+                encoded_feature_dict.get(fname, None)
                 for fname in self.transformed_feature_vector_col_name
             ]
         elif on_demand_features:
             return [
-                result_dict.get(fname, None)
+                feature_dict.get(fname, None)
                 for fname in self._on_demand_feature_vector_col_name
             ]
         else:
@@ -953,6 +1011,7 @@ class VectorServer:
         return_type: Union[Literal["list", "dict", "numpy", "pandas", "polars"]],
         transform: bool = False,
         on_demand_feature: bool = False,
+        logging_meta_data: Optional[Dict[str, Any]] = None,
     ) -> Union[
         pd.DataFrame,
         pl.DataFrame,
@@ -973,34 +1032,34 @@ class VectorServer:
         # Only get-feature-vector and get-feature-vectors can return list or numpy
         if return_type.lower() == "list" and not inference_helper:
             _logger.debug("Returning feature vector as value list")
-            return feature_vectorz
+            feature_vector = feature_vectorz
         elif return_type.lower() == "numpy" and not inference_helper:
             _logger.debug("Returning feature vector as numpy array")
             if not HAS_NUMPY:
                 raise ModuleNotFoundError(numpy_not_installed_message)
-            return np.array(feature_vectorz)
+            feature_vector = np.array(feature_vectorz)
         # Only inference helper can return dict
         elif return_type.lower() == "dict" and inference_helper:
             _logger.debug("Returning feature vector as dictionary")
-            return feature_vectorz
+            feature_vector = feature_vectorz
         # Both can return pandas and polars
         elif return_type.lower() == "pandas":
             _logger.debug("Returning feature vector as pandas dataframe")
             if batch and inference_helper:
-                return pd.DataFrame(feature_vectorz)
+                feature_vector = pd.DataFrame(feature_vectorz)
             elif inference_helper:
-                return pd.DataFrame([feature_vectorz])
+                feature_vector = pd.DataFrame([feature_vectorz])
             elif batch:
-                return pd.DataFrame(feature_vectorz, columns=column_names)
+                feature_vector = pd.DataFrame(feature_vectorz, columns=column_names)
             else:
                 pandas_df = pd.DataFrame(feature_vectorz).transpose()
                 pandas_df.columns = column_names
-                return pandas_df
+                feature_vector = pandas_df
         elif return_type.lower() == "polars":
             _logger.debug("Returning feature vector as polars dataframe")
             if not HAS_POLARS:
                 raise ModuleNotFoundError(polars_not_installed_message)
-            return pl.DataFrame(
+            feature_vector = pl.DataFrame(
                 feature_vectorz if batch else [feature_vectorz],
                 schema=column_names if not inference_helper else None,
                 orient="row",
@@ -1009,6 +1068,11 @@ class VectorServer:
             raise ValueError(
                 f"""Unknown return type. Supported return types are {"'list', 'numpy'" if not inference_helper else "'dict'"}, 'polars' and 'pandas''"""
             )
+        if logging_meta_data:
+            extended_type = create_extended_type(type(feature_vector))
+            feature_vector = extended_type(feature_vector)
+            feature_vector.hopsworks_logging_meta_data = logging_meta_data
+        return feature_vector
 
     def get_inference_helper(
         self,
@@ -1049,7 +1113,6 @@ class VectorServer:
 
     def get_inference_helpers(
         self,
-        feature_view_object: feature_view.FeatureView,
         entries: List[Dict[str, Any]],
         return_type: Union[Literal["dict", "pandas", "polars"]],
         force_rest_client: bool,
@@ -1073,19 +1136,6 @@ class VectorServer:
         else:
             batch_results, serving_keys = (
                 self.sql_client.get_batch_inference_helper_vectors(entries)
-            )
-            # drop serving and primary key names from the result dict
-            drop_list = serving_keys + list(feature_view_object.primary_keys)
-
-            _ = list(
-                map(
-                    lambda results_dict: [
-                        results_dict.pop(x, None)
-                        for x in drop_list
-                        if x not in feature_view_object.inference_helper_columns
-                    ],
-                    batch_results,
-                )
             )
 
         return self.handle_feature_vector_return_type(
@@ -1310,6 +1360,7 @@ class VectorServer:
         transformation_context: Dict[str, Any] = None,
         transform: bool = True,
         on_demand_features: bool = True,
+        logging_meta_data: LoggingMetaData = None,
     ):
         """
         Function that applies both on-demand and model dependent transformation to the input dictonary
@@ -1321,7 +1372,7 @@ class VectorServer:
         feature_dict = row_dict
         encoded_feature_dict = None
 
-        if transform or on_demand_features:
+        if transform or on_demand_features or logging_meta_data:
             # Check for any missing request parameters
             self.check_missing_request_parameters(
                 features=row_dict, request_parameters=request_parameter
@@ -1332,10 +1383,23 @@ class VectorServer:
                 row_dict, request_parameter, transformation_context
             )
 
-        if transform:
+            logging_meta_data.untransformed_features.append(
+                [
+                    feature_dict.get(fname, None)
+                    for fname in self._untransformed_feature_vector_col_name
+                ]
+            )
+
+        if transform or logging_meta_data:
             # Apply model dependent transformations
             encoded_feature_dict = self.apply_model_dependent_transformations(
                 feature_dict, transformation_context
+            )
+            logging_meta_data.transformed_features.append(
+                [
+                    encoded_feature_dict.get(fname, None)
+                    for fname in self.transformed_feature_vector_col_name
+                ]
             )
 
         return feature_dict, encoded_feature_dict
