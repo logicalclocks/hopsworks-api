@@ -1,3 +1,4 @@
+import datetime
 import json
 import warnings
 from typing import Any, Dict, List, Optional
@@ -5,6 +6,30 @@ from typing import Any, Dict, List, Optional
 import humps
 from hsfs import feature_group, util
 from hsfs.feature import Feature
+
+
+class LoggingMetaData:
+    """
+    Class that holds the required data for feature logging.
+    """
+
+    def __init__(self):
+        self.untransformed_features: Optional[list[list[Any]]] = []
+        self.transformed_features: list[list[Any]] = []
+        self.serving_keys: list[Dict[str, Any]] = []
+        self.request_parameters: list[Dict[str, Any]] = []
+        self.event_time: list[datetime.datetime] = []
+        self.inference_helper: list[Dict[str, Any]] = []
+
+    def __repr__(self):
+        return (
+            f"LoggingMetaData(untransformed_features={self.untransformed_features}, \n"
+            f"transformed_features={self.transformed_features}, \n"
+            f"serving_keys={self.serving_keys}, \n"
+            f"request_parameters={self.request_parameters}, \n"
+            f"event_time={self.event_time}, \n"
+            f"inference_helper={self.inference_helper})"
+        )
 
 
 class FeatureLogging:
