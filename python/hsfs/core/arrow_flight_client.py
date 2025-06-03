@@ -125,13 +125,17 @@ def _is_query_supported_rec(query: query.Query):
         and query._left_feature_group.storage_connector.type
         in ArrowFlightClient.SUPPORTED_EXTERNAL_CONNECTORS
     )
-    delta_s3 = (
+    delta_data_sources = (
         isinstance(query._left_feature_group, feature_group.FeatureGroup)
         and query._left_feature_group.time_travel_format == "DELTA"
         and query._left_feature_group.storage_connector
-        and query._left_feature_group.storage_connector.type == StorageConnector.S3
+        and (
+            query._left_feature_group.storage_connector.type == StorageConnector.S3
+            or query._left_feature_group.storage_connector.type == StorageConnector.GCS
+        )
     )
-    supported = hudi_no_time_travel or supported_connector or delta_s3
+
+    supported = hudi_no_time_travel or supported_connector or delta_data_sources
     for j in query._joins:
         supported &= _is_query_supported_rec(j._query)
     return supported
@@ -153,6 +157,7 @@ class ArrowFlightClient:
         StorageConnector.BIGQUERY,
         StorageConnector.REDSHIFT,
         StorageConnector.RDS,
+        StorageConnector.GCS,
     ]
     READ_ERROR = "Could not read data using Hopsworks Query Service."
     WRITE_ERROR = 'Could not write data using Hopsworks Query Service. If the issue persists, use write_options={"use_spark": True} instead.'
@@ -702,6 +707,12 @@ def _get_connector_options(fg):
         if connector.arguments.get("fs.s3a.endpoint"):
             option_map["endpoint"] = connector.arguments.get("fs.s3a.endpoint")
         option_map["path"] = fg.location
+    elif connector_type == StorageConnector.GCS:
+        option_map = {
+            "bucket": connector.bucket,
+            "key_path": connector.key_path,
+            "path": fg.location,
+        }
     else:
         raise FeatureStoreException(
             f"Arrow Flight doesn't support connector of type: {connector_type}"
