@@ -432,6 +432,9 @@ class VectorServer:
         )
 
         # Adding values in entry to request_parameters if it is not explicitly mentioned so that on-demand feature can be computed using the values in entry if they are not present in retrieved feature vector. This happens when no features can be retrieved from the feature view since the serving key is not yet there.
+        request_parameters_copy = (
+            request_parameters.copy() if request_parameters else {}
+        )
         if request_parameters and entry:
             for key, value in entry.items():
                 request_parameters.setdefault(key, value)
@@ -478,9 +481,9 @@ class VectorServer:
 
         if logging_meta_data is not None:
             logging_meta_data.serving_keys.append(entry)
-            logging_meta_data.request_parameters.append(request_parameters or {})
+            logging_meta_data.request_parameters.append(request_parameters_copy or {})
             logging_meta_data.event_time.append(
-                serving_vector.get(self._root_feature_group.event_time, None)
+                [serving_vector.get(self._root_feature_group.event_time, None)]
             )
             logging_meta_data.inference_helper.append(
                 [
@@ -545,6 +548,9 @@ class VectorServer:
         )
 
         # Adding values in entry to request_parameters if it is not explicitly mentioned so that on-demand feature can be computed using the values in entry if they are not present in retrieved feature vector.
+        request_parameters_copy = (
+            request_parameters.copy() if request_parameters else None
+        )
         if request_parameters and entries:
             if isinstance(request_parameters, list) and len(entries) == len(
                 request_parameters
@@ -622,8 +628,13 @@ class VectorServer:
         )
 
         if logging_meta_data is not None:
+            request_parameters_copy = (
+                [request_parameters_copy] * len(entries)
+                if isinstance(request_parameters_copy, dict)
+                else request_parameters_copy
+            )
             logging_meta_data.serving_keys.extend(entries)
-            logging_meta_data.request_parameters.extend(request_parameters)
+            logging_meta_data.request_parameters.extend(request_parameters_copy)
         for (
             idx,
             passed_values,
@@ -663,7 +674,7 @@ class VectorServer:
 
             if logging_meta_data is not None:
                 logging_meta_data.event_time.append(
-                    result_dict.get(self._root_feature_group.event_time, None)
+                    [result_dict.get(self._root_feature_group.event_time, None)]
                 )
                 logging_meta_data.inference_helper.append(
                     [
@@ -1184,6 +1195,12 @@ class VectorServer:
             batch_results, serving_keys = (
                 self.sql_client.get_batch_inference_helper_vectors(entries)
             )
+            # Batch retrieval of inference helper returns primary keys as well to enable merging of vectors retrieved from different feature groups
+            # Filtering out the primary keys from the results
+            batch_results = [
+                {col: result.get(col, None) for col in self._inference_helper_col_name}
+                for result in batch_results
+            ]
 
         return self.handle_feature_vector_return_type(
             batch_results,
@@ -1435,25 +1452,26 @@ class VectorServer:
             feature_dict = self.apply_on_demand_transformations(
                 row_dict, request_parameter, transformation_context
             )
-
-            logging_meta_data.untransformed_features.append(
-                [
-                    feature_dict.get(fname, None)
-                    for fname in self._untransformed_feature_vector_col_name
-                ]
-            )
+            if logging_meta_data:
+                logging_meta_data.untransformed_features.append(
+                    [
+                        feature_dict.get(fname, None)
+                        for fname in self._on_demand_feature_vector_col_name
+                    ]
+                )
 
         if transform or logging_meta_data:
             # Apply model dependent transformations
             encoded_feature_dict = self.apply_model_dependent_transformations(
                 feature_dict, transformation_context
             )
-            logging_meta_data.transformed_features.append(
-                [
-                    encoded_feature_dict.get(fname, None)
-                    for fname in self.transformed_feature_vector_col_name
-                ]
-            )
+            if logging_meta_data:
+                logging_meta_data.transformed_features.append(
+                    [
+                        encoded_feature_dict.get(fname, None)
+                        for fname in self.transformed_feature_vector_col_name
+                    ]
+                )
 
         return feature_dict, encoded_feature_dict
 
