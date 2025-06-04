@@ -3787,6 +3787,7 @@ class FeatureView:
         extra_logging_features: Union[
             pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
         ] = None,
+        request_id: Union[str, list[str]] = None,
         write_options: Optional[Dict[str, Any]] = None,
         training_dataset_version: Optional[int] = None,
         model: Model = None,
@@ -3862,6 +3863,7 @@ class FeatureView:
             request_parameters=request_parameters,
             event_time=event_time,
             serving_keys=serving_keys,
+            request_id=request_id,
             write_options=write_options,
             training_dataset_version=(
                 training_dataset_version
