@@ -1328,6 +1328,7 @@ class FeatureViewEngine:
         extra_logging_features: Optional[
             Union[pd.DataFrame, list[list], np.ndarray]
         ] = None,
+        request_id: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
         write_options: Optional[Dict[str, Any]] = None,
         training_dataset_version: Optional[int] = None,
         hsml_model=None,
@@ -1363,6 +1364,7 @@ class FeatureViewEngine:
                             request_parameters=request_parameters,
                             event_time=event_time,
                             serving_keys=serving_keys,
+                            request_id=request_id,
                             extra_logging_features=extra_logging_features,
                             training_dataset_version=training_dataset_version,
                             hsml_model=hsml_model,
@@ -1398,6 +1400,7 @@ class FeatureViewEngine:
                         request_parameters=request_parameters,
                         event_time=event_time,
                         serving_keys=serving_keys,
+                        request_id=request_id,
                         extra_logging_features=extra_logging_features,
                         training_dataset_version=training_dataset_version,
                         hsml_model=hsml_model,
@@ -1486,6 +1489,15 @@ class FeatureViewEngine:
                 TypeVar("pyspark.sql.DataFrame"),
             ]
         ] = None,
+        request_id: Optional[
+            Union[
+                pd.DataFrame,
+                pl.DataFrame,
+                list[list],
+                np.ndarray,
+                TypeVar("pyspark.sql.DataFrame"),
+            ]
+        ] = None,
         extra_logging_features: Optional[
             Union[
                 pd.DataFrame,
@@ -1504,15 +1516,22 @@ class FeatureViewEngine:
         logging_meta_data: LoggingMetaData = getattr(
             logging_data, "hopsworks_logging_meta_data", None
         )
+
+        # Setting logging data to None since all parameters required for logging are already in the metadata object.
+        logging_data = (
+            None
+            if logging_meta_data
+            and (isinstance(logging_data, list) or isinstance(logging_data, np.ndarray))
+            else logging_data
+        )
         td_predictions = [
             feature for feature in training_dataset_schema if feature.label
         ]
 
         td_predictions_names = set([feature.name for feature in td_predictions])
 
-        td_helper_columns = (
-            fv.inference_helper_columns if helper_columns is not None else None
-        )
+        td_helper_columns = fv.inference_helper_columns
+
         td_transformed_features = [
             feature.name
             for feature in training_dataset_schema
@@ -1529,11 +1548,7 @@ class FeatureViewEngine:
             and feature.name not in fv.inference_helper_columns
         ]
 
-        td_serving_keys = (
-            [sk.feature_name for sk in fv.serving_keys if sk.required]
-            if serving_keys is not None
-            else None
-        )
+        td_serving_keys = [sk.feature_name for sk in fv.serving_keys if sk.required]
         td_request_parameters = fv.request_parameters
         td_event_time = [fv.query._left_feature_group.event_time]
         td_extra_logging_features = [
@@ -1579,6 +1594,7 @@ class FeatureViewEngine:
                     td_event_time,
                     "event_time",
                 ),
+                request_id=(request_id, ["request_id"], "request_id"),
                 extra_logging_features=(
                     extra_logging_features,
                     td_extra_logging_features,
@@ -1618,6 +1634,7 @@ class FeatureViewEngine:
                     td_request_parameters,
                 ),
                 event_time=(event_time or logging_meta_data.event_time, td_event_time),
+                request_id=(request_id, "request_id", "request_id"),
                 extra_logging_features=(
                     extra_logging_features,
                     td_extra_logging_features,
