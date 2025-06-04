@@ -1679,6 +1679,8 @@ class Engine:
         if isinstance(feature_log, list) or (
             HAS_NUMPY and isinstance(feature_log, np.ndarray)
         ):
+            if all(isinstance(item, dict) for item in feature_log):
+                return pd.DataFrame(feature_log)
             Engine._validate_logging_list(feature_log, cols)
             return pd.DataFrame(feature_log, columns=cols)
         else:
@@ -1754,6 +1756,9 @@ class Engine:
         event_time: Optional[
             Tuple[Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray], List[str]]
         ] = None,
+        request_id: Optional[
+            Tuple[Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray], List[str]]
+        ] = None,
         extra_logging_features: Optional[
             Tuple[Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray], List[str]]
         ] = None,
@@ -1766,24 +1771,35 @@ class Engine:
         logging_feature_group_feature_names = [
             feature.name for feature in logging_feature_group_features
         ]
-        logging_df = Engine._convert_feature_log_to_df(
-            logging_data, logging_feature_group_feature_names
-        )
-        for data, feature_names in [
+        try:
+            logging_df = Engine._convert_feature_log_to_df(
+                logging_data, logging_feature_group_feature_names
+            )
+        except AssertionError as e:
+            raise FeatureStoreException(
+                f"Error logging data `logging_data` do not have all required features. Please check the `logging_data` to ensure that it has the following features : {logging_feature_group_feature_names}."
+            ) from e
+        for data, feature_names, log_component_name in [
             transformed_features,
             untransformed_features,
             predictions,
             serving_keys,
             helper_columns,
+            request_id,
             request_parameters,
             event_time,
             extra_logging_features,
         ]:
-            df = (
-                Engine._convert_feature_log_to_df(data, feature_names)
-                if data is not None or feature_names is not None
-                else None
-            )
+            try:
+                df = (
+                    Engine._convert_feature_log_to_df(data, feature_names)
+                    if data is not None or feature_names is not None
+                    else None
+                )
+            except AssertionError as e:
+                raise FeatureStoreException(
+                    f"Error logging data `{log_component_name}` do not have all required features. Please check the `{log_component_name}` to ensure that it has the following features : {feature_names}."
+                ) from e
 
             if df is None or df.empty:
                 continue
@@ -1797,7 +1813,7 @@ class Engine:
                         )
             elif len(df) != len(logging_df):
                 raise FeatureStoreException(
-                    "Length of logging data provided do not match. Please check the logging data to make sure all data has the same length."
+                    f"Length of `{log_component_name}` provided do not match other arguments. Please check the logging data to make sure that all arguments have the same length."
                 )
             else:
                 for col in df.columns:
@@ -1805,7 +1821,7 @@ class Engine:
                         logging_df[col] = df[col]
 
         # Rename prediction columns
-        _, predictions_feature_names = predictions
+        _, predictions_feature_names, _ = predictions
         if predictions_feature_names:
             for feature_name in predictions_feature_names:
                 logging_df = logging_df.rename(
@@ -1813,7 +1829,7 @@ class Engine:
                 )
 
         # Creating a json column for request parameters
-        _, request_parameter_columns = request_parameters
+        _, request_parameter_columns, _ = request_parameters
         if request_parameter_columns:
             if "request_parameters" not in logging_df.columns:
                 avaiable_request_parameters = [
@@ -1942,6 +1958,13 @@ class Engine:
                 str,
             ]
         ] = None,
+        request_id: Optional[
+            Tuple[
+                Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray],
+                List[str],
+                str,
+            ]
+        ] = None,
         event_time: Optional[
             Tuple[
                 Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray],
@@ -1979,6 +2002,7 @@ class Engine:
                 request_parameters,
                 event_time,
                 extra_logging_features,
+                request_id,
             ]
         ):
             return self.get_feature_logging_df(
@@ -1991,6 +2015,7 @@ class Engine:
                 helper_columns=helper_columns,
                 request_parameters=request_parameters,
                 event_time=event_time,
+                request_id=request_id,
                 extra_logging_features=extra_logging_features,
                 td_col_name=td_col_name,
                 time_col_name=time_col_name,
@@ -2009,12 +2034,34 @@ class Engine:
             request_parameters,
             event_time,
             extra_logging_features,
+            request_id,
         ]:
+            print(f"{data=}, {feature_names=}, {log_component_name=}")
             # convert features to dict
             if not data:
                 continue
             try:
-                Engine._validate_logging_list(data, feature_names)
+                if not all(isinstance(row, dict) for row in data):
+                    Engine._validate_logging_list(data, feature_names)
+                else:
+                    for row in data:
+                        missing_columns = set(feature_names).difference(set(row.keys()))
+                        additional_logging_features = set(row.keys()).difference(
+                            (feature_names)
+                        )
+                        if missing_columns:
+                            _logger.info(
+                                f"The following columns : `{'`, `'.join(missing_columns)}` are missing in the logging data provided `{log_component_name}`. Setting them to None."
+                            )
+                            for col in missing_columns:
+                                row[col] = None
+                        if additional_logging_features:
+                            _logger.info(
+                                f"The following columns : `{'`, `'.join(additional_logging_features)}` are additional columns the logging data provided `{log_component_name}` and is not present in the logging feature groups. They will be ignored."
+                            )
+                            for col in additional_logging_features:
+                                row.pop(col)
+
             except AssertionError as e:
                 raise FeatureStoreException(
                     f"Error logging data `{log_component_name}` do not have all required features. Please check the `{log_component_name}` to ensure that it has the following features : {feature_names}."
@@ -2026,7 +2073,13 @@ class Engine:
                 ]
             elif len(data) == 1 and len(log_vectors) > 1:
                 for log_vector in log_vectors:
-                    log_vector.update(dict(zip(feature_names, data[0])))
+                    log_vector.update(
+                        dict(
+                            zip(feature_names, data[0])
+                            if not isinstance(data, dict)
+                            else data
+                        )
+                    )
             elif len(data) != len(log_vectors):
                 if len(log_vectors) != len(data):
                     raise FeatureStoreException(
