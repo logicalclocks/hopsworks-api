@@ -302,14 +302,21 @@ class DatasetApi:
                 self._log.exception("Failed to initialize progress bar.")
                 self._log.info("Starting upload")
             with ThreadPoolExecutor(simultaneous_chunks) as executor:
+                all_chunks_processed = False
                 while True:
+                    # Handle case with empty file
                     chunks = []
+                    if os.path.getsize(local_path) == 0:
+                        chunks.append(Chunk(b'', 1, "pending"))
+                        all_chunks_processed = True
                     for _ in range(simultaneous_chunks):
-                        chunk = f.read(chunk_size)
-                        if not chunk:
-                            break
-                        chunks.append(Chunk(chunk, chunk_number, "pending"))
-                        chunk_number += 1
+                        if not chunks:
+                            chunk = f.read(chunk_size)
+                            if not chunk:
+                                all_chunks_processed = True
+                                break
+                            chunks.append(Chunk(chunk, chunk_number, "pending"))
+                            chunk_number += 1
 
                     if len(chunks) == 0:
                         break
@@ -336,6 +343,9 @@ class DatasetApi:
                         if pbar is not None:
                             pbar.close()
                         raise e
+
+                    if all_chunks_processed:
+                        break
 
             if pbar is not None:
                 pbar.close()
