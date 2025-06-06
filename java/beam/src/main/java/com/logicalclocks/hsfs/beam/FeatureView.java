@@ -20,133 +20,81 @@ package com.logicalclocks.hsfs.beam;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.FeatureViewBase;
 import com.logicalclocks.hsfs.beam.constructor.Query;
+import com.logicalclocks.hsfs.beam.engine.FeatureViewEngine;
+import lombok.NonNull;
 import org.apache.beam.sdk.values.PCollection;
 
 import java.io.IOException;
-import java.text.ParseException;
-import java.util.Map;
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class FeatureView extends FeatureViewBase<FeatureView, FeatureStore, Query, PCollection<Object>> {
-  @Override
-  public void addTag(String name, Object value) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
+
+  private static final FeatureViewEngine featureViewEngine = new FeatureViewEngine();
+
+  public static class FeatureViewBuilder {
+
+    private String name;
+    private Integer version;
+    private String description;
+    private FeatureStore featureStore;
+    private Query query;
+    private List<String> labels;
+
+    public FeatureViewBuilder(FeatureStore featureStore) {
+      this.featureStore = featureStore;
+    }
+
+    public FeatureView.FeatureViewBuilder name(String name) {
+      this.name = name;
+      return this;
+    }
+
+    public FeatureView.FeatureViewBuilder version(Integer version) {
+      this.version = version;
+      return this;
+    }
+
+    public FeatureView.FeatureViewBuilder description(String description) {
+      this.description = description;
+      return this;
+    }
+
+    /**
+     * Query of a feature view. Note that `as_of` argument in the `Query` will be ignored because feature view does
+     * not support time travel query.
+     *
+     * @param query Query object
+     * @return builder
+     */
+    public FeatureView.FeatureViewBuilder query(Query query) {
+      this.query = query;
+      if (query.isTimeTravel()) {
+        FeatureViewBase.LOGGER.info("`as_of` argument in the `Query` will be ignored because "
+            + "feature view does not support time travel query.");
+      }
+      return this;
+    }
+
+    public FeatureView.FeatureViewBuilder labels(List<String> labels) {
+      this.labels = labels;
+      return this;
+    }
+
+    public FeatureView build() throws FeatureStoreException, IOException {
+      FeatureView
+          featureView = new FeatureView(name, version, query, description, featureStore, labels);
+      return featureViewEngine.save(featureView, FeatureView.class);
+    }
   }
 
-  @Override
-  public Map<String, Object> getTags() throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public Object getTag(String name) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void deleteTag(String name) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void addTrainingDatasetTag(Integer version, String name, Object value)
-      throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public Map<String, Object> getTrainingDatasetTags(Integer version) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public Object getTrainingDatasetTag(Integer version, String name) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void deleteTrainingDatasetTag(Integer version, String name) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void delete() throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void clean(FeatureStore featureStore, String featureViewName, Integer featureViewVersion)
-      throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public FeatureView update(FeatureView other) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public String getBatchQuery() throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public String getBatchQuery(String startTime, String endTime)
-      throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public PCollection<Object> getBatchData() throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public PCollection<Object> getBatchData(String startTime, String endTime)
-      throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public PCollection<Object> getBatchData(String startTime, String endTime, Map<String, String> readOptions)
-      throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public Object getTrainingData(Integer version, Map<String, String> readOptions)
-      throws IOException, FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public Object getTrainTestSplit(Integer version, Map<String, String> readOptions)
-      throws IOException, FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public Object getTrainValidationTestSplit(Integer version, Map<String, String> readOptions)
-      throws IOException, FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void purgeTrainingData(Integer version) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void purgeAllTrainingData() throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void deleteTrainingDataset(Integer version) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void deleteAllTrainingDatasets() throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
+  public FeatureView(@NonNull String name, Integer version, @NonNull Query query, String description,
+                     @NonNull FeatureStore featureStore, List<String> labels) {
+    this.name = name;
+    this.version = version;
+    this.query = query;
+    this.description = description;
+    this.featureStore = featureStore;
+    this.labels = labels != null ? labels.stream().map(String::toLowerCase).collect(Collectors.toList()) : null;
   }
 }

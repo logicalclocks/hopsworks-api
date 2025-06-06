@@ -17,6 +17,7 @@
 
 package com.logicalclocks.hsfs;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -38,35 +39,54 @@ public class JobConfiguration {
   @Setter
   private int driverCores;
 
+  private int amMemory = 2048;
+
   @Getter
   @Setter
+  private int amVCores = 1;
+
+  @Getter
+  @Setter
+  @JsonProperty("spark.executor.instances")
   private int executorInstances;
 
   @Getter
   @Setter
-  private int executorCores;
+  @JsonProperty("spark.executor.cores")
+  private int executorCores = 1;
 
   @Getter
   @Setter
-  private int executorMemory;
+  @JsonProperty("spark.executor.memory")
+  private int executorMemory = 4096;
 
   @Getter
   @Setter
-  private boolean dynamicAllocationEnabled;
+  @JsonProperty("spark.dynamicAllocation.enabled")
+  private boolean dynamicAllocationEnabled = true;
 
   @Getter
   @Setter
-  private int dynamicAllocationMinExecutors;
+  @JsonProperty("spark.dynamicAllocation.minExecutors")
+  private int dynamicAllocationMinExecutors = 1;
 
   @Getter
   @Setter
-  private int dynamicAllocationMaxExecutors;
+  @JsonProperty("spark.dynamicAllocation.maxExecutors")
+  private int dynamicAllocationMaxExecutors = 2;
 
-  @Getter
-  @Setter
-  private int dynamicAllocationInitialExecutors;
+  @JsonProperty("spark.dynamicAllocation.initialExecutors")
+  private int dynamicAllocationInitialExecutors = 1;
 
-  @Getter
-  @Setter
-  private String environmentName;
+  public JobConfiguration(int amMemory, int amVCores, int executorCores, int executorMemory,
+                          boolean dynamicAllocationEnabled, int dynamicAllocationMaxExecutors,
+                          int dynamicAllocationMinExecutors) {
+    this.amMemory = amMemory;
+    this.amVCores = amVCores;
+    this.executorCores = executorCores;
+    this.executorMemory = executorMemory;
+    this.dynamicAllocationEnabled = dynamicAllocationEnabled;
+    this.dynamicAllocationMaxExecutors = dynamicAllocationMaxExecutors;
+    this.dynamicAllocationMinExecutors = dynamicAllocationMinExecutors;
+  }
 }

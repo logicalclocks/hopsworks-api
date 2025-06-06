@@ -38,11 +38,10 @@ import java.io.IOException;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 @NoArgsConstructor
-public abstract class QueryBase<T extends QueryBase<T, T2, T3>, T2 extends FeatureGroupBase, T3> {
+public class QueryBase<T extends QueryBase<T, T2, T3>, T2 extends FeatureGroupBase, T3> {
 
   @Getter
   protected FeatureGroupBase leftFeatureGroup;
@@ -79,14 +78,10 @@ public abstract class QueryBase<T extends QueryBase<T, T2, T3>, T2 extends Featu
   protected StorageConnectorApi storageConnectorApi = new StorageConnectorApi();
   private FeatureGroupUtils utils = new FeatureGroupUtils();
 
-  protected QueryBase(FeatureGroupBase leftFeatureGroup, List<Feature> leftFeatures) {
+  public QueryBase(FeatureGroupBase leftFeatureGroup, List<Feature> leftFeatures) {
     setLeftBaseFeatureGroup(leftFeatureGroup);
     this.leftFeatures = addFeatureGroupToFeatures(leftFeatureGroup, leftFeatures);
   }
-
-  public abstract String sql();
-
-  public abstract String sql(Storage storage);
 
   public <T2> String sql(Storage storage, Class<T2> fsQueryType) {
     try {
@@ -301,17 +296,4 @@ public abstract class QueryBase<T extends QueryBase<T, T2, T3>, T2 extends Featu
     }
     return updatedFeatures;
   }
-
-  public abstract Object read()
-      throws FeatureStoreException, IOException;
-
-  public abstract Object read(boolean online)
-      throws FeatureStoreException, IOException;
-
-  public abstract Object read(boolean online, Map<String, String> readOptions)
-      throws FeatureStoreException, IOException;
-
-  public abstract void show(int numRows) throws FeatureStoreException, IOException;
-
-  public abstract void show(boolean online, int numRows) throws FeatureStoreException, IOException;
 }
