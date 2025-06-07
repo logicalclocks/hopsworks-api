@@ -318,7 +318,7 @@ class DatasetApi:
                                 break
                             chunks.append(Chunk(chunk_data, chunk_number, "pending"))
                             chunk_number += 1
-            
+
                     if not chunks:
                         break
 
@@ -339,7 +339,7 @@ class DatasetApi:
                     try:
                         for future in futures:
                             future.result()
-                    except Exception as e:
+                    except Exception:
                         if pbar:
                             pbar.close()
                         raise
