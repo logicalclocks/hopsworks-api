@@ -303,25 +303,25 @@ class DatasetApi:
                 self._log.info("Starting upload")
             with ThreadPoolExecutor(simultaneous_chunks) as executor:
                 all_chunks_processed = False
-                while True:
-                    # Handle case with empty file
+
+                while not all_chunks_processed:
                     chunks = []
+
                     if os.path.getsize(local_path) == 0:
                         chunks.append(Chunk(b'', 1, "pending"))
                         all_chunks_processed = True
-                    for _ in range(simultaneous_chunks):
-                        if not chunks:
-                            chunk = f.read(chunk_size)
-                            if not chunk:
+                    else:
+                        for _ in range(simultaneous_chunks):
+                            chunk_data = f.read(chunk_size)
+                            if not chunk_data:
                                 all_chunks_processed = True
                                 break
-                            chunks.append(Chunk(chunk, chunk_number, "pending"))
+                            chunks.append(Chunk(chunk_data, chunk_number, "pending"))
                             chunk_number += 1
-
-                    if len(chunks) == 0:
+            
+                    if not chunks:
                         break
 
-                    # upload each chunk and update pbar
                     futures = [
                         executor.submit(
                             self._upload_chunk,
@@ -335,17 +335,14 @@ class DatasetApi:
                         )
                         for chunk in chunks
                     ]
-                    # wait for all upload tasks to complete
-                    _, _ = wait(futures)
-                    try:
-                        _ = [future.result() for future in futures]
-                    except Exception as e:
-                        if pbar is not None:
-                            pbar.close()
-                        raise e
 
-                    if all_chunks_processed:
-                        break
+                    try:
+                        for future in futures:
+                            future.result()
+                    except Exception as e:
+                        if pbar:
+                            pbar.close()
+                        raise
 
             if pbar is not None:
                 pbar.close()
