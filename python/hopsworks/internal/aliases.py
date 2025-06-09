@@ -44,7 +44,7 @@ class Alias:
     class InModule:
         in_module: str
         as_alias: str | None = None
-        deprecated_by: set[str] = set()
+        deprecated_by: set[str] = field(default_factory=set)
         available_until: str | None = None
 
         def get_id(self):

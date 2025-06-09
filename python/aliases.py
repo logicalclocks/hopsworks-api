@@ -25,11 +25,7 @@ from pathlib import Path
 
 SOURCES = [
     "hopsworks/__init__.py",
-    "hopsworks/connection.py",
     "hopsworks/internal",
-    "hopsworks/platform",
-    "hopsworks/fs",
-    "hopsworks/ml",
 ]
 IGNORED = [
     "tests",
