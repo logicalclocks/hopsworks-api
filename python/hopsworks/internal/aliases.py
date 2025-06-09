@@ -55,12 +55,12 @@ class Alias:
 
         def update(self, other: Alias.InModule):
             self.deprecated_by |= other.deprecated_by
-            if self.available_until:
+            if self.available_until and other.available_until:
                 if self.available_until != other.available_until:
                     raise InternalAliasError(
                         "Deprecated alias is declared available until different releases."
                     )
-            else:
+            elif other.available_until:
                 self.available_until = other.available_until
 
     def __post_init__(self):
