@@ -22,6 +22,8 @@ import importlib
 import sys
 from pathlib import Path
 
+import gitignorefile
+
 
 SOURCES = [
     "hopsworks/__init__.py",
@@ -35,6 +37,7 @@ IGNORED = [
     "hopsworks_common",
     "hopsworks.egg-info",
 ]
+GITIGNORE = gitignorefile.parse(".gitignore")
 # Everything that is not a top-level file, a part of sources, or a part of ignored is considered to be automatically managed.
 
 
@@ -122,6 +125,8 @@ def fix(root):
             return
         if any(path.is_relative_to(p) for p in ignored):
             return
+        if GITIGNORE(path.relative_to(root.parent).as_posix()):
+            return
         if path not in managed:
             path.unlink()
 
@@ -146,7 +151,7 @@ def check(root):
         global ok
         if path.parent == root or any(path.is_relative_to(p) for p in ignored):
             return
-        if path.suffix == ".pyc" or "__pycache__" in path.parts:
+        if GITIGNORE(path.relative_to(root.parent).as_posix()):
             return
         if path not in managed:
             print(f"Error: {path} shouldn't exist.")
