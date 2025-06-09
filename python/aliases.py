@@ -39,7 +39,7 @@ IGNORED = [
     "hopsworks_common",
     "hopsworks.egg-info",
 ]
-# Everything that is not a top-level file, a part of sources, or a part of ignored is considered to be autmoatically managed.
+# Everything that is not a top-level file, a part of sources, or a part of ignored is considered to be automatically managed.
 
 
 def traverse(path, f):
