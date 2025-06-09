@@ -1517,13 +1517,42 @@ class FeatureViewEngine:
             logging_data, "hopsworks_logging_meta_data", None
         )
 
-        # Setting logging data to None since all parameters required for logging are already in the metadata object.
-        logging_data = (
-            None
-            if logging_meta_data
-            and (isinstance(logging_data, list) or isinstance(logging_data, np.ndarray))
-            else logging_data
-        )
+        if logging_meta_data:
+            # Setting logging data to None since all parameters required for logging are already in the metadata object.
+            logging_data = (
+                None
+                if isinstance(logging_data, list)
+                or isinstance(logging_data, np.ndarray)
+                else logging_data
+            )
+
+            transformed_features = (
+                logging_meta_data.transformed_features
+                if transformed_features is None
+                else transformed_features
+            )
+            untransformed_features = (
+                logging_meta_data.untransformed_features
+                if untransformed_features is None
+                else untransformed_features
+            )
+            serving_keys = (
+                logging_meta_data.serving_keys if serving_keys is None else serving_keys
+            )
+            helper_columns = (
+                logging_meta_data.inference_helper
+                if helper_columns is None
+                else helper_columns
+            )
+            request_parameters = (
+                logging_meta_data.request_parameters
+                if request_parameters is None
+                else request_parameters
+            )
+            event_time = (
+                logging_meta_data.event_time if event_time is None else event_time
+            )
+
         td_predictions = [
             feature for feature in training_dataset_schema if feature.label
         ]
@@ -1564,33 +1593,33 @@ class FeatureViewEngine:
                 logging_data=logging_data,
                 logging_feature_group_features=logging_feature_group_features,
                 transformed_features=(
-                    transformed_features or logging_meta_data.transformed_features,
+                    transformed_features,
                     td_transformed_features,
                     "transformed_features",
                 ),
                 untransformed_features=(
-                    untransformed_features or logging_meta_data.untransformed_features,
+                    untransformed_features,
                     td_features,
                     "untransformed_features",
                 ),
                 predictions=(predictions, list(td_predictions_names), "predictions"),
                 serving_keys=(
-                    serving_keys or logging_meta_data.serving_keys,
+                    serving_keys,
                     td_serving_keys,
                     "serving_keys",
                 ),
                 helper_columns=(
-                    helper_columns or logging_meta_data.inference_helper,
+                    helper_columns,
                     td_helper_columns,
                     "helper_columns",
                 ),
                 request_parameters=(
-                    request_parameters or logging_meta_data.request_parameters,
+                    request_parameters,
                     td_request_parameters,
                     "request_parameters",
                 ),
                 event_time=(
-                    event_time or logging_meta_data.event_time,
+                    event_time,
                     td_event_time,
                     "event_time",
                 ),
@@ -1613,31 +1642,37 @@ class FeatureViewEngine:
                 logging_data=logging_data,
                 logging_feature_group_features=logging_feature_group_features,
                 transformed_features=(
-                    transformed_features or logging_meta_data.transformed_features,
+                    transformed_features,
                     td_transformed_features,
+                    "transformed_features",
                 ),
                 untransformed_features=(
-                    untransformed_features or logging_meta_data.untransformed_features,
+                    untransformed_features,
                     td_features,
+                    "untransformed_features",
                 ),
-                predictions=(predictions, list(td_predictions_names)),
+                predictions=(predictions, list(td_predictions_names), "predictions"),
                 serving_keys=(
-                    serving_keys or logging_meta_data.serving_keys,
+                    serving_keys,
                     td_serving_keys,
+                    "serving_keys",
                 ),
                 helper_columns=(
-                    helper_columns or logging_meta_data.inference_helper,
+                    helper_columns,
                     td_helper_columns,
+                    "helper_columns",
                 ),
                 request_parameters=(
-                    request_parameters or logging_meta_data.request_parameters,
+                    request_parameters,
                     td_request_parameters,
+                    "request_parameters",
                 ),
-                event_time=(event_time or logging_meta_data.event_time, td_event_time),
-                request_id=(request_id, "request_id", "request_id"),
+                event_time=(event_time, td_event_time, "event_time"),
+                request_id=(request_id, ["request_id"], "request_id"),
                 extra_logging_features=(
                     extra_logging_features,
                     td_extra_logging_features,
+                    "extra_logging_features",
                 ),
                 td_col_name=FeatureViewEngine._LOG_TD_VERSION,
                 time_col_name=FeatureViewEngine._LOG_TIME,
