@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 #
-#   Copyright 2024 Hopsworks AB
+#   Copyright 2025 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -101,11 +101,14 @@ def collect_managed(root):
             if f not in imported_modules:
                 managed[pkg] += f"import {f}\n"
                 imported_modules.add(f)
-            if im.deprecated:
+            if im.deprecated_by:
+                db = list(im.deprecated_by)
+                db.sort()  # this is needed for determinism
+                deprecated_by = ", ".join(f'"{s}"' for s in db)
                 available_until = ""
                 if im.available_until:
-                    available_until = f'available_until="{im.available_until}"'
-                original = f"hopsworks.internal.aliases.deprecated({available_until})({original})"
+                    available_until = f', available_until="{im.available_until}"'
+                original = f"hopsworks.internal.aliases.deprecated({deprecated_by}{available_until})({original})"
             managed[pkg] += f"{alias} = {original}\n"
     return managed
 
@@ -181,6 +184,7 @@ def main():
             root = root / "python"
     else:
         help("Wrong number of arguments.")
+        return
 
     root = root.resolve()
     if not (root / "hopsworks").exists():
@@ -188,13 +192,14 @@ def main():
 
     cmd = sys.argv[1]
     if cmd in ["f", "fix"]:
-        cmd = fix
+        cmdfn = fix
     elif cmd in ["c", "check"]:
-        cmd = check
+        cmdfn = check
     else:
         help("Unknown command.")
+        return
 
-    cmd(root)
+    cmdfn(root)
 
 
 if __name__ == "__main__":

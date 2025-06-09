@@ -1,5 +1,5 @@
 #
-#   Copyright 2024 Hopsworks AB
+#   Copyright 2025 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -25,7 +25,6 @@ import functools
 import inspect
 import warnings
 from dataclasses import dataclass, field
-from typing import Dict, Optional
 
 
 class InternalAliasError(Exception):
@@ -39,14 +38,14 @@ class InternalAliasError(Exception):
 class Alias:
     from_module: str
     import_name: str
-    in_modules: Dict[str, InModule] = field(default_factory=dict)
+    in_modules: dict[str, InModule] = field(default_factory=dict)
 
     @dataclass
     class InModule:
         in_module: str
-        as_alias: Optional[str] = None
-        deprecated: bool = False
-        available_until: Optional[str] = None
+        as_alias: str | None = None
+        deprecated_by: set[str] = set()
+        available_until: str | None = None
 
         def get_id(self):
             res = self.in_module
@@ -55,7 +54,7 @@ class Alias:
             return res
 
         def update(self, other: Alias.InModule):
-            self.deprecated |= other.deprecated
+            self.deprecated_by |= other.deprecated_by
             if self.available_until:
                 if self.available_until != other.available_until:
                     raise InternalAliasError(
@@ -86,13 +85,13 @@ class Registry:
     def __new__(cls):
         return Registry
 
-    aliases: Dict[str, Alias] = {}
+    aliases: dict[str, Alias] = {}
     modules = {}
 
     @staticmethod
     def get_modules():
         for module, exclude, paths in Registry.modules.values():
-            for name in set(x for x, _ in inspect.getmembers(module)) - exclude:
+            for name in {x for x, _ in inspect.getmembers(module)} - exclude:
                 alias = Alias(module.__name__, name)
                 alias.add(*(Alias.InModule(p) for p in paths))
                 Registry.add(alias)
@@ -118,9 +117,9 @@ class Registry:
 
 def public(
     *paths: str,
-    as_alias: Optional[str] = None,
-    deprecated: bool = False,
-    available_until: Optional[str] = None,
+    as_alias: str | None = None,
+    deprecated_by: set[str] | str | None = None,
+    available_until: str | None = None,
 ):
     """Make a function or class publically available.
 
@@ -129,19 +128,26 @@ def public(
     # Arguments
         paths: the import paths under which the entity is publically available; effectively results in generation of aliases in all of the paths for the entity.
         as_alias: make the alias of the specified name.
-        deprecated: make the alias deprecated; use of the entity outside hopsworks will print a warning, saying that it is going to be removed from the public API in one of the future releases. See `deprecated` decorator for the implementation of construction of the deprecated objects.
-        available_until: the first hopsworks release in which the entity will become unavailable, defaults to `None`; if the release is known, it is reported to the external user in the warning and `deprecated` becomes set up.
+        deprecated_by: make the alias deprecated and provide a set of recommendations to use instead; use of the entity outside hopsworks will print a warning, saying that it is going to be removed from the public API in one of the future releases. See `deprecated` decorator for the implementation of construction of the deprecated objects.
+        available_until: the first hopsworks release in which the entity will become unavailable, defaults to `None`; if the release is known, it is reported to the external user in the deprecation warning.
     """
 
-    if available_until:
-        deprecated = True
+    if available_until and not deprecated_by:
+        raise InternalAliasError(
+            "If the alias is available until a specific release, something to use instead should be provided in deprecated_by."
+        )
+    if isinstance(deprecated_by, str):
+        deprecated_by = {deprecated_by}
 
     def decorator(symbol):
         if not hasattr(symbol, "__qualname__"):
             raise InternalAliasError("The symbol should be importable to be public.")
         alias = Alias(symbol.__module__, symbol.__qualname__)
         alias.add(
-            *(Alias.InModule(p, as_alias, deprecated, available_until) for p in paths)
+            *(
+                Alias.InModule(p, as_alias, deprecated_by or set(), available_until)
+                for p in paths
+            )
         )
         Registry.add(alias)
         return symbol
@@ -165,7 +171,7 @@ def publish(*paths: str):
     """
 
     caller = inspect.getmodule(inspect.stack()[1][0])
-    exclude = set(x for x, _ in inspect.getmembers(caller))
+    exclude = {x for x, _ in inspect.getmembers(caller)}
     Registry.add_module(caller, exclude, paths)
 
 
@@ -182,13 +188,16 @@ class Publisher:
 
     def __init__(self, *paths: str):
         self.paths = set(paths)
-        self.caller = inspect.getmodule(inspect.stack()[1][0])
+        caller = inspect.getmodule(inspect.stack()[1][0])
+        if caller is None:
+            raise InternalAliasError("Cannot publish outside of a module.")
+        self.caller = caller
 
     def __enter__(self):
-        self.exclude = set(x for x, _ in inspect.getmembers(self.caller))
+        self.exclude = {x for x, _ in inspect.getmembers(self.caller)}
 
     def __exit__(self, _exc_type, _exc_value, _traceback):
-        for name in set(x for x, _ in inspect.getmembers(self.caller)) - self.exclude:
+        for name in {x for x, _ in inspect.getmembers(self.caller)} - self.exclude:
             alias = Alias(self.caller.__name__, name)
             alias.add(*(Alias.InModule(p) for p in self.paths))
             Registry.add(alias)
@@ -198,17 +207,27 @@ class DeprecatedCallWarning(Warning):
     pass
 
 
-def deprecated(*, available_until: Optional[str] = None):
+def deprecated(
+    *deprecated_by: str,
+    available_until: str | None = None,
+):
     """Create a deprecated version of a function or a class.
 
     Use of the entity outside hopsworks will print a warning, saying that it is going to be removed from the public API in one of the future releases.
     Therefore, do not use it on classes or functions used internally; it is a utility for creation of deprecated aliases.
 
     # Arguments
+        deprecated_by: a set of recommendations to use instead.
         available_until: the first hopsworks release in which the entity will become unavailable, defaults to `None`; if the release is known, it is reoprted to the external user in the warning.
     """
 
     v = f"version {available_until}" if available_until else "a future release"
+    if len(deprecated_by) == 1:
+        recs = deprecated_by[0]
+    elif len(deprecated_by) == 2:
+        recs = f"{deprecated_by[0]} or {deprecated_by[1]}"
+    else:
+        recs = f"{', '.join(deprecated_by[:-1])}, or {deprecated_by[-1]}"
 
     def deprecate(symbol):
         if inspect.isclass(symbol):
@@ -216,24 +235,24 @@ def deprecated(*, available_until: Optional[str] = None):
             for name, value in methods:
                 setattr(symbol, name, deprecate(value))
             return symbol
-        elif inspect.isfunction(symbol):
+        if inspect.isfunction(symbol):
 
             @functools.wraps(symbol)
             def deprecated_f(*args, **kwargs):
                 caller = inspect.getmodule(inspect.stack()[1][0])
                 if not caller or not caller.__name__.startswith("hopsworks"):
                     warnings.warn(
-                        f"Use of {symbol.__qualname__} is deprecated."
-                        f"The function will be removed in {v} of hopsworks.",
+                        f"{symbol.__qualname__} is deprecated."
+                        f"The function will be removed in {v} of hopsworks."
+                        f"Consider using {recs} instead.",
                         DeprecatedCallWarning,
                         stacklevel=2,
                     )
                 return symbol(*args, **kwargs)
 
             return deprecated_f
-        else:
-            raise InternalAliasError(
-                "Deprecation of something else than class or function."
-            )
+        raise InternalAliasError(
+            "Deprecation of something else than class or function."
+        )
 
     return deprecate
