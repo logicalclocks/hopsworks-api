@@ -17,6 +17,7 @@
 from hopsworks_common.decorators import (
     HopsworksConnectionError,
     NoHopsworksConnectionError,
+    catch_not_found,
     connected,
     not_connected,
     typechecked,
@@ -29,6 +30,7 @@ __all__ = [
     "NoHopsworksConnectionError",
     "connected",
     "not_connected",
+    "catch_not_found",
     "typechecked",
     "uses_great_expectations",
 ]

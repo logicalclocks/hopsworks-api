@@ -38,6 +38,7 @@ class TestConstants:
             "FRAMEWORK_TORCH": "TORCH",
             "FRAMEWORK_PYTHON": "PYTHON",
             "FRAMEWORK_SKLEARN": "SKLEARN",
+            "FRAMEWORK_LLM": "LLM",
         }
 
         # Assert
@@ -52,26 +53,29 @@ class TestConstants:
 
     def test_model_registry_constants(self):
         # Arrange
-        hopsfs_mount_prefix = {"HOPSFS_MOUNT_PREFIX": "/hopsfs/"}
+        model_registry = {
+            "HOPSFS_MOUNT_PREFIX": "/hopsfs/",
+            "MODEL_FILES_DIR_NAME": "Files",
+        }
 
         # Assert
         self._check_added_modified_or_removed_values(
             constants.MODEL_REGISTRY,
-            num_values=len(hopsfs_mount_prefix),
-            expected_constants=hopsfs_mount_prefix,
+            num_values=len(model_registry),
+            expected_constants=model_registry,
         )
 
     # MODEL_SERVING
 
     def test_model_serving_constants(self):
         # Arrange
-        models_dataset = {"MODELS_DATASET": "Models"}
+        model_serving = {"MODELS_DATASET": "Models", "ARTIFACTS_DIR_NAME": "Artifacts"}
 
         # Assert
         self._check_added_modified_or_removed_values(
             constants.MODEL_SERVING,
-            num_values=len(models_dataset),
-            expected_constants=models_dataset,
+            num_values=len(model_serving),
+            expected_constants=model_serving,
         )
 
     # ARTIFACT_VERSION
@@ -95,7 +99,6 @@ class TestConstants:
             "MIN_NUM_INSTANCES": 1,
             "MIN_CORES": 0.2,
             "MIN_MEMORY": 32,
-            "MIN_GPUS": 0,
         }
 
         # Assert
@@ -111,7 +114,6 @@ class TestConstants:
         max_resources = {
             "MAX_CORES": 2,
             "MAX_MEMORY": 1024,
-            "MAX_GPUS": 0,
         }
 
         # Assert
@@ -121,6 +123,11 @@ class TestConstants:
             expected_constants=max_resources,
             prefix="MAX",
         )
+
+    def test_resources_gpu_constants(self):
+        # Assert
+        assert hasattr(constants.RESOURCES, "GPUS")
+        assert constants.RESOURCES.GPUS == 0
 
     # KAFKA_TOPIC
 
@@ -193,6 +200,7 @@ class TestConstants:
         model_servers = {
             "MODEL_SERVER_PYTHON": "PYTHON",
             "MODEL_SERVER_TF_SERVING": "TENSORFLOW_SERVING",
+            "MODEL_SERVER_VLLM": "VLLM",
         }
 
         # Assert
@@ -265,7 +273,6 @@ class TestConstants:
     def test_inference_endpoints_type_constants(self):
         # Arrange
         ie_types = {
-            "ENDPOINT_TYPE_NODE": "NODE",
             "ENDPOINT_TYPE_KUBE_CLUSTER": "KUBE_CLUSTER",
             "ENDPOINT_TYPE_LOAD_BALANCER": "LOAD_BALANCER",
         }

@@ -17,13 +17,16 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import logging
 import os
 import re
 import sys
 import warnings
+import weakref
 from typing import Any, Optional
 
-from hopsworks_common import client, usage, util, version
+from hopsworks_common import client, constants, usage, util, version
+from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.core import (
     hosts_api,
     project_api,
@@ -48,6 +51,9 @@ PROJECT_NAME = "HOPSWORKS_PROJECT_NAME"
 
 
 _hsfs_engine_type = None
+
+
+_logger = logging.getLogger(__name__)
 
 
 class Connection:
@@ -97,13 +103,12 @@ class Connection:
         project: The name of the project to connect to. When running on Hopsworks, this
             defaults to the project from where the client is run from.
             Defaults to `None`.
-        engine: Which engine to use, `"spark"`, `"python"` or `"training"`. Defaults to `None`,
-            which initializes the engine to Spark if the environment provides Spark, for
-            example on Hopsworks and Databricks, or falls back on Hive in Python if Spark is not
-            available, e.g. on local Python environments or AWS SageMaker. This option
-            allows you to override this behaviour. `"training"` engine is useful when only
-            feature store metadata is needed, for example training dataset location and label
-            information when Hopsworks training experiment is conducted.
+        engine: Specifies the engine to use. Possible options are "spark", "python", "training", "spark-no-metastore", or "spark-delta". The default value is None, which automatically selects the engine based on the environment:
+            "spark": Used if Spark is available and the connection is not to serverless Hopsworks, such as in Hopsworks or Databricks environments.
+            "python": Used in local Python environments or AWS SageMaker when Spark is not available or the connection is done to serverless Hopsworks.
+            "training": Used when only feature store metadata is needed, such as for obtaining training dataset locations and label information during Hopsworks training experiments.
+            "spark-no-metastore": Functions like "spark" but does not rely on the Hive metastore.
+            "spark-delta": Minimizes dependencies further by avoiding both Hive metastore and HopsFS.
         hostname_verification: Whether or not to verify Hopsworks' certificate, defaults
             to `True`.
         trust_store_path: Path on the file system containing the Hopsworks certificates,
@@ -142,6 +147,7 @@ class Connection:
         self._api_key_file = api_key_file
         self._api_key_value = api_key_value
         self._connected = False
+        self._backend_version = None
 
         self.connect()
 
@@ -150,7 +156,6 @@ class Connection:
     def get_feature_store(
         self,
         name: Optional[str] = None,
-        engine: Optional[str] = None,
     ):  # -> feature_store.FeatureStore
         # the typing is commented out due to circular dependency, it breaks auto_doc.py
         """Get a reference to a feature store to perform operations on.
@@ -160,25 +165,10 @@ class Connection:
 
         # Arguments
             name: The name of the feature store, defaults to `None`.
-            engine: Which engine to use, `"spark"`, `"python"` or `"training"`. Defaults to `None`,
-            which initializes the engine to Spark if the environment provides Spark, for
-            example on Hopsworks and Databricks, or falls back on Hive in Python if Spark is not
-            available, e.g. on local Python environments or AWS SageMaker. This option
-            allows you to override this behaviour. `"training"` engine is useful when only
-            feature store metadata is needed, for example training dataset location and label
-            information when Hopsworks training experiment is conducted.
 
         # Returns
             `FeatureStore`. A feature store handle object to perform operations on.
         """
-        # Ensure the engine is initialized and of right type
-        from hsfs import engine as hsfs_engine
-
-        if engine:
-            global _hsfs_engine_type
-            _hsfs_engine_type = engine
-        hsfs_engine.get_instance()
-
         if not name:
             name = client.get_instance()._project_name
         return self._feature_store_api.get(util.append_feature_store_suffix(name))
@@ -315,16 +305,16 @@ class Connection:
         regexMatcher = re.compile(versionPattern)
 
         client_version = version.__version__
-        backend_version = self._variable_api.get_version("hopsworks")
+        self.backend_version = self._variable_api.get_version("hopsworks")
 
         major_minor_client = regexMatcher.search(client_version).group(0)
-        major_minor_backend = regexMatcher.search(backend_version).group(0)
+        major_minor_backend = regexMatcher.search(self._backend_version).group(0)
 
         if major_minor_backend != major_minor_client:
             print("\n", file=sys.stderr)
             warnings.warn(
                 "The installed hopsworks client version {0} may not be compatible with the connected Hopsworks backend version {1}. \nTo ensure compatibility please install the latest bug fix release matching the minor version of your backend ({2}) by running 'pip install hopsworks=={2}.*'".format(
-                    client_version, backend_version, major_minor_backend
+                    client_version, self._backend_version, major_minor_backend
                 ),
                 stacklevel=1,
             )
@@ -351,31 +341,37 @@ class Connection:
         """
         client.stop()
         self._connected = True
+        finalizer = weakref.finalize(self, self.close)
         try:
+            external = client.base.Client.REST_ENDPOINT not in os.environ
+            serverless = self._host == constants.HOSTS.APP_HOST
             # determine engine, needed to init client
-            if (self._engine is not None and self._engine.lower() == "spark") or (
-                self._engine is None and importlib.util.find_spec("pyspark")
+            if (
+                self._engine is None
+                and importlib.util.find_spec("pyspark")
+                and (not external or not serverless)
             ):
                 self._engine = "spark"
-            elif (self._engine is not None and self._engine.lower() == "python") or (
-                self._engine is None and not importlib.util.find_spec("pyspark")
-            ):
+            elif self._engine is None:
                 self._engine = "python"
-            elif self._engine is not None and self._engine.lower() == "training":
+            elif self._engine.lower() == "spark":
+                self._engine = "spark"
+            elif self._engine.lower() == "python":
+                self._engine = "python"
+            elif self._engine.lower() == "training":
                 self._engine = "training"
-            elif (
-                self._engine is not None
-                and self._engine.lower() == "spark-no-metastore"
-            ):
+            elif self._engine.lower() == "spark-no-metastore":
                 self._engine = "spark-no-metastore"
+            elif self._engine.lower() == "spark-delta":
+                self._engine = "spark-delta"
             else:
                 raise ConnectionError(
                     "Engine you are trying to initialize is unknown. "
-                    "Supported engines are `'spark'`, `'python'` and `'training'`."
+                    "Supported engines are `'spark'`, `'python'`, `'training'`, `'spark-no-metastore'`, and `'spark-delta'`."
                 )
 
             # init client
-            if client.base.Client.REST_ENDPOINT not in os.environ:
+            if external:
                 client.init(
                     "external",
                     self._host,
@@ -413,6 +409,7 @@ class Connection:
             self._provide_project()
         except (TypeError, ConnectionError):
             self._connected = False
+            finalizer.detach()
             raise
 
         self._check_compatibility()
@@ -438,7 +435,17 @@ class Connection:
         if self._variable_api.get_data_science_profile_enabled():
             # load_default_configuration has to be called before using hsml
             # but after a project is provided to client
-            self._model_serving_api.load_default_configuration()  # istio client, default resources,...
+            try:
+                # istio client, default resources,...
+                self._model_serving_api.load_default_configuration()
+            except RestAPIError as e:
+                if e.response.error_code == 403 and e.error_code == 320004:
+                    print(
+                        'The used API key does not include "SERVING" scope, the related functionality will be disabled.'
+                    )
+                    _logger.debug(f"The ignored exception: {e}")
+                else:
+                    raise e
 
     def close(self) -> None:
         """Close a connection gracefully.
@@ -446,7 +453,7 @@ class Connection:
         This will clean up any materialized certificates on the local file system of
         external environments such as AWS SageMaker.
 
-        Usage is recommended but optional.
+        Usage is optional.
 
         !!! example
             ```python
@@ -455,6 +462,9 @@ class Connection:
             conn.close()
             ```
         """
+        if not self._connected:
+            return  # the connection is already closed
+
         from hsfs import engine
 
         if OpenSearchClientSingleton._instance:
@@ -478,7 +488,74 @@ class Connection:
         api_key_file: Optional[str] = None,
         api_key_value: Optional[str] = None,
     ) -> Connection:
-        """Connection factory method, accessible through `hopsworks.connection()`."""
+        """Connection factory method, accessible through `hopsworks.connection()`.
+
+        This class provides convenience classmethods accessible from the `hopsworks`-module:
+
+        !!! example "Connection factory"
+            For convenience, `hopsworks` provides a factory method, accessible from the top level
+            module, so you don't have to import the `Connection` class manually:
+
+            ```python
+            import hopsworks
+            conn = hopsworks.connection()
+            ```
+
+        !!! hint "Save API Key as File"
+            To get started quickly, you can simply create a file with the previously
+            created Hopsworks API Key and place it on the environment from which you
+            wish to connect to Hopsworks.
+
+            You can then connect by simply passing the path to the key file when
+            instantiating a connection:
+
+            ```python hl_lines="6"
+                import hopsworks
+                conn = hopsworks.connection(
+                    'my_instance',                      # DNS of your Hopsworks instance
+                    443,                                # Port to reach your Hopsworks instance, defaults to 443
+                    api_key_file='hopsworks.key',       # The file containing the API key generated above
+                    hostname_verification=True)         # Disable for self-signed certificates
+                )
+                project = conn.get_project("my_project")
+            ```
+
+        Clients in external clusters need to connect to the Hopsworks using an
+        API key. The API key is generated inside the Hopsworks platform, and requires at
+        least the "project" scope to be able to access a project.
+        For more information, see the [integration guides](../setup.md).
+
+        # Arguments
+            host: The hostname of the Hopsworks instance in the form of `[UUID].cloud.hopsworks.ai`,
+                defaults to `None`. Do **not** use the url including `https://` when connecting
+                programatically.
+            port: The port on which the Hopsworks instance can be reached,
+                defaults to `443`.
+            project: The name of the project to connect to. When running on Hopsworks, this
+                defaults to the project from where the client is run from.
+                Defaults to `None`.
+            engine: Which engine to use, `"spark"`, `"python"`, `"training"`, `"spark-no-metastore"` or `"spark-delta"`. Defaults to `None`,
+                which initializes the engine to Spark if the environment provides Spark, for
+                example on Hopsworks and Databricks, or falls back to Python if Spark is not
+                available, e.g. on local Python environments or AWS SageMaker. This option
+                allows you to override this behaviour. `"training"` engine is useful when only
+                feature store metadata is needed, for example training dataset location and label
+                information when Hopsworks training experiment is conducted.
+            hostname_verification: Whether or not to verify Hopsworks' certificate, defaults
+                to `True`.
+            trust_store_path: Path on the file system containing the Hopsworks certificates,
+                defaults to `None`.
+            cert_folder: The directory to store retrieved HopsFS certificates, defaults to
+                `"/tmp"`. Only required when running without a Spark environment.
+            api_key_file: Path to a file containing the API Key, defaults to `None`.
+            api_key_value: API Key as string, if provided, `api_key_file` will be ignored,
+                however, this should be used with care, especially if the used notebook or
+                job script is accessible by multiple parties. Defaults to `None`.
+
+        # Returns
+            `Connection`. Connection handle to perform operations on a
+                Hopsworks project.
+        """
         return cls(
             host,
             port,
@@ -552,6 +629,23 @@ class Connection:
     @property
     def api_key_value(self) -> Optional[str]:
         return self._api_key_value
+
+    @property
+    def backend_version(self) -> Optional[str]:
+        """
+        The version of the backend currently connected to hopsworks.
+        """
+        return self._backend_version
+
+    @backend_version.setter
+    def backend_version(self, backend_version: str) -> None:
+        """
+        The version of the backend currently connected to hopsworks.
+        """
+        self._backend_version = backend_version.split("-SNAPSHOT")[
+            0
+        ].strip()  # Strip off the -SNAPSHOT part of the version if it is present.
+        return self._backend_version
 
     @api_key_file.setter
     @not_connected

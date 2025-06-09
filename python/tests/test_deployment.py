@@ -145,7 +145,7 @@ class TestDeployment:
         d.save()
 
         # Assert
-        mock_serving_engine_save.assert_called_once_with(d, 60)
+        mock_serving_engine_save.assert_called_once_with(d, 600)
 
     def test_save(self, mocker, backend_fixtures):
         # Arrange
@@ -156,7 +156,7 @@ class TestDeployment:
         )
 
         # Act
-        await_update = 120
+        await_update = 600
         d.save(await_update=await_update)
 
         # Assert
@@ -176,7 +176,7 @@ class TestDeployment:
         d.start()
 
         # Assert
-        mock_serving_engine_start.assert_called_once_with(d, await_status=60)
+        mock_serving_engine_start.assert_called_once_with(d, await_status=600)
 
     def test_start(self, mocker, backend_fixtures):
         # Arrange
@@ -187,7 +187,7 @@ class TestDeployment:
         )
 
         # Act
-        await_running = 120
+        await_running = 600
         d.start(await_running=await_running)
 
         # Assert
@@ -207,7 +207,7 @@ class TestDeployment:
         d.stop()
 
         # Assert
-        mock_serving_engine_stop.assert_called_once_with(d, await_status=60)
+        mock_serving_engine_stop.assert_called_once_with(d, await_status=600)
 
     def test_stop(self, mocker, backend_fixtures):
         # Arrange
@@ -218,7 +218,7 @@ class TestDeployment:
         )
 
         # Act
-        await_stopped = 120
+        await_stopped = 600
         d.stop(await_stopped=await_stopped)
 
         # Assert
@@ -617,15 +617,17 @@ class TestDeployment:
         # Arrange
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        mock_serving_engine_download_artifact = mocker.patch(
-            "hsml.engine.serving_engine.ServingEngine.download_artifact"
+        mock_serving_engine_download_artifact_files = mocker.patch(
+            "hsml.engine.serving_engine.ServingEngine.download_artifact_files"
         )
 
         # Act
-        d.download_artifact()
+        d.download_artifact_files()
 
         # Assert
-        mock_serving_engine_download_artifact.assert_called_once_with(d)
+        mock_serving_engine_download_artifact_files.assert_called_once_with(
+            d, local_path=None
+        )
 
     # get logs
 
@@ -634,7 +636,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_util_get_members = mocker.patch(
-            "hsml.util.get_members", return_value=["predictor"]
+            "hopsworks_common.util.get_members", return_value=["predictor"]
         )
         mock_print = mocker.patch("builtins.print")
 
@@ -661,7 +663,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_util_get_members = mocker.patch(
-            "hsml.util.get_members", return_value=["valid"]
+            "hopsworks_common.util.get_members", return_value=["valid"]
         )
         mock_print = mocker.patch("builtins.print")
 
@@ -700,7 +702,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_util_get_members = mocker.patch(
-            "hsml.util.get_members", return_value=["predictor"]
+            "hopsworks_common.util.get_members", return_value=["predictor"]
         )
         mock_print = mocker.patch("builtins.print")
 
@@ -727,7 +729,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_util_get_members = mocker.patch(
-            "hsml.util.get_members", return_value=["predictor"]
+            "hopsworks_common.util.get_members", return_value=["predictor"]
         )
         mock_print = mocker.patch("builtins.print")
 
@@ -758,10 +760,10 @@ class TestDeployment:
         path = "/p/" + str(mock_client._project_id) + "/deployments/" + str(d.id)
 
         mock_util_get_hostname_replaced_url = mocker.patch(
-            "hsml.util.get_hostname_replaced_url", return_value="url"
+            "hopsworks_common.util.get_hostname_replaced_url", return_value="url"
         )
         mock_client_get_instance = mocker.patch(
-            "hsml.client.get_instance", return_value=mock_client
+            "hopsworks_common.client.get_instance", return_value=mock_client
         )
 
         # Act
@@ -781,7 +783,7 @@ class TestDeployment:
         mocker.patch("hsml.predictor.Predictor._validate_serving_tool")
         mocker.patch("hsml.predictor.Predictor._validate_resources")
         mocker.patch("hsml.predictor.Predictor._validate_script_file")
-        mocker.patch("hsml.util.get_obj_from_json")
+        mocker.patch("hopsworks_common.util.get_obj_from_json")
         return predictor.Predictor(
             id=p_json["id"],
             name=p_json["name"],

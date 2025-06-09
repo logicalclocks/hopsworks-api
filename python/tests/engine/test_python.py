@@ -33,7 +33,7 @@ from hsfs import (
 from hsfs.client import exceptions
 from hsfs.constructor import query
 from hsfs.constructor.hudi_feature_group_alias import HudiFeatureGroupAlias
-from hsfs.core import inode, job
+from hsfs.core import inode, job, online_ingestion
 from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
 from hsfs.engine import python
 from hsfs.expectation_suite import ExpectationSuite
@@ -1450,52 +1450,6 @@ class TestPython:
         assert mock_python_engine_write_dataframe_kafka.call_count == 0
         assert mock_python_engine_legacy_save_dataframe.call_count == 1
 
-    def test_save_dataframe_transformation_functions(self, mocker):
-        # Arrange
-        mock_python_engine_write_dataframe_kafka = mocker.patch(
-            "hsfs.engine.python.Engine._write_dataframe_kafka"
-        )
-        mock_python_engine_legacy_save_dataframe = mocker.patch(
-            "hsfs.engine.python.Engine.legacy_save_dataframe"
-        )
-        mock_python_engine_apply_transformations = mocker.patch(
-            "hsfs.engine.python.Engine._apply_transformation_function"
-        )
-
-        python_engine = python.Engine()
-
-        @udf(int)
-        def test(feature):
-            return feature + 1
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            id=10,
-            stream=False,
-            transformation_functions=[test],
-        )
-
-        # Act
-        python_engine.save_dataframe(
-            feature_group=fg,
-            dataframe=None,
-            operation=None,
-            online_enabled=None,
-            storage=None,
-            offline_write_options=None,
-            online_write_options=None,
-            validation_id=None,
-        )
-
-        # Assert
-        assert mock_python_engine_write_dataframe_kafka.call_count == 0
-        assert mock_python_engine_legacy_save_dataframe.call_count == 1
-        assert mock_python_engine_apply_transformations.call_count == 1
-
     def test_save_dataframe_stream(self, mocker):
         # Arrange
         mock_python_engine_write_dataframe_kafka = mocker.patch(
@@ -1934,6 +1888,7 @@ class TestPython:
             id=10,
             event_time="event_time",
             features=[f, f1, f2],
+            featurestore_name="test_fs",
         )
 
         q = query.Query(left_feature_group=fg, left_features=[])
@@ -1993,19 +1948,97 @@ class TestPython:
             test_end=3000000000,
         )
 
+        f = feature.Feature(name="col1", type="str")
+        f1 = feature.Feature(name="col2", type="str")
+        f2 = feature.Feature(name="event_time", type="str")
+
         fg = feature_group.FeatureGroup(
             name="test",
             version=1,
             featurestore_id=99,
             primary_key=[],
             partition_key=[],
+            features=[f, f1, f2],
             id=10,
             event_time="event_time",
+            featurestore_name="test_fs",
+        )
+
+        q = query.Query(left_feature_group=fg, left_features=[f, f1, f2])
+
+        # Act
+        result = python_engine._prepare_transform_split_df(
+            query_obj=q,
+            training_dataset_obj=td,
+            feature_view_obj=mock_feature_view,
+            read_option=None,
+            dataframe_type="default",
+        )
+
+        # Assert
+        assert mock_python_engine_time_series_split.call_count == 1
+        assert isinstance(result["train"], pd.DataFrame)
+        assert isinstance(result["test"], pd.DataFrame)
+
+    def test_prepare_transform_split_df_time_split_query_features_fully_qualified_name(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.constructor.query.Query.read")
+        mock_python_engine_time_series_split = mocker.patch(
+            "hsfs.engine.python.Engine._time_series_split"
+        )
+        mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine"
+        )
+        mock_feature_view = mocker.patch("hsfs.feature_view.FeatureView")
+
+        python_engine = python.Engine()
+
+        d = {
+            "col1": [1, 2],
+            "col2": [3, 4],
+            "test_fs_test_1_event_time": [1000000000, 2000000000],
+        }
+        df = pd.DataFrame(data=d)
+
+        mock_python_engine_time_series_split.return_value = {
+            "train": df.loc[df["col1"] == 1],
+            "test": df.loc[df["col1"] == 2],
+        }
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"col1": None, "col2": None},
+            label=["f", "f_wrong"],
+            id=10,
+            train_start=1000000000,
+            train_end=2000000000,
+            test_end=3000000000,
         )
 
         f = feature.Feature(name="col1", type="str")
         f1 = feature.Feature(name="col2", type="str")
-        f2 = feature.Feature(name="event_time", type="str")
+        f2 = feature.Feature(
+            name="event_time", type="str", use_fully_qualified_name=True
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            features=[f, f1, f2],
+            partition_key=[],
+            id=10,
+            event_time="event_time",
+            featurestore_name="test_fs",
+        )
 
         q = query.Query(left_feature_group=fg, left_features=[f, f1, f2])
 
@@ -2565,15 +2598,22 @@ class TestPython:
             == "Stream ingestion is not available on Python environments, because it requires Spark as engine."
         )
 
-    def test_save_empty_dataframe(self):
+    def test_update_table_schema(self, mocker):
         # Arrange
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+
         python_engine = python.Engine()
 
+        mock_fg_api.return_value.update_table_schema.return_value.job = job.Job(
+            1, "test_job", None, None, None, None
+        )
+
         # Act
-        result = python_engine.save_empty_dataframe(feature_group=None)
+        result = python_engine.update_table_schema(feature_group=None)
 
         # Assert
         assert result is None
+        assert mock_fg_api.return_value.update_table_schema.call_count == 1
 
     def test_get_app_options(self, mocker):
         # Arrange
@@ -2721,6 +2761,51 @@ class TestPython:
         assert len(result["plus_one_tf_name_"]) == 2
         assert result["plus_one_tf_name_"][0] == 2
         assert result["plus_one_tf_name_"][1] == 3
+
+    @pytest.mark.parametrize("execution_mode", ["default", "pandas", "python"])
+    def test_apply_transformation_function_udf_transformation_context(
+        self, mocker, execution_mode
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "python"
+        python_engine = python.Engine()
+
+        @udf(int, mode=execution_mode)
+        def plus_one(col1, context):
+            return col1 + context["test"]
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("id"), feature.Feature("tf_name")],
+            id=11,
+            stream=False,
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg.select_all(),
+            featurestore_id=99,
+            transformation_functions=[plus_one("tf_name")],
+        )
+
+        df = pd.DataFrame(data={"tf_name": [1, 2]})
+
+        # Act
+        result = python_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions,
+            dataset=df,
+            transformation_context={"test": 10},
+        )
+
+        # Assert
+        assert len(result["plus_one_tf_name_"]) == 2
+        assert result["plus_one_tf_name_"][0] == 11
+        assert result["plus_one_tf_name_"][1] == 12
 
     def test_apply_transformation_function_multiple_output_udf_default_mode(
         self, mocker
@@ -3456,6 +3541,88 @@ class TestPython:
         assert 2 in result
         assert 3 in result
 
+    def test_apply_transformation_function_missing_feature_on_demand_transformations(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "python"
+        python_engine = python.Engine()
+
+        @udf(int)
+        def add_one(col1):
+            return col1 + 1
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("id"), feature.Feature("tf_name")],
+            transformation_functions=[add_one("missing_col1")],
+            id=11,
+            stream=False,
+        )
+
+        df = pd.DataFrame(data={"tf_name": [1, 2]})
+
+        # Act
+        with pytest.raises(exceptions.FeatureStoreException) as exception:
+            python_engine._apply_transformation_function(
+                transformation_functions=fg.transformation_functions, dataset=df
+            )
+
+        assert (
+            str(exception.value)
+            == "The following feature(s): `missing_col1`, specified in the on-demand transformation function 'add_one' are not present in the dataframe being inserted into the feature group. "
+            "Please verify that the correct feature names are used in the transformation function and that these features exist in the dataframe being inserted."
+        )
+
+    def test_apply_transformation_function_missing_feature_model_dependent_transformations(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "python"
+        python_engine = python.Engine()
+
+        @udf(int)
+        def add_one(col1):
+            return col1 + 1
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("id"), feature.Feature("tf_name")],
+            id=11,
+            stream=False,
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg.select_all(),
+            featurestore_id=99,
+            transformation_functions=[add_one("missing_col1")],
+        )
+
+        df = pd.DataFrame(data={"tf_name": [1, 2]})
+
+        # Act
+        with pytest.raises(exceptions.FeatureStoreException) as exception:
+            python_engine._apply_transformation_function(
+                transformation_functions=fv.transformation_functions, dataset=df
+            )
+
+        assert (
+            str(exception.value)
+            == "The following feature(s): `missing_col1`, specified in the model-dependent transformation function 'add_one' are not present in the feature view. "
+            "Please verify that the correct features are specified in the transformation function."
+        )
+
     def test_materialization_kafka(self, mocker):
         # Arrange
         mocker.patch("hsfs.core.kafka_engine.get_kafka_config", return_value={})
@@ -3477,6 +3644,10 @@ class TestPython:
 
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
 
         python_engine = python.Engine()
 
@@ -3490,6 +3661,8 @@ class TestPython:
             stream=False,
             time_travel_format="HUDI",
         )
+        fg.feature_store = mocker.Mock()
+        fg.feature_store.project_id = 234
 
         mocker.patch.object(fg, "commit_details", return_value={"commit1": 1})
 
@@ -3526,7 +3699,7 @@ class TestPython:
         mocker.patch("hsfs.util.get_job_url")
         mocker.patch(
             "hsfs.core.kafka_engine.kafka_get_offsets",
-            return_value=" tests_offsets",
+            return_value="tests_offsets",
         )
         mocker.patch(
             "hsfs.core.job_api.JobApi.last_execution",
@@ -3535,6 +3708,10 @@ class TestPython:
 
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
 
         python_engine = python.Engine()
 
@@ -3548,6 +3725,8 @@ class TestPython:
             stream=False,
             time_travel_format="HUDI",
         )
+        fg.feature_store = mocker.Mock()
+        fg.feature_store.project_id = 234
 
         mocker.patch.object(fg, "commit_details", return_value={"commit1": 1})
 
@@ -3568,7 +3747,7 @@ class TestPython:
         # Assert
         assert mock_python_engine_kafka_produce.call_count == 4
         job_mock.run.assert_called_once_with(
-            args="defaults tests_offsets",
+            args="defaults -initialCheckPointString tests_offsets",
             await_termination=False,
         )
 
@@ -3584,11 +3763,15 @@ class TestPython:
         mocker.patch("hsfs.util.get_job_url")
         mocker.patch(
             "hsfs.core.kafka_engine.kafka_get_offsets",
-            return_value=" tests_offsets",
+            return_value="tests_offsets",
         )
 
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
 
         python_engine = python.Engine()
 
@@ -3602,6 +3785,8 @@ class TestPython:
             stream=False,
             time_travel_format="HUDI",
         )
+        fg.feature_store = mocker.Mock()
+        fg.feature_store.project_id = 234
 
         mocker.patch.object(fg, "commit_details", return_value={"commit1": 1})
 
@@ -3625,7 +3810,7 @@ class TestPython:
         # Assert
         assert mock_python_engine_kafka_produce.call_count == 4
         job_mock.run.assert_called_once_with(
-            args="defaults tests_offsets",
+            args="defaults -initialCheckPointString tests_offsets",
             await_termination=False,
         )
 
@@ -3641,11 +3826,15 @@ class TestPython:
         mocker.patch("hsfs.util.get_job_url")
         mocker.patch(
             "hsfs.core.kafka_engine.kafka_get_offsets",
-            side_effect=["", " tests_offsets"],
+            side_effect=["", "tests_offsets"],
         )
 
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
 
         python_engine = python.Engine()
 
@@ -3659,6 +3848,8 @@ class TestPython:
             stream=False,
             time_travel_format="HUDI",
         )
+        fg.feature_store = mocker.Mock()
+        fg.feature_store.project_id = 234
 
         mocker.patch.object(fg, "commit_details", return_value={"commit1": 1})
 
@@ -3679,7 +3870,7 @@ class TestPython:
         # Assert
         assert mock_python_engine_kafka_produce.call_count == 4
         job_mock.run.assert_called_once_with(
-            args="defaults tests_offsets",
+            args="defaults -initialCheckPointString tests_offsets",
             await_termination=False,
         )
 

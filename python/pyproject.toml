@@ -41,11 +41,11 @@ dependencies = [
     "requests",
     "furl",
     "boto3",
-    "pandas<2.2.0",
+    "pandas[mysql]<2.3.0",
+    "numpy<2",
     "pyjks",
     "mock",
     "avro==1.11.3",
-    "sqlalchemy",
     "PyMySQL[rsa]",
     "tzlocal",
     "fsspec",
@@ -54,16 +54,20 @@ dependencies = [
     "opensearch-py>=1.1.0,<=2.4.2",
     "tqdm",
     "grpcio>=1.49.1,<2.0.0",         # ^1.49.1
-    "protobuf>=3.19.0,<4.0.0",       # ^3.19.0
+    "protobuf>=4.25.4,<5.0.0",       # ^4.25.4
+    "packaging",         # ^21.0
 ]
 
 [project.optional-dependencies]
 python = [
-    "numpy<2",
     "pyarrow>=10.0",
-    "confluent-kafka<=2.3.0",
+    "confluent-kafka<=2.6.1",
     "fastavro>=1.4.11,<=1.8.4",
     "tqdm",
+]
+sqlalchemy-1 = [
+    "pandas<2.2.0",
+    "sqlalchemy<2.0.0",
 ]
 great-expectations = ["great_expectations==0.18.12"]
 dev-no-opt = [

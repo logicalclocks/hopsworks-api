@@ -17,11 +17,14 @@
 from __future__ import annotations
 
 import functools
+import importlib
 import os
 
 from hopsworks_common.core.constants import (
+    HAS_CONFLUENT_KAFKA,
     HAS_GREAT_EXPECTATIONS,
     HAS_POLARS,
+    confluent_kafka_not_installed_message,
     great_expectations_not_installed_message,
     polars_not_installed_message,
 )
@@ -45,6 +48,35 @@ def connected(fn):
         return fn(inst, *args, **kwargs)
 
     return if_connected
+
+
+def catch_not_found(*class_import_paths, fallback_return=None):
+    def decorator(f):
+        @functools.wraps(f)
+        def g(*args, **kwds):
+            # Needs to be imported inside function to avoid circular dependency
+            from hopsworks.client.exceptions import RestAPIError
+            not_found_error_codes = []
+            for class_import_path in class_import_paths:
+                class_index = class_import_path.rfind(".")
+                module_path = class_import_path[:class_index]
+                module = importlib.import_module(module_path)
+                object_class = getattr(module, class_import_path[class_index + 1 :])
+                not_found_error_codes.append(object_class.NOT_FOUND_ERROR_CODE)
+            try:
+                return f(*args, **kwds)
+            except RestAPIError as e:
+                if (
+                    e.response.status_code in [400, 404]
+                    and e.response.json().get("errorCode", "") in not_found_error_codes
+                ):
+                    return fallback_return
+                else:
+                    raise e
+
+        return g
+
+    return decorator
 
 
 class HopsworksConnectionError(Exception):
@@ -93,6 +125,16 @@ def uses_polars(f):
     def g(*args, **kwds):
         if not HAS_POLARS:
             raise ModuleNotFoundError(polars_not_installed_message)
+        return f(*args, **kwds)
+
+    return g
+
+
+def uses_confluent_kafka(f):
+    @functools.wraps(f)
+    def g(*args, **kwds):
+        if not HAS_CONFLUENT_KAFKA:
+            raise ModuleNotFoundError(confluent_kafka_not_installed_message)
         return f(*args, **kwds)
 
     return g

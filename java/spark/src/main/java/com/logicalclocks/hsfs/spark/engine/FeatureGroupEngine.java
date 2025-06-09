@@ -52,8 +52,6 @@ import java.util.concurrent.TimeoutException;
 
 public class FeatureGroupEngine  extends FeatureGroupEngineBase {
 
-  private HudiEngine hudiEngine = new HudiEngine();
-
   /**
    * Create the metadata and write the data to the online/offline feature store.
    *
@@ -364,7 +362,8 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
   public StreamFeatureGroup getOrCreateStreamFeatureGroup(FeatureStore featureStore, String name, Integer version,
                                                           String description, List<String> primaryKeys,
                                                           List<String> partitionKeys, String hudiPrecombineKey,
-                                                          boolean onlineEnabled, StatisticsConfig statisticsConfig,
+                                                          boolean onlineEnabled, TimeTravelFormat timeTravelFormat,
+                                                          StatisticsConfig statisticsConfig,
                                                           String eventTime, OnlineConfig onlineConfig)
       throws IOException, FeatureStoreException {
     StreamFeatureGroup featureGroup;
@@ -381,6 +380,7 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
             .partitionKeys(partitionKeys)
             .hudiPrecombineKey(hudiPrecombineKey)
             .onlineEnabled(onlineEnabled)
+            .timeTravelFormat(timeTravelFormat)
             .statisticsConfig(statisticsConfig)
             .eventTime(eventTime)
             .onlineConfig(onlineConfig)
@@ -455,8 +455,8 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
       throw new FeatureStoreException("delete function is only valid for "
           + "time travel enabled feature group");
     }
-    return hudiEngine.deleteRecord(SparkEngine.getInstance().getSparkSession(), featureGroupBase, genericDataset,
-        writeOptions);
+    return HudiEngine.getInstance().deleteRecord(SparkEngine.getInstance().getSparkSession(), featureGroupBase,
+        genericDataset, writeOptions);
   }
 
   public ExternalFeatureGroup saveExternalFeatureGroup(ExternalFeatureGroup externalFeatureGroup)

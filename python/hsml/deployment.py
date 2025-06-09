@@ -15,8 +15,7 @@
 
 from typing import Dict, List, Optional, Union
 
-from hopsworks_common import usage
-from hsml import client, util
+from hopsworks_common import client, usage, util
 from hsml import predictor as predictor_mod
 from hsml.client.exceptions import ModelServingException
 from hsml.client.istio.utils.infer_type import InferInput
@@ -31,6 +30,7 @@ from hsml.transformer import Transformer
 
 
 class Deployment:
+    NOT_FOUND_ERROR_CODE = 240000
     """Metadata object representing a deployment in Model Serving."""
 
     def __init__(
@@ -67,37 +67,43 @@ class Deployment:
         self._model_registry_id = None
 
     @usage.method_logger
-    def save(self, await_update: Optional[int] = 60):
+    def save(self, await_update: Optional[int] = 600):
         """Persist this deployment including the predictor and metadata to Model Serving.
 
         # Arguments
             await_update: If the deployment is running, awaiting time (seconds) for the running instances to be updated.
                           If the running instances are not updated within this timespan, the call to this method returns while
                           the update in the background.
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
 
         self._serving_engine.save(self, await_update)
 
     @usage.method_logger
-    def start(self, await_running: Optional[int] = 60):
+    def start(self, await_running: Optional[int] = 600):
         """Start the deployment
 
         # Arguments
             await_running: Awaiting time (seconds) for the deployment to start.
                            If the deployment has not started within this timespan, the call to this method returns while
                            it deploys in the background.
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
 
         self._serving_engine.start(self, await_status=await_running)
 
     @usage.method_logger
-    def stop(self, await_stopped: Optional[int] = 60):
+    def stop(self, await_stopped: Optional[int] = 600):
         """Stop the deployment
 
         # Arguments
             await_stopped: Awaiting time (seconds) for the deployment to stop.
                            If the deployment has not stopped within this timespan, the call to this method returns while
                            it stopping in the background.
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
 
         self._serving_engine.stop(self, await_status=await_stopped)
@@ -110,6 +116,8 @@ class Deployment:
             force: Force the deletion of the deployment.
                    If the deployment is running, it will be stopped and deleted automatically.
                    !!! warn A call to this method does not ask for a second confirmation.
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
 
         self._serving_engine.delete(self, force)
@@ -119,6 +127,8 @@ class Deployment:
 
         # Returns
             `PredictorState`. The state of the deployment.
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
 
         return self._serving_engine.get_state(self)
@@ -128,6 +138,8 @@ class Deployment:
 
         # Returns
             `bool`. Whether the deployment is created or not.
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
 
         return (
@@ -144,6 +156,8 @@ class Deployment:
 
         # Returns
             `bool`. Whether the deployment is ready or not.
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
 
         status = self._serving_engine.get_state(self).status
@@ -161,6 +175,8 @@ class Deployment:
 
         # Returns
             `bool`. Whether the deployment is stopped or not.
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
 
         status = self._serving_engine.get_state(self).status
@@ -208,6 +224,8 @@ class Deployment:
 
         # Returns
             `dict`. Inference response.
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
 
         return self._serving_engine.predict(self, data, inputs)
@@ -219,10 +237,16 @@ class Deployment:
         )
 
     @usage.method_logger
-    def download_artifact(self):
-        """Download the model artifact served by the deployment"""
+    def download_artifact_files(self, local_path=None):
+        """Download the artifact files served by the deployment
 
-        return self._serving_engine.download_artifact(self)
+        # Arguments
+            local_path: path where to download the artifact files in the local filesystem
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+        """
+
+        return self._serving_engine.download_artifact_files(self, local_path=local_path)
 
     def get_logs(self, component="predictor", tail=10):
         """Prints the deployment logs of the predictor or transformer.
@@ -230,6 +254,8 @@ class Deployment:
         # Arguments
             component: Deployment component to get the logs from (e.g., predictor or transformer)
             tail: Number of most recent lines to retrieve from the logs.
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
 
         # validate component
@@ -374,8 +400,14 @@ class Deployment:
         self._predictor.artifact_version = artifact_version
 
     @property
+    def artifact_files_path(self):
+        """Path of the artifact files deployed by the predictor."""
+        return self._predictor.artifact_files_path
+
+    @property
     def artifact_path(self):
         """Path of the model artifact deployed by the predictor."""
+        # TODO: deprecated
         return self._predictor.artifact_path
 
     @property
@@ -404,6 +436,18 @@ class Deployment:
     @script_file.setter
     def script_file(self, script_file: str):
         self._predictor.script_file = script_file
+
+    @property
+    def config_file(self):
+        """Model server configuration file passed to the model deployment.
+        It can be accessed via `CONFIG_FILE_PATH` environment variable from a predictor or transformer script.
+        For LLM deployments without a predictor script, this file is used to configure the vLLM engine.
+        """
+        return self._predictor.config_file
+
+    @config_file.setter
+    def config_file(self, config_file: str):
+        self._predictor.config_file = config_file
 
     @property
     def resources(self):

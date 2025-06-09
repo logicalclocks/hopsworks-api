@@ -15,6 +15,10 @@
 #
 from __future__ import annotations
 
+import datetime
+import json
+from unittest.mock import call
+
 import hopsworks_common
 import numpy
 import pandas as pd
@@ -32,13 +36,14 @@ from hsfs import (
 )
 from hsfs.client import exceptions
 from hsfs.constructor import hudi_feature_group_alias, query
-from hsfs.core import training_dataset_engine
+from hsfs.core import online_ingestion, training_dataset_engine
 from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
 from hsfs.engine import spark
 from hsfs.hopsworks_udf import udf
 from hsfs.training_dataset_feature import TrainingDatasetFeature
 from hsfs.transformation_function import TransformationType
 from pyspark.sql import DataFrame
+from pyspark.sql.functions import lit
 from pyspark.sql.types import (
     ArrayType,
     BinaryType,
@@ -202,6 +207,9 @@ class TestSpark:
         # Arrange
         mock_hudi_engine = mocker.patch("hsfs.core.hudi_engine.HudiEngine")
         mocker.patch("hsfs.feature_group.FeatureGroup.from_response_json")
+        mock_reconcile_schema = mocker.patch(
+            "hsfs.engine.spark.Engine.reconcile_schema"
+        )
 
         spark_engine = spark.Engine()
 
@@ -219,6 +227,33 @@ class TestSpark:
 
         # Assert
         assert mock_hudi_engine.return_value.register_temporary_table.call_count == 1
+        assert mock_reconcile_schema.call_count == 1
+
+    def test_register_delta_temporary_table(self, mocker):
+        # Arrange
+        mock_delta_engine = mocker.patch("hsfs.core.delta_engine.DeltaEngine")
+        mocker.patch("hsfs.feature_group.FeatureGroup.from_response_json")
+        mock_reconcile_schema = mocker.patch(
+            "hsfs.engine.spark.Engine.reconcile_schema"
+        )
+
+        spark_engine = spark.Engine()
+
+        hudi_fg_alias = hudi_feature_group_alias.HudiFeatureGroupAlias(
+            feature_group=None, alias=None
+        )
+
+        # Act
+        spark_engine.register_delta_temporary_table(
+            delta_fg_alias=hudi_fg_alias,
+            feature_store_id=None,
+            feature_store_name=None,
+            read_options=None,
+        )
+
+        # Assert
+        assert mock_delta_engine.return_value.register_temporary_table.call_count == 1
+        assert mock_reconcile_schema.call_count == 1
 
     def test_return_dataframe_type_default(self, mocker):
         # Arrange
@@ -605,51 +640,6 @@ class TestSpark:
         assert mock_spark_engine_save_online_dataframe.call_count == 0
         assert mock_spark_engine_save_offline_dataframe.call_count == 1
 
-    def test_save_dataframe_transformations(self, mocker):
-        # Arrange
-        mock_spark_engine_save_online_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_online_dataframe"
-        )
-        mock_spark_engine_save_offline_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_offline_dataframe"
-        )
-        mock_spark_engine_apply_transformations = mocker.patch(
-            "hsfs.engine.spark.Engine._apply_transformation_function"
-        )
-
-        spark_engine = spark.Engine()
-
-        @udf(int)
-        def test(feature):
-            return feature + 1
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            id=10,
-            transformation_functions=[test],
-        )
-
-        # Act
-        spark_engine.save_dataframe(
-            feature_group=fg,
-            dataframe=None,
-            operation=None,
-            online_enabled=None,
-            storage=None,
-            offline_write_options=None,
-            online_write_options=None,
-            validation_id=None,
-        )
-
-        # Assert
-        assert mock_spark_engine_save_online_dataframe.call_count == 0
-        assert mock_spark_engine_save_offline_dataframe.call_count == 1
-        assert mock_spark_engine_apply_transformations.call_count == 1
-
     def test_save_dataframe_storage_offline(self, mocker):
         # Arrange
         mock_spark_engine_save_online_dataframe = mocker.patch(
@@ -873,18 +863,22 @@ class TestSpark:
             "hopsworks_common.client.get_instance"
         )
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
-        mocker.patch("hsfs.engine.spark.Engine._encode_complex_features")
-        mock_spark_engine_online_fg_to_avro = mocker.patch(
-            "hsfs.engine.spark.Engine._online_fg_to_avro"
+        mock_spark_engine_serialize_to_avro = mocker.patch(
+            "hsfs.engine.spark.Engine._serialize_to_avro"
         )
 
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
         mock_engine_get_instance.return_value.add_file.return_value = (
             "result_from_add_file"
         )
 
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
+        )
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
         )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
@@ -907,10 +901,13 @@ class TestSpark:
 
         mock_common_client_get_instance.return_value._project_name = "test_project_name"
 
+        df = pd.DataFrame(data={"col_0": [1, 2], "col_1": ["test_1", "test_2"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
         # Act
         spark_engine.save_stream_dataframe(
             feature_group=fg,
-            dataframe=None,
+            dataframe=spark_df,
             query_name=None,
             output_mode="test_mode",
             await_termination=None,
@@ -921,35 +918,35 @@ class TestSpark:
 
         # Assert
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.call_args[0][0]
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.call_args[0][0]
             == "headers"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.call_args[
                 0
             ][0]
             == "test_mode"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.call_args[
                 0
             ][0]
             == "kafka"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
                 0
             ][0]
             == "checkpointLocation"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
                 0
             ][1]
             == f"/Projects/test_project_name/Resources/{self._get_spark_query_name(project_id, fg)}-checkpoint"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.call_args[
                 1
             ]
             == {
@@ -966,159 +963,27 @@ class TestSpark:
             }
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
                 0
             ][0]
             == "topic"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
                 0
             ][1]
             == "test_online_topic_name"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.call_args[
                 0
             ][0]
             == self._get_spark_query_name(project_id, fg)
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.return_value.start.return_value.awaitTermination.call_count
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.return_value.start.return_value.awaitTermination.call_count
             == 0
         )
-
-    def test_save_stream_dataframe_transformations(self, mocker, backend_fixtures):
-        # Arrange
-        mock_common_client_get_instance = mocker.patch(
-            "hopsworks_common.client.get_instance"
-        )
-        mocker.patch("hopsworks_common.client._is_external", return_value=False)
-        mocker.patch("hsfs.engine.spark.Engine._encode_complex_features")
-        mock_spark_engine_online_fg_to_avro = mocker.patch(
-            "hsfs.engine.spark.Engine._online_fg_to_avro"
-        )
-
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mock_engine_get_instance.return_value.add_file.return_value = (
-            "result_from_add_file"
-        )
-
-        mock_storage_connector_api = mocker.patch(
-            "hsfs.core.storage_connector_api.StorageConnectorApi"
-        )
-
-        mock_spark_engine_apply_transformations = mocker.patch(
-            "hsfs.engine.spark.Engine._apply_transformation_function"
-        )
-
-        json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
-        sc = storage_connector.StorageConnector.from_response_json(json)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
-
-        spark_engine = spark.Engine()
-
-        @udf(int)
-        def test(feature):
-            return feature + 1
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            id=10,
-            online_topic_name="test_online_topic_name",
-            transformation_functions=[test],
-        )
-        fg.feature_store = mocker.Mock()
-        project_id = 1
-        fg.feature_store.project_id = project_id
-
-        mock_common_client_get_instance.return_value._project_name = "test_project_name"
-
-        # Act
-        spark_engine.save_stream_dataframe(
-            feature_group=fg,
-            dataframe=None,
-            query_name=None,
-            output_mode="test_mode",
-            await_termination=None,
-            timeout=None,
-            checkpoint_dir=None,
-            write_options={"test_name": "test_value"},
-        )
-
-        # Assert
-        assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.call_args[0][0]
-            == "headers"
-        )
-        assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.call_args[
-                0
-            ][0]
-            == "test_mode"
-        )
-        assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.call_args[
-                0
-            ][0]
-            == "kafka"
-        )
-        assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
-                0
-            ][0]
-            == "checkpointLocation"
-        )
-        assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
-                0
-            ][1]
-            == f"/Projects/test_project_name/Resources/{self._get_spark_query_name(project_id, fg)}-checkpoint"
-        )
-        assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.call_args[
-                1
-            ]
-            == {
-                "kafka.bootstrap.servers": "test_bootstrap_servers",
-                "kafka.security.protocol": "test_security_protocol",
-                "kafka.ssl.endpoint.identification.algorithm": "test_ssl_endpoint_identification_algorithm",
-                "kafka.ssl.key.password": "test_ssl_key_password",
-                "kafka.ssl.keystore.location": "result_from_add_file",
-                "kafka.ssl.keystore.password": "test_ssl_keystore_password",
-                "kafka.ssl.truststore.location": "result_from_add_file",
-                "kafka.ssl.truststore.password": "test_ssl_truststore_password",
-                "kafka.test_option_name": "test_option_value",
-                "test_name": "test_value",
-            }
-        )
-        assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
-                0
-            ][0]
-            == "topic"
-        )
-        assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
-                0
-            ][1]
-            == "test_online_topic_name"
-        )
-        assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.call_args[
-                0
-            ][0]
-            == self._get_spark_query_name(project_id, fg)
-        )
-        assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.return_value.start.return_value.awaitTermination.call_count
-            == 0
-        )
-        assert mock_spark_engine_apply_transformations.call_count == 1
 
     def test_save_stream_dataframe_query_name(self, mocker, backend_fixtures):
         # Arrange
@@ -1126,18 +991,22 @@ class TestSpark:
             "hopsworks_common.client.get_instance"
         )
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
-        mocker.patch("hsfs.engine.spark.Engine._encode_complex_features")
-        mock_spark_engine_online_fg_to_avro = mocker.patch(
-            "hsfs.engine.spark.Engine._online_fg_to_avro"
+        mock_spark_engine_serialize_to_avro = mocker.patch(
+            "hsfs.engine.spark.Engine._serialize_to_avro"
         )
 
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
         mock_engine_get_instance.return_value.add_file.return_value = (
             "result_from_add_file"
         )
 
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
+        )
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
         )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
@@ -1158,10 +1027,13 @@ class TestSpark:
 
         mock_common_client_get_instance.return_value._project_name = "test_project_name"
 
+        df = pd.DataFrame(data={"col_0": [1, 2], "col_1": ["test_1", "test_2"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
         # Act
         spark_engine.save_stream_dataframe(
             feature_group=fg,
-            dataframe=None,
+            dataframe=spark_df,
             query_name="test_query_name",
             output_mode="test_mode",
             await_termination=None,
@@ -1172,35 +1044,35 @@ class TestSpark:
 
         # Assert
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.call_args[0][0]
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.call_args[0][0]
             == "headers"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.call_args[
                 0
             ][0]
             == "test_mode"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.call_args[
                 0
             ][0]
             == "kafka"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
                 0
             ][0]
             == "checkpointLocation"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
                 0
             ][1]
             == "/Projects/test_project_name/Resources/test_query_name-checkpoint"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.call_args[
                 1
             ]
             == {
@@ -1217,25 +1089,25 @@ class TestSpark:
             }
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
                 0
             ][0]
             == "topic"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
                 0
             ][1]
             == "test_online_topic_name"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.call_args[
                 0
             ][0]
             == "test_query_name"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.return_value.start.return_value.awaitTermination.call_count
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.return_value.start.return_value.awaitTermination.call_count
             == 0
         )
 
@@ -1251,18 +1123,22 @@ class TestSpark:
             "hopsworks_common.client.get_instance"
         )
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
-        mocker.patch("hsfs.engine.spark.Engine._encode_complex_features")
-        mock_spark_engine_online_fg_to_avro = mocker.patch(
-            "hsfs.engine.spark.Engine._online_fg_to_avro"
+        mock_spark_engine_serialize_to_avro = mocker.patch(
+            "hsfs.engine.spark.Engine._serialize_to_avro"
         )
 
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
         mock_engine_get_instance.return_value.add_file.return_value = (
             "result_from_add_file"
         )
 
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
+        )
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
         )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
@@ -1285,10 +1161,13 @@ class TestSpark:
 
         mock_common_client_get_instance.return_value._project_name = "test_project_name"
 
+        df = pd.DataFrame(data={"col_0": [1, 2], "col_1": ["test_1", "test_2"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
         # Act
         spark_engine.save_stream_dataframe(
             feature_group=fg,
-            dataframe=None,
+            dataframe=spark_df,
             query_name=None,
             output_mode="test_mode",
             await_termination=None,
@@ -1299,35 +1178,35 @@ class TestSpark:
 
         # Assert
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.call_args[0][0]
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.call_args[0][0]
             == "headers"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.call_args[
                 0
             ][0]
             == "test_mode"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.call_args[
                 0
             ][0]
             == "kafka"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
                 0
             ][0]
             == "checkpointLocation"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
                 0
             ][1]
             == "test_checkpoint_dir"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.call_args[
                 1
             ]
             == {
@@ -1344,25 +1223,25 @@ class TestSpark:
             }
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
                 0
             ][0]
             == "topic"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
                 0
             ][1]
             == "test_online_topic_name"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.call_args[
                 0
             ][0]
             == self._get_spark_query_name(project_id, fg)
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.return_value.start.return_value.awaitTermination.call_count
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.return_value.start.return_value.awaitTermination.call_count
             == 0
         )
 
@@ -1372,18 +1251,22 @@ class TestSpark:
             "hopsworks_common.client.get_instance"
         )
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
-        mocker.patch("hsfs.engine.spark.Engine._encode_complex_features")
-        mock_spark_engine_online_fg_to_avro = mocker.patch(
-            "hsfs.engine.spark.Engine._online_fg_to_avro"
+        mock_spark_engine_serialize_to_avro = mocker.patch(
+            "hsfs.engine.spark.Engine._serialize_to_avro"
         )
 
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
         mock_engine_get_instance.return_value.add_file.return_value = (
             "result_from_add_file"
         )
 
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
+        )
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
         )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
@@ -1406,10 +1289,13 @@ class TestSpark:
 
         mock_common_client_get_instance.return_value._project_name = "test_project_name"
 
+        df = pd.DataFrame(data={"col_0": [1, 2], "col_1": ["test_1", "test_2"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
         # Act
         spark_engine.save_stream_dataframe(
             feature_group=fg,
-            dataframe=None,
+            dataframe=spark_df,
             query_name=None,
             output_mode="test_mode",
             await_termination=True,
@@ -1420,35 +1306,35 @@ class TestSpark:
 
         # Assert
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.call_args[0][0]
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.call_args[0][0]
             == "headers"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.call_args[
                 0
             ][0]
             == "test_mode"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.call_args[
                 0
             ][0]
             == "kafka"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
                 0
             ][0]
             == "checkpointLocation"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.call_args[
                 0
             ][1]
             == f"/Projects/test_project_name/Resources/{self._get_spark_query_name(project_id, fg)}-checkpoint"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.call_args[
                 1
             ]
             == {
@@ -1465,29 +1351,29 @@ class TestSpark:
             }
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
                 0
             ][0]
             == "topic"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.call_args[
                 0
             ][1]
             == "test_online_topic_name"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.call_args[
                 0
             ][0]
             == self._get_spark_query_name(project_id, fg)
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.return_value.start.return_value.awaitTermination.call_count
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.return_value.start.return_value.awaitTermination.call_count
             == 1
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.return_value.start.return_value.awaitTermination.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.writeStream.outputMode.return_value.format.return_value.option.return_value.options.return_value.option.return_value.queryName.return_value.start.return_value.awaitTermination.call_args[
                 0
             ][0]
             == 123
@@ -1630,18 +1516,22 @@ class TestSpark:
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
-        mocker.patch("hsfs.engine.spark.Engine._encode_complex_features")
-        mock_spark_engine_online_fg_to_avro = mocker.patch(
-            "hsfs.engine.spark.Engine._online_fg_to_avro"
+        mock_spark_engine_serialize_to_avro = mocker.patch(
+            "hsfs.engine.spark.Engine._serialize_to_avro"
         )
 
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
         mock_engine_get_instance.return_value.add_file.return_value = (
             "result_from_add_file"
         )
 
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
+        )
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi.create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
         )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
@@ -1660,27 +1550,30 @@ class TestSpark:
         )
         fg.feature_store = mocker.Mock()
 
+        df = pd.DataFrame(data={"col_0": [1, 2], "col_1": ["test_1", "test_2"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
         # Act
         spark_engine._save_online_dataframe(
             feature_group=fg,
-            dataframe=None,
+            dataframe=spark_df,
             write_options={"test_name": "test_value"},
         )
 
         # Assert
-        assert mock_spark_engine_online_fg_to_avro.call_count == 1
+        assert mock_spark_engine_serialize_to_avro.call_count == 1
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.call_args[0][0]
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.call_args[0][0]
             == "headers"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.write.format.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.write.format.call_args[
                 0
             ][0]
             == "kafka"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.write.format.return_value.options.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.write.format.return_value.options.call_args[
                 1
             ]
             == {
@@ -1697,37 +1590,40 @@ class TestSpark:
             }
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.write.format.return_value.options.return_value.option.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.write.format.return_value.options.return_value.option.call_args[
                 0
             ][0]
             == "topic"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.write.format.return_value.options.return_value.option.call_args[
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.write.format.return_value.options.return_value.option.call_args[
                 0
             ][1]
             == "test_online_topic_name"
         )
         assert (
-            mock_spark_engine_online_fg_to_avro.return_value.withColumn.return_value.write.format.return_value.options.return_value.option.return_value.save.call_count
+            mock_spark_engine_serialize_to_avro.return_value.withColumn.return_value.write.format.return_value.options.return_value.option.return_value.save.call_count
             == 1
         )
 
-    def test_encode_complex_features(self, mocker):
+    def test_serialize_to_avro(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch(
-            "hsfs.feature_group.FeatureGroup.get_complex_features",
-            return_value=["col_1"],
-        )
-        mocker.patch("hsfs.feature_group.FeatureGroup._get_feature_avro_schema")
-
         spark_engine = spark.Engine()
 
-        d = {"col_0": ["test_1", "test_2"], "col_1": ["test_1", "test_2"]}
-        df = pd.DataFrame(data=d)
+        mock_to_avro = mocker.patch("hsfs.engine.spark.to_avro")
+        mock_to_avro.return_value = lit(b"111")
 
-        spark_df = spark_engine._spark_session.createDataFrame(df)
+        fg_data = []
+        fg_data.append(("ekarson", ["GRAVITY RUSH 2", "KING'S QUEST"]))
+        fg_data.append(("ratmilkdrinker", ["NBA 2K", "CALL OF DUTY"]))
+        pandas_df = pd.DataFrame(fg_data, columns=["account_id", "last_played_games"])
+
+        df = spark_engine._spark_session.createDataFrame(pandas_df)
+
+        features = [
+            feature.Feature(name="account_id", type="str"),
+            feature.Feature(name="last_played_games", type="array"),
+        ]
 
         fg = feature_group.FeatureGroup(
             name="test",
@@ -1736,37 +1632,43 @@ class TestSpark:
             primary_key=[],
             partition_key=[],
             id=10,
+            features=features,
         )
-        fg._subject = {"schema": '{"fields": [{"name": "col_0"}]}'}
-
-        expected = pd.DataFrame(data={"col_0": ["test_1", "test_2"]})
+        fg._subject = {
+            "id": 1025,
+            "subject": "fg_1",
+            "version": 1,
+            "schema": '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]}]}',
+        }
 
         # Act
-        result = spark_engine._encode_complex_features(
+        serialized_df = spark_engine._serialize_to_avro(
             feature_group=fg,
-            dataframe=spark_df,
+            dataframe=df,
         )
 
         # Assert
-        result_df = result.toPandas()
-        assert list(result_df) == list(expected)
-        for column in list(result_df):
-            assert result_df[column].equals(expected[column])
-
-    def test_encode_complex_features_col_in_complex_features(self, mocker):
-        # Arrange
-        mocker.patch(
-            "hsfs.feature_group.FeatureGroup.get_complex_features",
-            return_value=["col_0"],
+        assert (
+            serialized_df.schema.json()
+            == '{"fields":[{"metadata":{},"name":"key","nullable":false,"type":"binary"},{"metadata":{},"name":"value","nullable":false,"type":"binary"}],"type":"struct"}'
         )
-        mocker.patch("hsfs.feature_group.FeatureGroup._get_feature_avro_schema")
 
+    def test_deserialize_from_avro(self, mocker):
+        # Arrange
         spark_engine = spark.Engine()
 
-        d = {"col_0": ["test_1", "test_2"], "col_1": ["test_1", "test_2"]}
-        df = pd.DataFrame(data=d)
+        data = []
+        data.append((b"2121", b"21212121"))
+        data.append((b"1212", b"12121212"))
+        pandas_df = pd.DataFrame(data, columns =["key", "value"])
 
-        spark_df = spark_engine._spark_session.createDataFrame(df)
+        df = spark_engine._spark_session.createDataFrame(pandas_df)
+
+        features = [
+            feature.Feature(name="account_id", type="str"),
+            feature.Feature(name="last_played_games", type="array"),
+            feature.Feature(name="event_time", type="timestamp"),
+        ]
 
         fg = feature_group.FeatureGroup(
             name="test",
@@ -1775,29 +1677,59 @@ class TestSpark:
             primary_key=[],
             partition_key=[],
             id=10,
+            features=features,
         )
-        fg._subject = {"schema": '{"fields": [{"name": "col_0"}]}'}
+        fg._subject = {
+            'id': 1025,
+            'subject': 'fg_1',
+            'version': 1,
+            'schema': '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]},{"name":"event_time","type":["null",{"type":"long","logicalType":"timestamp-micros"}]}]}'
+        }
 
         # Act
-        with pytest.raises(
-            TypeError
-        ) as e_info:  # todo look into this (to_avro has to be mocked)
-            spark_engine._encode_complex_features(
-                feature_group=fg,
-                dataframe=spark_df,
-            )
+        deserialized_df = spark_engine._deserialize_from_avro(
+            feature_group=fg,
+            dataframe=df,
+        )
 
         # Assert
-        assert str(e_info.value) == "'JavaPackage' object is not callable"
+        expected_schema = json.loads('''{
+            "fields": [
+                {"metadata": {}, "name": "key", "nullable": true, "type": "binary"},
+                {"metadata": {}, "name": "value", "nullable": false, "type": {
+                    "fields": [
+                        {"metadata": {}, "name": "account_id", "nullable": true, "type": "string"},
+                        {"metadata": {}, "name": "last_played_games", "nullable": true, "type": {
+                            "containsNull": true, "elementType": "string", "type": "array"}},
+                        {"metadata": {}, "name": "event_time", "nullable": true, "type": "timestamp"}
+                    ],
+                    "type": "struct"
+                }}
+            ],
+            "type": "struct"
+        }''')
 
-    def test_online_fg_to_avro(self):
+        actual_schema = json.loads(deserialized_df.schema.json())
+        assert actual_schema == expected_schema
+
+    def test_serialize_deserialize_avro(self, mocker):
         # Arrange
         spark_engine = spark.Engine()
 
-        d = {"col_0": ["test_1", "test_2"], "col_1": ["test_1", "test_2"]}
-        df = pd.DataFrame(data=d)
+        now = datetime.datetime.now()
 
-        spark_df = spark_engine._spark_session.createDataFrame(df)
+        fg_data = []
+        fg_data.append(("ekarson", ["GRAVITY RUSH 2", "KING'S QUEST"], pd.Timestamp(now)))
+        fg_data.append(("ratmilkdrinker", ["NBA 2K", "CALL OF DUTY"], pd.Timestamp(now)))
+        pandas_df = pd.DataFrame(fg_data, columns =["account_id", "last_played_games", "event_time"])
+
+        df = spark_engine._spark_session.createDataFrame(pandas_df)
+
+        features = [
+            feature.Feature(name="account_id", type="str"),
+            feature.Feature(name="last_played_games", type="array"),
+            feature.Feature(name="event_time", type="timestamp"),
+        ]
 
         fg = feature_group.FeatureGroup(
             name="test",
@@ -1806,20 +1738,30 @@ class TestSpark:
             primary_key=[],
             partition_key=[],
             id=10,
+            features=features,
         )
-        fg._avro_schema = '{"fields": [{"name": "col_0"}]}'
+        fg._subject = {
+            'id': 1025,
+            'subject': 'fg_1',
+            'version': 1,
+            'schema': '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]},{"name":"event_time","type":["null",{"type":"long","logicalType":"timestamp-micros"}]}]}'
+        }
 
         # Act
-        with pytest.raises(
-            TypeError
-        ) as e_info:  # todo look into this (to_avro has to be mocked)
-            spark_engine._online_fg_to_avro(
-                feature_group=fg,
-                dataframe=spark_df,
-            )
+        serialized_df = spark_engine._serialize_to_avro(
+            feature_group=fg,
+            dataframe=df,
+        )
+
+        deserialized_df = spark_engine._deserialize_from_avro(
+            feature_group=fg,
+            dataframe=serialized_df,
+        )
 
         # Assert
-        assert str(e_info.value) == "'JavaPackage' object is not callable"
+        assert serialized_df.schema.json() == '{"fields":[{"metadata":{},"name":"key","nullable":false,"type":"binary"},{"metadata":{},"name":"value","nullable":false,"type":"binary"}],"type":"struct"}'
+        assert df.schema == deserialized_df.schema["value"].dataType
+        assert df.collect() == deserialized_df.select("value.*").collect()
 
     def test_get_training_data(self, mocker):
         # Arrange
@@ -2433,6 +2375,7 @@ class TestSpark:
             id=10,
             event_time="event_time",
             features=[f, f1, f2],
+            featurestore_name="test_fs",
         )
 
         q = query.Query(left_feature_group=fg, left_features=None)
@@ -2483,8 +2426,66 @@ class TestSpark:
             featurestore_id=99,
             primary_key=[],
             partition_key=[],
+            features=[f, f1, f2],
             id=10,
             event_time="event_time",
+            featurestore_name="test_fs",
+        )
+
+        q = query.Query(left_feature_group=fg, left_features=[f, f1, f2])
+
+        # Act
+        spark_engine._split_df(
+            query_obj=q,
+            training_dataset=td,
+            read_options={},
+        )
+
+        # Assert
+        assert mock_spark_engine_time_series_split.call_count == 1
+        assert mock_spark_engine_random_split.call_count == 0
+
+    def test_split_df_time_split_query_features_fully_qualified_name(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.constructor.query.Query.read")
+        mock_spark_engine_time_series_split = mocker.patch(
+            "hsfs.engine.spark.Engine._time_series_split"
+        )
+        mock_spark_engine_random_split = mocker.patch(
+            "hsfs.engine.spark.Engine._random_split"
+        )
+
+        spark_engine = spark.Engine()
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"col1": 1},
+            train_start=1000000000,
+            train_end=2000000000,
+            test_end=3000000000,
+        )
+
+        f = feature.Feature(name="col1", type="str")
+        f1 = feature.Feature(name="col2", type="str")
+        f2 = feature.Feature(
+            name="event_time", type="str", use_fully_qualified_name=True
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[f, f1, f2],
+            id=10,
+            event_time="event_time",
+            featurestore_name="test_fs",
         )
 
         q = query.Query(left_feature_group=fg, left_features=[f, f1, f2])
@@ -3301,8 +3302,10 @@ class TestSpark:
 
     def test_read_stream(self, mocker):
         # Arrange
-        mocker.patch("hsfs.engine.get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
         mocker.patch("hopsworks_common.client.get_instance")
+        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
+
         mock_pyspark_getOrCreate = mocker.patch(
             "pyspark.sql.session.SparkSession.builder.getOrCreate"
         )
@@ -3492,8 +3495,6 @@ class TestSpark:
 
     def test_read_stream_kafka_message_format_avro(self, mocker):
         # Arrange
-        mocker.patch("pyspark.context.SparkContext")
-
         spark_engine = spark.Engine()
 
         mock_stream = mocker.Mock()
@@ -3505,7 +3506,7 @@ class TestSpark:
             "offset": ["test_offset", "test_offset"],
             "timestamp": ["test_timestamp", "test_timestamp"],
             "timestampType": ["test_timestampType", "test_timestampType"],
-            "value": ['{"name": "value1"}', '{"name": "value2"}'],
+            "value": [b"21212121", b"12121212"],
             "x": [True, False],
         }
         df = pd.DataFrame(data=d)
@@ -3523,25 +3524,20 @@ class TestSpark:
                             }"""
 
         # Act
-        with pytest.raises(
-            TypeError
-        ) as e_info:  # todo look into this (from_avro has to be mocked)
-            spark_engine._read_stream_kafka(
-                stream=mock_stream,
-                message_format="avro",
-                schema=schema_string,
-                include_metadata=True,
-            )
+        result = spark_engine._read_stream_kafka(
+            stream=mock_stream,
+            message_format="avro",
+            schema=schema_string,
+            include_metadata=False,
+        )
 
         # Assert
-        assert str(e_info.value) == "'JavaPackage' object is not callable"
-        # assert result.schema == expected_spark_df.schema
-        # assert result.collect() == expected_spark_df.collect()
+        assert len(result.columns) == 1
+        assert "name" in result.columns
+        assert result.schema["name"].dataType == StringType()
 
     def test_read_stream_kafka_message_format_avro_include_metadata(self, mocker):
         # Arrange
-        mocker.patch("pyspark.context.SparkContext")
-
         spark_engine = spark.Engine()
 
         mock_stream = mocker.Mock()
@@ -3552,7 +3548,7 @@ class TestSpark:
             "offset": ["test_offset", "test_offset"],
             "timestamp": ["test_timestamp", "test_timestamp"],
             "timestampType": ["test_timestampType", "test_timestampType"],
-            "value": ['{"name": "value1"}', '{"name": "value2"}'],
+            "value": [b"21212121", b"12121212"],
             "x": [True, False],
         }
         df = pd.DataFrame(data=d)
@@ -3570,20 +3566,17 @@ class TestSpark:
                             }"""
 
         # Act
-        with pytest.raises(
-            TypeError
-        ) as e_info:  # todo look into this (from_avro has to be mocked)
-            spark_engine._read_stream_kafka(
-                stream=mock_stream,
-                message_format="avro",
-                schema=schema_string,
-                include_metadata=True,
-            )
+        result = spark_engine._read_stream_kafka(
+            stream=mock_stream,
+            message_format="avro",
+            schema=schema_string,
+            include_metadata=True,
+        )
 
         # Assert
-        assert str(e_info.value) == "'JavaPackage' object is not callable"
-        # assert result.schema == expected_spark_df.schema
-        # assert result.collect() == expected_spark_df.collect()
+        assert len(result.columns) == 7
+        assert "name" in result.columns
+        assert result.schema["name"].dataType == StringType()
 
     def test_add_file(self, mocker):
         # Arrange
@@ -4389,6 +4382,109 @@ class TestSpark:
             "fs.s3a.endpoint", s3_connector.arguments.get("fs.s3a.endpoint")
         )
 
+    def test_setup_s3_hadoop_conf_disable_legacy(self, mocker):
+        # Arrange
+        mock_pyspark_getOrCreate = mocker.patch(
+            "pyspark.sql.session.SparkSession.builder.getOrCreate"
+        )
+
+        spark_engine = spark.Engine()
+
+        s3_connector = storage_connector.S3Connector(
+            id=1,
+            name="test_connector",
+            featurestore_id=99,
+            bucket="bucket-name",
+            access_key="1",
+            secret_key="2",
+            server_encryption_algorithm="3",
+            server_encryption_key="4",
+            session_token="5",
+            arguments=[
+                {"name": "fs.s3a.endpoint", "value": "testEndpoint"},
+                {"name": "fs.s3a.global-conf", "value": "False"},
+            ],
+        )
+
+        # Act
+        result = spark_engine._setup_s3_hadoop_conf(
+            storage_connector=s3_connector,
+            path="s3://_test_path",
+        )
+
+        # Assert
+        assert result == "s3a://_test_path"
+        assert (
+            mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.call_count
+            == 7  # Options should only be set at bucket level
+        )
+        assert (
+            call("fs.s3a.access.key", s3_connector.access_key)
+            not in mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.mock_calls
+        )
+        assert (
+            call("fs.s3a.secret.key", s3_connector.secret_key)
+            not in mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.mock_calls
+        )
+        assert (
+            call(
+                "fs.s3a.server-side-encryption-algorithm",
+                s3_connector.server_encryption_algorithm,
+            )
+            not in mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.mock_calls
+        )
+
+        assert (
+            call(
+                "fs.s3a.server-side-encryption-key", s3_connector.server_encryption_key
+            )
+            not in mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.mock_calls
+        )
+
+        assert (
+            call(
+                "fs.s3a.aws.credentials.provider",
+                "org.apache.hadoop.fs.s3a.TemporaryAWSCredentialsProvider",
+            )
+            not in mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.mock_calls
+        )
+
+        assert (
+            call("fs.s3a.session.token", s3_connector.session_token)
+            not in mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.mock_calls
+        )
+
+        assert (
+            call("fs.s3a.endpoint", s3_connector.arguments.get("fs.s3a.endpoint"))
+            not in mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.mock_calls
+        )
+
+        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+            "fs.s3a.bucket.bucket-name.access.key", s3_connector.access_key
+        )
+        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+            "fs.s3a.bucket.bucket-name.secret.key", s3_connector.secret_key
+        )
+        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+            "fs.s3a.bucket.bucket-name.server-side-encryption-algorithm",
+            s3_connector.server_encryption_algorithm,
+        )
+        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+            "fs.s3a.bucket.bucket-name.server-side-encryption-key",
+            s3_connector.server_encryption_key,
+        )
+        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+            "fs.s3a.bucket.bucket-name.aws.credentials.provider",
+            "org.apache.hadoop.fs.s3a.TemporaryAWSCredentialsProvider",
+        )
+        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+            "fs.s3a.bucket.bucket-name.session.token", s3_connector.session_token
+        )
+        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+            "fs.s3a.bucket.bucket-name.endpoint",
+            s3_connector.arguments.get("fs.s3a.endpoint"),
+        )
+
     def test_setup_s3_hadoop_conf_bucket_scope(self, mocker):
         # Arrange
         mock_pyspark_getOrCreate = mocker.patch(
@@ -4514,7 +4610,7 @@ class TestSpark:
         # Assert
         assert result is True
 
-    def test_save_empty_dataframe(self, mocker):
+    def test_update_table_schema_hudi(self, mocker):
         # Arrange
         mock_spark_engine_save_dataframe = mocker.patch(
             "hsfs.engine.spark.Engine.save_dataframe"
@@ -4534,13 +4630,40 @@ class TestSpark:
             partition_key=[],
             id=10,
             featurestore_name="test_featurestore",
+            time_travel_format="HUDI",
         )
 
         # Act
-        spark_engine.save_empty_dataframe(feature_group=fg)
+        spark_engine.update_table_schema(feature_group=fg)
 
         # Assert
         assert mock_spark_engine_save_dataframe.call_count == 1
+        assert mock_spark_read.format.call_count == 1
+
+    def test_update_table_schema_delta(self, mocker):
+        # Arrange
+        mock_spark_read = mocker.patch("pyspark.sql.SparkSession.read")
+        mock_format = mocker.Mock()
+        mock_spark_read.format.return_value = mock_format
+
+        # Arrange
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            featurestore_name="test_featurestore",
+            time_travel_format="DELTA",
+        )
+
+        # Act
+        spark_engine.update_table_schema(feature_group=fg)
+
+        # Assert
         assert mock_spark_read.format.call_count == 1
 
     def test_apply_transformation_function_single_output_udf_default_mode(self, mocker):
@@ -4591,7 +4714,7 @@ class TestSpark:
                 "col_2": [True, False],
                 "plus_one_col_0_": [2, 3],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -4652,7 +4775,7 @@ class TestSpark:
                 "col_2": [True, False],
                 "plus_one_col_0_": [2, 3],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -4713,7 +4836,7 @@ class TestSpark:
                 "col_2": [True, False],
                 "plus_one_col_0_": [2, 3],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -4721,6 +4844,71 @@ class TestSpark:
         result = spark_engine._apply_transformation_function(
             transformation_functions=fv.transformation_functions,
             dataset=spark_df,
+        )
+        # Assert
+        assert result.schema == expected_spark_df.schema
+        assert result.collect() == expected_spark_df.collect()
+
+    @pytest.mark.parametrize("execution_mode", ["default", "pandas", "python"])
+    def test_apply_transformation_function_single_output_udf_transformation_context(
+        self, mocker, execution_mode
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "spark"
+        spark_engine = spark.Engine()
+
+        @udf(int, drop=["col1"], mode=execution_mode)
+        def plus_one(col1, context):
+            return col1 + context["test"]
+
+        tf = transformation_function.TransformationFunction(
+            99,
+            hopsworks_udf=plus_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        f = feature.Feature(name="col_0", type=IntegerType(), index=0)
+        f1 = feature.Feature(name="col_1", type=StringType(), index=1)
+        f2 = feature.Feature(name="col_2", type=BooleanType(), index=1)
+        features = [f, f1, f2]
+        fg1 = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=features,
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="test",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            transformation_functions=[tf("col_0")],
+        )
+
+        d = {"col_0": [1, 2], "col_1": ["test_1", "test_2"], "col_2": [True, False]}
+        df = pd.DataFrame(data=d)
+
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
+        expected_df = pd.DataFrame(
+            data={
+                "col_1": ["test_1", "test_2"],
+                "col_2": [True, False],
+                "plus_one_col_0_": [21, 22],
+            }
+        )
+
+        expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
+
+        # Act
+        result = spark_engine._apply_transformation_function(
+            transformation_functions=fv.transformation_functions,
+            dataset=spark_df,
+            transformation_context={"test": 20},
         )
         # Assert
         assert result.schema == expected_spark_df.schema
@@ -4777,7 +4965,7 @@ class TestSpark:
                 "plus_two_col_0_0": [2, 3],
                 "plus_two_col_0_1": [3, 4],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -4841,7 +5029,7 @@ class TestSpark:
                 "plus_two_col_0_0": [2, 3],
                 "plus_two_col_0_1": [3, 4],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -4905,7 +5093,7 @@ class TestSpark:
                 "plus_two_col_0_0": [2, 3],
                 "plus_two_col_0_1": [3, 4],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -5355,7 +5543,7 @@ class TestSpark:
                 "test_col_0_col_2_0": [2, 3],
                 "test_col_0_col_2_1": [12, 13],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -5418,7 +5606,7 @@ class TestSpark:
                 "test_col_0_col_2_0": [2, 3],
                 "test_col_0_col_2_1": [12, 13],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 
@@ -5481,7 +5669,7 @@ class TestSpark:
                 "test_col_0_col_2_0": [2, 3],
                 "test_col_0_col_2_1": [12, 13],
             }
-        )  # todo why it doesnt return int?
+        )
 
         expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
 

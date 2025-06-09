@@ -34,7 +34,7 @@ class SpineGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_group.dataframe
             )
 
-        # set primary and partition key columns
+        # set primary, foreign and partition key columns
         # we should move this to the backend
         util.verify_attribute_key_names(feature_group, True)
         for feat in feature_group.features:

@@ -54,6 +54,7 @@ from hsfs import (
 )
 from hsfs.constructor import filter, query
 from hsfs.constructor.filter import Filter, Logic
+from hsfs.core import data_source as ds
 from hsfs.core import (
     deltastreamer_jobconf,
     expectation_suite_engine,
@@ -65,6 +66,8 @@ from hsfs.core import (
     feature_store_api,
     great_expectation_engine,
     job_api,
+    online_ingestion,
+    online_ingestion_api,
     spine_group_engine,
     statistics_engine,
     validation_report_engine,
@@ -110,6 +113,8 @@ _logger = logging.getLogger(__name__)
 
 @typechecked
 class FeatureGroupBase:
+    NOT_FOUND_ERROR_CODE = 270009
+
     def __init__(
         self,
         name: Optional[str],
@@ -137,8 +142,13 @@ class FeatureGroupBase:
                 Dict[str, Any],
             ]
         ] = None,
+        data_source: Optional[
+            Union[
+                ds.DataSource,
+                Dict[str, Any],
+            ]
+        ] = None,
         storage_connector: Union[sc.StorageConnector, Dict[str, Any]] = None,
-        path: Optional[str] = None,
         **kwargs,
     ) -> None:
         self._version = version
@@ -155,7 +165,6 @@ class FeatureGroupBase:
         self._feature_store_id = featurestore_id
         self._feature_store = None
         self._variable_api: VariableApi = VariableApi()
-        self._path = path
 
         if storage_connector is not None and isinstance(storage_connector, dict):
             self._storage_connector = sc.StorageConnector.from_response_json(
@@ -168,6 +177,15 @@ class FeatureGroupBase:
             if isinstance(online_config, dict)
             else online_config
         )
+
+        if data_source:
+            self._data_source = (
+                ds.DataSource.from_response_json(data_source)
+                if isinstance(data_source, dict)
+                else data_source
+            )
+        else:
+            self._data_source = ds.DataSource()
 
         self._multi_part_insert: bool = False
         self._embedding_index = embedding_index
@@ -247,7 +265,7 @@ class FeatureGroupBase:
             associated with it.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         warnings.warn(
             "All jobs associated to feature group `{}`, version `{}` will be removed.".format(
@@ -261,6 +279,8 @@ class FeatureGroupBase:
     def select_all(
         self,
         include_primary_key: Optional[bool] = True,
+        include_foreign_key: Optional[bool] = True,
+        include_partition_key: Optional[bool] = True,
         include_event_time: Optional[bool] = True,
     ) -> query.Query:
         """Select all features along with primary key and event time from the feature group and return a query object.
@@ -309,24 +329,35 @@ class FeatureGroupBase:
         # Arguments
             include_primary_key: If True, include primary key of the feature group
                 to the feature list. Defaults to True.
+            include_foreign_key: If True, include foreign key of the feature group
+                to the feature list. Defaults to True.
+            include_partition_key: If True, include partition key of the feature group
+                to the feature list. Defaults to True.
             include_event_time: If True, include event time of the feature group
                 to the feature list. Defaults to True.
         # Returns
             `Query`. A query object with all features of the feature group.
         """
-        if include_event_time and include_primary_key:
+        removed_keys = []
+
+        if not include_event_time:
+            removed_keys += [self.event_time]
+        if not include_primary_key:
+            removed_keys += self.primary_key
+        if not include_foreign_key:
+            removed_keys += self.foreign_key
+        if not include_partition_key:
+            removed_keys += self.partition_key
+
+        if removed_keys:
+            return self.select_except(removed_keys)
+        else:
             return query.Query(
                 left_feature_group=self,
                 left_features=self._features,
                 feature_store_name=self._feature_store_name,
                 feature_store_id=self._feature_store_id,
             )
-        elif include_event_time:
-            return self.select_except(self.primary_key)
-        elif include_primary_key:
-            return self.select_except([self.event_time])
-        else:
-            return self.select_except(self.primary_key + [self.event_time])
 
     def select_features(
         self,
@@ -425,10 +456,15 @@ class FeatureGroupBase:
         # Returns
             `Query`. A query object with all features of the feature group.
         """
-        query = self.select_except(self.primary_key + [self.event_time])
+        select_features = self.primary_key + self.foreign_key + [self.event_time]
+        if not isinstance(self, ExternalFeatureGroup):
+            select_features = select_features + self.partition_key
+
+        query = self.select_except(select_features)
+
         _logger.info(
-            f"Using {[f.name for f in query.features]} as features for the query."
-            "To include primary key and event time use `select_all`."
+            f"Using {[f.name for f in query.features]} from feature group `{self.name}` as features for the query."
+            " To include primary key and event time use `select_all`."
         )
 
         return query
@@ -594,7 +630,7 @@ class FeatureGroupBase:
             value: Value of the tag to be added.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to add the tag.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         self._feature_group_engine.add_tag(self, name, value)
@@ -617,11 +653,11 @@ class FeatureGroupBase:
             name: Name of the tag to be removed.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to delete the tag.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._feature_group_engine.delete_tag(self, name)
 
-    def get_tag(self, name: str) -> tag.Tag:
+    def get_tag(self, name: str) -> Optional[tag.Tag]:
         """Get the tags of a feature group.
 
         !!! example
@@ -639,10 +675,10 @@ class FeatureGroupBase:
             name: Name of the tag to get.
 
         # Returns
-            tag value
+            tag value or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to retrieve the tag.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_group_engine.get_tag(self, name)
 
@@ -653,52 +689,54 @@ class FeatureGroupBase:
             `Dict[str, obj]` of tags.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to retrieve the tags.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_group_engine.get_tags(self)
 
-    def get_parent_feature_groups(self) -> explicit_provenance.Links:
+    def get_parent_feature_groups(self) -> Optional[explicit_provenance.Links]:
         """Get the parents of this feature group, based on explicit provenance.
         Parents are feature groups or external feature groups. These feature
         groups can be accessible, deleted or inaccessible.
-        For deleted and inaccessible feature groups, only a minimal information is
+        For deleted and inaccessible feature groups, only minimal information is
         returned.
 
         # Returns
-            `ProvenanceLinks`: Object containing the section of provenance graph requested.
+            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_group_engine.get_parent_feature_groups(self)
 
-    def get_storage_connector_provenance(self):
+    def get_storage_connector_provenance(self) -> Optional[explicit_provenance.Links]:
         """Get the parents of this feature group, based on explicit provenance.
         Parents are storage connectors. These storage connector can be accessible,
         deleted or inaccessible.
-        For deleted and inaccessible storage connector, only a minimal information is
+        For deleted and inaccessible storage connector, only minimal information is
         returned.
 
         # Returns
-            `ExplicitProvenance.Links`: the storage connector used to generated this
-            feature group
+            `Links`: the storage connector used to generate this feature group or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_group_engine.get_storage_connector_provenance(self)
 
-    def get_storage_connector(self):
+    def get_storage_connector(self) -> Optional["sc.StorageConnector"]:
         """Get the storage connector using this feature group, based on explicit
         provenance. Only the accessible storage connector is returned.
         For more items use the base method - get_storage_connector_provenance
 
         # Returns
-            `StorageConnector: Storage connector.
+            `StorageConnector`: Storage connector or `None` if it does not exist.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         storage_connector_provenance = self.get_storage_connector_provenance()
 
-        if (
+        if storage_connector_provenance and (
             storage_connector_provenance.inaccessible
             or storage_connector_provenance.deleted
         ):
@@ -706,12 +744,12 @@ class FeatureGroupBase:
                 "The parent storage connector is deleted or inaccessible. For more details access `get_storage_connector_provenance`"
             )
 
-        if storage_connector_provenance.accessible:
+        if storage_connector_provenance and storage_connector_provenance.accessible:
             return storage_connector_provenance.accessible[0]
         else:
             return None
 
-    def get_generated_feature_views(self) -> explicit_provenance.Links:
+    def get_generated_feature_views(self) -> Optional[explicit_provenance.Links]:
         """Get the generated feature view using this feature group, based on explicit
         provenance. These feature views can be accessible or inaccessible. Explicit
         provenance does not track deleted generated feature view links, so deleted
@@ -719,14 +757,14 @@ class FeatureGroupBase:
         For inaccessible feature views, only a minimal information is returned.
 
         # Returns
-            `ProvenanceLinks`: Object containing the section of provenance graph requested.
+            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_group_engine.get_generated_feature_views(self)
 
-    def get_generated_feature_groups(self) -> explicit_provenance.Links:
+    def get_generated_feature_groups(self) -> Optional[explicit_provenance.Links]:
         """Get the generated feature groups using this feature group, based on explicit
         provenance. These feature groups can be accessible or inaccessible. Explicit
         provenance does not track deleted generated feature group links, so deleted
@@ -734,14 +772,14 @@ class FeatureGroupBase:
         For inaccessible feature groups, only a minimal information is returned.
 
         # Returns
-            `ProvenanceLinks`: Object containing the section of provenance graph requested.
+            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_group_engine.get_generated_feature_groups(self)
 
-    def get_feature(self, name: str) -> feature.Feature:
+    def get_feature(self, name: str) -> Optional[feature.Feature]:
         """Retrieve a `Feature` object from the schema of the feature group.
 
         There are several ways to access features of a feature group:
@@ -770,17 +808,13 @@ class FeatureGroupBase:
             name: The name of the feature to retrieve
 
         # Returns:
-            Feature: The feature object
+            Feature: The feature object or `None` if it does not exist.
 
-        # Raises
-            `hsfs.client.exceptions.FeatureStoreException`.
         """
         try:
             return self.__getitem__(name)
-        except KeyError as err:
-            raise FeatureStoreException(
-                f"'FeatureGroup' object has no feature called '{name}'."
-            ) from err
+        except KeyError:
+            return None
 
     def update_statistics_config(
         self,
@@ -805,8 +839,8 @@ class FeatureGroupBase:
             `FeatureGroup`. The updated metadata object of the feature group.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
-            `hsfs.client.exceptions.FeatureStoreException`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If statistics are not supported for this feature group type
         """
         self._check_statistics_support()  # raises an error if stats not supported
         self._feature_group_engine.update_statistics_config(self)
@@ -837,6 +871,9 @@ class FeatureGroupBase:
 
         # Returns
             `FeatureGroup`. The updated feature group object.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._feature_group_engine.update_description(self, description)
         return self
@@ -867,6 +904,9 @@ class FeatureGroupBase:
 
         # Returns
             `FeatureGroup`. The updated feature group object.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._feature_group_engine.update_notification_topic_name(
             self, notification_topic_name
@@ -898,6 +938,9 @@ class FeatureGroupBase:
 
         # Returns
             `FeatureGroup`. The updated feature group object.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._feature_group_engine.update_deprecated(self, deprecate)
         return self
@@ -920,6 +963,9 @@ class FeatureGroupBase:
 
         # Returns
             `FeatureGroup`. The updated feature group object.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         new_features = []
         if isinstance(features, feature.Feature):
@@ -970,6 +1016,9 @@ class FeatureGroupBase:
 
         # Returns
             `FeatureGroup`. The updated feature group object.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         f_copy = copy.deepcopy(self[feature_name])
         f_copy.description = description
@@ -1014,6 +1063,9 @@ class FeatureGroupBase:
 
         # Returns
             `FeatureGroup`. The updated feature group object.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         new_features = []
         if isinstance(features, feature.Feature):
@@ -1064,10 +1116,10 @@ class FeatureGroupBase:
                 else `False`.
 
         # Returns
-            `ExpectationSuite`. The expectation suite attached to the feature group.
+            `ExpectationSuite`. The expectation suite attached to the feature group or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         # Avoid throwing an error if Feature Group not initialised.
         if self._id:
@@ -1116,7 +1168,7 @@ class FeatureGroupBase:
                 - "ALWAYS" always insert the DataFrame to the Feature Group, irrespective of overall validation result.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if HAS_GREAT_EXPECTATIONS and isinstance(
             expectation_suite, great_expectations.core.ExpectationSuite
@@ -1171,7 +1223,7 @@ class FeatureGroupBase:
             ```
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if self.get_expectation_suite() is not None:
             self._expectation_suite_engine.delete(self._expectation_suite.id)
@@ -1202,10 +1254,10 @@ class FeatureGroupBase:
                 else `False`.
 
         # Returns
-            `ValidationReport`. The latest validation report attached to the Feature Group.
+            `ValidationReport`. The latest validation report attached to the Feature Group or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._validation_report_engine.get_last(ge_type=ge_type)
 
@@ -1239,8 +1291,8 @@ class FeatureGroupBase:
             Union[List[`ValidationReport`], `ValidationReport`]. All validation reports attached to the feature group.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
-            `hsfs.client.exceptions.FeatureStoreException`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If feature group is not registered with Hopsworks
         """
         if self._id:
             return self._validation_report_engine.get_all(ge_type=ge_type)
@@ -1292,7 +1344,8 @@ class FeatureGroupBase:
                 else `False`.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If feature group is not registered with Hopsworks
         """
         if self._id:
             if HAS_GREAT_EXPECTATIONS and isinstance(
@@ -1358,11 +1411,11 @@ class FeatureGroupBase:
                 method on hopsworks type. Defaults to `True` if Great Expectations is installed,
                 else `False`.
 
-        # Raises
-            `hsfs.client.exceptions.RestAPIError`.
-
-        # Return
+        # Returns
             Union[List[`ValidationResult`], List[`ExpectationValidationResult`]] A list of validation result connected to the expectation_id
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if self._id:
             return self._validation_result_engine.get_validation_history(
@@ -1432,7 +1485,7 @@ class FeatureGroupBase:
         # Returns
             A Validation Report produced by Great Expectations.
         """
-        # Activity is logged only if a the validation concerns the feature group and not a specific dataframe
+        # Activity is logged only if the validation concerns the feature group and not a specific dataframe
         if dataframe is None:
             dataframe = self.read()
             if ingestion_result.upper() == "UNKNOWN":
@@ -1506,16 +1559,16 @@ class FeatureGroupBase:
             config_id: If provided, fetch only the feature monitoring config with the given id.
                 Defaults to None.
 
-        # Raises
-            `hsfs.client.exceptions.RestAPIError`.
-            `hsfs.client.exceptions.FeatureStoreException`.
-            ValueError: if both name and feature_name are provided.
-            TypeError: if name or feature_name are not string or None.
-
-        # Return
+        # Returns
             Union[`FeatureMonitoringConfig`, List[`FeatureMonitoringConfig`], None]
                 A list of feature monitoring configs. If name provided,
-                returns either a single config or None if not found.
+                returns either a single config or `None` if not found.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If feature group is not registered with Hopsworks
+            `ValueError`: if both name and feature_name are provided.
+            `TypeError`: if name or feature_name are not string or None.
         """
         if not self._id:
             raise FeatureStoreException(
@@ -1570,17 +1623,17 @@ class FeatureGroupBase:
             with_statistics: Whether to include statistics in the feature monitoring history.
                 Defaults to True. If False, only metadata about the monitoring will be fetched.
 
-        # Raises
-            `hsfs.client.exceptions.RestAPIError`.
-            `hsfs.client.exceptions.FeatureStoreException`.
-            ValueError: if both config_name and config_id are provided.
-            TypeError: if config_name or config_id are not respectively string, int or None.
-
-        # Return
+        # Returns
             List[`FeatureMonitoringResult`]
                 A list of feature monitoring results containing the monitoring metadata
                 as well as the computed statistics for the detection and reference window
                 if requested.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If feature group is not registered with Hopsworks
+            `ValueError`: if both config_name and config_id are provided.
+            `TypeError`: if config_name or config_id are not respectively string, int or None.
         """
         if not self._id:
             raise FeatureStoreException(
@@ -1639,12 +1692,12 @@ class FeatureGroupBase:
                 must be in UTC and follow the Quartz specification. Default is '0 0 12 ? * * *',
                 every day at 12pm UTC.
 
-        # Raises
-            `hsfs.client.exceptions.FeatureStoreException`.
-
-        # Return
+        # Returns
             `FeatureMonitoringConfig` Configuration with minimal information about the feature monitoring.
                 Additional information are required before feature monitoring is enabled.
+
+        # Raises
+            `hopsworks.client.exceptions.FeatureStoreException`: If feature group is not registered with Hopsworks
         """
         if not self._id:
             raise FeatureStoreException(
@@ -1711,12 +1764,12 @@ class FeatureGroupBase:
                 must be in UTC and follow the Quartz specification. Default is '0 0 12 ? * * *',
                 every day at 12pm UTC.
 
-        # Raises
-            `hsfs.client.exceptions.FeatureStoreException`.
-
-        # Return
+        # Returns
             `FeatureMonitoringConfig` Configuration with minimal information about the feature monitoring.
                 Additional information are required before feature monitoring is enabled.
+
+        # Raises
+            `hopsworks.client.exceptions.FeatureStoreException`: If feature group is not registered with Hopsworks
         """
         if not self._id:
             raise FeatureStoreException(
@@ -1761,7 +1814,7 @@ class FeatureGroupBase:
         computation of the feature group.
 
         # Raises
-            `hsfs.client.exceptions.FeatureStoreException`.
+            `hopsworks.client.exceptions.FeatureStoreException`: If statistics are not supported for this feature group type
         """
         self._check_statistics_support()  # raises an error if stats not supported
         return self._statistics_config
@@ -1786,6 +1839,16 @@ class FeatureGroupBase:
                     type(statistics_config)
                 )
             )
+
+    def get_latest_online_ingestion(self) -> online_ingestion.OnlineIngestion:
+        return online_ingestion_api.OnlineIngestionApi().get_online_ingestion(
+            self, query_params={"filter_by": "LATEST"}
+        )
+
+    def get_online_ingestion(self, id) -> online_ingestion.OnlineIngestion:
+        return online_ingestion_api.OnlineIngestionApi().get_online_ingestion(
+            self, query_params={"filter_by": f"ID:{id}"}
+        )
 
     @property
     def feature_store_id(self) -> Optional[int]:
@@ -1825,7 +1888,7 @@ class FeatureGroupBase:
         """Get the latest computed statistics for the whole feature group.
 
         # Raises
-            `hsfs.client.exceptions.FeatureStoreException`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._check_statistics_support()  # raises an error if stats not supported
         return self._statistics_engine.get(self)
@@ -1837,7 +1900,9 @@ class FeatureGroupBase:
 
     @primary_key.setter
     def primary_key(self, new_primary_key: List[str]) -> None:
-        self._primary_key = [util.autofix_feature_name(pk) for pk in new_primary_key]
+        self._primary_key = [
+            util.autofix_feature_name(pk, warn=True) for pk in new_primary_key
+        ]
 
     def get_statistics(
         self,
@@ -1865,11 +1930,11 @@ class FeatureGroupBase:
                 or `%Y-%m-%d %H:%M:%S.%f`.
             feature_names: List of feature names of which statistics are retrieved.
         # Returns
-            `Statistics`. Statistics object.
+            `Statistics`. Statistics object or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`
-            `hsfs.client.exceptions.FeatureStoreException`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If statistics are not supported for this feature group type
         """
         self._check_statistics_support()  # raises an error if stats not supported
         return self._statistics_engine.get(
@@ -1903,11 +1968,11 @@ class FeatureGroupBase:
             feature_names: List of feature names of which statistics are retrieved.
 
         # Returns
-            `Statistics`. Statistics object.
+            `Statistics`. Statistics object or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`
-            `hsfs.client.exceptions.FeatureStoreException`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If statistics are not supported for this feature group type
         """
         self._check_statistics_support()  # raises an error if stats not supported
         return self._statistics_engine.get_all(
@@ -1935,8 +2000,8 @@ class FeatureGroupBase:
             `Statistics`. The statistics metadata object.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`. Unable to persist the statistics.
-            `hsfs.client.exceptions.FeatureStoreException`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If statistics are not supported for this feature group type
         """
         self._check_statistics_support()  # raises an error if stats not supported
         if self.statistics_config.enabled:
@@ -1975,7 +2040,7 @@ class FeatureGroupBase:
             self._event_time = None
             return
         elif isinstance(feature_name, str):
-            self._event_time = feature_name
+            self._event_time = util.autofix_feature_name(feature_name, warn=True)
             return
         elif isinstance(feature_name, list) and len(feature_name) == 1:
             if isinstance(feature_name[0], str):
@@ -1985,7 +2050,7 @@ class FeatureGroupBase:
                     DeprecationWarning,
                     stacklevel=2,
                 )
-                self._event_time = feature_name[0]
+                self._event_time = util.autofix_feature_name(feature_name[0], warn=True)
                 return
 
         raise ValueError(
@@ -2056,16 +2121,12 @@ class FeatureGroupBase:
         self._online_enabled = online_enabled
 
     @property
-    def path(self) -> Optional[str]:
-        return self._path
-
-    @property
     def storage_connector(self) -> "sc.StorageConnector":
         return self._storage_connector
 
     def prepare_spark_location(self) -> str:
         location = self.location
-        if (self.storage_connector is not None):
+        if self.storage_connector is not None:
             location = self.storage_connector.prepare_spark(location)
         return location
 
@@ -2095,6 +2156,10 @@ class FeatureGroupBase:
     @deprecated.setter
     def deprecated(self, deprecated: bool) -> None:
         self._deprecated = deprecated
+
+    @property
+    def data_source(self) -> Optional[ds.DataSource]:
+        return self._data_source
 
     @property
     def subject(self) -> Dict[str, Any]:
@@ -2216,6 +2281,7 @@ class FeatureGroup(FeatureGroupBase):
         description: Optional[str] = "",
         partition_key: Optional[List[str]] = None,
         primary_key: Optional[List[str]] = None,
+        foreign_key: Optional[List[str]] = None,
         hudi_precombine_key: Optional[str] = None,
         featurestore_name: Optional[str] = None,
         embedding_index: Optional["EmbeddingIndex"] = None,
@@ -2256,7 +2322,12 @@ class FeatureGroup(FeatureGroupBase):
         ] = None,
         offline_backfill_every_hr: Optional[Union[str, int]] = None,
         storage_connector: Union[sc.StorageConnector, Dict[str, Any]] = None,
-        path: Optional[str] = None,
+        data_source: Optional[
+            Union[
+                ds.DataSource,
+                Dict[str, Any],
+            ]
+        ] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -2275,7 +2346,7 @@ class FeatureGroup(FeatureGroupBase):
             deprecated=deprecated,
             online_config=online_config,
             storage_connector=storage_connector,
-            path=path,
+            data_source=data_source,
         )
         self._feature_store_name: Optional[str] = featurestore_name
         self._description: Optional[str] = description
@@ -2302,6 +2373,9 @@ class FeatureGroup(FeatureGroupBase):
             self.primary_key: List[str] = [
                 feat.name for feat in self._features if feat.primary is True
             ]
+            self.foreign_key: List[str] = [
+                feat.name for feat in self._features if feat.foreign is True
+            ]
             self._partition_key: List[str] = [
                 feat.name for feat in self._features if feat.partition is True
             ]
@@ -2327,27 +2401,17 @@ class FeatureGroup(FeatureGroupBase):
             # for python engine we always use stream feature group
             if engine.get_type() == "python":
                 self._stream = True
-            # for stream feature group time travel format is always HUDI
-            if self._stream:
-                expected_format = "HUDI"
-                if self._time_travel_format != expected_format:
-                    warnings.warn(
-                        (
-                            "The provided time travel format `{}` has been overwritten "
-                            "because Stream enabled feature groups only support `{}`"
-                        ).format(self._time_travel_format, expected_format),
-                        util.FeatureGroupWarning,
-                        stacklevel=1,
-                    )
-                    self._time_travel_format = expected_format
 
             self.primary_key = primary_key
+            self.foreign_key = foreign_key
             self.partition_key = partition_key
             self._hudi_precombine_key = (
-                util.autofix_feature_name(hudi_precombine_key)
+                util.autofix_feature_name(hudi_precombine_key, warn=True)
                 if hudi_precombine_key is not None
-                and self._time_travel_format is not None
-                and self._time_travel_format == "HUDI"
+                and (
+                    self._time_travel_format is None
+                    or self._time_travel_format == "HUDI"
+                )
                 else None
             )
             self.statistics_config = statistics_config
@@ -2379,7 +2443,11 @@ class FeatureGroup(FeatureGroupBase):
                         )
                     )
                 else:
-                    if not transformation_function.transformation_type:
+                    if (
+                        not transformation_function.transformation_type
+                        or transformation_function.transformation_type
+                        == TransformationType.UNDEFINED
+                    ):
                         transformation_function.transformation_type = (
                             TransformationType.ON_DEMAND
                         )
@@ -2475,7 +2543,7 @@ class FeatureGroup(FeatureGroupBase):
             `list`. A two-dimensional Python list.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`. No data is available for feature group with this commit date, If time travel enabled.
+            `hopsworks.client.exceptions.RestAPIError`: No data is available for feature group with this commit date, If time travel enabled.
         """
         if wallclock_time and self._time_travel_format is None:
             raise FeatureStoreException(
@@ -2552,8 +2620,8 @@ class FeatureGroup(FeatureGroupBase):
             feature data.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.  No data is available for feature group with this commit date.
-            `hsfs.client.exceptions.FeatureStoreException`. If the feature group does not have `HUDI` time travel format
+            `hopsworks.client.exceptions.RestAPIError`: No data is available for feature group with this commit date.
+            `hopsworks.client.exceptions.FeatureStoreException`: If the feature group does not have `HUDI` time travel format
         """
         return (
             self.select_all()
@@ -2694,12 +2762,15 @@ class FeatureGroup(FeatureGroupBase):
                 When using the `python` engine, write_options can contain the
                 following entries:
                 * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../job_configuration)
+                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
                   to configure the Hopsworks Job used to write data into the
                   feature group.
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the save call should return only
                   after the Hopsworks Job has finished. By default it does not wait.
+                * key `wait_for_online_ingestion` and value `True` or `False` to configure
+                  whether or not to the save call should return only
+                  after the Hopsworks online ingestion has finished. By default it does not wait.
                 * key `start_offline_backfill` and value `True` or `False` to configure
                   whether or not to start the materialization job to write data to the offline
                   storage. `start_offline_backfill` is deprecated. Use `start_offline_materialization` instead.
@@ -2717,20 +2788,25 @@ class FeatureGroup(FeatureGroupBase):
                 * key `run_validation` boolean value, set to `False` to skip validation temporarily on ingestion.
                 * key `save_report` boolean value, set to `False` to skip upload of the validation report to Hopsworks.
                 * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
-            wait: Wait for job to finish before returning, defaults to `False`.
-                Shortcut for read_options `{"wait_for_job": False}`.
+                * key `online_schema_validation` boolean value, set to `True` to validate the schema for online ingestion.
+            wait: Wait for job and online ingestion to finish before returning, defaults to `False`.
+                Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
 
         # Returns
             `Job`: When using the `python` engine, it returns the Hopsworks Job
                 that was launched to ingest the feature group data.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`. Unable to create feature group.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        if (features is None and len(self._features) > 0) or (
-            isinstance(features, List)
-            and len(features) > 0
-            and all([isinstance(f, feature.Feature) for f in features])
+        if (
+            (features is None and len(self._features) > 0)
+            or (
+                isinstance(features, list)
+                and len(features) > 0
+                and all([isinstance(f, feature.Feature) for f in features])
+            )
+            or (features is None and len(self.transformation_functions) > 0)
         ):
             # This is done for compatibility. Users can specify the feature list in the
             # (get_or_)create_feature_group. Users can also provide the feature list in the save().
@@ -2739,7 +2815,13 @@ class FeatureGroup(FeatureGroupBase):
             # and in the `save()` call, then the (get_or_)create_feature_group wins.
             # This is consistent with the behavior of the insert method where the feature list wins over the
             # dataframe structure
-            self._features = self._features if len(self._features) > 0 else features
+            self._features = (
+                self._features
+                if len(self._features) > 0
+                else features
+                if features
+                else []
+            )
 
             self._features = self._feature_group_engine._update_feature_group_schema_on_demand_transformations(
                 self, self._features
@@ -2765,6 +2847,8 @@ class FeatureGroup(FeatureGroupBase):
             write_options = {}
         if "wait_for_job" not in write_options:
             write_options["wait_for_job"] = wait
+        if "wait_for_online_ingestion" not in write_options:
+            write_options["wait_for_online_ingestion"] = wait
 
         # fg_job is used only if the python engine is used
         fg_job, ge_report = self._feature_group_engine.save(
@@ -2804,6 +2888,8 @@ class FeatureGroup(FeatureGroupBase):
         write_options: Optional[Dict[str, Any]] = None,
         validation_options: Optional[Dict[str, Any]] = None,
         wait: bool = False,
+        transformation_context: Dict[str, Any] = None,
+        transform: bool = True,
     ) -> Tuple[Optional[Job], Optional[ValidationReport]]:
         """Persist the metadata and materialize the feature group to the feature store
         or insert data from a dataframe into the existing feature group.
@@ -2883,12 +2969,15 @@ class FeatureGroup(FeatureGroupBase):
                 When using the `python` engine, write_options can contain the
                 following entries:
                 * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../job_configuration)
+                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
                   to configure the Hopsworks Job used to write data into the
                   feature group.
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the insert call should return only
                   after the Hopsworks Job has finished. By default it waits.
+                * key `wait_for_online_ingestion` and value `True` or `False` to configure
+                  whether or not to the save call should return only
+                  after the Hopsworks online ingestion has finished. By default it does not wait.
                 * key `start_offline_backfill` and value `True` or `False` to configure
                   whether or not to start the materialization job to write data to the offline
                   storage. `start_offline_backfill` is deprecated. Use `start_offline_materialization` instead.
@@ -2908,16 +2997,20 @@ class FeatureGroup(FeatureGroupBase):
                 * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
                 * key `fetch_expectation_suite` a boolean value, by default `True`, to control whether the expectation
                    suite of the feature group should be fetched before every insert.
-            wait: Wait for job to finish before returning, defaults to `False`.
-                Shortcut for read_options `{"wait_for_job": False}`.
+                * key `online_schema_validation` boolean value, set to `True` to validate the schema for online ingestion.
+            wait: Wait for job and online ingestion to finish before returning, defaults to `False`.
+                Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            transform: `bool`. When set to `False`, the dataframe is inserted without applying any on-demand transformations. In this case, all required on-demand features must already exist in the provided dataframe. Defaults to `True`.
 
         # Returns
             (`Job`, `ValidationReport`) A tuple with job information if python engine is used and the validation report if validation is enabled.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`. e.g fail to create feature group, dataframe schema does not match
+            `hopsworks.client.exceptions.RestAPIError`: e.g fail to create feature group, dataframe schema does not match
                 existing feature group schema, etc.
-            `hsfs.client.exceptions.DataValidationException`. If data validation fails and the expectation
+            `hsfs.client.exceptions.DataValidationException`: If data validation fails and the expectation
                 suite `validation_ingestion_policy` is set to `STRICT`. Data is NOT ingested.
         """
         if storage and self.stream:
@@ -2934,6 +3027,8 @@ class FeatureGroup(FeatureGroupBase):
             write_options = {}
         if "wait_for_job" not in write_options:
             write_options["wait_for_job"] = wait
+        if "wait_for_online_ingestion" not in write_options:
+            write_options["wait_for_online_ingestion"] = wait
         if not self._id and self._offline_backfill_every_hr is not None:
             write_options["offline_backfill_every_hr"] = self._offline_backfill_every_hr
 
@@ -2945,6 +3040,8 @@ class FeatureGroup(FeatureGroupBase):
             storage=storage.lower() if storage is not None else None,
             write_options=write_options,
             validation_options={"save_report": True, **validation_options},
+            transformation_context=transformation_context,
+            transform=transform,
         )
 
         if engine.get_type().startswith("spark") and not self.stream:
@@ -2974,6 +3071,8 @@ class FeatureGroup(FeatureGroupBase):
         storage: Optional[str] = None,
         write_options: Optional[Dict[str, Any]] = None,
         validation_options: Optional[Dict[str, Any]] = None,
+        transformation_context: Dict[str, Any] = None,
+        transform: bool = True,
     ) -> Union[
         Tuple[Optional[Job], Optional[ValidationReport]],
         feature_group_writer.FeatureGroupWriter,
@@ -3046,7 +3145,7 @@ class FeatureGroup(FeatureGroupBase):
                 When using the `python` engine, write_options can contain the
                 following entries:
                 * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../job_configuration)
+                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
                   to configure the Hopsworks Job used to write data into the
                   feature group.
                 * key `wait_for_job` and value `True` or `False` to configure
@@ -3072,6 +3171,9 @@ class FeatureGroup(FeatureGroupBase):
                 * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
                 * key `fetch_expectation_suite` a boolean value, by default `False` for multi part inserts,
                    to control whether the expectation suite of the feature group should be fetched before every insert.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            transform: `bool`. When set to `False`, the dataframe is inserted without applying any on-demand transformations. In this case, all required on-demand features must already exist in the provided dataframe. Defaults to `True`.
 
         # Returns
             (`Job`, `ValidationReport`) A tuple with job information if python engine is used and the validation report if validation is enabled.
@@ -3090,6 +3192,8 @@ class FeatureGroup(FeatureGroupBase):
                 storage,
                 write_options or {},
                 validation_options or {},
+                transformation_context,
+                transform=transform,
             )
 
     def finalize_multi_part_insert(self) -> None:
@@ -3132,6 +3236,8 @@ class FeatureGroup(FeatureGroupBase):
         timeout: Optional[int] = None,
         checkpoint_dir: Optional[str] = None,
         write_options: Optional[Dict[str, Any]] = None,
+        transformation_context: Dict[str, Any] = None,
+        transform: bool = True,
     ) -> TypeVar("StreamingQuery"):
         """Ingest a Spark Structured Streaming Dataframe to the online feature store.
 
@@ -3185,6 +3291,9 @@ class FeatureGroup(FeatureGroupBase):
                 "insert_stream_" + online_topic_name. Defaults to `None`.
                 write_options: Additional write options for Spark as key-value pairs.
                 Defaults to `{}`.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            transform: `bool`. When set to `False`, the dataframe is inserted without applying any on-demand transformations. In this case, all required on-demand features must already exist in the provided dataframe. Defaults to `True`.
 
         # Returns
             `StreamingQuery`: Spark Structured Streaming Query object.
@@ -3219,6 +3328,8 @@ class FeatureGroup(FeatureGroupBase):
                 timeout,
                 checkpoint_dir,
                 write_options or {},
+                transformation_context=transformation_context,
+                transform=transform,
             )
 
     def commit_details(
@@ -3251,8 +3362,8 @@ class FeatureGroup(FeatureGroupBase):
             is `Dict[str, str]` with key value pairs of date committed on, number of rows updated, inserted and deleted.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
-            `hsfs.client.exceptions.FeatureStoreException`. If the feature group does not have `HUDI` time travel format
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If the feature group does not have `HUDI` time travel format
         """
         return self._feature_group_engine.commit_details(self, wallclock_time, limit)
 
@@ -3269,7 +3380,7 @@ class FeatureGroup(FeatureGroupBase):
             write_options: User provided write options. Defaults to `{}`.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._feature_group_engine.commit_delete(self, delete_df, write_options or {})
 
@@ -3277,7 +3388,7 @@ class FeatureGroup(FeatureGroupBase):
         self,
         retention_hours: int = None,
     ) -> None:
-        """ Vacuum files that are no longer referenced by a Delta table and are older than the retention threshold.
+        """Vacuum files that are no longer referenced by a Delta table and are older than the retention threshold.
         This method can only be used on feature groups stored as DELTA.
 
         !!! example
@@ -3289,12 +3400,12 @@ class FeatureGroup(FeatureGroupBase):
             fg = fs.get_or_create_feature_group(...)
 
             commit_details = fg.delta_vacuum(retention_hours = 168)
-
+            ```
         # Arguments
             retention_hours: User provided retention period. The default retention threshold for the files is 7 days.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._feature_group_engine.delta_vacuum(self, retention_hours)
 
@@ -3423,9 +3534,9 @@ class FeatureGroup(FeatureGroupBase):
                 or `%Y-%m-%d %H:%M:%S.%f`.
             feature_names: List of feature names of which statistics are retrieved.
         # Returns
-            `Statistics`. Statistics object.
+            `Statistics`. Statistics object or `None` if it does not exist.
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if not self._is_time_travel_enabled():
             raise ValueError("Time travel is not enabled for this feature group")
@@ -3456,7 +3567,7 @@ class FeatureGroup(FeatureGroupBase):
             `Statistics`. The statistics metadata object.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`. Unable to persist the statistics.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if self.statistics_config.enabled:
             if self._is_time_travel_enabled() or wallclock_time is not None:
@@ -3606,8 +3717,9 @@ class FeatureGroup(FeatureGroupBase):
             "transformationFunctions": [
                 tf.to_dict() for tf in self._transformation_functions
             ],
-            "path": self._path,
         }
+        if self._data_source:
+            fg_meta_dict["dataSource"] = self._data_source.to_dict()
         if self._online_config:
             fg_meta_dict["onlineConfig"] = self._online_config.to_dict()
         if self.embedding_index:
@@ -3735,12 +3847,14 @@ class FeatureGroup(FeatureGroupBase):
     @partition_key.setter
     def partition_key(self, new_partition_key: List[str]) -> None:
         self._partition_key = [
-            util.autofix_feature_name(pk) for pk in new_partition_key
+            util.autofix_feature_name(pk, warn=True) for pk in new_partition_key
         ]
 
     @hudi_precombine_key.setter
     def hudi_precombine_key(self, hudi_precombine_key: str) -> None:
-        self._hudi_precombine_key = util.autofix_feature_name(hudi_precombine_key)
+        self._hudi_precombine_key = util.autofix_feature_name(
+            hudi_precombine_key, warn=True
+        )
 
     @stream.setter
     def stream(self, stream: bool) -> None:
@@ -3798,14 +3912,13 @@ class ExternalFeatureGroup(FeatureGroupBase):
     def __init__(
         self,
         storage_connector: Union[sc.StorageConnector, Dict[str, Any]],
-        query: Optional[str] = None,
         data_format: Optional[str] = None,
-        path: Optional[str] = None,
         options: Optional[Dict[str, Any]] = None,
         name: Optional[str] = None,
         version: Optional[int] = None,
         description: Optional[str] = None,
         primary_key: Optional[List[str]] = None,
+        foreign_key: Optional[List[str]] = None,
         featurestore_id: Optional[int] = None,
         featurestore_name: Optional[str] = None,
         created: Optional[str] = None,
@@ -3836,6 +3949,12 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 Dict[str, Any],
             ]
         ] = None,
+        data_source: Optional[
+            Union[
+                ds.DataSource,
+                Dict[str, Any],
+            ]
+        ] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -3854,14 +3973,13 @@ class ExternalFeatureGroup(FeatureGroupBase):
             deprecated=deprecated,
             online_config=online_config,
             storage_connector=storage_connector,
-            path=path,
+            data_source=data_source,
         )
 
         self._feature_store_name = featurestore_name
         self._description = description
         self._created = created
         self._creator = user.User.from_response_json(creator)
-        self._query = query
         self._data_format = data_format.upper() if data_format else None
 
         self._features = [
@@ -3875,18 +3993,13 @@ class ExternalFeatureGroup(FeatureGroupBase):
 
         if self._id:
             # Got from Hopsworks, deserialize features and storage connector
-            self._features = (
-                [
-                    feature.Feature.from_response_json(feat)
-                    if isinstance(feat, dict)
-                    else feat
-                    for feat in features
-                ]
-                if features
-                else None
-            )
             self.primary_key = (
                 [feat.name for feat in self._features if feat.primary is True]
+                if self._features
+                else []
+            )
+            self.foreign_key = (
+                [feat.name for feat in self._features if feat.foreign is True]
                 if self._features
                 else []
             )
@@ -3899,8 +4012,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
             )
         else:
             self.primary_key = primary_key
+            self.foreign_key = foreign_key
             self.statistics_config = statistics_config
-            self._features = features
             self._options = options or {}
 
         self._vector_db_client: Optional["VectorDbClient"] = None
@@ -3981,6 +4094,12 @@ class ExternalFeatureGroup(FeatureGroupBase):
             write_options: Additional write options as key-value pairs, defaults to `{}`.
                 When using the `python` engine, write_options can contain the
                 following entries:
+                * key `wait_for_job` and value `True` or `False` to configure
+                  whether or not to the insert call should return only
+                  after the Hopsworks Job has finished. By default it waits.
+                * key `wait_for_online_ingestion` and value `True` or `False` to configure
+                  whether or not to the save call should return only
+                  after the Hopsworks online ingestion has finished. By default it does not wait.
                 * key `kafka_producer_config` and value an object of type [properties](https://docs.confluent.io/platform/current/clients/librdkafka/html/md_CONFIGURATION.htmln)
                   used to configure the Kafka client. To optimize for throughput in high latency connection consider
                   changing [producer properties](https://docs.confluent.io/cloud/current/client-apps/optimizing/throughput.html#producer).
@@ -3994,14 +4113,16 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
                 * key `fetch_expectation_suite` a boolean value, by default `True`, to control whether the expectation
                    suite of the feature group should be fetched before every insert.
+            wait: Wait for job and online ingestion to finish before returning, defaults to `False`.
+                Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
 
         # Returns
             Tuple(None, `ge.core.ExpectationSuiteValidationResult`) The validation report if validation is enabled.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`. e.g fail to create feature group, dataframe schema does not match
+            `hopsworks.client.exceptions.RestAPIError`: e.g fail to create feature group, dataframe schema does not match
                 existing feature group schema, etc.
-            `hsfs.client.exceptions.DataValidationException`. If data validation fails and the expectation
+            `hsfs.client.exceptions.DataValidationException`: If data validation fails and the expectation
                 suite `validation_ingestion_policy` is set to `STRICT`. Data is NOT ingested.
 
         """
@@ -4013,6 +4134,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
             write_options = {}
         if "wait_for_job" not in write_options:
             write_options["wait_for_job"] = wait
+        if "wait_for_online_ingestion" not in write_options:
+            write_options["wait_for_online_ingestion"] = wait
 
         job, ge_report = self._feature_group_engine.insert(
             self,
@@ -4085,7 +4208,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
             `list`. A two-dimensional Python list.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If trying to read an external feature group directly in
         """
 
         if (
@@ -4253,9 +4377,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
             "version": self._version,
             "features": self._features,
             "featurestoreId": self._feature_store_id,
-            "query": self._query,
             "dataFormat": self._data_format,
-            "path": self._path,
             "options": [{"name": k, "value": v} for k, v in self._options.items()]
             if self._options
             else None,
@@ -4270,6 +4392,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
             "notificationTopicName": self.notification_topic_name,
             "deprecated": self.deprecated,
         }
+        if self._data_source:
+            fg_meta_dict["dataSource"] = self._data_source.to_dict()
         if self._online_config:
             fg_meta_dict["onlineConfig"] = self._online_config.to_dict()
         if self.embedding_index:
@@ -4283,10 +4407,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
     @property
     def description(self) -> Optional[str]:
         return self._description
-
-    @property
-    def query(self) -> Optional[str]:
-        return self._query
 
     @property
     def data_format(self) -> Optional[str]:
@@ -4326,7 +4446,6 @@ class SpineGroup(FeatureGroupBase):
         ] = None,
         query: Optional[str] = None,
         data_format: Optional[str] = None,
-        path: Optional[str] = None,
         options: Dict[str, Any] = None,
         name: Optional[str] = None,
         version: Optional[int] = None,
@@ -4360,6 +4479,12 @@ class SpineGroup(FeatureGroupBase):
                 Dict[str, Any],
             ]
         ] = None,
+        data_source: Optional[
+            Union[
+                ds.DataSource,
+                Dict[str, Any],
+            ]
+        ] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -4375,6 +4500,7 @@ class SpineGroup(FeatureGroupBase):
             topic_name=topic_name,
             deprecated=deprecated,
             online_config=online_config,
+            data_source=data_source,
         )
 
         self._feature_store_name = featurestore_name

@@ -17,20 +17,23 @@
 import json
 import logging
 import os
+import re
 import warnings
 from typing import Any, Dict, Optional, Union
 
 import humps
-from hopsworks_common import usage
-from hsml import client, util
-from hsml.constants import ARTIFACT_VERSION
-from hsml.constants import INFERENCE_ENDPOINTS as IE
+from hopsworks_common import client, usage, util
+from hopsworks_common.constants import ARTIFACT_VERSION, MODEL_REGISTRY
+from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
+from hsml import deployment, tag
 from hsml.core import explicit_provenance
 from hsml.engine import model_engine
 from hsml.inference_batcher import InferenceBatcher
 from hsml.inference_logger import InferenceLogger
+from hsml.model_schema import ModelSchema
 from hsml.predictor import Predictor
 from hsml.resources import PredictorResources
+from hsml.schema import Schema
 from hsml.transformer import Transformer
 
 
@@ -38,6 +41,7 @@ _logger = logging.getLogger(__name__)
 
 
 class Model:
+    NOT_FOUND_ERROR_CODE = 360000
     """Metadata object representing a model in the Model Registry."""
 
     def __init__(
@@ -54,7 +58,6 @@ class Model:
         program=None,
         user_full_name=None,
         model_schema=None,
-        training_dataset=None,
         input_example=None,
         framework=None,
         model_registry_id=None,
@@ -84,7 +87,6 @@ class Model:
         self._input_example = input_example
         self._framework = framework
         self._model_schema = model_schema
-        self._training_dataset = training_dataset
 
         # This is needed for update_from_response_json function to not overwrite name of the shared registry this model originates from
         if not hasattr(self, "_shared_registry_project_name"):
@@ -95,17 +97,6 @@ class Model:
         self._model_engine = model_engine.ModelEngine()
         self._feature_view = feature_view
         self._training_dataset_version = training_dataset_version
-        if training_dataset_version is None and feature_view is not None:
-            if feature_view.get_last_accessed_training_dataset() is not None:
-                self._training_dataset_version = (
-                    feature_view.get_last_accessed_training_dataset()
-                )
-            else:
-                warnings.warn(
-                    "Provenance cached data - feature view provided, but training dataset version is missing",
-                    util.ProvenanceWarning,
-                    stacklevel=1,
-                )
 
     @usage.method_logger
     def save(
@@ -130,7 +121,42 @@ class Model:
 
         # Returns
             `Model`: The model metadata object.
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
+        if self._training_dataset_version is None and self._feature_view is not None:
+            if self._feature_view.get_last_accessed_training_dataset() is not None:
+                self._training_dataset_version = (
+                    self._feature_view.get_last_accessed_training_dataset()
+                )
+            else:
+                warnings.warn(
+                    "Provenance cached data - feature view provided, but training dataset version is missing",
+                    util.ProvenanceWarning,
+                    stacklevel=1,
+                )
+        if self._model_schema is None:
+            if (
+                self._feature_view is not None
+                and self._training_dataset_version is not None
+            ):
+                all_features = self._feature_view.get_training_dataset_schema(
+                    self._training_dataset_version
+                )
+                features, labels = [], []
+                for feature in all_features:
+                    (labels if feature.label else features).append(feature.to_dict())
+                self._model_schema = ModelSchema(
+                    input_schema=Schema(features) if features else None,
+                    output_schema=Schema(labels) if labels else None,
+                )
+            else:
+                warnings.warn(
+                    "Model schema cannot not be inferred without both the feature view and the training dataset version.",
+                    util.ProvenanceWarning,
+                    stacklevel=1,
+                )
+
         return self._model_engine.save(
             model_instance=self,
             model_path=model_path,
@@ -140,13 +166,17 @@ class Model:
         )
 
     @usage.method_logger
-    def download(self):
+    def download(self, local_path=None) -> str:
         """Download the model files.
 
+        # Arguments
+            local_path: path where to download the model files in the local filesystem
         # Returns
             `str`: Absolute path to local folder containing the model files.
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
-        return self._model_engine.download(model_instance=self)
+        return self._model_engine.download(model_instance=self, local_path=local_path)
 
     @usage.method_logger
     def delete(self):
@@ -157,7 +187,7 @@ class Model:
             model **and** deletes the model files.
 
         # Raises
-            `RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
         self._model_engine.delete(model_instance=self)
 
@@ -169,13 +199,14 @@ class Model:
         artifact_version: Optional[str] = ARTIFACT_VERSION.CREATE,
         serving_tool: Optional[str] = None,
         script_file: Optional[str] = None,
+        config_file: Optional[str] = None,
         resources: Optional[Union[PredictorResources, dict]] = None,
         inference_logger: Optional[Union[InferenceLogger, dict]] = None,
         inference_batcher: Optional[Union[InferenceBatcher, dict]] = None,
         transformer: Optional[Union[Transformer, dict]] = None,
         api_protocol: Optional[str] = IE.API_PROTOCOL_REST,
         environment: Optional[str] = None,
-    ):
+    ) -> deployment.Deployment:
         """Deploy the model.
 
         !!! example
@@ -200,6 +231,9 @@ class Model:
             or `MODEL-ONLY` to reuse the shared artifact containing only the model files.
             serving_tool: Serving tool used to deploy the model server.
             script_file: Path to a custom predictor script implementing the Predict class.
+            config_file: Model server configuration file to be passed to the model deployment.
+                It can be accessed via `CONFIG_FILE_PATH` environment variable from a predictor or transformer script.
+                For LLM deployments without a predictor script, this file is used to configure the vLLM engine.
             resources: Resources to be allocated for the predictor.
             inference_logger: Inference logger configuration.
             inference_batcher: Inference batcher configuration.
@@ -209,10 +243,13 @@ class Model:
 
         # Returns
             `Deployment`: The deployment metadata object of a new or existing deployment.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
 
         if name is None:
-            name = self._name
+            name = self._get_default_serving_name()
 
         predictor = Predictor.for_model(
             self,
@@ -221,6 +258,7 @@ class Model:
             artifact_version=artifact_version,
             serving_tool=serving_tool,
             script_file=script_file,
+            config_file=config_file,
             resources=resources,
             inference_logger=inference_logger,
             inference_batcher=inference_batcher,
@@ -232,7 +270,7 @@ class Model:
         return predictor.deploy()
 
     @usage.method_logger
-    def set_tag(self, name: str, value: Union[str, dict]):
+    def add_tag(self, name: str, value: Union[str, dict]):
         """Attach a tag to a model.
 
         A tag consists of a <name,value> pair. Tag names are unique identifiers across the whole cluster.
@@ -241,10 +279,22 @@ class Model:
         # Arguments
             name: Name of the tag to be added.
             value: Value of the tag to be added.
-        # Raises
-            `RestAPIError` in case the backend fails to add the tag.
-        """
 
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to add the tag.
+        """
+        self._model_engine.set_tag(model_instance=self, name=name, value=value)
+
+    @usage.method_logger
+    def set_tag(self, name: str, value: Union[str, dict]):
+        """
+        Deprecated: Use add_tag instead.
+        """
+        warnings.warn(
+            "The set_tag method is deprecated. Please use add_tag instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._model_engine.set_tag(model_instance=self, name=name, value=value)
 
     @usage.method_logger
@@ -254,29 +304,29 @@ class Model:
         # Arguments
             name: Name of the tag to be removed.
         # Raises
-            `RestAPIError` in case the backend fails to delete the tag.
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to delete the tag.
         """
         self._model_engine.delete_tag(model_instance=self, name=name)
 
-    def get_tag(self, name: str):
+    def get_tag(self, name: str) -> Optional[str]:
         """Get the tags of a model.
 
         # Arguments
             name: Name of the tag to get.
         # Returns
-            tag value
+            tag value or `None` if it does not exist.
         # Raises
-            `RestAPIError` in case the backend fails to retrieve the tag.
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the tag.
         """
         return self._model_engine.get_tag(model_instance=self, name=name)
 
-    def get_tags(self):
+    def get_tags(self) -> Dict[str, tag.Tag]:
         """Retrieves all tags attached to a model.
 
         # Returns
             `Dict[str, obj]` of tags.
         # Raises
-            `RestAPIError` in case the backend fails to retrieve the tags.
+            `hopsworks.client.exceptions.RestAPIError` in case the backend fails to retrieve the tags.
         """
         return self._model_engine.get_tags(model_instance=self)
 
@@ -291,15 +341,18 @@ class Model:
         )
         return util.get_hostname_replaced_url(sub_path=path)
 
-    def get_feature_view(self, init: bool = True, online: Optional[bool] = None):
+    def get_feature_view(self, init: bool = True, online: bool = False):
         """Get the parent feature view of this model, based on explicit provenance.
          Only accessible, usable feature view objects are returned. Otherwise an Exception is raised.
          For more details, call the base method - get_feature_view_provenance
 
+         # Arguments
+            init: By default this is set to True. If you require a more complex initialization of the feature view for online or batch scenarios, you should set `init` to False to retrieve a non initialized feature view and then call `init_batch_scoring()` or `init_serving()` with the required parameters.
+            online: By default this is set to False and the initialization for batch scoring is considered the default scenario. If you set `online` to True, the online scenario is enabled and the `init_serving()` method is called. When inside a deployment, the only available scenario is the online one, thus the parameter is ignored and init_serving is always called (if `init` is set to True). If you want to override this behaviour, you should set `init` to False and proceed with a custom initialization.
         # Returns
-            `FeatureView`: Feature View Object.
+            `FeatureView`: Feature View Object or `None` if it does not exist.
         # Raises
-            `Exception` in case the backend fails to retrieve the tags.
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the feature view.
         """
         fv_prov = self.get_feature_view_provenance()
         fv = explicit_provenance.Links.get_one_accessible_parent(fv_prov)
@@ -320,27 +373,34 @@ class Model:
                 fv.init_batch_scoring(training_dataset_version=td.version)
         return fv
 
-    def get_feature_view_provenance(self):
+    def get_feature_view_provenance(self) -> explicit_provenance.Links:
         """Get the parent feature view of this model, based on explicit provenance.
         This feature view can be accessible, deleted or inaccessible.
         For deleted and inaccessible feature views, only a minimal information is
         returned.
 
         # Returns
-            `ProvenanceLinks`: Object containing the section of provenance graph requested.
+            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the feature view provenance
         """
         return self._model_engine.get_feature_view_provenance(model_instance=self)
 
-    def get_training_dataset_provenance(self):
+    def get_training_dataset_provenance(self) -> explicit_provenance.Links:
         """Get the parent training dataset of this model, based on explicit provenance.
         This training dataset can be accessible, deleted or inaccessible.
         For deleted and inaccessible training datasets, only a minimal information is
         returned.
 
         # Returns
-            `ProvenanceLinks`: Object containing the section of provenance graph requested.
+            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the training dataset provenance
         """
         return self._model_engine.get_training_dataset_provenance(model_instance=self)
+
+    def _get_default_serving_name(self):
+        return re.sub(r"[^a-zA-Z0-9]", "", self._name)
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -360,7 +420,7 @@ class Model:
         return self
 
     def json(self):
-        return json.dumps(self, cls=util.MLEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
         return {
@@ -373,7 +433,6 @@ class Model:
             "inputExample": self._input_example,
             "framework": self._framework,
             "metrics": self._training_metrics,
-            "trainingDataset": self._training_dataset,
             "environment": self._environment,
             "program": self._program,
             "featureView": util.feature_view_to_json(self._feature_view),
@@ -509,15 +568,6 @@ class Model:
         self._model_schema = model_schema
 
     @property
-    def training_dataset(self):
-        """training_dataset of the model."""
-        return self._training_dataset
-
-    @training_dataset.setter
-    def training_dataset(self, training_dataset):
-        self._training_dataset = training_dataset
-
-    @property
     def project_name(self):
         """project_name of the model."""
         return self._project_name
@@ -544,6 +594,14 @@ class Model:
     def version_path(self):
         """path of the model including version folder. Resolves to /Projects/{project_name}/Models/{name}/{version}"""
         return "{}/{}".format(self.model_path, str(self.version))
+
+    @property
+    def model_files_path(self):
+        """path of the model files including version and files folder. Resolves to /Projects/{project_name}/Models/{name}/{version}/Files"""
+        return "{}/{}".format(
+            self.version_path,
+            MODEL_REGISTRY.MODEL_FILES_DIR_NAME,
+        )
 
     @property
     def shared_registry_project_name(self):

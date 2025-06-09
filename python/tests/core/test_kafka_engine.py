@@ -15,8 +15,9 @@
 #
 import importlib
 
-from hsfs import storage_connector
-from hsfs.core import constants, kafka_engine
+from hopsworks_common.core import constants
+from hsfs import feature_group, storage_connector
+from hsfs.core import kafka_engine, online_ingestion
 
 
 if constants.HAS_CONFLUENT_KAFKA:
@@ -340,7 +341,7 @@ class TestKafkaEngine:
         )
 
         # Assert
-        assert result == f" -initialCheckPointString {topic_name},0:11"
+        assert result == f"{topic_name},0:11"
 
     def test_kafka_get_offsets_low(self, mocker):
         # Arrange
@@ -372,7 +373,7 @@ class TestKafkaEngine:
         )
 
         # Assert
-        assert result == f" -initialCheckPointString {topic_name},0:0"
+        assert result == f"{topic_name},0:0"
 
     def test_kafka_get_offsets_no_topic(self, mocker):
         # Arrange
@@ -413,6 +414,7 @@ class TestKafkaEngine:
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
 
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
         # Act
@@ -455,6 +457,7 @@ class TestKafkaEngine:
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
 
         # Act
         results = kafka_engine.get_kafka_config(
@@ -496,6 +499,7 @@ class TestKafkaEngine:
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
 
         # Act
         results = kafka_engine.get_kafka_config(
@@ -523,3 +527,61 @@ class TestKafkaEngine:
             mock_storage_connector_api.return_value.get_kafka_connector.call_args[0][1]
             is False
         )
+
+    def test_get_headers(self, mocker, backend_fixtures):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+
+        fg = feature_group.FeatureGroup(
+            id=111,
+            name="test",
+            version=1,
+            featurestore_id=99,
+        )
+        fg.feature_store = mocker.Mock()
+        fg.feature_store.project_id = 234
+
+        fg._subject = {"id": 823}
+
+        # Act
+        results = kafka_engine.get_headers(fg, num_entries=10)
+
+        # Assert
+        assert results == {
+            "featureGroupId": b"111",
+            "projectId": b"234",
+            "subjectId": b"823",
+        }
+
+    def test_get_headers_online_ingestion(self, mocker, backend_fixtures):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mock_online_ingestion_api = mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi"
+        )
+        json = backend_fixtures["online_ingestion"]["get"]["response"]
+        oi = online_ingestion.OnlineIngestion.from_response_json(json)
+        mock_online_ingestion_api.return_value.create_online_ingestion.return_value = oi
+
+        fg = feature_group.FeatureGroup(
+            id=111,
+            name="test",
+            version=1,
+            featurestore_id=99,
+            online_enabled=True,
+        )
+        fg.feature_store = mocker.Mock()
+        fg.feature_store.project_id = 234
+
+        fg._subject = {"id": 823}
+
+        # Act
+        results = kafka_engine.get_headers(fg, num_entries=10)
+
+        # Assert
+        assert results == {
+            "featureGroupId": b"111",
+            "onlineIngestionId": b"1",
+            "projectId": b"234",
+            "subjectId": b"823",
+        }

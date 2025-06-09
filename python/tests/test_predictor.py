@@ -28,7 +28,6 @@ from hsml import (
 from hsml.constants import MODEL, PREDICTOR, RESOURCES
 
 
-SERVING_RESOURCE_LIMITS = {"cores": 2, "memory": 1024, "gpus": 2}
 SERVING_NUM_INSTANCES_NO_LIMIT = [-1]
 SERVING_NUM_INSTANCES_SCALE_TO_ZERO = [0]
 SERVING_NUM_INSTANCES_ONE = [0]
@@ -80,6 +79,7 @@ class TestPredictor:
         assert p.artifact_version == p_json["artifact_version"]
         assert p.environment == p_json["environment_dto"]["name"]
         assert p.script_file == p_json["predictor"]
+        assert p.config_file == p_json["config_file"]
         assert isinstance(p.resources, resources.PredictorResources)
         assert isinstance(p.transformer, transformer.Transformer)
         assert p.transformer.script_file == p_json["transformer"]
@@ -123,6 +123,7 @@ class TestPredictor:
             assert p.environment == p_json["environment_dto"]["name"]
             assert p.artifact_version == p_json["artifact_version"]
             assert p.script_file == p_json["predictor"]
+            assert p.config_file == p_json["config_file"]
             assert isinstance(p.resources, resources.PredictorResources)
             assert isinstance(p.transformer, transformer.Transformer)
             assert p.transformer.script_file == p_json["transformer"]
@@ -161,6 +162,7 @@ class TestPredictor:
         assert p.environment == p_json["environment_dto"]["name"]
         assert p.artifact_version == p_json["artifact_version"]
         assert p.script_file == p_json["predictor"]
+        assert p.config_file == p_json["config_file"]
         assert isinstance(p.resources, resources.PredictorResources)
         assert isinstance(p.transformer, transformer.Transformer)
         assert p.transformer.script_file == p_json["transformer"]
@@ -213,6 +215,7 @@ class TestPredictor:
             environment=p_json["environment_dto"]["name"],
             artifact_version=p_json["artifact_version"],
             script_file=p_json["predictor"],
+            config_file=p_json["config_file"],
             resources=p_json["predictor_resources"],
             transformer={
                 "script_file": p_json["transformer"],
@@ -241,6 +244,7 @@ class TestPredictor:
         assert p.environment == p_json["environment_dto"]["name"]
         assert p.artifact_version == p_json["artifact_version"]
         assert p.script_file == p_json["predictor"]
+        assert p.config_file == p_json["config_file"]
         assert isinstance(p.resources, resources.PredictorResources)
         assert isinstance(p.transformer, transformer.Transformer)
         assert p.transformer.script_file == p_json["transformer"]
@@ -271,6 +275,7 @@ class TestPredictor:
         self._mock_serving_variables(
             mocker, SERVING_NUM_INSTANCES_NO_LIMIT, is_saas_connection=False
         )
+        mocker.patch("hopsworks_common.client.get_instance")
 
         # Act
         st = predictor.Predictor._validate_serving_tool(PREDICTOR.SERVING_TOOL_DEFAULT)
@@ -283,6 +288,7 @@ class TestPredictor:
         self._mock_serving_variables(
             mocker, SERVING_NUM_INSTANCES_NO_LIMIT, is_saas_connection=False
         )
+        mocker.patch("hopsworks_common.client.get_instance")
 
         # Act
         with pytest.raises(ValueError) as e_info:
@@ -296,6 +302,7 @@ class TestPredictor:
         self._mock_serving_variables(
             mocker, SERVING_NUM_INSTANCES_NO_LIMIT, is_saas_connection=True
         )
+        mocker.patch("hopsworks_common.client.get_instance")
 
         # Act
         st = predictor.Predictor._validate_serving_tool(PREDICTOR.SERVING_TOOL_KSERVE)
@@ -308,6 +315,7 @@ class TestPredictor:
         self._mock_serving_variables(
             mocker, SERVING_NUM_INSTANCES_NO_LIMIT, is_saas_connection=True
         )
+        mocker.patch("hopsworks_common.client.get_instance")
 
         # Act
         with pytest.raises(ValueError) as e_info:
@@ -360,6 +368,10 @@ class TestPredictor:
         # Act
         predictor.Predictor._validate_script_file(MODEL.FRAMEWORK_PYTHON, "script_file")
 
+    def test_validate_script_file_llm_script_file(self):
+        # Act
+        predictor.Predictor._validate_script_file(MODEL.FRAMEWORK_LLM, "script_file")
+
     # infer model server
 
     def test_infer_model_server_tf(self):
@@ -389,6 +401,13 @@ class TestPredictor:
 
         # Assert
         assert ms == PREDICTOR.MODEL_SERVER_PYTHON
+
+    def test_infer_model_server_llm(self):
+        # Act
+        ms = predictor.Predictor._infer_model_server(MODEL.FRAMEWORK_LLM)
+
+        # Assert
+        assert ms == PREDICTOR.MODEL_SERVER_VLLM
 
     # default serving tool
 
@@ -593,7 +612,9 @@ class TestPredictor:
             pass
 
         mock_get_predictor_for_model = mocker.patch(
-            "hsml.util.get_predictor_for_model", return_value=True, spec=spec
+            "hopsworks_common.util.get_predictor_for_model",
+            return_value=True,
+            spec=spec,
         )
 
         class MockModel:
@@ -640,6 +661,7 @@ class TestPredictor:
         assert kwargs["model_server"] == p_json["model_server"]
         assert kwargs["serving_tool"] == p_json["serving_tool"]
         assert kwargs["script_file"] == p_json["predictor"]
+        assert kwargs["config_file"] == p_json["config_file"]
         assert isinstance(kwargs["resources"], resources.PredictorResources)
         assert isinstance(kwargs["inference_logger"], inference_logger.InferenceLogger)
         assert kwargs["inference_logger"].mode == p_json["inference_logging"]
@@ -694,16 +716,18 @@ class TestPredictor:
         is_kserve_installed=True,
     ):
         mocker.patch(
-            "hsml.client.get_serving_resource_limits",
-            return_value=SERVING_RESOURCE_LIMITS,
+            "hopsworks_common.client.get_serving_num_instances_limits",
+            return_value=num_instances,
         )
         mocker.patch(
-            "hsml.client.get_serving_num_instances_limits", return_value=num_instances
+            "hopsworks_common.client.is_scale_to_zero_required",
+            return_value=force_scale_to_zero,
         )
         mocker.patch(
-            "hsml.client.is_scale_to_zero_required", return_value=force_scale_to_zero
+            "hopsworks_common.client.is_saas_connection",
+            return_value=is_saas_connection,
         )
-        mocker.patch("hsml.client.is_saas_connection", return_value=is_saas_connection)
         mocker.patch(
-            "hsml.client.is_kserve_installed", return_value=is_kserve_installed
+            "hopsworks_common.client.is_kserve_installed",
+            return_value=is_kserve_installed,
         )

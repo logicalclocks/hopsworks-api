@@ -83,6 +83,56 @@ class TestFeatureStore:
         assert fg_res.feature_store == fs
         assert fg_res._feature_store == fs
 
+    def test_get_feature_group_by_name_not_found(self, backend_fixtures, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+        mocker.patch(
+            "hsfs.core.feature_group_api.FeatureGroupApi._get_feature_group_by_version",
+            return_value=None,
+        )
+
+        # Act
+        fg_res = fs.get_feature_group("test_feature_group_name")
+
+        # Assert
+        assert fg_res is None
+
+    def test_get_feature_groups_not_found(self, backend_fixtures, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+        mocker.patch(
+            "hsfs.core.feature_group_api.FeatureGroupApi._get_feature_group_by_name",
+            return_value=[],
+        )
+
+        # Act
+        fg_res = fs.get_feature_groups("test_feature_group_name")
+
+        # Assert
+        assert fg_res == []
+
+    def test_get_feature_group_by_name_and_version_not_found(
+        self, backend_fixtures, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+        mocker.patch(
+            "hsfs.core.feature_group_api.FeatureGroupApi._get_feature_group_by_version",
+            return_value=None,
+        )
+
+        # Act
+        fg_res = fs.get_feature_group("test_feature_group_name", version=10)
+
+        # Assert
+        assert fg_res is None
+
     def test_create_feature_group(self, backend_fixtures, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
@@ -107,3 +157,51 @@ class TestFeatureStore:
         assert fg_res.online_enabled is True
         assert fg_res.feature_store == fs
         assert fg_res._feature_store == fs
+
+    def test_get_feature_view_by_name_not_found(self, backend_fixtures, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+        mocker.patch(
+            "hsfs.core.feature_view_api.FeatureViewApi.get_by_name_version", return_value=None
+        )
+
+        # Act
+        fv_res = fs.get_feature_view("test_feature_view_name")
+
+        # Assert
+        assert fv_res is None
+
+    def test_get_feature_views_not_found(self, backend_fixtures, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+        mocker.patch(
+            "hsfs.core.feature_view_api.FeatureViewApi.get_by_name", return_value=[]
+        )
+
+        # Act
+        fv_res = fs.get_feature_views("test_feature_view_name")
+
+        # Assert
+        assert fv_res == []
+
+    def test_get_feature_view_by_name_and_version_not_found(
+        self, backend_fixtures, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+        mocker.patch(
+            "hsfs.core.feature_view_api.FeatureViewApi.get_by_name_version",
+            return_value=None,
+        )
+
+        # Act
+        fv_res = fs.get_feature_view("test_feature_view_name")
+
+        # Assert
+        assert fv_res is None

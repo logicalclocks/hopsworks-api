@@ -17,13 +17,17 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import hsfs
 import humps
 from hsfs import util
 from hsfs.constructor import filter
 from hsfs.decorators import typechecked
+
+
+if TYPE_CHECKING:
+    from hsfs.feature_group import FeatureGroup
 
 
 @typechecked
@@ -42,6 +46,7 @@ class Feature:
         type: Optional[str] = None,
         description: Optional[str] = None,
         primary: bool = False,
+        foreign: bool = False,
         partition: bool = False,
         hudi_precombine_key: bool = False,
         online_type: Optional[str] = None,
@@ -55,16 +60,19 @@ class Feature:
             ]
         ] = None,
         on_demand: bool = False,
+        use_fully_qualified_name=False,
         **kwargs,
     ) -> None:
-        self._name = util.autofix_feature_name(name)
+        self._name = util.autofix_feature_name(name, warn=True)
         self._type = type
         self._description = description
         self._primary = primary
+        self._foreign = foreign
         self._partition = partition
         self._hudi_precombine_key = hudi_precombine_key
         self._online_type = online_type
         self._default_value = default_value
+        self._use_fully_qualified_name = use_fully_qualified_name
         if feature_group is not None:
             self._feature_group_id = feature_group.id
         else:
@@ -93,11 +101,47 @@ class Feature:
             "partition": self._partition,
             "hudiPrecombineKey": self._hudi_precombine_key,
             "primary": self._primary,
+            "foreign": self._foreign,
             "onlineType": self._online_type,
             "defaultValue": self._default_value,
             "featureGroupId": self._feature_group_id,
             "onDemand": self.on_demand,
+            "useFullyQualifiedName": self._use_fully_qualified_name,
         }
+
+    def _get_fully_qualified_feature_name(
+        self, feature_group: FeatureGroup = None, prefix: str = None
+    ) -> str:
+        """
+        Returns the name of the feature when used to generated dataframes for training/batch data.
+        - If the feature is configured to use a fully qualified name, it returns that name.
+        - Otherwise, if a prefix is provided, it returns the feature name prefixed accordingly.
+        - If neither condition applies, it returns the feature’s original name.
+
+        # Args:
+            feature_group (FeatureGroup, optional): The feature group context in which the name is being used.
+            prefix (str, optional): A prefix to prepend to the feature name if applicable.
+
+        # Returns:
+            str: The fully qualified feature name.
+        """
+        if self.use_fully_qualified_name:
+            return util.generate_fully_qualified_feature_name(
+                feature_group=feature_group, feature_name=self._name
+            )
+        elif prefix:
+            return prefix + self._name
+        else:
+            return self._name
+
+    @property
+    def use_fully_qualified_name(self) -> bool:
+        """Use fully qualified name for the feature when generating dataframes for training/batch data."""
+        return self._use_fully_qualified_name
+
+    @use_fully_qualified_name.setter
+    def use_fully_qualified_name(self, use_fully_qualified_name: bool) -> None:
+        self._use_fully_qualified_name = use_fully_qualified_name
 
     def json(self) -> str:
         return json.dumps(self, cls=util.Encoder)
@@ -177,6 +221,15 @@ class Feature:
     @primary.setter
     def primary(self, primary: bool) -> None:
         self._primary = primary
+
+    @property
+    def foreign(self) -> bool:
+        """Whether the feature is part of the foreign key of the feature group."""
+        return self._foreign
+
+    @foreign.setter
+    def foreign(self, foreign: bool) -> None:
+        self._foreign = foreign
 
     @property
     def partition(self) -> bool:
@@ -262,7 +315,7 @@ class Feature:
         return self.json()
 
     def __repr__(self) -> str:
-        return f"Feature({self._name!r}, {self._type!r}, {self._description!r}, {self._primary}, {self._partition}, {self._online_type!r}, {self._default_value!r}, {self._feature_group_id!r})"
+        return f"Feature({self._name!r}, {self._type!r}, {self._description!r}, {self._primary}, {self._foreign}, {self._partition}, {self._online_type!r}, {self._default_value!r}, {self._feature_group_id!r})"
 
     def __hash__(self) -> int:
         return hash(f"{self.feature_group_id}_{self.name}")

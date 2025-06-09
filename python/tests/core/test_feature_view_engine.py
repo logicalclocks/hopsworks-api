@@ -81,6 +81,11 @@ fg4 = feature_group.FeatureGroup(
     stream=False,
 )
 
+fg1._feature_store_name = "test_fs1"
+fg2._feature_store_name = "test_fs2"
+fg3._feature_store_name = "test_fs3"
+fg4._feature_store_name = "test_fs4"
+
 query = fg1.select_all()
 
 
@@ -636,7 +641,7 @@ class TestFeatureViewEngine:
         fv_engine.get_training_data(feature_view_obj=fv)
 
         # Assert
-        assert mock_fv_engine_get_training_dataset_metadata.call_count == 0
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 2
         assert mock_fv_engine_create_training_data_metadata.call_count == 1
         assert mock_fv_engine_read_from_storage_connector.call_count == 1
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
@@ -702,6 +707,8 @@ class TestFeatureViewEngine:
             id=14,
             stream=False,
         )
+
+        fg._feature_store_name = "test_transformations_fs"
 
         @udf(return_type=[int, int], drop=["feature1"])
         def transform_feature_drop(feature1):
@@ -772,7 +779,7 @@ class TestFeatureViewEngine:
         ]
 
         # Assert
-        assert mock_fv_engine_get_training_dataset_metadata.call_count == 0
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 2
         assert mock_fv_engine_create_training_data_metadata.call_count == 1
         assert mock_fv_engine_read_from_storage_connector.call_count == 1
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
@@ -841,7 +848,7 @@ class TestFeatureViewEngine:
         fv_engine.get_training_data(feature_view_obj=fv, training_dataset_version=1)
 
         # Assert
-        assert mock_fv_engine_get_training_dataset_metadata.call_count == 1
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 3
         assert mock_fv_engine_create_training_data_metadata.call_count == 0
         assert mock_fv_engine_read_from_storage_connector.call_count == 1
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
@@ -906,6 +913,8 @@ class TestFeatureViewEngine:
             id=14,
             stream=False,
         )
+
+        fg._feature_store_name = "test_transformations_fs"
 
         @udf(return_type=[int, int], drop=["feature1"])
         def transform_feature_drop(feature1):
@@ -976,7 +985,7 @@ class TestFeatureViewEngine:
         ]
 
         # Assert
-        assert mock_fv_engine_get_training_dataset_metadata.call_count == 1
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 3
         assert mock_fv_engine_create_training_data_metadata.call_count == 0
         assert mock_fv_engine_read_from_storage_connector.call_count == 1
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
@@ -1034,7 +1043,7 @@ class TestFeatureViewEngine:
         fv_engine.get_training_data(feature_view_obj=fv)
 
         # Assert
-        assert mock_fv_engine_get_training_dataset_metadata.call_count == 0
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 2
         assert mock_fv_engine_create_training_data_metadata.call_count == 1
         assert mock_fv_engine_read_from_storage_connector.call_count == 0
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 1
@@ -1092,7 +1101,7 @@ class TestFeatureViewEngine:
         fv_engine.get_training_data(feature_view_obj=fv, splits=splits)
 
         # Assert
-        assert mock_fv_engine_get_training_dataset_metadata.call_count == 0
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 2
         assert mock_fv_engine_create_training_data_metadata.call_count == 1
         assert mock_fv_engine_read_from_storage_connector.call_count == 1
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
@@ -1329,7 +1338,7 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mock_fv_engine_get_training_dataset_metadata.call_count == 1
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 2
         assert mock_fv_engine_compute_training_dataset.call_count == 1
         assert len(td.schema) == len(fv.schema)
         for td_feature, expected_td_feature in zip(td.schema, fv.schema):
@@ -1453,7 +1462,7 @@ class TestFeatureViewEngine:
         ]
 
         # Assert
-        assert mock_fv_engine_get_training_dataset_metadata.call_count == 1
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 2
         assert mock_fv_engine_compute_training_dataset.call_count == 1
         assert len(expected_schema) == len(td.schema)
         for td_feature, expected_td_feature in zip(td.schema, expected_schema):
@@ -1735,7 +1744,7 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mock_fv_engine_get_training_dataset_metadata.call_count == 0
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 1
         assert mock_td_engine.return_value.read.call_count == 0
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
         assert len(td.schema) == len(fv.schema)
@@ -1863,7 +1872,7 @@ class TestFeatureViewEngine:
         ]
 
         # Assert
-        assert mock_fv_engine_get_training_dataset_metadata.call_count == 0
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 1
         assert mock_td_engine.return_value.read.call_count == 0
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
         assert len(expected_schema) == len(td.schema)
@@ -1921,7 +1930,7 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mock_fv_engine_get_training_dataset_metadata.call_count == 1
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 2
         assert mock_td_engine.return_value.read.call_count == 0
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 0
 
@@ -1972,7 +1981,7 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mock_fv_engine_get_training_dataset_metadata.call_count == 0
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 1
         assert mock_td_engine.return_value.read.call_count == 1
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 1
 
@@ -2023,7 +2032,7 @@ class TestFeatureViewEngine:
         )
 
         # Assert
-        assert mock_fv_engine_get_training_dataset_metadata.call_count == 0
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 1
         assert mock_td_engine.return_value.read.call_count == 2
         assert mock_fv_engine_compute_training_dataset_statistics.call_count == 1
 

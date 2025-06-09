@@ -16,13 +16,14 @@
 
 import json
 import logging
-from typing import List, Union
+from typing import List, Optional, Union
 
 from hopsworks_common import (
     client,
     git_commit,
     git_file_status,
     git_op_execution,
+    git_provider,
     git_repo,
     usage,
     util,
@@ -40,7 +41,9 @@ class GitApi:
         self._log = logging.getLogger(__name__)
 
     @usage.method_logger
-    def clone(self, url: str, path: str, provider: str = None, branch: str = None):
+    def clone(
+        self, url: str, path: str, provider: str = None, branch: str = None
+    ) -> git_repo.GitRepo:
         """Clone a new Git Repo in to Hopsworks Filesystem.
 
         ```python
@@ -62,7 +65,7 @@ class GitApi:
         # Returns
             `GitRepo`: Git repository object
         # Raises
-            `RestAPIError`: If unable to clone the git repository.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         _client = client.get_instance()
@@ -104,13 +107,13 @@ class GitApi:
         return created_repo
 
     @usage.method_logger
-    def get_repos(self):
+    def get_repos(self) -> List[git_repo.GitRepo]:
         """Get the existing Git repositories
 
         # Returns
             `List[GitRepo]`: List of git repository objects
         # Raises
-            `RestAPIError`: If unable to get the repositories
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = [
@@ -124,31 +127,32 @@ class GitApi:
         )
 
     @usage.method_logger
-    def get_providers(self):
+    def get_providers(self) -> List[git_provider.GitProvider]:
         """Get the configured Git providers
 
         # Returns
             `List[GitProvider]`: List of git provider objects
         # Raises
-            `RestAPIError`: If unable to get the git providers
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._git_provider_api._get_providers()
 
     @usage.method_logger
-    def get_provider(self, provider: str):
+    def get_provider(self, provider: str, host: str = None) -> Optional[git_provider.GitProvider]:
         """Get the configured Git provider
 
         # Arguments
             provider: Name of git provider. Valid values are "GitHub", "GitLab" and "BitBucket".
+            host: Optional host for the git provider e.g. github.com for GitHub, gitlab.com for GitLab, bitbucket.org for BitBucket
         # Returns
-            `GitProvider`: The git provider
+            `GitProvider`: The git provider or `None` if it does not exist.
         # Raises
-            `RestAPIError`: If unable to get the git provider
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        return self._git_provider_api._get_provider(provider)
+        return self._git_provider_api._get_provider(provider, host)
 
     @usage.method_logger
-    def set_provider(self, provider: str, username: str, token: str):
+    def set_provider(self, provider: str, username: str, token: str, host: str = None):
         """Configure a Git provider
 
         ```python
@@ -159,29 +163,33 @@ class GitApi:
 
         git_api = project.get_git_api()
 
-        git_api.set_provider("GitHub", "my_user", "my_token")
+        git_api.set_provider("GitHub", "my_user", "my_token", host="github.com")
 
         ```
         # Arguments
             provider: Name of git provider. Valid values are "GitHub", "GitLab" and "BitBucket".
             username: Username for the git provider service
             token: Token to set for the git provider service
+            host: host for the git provider e.g. github.com for GitHub, gitlab.com for GitLab, bitbucket.org for BitBucket
         # Raises
-            `RestAPIError`: If unable to configure the git provider
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        self._git_provider_api._set_provider(provider, username, token)
+        if host is None:
+            host = self._get_default_provider_host(provider)
+
+        self._git_provider_api._set_provider(provider, username, token, host)
 
     @usage.method_logger
-    def get_repo(self, name: str, path: str = None):
+    def get_repo(self, name: str, path: str = None) -> Optional[git_repo.GitRepo]:
         """Get the cloned Git repository
 
         # Arguments
             name: Name of git repository
             path: Optional path to specify if multiple git repos with the same name exists in the project
         # Returns
-            `GitRepo`: The git repository
+            `GitRepo`: The git repository or `None` if it does not exist.
         # Raises
-            `RestAPIError`: If unable to get the git repository
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = [
@@ -215,7 +223,7 @@ class GitApi:
                 )
             )
         else:
-            raise GitException("No git repository found matching name {}".format(name))
+            return None
 
     def _delete_repo(self, repo_id):
         _client = client.get_instance()
@@ -433,6 +441,66 @@ class GitApi:
         )
         _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
 
+    def _fetch(self, repo_id, remote: str, branch: str):
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "git",
+            "repository",
+            str(repo_id),
+        ]
+
+        query_params = {"action": "FETCH", "expand": ["repository", "user"]}
+        fetch_config = {
+            "type": "fetchCommandConfiguration",
+            "remoteName": remote,
+            "branchName": branch,
+        }
+
+        headers = {"content-type": "application/json"}
+        git_op = git_op_execution.GitOpExecution.from_response_json(
+            _client._send_request(
+                "POST",
+                path_params,
+                headers=headers,
+                query_params=query_params,
+                data=json.dumps(fetch_config),
+            )
+        )
+        _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
+
+    def _reset(self, repo_id, remote: str, branch: str, commit: str):
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "git",
+            "repository",
+            str(repo_id),
+        ]
+
+        query_params = {"action": "RESET", "expand": ["repository", "user"]}
+        reset_config = {
+            "type": "resetCommandConfiguration",
+            "remoteName": remote,
+            "branchName": branch,
+            "commit": commit,
+        }
+
+        headers = {"content-type": "application/json"}
+        git_op = git_op_execution.GitOpExecution.from_response_json(
+            _client._send_request(
+                "POST",
+                path_params,
+                headers=headers,
+                query_params=query_params,
+                data=json.dumps(reset_config),
+            )
+        )
+        _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
+
+
     def _checkout_files(self, repo_id, files: Union[List[str], List[GitFileStatus]]):
         files = util.convert_git_status_to_files(files)
 
@@ -477,3 +545,16 @@ class GitApi:
         return git_commit.GitCommit.from_response_json(
             _client._send_request("GET", path_params, headers=headers)
         )
+
+    def _get_default_provider_host(self, provider: str) -> str:
+        """Get the default host name for the given provider"""
+        if provider == "GitHub":
+            return "github.com"
+        elif provider == "GitLab":
+            return "gitlab.com"
+        elif provider == "BitBucket":
+            return "bitbucket.org"
+        else:
+            raise GitException(
+                f"Unknown git provider {provider}. Supported providers are GitHub, GitLab and BitBucket."
+            )

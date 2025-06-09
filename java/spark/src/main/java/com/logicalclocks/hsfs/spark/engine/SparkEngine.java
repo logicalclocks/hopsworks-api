@@ -30,6 +30,7 @@ import com.logicalclocks.hsfs.metadata.HopsworksInternalClient;
 import com.logicalclocks.hsfs.spark.constructor.Query;
 import com.logicalclocks.hsfs.spark.engine.hudi.HudiEngine;
 import com.logicalclocks.hsfs.DataFormat;
+import com.logicalclocks.hsfs.DataSource;
 import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.HudiOperationType;
@@ -41,6 +42,7 @@ import com.logicalclocks.hsfs.engine.FeatureGroupUtils;
 import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.metadata.HopsworksClient;
 import com.logicalclocks.hsfs.metadata.OnDemandOptions;
+import com.logicalclocks.hsfs.metadata.OnlineIngestionApi;
 import com.logicalclocks.hsfs.metadata.Option;
 import com.logicalclocks.hsfs.util.Constants;
 import com.logicalclocks.hsfs.spark.ExternalFeatureGroup;
@@ -124,6 +126,7 @@ public class SparkEngine extends EngineBase {
 
   private final StorageConnectorUtils storageConnectorUtils = new StorageConnectorUtils();
   private FeatureGroupUtils featureGroupUtils = new FeatureGroupUtils();
+  private OnlineIngestionApi onlineIngestionApi = new OnlineIngestionApi();
 
   private static SparkEngine INSTANCE = null;
 
@@ -141,8 +144,6 @@ public class SparkEngine extends EngineBase {
 
   @Getter
   private SparkSession sparkSession;
-
-  private HudiEngine hudiEngine = new HudiEngine();
 
   private SparkEngine() {
     sparkSession = SparkSession.builder()
@@ -214,10 +215,14 @@ public class SparkEngine extends EngineBase {
 
   public Dataset<Row> registerOnDemandTemporaryTable(ExternalFeatureGroup onDemandFeatureGroup, String alias)
       throws FeatureStoreException, IOException {
+    DataSource dataSource = onDemandFeatureGroup.getDataSource();
+    dataSource.setPath(onDemandFeatureGroup.getStorageConnector().getPath(
+        onDemandFeatureGroup.getDataSource().getPath()));
+
     Dataset<Row> dataset = storageConnectorUtils.read(onDemandFeatureGroup.getStorageConnector(),
-        onDemandFeatureGroup.getQuery(), onDemandFeatureGroup.getDataFormat() != null
-            ? onDemandFeatureGroup.getDataFormat().toString() : null, getOnDemandOptions(onDemandFeatureGroup),
-        onDemandFeatureGroup.getStorageConnector().getPath(onDemandFeatureGroup.getPath()));
+        dataSource,
+        onDemandFeatureGroup.getDataFormat() != null ? onDemandFeatureGroup.getDataFormat().toString() : null,
+        getOnDemandOptions(onDemandFeatureGroup));
 
     dataset.createOrReplaceTempView(alias);
     return dataset;
@@ -247,7 +252,7 @@ public class SparkEngine extends EngineBase {
 
   public void registerHudiTemporaryTable(FeatureGroupAlias featureGroupAlias, Map<String, String> readOptions)
           throws FeatureStoreException {
-    Map<String, String> hudiArgs = hudiEngine.setupHudiReadOpts(
+    Map<String, String> hudiArgs = HudiEngine.getInstance().setupHudiReadOpts(
         featureGroupAlias.getLeftFeatureGroupStartTimestamp(),
         featureGroupAlias.getLeftFeatureGroupEndTimestamp(),
         readOptions);
@@ -258,7 +263,7 @@ public class SparkEngine extends EngineBase {
         .load(featureGroupAlias.getFeatureGroup().getLocation())
         .createOrReplaceTempView(featureGroupAlias.getAlias());
 
-    hudiEngine.reconcileHudiSchema(sparkSession, featureGroupAlias, hudiArgs);
+    HudiEngine.getInstance().reconcileHudiSchema(sparkSession, featureGroupAlias, hudiArgs);
   }
 
   /**
@@ -534,26 +539,8 @@ public class SparkEngine extends EngineBase {
   public void writeOnlineDataframe(FeatureGroupBase featureGroupBase, Dataset<Row> dataset, String onlineTopicName,
                                    Map<String, String> writeOptions)
       throws FeatureStoreException, IOException {
-    byte[] projectId = String.valueOf(featureGroupBase.getFeatureStore().getProjectId())
-        .getBytes(StandardCharsets.UTF_8);
-    byte[] featureGroupId = String.valueOf(featureGroupBase.getId()).getBytes(StandardCharsets.UTF_8);
-    byte[] subjectId = String.valueOf(featureGroupBase.getSubject().getId()).getBytes(StandardCharsets.UTF_8);
-
     onlineFeatureGroupToAvro(featureGroupBase, encodeComplexFeatures(featureGroupBase, dataset))
-        .withColumn("headers", array(
-            struct(
-                lit("projectId").as("key"),
-                lit(projectId).as("value")
-            ),
-            struct(
-                lit("featureGroupId").as("key"),
-                lit(featureGroupId).as("value")
-            ),
-            struct(
-                lit("subjectId").as("key"),
-                lit(subjectId).as("value")
-            )
-        ))
+        .withColumn("headers", getHeader(featureGroupBase, dataset.count()))
         .write()
         .format(Constants.KAFKA_FORMAT)
         .options(writeOptions)
@@ -566,28 +553,10 @@ public class SparkEngine extends EngineBase {
                                                  Long timeout, String checkpointLocation,
                                                  Map<String, String> writeOptions)
       throws FeatureStoreException, IOException, StreamingQueryException, TimeoutException {
-    byte[] projectId = String.valueOf(featureGroupBase.getFeatureStore().getProjectId())
-        .getBytes(StandardCharsets.UTF_8);
-    byte[] featureGroupId = String.valueOf(featureGroupBase.getId()).getBytes(StandardCharsets.UTF_8);
-    byte[] subjectId = String.valueOf(featureGroupBase.getSubject().getId()).getBytes(StandardCharsets.UTF_8);
-
     queryName = makeQueryName(queryName, featureGroupBase);
     DataStreamWriter<Row> writer =
         onlineFeatureGroupToAvro(featureGroupBase, encodeComplexFeatures(featureGroupBase, dataset))
-            .withColumn("headers", array(
-                struct(
-                    lit("projectId").as("key"),
-                    lit(projectId).as("value")
-                ),
-                struct(
-                    lit("featureGroupId").as("key"),
-                    lit(featureGroupId).as("value")
-                ),
-                struct(
-                    lit("subjectId").as("key"),
-                    lit(subjectId).as("value")
-                )
-            ))
+            .withColumn("headers", getHeader(featureGroupBase, null))
             .writeStream()
             .format(Constants.KAFKA_FORMAT)
             .outputMode(outputMode)
@@ -604,6 +573,17 @@ public class SparkEngine extends EngineBase {
       query.awaitTermination(timeout);
     }
     return query;
+  }
+
+  private Column getHeader(FeatureGroupBase featureGroup, Long numEntries) throws FeatureStoreException, IOException {
+    return array(
+      FeatureGroupUtils.getHeaders(featureGroup, numEntries).entrySet().stream()
+      .map(entry -> struct(
+        lit(entry.getKey()).as("key"),
+        lit(entry.getValue()).as("value")
+      ))
+      .toArray(Column[]::new)
+    );
   }
 
   /**
@@ -661,7 +641,8 @@ public class SparkEngine extends EngineBase {
       throws IOException, FeatureStoreException, ParseException {
 
     if (featureGroup.getTimeTravelFormat() == TimeTravelFormat.HUDI) {
-      hudiEngine.saveHudiFeatureGroup(sparkSession, featureGroup, dataset, operation, writeOptions, validationId);
+      HudiEngine.getInstance().saveHudiFeatureGroup(sparkSession, featureGroup, dataset, operation,
+          writeOptions, validationId);
     } else {
       writeSparkDataset(featureGroup, dataset, writeOptions);
     }
@@ -750,7 +731,8 @@ public class SparkEngine extends EngineBase {
     return path;
   }
 
-  private void setupS3ConnectorHadoopConf(StorageConnector.S3Connector storageConnector) {
+  private void setupS3ConnectorHadoopConf(StorageConnector.S3Connector storageConnector)
+      throws IOException, FeatureStoreException {
     if (!Strings.isNullOrEmpty(storageConnector.getAccessKey())) {
       sparkSession.sparkContext().hadoopConfiguration()
           .set(Constants.S3_ACCESS_KEY_ENV, storageConnector.getAccessKey());
@@ -790,7 +772,7 @@ public class SparkEngine extends EngineBase {
   public void streamToHudiTable(StreamFeatureGroup streamFeatureGroup, Map<String, String> writeOptions)
       throws Exception {
     writeOptions = getKafkaConfig(streamFeatureGroup, writeOptions);
-    hudiEngine.streamToHoodieTable(sparkSession, streamFeatureGroup, writeOptions);
+    HudiEngine.getInstance().streamToHoodieTable(sparkSession, streamFeatureGroup, writeOptions);
   }
 
   public List<Feature> parseFeatureGroupSchema(Dataset<Row> dataset,

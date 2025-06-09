@@ -71,6 +71,10 @@ class TestArrowFlightClient:
             "hsfs.core.feature_view_engine.FeatureViewEngine._create_training_data_metadata",
             return_value=td,
         )
+        mocker.patch(
+            "hsfs.core.feature_view_api.FeatureViewApi.get_training_dataset_by_version",
+            return_value=td,
+        )
 
         fg = self._arrange_featuregroup_mocks(backend_fixtures)
         mocker.patch(
@@ -347,7 +351,7 @@ class TestArrowFlightClient:
         test_fg1 = feature_group.FeatureGroup.from_response_json(json1)
         mocker.patch("hsfs.constructor.query.Query.to_string", return_value="")
         mocker.patch("hsfs.constructor.query.Query._to_string", return_value="")
-        query = test_fg1.select_except(["intt"]).filter(Feature("intt") > 500)
+        query = test_fg1.filter(Feature("intt") > 500)
 
         # Act
         query_object = arrow_flight_client.get_instance().create_query_object(
@@ -431,11 +435,12 @@ class TestArrowFlightClient:
             "connectors": {
                 "test.tpch1snowflake_1": {
                     "time_travel_type": None,
-                    "type": 'SNOWFLAKE',
+                    "type": "SNOWFLAKE",
                     "options": {
                         "user": "test_user",
                         "account": "test_url",
-                        "database": "test_database/test_schema",
+                        "database": "test_database",
+                        "schema": "test_schema",
                         "password": "test_password",
                         "warehouse": "test_warehouse",
                         "application": "test_application",

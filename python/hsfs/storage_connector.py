@@ -18,6 +18,7 @@ from __future__ import annotations
 import base64
 import logging
 import os
+import posixpath
 import re
 import warnings
 from abc import ABC, abstractmethod
@@ -28,7 +29,8 @@ import pandas as pd
 from hopsworks_common import client
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import engine
-from hsfs.core import storage_connector_api
+from hsfs.core import data_source as ds
+from hsfs.core import data_source_api, storage_connector_api
 
 
 if HAS_NUMPY:
@@ -50,6 +52,8 @@ class StorageConnector(ABC):
     KAFKA = "KAFKA"
     GCS = "GCS"
     BIGQUERY = "BIGQUERY"
+    RDS = "RDS"
+    NOT_FOUND_ERROR_CODE = 270042
 
     def __init__(
         self,
@@ -65,6 +69,7 @@ class StorageConnector(ABC):
         self._featurestore_id = featurestore_id
 
         self._storage_connector_api = storage_connector_api.StorageConnectorApi()
+        self._data_source_api = data_source_api.DataSourceApi()
 
     @classmethod
     def from_response_json(
@@ -76,6 +81,8 @@ class StorageConnector(ABC):
         "RedshiftConnector",
         "AdlsConnector",
         "SnowflakeConnector",
+        "BigQueryConnector",
+        "RdsConnector",
     ]:
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -94,6 +101,8 @@ class StorageConnector(ABC):
         "RedshiftConnector",
         "AdlsConnector",
         "SnowflakeConnector",
+        "BigQueryConnector",
+        "RdsConnector",
     ]:
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -137,9 +146,6 @@ class StorageConnector(ABC):
         pass
 
     def prepare_spark(self, path: Optional[str] = None) -> Optional[str]:
-        _logger.info(
-            "This Storage Connector cannot be prepared for Spark."
-        )
         return path
 
     def read(
@@ -204,13 +210,14 @@ class StorageConnector(ABC):
         For inaccessible feature groups, only a minimal information is returned.
 
         # Returns
-            `ExplicitProvenance.Links`: the feature groups generated using this
-            storage connector
+            `Links`: the feature groups generated using this storage connector or `None` if none were created
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
-        return self._storage_connector_api.get_feature_groups_provenance(self)
+        links = self._storage_connector_api.get_feature_groups_provenance(self)
+        if not links.is_empty():
+            return links
 
     def get_feature_groups(self):
         """Get the feature groups using this storage connector, based on explicit
@@ -218,19 +225,47 @@ class StorageConnector(ABC):
         For more items use the base method - get_feature_groups_provenance
 
         # Returns
-            `List[FeatureGroup]: List of feature groups.
+            `List[FeatureGroup]`: List of feature groups.
         """
         feature_groups_provenance = self.get_feature_groups_provenance()
 
-        if feature_groups_provenance.inaccessible or feature_groups_provenance.deleted:
+        if feature_groups_provenance and (
+            feature_groups_provenance.inaccessible or feature_groups_provenance.deleted
+        ):
             _logger.info(
                 "There are deleted or inaccessible feature groups. For more details access `get_feature_groups_provenance`"
             )
 
-        if feature_groups_provenance.accessible:
+        if feature_groups_provenance and feature_groups_provenance.accessible:
             return feature_groups_provenance.accessible
         else:
-            return None
+            return []
+
+    def get_databases(self):
+        return self._data_source_api.get_databases(self._featurestore_id, self._name)
+
+    def get_tables(self, database: str):
+        if not database:
+            if self.type == StorageConnector.REDSHIFT:
+                database = self.database_name
+            elif self.type == StorageConnector.SNOWFLAKE:
+                database = self.database
+            elif self.type == StorageConnector.BIGQUERY:
+                database = self.query_project
+            elif self.type == StorageConnector.RDS:
+                database = self.database
+            else:
+                raise ValueError(
+                    "Database name is required for this connector type. "
+                    "Please provide a database name."
+                )
+        return self._data_source_api.get_tables(self._featurestore_id, self._name, database)
+
+    def get_data(self, data_source: ds.DataSource):
+        return self._data_source_api.get_data(self._featurestore_id, self._name, data_source)
+
+    def get_metadata(self, data_source: ds.DataSource):
+        return self._data_source_api.get_metadata(self._featurestore_id, self._name, data_source)
 
 
 class HopsFSConnector(StorageConnector):
@@ -278,6 +313,7 @@ class S3Connector(StorageConnector):
         server_encryption_algorithm: Optional[str] = None,
         server_encryption_key: Optional[str] = None,
         bucket: Optional[str] = None,
+        path: Optional[str] = None,
         region: Optional[str] = None,
         session_token: Optional[str] = None,
         iam_role: Optional[str] = None,
@@ -292,6 +328,7 @@ class S3Connector(StorageConnector):
         self._server_encryption_algorithm = server_encryption_algorithm
         self._server_encryption_key = server_encryption_key
         self._bucket = bucket
+        self._path = path
         self._region = region
         self._session_token = session_token
         self._iam_role = iam_role
@@ -342,7 +379,9 @@ class S3Connector(StorageConnector):
     @property
     def path(self) -> Optional[str]:
         """If the connector refers to a path (e.g. S3) - return the path of the connector"""
-        return "s3://" + self._bucket
+        return posixpath.join(
+            "s3://" + self._bucket, *os.path.split(self._path if self._path else "")
+        )
 
     @property
     def arguments(self) -> Optional[Dict[str, Any]]:
@@ -369,6 +408,7 @@ class S3Connector(StorageConnector):
         # Arguments
             path: Path to prepare for reading from cloud storage. Defaults to `None`.
         """
+        self.refetch()
         return engine.get_instance().setup_storage_connector(self, path)
 
     def connector_options(self) -> Dict[str, Any]:
@@ -434,7 +474,7 @@ class S3Connector(StorageConnector):
         )
 
     def _get_path(self, sub_path: str) -> str:
-        return os.path.join(self.path, sub_path)
+        return posixpath.join(self.path, *os.path.split(sub_path))
 
 
 class RedshiftConnector(StorageConnector):
@@ -552,6 +592,22 @@ class RedshiftConnector(StorageConnector):
                 [k + ("" if v is None else "=" + v) for k, v in self._arguments.items()]
             )
         return self._arguments
+
+    def connector_options(self) -> Dict[str, Any]:
+        """Return options to be passed to an external Redshift connector library"""
+        props = {
+            "host": self._cluster_identifier + "." + self._database_endpoint,
+            "port": self._database_port,
+            "database": self._database_name,
+        }
+        if self._database_user_name:
+            props["user"] = self._database_user_name
+        if self._database_password:
+            props["password"] = self._database_password
+        if self._iam_role:
+            props["iam_role"] = self._iam_role
+            props["iam"] = "True"
+        return props
 
     def spark_options(self) -> Dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional
@@ -1297,16 +1353,61 @@ class KafkaConnector(StorageConnector):
 
         return config
 
+    def _read_pem(self, file_name):
+        with open(file_name, "r") as file:
+            return file.read()
+
     def spark_options(self) -> Dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional arguments.
         This is done by just adding 'kafka.' prefix to kafka_options.
         https://spark.apache.org/docs/latest/structured-streaming-kafka-integration.html#kafka-specific-configurations
         """
-        config = {}
-        for key, value in self.kafka_options().items():
-            config[f"{KafkaConnector.SPARK_FORMAT}.{key}"] = value
+        from packaging import version
 
-        return config
+        spark_config = {}
+
+        kafka_options = self.kafka_options()
+
+        for key, value in kafka_options.items():
+            if key in [
+                "ssl.truststore.location",
+                "ssl.truststore.password",
+                "ssl.keystore.location",
+                "ssl.keystore.password",
+                "ssl.key.password",
+            ] and version.parse(
+                engine.get_instance().get_spark_version()
+            ) >= version.parse("3.2.0"):
+                # We can only use this in the newer version of Spark which depend on Kafka > 2.7.0
+                # Kafka 2.7.0 adds support for providing the SSL credentials as PEM objects.
+                if not self._pem_files_created:
+                    (
+                        ca_chain_path,
+                        client_cert_path,
+                        client_key_path,
+                    ) = client.get_instance()._write_pem(
+                        kafka_options["ssl.keystore.location"],
+                        kafka_options["ssl.keystore.password"],
+                        kafka_options["ssl.truststore.location"],
+                        kafka_options["ssl.truststore.password"],
+                        f"kafka_sc_{client.get_instance()._project_id}_{self._id}",
+                    )
+                    self._pem_files_created = True
+                    spark_config["kafka.ssl.truststore.certificates"] = self._read_pem(
+                        ca_chain_path
+                    )
+                    spark_config["kafka.ssl.keystore.certificate.chain"] = (
+                        self._read_pem(client_cert_path)
+                    )
+                    spark_config["kafka.ssl.keystore.key"] = self._read_pem(
+                        client_key_path
+                    )
+                    spark_config["kafka.ssl.truststore.type"] = "PEM"
+                    spark_config["kafka.ssl.keystore.type"] = "PEM"
+            else:
+                spark_config[f"{KafkaConnector.SPARK_FORMAT}.{key}"] = value
+
+        return spark_config
 
     def read(
         self,
@@ -1716,4 +1817,124 @@ class BigQueryConnector(StorageConnector):
 
         return engine.get_instance().read(
             self, self.BIGQUERY_FORMAT, options, path, dataframe_type
+        )
+
+class RdsConnector(StorageConnector):
+    type = StorageConnector.RDS
+    JDBC_FORMAT = "jdbc"
+
+    def __init__(
+        self,
+        id: Optional[int],
+        name: str,
+        featurestore_id: int,
+        description: Optional[str] = None,
+        # members specific to type of connector
+        host: Optional[str] = None,
+        port: Optional[int] = None,
+        database: Optional[str] = None,
+        user: Optional[str] = None,
+        password: Optional[str] = None,
+        arguments: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._host = host
+        self._port = port
+        self._database = database
+        self._user = user
+        self._password = password
+        self._arguments = (
+            {opt["name"]: opt["value"] for opt in arguments} if arguments else {}
+        )
+
+    @property
+    def host(self) -> Optional[str]:
+        return self._host
+
+    @property
+    def port(self) -> Optional[int]:
+        return self._port
+
+    @property
+    def database(self) -> Optional[str]:
+        return self._database
+
+    @property
+    def user(self) -> Optional[str]:
+        return self._user
+
+    @property
+    def password(self) -> Optional[str]:
+        return self._password
+
+    @property
+    def arguments(self) -> Dict[str, Any]:
+        """Additional options"""
+        return self._arguments
+
+    def spark_options(self) -> Dict[str, Any]:
+        """Return prepared options to be passed to Spark, based on the additional
+        arguments.
+        """
+        return {
+            "user":  self.user,
+            "password":  self.password,
+            "driver":  "org.postgresql.Driver"
+        }
+
+    def connector_options(self) -> Dict[str, Any]:
+        """Return options to be passed to an external RDS connector library"""
+        props = {
+            "host": self.host,
+            "port": self.port,
+            "database": self.database,
+        }
+        if self.user:
+            props["user"] = self.user
+        if self.password:
+            props["password"] = self.password
+        return props
+
+    def read(
+        self,
+        query: str,
+        data_format: Optional[str] = None,
+        options: Optional[Dict[str, Any]] = None,
+        path: Optional[str] = None,
+        dataframe_type: str = "default",
+    ) -> Union[
+        TypeVar("pyspark.sql.DataFrame"),
+        TypeVar("pyspark.RDD"),
+        pd.DataFrame,
+        np.ndarray,
+        pl.DataFrame,
+    ]:
+        """Reads a query into a dataframe using the storage connector.
+
+        # Arguments
+            query: A SQL query to be read.
+            data_format: Not relevant for RDS based connectors.
+            options: Any additional key/value options to be passed to the RDS connector.
+            path: Not relevant for RDS based connectors.
+            dataframe_type: str, optional. The type of the returned dataframe.
+                Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
+                Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
+
+        # Returns
+            `DataFrame`.
+        """
+        self.refetch()
+        options = (
+            {**self.spark_options(), **options}
+            if options is not None
+            else self.spark_options()
+        )
+        if query:
+            options["query"] = query
+
+        options["url"] = f"jdbc:postgresql://{self.host}:{self.port}/{self.database}"
+
+        return engine.get_instance().read(
+            self, self.JDBC_FORMAT, options, None, dataframe_type
         )

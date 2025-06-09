@@ -808,15 +808,6 @@ class Engine:
         online_write_options: Dict[str, Any],
         validation_id: Optional[int] = None,
     ) -> Optional[job.Job]:
-        # Currently on-demand transformation functions not supported in external feature groups.
-        if (
-            not isinstance(feature_group, ExternalFeatureGroup)
-            and feature_group.transformation_functions
-        ):
-            dataframe = self._apply_transformation_function(
-                feature_group.transformation_functions, dataframe
-            )
-
         if (
             hasattr(feature_group, "EXTERNAL_FEATURE_GROUP")
             and feature_group.online_enabled
@@ -878,6 +869,7 @@ class Engine:
         read_options: Dict[str, Any],
         dataframe_type: str,
         training_dataset_version: int = None,
+        transformation_context: Dict[str, Any] = None,
     ) -> Union[pd.DataFrame, pl.DataFrame]:
         """
         Function that creates or retrieves already created the training dataset.
@@ -889,6 +881,8 @@ class Engine:
             read_options `Dict[str, Any]`: Dictionary that can be used to specify extra parameters for reading data.
             dataframe_type `str`: The type of dataframe returned.
             training_dataset_version `int`: Version of training data to be retrieved.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
         # Raises
             `ValueError`: If the training dataset statistics could not be retrieved.
         """
@@ -906,6 +900,7 @@ class Engine:
                 read_options,
                 dataframe_type,
                 training_dataset_version,
+                transformation_context=transformation_context,
             )
         else:
             df = query_obj.read(
@@ -920,7 +915,9 @@ class Engine:
             #        training_dataset_obj, feature_view_obj, training_dataset_version
             #    )
             return self._apply_transformation_function(
-                feature_view_obj.transformation_functions, df
+                feature_view_obj.transformation_functions,
+                df,
+                transformation_context=transformation_context,
             )
 
     def split_labels(
@@ -954,6 +951,7 @@ class Engine:
         read_option: Dict[str, Any],
         dataframe_type: str,
         training_dataset_version: int = None,
+        transformation_context: Dict[str, Any] = None,
     ) -> Dict[str, Union[pd.DataFrame, pl.DataFrame]]:
         """
         Split a df into slices defined by `splits`. `splits` is a `dict(str, int)` which keys are name of split
@@ -966,6 +964,8 @@ class Engine:
             read_options `Dict[str, Any]`: Dictionary that can be used to specify extra parameters for reading data.
             dataframe_type `str`: The type of dataframe returned.
             training_dataset_version `int`: Version of training data to be retrieved.
+            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
         # Raises
             `ValueError`: If the training dataset statistics could not be retrieved.
         """
@@ -974,10 +974,30 @@ class Engine:
             == TrainingDatasetSplit.TIME_SERIES_SPLIT
         ):
             event_time = query_obj._left_feature_group.event_time
-            if event_time not in [_feature.name for _feature in query_obj.features]:
-                query_obj.append_feature(
-                    query_obj._left_feature_group.__getattr__(event_time)
+
+            event_time_feature = [
+                _feature
+                for _feature in query_obj.features
+                if (
+                    _feature.name == event_time
+                    and _feature._feature_group_id == query_obj._left_feature_group.id
                 )
+            ]
+
+            if not event_time_feature:
+                # Event time feature not in query manually adding event_time of root feature group.
+                # Using fully qualified name of the event time feature to avoid ambiguity.
+
+                event_time_feature = query_obj._left_feature_group.__getattr__(
+                    event_time
+                )
+                event_time_feature.use_fully_qualified_name = True
+
+                query_obj.append_feature(event_time_feature)
+                event_time = event_time_feature._get_fully_qualified_feature_name(
+                    feature_group=query_obj._left_feature_group
+                )
+
                 result_dfs = self._time_series_split(
                     query_obj.read(
                         read_options=read_option, dataframe_type=dataframe_type
@@ -987,6 +1007,11 @@ class Engine:
                     drop_event_time=True,
                 )
             else:
+                # Use the fully qualified name of the event time feature if required
+                event_time = event_time_feature[0]._get_fully_qualified_feature_name(
+                    feature_group=query_obj._left_feature_group
+                )
+
                 result_dfs = self._time_series_split(
                     query_obj.read(
                         read_options=read_option, dataframe_type=dataframe_type
@@ -1014,6 +1039,7 @@ class Engine:
             result_dfs[split_name] = self._apply_transformation_function(
                 feature_view_obj.transformation_functions,
                 result_dfs.get(split_name),
+                transformation_context=transformation_context,
             )
 
         return result_dfs
@@ -1094,6 +1120,7 @@ class Engine:
         save_mode: str,
         feature_view_obj: Optional[feature_view.FeatureView] = None,
         to_df: bool = False,
+        transformation_context: Dict[str, Any] = None,
     ) -> Union["job.Job", Any]:
         if not feature_view_obj and not isinstance(dataset, query.Query):
             raise Exception(
@@ -1114,6 +1141,7 @@ class Engine:
             and feature_view_obj
             and len(feature_view_obj.transformation_functions) == 0
             and training_dataset.data_format == "parquet"
+            and not transformation_context
         ):
             query_obj, _ = dataset._prep_read(False, user_write_options)
             response = util.run_with_loading_animation(
@@ -1130,6 +1158,13 @@ class Engine:
         # As for creating a feature group, users have the possibility of passing
         # a spark_job_configuration object as part of the user_write_options with the key "spark"
         spark_job_configuration = user_write_options.pop("spark", None)
+
+        # Pass transformation context to the training dataset job
+        if transformation_context:
+            raise FeatureStoreException(
+                "Cannot pass transformation context to training dataset materialization job from the Python Kernel. Please use the Spark Kernel."
+            )
+
         td_app_conf = training_dataset_job_conf.TrainingDatasetJobConf(
             query=dataset,
             overwrite=(save_mode == "overwrite"),
@@ -1212,11 +1247,11 @@ class Engine:
             "Stream ingestion is not available on Python environments, because it requires Spark as engine."
         )
 
-    def save_empty_dataframe(
-        self, feature_group: Union[FeatureGroup, ExternalFeatureGroup], new_features=None
+    def update_table_schema(
+        self, feature_group: Union[FeatureGroup, ExternalFeatureGroup]
     ) -> None:
-        """Wrapper around save_dataframe in order to provide no-op."""
-        pass
+        _job = self._feature_group_api.update_table_schema(feature_group)
+        _job._wait_for_job(await_termination=True)
 
     def _get_app_options(
         self, user_write_options: Optional[Dict[str, Any]] = None
@@ -1264,6 +1299,7 @@ class Engine:
         transformation_functions: List[transformation_function.TransformationFunction],
         dataset: Union[pd.DataFrame, pl.DataFrame],
         online_inference: bool = False,
+        transformation_context: Dict[str, Any] = None,
     ) -> Union[pd.DataFrame, pl.DataFrame]:
         """
         Apply transformation function to the dataframe.
@@ -1274,7 +1310,7 @@ class Engine:
         # Returns
             `DataFrame`: A pandas dataframe with the transformed data.
         # Raises
-            `FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
+            `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
         dropped_features = set()
 
@@ -1292,13 +1328,27 @@ class Engine:
 
         for tf in transformation_functions:
             hopsworks_udf = tf.hopsworks_udf
+
+            # Setting transformation function context variables.
+            hopsworks_udf.transformation_context = transformation_context
+
             missing_features = set(hopsworks_udf.transformation_features) - set(
                 dataset.columns
             )
             if missing_features:
-                raise FeatureStoreException(
-                    f"Features {missing_features} specified in the transformation function '{hopsworks_udf.function_name}' are not present in the feature view. Please specify the feature required correctly."
-                )
+                if (
+                    tf.transformation_type
+                    == transformation_function.TransformationType.ON_DEMAND
+                ):
+                    # On-demand transformation are applied using the python/spark engine during insertion, the transformation while retrieving feature vectors are performed in the vector_server.
+                    raise FeatureStoreException(
+                        f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the on-demand transformation function '{hopsworks_udf.function_name}' are not present in the dataframe being inserted into the feature group. "
+                        + "Please verify that the correct feature names are used in the transformation function and that these features exist in the dataframe being inserted."
+                    )
+                else:
+                    raise FeatureStoreException(
+                        f"The following feature(s): `{'`, '.join(missing_features)}`, specified in the model-dependent transformation function '{hopsworks_udf.function_name}' are not present in the feature view. Please verify that the correct features are specified in the transformation function."
+                    )
             if tf.hopsworks_udf.dropped_features:
                 dropped_features.update(tf.hopsworks_udf.dropped_features)
 
@@ -1332,7 +1382,7 @@ class Engine:
         # Returns
             `DataFrame`: A pandas dataframe with the transformed data.
         # Raises
-            `FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
+            `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
         udf = hopsworks_udf.get_udf(online=False)
         if isinstance(dataframe, pd.DataFrame):
@@ -1394,7 +1444,7 @@ class Engine:
         # Returns
             `DataFrame`: A pandas dataframe with the transformed data.
         # Raises
-            `FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
+            `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
         if len(hopsworks_udf.return_types) > 1:
             dataframe[hopsworks_udf.output_column_names] = hopsworks_udf.get_udf(
@@ -1406,7 +1456,9 @@ class Engine:
                         for feature in hopsworks_udf.transformation_features
                     ]
                 )
-            )
+            ).set_index(
+                dataframe.index
+            )  # Index is set to the input dataframe index so that pandas would merge the new columns without reordering them.
         else:
             dataframe[hopsworks_udf.output_column_names[0]] = hopsworks_udf.get_udf(
                 online=False
@@ -1417,9 +1469,11 @@ class Engine:
                         for feature in hopsworks_udf.transformation_features
                     ]
                 )
-            )
+            ).set_axis(
+                dataframe.index
+            )  # Index is set to the input dataframe index so that pandas would merge the new column without reordering it.
             if hopsworks_udf.output_column_names[0] in dataframe.columns:
-                # Overwriting features so reordering dataframe to move overwritten column to the end of the dataframe
+                # Overwriting features also reordering dataframe to move overwritten column to the end of the dataframe
                 cols = dataframe.columns.tolist()
                 cols.append(cols.pop(cols.index(hopsworks_udf.output_column_names[0])))
                 dataframe = dataframe[cols]
@@ -1441,8 +1495,9 @@ class Engine:
         producer, headers, feature_writers, writer = kafka_engine.init_kafka_resources(
             feature_group,
             offline_write_options,
-            project_id=client.get_instance()._project_id,
+            num_entries=len(dataframe),
         )
+
         if not feature_group._multi_part_insert:
             # set initial_check_point to the current offset
             initial_check_point = kafka_engine.kafka_get_offsets(
@@ -1487,6 +1542,7 @@ class Engine:
         # make sure producer blocks and everything is delivered
         if not feature_group._multi_part_insert:
             producer.flush()
+            del producer
             progress_bar.close()
 
         # start materialization job if not an external feature group, otherwise return None
@@ -1505,12 +1561,16 @@ class Engine:
                 topic_name=feature_group._online_topic_name,
                 feature_store_id=feature_group.feature_store_id,
                 offline_write_options=offline_write_options,
-                high=True,
+                high=False,
             )
             now = datetime.now(timezone.utc)
             feature_group.materialization_job.run(
                 args=feature_group.materialization_job.config.get("defaultArgs", "")
-                + initial_check_point,
+                + (
+                    f" -initialCheckPointString {initial_check_point}"
+                    if initial_check_point
+                    else ""
+                ),
                 await_termination=offline_write_options.get("wait_for_job", False),
             )
             offline_backfill_every_hr = offline_write_options.pop(
@@ -1540,9 +1600,22 @@ class Engine:
             # provide the initial_check_point as it will reduce the read amplification of materialization job
             feature_group.materialization_job.run(
                 args=feature_group.materialization_job.config.get("defaultArgs", "")
-                + initial_check_point,
+                + (
+                    f" -initialCheckPointString {initial_check_point}"
+                    if initial_check_point
+                    else ""
+                ),
                 await_termination=offline_write_options.get("wait_for_job", False),
             )
+
+        # wait for online ingestion
+        if feature_group.online_enabled and offline_write_options.get(
+            "wait_for_online_ingestion", False
+        ):
+            feature_group.get_latest_online_ingestion().wait_for_completion(
+                options=offline_write_options.get("online_ingestion_options", {})
+            )
+
         return feature_group.materialization_job
 
     @staticmethod
@@ -1582,9 +1655,10 @@ class Engine:
     def _convert_feature_log_to_df(feature_log, cols) -> pd.DataFrame:
         if feature_log is None and cols:
             return pd.DataFrame(columns=cols)
-        if not (isinstance(feature_log, (list, pd.DataFrame, pl.DataFrame)) or (
-            HAS_NUMPY and isinstance(feature_log, np.ndarray)
-        )):
+        if not (
+            isinstance(feature_log, (list, pd.DataFrame, pl.DataFrame))
+            or (HAS_NUMPY and isinstance(feature_log, np.ndarray))
+        ):
             raise ValueError(f"Type '{type(feature_log)}' not accepted")
         if isinstance(feature_log, list) or (
             HAS_NUMPY and isinstance(feature_log, np.ndarray)

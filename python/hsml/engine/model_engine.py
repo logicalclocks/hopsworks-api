@@ -20,9 +20,10 @@ import tempfile
 import time
 import uuid
 
-from hsml import client, constants, util
-from hsml.client.exceptions import ModelRegistryException, RestAPIError
-from hsml.core import dataset_api, model_api
+from hopsworks_common import client, constants, util
+from hopsworks_common.client.exceptions import ModelRegistryException, RestAPIError
+from hopsworks_common.core import dataset_api
+from hsml.core import model_api
 from hsml.engine import local_engine
 from tqdm.auto import tqdm
 
@@ -80,11 +81,11 @@ class ModelEngine:
         return model_instance
 
     def _copy_or_move_hopsfs_model_item(
-        self, item_attr, to_model_version_path, keep_original_files
+        self, item_attr, to_model_files_path, keep_original_files
     ):
         """Copy or move model item from a hdfs path to the model version folder in the Models dataset. It works with files and folders."""
         path = item_attr["path"]
-        to_hdfs_path = os.path.join(to_model_version_path, os.path.basename(path))
+        to_hdfs_path = os.path.join(to_model_files_path, os.path.basename(path))
         if keep_original_files:
             self._engine.copy(path, to_hdfs_path)
         else:
@@ -93,7 +94,7 @@ class ModelEngine:
     def _copy_or_move_hopsfs_model(
         self,
         from_hdfs_model_path,
-        to_model_version_path,
+        to_model_files_path,
         keep_original_files,
         update_upload_progress,
     ):
@@ -122,7 +123,7 @@ class ModelEngine:
             )["items"]:
                 path_attr = entry["attributes"]
                 self._copy_or_move_hopsfs_model_item(
-                    path_attr, to_model_version_path, keep_original_files
+                    path_attr, to_model_files_path, keep_original_files
                 )
                 if path_attr.get("dir", False):
                     n_dirs += 1
@@ -132,7 +133,7 @@ class ModelEngine:
         else:
             # if path is a file, copy/move it
             self._copy_or_move_hopsfs_model_item(
-                model_path_attr, to_model_version_path, keep_original_files
+                model_path_attr, to_model_files_path, keep_original_files
             )
             n_files += 1
             update_upload_progress(n_dirs=n_dirs, n_files=n_files)
@@ -156,7 +157,9 @@ class ModelEngine:
 
             if path_attr.get("dir", False):
                 # otherwise, make a recursive call for the folder
-                if basename == "Artifacts":
+                if (
+                    basename == constants.MODEL_SERVING.ARTIFACTS_DIR_NAME
+                ):  # TODO: Not needed anymore
                     continue  # skip Artifacts subfolder
                 local_folder_path = os.path.join(to_local_path, basename)
                 os.mkdir(local_folder_path)
@@ -195,11 +198,11 @@ class ModelEngine:
     def _upload_local_model(
         self,
         from_local_model_path,
-        to_model_version_path,
+        to_model_files_path,
         update_upload_progress,
         upload_configuration=None,
     ):
-        """Copy or upload model files from a local path to the model version folder in the Models dataset."""
+        """Copy or upload model files from a local path to the model files folder in the Models dataset."""
         n_dirs, n_files = 0, 0
         if os.path.isdir(from_local_model_path):
             # if path is a dir, upload files and folders iteratively
@@ -210,8 +213,8 @@ class ModelEngine:
                 # - files is the list of file names present in the root dir
                 # we need to replace the local path prefix with the hdfs path prefix (i.e., /srv/hops/....../root with /Projects/.../)
                 remote_base_path = root.replace(
-                    from_local_model_path, to_model_version_path
-                )
+                    from_local_model_path, to_model_files_path
+                ).replace(os.sep, "/")
                 for d_name in dirs:
                     self._engine.mkdir(remote_base_path + "/" + d_name)
                     n_dirs += 1
@@ -228,7 +231,7 @@ class ModelEngine:
             # if path is a file, upload file
             self._engine.upload(
                 from_local_model_path,
-                to_model_version_path,
+                to_model_files_path,
                 upload_configuration=upload_configuration,
             )
             n_files += 1
@@ -249,14 +252,14 @@ class ModelEngine:
                 from_hdfs_model_path=model_path.replace(
                     constants.MODEL_REGISTRY.HOPSFS_MOUNT_PREFIX, ""
                 ),
-                to_model_version_path=model_instance.version_path,
+                to_model_files_path=model_instance.model_files_path,
                 keep_original_files=keep_original_files,
                 update_upload_progress=update_upload_progress,
             )
         else:
             self._upload_local_model(
                 from_local_model_path=model_path,
-                to_model_version_path=model_instance.version_path,
+                to_model_files_path=model_instance.model_files_path,
                 update_upload_progress=update_upload_progress,
                 upload_configuration=upload_configuration,
             )
@@ -267,10 +270,17 @@ class ModelEngine:
         # Set model version if not defined
         if model_instance._version is None:
             current_highest_version = 0
-            for item in self._dataset_api.list(dataset_model_path, sort_by="NAME:desc")[
-                "items"
-            ]:
+            files = []
+            offset = 0
+            limit = 1000
+            items = self._dataset_api.list(dataset_model_path, sort_by="NAME:desc", offset=offset, limit=limit)["items"]
+            while items:
+              files = files + items
+              offset += limit
+              items = self._dataset_api.list(dataset_model_path, sort_by="NAME:desc", offset=offset, limit=limit)["items"]
+            for item in files:
                 _, file_name = os.path.split(item["attributes"]["path"])
+                # Get highest version folder
                 try:
                     try:
                         current_version = int(file_name)
@@ -280,20 +290,47 @@ class ModelEngine:
                         current_highest_version = current_version
                 except RestAPIError:
                     pass
-            model_instance._version = current_highest_version + 1
 
-        elif self._dataset_api.path_exists(
-            dataset_models_root_path
-            + "/"
-            + model_instance._name
-            + "/"
-            + str(model_instance._version)
-        ):
-            raise ModelRegistryException(
-                "Model with name {} and version {} already exists".format(
-                    model_instance._name, model_instance._version
+            current_highest_version += 1
+
+            # Get highest available model metadata version
+            # This makes sure we skip corrupt versions where the model folder is deleted manually but the backend metadata is still there
+            model = self._model_api.get(model_instance._name, current_highest_version, model_instance.model_registry_id)
+            while model:
+              current_highest_version += 1
+              model = self._model_api.get(model_instance._name, current_highest_version, model_instance.model_registry_id)
+
+            model_instance._version = current_highest_version
+        else:
+            model_backend_object_exists = self._model_api.get(model_instance._name, model_instance._version, model_instance.model_registry_id) is not None
+            model_version_folder_exists = self._dataset_api.path_exists(
+                                                          dataset_models_root_path
+                                                          + "/"
+                                                          + model_instance._name
+                                                          + "/"
+                                                          + str(model_instance._version)
+                                                      )
+
+            # Perform validations to handle possible inconsistency between db and filesystem
+            if model_backend_object_exists and not model_version_folder_exists:
+              raise ModelRegistryException(
+                    "Model with name {0} and version {1} looks to be corrupt as the version is registered but there is no Models/{0}/{1} folder in the filesystem. Delete this version using Model.delete() or the UI and try to export this version again.".format(
+                        model_instance._name, model_instance._version
+                    )
                 )
-            )
+            elif not model_backend_object_exists and model_version_folder_exists:
+                raise ModelRegistryException(
+                    "Model with name {0} and version {1} looks to be corrupt as the version exists in the filesystem but it is not registered. To proceed, please delete the Models/{0}/{1} folder manually and try to save this model again.".format(
+                        model_instance._name, model_instance._version
+                    )
+                )
+            elif model_backend_object_exists and model_version_folder_exists:
+                raise ModelRegistryException(
+                    "Model with name {} and version {} already exists, please select another version.".format(
+                        model_instance._name, model_instance._version
+                    )
+                )
+
         return model_instance
 
     def _build_resource_path(self, model_instance, artifact):
@@ -365,6 +402,7 @@ class ModelEngine:
                 if step["id"] == 0:
                     # Create folders
                     self._engine.mkdir(model_instance.version_path)
+                    self._engine.mkdir(model_instance.model_files_path)
                 if step["id"] == 1:
 
                     def update_upload_progress(n_dirs=0, n_files=0, step=step):
@@ -374,7 +412,7 @@ class ModelEngine:
 
                     update_upload_progress(n_dirs=0, n_files=0)
 
-                    # Upload Model files from local path to /Models/{model_instance._name}/{model_instance._version}
+                    # Upload Model files from local path to /Models/{model_instance._name}/{model_instance._version}/Files
                     # check local absolute
                     if os.path.isabs(model_path) and os.path.exists(model_path):
                         self._save_model_from_local_or_hopsfs_mount(
@@ -401,7 +439,7 @@ class ModelEngine:
                     ):  # check hdfs relative and absolute
                         self._copy_or_move_hopsfs_model(
                             from_hdfs_model_path=model_path,
-                            to_model_version_path=model_instance.version_path,
+                            to_model_files_path=model_instance.model_files_path,
                             keep_original_files=keep_original_files,
                             update_upload_progress=update_upload_progress,
                         )
@@ -431,12 +469,13 @@ class ModelEngine:
 
         return model_instance
 
-    def download(self, model_instance):
-        model_name_path = os.path.join(
-            tempfile.gettempdir(), str(uuid.uuid4()), model_instance._name
-        )
-        model_version_path = model_name_path + "/" + str(model_instance._version)
-        os.makedirs(model_version_path)
+    def download(self, model_instance, local_path=None):
+        if local_path is None:
+            local_path = os.path.join(
+                tempfile.gettempdir(), str(uuid.uuid4()), model_instance._name
+            )
+            local_path = local_path + "/" + str(model_instance._version)
+        os.makedirs(local_path, exist_ok=True)
 
         def update_download_progress(n_dirs, n_files, done=False):
             print(
@@ -446,20 +485,25 @@ class ModelEngine:
             )
 
         try:
-            from_hdfs_model_path = model_instance.version_path
+            from_hdfs_model_path = model_instance.model_files_path
             if from_hdfs_model_path.startswith("hdfs:/"):
                 projects_index = from_hdfs_model_path.find("/Projects", 0)
                 from_hdfs_model_path = from_hdfs_model_path[projects_index:]
 
+            if not self._dataset_api.path_exists(from_hdfs_model_path):
+                # if Files directory doesn't exist, download files from the model version
+                # directory for backwards compatibility with the old model file structure
+                from_hdfs_model_path = model_instance.version_path
+
             self._download_model_from_hopsfs(
                 from_hdfs_model_path=from_hdfs_model_path,
-                to_local_path=model_version_path,
+                to_local_path=local_path,
                 update_download_progress=update_download_progress,
             )
         except BaseException as be:
             raise be
 
-        return model_version_path
+        return local_path
 
     def read_file(self, model_instance, resource):
         hdfs_resource_path = self._build_resource_path(
@@ -509,7 +553,7 @@ class ModelEngine:
 
     def get_tag(self, model_instance, name):
         """Get tag with a certain name."""
-        return self._model_api.get_tags(model_instance, name)[name]
+        return self._model_api.get_tag(model_instance, name)
 
     def get_tags(self, model_instance):
         """Get all tags for a model."""
@@ -525,7 +569,7 @@ class ModelEngine:
             model_instance: Metadata object of model.
 
         # Returns
-            `ProvenanceLinks`:  the feature view used to generate this model
+            `Links`:  the feature view used to generate this model
         """
         return self._model_api.get_feature_view_provenance(model_instance)
 
@@ -539,6 +583,6 @@ class ModelEngine:
             model_instance: Metadata object of model.
 
         # Returns
-            `ProvenanceLinks`:  the training dataset used to generate this model
+            `Links`:  the training dataset used to generate this model
         """
         return self._model_api.get_training_dataset_provenance(model_instance)

@@ -19,6 +19,7 @@ from typing import Dict, List, Union
 
 from hsml import (
     client,
+    decorators,
     deployable_component_logs,
     deployment,
     inference_endpoint,
@@ -37,6 +38,7 @@ class ServingApi:
     def __init__(self):
         pass
 
+    @decorators.catch_not_found("hsml.deployment.Deployment", fallback_return=None)
     def get_by_id(self, id: int):
         """Get the metadata of a deployment with a certain id.
 
@@ -53,11 +55,13 @@ class ServingApi:
             "serving",
             str(id),
         ]
+
         deployment_json = _client._send_request("GET", path_params)
         deployment_instance = deployment.Deployment.from_response_json(deployment_json)
         deployment_instance.model_registry_id = _client._project_id
         return deployment_instance
 
+    @decorators.catch_not_found("hsml.deployment.Deployment", fallback_return=None)
     def get(self, name: str):
         """Get the metadata of a deployment with a certain name.
 
@@ -70,6 +74,7 @@ class ServingApi:
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "serving"]
         query_params = {"name": name}
+
         deployment_json = _client._send_request(
             "GET", path_params, query_params=query_params
         )
@@ -331,26 +336,6 @@ class ServingApi:
             "successMessage" in kserve_installed
             and kserve_installed["successMessage"] == "true"
         )
-
-    def get_resource_limits(self):
-        """Get resource limits for model serving"""
-
-        _client = client.get_instance()
-
-        path_params = ["variables", "kube_serving_max_cores_allocation"]
-        max_cores = _client._send_request("GET", path_params)
-
-        path_params = ["variables", "kube_serving_max_memory_allocation"]
-        max_memory = _client._send_request("GET", path_params)
-
-        path_params = ["variables", "kube_serving_max_gpus_allocation"]
-        max_gpus = _client._send_request("GET", path_params)
-
-        return {
-            "cores": float(max_cores["successMessage"]),
-            "memory": int(max_memory["successMessage"]),
-            "gpus": int(max_gpus["successMessage"]),
-        }
 
     def get_num_instances_limits(self):
         """Get number of instances limits for model serving"""

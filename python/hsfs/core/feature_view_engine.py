@@ -32,6 +32,8 @@ from hsfs import (
 )
 from hsfs.client import exceptions
 from hsfs.constructor.filter import Filter, Logic
+from hsfs.constructor.join import Join
+from hsfs.constructor.query import Query
 from hsfs.core import (
     feature_view_api,
     query_constructor_api,
@@ -165,7 +167,7 @@ class FeatureViewEngine:
         self, name: str, version: int = None
     ) -> Union[feature_view.FeatureView, List[feature_view.FeatureView]]:
         """
-        Get a feature view form the backend using name or using name and version.
+        Get a feature view from the backend using name or using name and version.
 
         If version is not provided then a List of feature views containing all of its versions is returned.
 
@@ -177,7 +179,7 @@ class FeatureViewEngine:
             `Union[FeatureView, List[FeatureView]]`
 
         # Raises
-            `RestAPIError`: If the feature view cannot be found from the backend.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
             `ValueError`: If the feature group associated with the feature view cannot be found.
         """
         if version:
@@ -208,11 +210,10 @@ class FeatureViewEngine:
 
         # Returns
             `List[training_dataset_feature.TrainingDatasetFeature]`: List of training dataset features objects.
-
-        # Raises
-            `ValueError` if the  training dataset version provided cannot be found.
         """
-
+        # This is used to verify that the training dataset version actually exists, otherwise it raises an exception
+        if training_dataset_version:
+            self._get_training_dataset_metadata(feature_view, training_dataset_version)
         if not feature_view.transformation_functions:
             # Return the features in the feature view if the no transformation functions in the feature view.
             return feature_view.features
@@ -389,9 +390,10 @@ class FeatureViewEngine:
         training_dataset_obj,
         user_write_options,
         spine=None,
-        primary_keys=False,
-        event_time=False,
-        training_helper_columns=False,
+        primary_keys=True,
+        event_time=True,
+        training_helper_columns=True,
+        transformation_context: Dict[str, Any] = None,
     ):
         self._set_event_time(feature_view_obj, training_dataset_obj)
         updated_instance = self._create_training_data_metadata(
@@ -405,6 +407,7 @@ class FeatureViewEngine:
             primary_keys=primary_keys,
             event_time=event_time,
             training_helper_columns=training_helper_columns,
+            transformation_context=transformation_context,
         )
         return updated_instance, td_job
 
@@ -420,6 +423,7 @@ class FeatureViewEngine:
         event_time=False,
         training_helper_columns=False,
         dataframe_type="default",
+        transformation_context: Dict[str, Any] = None,
     ):
         # check if provided td version has already existed.
         if training_dataset_version:
@@ -497,6 +501,7 @@ class FeatureViewEngine:
                 read_options,
                 dataframe_type,
                 training_dataset_version,
+                transformation_context=transformation_context,
             )
             self.compute_training_dataset_statistics(
                 feature_view_obj, td_updated, split_df
@@ -581,6 +586,7 @@ class FeatureViewEngine:
         statistics_config,
         user_write_options,
         spine=None,
+        transformation_context: Dict[str, Any] = None,
     ):
         training_dataset_obj = self._get_training_dataset_metadata(
             feature_view_obj, training_dataset_version
@@ -597,6 +603,7 @@ class FeatureViewEngine:
             user_write_options,
             training_dataset_obj=training_dataset_obj,
             spine=spine,
+            transformation_context=transformation_context,
         )
         # Set training dataset schema after training dataset has been generated
         training_dataset_obj.schema = self.get_training_dataset_schema(
@@ -757,6 +764,7 @@ class FeatureViewEngine:
         primary_keys=False,
         event_time=False,
         training_helper_columns=False,
+        transformation_context: Dict[str, Any] = None,
     ):
         if training_dataset_obj:
             pass
@@ -791,6 +799,7 @@ class FeatureViewEngine:
             user_write_options,
             self._OVERWRITE,
             feature_view_obj=feature_view_obj,
+            transformation_context=transformation_context,
         )
 
         # Set training dataset schema after training dataset has been generated
@@ -913,6 +922,7 @@ class FeatureViewEngine:
         inference_helper_columns=False,
         dataframe_type="default",
         transformed=True,
+        transformation_context: Dict[str, Any] = None,
     ):
         self._check_feature_group_accessibility(feature_view_obj)
 
@@ -936,7 +946,9 @@ class FeatureViewEngine:
         ).read(read_options=read_options, dataframe_type=dataframe_type)
         if transformation_functions and transformed:
             return engine.get_instance()._apply_transformation_function(
-                transformation_functions, dataset=feature_dataframe
+                transformation_functions,
+                dataset=feature_dataframe,
+                transformation_context=transformation_context,
             )
         else:
             return feature_dataframe
@@ -962,9 +974,11 @@ class FeatureViewEngine:
         )
 
     def get_tag(self, feature_view_obj, name: str, training_dataset_version=None):
-        return self._tags_api.get(
+        tags = self._tags_api.get(
             feature_view_obj, name, training_dataset_version=training_dataset_version
-        )[name]
+        )
+        if name in tags:
+            return tags[name]
 
     def get_tags(self, feature_view_obj, training_dataset_version=None):
         return self._tags_api.get(
@@ -982,11 +996,13 @@ class FeatureViewEngine:
             feature_view_obj: Metadata object of feature view.
 
         # Returns
-            `ProvenanceLinks`:  the feature groups used to generated this feature view
+            `Links`:  the feature groups used to generate this feature view or None
         """
-        return self._feature_view_api.get_parent_feature_groups(
+        links = self._feature_view_api.get_parent_feature_groups(
             feature_view_obj.name, feature_view_obj.version
         )
+        if not links.is_empty():
+            return links
 
     def get_models_provenance(
         self, feature_view_obj, training_dataset_version: Optional[int] = None
@@ -1002,13 +1018,15 @@ class FeatureViewEngine:
             training_dataset_version: Filter generated models based on the used training dataset version.
 
         # Returns
-            `ProvenanceLinks`:  the models generated using this feature group
+            `Links`: the models generated using this feature group or None
         """
-        return self._feature_view_api.get_models_provenance(
+        links = self._feature_view_api.get_models_provenance(
             feature_view_obj.name,
             feature_view_obj.version,
             training_dataset_version=training_dataset_version,
         )
+        if not links.is_empty():
+            return links
 
     def _check_feature_group_accessibility(self, feature_view_obj):
         if engine.get_type() == "python":
@@ -1054,52 +1072,150 @@ class FeatureViewEngine:
         )
         return util.get_hostname_replaced_url(path)
 
-    def _get_primary_keys_from_query(self, fv_query_obj, check_duplicate=True):
-        fv_pks = set(
-            [
-                feature.name
-                for feature in fv_query_obj._left_feature_group.features
-                if feature.primary
+    def _primary_keys_from_join(
+        self, joins: List[Join], check_duplicate: bool, pk_names: set[str]
+    ) -> set[str]:
+        """
+        Recursive function that extracts the primary keys from the join objects and returns them as a set.
+        """
+        for join in joins:
+            sub_query = join.query
+            join_prefix = join.prefix
+
+            sub_query_selected_feature_names = [
+                feature.name for feature in join.query._left_features
             ]
-        )
-        for _join in fv_query_obj._joins:
-            fv_pks.update(
-                [
-                    (
-                        self._check_if_exists_with_prefix(feature.name, fv_pks)
-                        if check_duplicate
-                        else feature.name
-                    )
-                    if _join.prefix is None
-                    else _join.prefix + feature.name
-                    for feature in _join.query._left_feature_group.features
-                    if feature.primary
-                ]
+            sub_query_feature_group = sub_query._left_feature_group
+            sub_query_pk_names = {
+                feature.name
+                for feature in sub_query_feature_group.features
+                if feature.primary
+            }
+
+            sub_query_pk_names = {
+                util.generate_fully_qualified_feature_name(
+                    sub_query_feature_group, pk_name
+                )
+                if pk_name not in sub_query_selected_feature_names
+                else (pk_name if not join_prefix else join_prefix + pk_name)
+                for pk_name in sub_query_pk_names
+            }
+
+            if check_duplicate:
+                for sub_query_pk_name in sub_query_pk_names:
+                    self._check_if_exists_with_prefix(sub_query_pk_name, pk_names)
+
+            pk_names.update(sub_query_pk_names)
+
+            if sub_query._joins:
+                sub_query_pks = self._primary_keys_from_join(
+                    sub_query._joins, check_duplicate, pk_names
+                )
+                pk_names.update(sub_query_pks)
+        return pk_names
+
+    def _event_time_from_join(
+        self, joins: List[Join], check_duplicate: bool, et_names: set[str]
+    ) -> set[str]:
+        for join in joins:
+            sub_query = join.query
+            join_prefix = join.prefix
+
+            sub_query_selected_feature_names = [
+                feature.name for feature in join.query._left_features
+            ]
+            sub_query_feature_group = sub_query._left_feature_group
+            sub_query_event_time = sub_query_feature_group.event_time
+
+            sub_query_event_time = (
+                util.generate_fully_qualified_feature_name(
+                    sub_query_feature_group, sub_query_event_time
+                )
+                if sub_query_event_time not in sub_query_selected_feature_names
+                else (
+                    join_prefix + sub_query_event_time
+                    if join_prefix
+                    else sub_query_event_time
+                )
             )
 
-        return list(fv_pks)
+            if check_duplicate:
+                self._check_if_exists_with_prefix(sub_query_event_time, et_names)
 
-    def _get_eventtimes_from_query(self, fv_query_obj, check_duplicate=True):
-        fv_events = set()
-        if fv_query_obj._left_feature_group.event_time:
-            fv_events.update([fv_query_obj._left_feature_group.event_time])
-        for _join in fv_query_obj._joins:
-            if _join.query._left_feature_group.event_time:
-                fv_events.update(
-                    [
-                        (
-                            self._check_if_exists_with_prefix(
-                                _join.query._left_feature_group.event_time, fv_events
-                            )
-                            if check_duplicate
-                            else _join.query._left_feature_group.event_time
-                        )
-                        if _join.prefix is None
-                        else _join.prefix + _join.query._left_feature_group.event_time
-                    ]
+            et_names.add(sub_query_event_time)
+
+            if sub_query._joins:
+                sub_query_ets = self._event_time_from_join(
+                    sub_query._joins, check_duplicate, et_names
                 )
+                et_names.update(sub_query_ets)
+        return et_names
 
-        return list(fv_events)
+    def _get_primary_keys_from_query(
+        self, query: Query, check_duplicate: bool = True
+    ) -> List[str]:
+        """
+        Function that checks the primary keys from the query object and returns them as a list.
+
+        #Arguments:
+            fv_query_obj : `Query`. Query object from which the primary keys are extracted.
+            check_duplicate : `bool`. Flag to check if the primary keys are duplicated in the query.
+        """
+        root_feature_group_selected_features_name = {
+            feature.name for feature in query._left_features
+        }
+
+        root_feature_group = query._left_feature_group
+
+        root_feature_group_primary_keys_names = {
+            feature.name for feature in root_feature_group.features if feature.primary
+        }
+
+        pk_names = {
+            util.generate_fully_qualified_feature_name(root_feature_group, pk_name)
+            if pk_name not in root_feature_group_selected_features_name
+            else pk_name
+            for pk_name in root_feature_group_primary_keys_names
+        }
+
+        pk_names.update(
+            self._primary_keys_from_join(query._joins, check_duplicate, pk_names)
+        )
+
+        return list(pk_names)
+
+    def _get_eventtimes_from_query(
+        self, query: Query, check_duplicate: bool = True
+    ) -> List[str]:
+        """
+        Function that checks the event times from the query object and returns them as a list.
+
+        #Arguments:
+            fv_query_obj : `Query`. Query object from which the event times are extracted.
+            check_duplicate : `bool`. Flag to check if the event times are duplicated in the query.
+        """
+        root_feature_group_selected_features_name = {
+            feature.name for feature in query._left_features
+        }
+
+        root_feature_group = query._left_feature_group
+
+        root_feature_group_event_time = root_feature_group.event_time
+
+        et_names = {
+            util.generate_fully_qualified_feature_name(
+                root_feature_group, root_feature_group_event_time
+            )
+            if root_feature_group_event_time
+            not in root_feature_group_selected_features_name
+            else root_feature_group_event_time
+        }
+
+        et_names.update(
+            self._event_time_from_join(query._joins, check_duplicate, et_names)
+        )
+
+        return list(et_names)
 
     def _check_if_exists_with_prefix(self, f_name, f_set):
         if f_name in f_set:
@@ -1116,12 +1232,13 @@ class FeatureViewEngine:
         return fv
 
     def get_feature_logging(self, fv):
-        return FeatureLogging.from_response_json(
-            self._feature_view_api.get_feature_logging(fv.name, fv.version)
-        )
+        return self._feature_view_api.get_feature_logging(fv.name, fv.version)
 
     def _get_logging_fg(self, fv, transformed):
-        return self.get_feature_logging(fv).get_feature_group(transformed)
+        feature_logging = self.get_feature_logging(fv)
+        if feature_logging:
+            return feature_logging.get_feature_group(transformed)
+        return feature_logging
 
     def log_features(
         self,
@@ -1209,9 +1326,7 @@ class FeatureViewEngine:
         return_list=False,
     ):
         fg = feature_logging.get_feature_group(transformed)
-        training_dataset_schema = fv.get_training_dataset_schema(
-            training_dataset_version=training_dataset_version
-        )
+        training_dataset_schema = fv.get_training_dataset_schema()
         td_predictions = [
             feature for feature in training_dataset_schema if feature.label
         ]
@@ -1346,7 +1461,10 @@ class FeatureViewEngine:
         transformed: Optional[bool] = False,
     ) -> Dict[str, Dict[str, str]]:
         fg = self._get_logging_fg(fv, transformed)
-        return fg.commit_details(wallclock_time=wallclock_time, limit=limit)
+        if fg:
+            return fg.commit_details(wallclock_time=wallclock_time, limit=limit)
+        else:
+            return {}
 
     def pause_logging(self, fv):
         self._feature_view_api.pause_feature_logging(fv.name, fv.version)

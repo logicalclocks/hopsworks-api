@@ -138,6 +138,19 @@ class TestModel:
         # Assert
         self.assert_model(mocker, m, json, MODEL.FRAMEWORK_TORCH)
 
+    def test_constructor_llm(self, mocker, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["model"]["get_llm"]["response"]["items"][0]
+        m_json = copy.deepcopy(json)
+        id = m_json.pop("id")
+        name = m_json.pop("name")
+
+        # Act
+        m = model.Model(id=id, name=name, **m_json)
+
+        # Assert
+        self.assert_model(mocker, m, json, MODEL.FRAMEWORK_LLM)
+
     # save
 
     def test_save(self, mocker, backend_fixtures):
@@ -198,6 +211,7 @@ class TestModel:
             artifact_version=p_json["artifact_version"],
             serving_tool=p_json["serving_tool"],
             script_file=p_json["predictor"],
+            config_file=p_json["config_file"],
             resources=resources,
             inference_logger=inference_logger,
             inference_batcher=inference_batcher,
@@ -214,6 +228,7 @@ class TestModel:
             artifact_version=p_json["artifact_version"],
             serving_tool=p_json["serving_tool"],
             script_file=p_json["predictor"],
+            config_file=p_json["config_file"],
             resources=resources,
             inference_logger=inference_logger,
             inference_batcher=inference_batcher,
@@ -253,7 +268,9 @@ class TestModel:
         m.download()
 
         # Assert
-        mock_model_engine_download.assert_called_once_with(model_instance=m)
+        mock_model_engine_download.assert_called_once_with(
+            model_instance=m, local_path=None
+        )
 
     # tags
 
@@ -329,10 +346,10 @@ class TestModel:
             _project_id = 1
 
         mock_client_get_instance = mocker.patch(
-            "hsml.client.get_instance", return_value=ClientMock()
+            "hopsworks_common.client.get_instance", return_value=ClientMock()
         )
         mock_util_get_hostname_replaced_url = mocker.patch(
-            "hsml.util.get_hostname_replaced_url", return_value="full_path"
+            "hopsworks_common.util.get_hostname_replaced_url", return_value="full_path"
         )
         path_arg = "/p/1/models/" + m_json["name"] + "/" + str(m_json["version"])
 
@@ -357,7 +374,6 @@ class TestModel:
         assert m.project_name == m_json["project_name"]
         assert m.training_metrics == m_json["metrics"]
         assert m._user_full_name == m_json["user_full_name"]
-        assert m.training_dataset == m_json["training_dataset"]
         assert m.model_registry_id == m_json["model_registry_id"]
 
         if model_framework is None:
@@ -416,7 +432,7 @@ class TestModel:
         mock_fv_provenance.assert_called_once()
         mock_td_provenance.assert_called_once()
         assert not mock_fv.init_serving.called
-        assert not mock_fv.init_batch_scoring.called
+        assert mock_fv.init_batch_scoring.called
 
     def test_get_feature_view_online(self, mocker):
         mock_fv = mocker.Mock()

@@ -20,9 +20,13 @@ from hsfs.core import feature_group_api
 
 
 class HudiEngine:
-
-    HUDI_SPEC_FEATURE_NAMES = ["_hoodie_record_key", "_hoodie_partition_path",
-                               "_hoodie_commit_time", "_hoodie_file_name", "_hoodie_commit_seqno"]
+    HUDI_SPEC_FEATURE_NAMES = [
+        "_hoodie_record_key",
+        "_hoodie_partition_path",
+        "_hoodie_commit_time",
+        "_hoodie_file_name",
+        "_hoodie_commit_seqno",
+    ]
 
     HUDI_SPARK_FORMAT = "org.apache.hudi"
     HUDI_TABLE_NAME = "hoodie.table.name"
@@ -109,9 +113,7 @@ class HudiEngine:
         hudi_options = self._setup_hudi_read_opts(hudi_fg_alias, read_options)
         self._spark_session.read.format(self.HUDI_SPARK_FORMAT).options(
             **hudi_options
-        ).load(location).createOrReplaceTempView(
-            hudi_fg_alias.alias
-        )
+        ).load(location).createOrReplaceTempView(hudi_fg_alias.alias)
 
     def _write_hudi_dataset(self, dataset, save_mode, operation, write_options):
         location = self._feature_group.prepare_spark_location()
@@ -233,25 +235,6 @@ class HudiEngine:
             hudi_options.update(read_options)
 
         return hudi_options
-
-    def reconcile_hudi_schema(
-        self, save_empty_dataframe_callback, hudi_fg_alias, read_options
-    ):
-        if sorted(self._spark_session.table(hudi_fg_alias.alias).columns) != sorted(
-            [feature.name for feature in hudi_fg_alias.feature_group._features] + self.HUDI_SPEC_FEATURE_NAMES
-        ):
-            full_fg = self._feature_group_api.get(
-                feature_store_id=hudi_fg_alias.feature_group._feature_store_id,
-                name=hudi_fg_alias.feature_group.name,
-                version=hudi_fg_alias.feature_group.version,
-            )
-
-            save_empty_dataframe_callback(full_fg)
-
-            self.register_temporary_table(
-                hudi_fg_alias,
-                read_options,
-            )
 
     @staticmethod
     def _get_last_commit_metadata(spark_context, base_path):

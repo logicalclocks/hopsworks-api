@@ -6,6 +6,8 @@ from hsfs import feature_group, util
 
 
 class FeatureLogging:
+    NOT_FOUND_ERROR_CODE = 270248
+
     def __init__(
         self,
         id: int,

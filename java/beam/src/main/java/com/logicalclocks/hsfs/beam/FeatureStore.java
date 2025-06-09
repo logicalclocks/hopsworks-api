@@ -160,7 +160,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
   @Override
   public StreamFeatureGroup getOrCreateStreamFeatureGroup(String name, Integer version, String description,
       List<String> primaryKeys, List<String> partitionKeys, String hudiPrecombineKey, boolean onlineEnabled,
-      StatisticsConfig statisticsConfig, String eventTime, OnlineConfig onlineConfig)
+      TimeTravelFormat timeTravelFormat, StatisticsConfig statisticsConfig, String eventTime, OnlineConfig onlineConfig)
       throws IOException, FeatureStoreException {
     throw new UnsupportedOperationException("Not supported for Beam");
   }
@@ -304,6 +304,11 @@ public class FeatureStore extends FeatureStoreBase<Query> {
 
   @Override
   public Object getGcsConnector(String name) throws FeatureStoreException, IOException {
+    throw new UnsupportedOperationException("Not supported for Beam");
+  }
+
+  @Override
+  public Object getRdsConnector(String name) throws FeatureStoreException, IOException {
     throw new UnsupportedOperationException("Not supported for Beam");
   }
 

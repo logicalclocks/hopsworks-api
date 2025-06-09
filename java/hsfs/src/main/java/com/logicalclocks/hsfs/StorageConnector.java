@@ -57,7 +57,8 @@ import java.util.stream.Collectors;
     @JsonSubTypes.Type(value = StorageConnector.JdbcConnector.class, name = "JDBC"),
     @JsonSubTypes.Type(value = StorageConnector.KafkaConnector.class, name = "KAFKA"),
     @JsonSubTypes.Type(value = StorageConnector.GcsConnector.class, name = "GCS"),
-    @JsonSubTypes.Type(value = StorageConnector.BigqueryConnector.class, name = "BIGQUERY")
+    @JsonSubTypes.Type(value = StorageConnector.BigqueryConnector.class, name = "BIGQUERY"),
+    @JsonSubTypes.Type(value = StorageConnector.RdsConnector.class, name = "RDS")
 })
 public abstract class StorageConnector {
 
@@ -81,13 +82,17 @@ public abstract class StorageConnector {
   protected static final Logger LOGGER = LoggerFactory.getLogger(StorageConnector.class);
 
   public StorageConnector refetch() throws FeatureStoreException, IOException {
-    return  storageConnectorApi.get(getFeaturestoreId(), getName(), StorageConnector.class);
+    return storageConnectorApi.get(getFeaturestoreId(), getName(), StorageConnector.class);
   }
 
   @JsonIgnore
   public abstract String getPath(String subPath) throws FeatureStoreException;
 
-  public abstract Map<String, String> sparkOptions() throws IOException, FeatureStoreException;
+  public Map<String, String> sparkOptions() throws IOException, FeatureStoreException {
+    return sparkOptions(null);
+  }
+
+  public abstract Map<String, String> sparkOptions(DataSource dataSource) throws IOException, FeatureStoreException;
 
   public static class HopsFsConnector extends StorageConnector {
 
@@ -97,7 +102,7 @@ public abstract class StorageConnector {
     @Getter @Setter
     protected String datasetName;
 
-    public Map<String, String> sparkOptions() {
+    public Map<String, String> sparkOptions(DataSource dataSource) {
       return new HashMap<>();
     }
 
@@ -125,6 +130,9 @@ public abstract class StorageConnector {
     protected String bucket;
 
     @Getter @Setter
+    protected String path;
+
+    @Getter @Setter
     protected String region;
 
     @Getter @Setter
@@ -138,11 +146,13 @@ public abstract class StorageConnector {
 
     @JsonIgnore
     public String getPath(String subPath) {
-      return "s3://" + bucket + "/"  + (Strings.isNullOrEmpty(subPath) ? "" : subPath);
+      return "s3://" + bucket
+          + (Strings.isNullOrEmpty(path) ? "" : "/" + path) + "/"
+          + (Strings.isNullOrEmpty(subPath) ? "" : subPath);
     }
 
     @Override
-    public Map<String, String> sparkOptions() {
+    public Map<String, String> sparkOptions(DataSource dataSource) {
       if (!CollectionUtils.isNullOrEmpty(arguments)) {
         return arguments.stream().collect(Collectors.toMap(Option::getName, Option::getValue));
       }
@@ -199,9 +209,11 @@ public abstract class StorageConnector {
     protected Instant expiration;
 
     @Override
-    public Map<String, String> sparkOptions() {
+    public Map<String, String> sparkOptions(DataSource dataSource) {
+      String database = dataSource == null ? databaseName : dataSource.getDatabase();
+
       String constr =
-          "jdbc:redshift://" + clusterIdentifier + "." + databaseEndpoint + ":" + databasePort + "/" + databaseName;
+          "jdbc:redshift://" + clusterIdentifier + "." + databaseEndpoint + ":" + databasePort + "/" + database;
       if (arguments != null && !arguments.isEmpty()) {
         constr += "?" + arguments.stream()
             .map(arg -> arg.getName() + (arg.getValue() != null ? "=" + arg.getValue() : ""))
@@ -212,8 +224,9 @@ public abstract class StorageConnector {
       options.put(Constants.JDBC_URL, constr);
       options.put(Constants.JDBC_USER, databaseUserName);
       options.put(Constants.JDBC_PWD, databasePassword);
-      if (!Strings.isNullOrEmpty(tableName)) {
-        options.put(Constants.JDBC_TABLE, tableName);
+      String table = dataSource == null ? tableName : dataSource.getTable();
+      if (!Strings.isNullOrEmpty(table)) {
+        options.put(Constants.JDBC_TABLE, table);
       }
       return options;
     }
@@ -263,7 +276,7 @@ public abstract class StorageConnector {
     }
 
     @Override
-    public Map<String, String> sparkOptions() {
+    public Map<String, String> sparkOptions(DataSource dataSource) {
       Map<String, String> options = new HashMap<>();
       sparkOptions.stream().forEach(option -> options.put(option.getName(), option.getValue()));
       return options;
@@ -310,11 +323,14 @@ public abstract class StorageConnector {
     }
 
     @Override
-    public Map<String, String> sparkOptions() {
+    public Map<String, String> sparkOptions(DataSource dataSource) {
+      String databaseName = dataSource == null ? this.database : dataSource.getDatabase();
+      String schemaName = dataSource == null ? schema : dataSource.getGroup();
+
       Map<String, String> options = new HashMap<>();
       options.put(Constants.SNOWFLAKE_URL, url);
-      options.put(Constants.SNOWFLAKE_SCHEMA, schema);
-      options.put(Constants.SNOWFLAKE_DB, database);
+      options.put(Constants.SNOWFLAKE_SCHEMA, schemaName);
+      options.put(Constants.SNOWFLAKE_DB, databaseName);
       options.put(Constants.SNOWFLAKE_USER, user);
       if (!Strings.isNullOrEmpty(password)) {
         options.put(Constants.SNOWFLAKE_PWD, password);
@@ -328,8 +344,9 @@ public abstract class StorageConnector {
       if (!Strings.isNullOrEmpty(role)) {
         options.put(Constants.SNOWFLAKE_ROLE, role);
       }
-      if (!Strings.isNullOrEmpty(table)) {
-        options.put(Constants.SNOWFLAKE_TABLE, table);
+      String tableName = dataSource == null ? table : dataSource.getTable();
+      if (!Strings.isNullOrEmpty(tableName)) {
+        options.put(Constants.SNOWFLAKE_TABLE, tableName);
       }
       if (!Strings.isNullOrEmpty(application)) {
         options.put(Constants.SNOWFLAKE_APPLICATION, application);
@@ -357,7 +374,7 @@ public abstract class StorageConnector {
     protected List<Option> arguments;
 
     @Override
-    public Map<String, String> sparkOptions() {
+    public Map<String, String> sparkOptions(DataSource dataSource) {
       Map<String, String> options = new HashMap<>();
       if (arguments != null && !arguments.isEmpty()) {
         Map<String, String> readOptions = arguments.stream()
@@ -465,7 +482,7 @@ public abstract class StorageConnector {
     }
 
     @Override
-    public Map<String, String> sparkOptions() throws FeatureStoreException {
+    public Map<String, String> sparkOptions(DataSource dataSource) throws FeatureStoreException {
       Map<String, String> config = new HashMap<>();
       for (Map.Entry<String, String> entry: kafkaOptions().entrySet()) {
         config.put(String.format("%s.%s", sparkFormat, entry.getKey()), entry.getValue());
@@ -500,7 +517,7 @@ public abstract class StorageConnector {
     }
 
     @Override
-    public Map<String, String> sparkOptions() {
+    public Map<String, String> sparkOptions(DataSource dataSource) {
       return new HashMap<>();
     }
 
@@ -534,10 +551,12 @@ public abstract class StorageConnector {
      * @return Map
      */
     @Override
-    public Map<String, String> sparkOptions() {
+    public Map<String, String> sparkOptions(DataSource dataSource) {
+      String databaseName = dataSource == null ? parentProject : dataSource.getDatabase();
+
       Map<String, String> options = new HashMap<>();
 
-      options.put(Constants.BIGQ_PARENT_PROJECT, parentProject);
+      options.put(Constants.BIGQ_PARENT_PROJECT, databaseName);
       if (!Strings.isNullOrEmpty(materializationDataset)) {
         options.put(Constants.BIGQ_MATERIAL_DATASET, materializationDataset);
         options.put(Constants.BIGQ_VIEWS_ENABLED,"true");
@@ -545,8 +564,9 @@ public abstract class StorageConnector {
       if (!Strings.isNullOrEmpty(queryProject)) {
         options.put(Constants.BIGQ_PROJECT, queryProject);
       }
-      if (!Strings.isNullOrEmpty(dataset)) {
-        options.put(Constants.BIGQ_DATASET, dataset);
+      String schemaName = dataSource == null ? dataset : dataSource.getGroup();
+      if (!Strings.isNullOrEmpty(schemaName)) {
+        options.put(Constants.BIGQ_DATASET, schemaName);
       }
       if (arguments != null && !arguments.isEmpty()) {
         Map<String, String> argOptions = arguments.stream()
@@ -562,4 +582,63 @@ public abstract class StorageConnector {
       return null;
     }
   }
+
+  public static class RdsConnector extends StorageConnector {
+
+    @Getter @Setter
+    protected String host;
+
+    @Getter @Setter
+    protected Integer port;
+
+    @Getter @Setter
+    protected String database;
+
+    @Getter @Setter
+    protected String user;
+
+    @Getter @Setter
+    protected String password;
+
+    @Getter @Setter
+    protected List<Option>  arguments;
+
+    /**
+     * Set spark options specific to Rds.
+     * @return Map
+     */
+    @Override
+    public Map<String, String> sparkOptions(DataSource dataSource) {
+      String databaseName = dataSource == null ? database : dataSource.getDatabase();
+
+      Map<String, String> options = new HashMap<>();
+      options.put("url", "jdbc:postgresql://" + getHost() + ":" + getPort()
+          + "/" + databaseName);
+      options.put("user", getUser());
+      options.put("password", getPassword());
+      options.put("driver", "org.postgresql.Driver");
+      if (arguments != null && !arguments.isEmpty()) {
+        Map<String, String> argOptions = arguments.stream()
+            .collect(Collectors.toMap(Option::getName, Option::getValue));
+        options.putAll(argOptions);
+      }
+      return options;
+    }
+
+    public void update() throws FeatureStoreException, IOException {
+      RdsConnector updatedConnector = (RdsConnector) refetch();
+      this.host = updatedConnector.getHost();
+      this.port = updatedConnector.getPort();
+      this.database = updatedConnector.getDatabase();
+      this.user = updatedConnector.getUser();
+      this.password = updatedConnector.getPassword();
+      this.arguments = updatedConnector.getArguments();
+    }
+
+    @JsonIgnore
+    public String getPath(String subPath) {
+      return null;
+    }
+  }
+
 }

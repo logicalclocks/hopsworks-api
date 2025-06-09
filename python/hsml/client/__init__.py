@@ -23,7 +23,6 @@ from hopsworks_common.client import (
     get_instance,
     get_knative_domain,
     get_serving_num_instances_limits,
-    get_serving_resource_limits,
     hopsworks,
     init,
     is_kserve_installed,
@@ -34,7 +33,6 @@ from hopsworks_common.client import (
     set_knative_domain,
     set_kserve_installed,
     set_serving_num_instances_limits,
-    set_serving_resource_limits,
     stop,
 )
 
@@ -47,7 +45,6 @@ __all__ = [
     "get_instance",
     "get_knative_domain",
     "get_serving_num_instances_limits",
-    "get_serving_resource_limits",
     "hopsworks",
     "init",
     "is_kserve_installed",
@@ -58,7 +55,6 @@ __all__ = [
     "set_knative_domain",
     "set_kserve_installed",
     "set_serving_num_instances_limits",
-    "set_serving_resource_limits",
     "stop",
     "_is_external",
 ]

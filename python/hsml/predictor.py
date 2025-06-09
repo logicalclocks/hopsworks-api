@@ -17,15 +17,17 @@ import json
 from typing import Optional, Union
 
 import humps
-from hsml import client, deployment, util
-from hsml.constants import (
+from hopsworks_common import client, util
+from hopsworks_common.constants import (
     ARTIFACT_VERSION,
     INFERENCE_ENDPOINTS,
     MODEL,
+    MODEL_SERVING,
     PREDICTOR,
     RESOURCES,
     Default,
 )
+from hsml import deployment
 from hsml.deployable_component import DeployableComponent
 from hsml.inference_batcher import InferenceBatcher
 from hsml.inference_logger import InferenceLogger
@@ -48,6 +50,7 @@ class Predictor(DeployableComponent):
         model_server: str,
         serving_tool: Optional[str] = None,
         script_file: Optional[str] = None,
+        config_file: Optional[str] = None,
         resources: Optional[Union[PredictorResources, dict, Default]] = None,  # base
         inference_logger: Optional[
             Union[InferenceLogger, dict, Default]
@@ -87,6 +90,7 @@ class Predictor(DeployableComponent):
         self._artifact_version = artifact_version
         self._serving_tool = serving_tool
         self._model_server = model_server
+        self._config_file = config_file
         self._id = id
         self._description = description
         self._created_at = created_at
@@ -167,18 +171,19 @@ class Predictor(DeployableComponent):
 
     @classmethod
     def _validate_script_file(cls, model_framework, script_file):
-        if model_framework == MODEL.FRAMEWORK_PYTHON and script_file is None:
+        if script_file is None and (model_framework == MODEL.FRAMEWORK_PYTHON):
             raise ValueError(
-                "Predictor scripts are required in deployments for custom Python models"
+                "Predictor scripts are required in deployments for custom Python models."
             )
 
     @classmethod
     def _infer_model_server(cls, model_framework):
-        return (
-            PREDICTOR.MODEL_SERVER_TF_SERVING
-            if model_framework == MODEL.FRAMEWORK_TENSORFLOW
-            else PREDICTOR.MODEL_SERVER_PYTHON
-        )
+        if model_framework == MODEL.FRAMEWORK_TENSORFLOW:
+            return PREDICTOR.MODEL_SERVER_TF_SERVING
+        elif model_framework == MODEL.FRAMEWORK_LLM:
+            return PREDICTOR.MODEL_SERVER_VLLM
+        else:
+            return PREDICTOR.MODEL_SERVER_PYTHON
 
     @classmethod
     def _get_default_serving_tool(cls):
@@ -269,6 +274,9 @@ class Predictor(DeployableComponent):
         kwargs["script_file"] = util.extract_field_from_json(
             json_decamelized, "predictor"
         )
+        kwargs["config_file"] = util.extract_field_from_json(
+            json_decamelized, "config_file"
+        )
         kwargs["resources"] = PredictorResources.from_json(json_decamelized)
         kwargs["inference_logger"] = InferenceLogger.from_json(json_decamelized)
         kwargs["inference_batcher"] = InferenceBatcher.from_json(json_decamelized)
@@ -290,7 +298,7 @@ class Predictor(DeployableComponent):
         return self
 
     def json(self):
-        return json.dumps(self, cls=util.MLEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
         json = {
@@ -307,6 +315,7 @@ class Predictor(DeployableComponent):
             "modelServer": self._model_server,
             "servingTool": self._serving_tool,
             "predictor": self._script_file,
+            "configFile": self._config_file,
             "apiProtocol": self._api_protocol,
             "projectNamespace": self._project_namespace,
         }
@@ -392,8 +401,18 @@ class Predictor(DeployableComponent):
         self._artifact_version = artifact_version
 
     @property
+    def artifact_files_path(self):
+        return "{}/{}/{}/{}".format(
+            self._model_path,
+            str(self._model_version),
+            MODEL_SERVING.ARTIFACTS_DIR_NAME,
+            str(self._artifact_version),
+        )
+
+    @property
     def artifact_path(self):
         """Path of the model artifact deployed by the predictor. Resolves to /Projects/{project_name}/Models/{name}/{version}/Artifacts/{artifact_version}/{name}_{version}_{artifact_version}.zip"""
+        # TODO: Deprecated
         artifact_name = "{}_{}_{}.zip".format(
             self._model_name, str(self._model_version), str(self._artifact_version)
         )
@@ -426,6 +445,19 @@ class Predictor(DeployableComponent):
     @script_file.setter
     def script_file(self, script_file: str):
         self._script_file = script_file
+        self._artifact_version = ARTIFACT_VERSION.CREATE
+
+    @property
+    def config_file(self):
+        """Model server configuration file passed to the model deployment.
+        It can be accessed via `CONFIG_FILE_PATH` environment variable from a predictor or transformer script.
+        For LLM deployments without a predictor script, this file is used to configure the vLLM engine.
+        """
+        return self._config_file
+
+    @config_file.setter
+    def config_file(self, config_file: str):
+        self._config_file = config_file
         self._artifact_version = ARTIFACT_VERSION.CREATE
 
     @property

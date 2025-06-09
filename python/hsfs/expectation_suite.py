@@ -44,7 +44,7 @@ if HAS_GREAT_EXPECTATIONS:
 
 
 class ExpectationSuite:
-    """Metadata object representing an feature validation expectation in the Feature Store."""
+    """Metadata object representing a feature validation expectation in the Feature Store."""
 
     def __init__(
         self,
@@ -328,8 +328,8 @@ class ExpectationSuite:
             The expectation with expectation_id registered in the backend.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`
-            `hsfs.client.exceptions.FeatureStoreException`
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If the expectation suite is not registered yet
         """
         if self.id and self._expectation_engine:
             if ge_type:
@@ -386,8 +386,8 @@ class ExpectationSuite:
             The new expectation attached to the Feature Group.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`
-            `hsfs.client.exceptions.FeatureStoreException`
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If the expectation suite is not registered yet
         """
         if self.id:
             converted_expectation = self._convert_expectation(expectation=expectation)
@@ -428,8 +428,8 @@ class ExpectationSuite:
             The updated expectation attached to the Feature Group.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`
-            `hsfs.client.exceptions.FeatureStoreException`
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If the expectation suite is not registered yet
         """
         if self.id:
             converted_expectation = self._convert_expectation(expectation=expectation)
@@ -463,8 +463,8 @@ class ExpectationSuite:
             expectation_id: Id of the expectation to remove. The expectation will be deleted both locally and from the backend.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`
-            `hsfs.client.exceptions.FeatureStoreException`
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            `hopsworks.client.exceptions.FeatureStoreException`: If the expectation suite is not registered yet
         """
         if self.id:
             self._expectation_engine.delete(expectation_id=expectation_id)
@@ -600,7 +600,7 @@ class ExpectationSuite:
 
     @property
     def meta(self) -> Dict[str, Any]:
-        """Meta field of the expectation suite to store additional informations."""
+        """Meta field of the expectation suite to store additional information."""
         return self._meta
 
     @meta.setter

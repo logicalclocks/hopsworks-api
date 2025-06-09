@@ -71,6 +71,7 @@ FIXTURES = [
     "transformer",
     "user",
     "validation_report",
+    "online_ingestion",
 ]
 
 backend_fixtures_json = {}

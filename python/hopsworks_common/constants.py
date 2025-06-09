@@ -70,6 +70,14 @@ class OPENSEARCH_CONFIG:
     CA_CERTS = "ca_certs"
 
 
+class FEATURES:
+    """
+    Class that stores constants about a feature.
+    """
+
+    MAX_LENGTH_NAME = 63
+
+
 class KAFKA_SSL_CONFIG:
     """
     Kafka SSL constant strings for configuration
@@ -158,14 +166,17 @@ class MODEL:
     FRAMEWORK_TORCH = "TORCH"
     FRAMEWORK_PYTHON = "PYTHON"
     FRAMEWORK_SKLEARN = "SKLEARN"
+    FRAMEWORK_LLM = "LLM"
 
 
 class MODEL_REGISTRY:
     HOPSFS_MOUNT_PREFIX = "/hopsfs/"
+    MODEL_FILES_DIR_NAME = "Files"
 
 
 class MODEL_SERVING:
     MODELS_DATASET = "Models"
+    ARTIFACTS_DIR_NAME = "Artifacts"
 
 
 class ARTIFACT_VERSION:
@@ -177,10 +188,9 @@ class RESOURCES:
     # default values, not hard limits
     MIN_CORES = 0.2
     MIN_MEMORY = 32
-    MIN_GPUS = 0
+    GPUS = 0
     MAX_CORES = 2
     MAX_MEMORY = 1024
-    MAX_GPUS = 0
 
 
 class KAFKA_TOPIC:
@@ -210,6 +220,7 @@ class PREDICTOR:
     # model server
     MODEL_SERVER_PYTHON = "PYTHON"
     MODEL_SERVER_TF_SERVING = "TENSORFLOW_SERVING"
+    MODEL_SERVER_VLLM = "VLLM"
     # serving tool
     SERVING_TOOL_DEFAULT = "DEFAULT"
     SERVING_TOOL_KSERVE = "KSERVE"
@@ -236,7 +247,6 @@ class PREDICTOR_STATE:
 
 class INFERENCE_ENDPOINTS:
     # endpoint type
-    ENDPOINT_TYPE_NODE = "NODE"
     ENDPOINT_TYPE_KUBE_CLUSTER = "KUBE_CLUSTER"
     ENDPOINT_TYPE_LOAD_BALANCER = "LOAD_BALANCER"
     # port name

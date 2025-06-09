@@ -15,13 +15,14 @@
 from __future__ import annotations
 
 import warnings
-from typing import List
+from typing import Any, Dict, List, Union
 
 from hsfs import engine, feature, util
 from hsfs import feature_group as fg
 from hsfs.client import exceptions
 from hsfs.core import delta_engine, feature_group_base_engine, hudi_engine
 from hsfs.core.deltastreamer_jobconf import DeltaStreamerJobConf
+from hsfs.core.schema_validation import DataFrameValidator
 
 
 class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
@@ -49,12 +50,18 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             transformed_features = []
             dropped_features = []
             for tf in feature_group.transformation_functions:
-                transformed_features.append(
-                    feature.Feature(
-                        tf.hopsworks_udf.output_column_names[0],
-                        tf.hopsworks_udf.return_types[0],
-                        on_demand=True,
-                    )
+                transformed_features.extend(
+                    [
+                        feature.Feature(
+                            output_column_name,
+                            return_type,
+                            on_demand=True,
+                        )
+                        for output_column_name, return_type in zip(
+                            tf.hopsworks_udf.output_column_names,
+                            tf.hopsworks_udf.return_types,
+                        )
+                    ]
                 )
                 if tf.hopsworks_udf.dropped_features:
                     dropped_features.extend(tf.hopsworks_udf.dropped_features)
@@ -67,7 +74,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
     def save(
         self,
-        feature_group,
+        feature_group: Union[fg.FeatureGroup, fg.ExternalFeatureGroup],
         feature_dataframe,
         write_options,
         validation_options: dict = None,
@@ -80,9 +87,34 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_group=feature_group, features=dataframe_features
             )
         )
+
+        # Currently on-demand transformation functions not supported in external feature groups.
+        if feature_group.transformation_functions:
+            if not isinstance(feature_group, fg.ExternalFeatureGroup):
+                feature_dataframe = (
+                    engine.get_instance()._apply_transformation_function(
+                        feature_group.transformation_functions, feature_dataframe
+                    )
+                )
+            else:
+                warnings.warn(
+                    "On-Demand features were not created because On-Demand Transformations are not supported for External Feature Groups.",
+                    stacklevel=1,
+                )
+
         util.validate_embedding_feature_type(
             feature_group.embedding_index, dataframe_features
         )
+
+        if (
+            feature_group.online_enabled
+            and not feature_group.embedding_index
+            and validation_options.get("online_schema_validation", True)
+        ):
+            # validate df schema
+            dataframe_features = DataFrameValidator().validate_schema(
+                feature_group, feature_dataframe, dataframe_features
+            )
 
         self.save_feature_group_metadata(
             feature_group, dataframe_features, write_options
@@ -119,27 +151,53 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
     def insert(
         self,
-        feature_group,
+        feature_group: Union[fg.FeatureGroup, fg.ExternalFeatureGroup],
         feature_dataframe,
         overwrite,
         operation,
         storage,
         write_options,
         validation_options: dict = None,
+        transformation_context: Dict[str, Any] = None,
+        transform: bool = True,
     ):
         dataframe_features = engine.get_instance().parse_schema_feature_group(
             feature_dataframe,
             feature_group.time_travel_format,
             features=feature_group.features,
         )
-        dataframe_features = (
-            self._update_feature_group_schema_on_demand_transformations(
-                feature_group=feature_group, features=dataframe_features
+
+        # Currently on-demand transformation functions not supported in external feature groups.
+        if (
+            not isinstance(feature_group, fg.ExternalFeatureGroup)
+            and feature_group.transformation_functions
+            and transform
+        ):
+            feature_dataframe = engine.get_instance()._apply_transformation_function(
+                feature_group.transformation_functions,
+                feature_dataframe,
+                transformation_context=transformation_context,
             )
-        )
+
+            dataframe_features = (
+                self._update_feature_group_schema_on_demand_transformations(
+                    feature_group=feature_group, features=dataframe_features
+                )
+            )
+
         util.validate_embedding_feature_type(
             feature_group.embedding_index, dataframe_features
         )
+
+        if (
+            feature_group.online_enabled
+            and not feature_group.embedding_index
+            and validation_options.get("online_schema_validation", True)
+        ):
+            # validate df schema
+            dataframe_features = DataFrameValidator().validate_schema(
+                feature_group, feature_dataframe, dataframe_features
+            )
 
         if not feature_group._id:
             # only save metadata if feature group does not exist
@@ -249,6 +307,8 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
     @staticmethod
     def delta_vacuum(feature_group, retention_hours):
         if feature_group.time_travel_format == "DELTA":
+            # TODO: This should change, DeltaEngine and HudiEngine always assumes spark client!
+            # Cannot properly manage what should happen when using python.
             delta_engine_instance = delta_engine.DeltaEngine(
                 feature_group.feature_store_id,
                 feature_group.feature_store_name,
@@ -296,10 +356,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         )
 
         # write empty dataframe to update parquet schema
-        if feature_group.time_travel_format == "DELTA":
-            engine.get_instance().add_cols_to_delta_table(feature_group, new_features)
-        else:
-            engine.get_instance().save_empty_dataframe(feature_group, new_features=new_features)
+        engine.get_instance().update_table_schema(feature_group)
 
     def update_description(self, feature_group, description):
         """Updates the description of a feature group."""
@@ -326,7 +383,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
     def insert_stream(
         self,
-        feature_group,
+        feature_group: Union[fg.FeatureGroup, fg.ExternalFeatureGroup],
         dataframe,
         query_name,
         output_mode,
@@ -334,6 +391,8 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         timeout,
         checkpoint_dir,
         write_options,
+        transformation_context: Dict[str, Any] = None,
+        transform: bool = True,
     ):
         if not feature_group.online_enabled and not feature_group.stream:
             raise exceptions.FeatureStoreException(
@@ -349,6 +408,14 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_group=feature_group, features=dataframe_features
             )
         )
+
+        if feature_group.transformation_functions and transform:
+            dataframe = engine.get_instance()._apply_transformation_function(
+                feature_group.transformation_functions,
+                dataframe,
+                transformation_context=transformation_context,
+            )
+
         util.validate_embedding_feature_type(
             feature_group.embedding_index, dataframe_features
         )
@@ -413,13 +480,15 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_group.features, dataframe_features
             )
 
-        # set primary and partition key columns
+        # set primary, foreign and partition key columns
         # we should move this to the backend
         util.verify_attribute_key_names(feature_group)
 
         for feat in feature_group.features:
             if feat.name in feature_group.primary_key:
                 feat.primary = True
+            if feat.name in feature_group.foreign_key:
+                feat.foreign = True
             if feat.name in feature_group.partition_key:
                 feat.partition = True
             if (

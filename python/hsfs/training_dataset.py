@@ -41,6 +41,7 @@ if HAS_NUMPY:
 
 
 class TrainingDatasetBase:
+    NOT_FOUND_ERROR_CODE = 270012
     # NOTE: This class is exposed to users with the only purpose of providing information about a Training Dataset
     # and, therefore, it should not implement any functionality and remain with as minimal as possible
 
@@ -624,7 +625,7 @@ class TrainingDataset(TrainingDatasetBase):
                 When using the `python` engine, write_options can contain the
                 following entries:
                 * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../job_configuration)
+                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
                   to configure the Hopsworks Job used to compute the training dataset.
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the save call should return only
@@ -635,7 +636,7 @@ class TrainingDataset(TrainingDatasetBase):
                 that was launched to create the training dataset.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: Unable to create training dataset metadata.
+            `hopsworks.client.exceptions.RestAPIError`: Unable to create training dataset metadata.
         """
         user_version = self._version
         user_stats_config = self._statistics_config
@@ -690,7 +691,7 @@ class TrainingDataset(TrainingDatasetBase):
                 When using the `python` engine, write_options can contain the
                 following entries:
                 * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../job_configuration)
+                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
                   to configure the Hopsworks Job used to compute the training dataset.
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the insert call should return only
@@ -701,7 +702,7 @@ class TrainingDataset(TrainingDatasetBase):
                 that was launched to create the training dataset.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: Unable to create training dataset metadata.
+            `hopsworks.client.exceptions.RestAPIError`: Unable to create training dataset metadata.
         """
         # td_job is used only if the python engine is used
         td_job = self._training_dataset_engine.insert(
@@ -783,7 +784,7 @@ class TrainingDataset(TrainingDatasetBase):
             value: Value of the tag to be added.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to add the tag.
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to add the tag.
         """
         self._training_dataset_engine.add_tag(self, name, value)
 
@@ -794,7 +795,7 @@ class TrainingDataset(TrainingDatasetBase):
             name: Name of the tag to be removed.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to delete the tag.
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to delete the tag.
         """
         self._training_dataset_engine.delete_tag(self, name)
 
@@ -808,7 +809,7 @@ class TrainingDataset(TrainingDatasetBase):
             tag value
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to retrieve the tag.
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the tag.
         """
         return self._training_dataset_engine.get_tag(self, name)
 
@@ -819,7 +820,7 @@ class TrainingDataset(TrainingDatasetBase):
             `Dict[str, obj]` of tags.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError` in case the backend fails to retrieve the tags.
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the tags.
         """
         return self._training_dataset_engine.get_tags(self)
 
@@ -833,7 +834,7 @@ class TrainingDataset(TrainingDatasetBase):
             `TrainingDataset`. The updated metadata object of the training dataset.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend encounters an issue
         """
         self._training_dataset_engine.update_statistics_config(self)
         return self
@@ -852,7 +853,7 @@ class TrainingDataset(TrainingDatasetBase):
             training dataset **and** and the materialized data in HopsFS.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`.
+            `hopsworks.client.exceptions.RestAPIError`.
         """
         warnings.warn(
             "All jobs associated to training dataset `{}`, version `{}` will be removed.".format(
@@ -1007,7 +1008,7 @@ class TrainingDataset(TrainingDatasetBase):
                 initialised for retrieving serving vectors as a batch.
             external: boolean, optional. If set to True, the connection to the
                 online feature store is established using the same host as
-                for the `host` parameter in the [`hsfs.connection()`](connection_api.md#connection) method.
+                for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
                 If set to False, the online feature store storage connector is used
                 which relies on the private IP. Defaults to True if connection to Hopsworks is established from
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
@@ -1024,7 +1025,7 @@ class TrainingDataset(TrainingDatasetBase):
                 serving application.
             external: boolean, optional. If set to True, the connection to the
                 online feature store is established using the same host as
-                for the `host` parameter in the [`hsfs.connection()`](connection_api.md#connection) method.
+                for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
                 If set to False, the online feature store storage connector is used
                 which relies on the private IP. Defaults to True if connection to Hopsworks is established from
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
@@ -1046,7 +1047,7 @@ class TrainingDataset(TrainingDatasetBase):
                 serving application.
             external: boolean, optional. If set to True, the connection to the
                 online feature store is established using the same host as
-                for the `host` parameter in the [`hsfs.connection()`](connection_api.md#connection) method.
+                for the `host` parameter in the [`hopsworks.login()`](login.md#login) method.
                 If set to False, the online feature store storage connector is used
                 which relies on the private IP. Defaults to True if connection to Hopsworks is established from
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.

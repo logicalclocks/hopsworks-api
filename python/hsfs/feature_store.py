@@ -33,8 +33,10 @@ from hsfs import (
     usage,
     util,
 )
-from hsfs.client import exceptions
 from hsfs.constructor.query import Query
+from hsfs.core import (
+    data_source as ds,
+)
 from hsfs.core import (
     feature_group_api,
     feature_group_engine,
@@ -153,10 +155,10 @@ class FeatureStore:
                 return the `version=1`.
 
         # Returns
-            `FeatureGroup`: The feature group metadata object.
+            `FeatureGroup`: The feature group metadata object or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: If unable to retrieve feature group from the feature store.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if version is None:
             warnings.warn(
@@ -168,11 +170,12 @@ class FeatureStore:
             )
             version = self.DEFAULT_VERSION
         feature_group_object = self._feature_group_api.get(self.id, name, version)
-        feature_group_object.feature_store = self
+        if feature_group_object:
+            feature_group_object.feature_store = self
         return feature_group_object
 
     def get_feature_groups(
-        self, name: str
+        self, name: str | None = None
     ) -> List[
         Union[
             feature_group.FeatureGroup,
@@ -180,7 +183,7 @@ class FeatureStore:
             feature_group.SpineGroup,
         ]
     ]:
-        """Get a list of all versions of a feature group entity from the feature store.
+        """Get all feature groups from the feature store, or all versions of a feature group specified by its name.
 
         Getting a feature group from the Feature Store means getting its metadata handle
         so you can subsequently read the data into a Spark or Pandas DataFrame or use
@@ -191,21 +194,34 @@ class FeatureStore:
             # connect to the Feature Store
             fs = ...
 
+            # retrieve all versions of electricity_prices feature group
             fgs_list = fs.get_feature_groups(
                     name="electricity_prices"
                 )
             ```
 
+        !!! example
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            # retrieve all feature groups available in the feature store
+            fgs_list = fs.get_feature_groups()
+            ```
+
         # Arguments
-            name: Name of the feature group to get.
+            name: Name of the feature group to get the versions of; by default it is `None` and all feature groups are returned.
 
         # Returns
-            `FeatureGroup`: List of feature group metadata objects.
+            `list[FeatureGroup]`: List of feature group metadata objects.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: If unable to retrieve feature group from the feature store.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        feature_group_object = self._feature_group_api.get(self.id, name, None)
+        if name:
+            feature_group_object = self._feature_group_api.get(self.id, name, None)
+        else:
+            feature_group_object = self._feature_group_api.get_all(self.id)
         for fg_object in feature_group_object:
             fg_object.feature_store = self
         return feature_group_object
@@ -214,12 +230,12 @@ class FeatureStore:
     def get_on_demand_feature_group(
         self, name: str, version: int = None
     ) -> feature_group.ExternalFeatureGroup:
-        """Get a external feature group entity from the feature store.
+        """Get an external feature group entity from the feature store.
 
         !!! warning "Deprecated"
             `get_on_demand_feature_group` method is deprecated. Use the `get_external_feature_group` method instead.
 
-        Getting a external feature group from the Feature Store means getting its
+        Getting an external feature group from the Feature Store means getting its
         metadata handle so you can subsequently read the data into a Spark or
         Pandas DataFrame or use the `Query`-API to perform joins between feature groups.
 
@@ -229,10 +245,10 @@ class FeatureStore:
                 defaults to `None` and will return the `version=1`.
 
         # Returns
-            `ExternalFeatureGroup`: The external feature group metadata object.
+            `ExternalFeatureGroup`: The external feature group metadata object or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: If unable to retrieve feature group from the feature store.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self.get_external_feature_group(name, version)
 
@@ -240,9 +256,9 @@ class FeatureStore:
     def get_external_feature_group(
         self, name: str, version: int = None
     ) -> feature_group.ExternalFeatureGroup:
-        """Get a external feature group entity from the feature store.
+        """Get an external feature group entity from the feature store.
 
-        Getting a external feature group from the Feature Store means getting its
+        Getting an external feature group from the Feature Store means getting its
         metadata handle so you can subsequently read the data into a Spark or
         Pandas DataFrame or use the `Query`-API to perform joins between feature groups.
 
@@ -259,10 +275,10 @@ class FeatureStore:
                 defaults to `None` and will return the `version=1`.
 
         # Returns
-            `ExternalFeatureGroup`: The external feature group metadata object.
+            `ExternalFeatureGroup`: The external feature group metadata object or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: If unable to retrieve feature group from the feature store.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         if version is None:
@@ -279,7 +295,8 @@ class FeatureStore:
             name,
             version,
         )
-        feature_group_object.feature_store = self
+        if feature_group_object:
+            feature_group_object.feature_store = self
         return feature_group_object
 
     @usage.method_logger
@@ -291,7 +308,7 @@ class FeatureStore:
         !!! warning "Deprecated"
             `get_on_demand_feature_groups` method is deprecated. Use the `get_external_feature_groups` method instead.
 
-        Getting a external feature group from the Feature Store means getting its
+        Getting an external feature group from the Feature Store means getting its
         metadata handle so you can subsequently read the data into a Spark or
         Pandas DataFrame or use the `Query`-API to perform joins between feature groups.
 
@@ -302,17 +319,17 @@ class FeatureStore:
             `ExternalFeatureGroup`: List of external feature group metadata objects.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: If unable to retrieve feature group from the feature store.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self.get_external_feature_groups(name)
 
     @usage.method_logger
     def get_external_feature_groups(
-        self, name: str
+        self, name: str | None = None
     ) -> List[feature_group.ExternalFeatureGroup]:
-        """Get a list of all versions of an external feature group entity from the feature store.
+        """Get a list of all external feature groups from the feature store, or all versions of an external feature group.
 
-        Getting a external feature group from the Feature Store means getting its
+        Getting an external feature group from the Feature Store means getting its
         metadata handle so you can subsequently read the data into a Spark or
         Pandas DataFrame or use the `Query`-API to perform joins between feature groups.
 
@@ -324,21 +341,26 @@ class FeatureStore:
             external_fgs_list = fs.get_external_feature_groups("external_fg_test")
             ```
 
+        !!! example
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            # retrieve all external feature groups available in the feature store
+            external_fgs_list = fs.get_external_feature_groups()
+            ```
+
         # Arguments
-            name: Name of the external feature group to get.
+            name: Name of the external feature group to get the versions of; by default it is `None` and all external feature groups are returned.
 
         # Returns
-            `ExternalFeatureGroup`: List of external feature group metadata objects.
+            `list[ExternalFeatureGroup]`: List of external feature group metadata objects.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: If unable to retrieve feature group from the feature store.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        feature_group_object = self._feature_group_api.get(
-            feature_store_id=self.id, name=name, version=None
-        )
-        for fg_object in feature_group_object:
-            fg_object.feature_store = self
-        return feature_group_object
+        fgs = self.get_feature_groups(name)
+        return [fg for fg in fgs if isinstance(fg, feature_group.ExternalFeatureGroup)]
 
     def get_training_dataset(
         self, name: str, version: int = None
@@ -365,7 +387,7 @@ class FeatureStore:
             `TrainingDataset`: The training dataset metadata object.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: If unable to retrieve training dataset from the feature store.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
         if version is None:
@@ -397,7 +419,7 @@ class FeatureStore:
             `TrainingDataset`: List of training dataset metadata objects.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: If unable to retrieve feature group from the feature store.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._training_dataset_api.get(name, None)
 
@@ -458,7 +480,7 @@ class FeatureStore:
                 For spark engine: Dictionary of read options for Spark.
                 For python engine:
                 If running queries on the online feature store, users can provide an entry `{'external': True}`,
-                this instructs the library to use the `host` parameter in the [`hsfs.connection()`](connection_api.md#connection) to establish the connection to the online feature store.
+                this instructs the library to use the `host` parameter in the [`hopsworks.login()`](login.md#login) to establish the connection to the online feature store.
                 If not set, or set to False, the online feature store storage connector is used which relies on
                 the private ip.
                 Defaults to `{}`.
@@ -501,6 +523,7 @@ class FeatureStore:
         time_travel_format: Optional[str] = "HUDI",
         partition_key: Optional[List[str]] = None,
         primary_key: Optional[List[str]] = None,
+        foreign_key: Optional[List[str]] = None,
         embedding_index: Optional[EmbeddingIndex] = None,
         hudi_precombine_key: Optional[str] = None,
         features: Optional[List[feature.Feature]] = None,
@@ -526,8 +549,16 @@ class FeatureStore:
             ]
         ] = None,
         offline_backfill_every_hr: Optional[Union[int, str]] = None,
-        storage_connector: Union[storage_connector.StorageConnector, Dict[str, Any]] = None,
+        storage_connector: Union[
+            storage_connector.StorageConnector, Dict[str, Any]
+        ] = None,
         path: Optional[str] = None,
+        data_source: Optional[
+            Union[
+                ds.DataSource,
+                Dict[str, Any],
+            ]
+        ] = None,
     ) -> feature_group.FeatureGroup:
         """Create a feature group metadata object.
 
@@ -556,7 +587,7 @@ class FeatureStore:
                     online_enabled=True,
                     event_time='date',
                     transformation_functions=transformation_functions,
-                    online_config={'online_comments': ['NDB_TABLE=READ_BACKUP=1']}
+                    online_config={'table_space': 'ts_1', 'online_comments': ['NDB_TABLE=READ_BACKUP=1']}
                 )
             ```
 
@@ -585,6 +616,9 @@ class FeatureStore:
                 feature group. This primary key can be a composite key of multiple
                 features and will be used as joining key, if not specified otherwise.
                 Defaults to empty list `[]`, and the feature group won't have any primary key.
+            foreign_key: A list of feature names to be used as foreign key for the feature group.
+                Foreign key is referencing the primary key of another feature group and can be used as joining key.
+                Defaults to empty list `[]`, and the feature group won't have any foreign key.
             embedding_index: [`EmbeddingIndex`](./embedding_index_api.md). If an embedding index is provided,
                 vector database is used as online feature store. This enables similarity search by
                 using [`find_neighbors`](./feature_group_api.md#find_neighbors).
@@ -636,10 +670,13 @@ class FeatureStore:
                 with the data source.
             path: The location within the scope of the storage connector, from where to read
                 the data for the external feature group
+            data_source: The data source specifying the location of the data. Overrides the path and query arguments when specified.
 
         # Returns
             `FeatureGroup`. The feature group metadata object.
         """
+        if not data_source:
+            data_source = ds.DataSource(path=path)
         feature_group_object = feature_group.FeatureGroup(
             name=name,
             version=version,
@@ -648,6 +685,7 @@ class FeatureStore:
             time_travel_format=time_travel_format,
             partition_key=partition_key or [],
             primary_key=primary_key or [],
+            foreign_key=foreign_key or [],
             hudi_precombine_key=hudi_precombine_key,
             featurestore_id=self._id,
             featurestore_name=self._name,
@@ -664,7 +702,7 @@ class FeatureStore:
             online_config=online_config,
             offline_backfill_every_hr=offline_backfill_every_hr,
             storage_connector=storage_connector,
-            path=path,
+            data_source=data_source,
         )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -679,6 +717,7 @@ class FeatureStore:
         time_travel_format: Optional[str] = "HUDI",
         partition_key: Optional[List[str]] = None,
         primary_key: Optional[List[str]] = None,
+        foreign_key: Optional[List[str]] = None,
         embedding_index: Optional[EmbeddingIndex] = None,
         hudi_precombine_key: Optional[str] = None,
         features: Optional[List[feature.Feature]] = None,
@@ -699,8 +738,16 @@ class FeatureStore:
         ] = None,
         online_config: Optional[Union[OnlineConfig, Dict[str, Any]]] = None,
         offline_backfill_every_hr: Optional[Union[int, str]] = None,
-        storage_connector: Union[storage_connector.StorageConnector, Dict[str, Any]] = None,
+        storage_connector: Union[
+            storage_connector.StorageConnector, Dict[str, Any]
+        ] = None,
         path: Optional[str] = None,
+        data_source: Optional[
+            Union[
+                ds.DataSource,
+                Dict[str, Any],
+            ]
+        ] = None,
     ) -> Union[
         feature_group.FeatureGroup,
         feature_group.ExternalFeatureGroup,
@@ -721,7 +768,7 @@ class FeatureStore:
                     online_enabled=True,
                     event_time="timestamp",
                     transformation_functions=transformation_functions,
-                    online_config={'online_comments': ['NDB_TABLE=READ_BACKUP=1']}
+                    online_config={'table_space': 'ts_1', 'online_comments': ['NDB_TABLE=READ_BACKUP=1']}
                     )
             ```
 
@@ -748,6 +795,9 @@ class FeatureStore:
                 feature group. This primary key can be a composite key of multiple
                 features and will be used as joining key, if not specified otherwise.
                 Defaults to empty list `[]`, and the feature group won't have any primary key.
+            foreign_key: A list of feature names to be used as foreign key for the feature group.
+                Foreign key is referencing the primary key of another feature group and can be used as joining key.
+                Defaults to empty list `[]`, and the feature group won't have any foreign key.
             embedding_index: [`EmbeddingIndex`](./embedding_index_api.md). If an embedding index is provided,
                 the vector database is used as online feature store. This enables similarity search by
                 using [`find_neighbors`](./feature_group_api.md#find_neighbors).
@@ -799,49 +849,44 @@ class FeatureStore:
                 with the data source.
             path: The location within the scope of the storage connector, from where to read
                 the data for the external feature group
+            data_source: The data source specifying the location of the data. Overrides the path and query arguments when specified.
 
         # Returns
             `FeatureGroup`. The feature group metadata object.
         """
-        try:
-            feature_group_object = self._feature_group_api.get(self.id, name, version)
-            feature_group_object.feature_store = self
-            return feature_group_object
-        except exceptions.RestAPIError as e:
-            if (
-                e.response.json().get("errorCode", "") == 270009
-                and e.response.status_code == 404
-            ):
-                feature_group_object = feature_group.FeatureGroup(
-                    name=name,
-                    version=version,
-                    description=description,
-                    online_enabled=online_enabled,
-                    time_travel_format=time_travel_format,
-                    partition_key=partition_key or [],
-                    primary_key=primary_key or [],
-                    embedding_index=embedding_index,
-                    hudi_precombine_key=hudi_precombine_key,
-                    featurestore_id=self._id,
-                    featurestore_name=self._name,
-                    features=features or [],
-                    statistics_config=statistics_config,
-                    event_time=event_time,
-                    stream=stream,
-                    expectation_suite=expectation_suite,
-                    parents=parents or [],
-                    topic_name=topic_name,
-                    notification_topic_name=notification_topic_name,
-                    transformation_functions=transformation_functions,
-                    online_config=online_config,
-                    offline_backfill_every_hr=offline_backfill_every_hr,
-                    storage_connector=storage_connector,
-                    path=path,
-                )
-                feature_group_object.feature_store = self
-                return feature_group_object
-            else:
-                raise e
+        feature_group_object = self._feature_group_api.get(self.id, name, version)
+        if not feature_group_object:
+            if not data_source:
+                data_source = ds.DataSource(path=path)
+            feature_group_object = feature_group.FeatureGroup(
+                name=name,
+                version=version,
+                description=description,
+                online_enabled=online_enabled,
+                time_travel_format=time_travel_format,
+                partition_key=partition_key or [],
+                primary_key=primary_key or [],
+                foreign_key=foreign_key or [],
+                embedding_index=embedding_index,
+                hudi_precombine_key=hudi_precombine_key,
+                featurestore_id=self._id,
+                featurestore_name=self._name,
+                features=features or [],
+                statistics_config=statistics_config,
+                event_time=event_time,
+                stream=stream,
+                expectation_suite=expectation_suite,
+                parents=parents or [],
+                topic_name=topic_name,
+                notification_topic_name=notification_topic_name,
+                transformation_functions=transformation_functions,
+                online_config=online_config,
+                offline_backfill_every_hr=offline_backfill_every_hr,
+                storage_connector=storage_connector,
+                data_source=data_source,
+            )
+        feature_group_object.feature_store = self
+        return feature_group_object
 
     @usage.method_logger
     def create_on_demand_feature_group(
@@ -855,6 +900,7 @@ class FeatureStore:
         version: Optional[int] = None,
         description: Optional[str] = "",
         primary_key: Optional[List[str]] = None,
+        foreign_key: Optional[List[str]] = None,
         features: Optional[List[feature.Feature]] = None,
         statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
         event_time: Optional[str] = None,
@@ -866,8 +912,14 @@ class FeatureStore:
         ] = None,
         topic_name: Optional[str] = None,
         notification_topic_name: Optional[str] = None,
+        data_source: Optional[
+            Union[
+                ds.DataSource,
+                Dict[str, Any],
+            ]
+        ] = None,
     ) -> feature_group.ExternalFeatureGroup:
-        """Create a external feature group metadata object.
+        """Create an external feature group metadata object.
 
         !!! warning "Deprecated"
             `create_on_demand_feature_group` method is deprecated. Use the `create_external_feature_group` method instead.
@@ -901,6 +953,9 @@ class FeatureStore:
                 feature group. This primary key can be a composite key of multiple
                 features and will be used as joining key, if not specified otherwise.
                 Defaults to empty list `[]`, and the feature group won't have any primary key.
+            foreign_key: A list of feature names to be used as foreign key for the feature group.
+                Foreign key is referencing the primary key of another feature group and can be used as joining key.
+                Defaults to empty list `[]`, and the feature group won't have any foreign key.
             features: Optionally, define the schema of the external feature group manually as a
                 list of `Feature` objects. Defaults to empty list `[]` and will use the
                 schema information of the DataFrame resulting by executing the provided query
@@ -925,6 +980,7 @@ class FeatureStore:
             expectation_suite: Optionally, attach an expectation suite to the feature
                 group which dataframes should be validated against upon insertion.
                 Defaults to `None`.
+            data_source: The data source specifying the location of the data. Overrides the path and query arguments when specified.
 
 
 
@@ -933,16 +989,17 @@ class FeatureStore:
         # Returns
             `ExternalFeatureGroup`. The external feature group metadata object.
         """
+        if not data_source:
+            data_source = ds.DataSource(query=query, path=path)
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,
-            query=query,
             data_format=data_format,
-            path=path,
             options=options or {},
             storage_connector=storage_connector,
             version=version,
             description=description,
             primary_key=primary_key or [],
+            foreign_key=foreign_key or [],
             featurestore_id=self._id,
             featurestore_name=self._name,
             features=features or [],
@@ -951,6 +1008,7 @@ class FeatureStore:
             expectation_suite=expectation_suite,
             topic_name=topic_name,
             notification_topic_name=notification_topic_name,
+            data_source=data_source,
         )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -967,6 +1025,7 @@ class FeatureStore:
         version: Optional[int] = None,
         description: Optional[str] = "",
         primary_key: Optional[List[str]] = None,
+        foreign_key: Optional[List[str]] = None,
         embedding_index: Optional[EmbeddingIndex] = None,
         features: Optional[List[feature.Feature]] = None,
         statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
@@ -986,8 +1045,14 @@ class FeatureStore:
                 Dict[str, Any],
             ]
         ] = None,
+        data_source: Optional[
+            Union[
+                ds.DataSource,
+                Dict[str, Any],
+            ]
+        ] = None,
     ) -> feature_group.ExternalFeatureGroup:
-        """Create a external feature group metadata object.
+        """Create an external feature group metadata object.
 
         !!! example
             ```python
@@ -1023,7 +1088,7 @@ class FeatureStore:
                     primary_key=['ss_store_sk'],
                     event_time='sale_date',
                     online_enabled=True,
-                    online_config={'online_comments': ['NDB_TABLE=READ_BACKUP=1']}
+                    online_config={'table_space': 'ts_1', 'online_comments': ['NDB_TABLE=READ_BACKUP=1']}
                     )
         external_fg.save()
 
@@ -1058,6 +1123,9 @@ class FeatureStore:
                 feature group. This primary key can be a composite key of multiple
                 features and will be used as joining key, if not specified otherwise.
                 Defaults to empty list `[]`, and the feature group won't have any primary key.
+            foreign_key: A list of feature names to be used as foreign key for the feature group.
+                Foreign key is referencing the primary key of another feature group and can be used as joining key.
+                Defaults to empty list `[]`, and the feature group won't have any foreign key.
             features: Optionally, define the schema of the external feature group manually as a
                 list of `Feature` objects. Defaults to empty list `[]` and will use the
                 schema information of the DataFrame resulting by executing the provided query
@@ -1087,20 +1155,22 @@ class FeatureStore:
             notification_topic_name: Optionally, define the name of the topic used for sending notifications when entries
                 are inserted or updated on the online feature store. If left undefined no notifications are sent.
             online_config: Optionally, define configuration which is used to configure online table.
+            data_source: The data source specifying the location of the data. Overrides the path and query arguments when specified.
 
         # Returns
             `ExternalFeatureGroup`. The external feature group metadata object.
         """
+        if not data_source:
+            data_source = ds.DataSource(query=query, path=path)
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,
-            query=query,
             data_format=data_format,
-            path=path,
             options=options or {},
             storage_connector=storage_connector,
             version=version,
             description=description,
             primary_key=primary_key or [],
+            foreign_key=foreign_key or [],
             embedding_index=embedding_index,
             featurestore_id=self._id,
             featurestore_name=self._name,
@@ -1112,6 +1182,7 @@ class FeatureStore:
             topic_name=topic_name,
             notification_topic_name=notification_topic_name,
             online_config=online_config,
+            data_source=data_source,
         )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -1123,6 +1194,7 @@ class FeatureStore:
         version: Optional[int] = None,
         description: Optional[str] = "",
         primary_key: Optional[List[str]] = None,
+        foreign_key: Optional[List[str]] = None,
         event_time: Optional[str] = None,
         features: Optional[List[feature.Feature]] = None,
         dataframe: Union[
@@ -1216,6 +1288,9 @@ class FeatureStore:
                 spine group. This primary key can be a composite key of multiple
                 features and will be used as joining key, if not specified otherwise.
                 Defaults to empty list `[]`, and the spine group won't have any primary key.
+            foreign_key: A list of feature names to be used as foreign key for the feature group.
+                Foreign key is referencing the primary key of another feature group and can be used as joining key.
+                Defaults to empty list `[]`, and the feature group won't have any foreign key.
             event_time: Optionally, provide the name of the feature containing the event
                 time for the features in this spine group. If event_time is set
                 the spine group can be used for point-in-time joins. Defaults to `None`.
@@ -1234,31 +1309,26 @@ class FeatureStore:
         # Returns
             `SpineGroup`. The spine group metadata object.
         """
-        try:
-            spine = self._feature_group_api.get(self.id, name, version)
-            spine.feature_store = self
+        spine = self._feature_group_api.get(self.id, name, version)
+        if spine:
             spine.dataframe = dataframe
+            spine.feature_store = self
             return spine
-        except exceptions.RestAPIError as e:
-            if (
-                e.response.json().get("errorCode", "") == 270009
-                and e.response.status_code == 404
-            ):
-                spine = feature_group.SpineGroup(
-                    name=name,
-                    version=version,
-                    description=description,
-                    primary_key=primary_key or [],
-                    event_time=event_time,
-                    features=features or [],
-                    dataframe=dataframe,
-                    featurestore_id=self._id,
-                    featurestore_name=self._name,
-                )
-                spine.feature_store = self
-                return spine._save()
-            else:
-                raise e
+        else:
+            spine = feature_group.SpineGroup(
+                name=name,
+                version=version,
+                description=description,
+                primary_key=primary_key or [],
+                foreign_key=foreign_key or [],
+                event_time=event_time,
+                features=features or [],
+                dataframe=dataframe,
+                featurestore_id=self._id,
+                featurestore_name=self._name,
+            )
+            spine.feature_store = self
+            return spine._save()
 
     def create_training_dataset(
         self,
@@ -1714,26 +1784,20 @@ class FeatureStore:
         # Returns:
             `FeatureView`: The feature view metadata object.
         """
-        try:
-            return self._feature_view_engine.get(name, version)
-        except exceptions.RestAPIError as e:
-            if (
-                e.response.json().get("errorCode", "") == 270181
-                and e.response.status_code == 404
-            ):
-                return self.create_feature_view(
-                    name=name,
-                    query=query,
-                    version=version,
-                    description=description,
-                    labels=labels or [],
-                    inference_helper_columns=inference_helper_columns or [],
-                    training_helper_columns=training_helper_columns or [],
-                    transformation_functions=transformation_functions or [],
-                    logging_enabled=logging_enabled,
-                )
-            else:
-                raise e
+        fv_object = self._feature_view_engine.get(name, version)
+        if not fv_object:
+            fv_object = self.create_feature_view(
+                name=name,
+                query=query,
+                version=version,
+                description=description,
+                labels=labels or [],
+                inference_helper_columns=inference_helper_columns or [],
+                training_helper_columns=training_helper_columns or [],
+                transformation_functions=transformation_functions or [],
+                logging_enabled=logging_enabled,
+            )
+        return fv_object
 
     @usage.method_logger
     def get_feature_view(
@@ -1761,10 +1825,10 @@ class FeatureStore:
                 return the `version=1`.
 
         # Returns
-            `FeatureView`: The feature view metadata object.
+            `FeatureView`: The feature view metadata object or `None` if it does not exist.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: If unable to retrieve feature view from the feature store.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if version is None:
             warnings.warn(
@@ -1801,7 +1865,7 @@ class FeatureStore:
             `FeatureView`: List of feature view metadata objects.
 
         # Raises
-            `hsfs.client.exceptions.RestAPIError`: If unable to retrieve feature view from the feature store.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine.get(name)
 

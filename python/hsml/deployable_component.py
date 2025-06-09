@@ -18,8 +18,8 @@ from abc import ABC, abstractmethod
 from typing import Optional, Union
 
 import humps
-from hsml import util
-from hsml.constants import Default
+from hopsworks_common import util
+from hopsworks_common.constants import Default
 from hsml.inference_batcher import InferenceBatcher
 from hsml.resources import Resources
 
@@ -53,7 +53,7 @@ class DeployableComponent(ABC):
         return cls.from_json(json_decamelized)
 
     def json(self):
-        return json.dumps(self, cls=util.MLEncoder)
+        return json.dumps(self, cls=util.Encoder)
 
     @abstractmethod
     def update_from_response_json(self, json_dict):
