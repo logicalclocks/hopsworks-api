@@ -56,7 +56,7 @@ def collect_imports(root):
     imports = []
 
     def imports_add(file):
-        pkg = str(file.parent.relative_to(root)).replace("/", ".")
+        pkg = file.parent.relative_to(root).as_posix().replace("/", ".")
         if file.name == "__init__.py":
             imports.append(pkg)
         elif file.suffix == ".py":
