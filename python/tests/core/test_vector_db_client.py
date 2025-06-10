@@ -17,18 +17,18 @@ from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest
-from hsfs.client.exceptions import FeatureStoreException
-from hsfs.core import vector_db_client
-from hsfs.embedding import EmbeddingIndex
-from hsfs.feature import Feature
-from hsfs.feature_group import FeatureGroup
+from hopsworks.internal.fs.client.exceptions import FeatureStoreException
+from hopsworks.internal.fs.core import vector_db_client
+from hopsworks.internal.fs.embedding import EmbeddingIndex
+from hopsworks.internal.fs.feature import Feature
+from hopsworks.internal.fs.feature_group import FeatureGroup
 
 
 class TestVectorDbClient:
     embedding_index = EmbeddingIndex("2249__embedding_default_embedding")
     embedding_index.add_embedding("f2", 3)
     embedding_index._col_prefix = ""
-    with mock.patch("hopsworks_common.client.get_instance"):
+    with mock.patch("hopsworks.internal.platform.client.get_instance"):
         fg = FeatureGroup("test_fg", 1, 99, id=1, embedding_index=embedding_index)
         f1 = Feature("f1", feature_group=fg, primary=True, type="int")
         f2 = Feature("f2", feature_group=fg, primary=True, type="int")

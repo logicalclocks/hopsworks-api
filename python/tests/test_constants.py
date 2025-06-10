@@ -15,7 +15,7 @@
 
 import inspect
 
-from hsml import constants
+from hopsworks.internal.ml import constants
 
 
 class TestConstants:

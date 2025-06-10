@@ -15,8 +15,8 @@
 #
 from __future__ import annotations
 
-from hsfs import feature_group_commit, util
-from hsfs.core import feature_group_api
+from hopsworks.internal.fs import feature_group_commit, util
+from hopsworks.internal.fs.core import feature_group_api
 
 
 class HudiEngine:

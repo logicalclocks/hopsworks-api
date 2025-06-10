@@ -17,7 +17,7 @@
 import json
 from typing import Dict, List, Union
 
-from hsml import (
+from hopsworks.internal.ml import (
     client,
     decorators,
     deployable_component_logs,
@@ -25,13 +25,13 @@ from hsml import (
     inference_endpoint,
     predictor_state,
 )
-from hsml.client.istio.utils.infer_type import (
+from hopsworks.internal.ml.client.istio.utils.infer_type import (
     InferInput,
     InferOutput,
     InferRequest,
 )
-from hsml.constants import ARTIFACT_VERSION
-from hsml.constants import INFERENCE_ENDPOINTS as IE
+from hopsworks.internal.ml.constants import ARTIFACT_VERSION
+from hopsworks.internal.ml.constants import INFERENCE_ENDPOINTS as IE
 
 
 class ServingApi:

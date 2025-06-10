@@ -15,10 +15,10 @@
 #
 
 import pytest
-from hsfs import feature, feature_group, feature_group_commit, validation_report
-from hsfs.client import exceptions
-from hsfs.core import feature_group_engine
-from hsfs.hopsworks_udf import udf
+from hopsworks.internal.fs import feature, feature_group, feature_group_commit, validation_report
+from hopsworks.internal.fs.client import exceptions
+from hopsworks.internal.fs.core import feature_group_engine
+from hopsworks.internal.fs.hopsworks_udf import udf
 
 
 class TestFeatureGroupEngine:

@@ -20,10 +20,10 @@ import base64
 import logging
 import os
 
-import hopsworks_common.client
+import hopsworks.internal.platform.client
 import requests
-from hopsworks_common.client import auth, base, exceptions
-from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks.internal.platform.client import auth, base, exceptions
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 
 
 try:
@@ -164,7 +164,7 @@ class Client(base.Client):
                 .getOrCreate()
             )
 
-        hopsworks_common.client.get_connection()._provide_project()
+        hopsworks.internal.platform.client.get_connection()._provide_project()
 
     def download_certs(self):
         res = self._materialize_certs()

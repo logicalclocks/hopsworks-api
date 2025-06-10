@@ -14,10 +14,10 @@
 #   limitations under the License.
 
 import grpc
-from hopsworks_common.client.istio.grpc.proto.grpc_predict_v2_pb2_grpc import (
+from hopsworks.internal.platform.client.istio.grpc.proto.grpc_predict_v2_pb2_grpc import (
     GRPCInferenceServiceStub,
 )
-from hopsworks_common.client.istio.utils.infer_type import InferRequest, InferResponse
+from hopsworks.internal.platform.client.istio.utils.infer_type import InferRequest, InferResponse
 
 
 class GRPCInferenceServerClient:

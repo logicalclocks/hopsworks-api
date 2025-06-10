@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.connection import (
+from hopsworks.internal.platform.connection import (
     CERT_FOLDER_DEFAULT,
     HOPSWORKS_PORT_DEFAULT,
     HOSTNAME_VERIFICATION_DEFAULT,

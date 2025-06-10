@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.core.secret_api import (
+from hopsworks.internal.platform.core.secret_api import (
     SecretsApi,
 )
 

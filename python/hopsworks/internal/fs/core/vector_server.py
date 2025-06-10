@@ -35,8 +35,8 @@ from typing import (
 )
 
 import pandas as pd
-from hopsworks_common import client
-from hopsworks_common.core.constants import (
+from hopsworks.internal.platform import client
+from hopsworks.internal.platform.core.constants import (
     HAS_AVRO,
     HAS_FAST_AVRO,
     HAS_NUMPY,
@@ -45,24 +45,24 @@ from hopsworks_common.core.constants import (
     numpy_not_installed_message,
     polars_not_installed_message,
 )
-from hsfs import (
+from hopsworks.internal.fs import (
     feature_view,
     training_dataset,
     transformation_function,
 )
-from hsfs import (
+from hopsworks.internal.fs import (
     serving_key as sk_mod,
 )
-from hsfs import training_dataset_feature as tdf_mod
-from hsfs.client import exceptions, online_store_rest_client
-from hsfs.core import (
+from hopsworks.internal.fs import training_dataset_feature as tdf_mod
+from hopsworks.internal.fs.client import exceptions, online_store_rest_client
+from hopsworks.internal.fs.core import (
     online_store_rest_client_engine,
     online_store_sql_engine,
 )
-from hsfs.core import (
+from hopsworks.internal.fs.core import (
     transformation_function_engine as tf_engine_mod,
 )
-from hsfs.hopsworks_udf import UDFExecutionMode
+from hopsworks.internal.fs.hopsworks_udf import UDFExecutionMode
 
 
 if HAS_NUMPY:
@@ -79,7 +79,7 @@ if HAS_POLARS:
     import polars as pl
 
 if TYPE_CHECKING:
-    from hsfs.feature_group import FeatureGroup
+    from hopsworks.internal.fs.feature_group import FeatureGroup
 
 _logger = logging.getLogger(__name__)
 

@@ -39,7 +39,7 @@ from typing import (
     Union,
 )
 
-from hsfs.core.type_systems import (
+from hopsworks.internal.fs.core.type_systems import (
     cast_column_to_offline_type,
     cast_column_to_online_type,
 )
@@ -49,23 +49,23 @@ if TYPE_CHECKING:
     import great_expectations
 
 import boto3
-import hsfs
+import hopsworks.internal.fs
 import pandas as pd
 import pyarrow as pa
 from botocore.response import StreamingBody
-from hopsworks_common import client
-from hopsworks_common.client.exceptions import FeatureStoreException
-from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
-from hopsworks_common.decorators import uses_great_expectations, uses_polars
-from hsfs import (
+from hopsworks.internal.platform import client
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
+from hopsworks.internal.platform.core.constants import HAS_POLARS, polars_not_installed_message
+from hopsworks.internal.platform.decorators import uses_great_expectations, uses_polars
+from hopsworks.internal.fs import (
     feature,
     feature_view,
     transformation_function,
     util,
 )
-from hsfs import storage_connector as sc
-from hsfs.constructor import query
-from hsfs.core import (
+from hopsworks.internal.fs import storage_connector as sc
+from hopsworks.internal.fs.constructor import query
+from hopsworks.internal.fs.core import (
     dataset_api,
     feature_group_api,
     feature_view_api,
@@ -79,7 +79,7 @@ from hsfs.core import (
     training_dataset_job_conf,
     transformation_function_engine,
 )
-from hsfs.core.constants import (
+from hopsworks.internal.fs.core.constants import (
     HAS_AIOMYSQL,
     HAS_GREAT_EXPECTATIONS,
     HAS_NUMPY,
@@ -87,13 +87,13 @@ from hsfs.core.constants import (
     HAS_PYARROW,
     HAS_SQLALCHEMY,
 )
-from hsfs.core.type_systems import PYARROW_HOPSWORKS_DTYPE_MAPPING
-from hsfs.core.vector_db_client import VectorDbClient
-from hsfs.feature_group import ExternalFeatureGroup, FeatureGroup
-from hsfs.hopsworks_udf import HopsworksUdf, UDFExecutionMode
-from hsfs.training_dataset import TrainingDataset
-from hsfs.training_dataset_feature import TrainingDatasetFeature
-from hsfs.training_dataset_split import TrainingDatasetSplit
+from hopsworks.internal.fs.core.type_systems import PYARROW_HOPSWORKS_DTYPE_MAPPING
+from hopsworks.internal.fs.core.vector_db_client import VectorDbClient
+from hopsworks.internal.fs.feature_group import ExternalFeatureGroup, FeatureGroup
+from hopsworks.internal.fs.hopsworks_udf import HopsworksUdf, UDFExecutionMode
+from hopsworks.internal.fs.training_dataset import TrainingDataset
+from hopsworks.internal.fs.training_dataset_feature import TrainingDatasetFeature
+from hopsworks.internal.fs.training_dataset_split import TrainingDatasetSplit
 
 
 if HAS_GREAT_EXPECTATIONS:
@@ -103,13 +103,13 @@ if HAS_NUMPY:
     import numpy as np
 
 if HAS_AIOMYSQL and HAS_SQLALCHEMY:
-    from hsfs.core import util_sql
+    from hopsworks.internal.fs.core import util_sql
 
 if HAS_SQLALCHEMY:
     from sqlalchemy import sql
 
 if HAS_PANDAS:
-    from hsfs.core.type_systems import convert_pandas_dtype_to_offline_type
+    from hopsworks.internal.fs.core.type_systems import convert_pandas_dtype_to_offline_type
 
 if HAS_POLARS:
     import polars as pl
@@ -159,7 +159,7 @@ class Engine:
     def is_flyingduck_query_supported(
         self, query: "query.Query", read_options: Optional[Dict[str, Any]] = None
     ) -> bool:
-        from hsfs.core import arrow_flight_client
+        from hopsworks.internal.fs.core import arrow_flight_client
 
         return arrow_flight_client.is_query_supported(query, read_options or {})
 
@@ -184,7 +184,7 @@ class Engine:
     ) -> Union[pd.DataFrame, pl.DataFrame]:
         self._validate_dataframe_type(dataframe_type)
         if isinstance(sql_query, dict) and "query_string" in sql_query:
-            from hsfs.core import arrow_flight_client
+            from hopsworks.internal.fs.core import arrow_flight_client
 
             result_df = util.run_with_loading_animation(
                 "Reading data from Hopsworks, using Hopsworks Feature Query Service",
@@ -348,7 +348,7 @@ class Engine:
 
             for inode in inode_list:
                 if not self._is_metadata_file(inode.path):
-                    from hsfs.core import arrow_flight_client
+                    from hopsworks.internal.fs.core import arrow_flight_client
 
                     if arrow_flight_client.is_data_format_supported(
                         data_format, read_options
@@ -1128,7 +1128,7 @@ class Engine:
             )
 
         try:
-            from hsfs.core import arrow_flight_client
+            from hopsworks.internal.fs.core import arrow_flight_client
 
             arrow_flight_client_imported = True
         except ImportError:

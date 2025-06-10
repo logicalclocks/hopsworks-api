@@ -16,9 +16,9 @@
 
 import json
 
-from hopsworks_common import client, git_provider
-from hopsworks_common.client.exceptions import GitException
-from hopsworks_common.engine import git_engine
+from hopsworks.internal.platform import client, git_provider
+from hopsworks.internal.platform.client.exceptions import GitException
+from hopsworks.internal.platform.engine import git_engine
 
 
 class GitProviderApi:

@@ -1,5 +1,5 @@
 import pandas as pd
-from hsfs.transformation_statistics import TransformationStatistics
+from hopsworks.internal.fs.transformation_statistics import TransformationStatistics
 
 
 stats_arg1 = TransformationStatistics("arg1")
@@ -64,7 +64,7 @@ def test_function_multiple_argument_all_parameter_with_spaces(
 
 def test_function_multiple_argument_all_parameter_multiline(
     arg1: pd.Series,
-    arg2,    
+    arg2,
 
     arg3,
 
@@ -88,19 +88,19 @@ def test_function_transformation_statistics_as_default_one_line_return_type(arg1
     pass
 
 def test_function_transformation_statistics_as_default_multiple_line(arg1: pd.Series,
-                                                                    arg2, 
+                                                                    arg2,
                                                                     statistics=TransformationStatistics("arg1", "arg2")
                                                             ):
     pass
 
 def test_function_transformation_statistics_as_default_multiple_line_return_type_spaces(arg1: pd.Series,
-                                                                    arg2, 
+                                                                    arg2,
                                                                     statistics=TransformationStatistics("arg1", "arg2")
                                                             ) -> pd.Series :
     pass
 
 def test_function_transformation_statistics_as_default_multiple_line_return_type_no_spaces(arg1: pd.Series,
-                                                                    arg2, 
+                                                                    arg2,
                                                                     statistics=TransformationStatistics("arg1", "arg2")
                                                             )->pd.Series:
     pass

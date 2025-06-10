@@ -15,9 +15,9 @@
 #
 from __future__ import annotations
 
-from hopsworks_common import client
-from hsfs.core import data_source as ds
-from hsfs.core import data_source_data as dsd
+from hopsworks.internal.platform import client
+from hopsworks.internal.fs.core import data_source as ds
+from hopsworks.internal.fs.core import data_source_data as dsd
 
 
 class DataSourceApi:

@@ -2,7 +2,7 @@ import logging
 import re
 
 import pandas as pd
-from hopsworks_common.core.constants import HAS_POLARS
+from hopsworks.internal.platform.core.constants import HAS_POLARS
 
 
 logger = logging.getLogger(__name__)

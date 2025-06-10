@@ -26,13 +26,13 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import humps
-from hopsworks_common import client
-from hopsworks_common.client.exceptions import FeatureStoreException
-from hopsworks_common.constants import FEATURES
-from hsfs import engine, util
-from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
-from hsfs.decorators import typechecked
-from hsfs.transformation_statistics import TransformationStatistics
+from hopsworks.internal.platform import client
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
+from hopsworks.internal.platform.constants import FEATURES
+from hopsworks.internal.fs import engine, util
+from hopsworks.internal.fs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
+from hopsworks.internal.fs.decorators import typechecked
+from hopsworks.internal.fs.transformation_statistics import TransformationStatistics
 from packaging.version import Version
 
 

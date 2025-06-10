@@ -20,10 +20,10 @@ import json
 from typing import Optional
 
 import humps
-from hopsworks_common import client, constants, usage, util
-from hopsworks_common.client.exceptions import JobExecutionException
-from hopsworks_common.core import execution_api
-from hopsworks_common.engine import execution_engine
+from hopsworks.internal.platform import client, constants, usage, util
+from hopsworks.internal.platform.client.exceptions import JobExecutionException
+from hopsworks.internal.platform.core import execution_api
+from hopsworks.internal.platform.engine import execution_engine
 
 
 class Execution:

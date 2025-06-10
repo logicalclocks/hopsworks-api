@@ -15,7 +15,7 @@
 #
 
 
-from hsfs import statistics_config
+from hopsworks.internal.fs import statistics_config
 
 
 class TestStatistics:

@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.kafka_schema import (
+from hopsworks.internal.platform.kafka_schema import (
     KafkaSchema,
 )
 

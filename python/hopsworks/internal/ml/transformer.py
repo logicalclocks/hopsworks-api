@@ -16,10 +16,10 @@
 from typing import Optional, Union
 
 import humps
-from hopsworks_common import client, util
-from hopsworks_common.constants import RESOURCES, Default
-from hsml.deployable_component import DeployableComponent
-from hsml.resources import TransformerResources
+from hopsworks.internal.platform import client, util
+from hopsworks.internal.platform.constants import RESOURCES, Default
+from hopsworks.internal.ml.deployable_component import DeployableComponent
+from hopsworks.internal.ml.resources import TransformerResources
 
 
 class Transformer(DeployableComponent):

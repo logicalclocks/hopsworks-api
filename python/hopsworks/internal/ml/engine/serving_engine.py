@@ -20,18 +20,18 @@ import time
 import uuid
 from typing import Dict, List, Union
 
-from hopsworks_common.client.exceptions import ModelServingException, RestAPIError
-from hopsworks_common.client.istio.utils.infer_type import InferInput
-from hopsworks_common.constants import (
+from hopsworks.internal.platform.client.exceptions import ModelServingException, RestAPIError
+from hopsworks.internal.platform.client.istio.utils.infer_type import InferInput
+from hopsworks.internal.platform.constants import (
     DEPLOYMENT,
     MODEL_SERVING,
     PREDICTOR,
     PREDICTOR_STATE,
 )
-from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
-from hopsworks_common.core import dataset_api
-from hsml.core import serving_api
-from hsml.engine import local_engine
+from hopsworks.internal.platform.constants import INFERENCE_ENDPOINTS as IE
+from hopsworks.internal.platform.core import dataset_api
+from hopsworks.internal.ml.core import serving_api
+from hopsworks.internal.ml.engine import local_engine
 from tqdm.auto import tqdm
 
 

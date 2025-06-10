@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.engine.git_engine import (
+from hopsworks.internal.platform.engine.git_engine import (
     GitEngine,
 )
 

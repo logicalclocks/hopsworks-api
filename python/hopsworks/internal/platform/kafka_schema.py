@@ -17,8 +17,8 @@
 import json
 
 import humps
-from hopsworks_common import usage, util
-from hopsworks_common.core import kafka_api
+from hopsworks.internal.platform import usage, util
+from hopsworks.internal.platform.core import kafka_api
 
 
 class KafkaSchema:

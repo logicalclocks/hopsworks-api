@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 import humps
-from hsfs import feature_group as feature_group_module
+from hopsworks.internal.fs import feature_group as feature_group_module
 
 
 class HudiFeatureGroupAlias:

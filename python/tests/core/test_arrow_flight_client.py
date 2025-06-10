@@ -18,19 +18,19 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
-from hsfs import feature_group, feature_view, storage_connector, training_dataset
-from hsfs.constructor import fs_query
-from hsfs.core import arrow_flight_client
-from hsfs.engine import python
-from hsfs.feature import Feature
-from hsfs.feature_store import FeatureStore
-from hsfs.storage_connector import HopsFSConnector, StorageConnector
+from hopsworks.internal.fs import feature_group, feature_view, storage_connector, training_dataset
+from hopsworks.internal.fs.constructor import fs_query
+from hopsworks.internal.fs.core import arrow_flight_client
+from hopsworks.internal.fs.engine import python
+from hopsworks.internal.fs.feature import Feature
+from hopsworks.internal.fs.feature_store import FeatureStore
+from hopsworks.internal.fs.storage_connector import HopsFSConnector, StorageConnector
 
 
 class TestArrowFlightClient:
     @pytest.fixture(autouse=True)
     def run_around_tests(self, mocker):
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         arrow_flight_client.get_instance()._enabled_on_cluster = True
         arrow_flight_client.get_instance()._disabled_for_session = False
         yield
@@ -38,7 +38,7 @@ class TestArrowFlightClient:
         arrow_flight_client.get_instance()._disabled_for_session = True
 
     def _arrange_engine_mocks(self, mocker, backend_fixtures):
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
         mocker.patch("hsfs.engine.get_instance", return_value=python_engine)

@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hsml import deployable_component, inference_batcher
+from hopsworks.internal.ml import deployable_component, inference_batcher
 
 
 class TestDeployableComponent:
@@ -40,7 +40,7 @@ class TestDeployableComponent:
     def test_constructor_default(self, mocker):
         # Arrange
         mock_get_obj_from_json = mocker.patch(
-            "hopsworks_common.util.get_obj_from_json", return_value=None
+            "hopsworks.internal.platform.util.get_obj_from_json", return_value=None
         )
         mock_ib_init = mocker.patch(
             "hsml.inference_batcher.InferenceBatcher.__init__", return_value=None
@@ -73,7 +73,7 @@ class TestDeployableComponent:
         resources = {}
         inf_batcher = inference_batcher.InferenceBatcher()
         mock_get_obj_from_json = mocker.patch(
-            "hopsworks_common.util.get_obj_from_json", return_value=inf_batcher
+            "hopsworks.internal.platform.util.get_obj_from_json", return_value=inf_batcher
         )
         mock_ib_init = mocker.patch(
             "hsml.inference_batcher.InferenceBatcher.__init__", return_value=None

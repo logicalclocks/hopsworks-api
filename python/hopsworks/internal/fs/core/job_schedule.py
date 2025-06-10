@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.job_schedule import (
+from hopsworks.internal.platform.job_schedule import (
     JobSchedule,
 )
 

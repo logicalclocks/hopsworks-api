@@ -18,7 +18,7 @@ import json
 from typing import Any, Dict, Optional
 
 import humps
-from hsfs import util
+from hopsworks.internal.fs import util
 
 
 class PreparedStatementParameter:

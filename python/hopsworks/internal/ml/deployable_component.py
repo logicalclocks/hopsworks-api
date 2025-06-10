@@ -18,10 +18,10 @@ from abc import ABC, abstractmethod
 from typing import Optional, Union
 
 import humps
-from hopsworks_common import util
-from hopsworks_common.constants import Default
-from hsml.inference_batcher import InferenceBatcher
-from hsml.resources import Resources
+from hopsworks.internal.platform import util
+from hopsworks.internal.platform.constants import Default
+from hopsworks.internal.ml.inference_batcher import InferenceBatcher
+from hopsworks.internal.ml.resources import Resources
 
 
 class DeployableComponent(ABC):

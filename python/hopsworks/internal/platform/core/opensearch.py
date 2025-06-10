@@ -22,11 +22,11 @@ from functools import wraps
 
 import opensearchpy
 import urllib3
-from hopsworks_common.client.exceptions import (
+from hopsworks.internal.platform.client.exceptions import (
     FeatureStoreException,
     VectorDatabaseException,
 )
-from hopsworks_common.core.opensearch_api import OpenSearchApi
+from hopsworks.internal.platform.core.opensearch_api import OpenSearchApi
 from opensearchpy import OpenSearch
 from opensearchpy.exceptions import (
     AuthenticationException,

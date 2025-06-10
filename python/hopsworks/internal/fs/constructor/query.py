@@ -23,16 +23,16 @@ from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 
 import humps
 import pandas as pd
-from hopsworks_common.client.exceptions import FeatureStoreException
-from hopsworks_common.core.constants import HAS_NUMPY
-from hsfs import engine, storage_connector, util
-from hsfs import feature_group as fg_mod
-from hsfs.constructor import join
-from hsfs.constructor.filter import Filter, Logic
-from hsfs.constructor.fs_query import FsQuery
-from hsfs.core import query_constructor_api, storage_connector_api
-from hsfs.decorators import typechecked
-from hsfs.feature import Feature
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
+from hopsworks.internal.platform.core.constants import HAS_NUMPY
+from hopsworks.internal.fs import engine, storage_connector, util
+from hopsworks.internal.fs import feature_group as fg_mod
+from hopsworks.internal.fs.constructor import join
+from hopsworks.internal.fs.constructor.filter import Filter, Logic
+from hopsworks.internal.fs.constructor.fs_query import FsQuery
+from hopsworks.internal.fs.core import query_constructor_api, storage_connector_api
+from hopsworks.internal.fs.decorators import typechecked
+from hopsworks.internal.fs.feature import Feature
 
 
 _logger = logging.getLogger(__name__)
@@ -109,7 +109,7 @@ class Query:
             online_conn = None
 
             if engine.get_instance().is_flyingduck_query_supported(self, read_options):
-                from hsfs.core import arrow_flight_client
+                from hopsworks.internal.fs.core import arrow_flight_client
 
                 sql_query = self._to_string(fs_query, online, asof=True)
                 sql_query = arrow_flight_client.get_instance().create_query_object(
@@ -527,7 +527,7 @@ class Query:
         !!! example
             ```python
 
-            from hsfs.feature import Feature
+            from hopsworks.internal.fs.feature import Feature
 
             query.filter(Feature("weekly_sales") > 1000)
             query.filter(Feature("name").like("max%"))

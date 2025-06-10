@@ -15,7 +15,7 @@
 #
 
 import numpy as np
-from hsml import schema
+from hopsworks.internal.ml import schema
 
 
 class TestSchema:

@@ -14,8 +14,8 @@
 #   limitations under the License.
 #
 import pytest
-from hsfs import ge_expectation
-from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
+from hopsworks.internal.fs import ge_expectation
+from hopsworks.internal.fs.core.constants import HAS_GREAT_EXPECTATIONS
 
 
 class TestGeExpectation:

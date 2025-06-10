@@ -17,8 +17,8 @@
 import json
 from typing import List, Optional
 
-from hopsworks_common import client, decorators, environment, usage
-from hopsworks_common.engine import environment_engine
+from hopsworks.internal.platform import client, decorators, environment, usage
+from hopsworks.internal.platform.engine import environment_engine
 
 
 class EnvironmentApi:
@@ -114,7 +114,7 @@ class EnvironmentApi:
 
     @usage.method_logger
     @decorators.catch_not_found(
-        "hopsworks_common.environment.Environment", fallback_return=None
+        "hopsworks.internal.platform.environment.Environment", fallback_return=None
     )
     def get_environment(self, name: str) -> Optional[environment.Environment]:
         """Get handle for a Python environment in the project

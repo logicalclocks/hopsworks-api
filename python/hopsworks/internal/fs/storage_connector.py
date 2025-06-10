@@ -26,11 +26,11 @@ from typing import Any, Dict, List, Optional, TypeVar, Union
 
 import humps
 import pandas as pd
-from hopsworks_common import client
-from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
-from hsfs import engine
-from hsfs.core import data_source as ds
-from hsfs.core import data_source_api, storage_connector_api
+from hopsworks.internal.platform import client
+from hopsworks.internal.platform.core.constants import HAS_NUMPY, HAS_POLARS
+from hopsworks.internal.fs import engine
+from hopsworks.internal.fs.core import data_source as ds
+from hopsworks.internal.fs.core import data_source_api, storage_connector_api
 
 
 if HAS_NUMPY:

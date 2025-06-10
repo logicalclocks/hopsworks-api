@@ -17,9 +17,9 @@ import logging
 import warnings
 
 import pytest
-from hsfs import feature, feature_group
-from hsfs.client.exceptions import FeatureStoreException
-from hsfs.constructor import filter, join, query
+from hopsworks.internal.fs import feature, feature_group
+from hopsworks.internal.fs.client.exceptions import FeatureStoreException
+from hopsworks.internal.fs.constructor import filter, join, query
 
 
 class TestQuery:
@@ -70,7 +70,7 @@ class TestQuery:
 
     def test_from_response_json_python(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         json = backend_fixtures["query"]["get"]["response"]
 
@@ -92,7 +92,7 @@ class TestQuery:
 
     def test_from_response_json_external_fg_python(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         json = backend_fixtures["query"]["get_external_fg"]["response"]
 
@@ -114,7 +114,7 @@ class TestQuery:
 
     def test_from_response_json_spark(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
         json = backend_fixtures["query"]["get"]["response"]
 
@@ -136,7 +136,7 @@ class TestQuery:
 
     def test_from_response_json_external_fg_spark(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
         json = backend_fixtures["query"]["get_external_fg"]["response"]
 
@@ -158,7 +158,7 @@ class TestQuery:
 
     def test_from_response_json_basic_info(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         json = backend_fixtures["query"]["get_basic_info"]["response"]
 
@@ -180,7 +180,7 @@ class TestQuery:
 
     def test_from_response_json_basic_info_deprecated(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         json = backend_fixtures["query"]["get_basic_info_deprecated"]["response"]
 
@@ -206,7 +206,7 @@ class TestQuery:
         )
 
     def test_as_of(self, mocker, backend_fixtures):
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         q = query.Query.from_response_json(backend_fixtures["query"]["get"]["response"])
         q.as_of("2022-01-01 00:00:00")

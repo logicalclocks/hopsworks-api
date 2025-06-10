@@ -16,9 +16,9 @@
 import warnings
 from unittest import mock
 
-import hsfs
+import hopsworks.internal.fs as hsfs
 import pytest
-from hsfs import (
+from hopsworks.internal.fs import (
     engine,
     expectation_suite,
     feature,
@@ -30,13 +30,13 @@ from hsfs import (
     user,
     util,
 )
-from hsfs.client.exceptions import FeatureStoreException, RestAPIError
-from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
-from hsfs.engine import python, spark
-from hsfs.transformation_function import TransformationType
+from hopsworks.internal.fs.client.exceptions import FeatureStoreException, RestAPIError
+from hopsworks.internal.fs.core.constants import HAS_GREAT_EXPECTATIONS
+from hopsworks.internal.fs.engine import python, spark
+from hopsworks.internal.fs.transformation_function import TransformationType
 
 
-with mock.patch("hopsworks_common.client.get_instance"):
+with mock.patch("hopsworks.internal.platform.client.get_instance"):
     engine.init("python")
 test_feature_group = feature_group.FeatureGroup(
     name="test",
@@ -309,7 +309,7 @@ class TestFeatureGroup:
         self, mocker, backend_fixtures, dataframe_fixture_basic
     ):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mocker.patch("hsfs.engine.get_type")
         json = backend_fixtures["feature_store"]["get"]["response"]
 
@@ -990,7 +990,7 @@ class TestExternalFeatureGroup:
 
     def test_upper_case_primary_key_event_time(self, mocker, backend_fixtures, caplog):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mocker.patch("hsfs.engine.get_type")
         json = backend_fixtures["feature_store"]["get"]["response"]
 

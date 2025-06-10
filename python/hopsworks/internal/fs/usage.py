@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.usage import (
+from hopsworks.internal.platform.usage import (
     HOPSWORKS_DIR,
     EnvironmentAttribute,
     MethodCounter,

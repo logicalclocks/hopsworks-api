@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hsfs import serving_key
+from hopsworks.internal.fs import serving_key
 
 
 class TestServingKeys:

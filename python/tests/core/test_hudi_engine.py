@@ -14,9 +14,9 @@
 #   limitations under the License.
 #
 
-from hsfs import feature_group
-from hsfs.constructor import hudi_feature_group_alias
-from hsfs.core import hudi_engine
+from hopsworks.internal.fs import feature_group
+from hopsworks.internal.fs.constructor import hudi_feature_group_alias
+from hopsworks.internal.fs.core import hudi_engine
 
 
 class TestHudiEngine:

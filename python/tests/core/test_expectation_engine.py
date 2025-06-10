@@ -14,8 +14,8 @@
 #   limitations under the License.
 #
 import pytest
-from hsfs.core import expectation_engine
-from hsfs.ge_expectation import GeExpectation
+from hopsworks.internal.fs.core import expectation_engine
+from hopsworks.internal.fs.ge_expectation import GeExpectation
 
 
 class TestExpectationEngine:

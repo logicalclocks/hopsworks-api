@@ -15,7 +15,7 @@
 #
 
 
-from hsfs.constructor import (
+from hopsworks.internal.fs.constructor import (
     external_feature_group_alias,
     fs_query,
     hudi_feature_group_alias,

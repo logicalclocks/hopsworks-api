@@ -16,12 +16,12 @@
 
 import socket
 
-from hsml import client
-from hsml.client.exceptions import ModelRegistryException
-from hsml.constants import INFERENCE_ENDPOINTS
-from hsml.core import dataset_api, serving_api
-from hsml.inference_endpoint import get_endpoint_by_type
-from hsml.model_serving import ModelServing
+from hopsworks.internal.ml import client
+from hopsworks.internal.ml.client.exceptions import ModelRegistryException
+from hopsworks.internal.ml.constants import INFERENCE_ENDPOINTS
+from hopsworks.internal.ml.core import dataset_api, serving_api
+from hopsworks.internal.ml.inference_endpoint import get_endpoint_by_type
+from hopsworks.internal.ml.model_serving import ModelServing
 
 
 class ModelServingApi:

@@ -4,16 +4,16 @@ from unittest import mock
 
 import pandas as pd
 import pytest
-from hopsworks_common.core.constants import HAS_POLARS
-from hsfs import engine, feature_group
-from hsfs.core.schema_validation import (
+from hopsworks.internal.platform.core.constants import HAS_POLARS
+from hopsworks.internal.fs import engine, feature_group
+from hopsworks.internal.fs.core.schema_validation import (
     DataFrameValidator,
     PandasValidator,
     PolarsValidator,
     PySparkValidator,
 )
-from hsfs.engine import spark
-from hsfs.feature import Feature
+from hopsworks.internal.fs.engine import spark
+from hopsworks.internal.fs.feature import Feature
 
 
 if HAS_POLARS:
@@ -86,7 +86,7 @@ def spark_df():
 
 @pytest.fixture
 def feature_group_data():
-    with mock.patch("hopsworks_common.client.get_instance"):
+    with mock.patch("hopsworks.internal.platform.client.get_instance"):
         engine.init("python")
     fg = feature_group.FeatureGroup(
         name="test_fg",
@@ -106,7 +106,7 @@ def feature_group_data():
 
 @pytest.fixture
 def feature_group_created():
-    with mock.patch("hopsworks_common.client.get_instance"):
+    with mock.patch("hopsworks.internal.platform.client.get_instance"):
         engine.init("python")
     fg_existing = feature_group.FeatureGroup(
         name="test_existing_fg",

@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.library import (
+from hopsworks.internal.platform.library import (
     Library,
 )
 

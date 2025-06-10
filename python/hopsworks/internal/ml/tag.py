@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.tag import (
+from hopsworks.internal.platform.tag import (
     Tag,
 )
 

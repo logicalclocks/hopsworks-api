@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.client.istio.utils.infer_type import (
+from hopsworks.internal.platform.client.istio.utils.infer_type import (
     GRPC_CONTENT_DATATYPE_MAPPINGS,
     InferenceServerException,
     InferInput,

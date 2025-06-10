@@ -212,8 +212,8 @@ class Links:
 
     @staticmethod
     def __parse_feature_views(links_json: dict, artifacts: Set[str]):
-        from hsfs import feature_view
-        from hsfs.core import explicit_provenance as hsfs_explicit_provenance
+        from hopsworks.internal.fs import feature_view
+        from hopsworks.internal.fs.core import explicit_provenance as hsfs_explicit_provenance
 
         links = Links()
         for link_json in links_json:
@@ -253,8 +253,8 @@ class Links:
 
     @staticmethod
     def __parse_training_datasets(links_json: dict, artifacts: Set[str]):
-        from hsfs import training_dataset
-        from hsfs.core import explicit_provenance as hsfs_explicit_provenance
+        from hopsworks.internal.fs import training_dataset
+        from hopsworks.internal.fs.core import explicit_provenance as hsfs_explicit_provenance
 
         links = Links()
         for link_json in links_json:
@@ -306,7 +306,7 @@ class Links:
             )
         if not importlib.util.find_spec("hopsworks"):
             raise ValueError(
-                "hopsworks is not installed in the environment - cannot switch from hsml connection to hsfs connection"
+                "hopsworks is not installed in the environment - cannot switch from hopsworks.internal.ml connection to hsfs connection"
             )
 
         # make sure the hsfs connection is initialized so that the feature view/training dataset can actually be used after being returned
@@ -358,8 +358,8 @@ class ProvenanceEncoder(json.JSONEncoder):
             import importlib.util
 
             if importlib.util.find_spec("hsfs"):
-                from hsfs import feature_view
-                from hsfs.core import explicit_provenance as hsfs_explicit_provenance
+                from hopsworks.internal.fs import feature_view
+                from hopsworks.internal.fs.core import explicit_provenance as hsfs_explicit_provenance
 
                 if isinstance(
                     obj,

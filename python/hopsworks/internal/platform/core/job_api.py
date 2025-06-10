@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Optional, Union
 
-from hopsworks_common import (
+from hopsworks.internal.platform import (
     client,
     decorators,
     execution,
@@ -28,7 +28,7 @@ from hopsworks_common import (
     usage,
     util,
 )
-from hopsworks_common.core import (
+from hopsworks.internal.platform.core import (
     ingestion_job_conf,
     job_configuration,
 )
@@ -78,7 +78,7 @@ class JobApi:
         return created_job
 
     @usage.method_logger
-    @decorators.catch_not_found("hopsworks_common.job.Job", fallback_return=None)
+    @decorators.catch_not_found("hopsworks.internal.platform.job.Job", fallback_return=None)
     def get_job(self, name: str) -> Optional[job.Job]:
         """Get a job.
 

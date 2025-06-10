@@ -15,7 +15,7 @@
 #
 
 
-from hsml import model_schema
+from hopsworks.internal.ml import model_schema
 
 
 class TestModelSchema:

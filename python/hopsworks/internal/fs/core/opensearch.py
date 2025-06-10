@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.core.opensearch import (
+from hopsworks.internal.platform.core.opensearch import (
     OpenSearchClientSingleton,
     OpensearchRequestOption,
 )

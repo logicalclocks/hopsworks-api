@@ -20,11 +20,11 @@ import tempfile
 import time
 import uuid
 
-from hopsworks_common import client, constants, util
-from hopsworks_common.client.exceptions import ModelRegistryException, RestAPIError
-from hopsworks_common.core import dataset_api
-from hsml.core import model_api
-from hsml.engine import local_engine
+from hopsworks.internal.platform import client, constants, util
+from hopsworks.internal.platform.client.exceptions import ModelRegistryException, RestAPIError
+from hopsworks.internal.platform.core import dataset_api
+from hopsworks.internal.ml.core import model_api
+from hopsworks.internal.ml.engine import local_engine
 from tqdm.auto import tqdm
 
 

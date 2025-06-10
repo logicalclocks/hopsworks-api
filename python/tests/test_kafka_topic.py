@@ -17,8 +17,8 @@
 import copy
 
 import humps
-from hopsworks_common import kafka_topic
-from hopsworks_common.constants import KAFKA_TOPIC
+from hopsworks.internal.platform import kafka_topic
+from hopsworks.internal.platform.constants import KAFKA_TOPIC
 
 
 class TestKafkaTopic:
@@ -31,7 +31,7 @@ class TestKafkaTopic:
         ]["kafka_topic_dto"]
         json_camelized = humps.camelize(json)  # as returned by the backend
         mock_kt_from_json = mocker.patch(
-            "hopsworks_common.kafka_topic.KafkaTopic.from_json"
+            "hopsworks.internal.platform.kafka_topic.KafkaTopic.from_json"
         )
 
         # Act
@@ -47,7 +47,7 @@ class TestKafkaTopic:
         ]["kafka_topic_dto"]
         json_camelized = humps.camelize(json)  # as returned by the backend
         mock_kt_from_json = mocker.patch(
-            "hopsworks_common.kafka_topic.KafkaTopic.from_json"
+            "hopsworks.internal.platform.kafka_topic.KafkaTopic.from_json"
         )
 
         # Act
@@ -64,11 +64,11 @@ class TestKafkaTopic:
             "response"
         ]["kafka_topic_dto"]
         mock_kt_extract_fields = mocker.patch(
-            "hopsworks_common.kafka_topic.KafkaTopic.extract_fields_from_json",
+            "hopsworks.internal.platform.kafka_topic.KafkaTopic.extract_fields_from_json",
             return_value=json,
         )
         mock_kt_init = mocker.patch(
-            "hopsworks_common.kafka_topic.KafkaTopic.__init__", return_value=None
+            "hopsworks.internal.platform.kafka_topic.KafkaTopic.__init__", return_value=None
         )
 
         # Act
@@ -84,11 +84,11 @@ class TestKafkaTopic:
             "response"
         ]["kafka_topic_dto"]
         mock_kt_extract_fields = mocker.patch(
-            "hopsworks_common.kafka_topic.KafkaTopic.extract_fields_from_json",
+            "hopsworks.internal.platform.kafka_topic.KafkaTopic.extract_fields_from_json",
             return_value=json,
         )
         mock_kt_init = mocker.patch(
-            "hopsworks_common.kafka_topic.KafkaTopic.__init__", return_value=None
+            "hopsworks.internal.platform.kafka_topic.KafkaTopic.__init__", return_value=None
         )
 
         # Act
@@ -106,7 +106,7 @@ class TestKafkaTopic:
             "response"
         ]["kafka_topic_dto"]
         mock_kt_validate_topic_config = mocker.patch(
-            "hopsworks_common.kafka_topic.KafkaTopic._validate_topic_config",
+            "hopsworks.internal.platform.kafka_topic.KafkaTopic._validate_topic_config",
             return_value=(KAFKA_TOPIC.NUM_REPLICAS, KAFKA_TOPIC.NUM_PARTITIONS),
         )
 
@@ -126,7 +126,7 @@ class TestKafkaTopic:
             "response"
         ]["kafka_topic_dto"]
         mock_kt_validate_topic_config = mocker.patch(
-            "hopsworks_common.kafka_topic.KafkaTopic._validate_topic_config",
+            "hopsworks.internal.platform.kafka_topic.KafkaTopic._validate_topic_config",
             return_value=(json["num_replicas"], json["num_partitions"]),
         )
 

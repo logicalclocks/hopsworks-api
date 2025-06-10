@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.client.istio.utils.numpy_codec import (
+from hopsworks.internal.platform.client.istio.utils.numpy_codec import (
     from_np_dtype,
     to_np_dtype,
 )

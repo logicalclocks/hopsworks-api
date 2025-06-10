@@ -19,8 +19,8 @@ import json
 from typing import Optional
 
 import humps
-from hopsworks_common import client, util
-from hopsworks_common.core import (
+from hopsworks.internal.platform import client, util
+from hopsworks.internal.platform.core import (
     dataset_api,
     environment_api,
     flink_cluster_api,

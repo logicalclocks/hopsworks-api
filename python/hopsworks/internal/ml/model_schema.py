@@ -17,7 +17,7 @@
 import json
 from typing import Optional
 
-from hsml.schema import Schema
+from hopsworks.internal.ml.schema import Schema
 
 
 class ModelSchema:

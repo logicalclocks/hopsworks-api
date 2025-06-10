@@ -25,17 +25,18 @@ import warnings
 import weakref
 from typing import Any, Optional
 
-from hopsworks_common import client, constants, usage, util, version
-from hopsworks_common.client.exceptions import RestAPIError
-from hopsworks_common.core import (
+from hopsworks import version
+from hopsworks.internal.platform import client, constants, usage, util
+from hopsworks.internal.platform.client.exceptions import RestAPIError
+from hopsworks.internal.platform.core import (
     hosts_api,
     project_api,
     secret_api,
     services_api,
     variable_api,
 )
-from hopsworks_common.core.opensearch import OpenSearchClientSingleton
-from hopsworks_common.decorators import connected, not_connected
+from hopsworks.internal.platform.core.opensearch import OpenSearchClientSingleton
+from hopsworks.internal.platform.decorators import connected, not_connected
 from requests.exceptions import ConnectionError
 
 
@@ -391,8 +392,8 @@ class Connection:
                 )
 
             client.set_connection(self)
-            from hsfs.core import feature_store_api
-            from hsml.core import model_registry_api, model_serving_api
+            from hopsworks.internal.fs.core import feature_store_api
+            from hopsworks.internal.ml.core import model_registry_api, model_serving_api
 
             global _hsfs_engine_type
             _hsfs_engine_type = self._engine
@@ -429,7 +430,7 @@ class Connection:
         if not self._project:
             return
 
-        from hsfs import engine
+        from hopsworks.internal.fs import engine
 
         engine.get_instance()
         if self._variable_api.get_data_science_profile_enabled():
@@ -465,7 +466,7 @@ class Connection:
         if not self._connected:
             return  # the connection is already closed
 
-        from hsfs import engine
+        from hopsworks.internal.fs import engine
 
         if OpenSearchClientSingleton._instance:
             OpenSearchClientSingleton().close()

@@ -22,12 +22,12 @@ import decimal
 from typing import TYPE_CHECKING, Literal, Union
 
 import pytz
-from hopsworks_common.core.constants import (
+from hopsworks.internal.platform.core.constants import (
     HAS_PANDAS,
     HAS_POLARS,
     HAS_PYARROW,
 )
-from hopsworks_common.decorators import uses_polars
+from hopsworks.internal.platform.decorators import uses_polars
 
 
 if TYPE_CHECKING:

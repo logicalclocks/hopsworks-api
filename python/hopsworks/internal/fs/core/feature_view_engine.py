@@ -20,21 +20,21 @@ import warnings
 from typing import Any, Dict, List, Optional, TypeVar, Union
 
 import pandas as pd
-from hopsworks_common import client
-from hopsworks_common.client.exceptions import FeatureStoreException
-from hopsworks_common.core.constants import HAS_NUMPY
-from hsfs import (
+from hopsworks.internal.platform import client
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
+from hopsworks.internal.platform.core.constants import HAS_NUMPY
+from hopsworks.internal.fs import (
     engine,
     feature_group,
     feature_view,
     training_dataset_feature,
     util,
 )
-from hsfs.client import exceptions
-from hsfs.constructor.filter import Filter, Logic
-from hsfs.constructor.join import Join
-from hsfs.constructor.query import Query
-from hsfs.core import (
+from hopsworks.internal.fs.client import exceptions
+from hopsworks.internal.fs.constructor.filter import Filter, Logic
+from hopsworks.internal.fs.constructor.join import Join
+from hopsworks.internal.fs.constructor.query import Query
+from hopsworks.internal.fs.core import (
     feature_view_api,
     query_constructor_api,
     statistics_engine,
@@ -42,9 +42,9 @@ from hsfs.core import (
     training_dataset_engine,
     transformation_function_engine,
 )
-from hsfs.core.feature_logging import FeatureLogging
-from hsfs.feature_logger import FeatureLogger
-from hsfs.training_dataset_split import TrainingDatasetSplit
+from hopsworks.internal.fs.core.feature_logging import FeatureLogging
+from hopsworks.internal.fs.feature_logger import FeatureLogger
+from hopsworks.internal.fs.training_dataset_split import TrainingDatasetSplit
 
 
 if HAS_NUMPY:
@@ -1031,7 +1031,7 @@ class FeatureViewEngine:
     def _check_feature_group_accessibility(self, feature_view_obj):
         if engine.get_type() == "python":
             try:
-                from hsfs.core import arrow_flight_client
+                from hopsworks.internal.fs.core import arrow_flight_client
 
                 arrow_flight_client_imported = True
             except ImportError:

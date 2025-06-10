@@ -17,9 +17,9 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
-from hopsworks_common import client
-from hsfs import feature_group as fg_mod
-from hsfs.core import online_ingestion
+from hopsworks.internal.platform import client
+from hopsworks.internal.fs import feature_group as fg_mod
+from hopsworks.internal.fs.core import online_ingestion
 
 
 class OnlineIngestionApi:

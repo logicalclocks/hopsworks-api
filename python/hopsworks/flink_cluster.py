@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.flink_cluster import (
+from hopsworks.internal.platform.flink_cluster import (
     FlinkCluster,
 )
 

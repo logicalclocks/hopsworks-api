@@ -20,7 +20,7 @@ import functools
 import importlib
 import os
 
-from hopsworks_common.core.constants import (
+from hopsworks.internal.platform.core.constants import (
     HAS_CONFLUENT_KAFKA,
     HAS_GREAT_EXPECTATIONS,
     HAS_POLARS,

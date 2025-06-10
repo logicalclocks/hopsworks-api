@@ -15,7 +15,7 @@
 #
 
 
-from hsfs.core import job_configuration
+from hopsworks.internal.fs.core import job_configuration
 
 
 class TestJobConfiguration:

@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.git_commit import (
+from hopsworks.internal.platform.git_commit import (
     GitCommit,
 )
 

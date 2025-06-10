@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.core.git_provider_api import (
+from hopsworks.internal.platform.core.git_provider_api import (
     GitProviderApi,
 )
 

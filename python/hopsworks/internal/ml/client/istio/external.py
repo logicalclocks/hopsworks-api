@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.client.istio.external import (
+from hopsworks.internal.platform.client.istio.external import (
     Client,
 )
 

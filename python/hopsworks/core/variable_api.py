@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.core.variable_api import (
+from hopsworks.internal.platform.core.variable_api import (
     VariableApi,
 )
 

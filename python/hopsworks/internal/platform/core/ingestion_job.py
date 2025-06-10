@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import humps
-from hopsworks_common.job import Job
+from hopsworks.internal.platform.job import Job
 
 
 class IngestionJob:

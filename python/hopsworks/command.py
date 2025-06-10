@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.command import (
+from hopsworks.internal.platform.command import (
     Command,
 )
 

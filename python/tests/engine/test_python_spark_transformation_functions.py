@@ -22,17 +22,17 @@ import statistics
 import pandas as pd
 import pytest
 import tzlocal
-from hsfs import (
+from hopsworks.internal.fs import (
     engine,
     training_dataset,
     training_dataset_feature,
     transformation_function,
 )
-from hsfs.client.exceptions import FeatureStoreException
-from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
-from hsfs.engine import python, spark
-from hsfs.hopsworks_udf import HopsworksUdf, udf
-from hsfs.transformation_function import TransformationType
+from hopsworks.internal.fs.client.exceptions import FeatureStoreException
+from hopsworks.internal.fs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
+from hopsworks.internal.fs.engine import python, spark
+from hopsworks.internal.fs.hopsworks_udf import HopsworksUdf, udf
+from hopsworks.internal.fs.transformation_function import TransformationType
 from pyspark.sql.types import (
     BooleanType,
     DateType,
@@ -109,7 +109,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_builtin_minmax_from_backend(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mocker.patch("hsfs.core.statistics_engine.StatisticsEngine._save_statistics")
         spark_engine = spark.Engine()
 
@@ -149,8 +149,8 @@ class TestPythonSparkTransformationFunctions:
 
         # Arrange
         tf_fun_source = (
-            "import numpy as np\nimport pandas as pd\nfrom hsfs.transformation_statistics import TransformationStatistics\n"
-            "from hsfs.hopsworks_udf import udf\n"
+            "import numpy as np\nimport pandas as pd\nfrom hopsworks.internal.fs.transformation_statistics import TransformationStatistics\n"
+            "from hopsworks.internal.fs.hopsworks_udf import udf\n"
             'feature_statistics = TransformationStatistics("feature")\n'
             "@udf(float)\n"
             "def min_max_scaler(feature: pd.Series, statistics = feature_statistics) -> pd.Series:\n"
@@ -190,7 +190,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_builtin_minmax(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mocker.patch("hsfs.core.statistics_engine.StatisticsEngine._save_statistics")
         spark_engine = spark.Engine()
 
@@ -229,7 +229,7 @@ class TestPythonSparkTransformationFunctions:
         )
 
         # Arrange
-        from hsfs.builtin_transformations import min_max_scaler
+        from hopsworks.internal.fs.builtin_transformations import min_max_scaler
 
         td = self._create_training_dataset()
 
@@ -253,7 +253,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_builtin_standard_scaler_from_backend(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mocker.patch("hsfs.core.statistics_engine.StatisticsEngine._save_statistics")
         spark_engine = spark.Engine()
 
@@ -293,8 +293,8 @@ class TestPythonSparkTransformationFunctions:
 
         # Arrange
         tf_fun_source = (
-            "import numpy as np\nimport pandas as pd\nfrom hsfs.transformation_statistics import TransformationStatistics\n"
-            "from hsfs.hopsworks_udf import udf\n"
+            "import numpy as np\nimport pandas as pd\nfrom hopsworks.internal.fs.transformation_statistics import TransformationStatistics\n"
+            "from hopsworks.internal.fs.hopsworks_udf import udf\n"
             'feature_statistics = TransformationStatistics("feature")\n'
             "@udf(float)\n"
             "def standard_scaler(feature: pd.Series, statistics = feature_statistics) -> pd.Series:\n"
@@ -335,7 +335,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_builtin_standard_scaler(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mocker.patch("hsfs.core.statistics_engine.StatisticsEngine._save_statistics")
         spark_engine = spark.Engine()
 
@@ -374,7 +374,7 @@ class TestPythonSparkTransformationFunctions:
         )
 
         # Arrange
-        from hsfs.builtin_transformations import standard_scaler
+        from hopsworks.internal.fs.builtin_transformations import standard_scaler
 
         td = self._create_training_dataset()
 
@@ -400,7 +400,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_builtin_robust_scaler_from_backend(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mocker.patch("hsfs.core.statistics_engine.StatisticsEngine._save_statistics")
         spark_engine = spark.Engine()
 
@@ -440,8 +440,8 @@ class TestPythonSparkTransformationFunctions:
 
         # Arrange
         tf_fun_source = (
-            "import numpy as np\nimport pandas as pd\nfrom hsfs.transformation_statistics import TransformationStatistics\n"
-            "from hsfs.hopsworks_udf import udf\n"
+            "import numpy as np\nimport pandas as pd\nfrom hopsworks.internal.fs.transformation_statistics import TransformationStatistics\n"
+            "from hopsworks.internal.fs.hopsworks_udf import udf\n"
             'feature_statistics = TransformationStatistics("feature")\n'
             "@udf(float)\n"
             "def robust_scaler(feature: pd.Series, statistics = feature_statistics) -> pd.Series:\n"
@@ -485,7 +485,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_builtin_robust_scaler(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mocker.patch("hsfs.core.statistics_engine.StatisticsEngine._save_statistics")
         spark_engine = spark.Engine()
 
@@ -524,7 +524,7 @@ class TestPythonSparkTransformationFunctions:
         )
 
         # Arrange
-        from hsfs.builtin_transformations import robust_scaler
+        from hopsworks.internal.fs.builtin_transformations import robust_scaler
 
         td = self._create_training_dataset()
 
@@ -552,7 +552,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_int_default(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -612,7 +612,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_int_python(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -672,7 +672,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_int_pandas(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -732,7 +732,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_str(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -791,7 +791,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_str_python(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -850,7 +850,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_str_pandas(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -909,7 +909,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_double_default(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -968,7 +968,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_double_python(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -1027,7 +1027,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_double_pandas(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -1086,7 +1086,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_datetime_no_tz_default(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -1157,7 +1157,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_datetime_tz_utc_default(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -1230,7 +1230,7 @@ class TestPythonSparkTransformationFunctions:
         )
 
     def test_apply_plus_one_datetime_no_tz_python(self, mocker):
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -1301,7 +1301,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_datetime_tz_utc_python(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -1378,7 +1378,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_datetime_no_tz_pandas(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -1456,7 +1456,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_datetime_tz_utc_pandas(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -1530,7 +1530,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_datetime_tz_pst_default(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -1604,7 +1604,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_datetime_tz_pst_python(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -1680,7 +1680,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_datetime_tz_pst_pandas(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -1754,7 +1754,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_datetime_ts_none_default(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -1828,7 +1828,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_datetime_ts_none_python(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -1902,7 +1902,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_datetime_ts_none_pandas(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -1976,7 +1976,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_date_default(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -2038,7 +2038,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_date_python(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -2107,7 +2107,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_date_pandas(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         spark_engine = spark.Engine()
 
         schema = StructType(
@@ -2169,7 +2169,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_invalid_type_default(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
 
         # Arrange
         with pytest.raises(FeatureStoreException) as e_info:
@@ -2185,7 +2185,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_invalid_type_pandas(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
 
         # Arrange
         with pytest.raises(FeatureStoreException) as e_info:
@@ -2201,7 +2201,7 @@ class TestPythonSparkTransformationFunctions:
 
     def test_apply_plus_one_invalid_type_python(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
 
         # Arrange
         with pytest.raises(FeatureStoreException) as e_info:

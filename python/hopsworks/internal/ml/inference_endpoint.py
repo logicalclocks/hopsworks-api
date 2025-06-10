@@ -17,7 +17,7 @@ import random
 from typing import List, Optional
 
 import humps
-from hopsworks_common import util
+from hopsworks.internal.platform import util
 
 
 class InferenceEndpointPort:

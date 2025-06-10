@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.engine.execution_engine import (
+from hopsworks.internal.platform.engine.execution_engine import (
     ExecutionEngine,
 )
 

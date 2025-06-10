@@ -18,9 +18,9 @@ import copy
 import os
 
 import humps
-from hsml import model
-from hsml.constants import MODEL
-from hsml.core import explicit_provenance
+from hopsworks.internal.ml import model
+from hopsworks.internal.ml.constants import MODEL
+from hopsworks.internal.ml.core import explicit_provenance
 
 
 class TestModel:
@@ -346,10 +346,10 @@ class TestModel:
             _project_id = 1
 
         mock_client_get_instance = mocker.patch(
-            "hopsworks_common.client.get_instance", return_value=ClientMock()
+            "hopsworks.internal.platform.client.get_instance", return_value=ClientMock()
         )
         mock_util_get_hostname_replaced_url = mocker.patch(
-            "hopsworks_common.util.get_hostname_replaced_url", return_value="full_path"
+            "hopsworks.internal.platform.util.get_hostname_replaced_url", return_value="full_path"
         )
         path_arg = "/p/1/models/" + m_json["name"] + "/" + str(m_json["version"])
 

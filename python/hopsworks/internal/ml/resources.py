@@ -18,8 +18,8 @@ from abc import ABC, abstractmethod
 from typing import Optional, Union
 
 import humps
-from hopsworks_common import util
-from hopsworks_common.constants import RESOURCES, Default
+from hopsworks.internal.platform import util
+from hopsworks.internal.platform.constants import RESOURCES, Default
 
 
 class Resources:

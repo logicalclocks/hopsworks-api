@@ -18,9 +18,9 @@ from typing import Optional, Union
 
 import numpy
 import pandas
-from hopsworks_common import usage
-from hsml.llm.model import Model
-from hsml.model_schema import ModelSchema
+from hopsworks.internal.platform import usage
+from hopsworks.internal.ml.llm.model import Model
+from hopsworks.internal.ml.model_schema import ModelSchema
 
 
 _mr = None

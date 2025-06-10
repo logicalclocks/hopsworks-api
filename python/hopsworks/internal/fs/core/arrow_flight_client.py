@@ -23,7 +23,7 @@ import warnings
 from functools import wraps
 from typing import Any, Dict, Optional, Union
 
-from hopsworks_common.core.constants import HAS_PYARROW, pyarrow_not_installed_message
+from hopsworks.internal.platform.core.constants import HAS_PYARROW, pyarrow_not_installed_message
 
 
 if not HAS_PYARROW:
@@ -32,13 +32,13 @@ if not HAS_PYARROW:
 import pyarrow
 import pyarrow._flight
 import pyarrow.flight
-from hopsworks_common import client
-from hopsworks_common.client.exceptions import FeatureStoreException
-from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
-from hsfs import feature_group
-from hsfs.constructor import query
-from hsfs.core.variable_api import VariableApi
-from hsfs.storage_connector import StorageConnector
+from hopsworks.internal.platform import client
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
+from hopsworks.internal.platform.core.constants import HAS_POLARS, polars_not_installed_message
+from hopsworks.internal.fs import feature_group
+from hopsworks.internal.fs.constructor import query
+from hopsworks.internal.fs.core.variable_api import VariableApi
+from hopsworks.internal.fs.storage_connector import StorageConnector
 from pyarrow.flight import FlightServerError
 from retrying import retry
 

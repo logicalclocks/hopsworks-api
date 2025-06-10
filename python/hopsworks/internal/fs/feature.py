@@ -19,15 +19,15 @@ import json
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-import hsfs
+import hopsworks.internal.fs
 import humps
-from hsfs import util
-from hsfs.constructor import filter
-from hsfs.decorators import typechecked
+from hopsworks.internal.fs import util
+from hopsworks.internal.fs.constructor import filter
+from hopsworks.internal.fs.decorators import typechecked
 
 
 if TYPE_CHECKING:
-    from hsfs.feature_group import FeatureGroup
+    from hopsworks.internal.fs.feature_group import FeatureGroup
 
 
 @typechecked

@@ -32,12 +32,12 @@ if TYPE_CHECKING:
 
 import pandas as pd
 import tzlocal
-from hopsworks_common.core.constants import HAS_NUMPY, HAS_PANDAS
-from hsfs.constructor import query
-from hsfs.core import feature_group_api
+from hopsworks.internal.platform.core.constants import HAS_NUMPY, HAS_PANDAS
+from hopsworks.internal.fs.constructor import query
+from hopsworks.internal.fs.core import feature_group_api
 
 # in case importing in %%local
-from hsfs.core.vector_db_client import VectorDbClient
+from hopsworks.internal.fs.core.vector_db_client import VectorDbClient
 
 
 if HAS_NUMPY:
@@ -86,9 +86,9 @@ try:
 except ImportError:
     pass
 
-from hopsworks_common import client
-from hopsworks_common.client.exceptions import FeatureStoreException
-from hsfs import (
+from hopsworks.internal.platform import client
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
+from hopsworks.internal.fs import (
     feature,
     feature_view,
     training_dataset,
@@ -96,18 +96,18 @@ from hsfs import (
     transformation_function,
     util,
 )
-from hsfs import feature_group as fg_mod
-from hsfs.core import (
+from hopsworks.internal.fs import feature_group as fg_mod
+from hopsworks.internal.fs.core import (
     dataset_api,
     delta_engine,
     hudi_engine,
     kafka_engine,
     transformation_function_engine,
 )
-from hsfs.core.constants import HAS_AVRO, HAS_GREAT_EXPECTATIONS
-from hsfs.decorators import uses_great_expectations
-from hsfs.storage_connector import StorageConnector
-from hsfs.training_dataset_split import TrainingDatasetSplit
+from hopsworks.internal.fs.core.constants import HAS_AVRO, HAS_GREAT_EXPECTATIONS
+from hopsworks.internal.fs.decorators import uses_great_expectations
+from hopsworks.internal.fs.storage_connector import StorageConnector
+from hopsworks.internal.fs.training_dataset_split import TrainingDatasetSplit
 
 
 if HAS_GREAT_EXPECTATIONS:

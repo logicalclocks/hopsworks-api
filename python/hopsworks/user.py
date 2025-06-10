@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.user import (
+from hopsworks.internal.platform.user import (
     User,
 )
 

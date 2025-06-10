@@ -14,10 +14,10 @@
 #   limitations under the License.
 #
 import pytest
-from hsfs import feature, feature_group, storage_connector
-from hsfs.client import exceptions
-from hsfs.core import external_feature_group_engine
-from hsfs.engine import python
+from hopsworks.internal.fs import feature, feature_group, storage_connector
+from hopsworks.internal.fs.client import exceptions
+from hopsworks.internal.fs.core import external_feature_group_engine
+from hopsworks.internal.fs.engine import python
 
 
 class TestExternalFeatureGroupEngine:

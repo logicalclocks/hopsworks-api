@@ -18,8 +18,8 @@ import os
 
 import pytest
 import requests
-from hsfs.client.base import Client
-from hsfs.client.exceptions import RestAPIError
+from hopsworks.internal.fs.client.base import Client
+from hopsworks.internal.fs.client.exceptions import RestAPIError
 
 from tests.util import changes_environ
 
@@ -71,7 +71,7 @@ class TestBaseClient:
         )
 
         # Mock and spy the client
-        mocker.patch("hopsworks_common.client.base.Client._read_jwt")
+        mocker.patch("hopsworks.internal.platform.client.base.Client._read_jwt")
         spy_retry_token_expired = mocker.spy(client, "_retry_token_expired")
 
         # Act
@@ -109,7 +109,7 @@ class TestBaseClient:
         )
 
         # Mock and spy the client
-        mocker.patch("hopsworks_common.client.base.Client._read_jwt")
+        mocker.patch("hopsworks.internal.platform.client.base.Client._read_jwt")
         spy_retry_token_expired = mocker.spy(client, "_retry_token_expired")
 
         # Act

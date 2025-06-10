@@ -20,8 +20,8 @@ from datetime import datetime, timezone
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Callable, Dict, Literal, Optional, Tuple, Union
 
-from hopsworks_common import client
-from hopsworks_common.core.constants import (
+from hopsworks.internal.platform import client
+from hopsworks.internal.platform.core.constants import (
     HAS_AVRO,
     HAS_CONFLUENT_KAFKA,
     HAS_FAST_AVRO,
@@ -29,8 +29,8 @@ from hopsworks_common.core.constants import (
     HAS_PANDAS,
     avro_not_installed_message,
 )
-from hopsworks_common.decorators import uses_confluent_kafka
-from hsfs.core import online_ingestion, online_ingestion_api, storage_connector_api
+from hopsworks.internal.platform.decorators import uses_confluent_kafka
+from hopsworks.internal.fs.core import online_ingestion, online_ingestion_api, storage_connector_api
 from tqdm import tqdm
 
 
@@ -52,7 +52,7 @@ elif HAS_AVRO:
 
 
 if TYPE_CHECKING:
-    from hsfs.feature_group import ExternalFeatureGroup, FeatureGroup
+    from hopsworks.internal.fs.feature_group import ExternalFeatureGroup, FeatureGroup
 
 
 @uses_confluent_kafka

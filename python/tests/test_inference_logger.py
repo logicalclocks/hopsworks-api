@@ -18,8 +18,8 @@ import copy
 
 import humps
 import pytest
-from hsml import inference_logger, kafka_topic
-from hsml.constants import DEFAULT, INFERENCE_LOGGER
+from hopsworks.internal.ml import inference_logger, kafka_topic
+from hopsworks.internal.ml.constants import DEFAULT, INFERENCE_LOGGER
 
 
 class TestInferenceLogger:
@@ -107,7 +107,7 @@ class TestInferenceLogger:
         )
         default_kt = kafka_topic.KafkaTopic()
         mock_util_get_obj_from_json = mocker.patch(
-            "hopsworks_common.util.get_obj_from_json", return_value=default_kt
+            "hopsworks.internal.platform.util.get_obj_from_json", return_value=default_kt
         )
 
         # Act
@@ -136,7 +136,7 @@ class TestInferenceLogger:
         )
         default_kt = kafka_topic.KafkaTopic()
         mock_util_get_obj_from_json = mocker.patch(
-            "hopsworks_common.util.get_obj_from_json", return_value=default_kt
+            "hopsworks.internal.platform.util.get_obj_from_json", return_value=default_kt
         )
 
         # Act
@@ -163,7 +163,7 @@ class TestInferenceLogger:
         )
         default_kt = kafka_topic.KafkaTopic()
         mock_util_get_obj_from_json = mocker.patch(
-            "hopsworks_common.util.get_obj_from_json", return_value=default_kt
+            "hopsworks.internal.platform.util.get_obj_from_json", return_value=default_kt
         )
 
         # Act
@@ -190,7 +190,7 @@ class TestInferenceLogger:
         )
         default_kt = kafka_topic.KafkaTopic()
         mock_util_get_obj_from_json = mocker.patch(
-            "hopsworks_common.util.get_obj_from_json", return_value=default_kt
+            "hopsworks.internal.platform.util.get_obj_from_json", return_value=default_kt
         )
 
         # Act
@@ -220,7 +220,7 @@ class TestInferenceLogger:
         )
         kt = kafka_topic.KafkaTopic(json["kafka_topic"]["name"])
         mock_util_get_obj_from_json = mocker.patch(
-            "hopsworks_common.util.get_obj_from_json", return_value=kt
+            "hopsworks.internal.platform.util.get_obj_from_json", return_value=kt
         )
 
         # Act
@@ -250,7 +250,7 @@ class TestInferenceLogger:
         )
         kt = kafka_topic.KafkaTopic(json["kafka_topic"]["name"])
         mock_util_get_obj_from_json = mocker.patch(
-            "hopsworks_common.util.get_obj_from_json", return_value=kt
+            "hopsworks.internal.platform.util.get_obj_from_json", return_value=kt
         )
 
         # Act
@@ -280,7 +280,7 @@ class TestInferenceLogger:
         )
         kt = kafka_topic.KafkaTopic(json["kafka_topic"]["name"])
         mock_util_get_obj_from_json = mocker.patch(
-            "hopsworks_common.util.get_obj_from_json", return_value=kt
+            "hopsworks.internal.platform.util.get_obj_from_json", return_value=kt
         )
 
         # Act
@@ -310,7 +310,7 @@ class TestInferenceLogger:
         )
         kt = kafka_topic.KafkaTopic(json["kafka_topic"]["name"])
         mock_util_get_obj_from_json = mocker.patch(
-            "hopsworks_common.util.get_obj_from_json", return_value=kt
+            "hopsworks.internal.platform.util.get_obj_from_json", return_value=kt
         )
 
         # Act

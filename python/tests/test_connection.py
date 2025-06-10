@@ -14,12 +14,12 @@
 #   limitations under the License.
 #
 
-from hsml.connection import (
+from hopsworks.internal.ml.connection import (
     HOPSWORKS_PORT_DEFAULT,
     HOSTNAME_VERIFICATION_DEFAULT,
     Connection,
 )
-from hsml.constants import HOSTS
+from hopsworks.internal.ml.constants import HOSTS
 
 
 class TestConnection:

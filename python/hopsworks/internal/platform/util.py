@@ -33,11 +33,11 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Literal, Optional, Tuple,
 from urllib.parse import urljoin, urlparse
 
 import humps
-from hopsworks_common import client
-from hopsworks_common.client.exceptions import FeatureStoreException, JobException
-from hopsworks_common.constants import MODEL, PREDICTOR, Default
-from hopsworks_common.core.constants import HAS_PANDAS
-from hopsworks_common.git_file_status import GitFileStatus
+from hopsworks.internal.platform import client
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException, JobException
+from hopsworks.internal.platform.constants import MODEL, PREDICTOR, Default
+from hopsworks.internal.platform.core.constants import HAS_PANDAS
+from hopsworks.internal.platform.git_file_status import GitFileStatus
 from six import string_types
 
 
@@ -49,7 +49,7 @@ FEATURE_STORE_NAME_SUFFIX = "_featurestore"
 
 
 if TYPE_CHECKING:
-    from hsfs import feature_group
+    from hopsworks.internal.fs import feature_group
 
 
 class Encoder(json.JSONEncoder):
@@ -482,12 +482,12 @@ def is_interactive():
 
 
 def set_model_class(model):
-    from hsml.llm.model import Model as LLMModel
-    from hsml.model import Model as BaseModel
-    from hsml.python.model import Model as PyModel
-    from hsml.sklearn.model import Model as SkLearnModel
-    from hsml.tensorflow.model import Model as TFModel
-    from hsml.torch.model import Model as TorchModel
+    from hopsworks.internal.ml.llm.model import Model as LLMModel
+    from hopsworks.internal.ml.model import Model as BaseModel
+    from hopsworks.internal.ml.python.model import Model as PyModel
+    from hopsworks.internal.ml.sklearn.model import Model as SkLearnModel
+    from hopsworks.internal.ml.tensorflow.model import Model as TFModel
+    from hopsworks.internal.ml.torch.model import Model as TorchModel
 
     if "href" in model:
         _ = model.pop("href")
@@ -624,18 +624,18 @@ def validate_metrics(metrics):
 
 
 def get_predictor_for_model(model, **kwargs):
-    from hsml.llm.model import Model as LLMModel
-    from hsml.llm.predictor import Predictor as vLLMPredictor
-    from hsml.model import Model as BaseModel
-    from hsml.predictor import Predictor as BasePredictor
-    from hsml.python.model import Model as PyModel
-    from hsml.python.predictor import Predictor as PyPredictor
-    from hsml.sklearn.model import Model as SkLearnModel
-    from hsml.sklearn.predictor import Predictor as SkLearnPredictor
-    from hsml.tensorflow.model import Model as TFModel
-    from hsml.tensorflow.predictor import Predictor as TFPredictor
-    from hsml.torch.model import Model as TorchModel
-    from hsml.torch.predictor import Predictor as TorchPredictor
+    from hopsworks.internal.ml.llm.model import Model as LLMModel
+    from hopsworks.internal.ml.llm.predictor import Predictor as vLLMPredictor
+    from hopsworks.internal.ml.model import Model as BaseModel
+    from hopsworks.internal.ml.predictor import Predictor as BasePredictor
+    from hopsworks.internal.ml.python.model import Model as PyModel
+    from hopsworks.internal.ml.python.predictor import Predictor as PyPredictor
+    from hopsworks.internal.ml.sklearn.model import Model as SkLearnModel
+    from hopsworks.internal.ml.sklearn.predictor import Predictor as SkLearnPredictor
+    from hopsworks.internal.ml.tensorflow.model import Model as TFModel
+    from hopsworks.internal.ml.tensorflow.predictor import Predictor as TFPredictor
+    from hopsworks.internal.ml.torch.model import Model as TorchModel
+    from hopsworks.internal.ml.torch.predictor import Predictor as TorchPredictor
 
     if not isinstance(model, BaseModel):
         raise ValueError(
@@ -727,7 +727,7 @@ def feature_view_to_json(obj):
     import importlib.util
 
     if importlib.util.find_spec("hsfs"):
-        from hsfs import feature_view
+        from hopsworks.internal.fs import feature_view
 
         if isinstance(obj, feature_view.FeatureView):
             import json

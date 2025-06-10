@@ -19,8 +19,8 @@ import json
 from typing import Any, Dict, List, Optional, Union
 
 import humps
-from hsfs import feature_group as fg_mod
-from hsfs import util
+from hopsworks.internal.fs import feature_group as fg_mod
+from hopsworks.internal.fs import util
 
 
 class ServingKey:
@@ -48,7 +48,7 @@ class ServingKey:
     @classmethod
     def from_response_json(cls, json_dict) -> Optional[ServingKey]:
         # late import, otherwise will result circular import
-        from hsfs.feature_group import FeatureGroupBase
+        from hopsworks.internal.fs.feature_group import FeatureGroupBase
 
         if json_dict is None:
             return None

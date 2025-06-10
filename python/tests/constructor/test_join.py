@@ -15,8 +15,8 @@
 #
 
 
-from hsfs import feature
-from hsfs.constructor import join, query
+from hopsworks.internal.fs import feature
+from hopsworks.internal.fs.constructor import join, query
 
 
 class TestJoin:

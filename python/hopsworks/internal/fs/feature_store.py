@@ -22,8 +22,8 @@ from typing import Any, Dict, List, Optional, TypeVar, Union
 
 import humps
 import pandas as pd
-from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
-from hsfs import (
+from hopsworks.internal.platform.core.constants import HAS_NUMPY, HAS_POLARS
+from hopsworks.internal.fs import (
     expectation_suite,
     feature,
     feature_group,
@@ -33,11 +33,11 @@ from hsfs import (
     usage,
     util,
 )
-from hsfs.constructor.query import Query
-from hsfs.core import (
+from hopsworks.internal.fs.constructor.query import Query
+from hopsworks.internal.fs.core import (
     data_source as ds,
 )
-from hsfs.core import (
+from hopsworks.internal.fs.core import (
     feature_group_api,
     feature_group_engine,
     feature_view_engine,
@@ -45,12 +45,12 @@ from hsfs.core import (
     training_dataset_api,
     transformation_function_engine,
 )
-from hsfs.decorators import typechecked
-from hsfs.embedding import EmbeddingIndex
-from hsfs.hopsworks_udf import HopsworksUdf
-from hsfs.online_config import OnlineConfig
-from hsfs.statistics_config import StatisticsConfig
-from hsfs.transformation_function import TransformationFunction
+from hopsworks.internal.fs.decorators import typechecked
+from hopsworks.internal.fs.embedding import EmbeddingIndex
+from hopsworks.internal.fs.hopsworks_udf import HopsworksUdf
+from hopsworks.internal.fs.online_config import OnlineConfig
+from hopsworks.internal.fs.statistics_config import StatisticsConfig
+from hopsworks.internal.fs.transformation_function import TransformationFunction
 
 
 if HAS_NUMPY:
@@ -1871,13 +1871,13 @@ class FeatureStore:
 
     def _disable_hopsworks_feature_query_service_client(self):
         """Disable Hopsworks feature query service for the current session. This behaviour is not persisted on reset."""
-        from hsfs.core import arrow_flight_client
+        from hopsworks.internal.fs.core import arrow_flight_client
 
         arrow_flight_client._disable_feature_query_service_client()
 
     def _reset_hopsworks_feature_query_service_client(self):
         """Reset Hopsworks feature query service for the current session."""
-        from hsfs.core import arrow_flight_client
+        from hopsworks.internal.fs.core import arrow_flight_client
 
         arrow_flight_client.close()
         arrow_flight_client.get_instance()

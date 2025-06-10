@@ -17,7 +17,7 @@
 import datetime
 
 import humps
-from hsml import deployable_component_logs
+from hopsworks.internal.ml import deployable_component_logs
 
 
 class TestDeployableComponentLogs:

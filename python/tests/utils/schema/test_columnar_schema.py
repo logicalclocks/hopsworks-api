@@ -15,7 +15,7 @@
 
 import pandas as pd
 import pytest
-from hsml.utils.schema import column, columnar_schema
+from hopsworks.internal.ml.utils.schema import column, columnar_schema
 from mock import call
 
 
@@ -217,7 +217,7 @@ class TestColumnarSchema:
     def test_constructor_hsfs_td(self, mocker):
         # Arrange
         try:
-            import hsfs
+            import hopsworks.internal.fs
         except ImportError:
             pytest.skip("hsfs not available")
 

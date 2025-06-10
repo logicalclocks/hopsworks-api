@@ -18,9 +18,9 @@ import json
 from typing import List, Union
 
 import humps
-from hopsworks_common import git_commit, usage, user, util
-from hopsworks_common.core import dataset_api, git_api, git_remote_api
-from hopsworks_common.git_file_status import GitFileStatus
+from hopsworks.internal.platform import git_commit, usage, user, util
+from hopsworks.internal.platform.core import dataset_api, git_api, git_remote_api
+from hopsworks.internal.platform.git_file_status import GitFileStatus
 
 
 class GitRepo:

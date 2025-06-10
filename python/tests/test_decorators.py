@@ -14,7 +14,7 @@
 #   limitations under the License.
 
 import pytest
-from hsml.decorators import (
+from hopsworks.internal.ml.decorators import (
     HopsworksConnectionError,
     NoHopsworksConnectionError,
     connected,

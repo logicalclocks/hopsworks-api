@@ -19,7 +19,7 @@ import json
 from typing import Any, Dict
 
 import humps
-from hopsworks_common import util
+from hopsworks.internal.platform import util
 
 
 class OnlineIngestionResult:

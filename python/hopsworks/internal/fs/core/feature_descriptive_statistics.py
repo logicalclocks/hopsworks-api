@@ -19,7 +19,7 @@ import json
 from typing import Mapping, Optional, Union
 
 import humps
-from hsfs import util
+from hopsworks.internal.fs import util
 
 
 class FeatureDescriptiveStatistics:

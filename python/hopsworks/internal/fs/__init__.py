@@ -22,12 +22,12 @@ import warnings
 # Setting polars skip cpu flag to suppress CPU false positive warning messages printed while importing hsfs
 os.environ["POLARS_SKIP_CPU_CHECK"] = "1"
 
-from hsfs import (  # noqa: E402,  Module level import not at top of file because os.environ must be set before importing hsfs
+from hopsworks import version
+from hopsworks.internal.fs import (  # noqa: E402,  Module level import not at top of file because os.environ must be set before importing hsfs
     usage,
     util,
-    version,
 )
-from hsfs.connection import (  # noqa: E402,  Module level import not at top of file because os.environ must be set before importing hsfs
+from hopsworks.internal.fs.connection import (  # noqa: E402,  Module level import not at top of file because os.environ must be set before importing hsfs
     Connection,
 )
 

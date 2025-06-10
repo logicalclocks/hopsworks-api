@@ -16,7 +16,7 @@
 
 from unittest import mock
 
-from hsfs.core import execution
+from hopsworks.internal.fs.core import execution
 
 
 class TestExecution:

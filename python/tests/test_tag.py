@@ -15,7 +15,7 @@
 #
 
 import humps
-from hsml import tag
+from hopsworks.internal.ml import tag
 
 
 class TestTag:

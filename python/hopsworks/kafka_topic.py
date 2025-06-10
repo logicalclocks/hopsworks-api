@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.kafka_topic import (
+from hopsworks.internal.platform.kafka_topic import (
     KafkaTopic,
 )
 

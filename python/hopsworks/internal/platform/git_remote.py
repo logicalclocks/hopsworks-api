@@ -17,8 +17,8 @@
 import json
 
 import humps
-from hopsworks_common import usage, util
-from hopsworks_common.core import git_remote_api
+from hopsworks.internal.platform import usage, util
+from hopsworks.internal.platform.core import git_remote_api
 
 
 class GitRemote:

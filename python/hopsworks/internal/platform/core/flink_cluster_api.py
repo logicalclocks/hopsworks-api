@@ -18,9 +18,9 @@ import json
 import os
 from typing import Optional
 
-from hopsworks_common import client, decorators, flink_cluster, job, usage, util
-from hopsworks_common.client.exceptions import RestAPIError
-from hopsworks_common.core import job_api
+from hopsworks.internal.platform import client, decorators, flink_cluster, job, usage, util
+from hopsworks.internal.platform.client.exceptions import RestAPIError
+from hopsworks.internal.platform.core import job_api
 
 
 class FlinkClusterApi:
@@ -100,7 +100,7 @@ class FlinkClusterApi:
 
     @usage.method_logger
     @decorators.catch_not_found(
-        "hopsworks_common.flink_cluster.FlinkCluster", fallback_return=None
+        "hopsworks.internal.platform.flink_cluster.FlinkCluster", fallback_return=None
     )
     def get_cluster(self, name: str) -> Optional[flink_cluster.FlinkCluster]:
         """Get the job corresponding to the flink cluster.

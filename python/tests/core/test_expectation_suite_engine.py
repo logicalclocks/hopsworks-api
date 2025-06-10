@@ -14,8 +14,8 @@
 #   limitations under the License.
 #
 
-from hsfs import expectation_suite as es
-from hsfs.core import expectation_suite_engine
+from hopsworks.internal.fs import expectation_suite as es
+from hopsworks.internal.fs.core import expectation_suite_engine
 
 
 class TestExpectationSuiteEngine:
@@ -168,7 +168,7 @@ class TestExpectationSuiteEngine:
         feature_group_id = 10
 
         mocker.patch("hsfs.engine.get_type")
-        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client_get_instance = mocker.patch("hopsworks.internal.platform.client.get_instance")
         mock_util_get_hostname_replaced_url = mocker.patch(
             "hsfs.util.get_hostname_replaced_url"
         )

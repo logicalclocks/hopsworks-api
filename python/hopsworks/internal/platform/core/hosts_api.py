@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any, List
 
-from hopsworks_common import client
+from hopsworks.internal.platform import client
 
 
 class HostsApi:

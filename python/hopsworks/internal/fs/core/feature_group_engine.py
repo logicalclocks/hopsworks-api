@@ -17,12 +17,12 @@ from __future__ import annotations
 import warnings
 from typing import Any, Dict, List, Union
 
-from hsfs import engine, feature, util
-from hsfs import feature_group as fg
-from hsfs.client import exceptions
-from hsfs.core import delta_engine, feature_group_base_engine, hudi_engine
-from hsfs.core.deltastreamer_jobconf import DeltaStreamerJobConf
-from hsfs.core.schema_validation import DataFrameValidator
+from hopsworks.internal.fs import engine, feature, util
+from hopsworks.internal.fs import feature_group as fg
+from hopsworks.internal.fs.client import exceptions
+from hopsworks.internal.fs.core import delta_engine, feature_group_base_engine, hudi_engine
+from hopsworks.internal.fs.core.deltastreamer_jobconf import DeltaStreamerJobConf
+from hopsworks.internal.fs.core.schema_validation import DataFrameValidator
 
 
 class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):

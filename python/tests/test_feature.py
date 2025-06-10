@@ -15,7 +15,7 @@
 #
 
 
-from hsfs import feature, feature_group
+from hopsworks.internal.fs import feature, feature_group
 
 
 class TestFeature:

@@ -17,8 +17,8 @@
 from datetime import date, datetime
 
 import pytest
-from hsfs import util
-from hsfs.core import validation_result_engine
+from hopsworks.internal.fs import util
+from hopsworks.internal.fs.core import validation_result_engine
 
 
 class TestValidationResultEngine:
@@ -28,7 +28,7 @@ class TestValidationResultEngine:
         feature_group_id = 10
         expectation_id = 31
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mock_validation_result_api = mocker.patch(
             "hsfs.core.validation_result_api.ValidationResultApi"
         )

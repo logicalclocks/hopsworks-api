@@ -23,8 +23,8 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from hopsworks_common.client.exceptions import JobExecutionException, RestAPIError
-from hopsworks_common.core import dataset_api, execution_api
+from hopsworks.internal.platform.client.exceptions import JobExecutionException, RestAPIError
+from hopsworks.internal.platform.core import dataset_api, execution_api
 
 
 class ExecutionEngine:

@@ -17,8 +17,8 @@ from __future__ import annotations
 
 from typing import Union
 
-import hsfs.feature_store
-from hopsworks_common import client
+import hopsworks.internal.fs.feature_store
+from hopsworks.internal.platform import client
 
 
 class FeatureStoreApi:

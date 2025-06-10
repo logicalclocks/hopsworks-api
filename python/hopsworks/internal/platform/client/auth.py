@@ -19,7 +19,7 @@ from __future__ import annotations
 import os
 
 import requests
-from hopsworks_common.client import exceptions
+from hopsworks.internal.platform.client import exceptions
 
 
 class BearerAuth(requests.auth.AuthBase):

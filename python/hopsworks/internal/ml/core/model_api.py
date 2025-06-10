@@ -17,8 +17,8 @@
 import json
 from typing import Union
 
-from hsml import client, decorators, model, tag
-from hsml.core import explicit_provenance
+from hopsworks.internal.ml import client, decorators, model, tag
+from hopsworks.internal.ml.core import explicit_provenance
 
 
 class ModelApi:
@@ -200,7 +200,7 @@ class ModelApi:
         ]
         _client._send_request("DELETE", path_params)
 
-    @decorators.catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
+    @decorators.catch_not_found("hopsworks.internal.platform.tag.Tag", fallback_return={})
     def get_tags(self, model_instance):
         """Get the tags.
 
@@ -230,7 +230,7 @@ class ModelApi:
             )
         }
 
-    @decorators.catch_not_found("hopsworks_common.tag.Tag", fallback_return=None)
+    @decorators.catch_not_found("hopsworks.internal.platform.tag.Tag", fallback_return=None)
     def get_tag(self, model_instance, name: str):
         """Get the tag.
 

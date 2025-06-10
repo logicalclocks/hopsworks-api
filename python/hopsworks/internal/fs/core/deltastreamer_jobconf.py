@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import warnings
 
-from hsfs import util
+from hopsworks.internal.fs import util
 
 
 class DeltaStreamerJobConf:

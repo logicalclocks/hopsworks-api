@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.client.auth import (
+from hopsworks.internal.platform.client.auth import (
     ApiKeyAuth,
     BearerAuth,
     OnlineStoreKeyAuth,

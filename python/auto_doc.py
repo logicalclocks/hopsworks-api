@@ -55,7 +55,7 @@ PAGES = {
         "job_properties": keras_autodoc.get_properties("hopsworks.job.Job"),
         "job_config": [
             "hopsworks.core.job_api.JobApi.get_configuration",
-            "hopsworks_common.core.job_configuration.JobConfiguration",
+            "hopsworks.internal.platform.core.job_configuration.JobConfiguration",
         ],
         "job_methods": keras_autodoc.get_methods(
             "hopsworks.job.Job", exclude=EXCLUDE_METHODS

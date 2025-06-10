@@ -20,8 +20,8 @@ from enum import Enum
 from typing import List, Optional, Union
 
 import humps
-from hsfs import util
-from hsfs.core import monitoring_window_config_engine
+from hopsworks.internal.fs import util
+from hopsworks.internal.fs.core import monitoring_window_config_engine
 
 
 class WindowConfigType(str, Enum):

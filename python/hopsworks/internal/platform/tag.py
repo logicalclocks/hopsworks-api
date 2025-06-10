@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 
 import humps
-from hopsworks_common import util
+from hopsworks.internal.platform import util
 
 
 class Tag:

@@ -17,7 +17,7 @@
 import importlib
 
 import pandas
-from hsml.utils.schema.column import Column
+from hopsworks.internal.ml.utils.schema.column import Column
 
 
 try:
@@ -30,7 +30,7 @@ class ColumnarSchema:
     """Metadata object representing a columnar schema for a model."""
 
     def __init__(self, columnar_obj=None):
-        from hsfs.training_dataset import (
+        from hopsworks.internal.fs.training_dataset import (
             TrainingDataset,  # import performed here to prevent circular dependencies when importing ModelSchema
         )
 

@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.secret import (
+from hopsworks.internal.platform.secret import (
     Secret,
 )
 

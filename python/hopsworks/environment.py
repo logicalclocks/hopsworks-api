@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.environment import (
+from hopsworks.internal.platform.environment import (
     Environment,
 )
 

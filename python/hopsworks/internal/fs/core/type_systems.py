@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.core.type_systems import (
+from hopsworks.internal.platform.core.type_systems import (
     PYARROW_HOPSWORKS_DTYPE_MAPPING,
     cast_column_to_offline_type,
     cast_column_to_online_type,

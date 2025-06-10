@@ -17,7 +17,7 @@ import json
 from typing import Optional
 
 import humps
-from hopsworks_common import util
+from hopsworks.internal.platform import util
 
 
 class PredictorStateCondition:

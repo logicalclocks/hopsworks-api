@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.connection import (
+from hopsworks.internal.platform.connection import (
     Connection,
 )
 

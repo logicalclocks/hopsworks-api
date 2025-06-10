@@ -21,7 +21,7 @@ try:
 except ImportError:
     pass
 
-from hsfs.engine import spark
+from hopsworks.internal.fs.engine import spark
 
 
 class Engine(spark.Engine):

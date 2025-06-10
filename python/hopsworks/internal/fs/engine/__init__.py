@@ -17,9 +17,9 @@ from __future__ import annotations
 
 from typing import TypeVar, Union
 
-import hopsworks_common.connection
-from hsfs.client import exceptions
-from hsfs.engine import spark, spark_no_metastore
+import hopsworks.internal.platform.connection
+from hopsworks.internal.fs.client import exceptions
+from hopsworks.internal.fs.engine import spark, spark_no_metastore
 
 
 _engine = None
@@ -45,7 +45,7 @@ def init(engine_type: str) -> None:
             _engine = spark_no_metastore.Engine()
         elif engine_type in python_types:
             try:
-                from hsfs.engine import python
+                from hopsworks.internal.fs.engine import python
             except ImportError as err:
                 raise exceptions.FeatureStoreException(
                     "Trying to instantiate Python as engine, but 'python' extras are "
@@ -60,7 +60,7 @@ def init(engine_type: str) -> None:
 def get_instance() -> (
     Union[spark.Engine, spark_no_metastore.Engine, TypeVar("python.Engine")]
 ):
-    init(hopsworks_common.connection._hsfs_engine_type)
+    init(hopsworks.internal.platform.connection._hsfs_engine_type)
     return _engine
 
 
@@ -70,19 +70,19 @@ def set_instance(
     engine: Union[spark.Engine, spark_no_metastore.Engine, TypeVar("python.Engine")],
 ) -> None:
     global _engine
-    hopsworks_common.connection._hsfs_engine_type = engine_type
+    hopsworks.internal.platform.connection._hsfs_engine_type = engine_type
     _engine = engine
 
 
 def get_type() -> str:
     if _engine:
-        return hopsworks_common.connection._hsfs_engine_type
+        return hopsworks.internal.platform.connection._hsfs_engine_type
     raise Exception("Couldn't find execution engine. Try reconnecting to Hopsworks.")
 
 
 def stop() -> None:
     global _engine
-    from hsfs.core import arrow_flight_client
+    from hopsworks.internal.fs.core import arrow_flight_client
 
     _engine = None
     arrow_flight_client.close()

@@ -19,8 +19,8 @@ from __future__ import annotations
 import re
 from typing import Optional, Tuple
 
-from hopsworks_common import client
-from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
+from hopsworks.internal.platform import client
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException, RestAPIError
 
 
 LOADBALANCER_SERVICES = {

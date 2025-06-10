@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.core.hosts_api import (
+from hopsworks.internal.platform.core.hosts_api import (
     HostsApi,
 )
 

@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.core.execution_api import (
+from hopsworks.internal.platform.core.execution_api import (
     ExecutionApi,
 )
 

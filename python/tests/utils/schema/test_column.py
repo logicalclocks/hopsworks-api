@@ -13,7 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
-from hsml.utils.schema import column
+from hopsworks.internal.ml.utils.schema import column
 
 
 class TestColumn:

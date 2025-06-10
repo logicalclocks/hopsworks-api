@@ -18,10 +18,10 @@ from __future__ import annotations
 import warnings
 from typing import List, Optional, Union
 
-from hopsworks_common import client
-from hsfs import decorators, feature_group_commit, util
-from hsfs import feature_group as fg_mod
-from hsfs.core import (
+from hopsworks.internal.platform import client
+from hopsworks.internal.fs import decorators, feature_group_commit, util
+from hopsworks.internal.fs import feature_group as fg_mod
+from hopsworks.internal.fs.core import (
     explicit_provenance,
     ingestion_job,
     ingestion_job_conf,

@@ -16,8 +16,8 @@
 
 import copy
 
-from hsml import resources
-from hsml.constants import RESOURCES
+from hopsworks.internal.ml import resources
+from hopsworks.internal.ml.constants import RESOURCES
 from mock import call
 
 
@@ -178,7 +178,7 @@ class TestResources:
         requests_object = resources.Resources.from_json(json["requests"])
         limits_object = resources.Resources.from_json(json["limits"])
         mock_util_get_obj_from_json = mocker.patch(
-            "hopsworks_common.util.get_obj_from_json",
+            "hopsworks.internal.platform.util.get_obj_from_json",
             side_effect=[requests_object, limits_object],
         )
         mock_fill_missing_resources = mocker.patch(

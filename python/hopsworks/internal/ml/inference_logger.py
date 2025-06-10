@@ -17,9 +17,9 @@ import json
 from typing import Optional, Union
 
 import humps
-from hopsworks_common import util
-from hopsworks_common.constants import DEFAULT, INFERENCE_LOGGER, Default
-from hopsworks_common.kafka_topic import KafkaTopic
+from hopsworks.internal.platform import util
+from hopsworks.internal.platform.constants import DEFAULT, INFERENCE_LOGGER, Default
+from hopsworks.internal.platform.kafka_topic import KafkaTopic
 
 
 class InferenceLogger:

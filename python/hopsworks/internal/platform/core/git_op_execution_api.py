@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common import client, git_op_execution
+from hopsworks.internal.platform import client, git_op_execution
 
 
 class GitOpExecutionApi:

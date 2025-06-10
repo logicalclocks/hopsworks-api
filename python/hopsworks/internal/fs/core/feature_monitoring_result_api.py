@@ -17,9 +17,9 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, Union
 
-from hopsworks_common import client
-from hsfs import decorators
-from hsfs.core.feature_monitoring_result import FeatureMonitoringResult
+from hopsworks.internal.platform import client
+from hopsworks.internal.fs import decorators
+from hopsworks.internal.fs.core.feature_monitoring_result import FeatureMonitoringResult
 
 
 class FeatureMonitoringResultApi:

@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.git_op_execution import (
+from hopsworks.internal.platform.git_op_execution import (
     GitOpExecution,
 )
 

@@ -20,16 +20,16 @@ from io import BytesIO
 
 import fastavro
 from confluent_kafka.admin import TopicMetadata
-from hsfs import feature_group
-from hsfs.core import online_ingestion
-from hsfs.engine import python
+from hopsworks.internal.fs import feature_group
+from hopsworks.internal.fs.core import online_ingestion
+from hopsworks.internal.fs.engine import python
 
 
 class TestPythonWriter:
     def test_write_dataframe_kafka(self, mocker, dataframe_fixture_times):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mocker.patch("hsfs.core.kafka_engine.get_kafka_config", return_value={})
         avro_schema_mock = mocker.patch(
             "hsfs.feature_group.FeatureGroup._get_encoded_avro_schema"

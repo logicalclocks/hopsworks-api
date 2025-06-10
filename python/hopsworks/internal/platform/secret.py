@@ -17,8 +17,8 @@
 import json
 
 import humps
-from hopsworks_common import util
-from hopsworks_common.core import secret_api
+from hopsworks.internal.platform import util
+from hopsworks.internal.platform.core import secret_api
 
 
 class Secret:

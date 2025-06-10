@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.core.ingestion_job import (
+from hopsworks.internal.platform.core.ingestion_job import (
     IngestionJob,
 )
 

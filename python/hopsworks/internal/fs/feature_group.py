@@ -33,12 +33,12 @@ from typing import (
 )
 
 import avro.schema
-import hsfs.expectation_suite
+import hopsworks.internal.fs.expectation_suite
 import humps
 import pandas as pd
-from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
-from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
-from hsfs import (
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException, RestAPIError
+from hopsworks.internal.platform.core.constants import HAS_NUMPY, HAS_POLARS
+from hopsworks.internal.fs import (
     engine,
     feature,
     feature_group_writer,
@@ -46,16 +46,16 @@ from hsfs import (
     user,
     util,
 )
-from hsfs import (
+from hopsworks.internal.fs import (
     feature_store as feature_store_mod,
 )
-from hsfs import (
+from hopsworks.internal.fs import (
     storage_connector as sc,
 )
-from hsfs.constructor import filter, query
-from hsfs.constructor.filter import Filter, Logic
-from hsfs.core import data_source as ds
-from hsfs.core import (
+from hopsworks.internal.fs.constructor import filter, query
+from hopsworks.internal.fs.constructor.filter import Filter, Logic
+from hopsworks.internal.fs.core import data_source as ds
+from hopsworks.internal.fs.core import (
     deltastreamer_jobconf,
     expectation_suite_engine,
     explicit_provenance,
@@ -73,26 +73,26 @@ from hsfs.core import (
     validation_report_engine,
     validation_result_engine,
 )
-from hsfs.core import feature_monitoring_config as fmc
-from hsfs.core import feature_monitoring_result as fmr
-from hsfs.core.constants import (
+from hopsworks.internal.fs.core import feature_monitoring_config as fmc
+from hopsworks.internal.fs.core import feature_monitoring_result as fmr
+from hopsworks.internal.fs.core.constants import (
     HAS_CONFLUENT_KAFKA,
     HAS_GREAT_EXPECTATIONS,
 )
-from hsfs.core.job import Job
-from hsfs.core.variable_api import VariableApi
-from hsfs.core.vector_db_client import VectorDbClient
+from hopsworks.internal.fs.core.job import Job
+from hopsworks.internal.fs.core.variable_api import VariableApi
+from hopsworks.internal.fs.core.vector_db_client import VectorDbClient
 
 # if great_expectations is not installed, we will default to using native Hopsworks class as return values
-from hsfs.decorators import typechecked, uses_great_expectations
-from hsfs.embedding import EmbeddingIndex
-from hsfs.ge_validation_result import ValidationResult
-from hsfs.hopsworks_udf import HopsworksUdf
-from hsfs.online_config import OnlineConfig
-from hsfs.statistics import Statistics
-from hsfs.statistics_config import StatisticsConfig
-from hsfs.transformation_function import TransformationFunction, TransformationType
-from hsfs.validation_report import ValidationReport
+from hopsworks.internal.fs.decorators import typechecked, uses_great_expectations
+from hopsworks.internal.fs.embedding import EmbeddingIndex
+from hopsworks.internal.fs.ge_validation_result import ValidationResult
+from hopsworks.internal.fs.hopsworks_udf import HopsworksUdf
+from hopsworks.internal.fs.online_config import OnlineConfig
+from hopsworks.internal.fs.statistics import Statistics
+from hopsworks.internal.fs.statistics_config import StatisticsConfig
+from hopsworks.internal.fs.transformation_function import TransformationFunction, TransformationType
+from hopsworks.internal.fs.validation_report import ValidationReport
 
 
 if HAS_GREAT_EXPECTATIONS:
@@ -305,7 +305,7 @@ class FeatureGroupBase:
 
 
             # select all features exclude primary key and event time
-            from hsfs.feature import Feature
+            from hopsworks.internal.fs.feature import Feature
             fg = fs.create_feature_group(
                     "fg",
                     features=[
@@ -481,7 +481,7 @@ class FeatureGroupBase:
             fs = ...
 
             # get the Feature Group instance
-            from hsfs.feature import Feature
+            from hopsworks.internal.fs.feature import Feature
             fg = fs.create_feature_group(
                     "fg",
                     features=[
@@ -528,7 +528,7 @@ class FeatureGroupBase:
             fs = ...
 
             # get the Feature Group instance
-            from hsfs.feature import Feature
+            from hopsworks.internal.fs.feature import Feature
             fg = fs.create_feature_group(
                     "fg",
                     features=[
@@ -575,7 +575,7 @@ class FeatureGroupBase:
         Selects all features and returns the resulting `Query` with the applied filter.
         !!! example
             ```python
-            from hsfs.feature import Feature
+            from hopsworks.internal.fs.feature import Feature
 
             # connect to the Feature Store
             fs = ...

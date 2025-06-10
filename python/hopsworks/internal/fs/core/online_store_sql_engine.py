@@ -21,21 +21,21 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
 
-from hopsworks_common.core import variable_api
-from hopsworks_common.util import AsyncTask, AsyncTaskThread
-from hsfs import util
-from hsfs.core import (
+from hopsworks.internal.platform.core import variable_api
+from hopsworks.internal.platform.util import AsyncTask, AsyncTaskThread
+from hopsworks.internal.fs import util
+from hopsworks.internal.fs.core import (
     feature_view_api,
     storage_connector_api,
     training_dataset_api,
 )
-from hsfs.core.constants import HAS_AIOMYSQL, HAS_SQLALCHEMY
+from hopsworks.internal.fs.core.constants import HAS_AIOMYSQL, HAS_SQLALCHEMY
 
 
 if TYPE_CHECKING:
-    from hsfs import feature_view, storage_connector, training_dataset
-    from hsfs.constructor.serving_prepared_statement import ServingPreparedStatement
-    from hsfs.serving_key import ServingKey
+    from hopsworks.internal.fs import feature_view, storage_connector, training_dataset
+    from hopsworks.internal.fs.constructor.serving_prepared_statement import ServingPreparedStatement
+    from hopsworks.internal.fs.serving_key import ServingKey
 
 
 if HAS_AIOMYSQL:
@@ -46,7 +46,7 @@ if HAS_SQLALCHEMY:
     from sqlalchemy import bindparam, exc, sql, text
 
 if HAS_AIOMYSQL and HAS_SQLALCHEMY:
-    from hsfs.core import util_sql
+    from hopsworks.internal.fs.core import util_sql
 
 
 _logger = logging.getLogger(__name__)

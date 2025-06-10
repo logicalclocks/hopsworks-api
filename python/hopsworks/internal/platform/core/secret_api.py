@@ -18,8 +18,8 @@ import getpass
 import json
 from typing import List, Optional
 
-from hopsworks_common import client, decorators, secret
-from hopsworks_common.core import project_api
+from hopsworks.internal.platform import client, decorators, secret
+from hopsworks.internal.platform.core import project_api
 
 
 class SecretsApi:
@@ -46,7 +46,7 @@ class SecretsApi:
         )
 
     @decorators.catch_not_found(
-        "hopsworks_common.secret.Secret", fallback_return=None
+        "hopsworks.internal.platform.secret.Secret", fallback_return=None
     )
     def get_secret(self, name: str, owner: str = None) -> Optional[secret.Secret]:
         """Get a secret.

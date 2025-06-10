@@ -18,9 +18,9 @@ import base64
 from pathlib import WindowsPath
 
 import pytest
-from hsfs import engine, storage_connector
-from hsfs.engine import python, spark
-from hsfs.storage_connector import BigQueryConnector
+from hopsworks.internal.fs import engine, storage_connector
+from hopsworks.internal.fs.engine import python, spark
+from hopsworks.internal.fs.storage_connector import BigQueryConnector
 
 
 class TestHopsfsConnector:
@@ -531,7 +531,7 @@ class TestKafkaConnector:
     # Unit test for storage connector created by user (i.e. without the external flag)
     def test_kafka_options_user_sc(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance", return_value=False)
+        mocker.patch("hopsworks.internal.platform.client.get_instance", return_value=False)
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
         json = backend_fixtures["storage_connector"]["get_kafka"]["response"]
 
@@ -560,7 +560,7 @@ class TestKafkaConnector:
     def test_kafka_options_intenral(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hsfs.engine.get_instance")
-        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client_get_instance = mocker.patch("hopsworks.internal.platform.client.get_instance")
         json = backend_fixtures["storage_connector"]["get_kafka_internal"]["response"]
 
         mock_client_get_instance.return_value._get_jks_trust_store_path.return_value = (
@@ -619,7 +619,7 @@ class TestKafkaConnector:
     def test_spark_options(self, mocker, backend_fixtures):
         # Arrange
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client_get_instance = mocker.patch("hopsworks.internal.platform.client.get_instance")
         json = backend_fixtures["storage_connector"]["get_kafka_internal"]["response"]
 
         mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
@@ -681,7 +681,7 @@ class TestKafkaConnector:
     def test_spark_options_spark_35(self, mocker, backend_fixtures):
         # Arrange
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client_get_instance = mocker.patch("hopsworks.internal.platform.client.get_instance")
         json = backend_fixtures["storage_connector"]["get_kafka_internal"]["response"]
 
         mock_engine_get_instance.return_value.get_spark_version.return_value = "3.5.0"
@@ -736,7 +736,7 @@ class TestKafkaConnector:
 
         sc = storage_connector.StorageConnector.from_response_json(json)
 
-        mock_client = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client = mocker.patch("hopsworks.internal.platform.client.get_instance")
         mock_client.return_value._write_pem.return_value = (
             "test_ssl_ca_location",
             "test_ssl_certificate_location",
@@ -760,7 +760,7 @@ class TestKafkaConnector:
         # Arrange
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
         mock_engine_get_instance.return_value.add_file.return_value = None
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         sc = storage_connector.KafkaConnector(
             1,
             "kafka_connector",
@@ -791,7 +791,7 @@ class TestKafkaConnector:
         # Arrange
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
         mock_engine_get_instance.return_value.add_file.return_value = None
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         sc = storage_connector.KafkaConnector(
             1,
             "kafka_connector",
@@ -920,7 +920,7 @@ class TestBigQueryConnector:
     def test_credentials_base64_encoded(self, mocker, backend_fixtures, tmp_path):
         # Arrange
         engine.set_instance("spark", spark.Engine())
-        mocker.patch("hopsworks_common.client._is_external", return_value=False)
+        mocker.patch("hopsworks.internal.platform.client._is_external", return_value=False)
 
         credentials = '{"type": "service_account", "project_id": "test"}'
 
@@ -963,7 +963,7 @@ class TestBigQueryConnector:
     def test_query_validation(self, mocker, backend_fixtures, tmp_path):
         # Arrange
         engine.set_instance("spark", spark.Engine())
-        mocker.patch("hopsworks_common.client._is_external", return_value=False)
+        mocker.patch("hopsworks.internal.platform.client._is_external", return_value=False)
 
         credentials = '{"type": "service_account", "project_id": "test"}'
         credentialsFile = tmp_path / "bigquery.json"

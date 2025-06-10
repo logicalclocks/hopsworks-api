@@ -14,12 +14,12 @@
 #   limitations under the License.
 #
 
-import hsfs.expectation_suite as es
+import hopsworks.internal.fs.expectation_suite as es
 import pandas as pd
 import pytest
-from hsfs import feature_group, validation_report
-from hsfs.core import great_expectation_engine
-from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
+from hopsworks.internal.fs import feature_group, validation_report
+from hopsworks.internal.fs.core import great_expectation_engine
+from hopsworks.internal.fs.core.constants import HAS_GREAT_EXPECTATIONS
 
 
 if HAS_GREAT_EXPECTATIONS:

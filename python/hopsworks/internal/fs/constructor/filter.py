@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, Optional, Union
 
-from hsfs import feature, util
+from hopsworks.internal.fs import feature, util
 
 
 class Filter:

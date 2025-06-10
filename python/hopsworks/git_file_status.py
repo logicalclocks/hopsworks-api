@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.git_file_status import (
+from hopsworks.internal.platform.git_file_status import (
     GitFileStatus,
 )
 

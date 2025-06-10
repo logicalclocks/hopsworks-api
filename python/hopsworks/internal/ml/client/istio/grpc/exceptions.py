@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.client.istio.grpc.exceptions import (
+from hopsworks.internal.platform.client.istio.grpc.exceptions import (
     ApiException,
     ApiKeyError,
     ApiTypeError,

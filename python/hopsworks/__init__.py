@@ -24,24 +24,24 @@ import warnings
 from pathlib import Path
 from typing import Literal, Optional, Union
 
-from hopsworks import client, constants, project, version
-from hopsworks.client.exceptions import (
+from hopsworks import version
+from hopsworks.internal.platform import client, constants, project, usage
+from hopsworks.internal.platform.client.exceptions import (
     HopsworksSSLClientError,
     ProjectException,
     RestAPIError,
 )
-from hopsworks.connection import Connection
-from hopsworks.core import project_api, secret_api
-from hopsworks.decorators import NoHopsworksConnectionError
-from hopsworks_common import usage
+from hopsworks.internal.platform.connection import Connection
+from hopsworks.internal.platform.core import project_api, secret_api
+from hopsworks.internal.platform.decorators import NoHopsworksConnectionError
 from requests.exceptions import SSLError
 
 
 # Needs to run before import of hsml and hsfs
 warnings.filterwarnings(action="ignore", category=UserWarning, module=r".*psycopg2")
 
-import hsfs  # noqa: E402
-import hsml  # noqa: E402
+import hopsworks.internal.fs as hsfs  # noqa: E402
+import hopsworks.internal.ml as hsml  # noqa: E402
 
 
 sys.modules["hopsworks.hsfs"] = hsfs

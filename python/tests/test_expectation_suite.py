@@ -15,7 +15,7 @@
 #
 
 
-from hsfs import expectation_suite, ge_expectation
+from hopsworks.internal.fs import expectation_suite, ge_expectation
 
 
 class TestExpectationSuite:

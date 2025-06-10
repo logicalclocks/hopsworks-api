@@ -17,12 +17,12 @@
 import numpy as np
 import pandas as pd
 import pytest
-from hsml.llm.model import Model as LLMModel
-from hsml.model import Model as BaseModel
-from hsml.python.model import Model as PythonModel
-from hsml.sklearn.model import Model as SklearnModel
-from hsml.tensorflow.model import Model as TensorflowModel
-from hsml.torch.model import Model as TorchModel
+from hopsworks.internal.ml.llm.model import Model as LLMModel
+from hopsworks.internal.ml.model import Model as BaseModel
+from hopsworks.internal.ml.python.model import Model as PythonModel
+from hopsworks.internal.ml.sklearn.model import Model as SklearnModel
+from hopsworks.internal.ml.tensorflow.model import Model as TensorflowModel
+from hopsworks.internal.ml.torch.model import Model as TorchModel
 
 
 MODEL_BASE_ID = 0

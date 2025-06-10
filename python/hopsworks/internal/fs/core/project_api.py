@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.core.project_api import (
+from hopsworks.internal.platform.core.project_api import (
     ProjectApi,
 )
 

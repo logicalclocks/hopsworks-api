@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 
-from hopsworks_common import util
+from hopsworks.internal.platform import util
 
 
 class IngestionJobConf:

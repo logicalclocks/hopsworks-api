@@ -15,7 +15,7 @@
 #
 
 import pandas as pd
-from hsfs import (
+from hopsworks.internal.fs import (
     engine,
     feature,
     feature_group,
@@ -23,9 +23,9 @@ from hsfs import (
     training_dataset,
     transformation_function,
 )
-from hsfs.core import transformation_function_engine
-from hsfs.hopsworks_udf import udf
-from hsfs.transformation_function import TransformationType
+from hopsworks.internal.fs.core import transformation_function_engine
+from hopsworks.internal.fs.hopsworks_udf import udf
+from hopsworks.internal.fs.transformation_function import TransformationType
 
 
 fg1 = feature_group.FeatureGroup(
@@ -226,7 +226,7 @@ class TestTransformationFunctionEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -259,7 +259,7 @@ class TestTransformationFunctionEngine:
 
     def test_compute_and_set_feature_statistics_no_split(self, mocker):
         feature_store_id = 99
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -319,7 +319,7 @@ class TestTransformationFunctionEngine:
 
     def test_compute_and_set_feature_statistics_train_test_split(self, mocker):
         feature_store_id = 99
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -378,7 +378,7 @@ class TestTransformationFunctionEngine:
 
     def test_get_and_set_feature_statistics_no_statistics_required(self, mocker):
         feature_store_id = 99
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
@@ -432,13 +432,13 @@ class TestTransformationFunctionEngine:
 
     def test_get_and_set_feature_statistics_statistics_required(self, mocker):
         feature_store_id = 99
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mock_s_engine = mocker.patch("hsfs.core.statistics_engine.StatisticsEngine")
 
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id
         )
-        from hsfs.transformation_statistics import TransformationStatistics
+        from hopsworks.internal.fs.transformation_statistics import TransformationStatistics
 
         stats = TransformationStatistics("col1")
 

@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.core.tags_api import (
+from hopsworks.internal.platform.core.tags_api import (
     TagsApi,
 )
 

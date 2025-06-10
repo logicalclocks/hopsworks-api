@@ -18,8 +18,8 @@ from __future__ import annotations
 
 import json
 
-from hopsworks_common import client, constants, project
-from hopsworks_common.client.exceptions import RestAPIError
+from hopsworks.internal.platform import client, constants, project
+from hopsworks.internal.platform.client.exceptions import RestAPIError
 
 
 class ProjectApi:

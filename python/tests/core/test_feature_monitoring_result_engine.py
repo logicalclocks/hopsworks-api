@@ -18,10 +18,10 @@ from datetime import date, datetime, timedelta
 from unittest.mock import call
 
 import dateutil
-from hsfs import util
-from hsfs.core import feature_monitoring_config as fmc
-from hsfs.core import feature_monitoring_result_engine
-from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
+from hopsworks.internal.fs import util
+from hopsworks.internal.fs.core import feature_monitoring_config as fmc
+from hopsworks.internal.fs.core import feature_monitoring_result_engine
+from hopsworks.internal.fs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 
 
 DEFAULT_MONITORING_TIME_SORT_BY = "monitoring_time:desc"
@@ -40,7 +40,7 @@ FEATURE_MONITORING_RESULT_CREATE_API = (
 )
 GET_JOB_API = "hsfs.core.job_api.JobApi.get"
 LAST_EXECUTION_API = "hsfs.core.job_api.JobApi.last_execution"
-HSFS_CLIENT_GET_INSTANCE = "hopsworks_common.client.get_instance"
+HSFS_CLIENT_GET_INSTANCE = "hopsworks.internal.platform.client.get_instance"
 
 
 class TestFeatureMonitoringResultEngine:

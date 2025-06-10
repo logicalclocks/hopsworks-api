@@ -21,7 +21,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Dict, Optional
 
 import humps
-from hopsworks_common import util
+from hopsworks.internal.platform import util
 
 
 @dataclass

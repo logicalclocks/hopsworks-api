@@ -18,10 +18,10 @@ from __future__ import annotations
 from typing import Optional
 
 import humps
-from hsfs import feature as feature_mod
-from hsfs import feature_group as feature_group_mod
-from hsfs import util
-from hsfs.transformation_function import TransformationFunction, TransformationType
+from hopsworks.internal.fs import feature as feature_mod
+from hopsworks.internal.fs import feature_group as feature_group_mod
+from hopsworks.internal.fs import util
+from hopsworks.internal.fs.transformation_function import TransformationFunction, TransformationType
 
 
 class TrainingDatasetFeature:

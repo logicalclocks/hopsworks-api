@@ -22,7 +22,7 @@ from typing import (
 )
 
 import humps
-from hsfs import feature
+from hopsworks.internal.fs import feature
 
 
 class DataSourceData:

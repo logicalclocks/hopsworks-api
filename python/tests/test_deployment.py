@@ -15,11 +15,11 @@
 #
 
 import pytest
-from hsml import deployment, predictor
-from hsml.client.exceptions import ModelServingException
-from hsml.constants import PREDICTOR_STATE
-from hsml.core import serving_api
-from hsml.engine import serving_engine
+from hopsworks.internal.ml import deployment, predictor
+from hopsworks.internal.ml.client.exceptions import ModelServingException
+from hopsworks.internal.ml.constants import PREDICTOR_STATE
+from hopsworks.internal.ml.core import serving_api
+from hopsworks.internal.ml.engine import serving_engine
 
 
 class TestDeployment:
@@ -636,7 +636,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_util_get_members = mocker.patch(
-            "hopsworks_common.util.get_members", return_value=["predictor"]
+            "hopsworks.internal.platform.util.get_members", return_value=["predictor"]
         )
         mock_print = mocker.patch("builtins.print")
 
@@ -663,7 +663,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_util_get_members = mocker.patch(
-            "hopsworks_common.util.get_members", return_value=["valid"]
+            "hopsworks.internal.platform.util.get_members", return_value=["valid"]
         )
         mock_print = mocker.patch("builtins.print")
 
@@ -702,7 +702,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_util_get_members = mocker.patch(
-            "hopsworks_common.util.get_members", return_value=["predictor"]
+            "hopsworks.internal.platform.util.get_members", return_value=["predictor"]
         )
         mock_print = mocker.patch("builtins.print")
 
@@ -729,7 +729,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_util_get_members = mocker.patch(
-            "hopsworks_common.util.get_members", return_value=["predictor"]
+            "hopsworks.internal.platform.util.get_members", return_value=["predictor"]
         )
         mock_print = mocker.patch("builtins.print")
 
@@ -760,10 +760,10 @@ class TestDeployment:
         path = "/p/" + str(mock_client._project_id) + "/deployments/" + str(d.id)
 
         mock_util_get_hostname_replaced_url = mocker.patch(
-            "hopsworks_common.util.get_hostname_replaced_url", return_value="url"
+            "hopsworks.internal.platform.util.get_hostname_replaced_url", return_value="url"
         )
         mock_client_get_instance = mocker.patch(
-            "hopsworks_common.client.get_instance", return_value=mock_client
+            "hopsworks.internal.platform.client.get_instance", return_value=mock_client
         )
 
         # Act
@@ -783,7 +783,7 @@ class TestDeployment:
         mocker.patch("hsml.predictor.Predictor._validate_serving_tool")
         mocker.patch("hsml.predictor.Predictor._validate_resources")
         mocker.patch("hsml.predictor.Predictor._validate_script_file")
-        mocker.patch("hopsworks_common.util.get_obj_from_json")
+        mocker.patch("hopsworks.internal.platform.util.get_obj_from_json")
         return predictor.Predictor(
             id=p_json["id"],
             name=p_json["name"],

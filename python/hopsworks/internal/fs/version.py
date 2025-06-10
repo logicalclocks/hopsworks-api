@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.version import (
+from hopsworks.version import (
     __version__,
 )
 

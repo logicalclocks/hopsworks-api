@@ -23,10 +23,10 @@ if TYPE_CHECKING:
     import great_expectations
 
 import humps
-from hsfs import util
-from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
-from hsfs.decorators import uses_great_expectations
-from hsfs.ge_validation_result import ValidationResult
+from hopsworks.internal.fs import util
+from hopsworks.internal.fs.core.constants import HAS_GREAT_EXPECTATIONS
+from hopsworks.internal.fs.decorators import uses_great_expectations
+from hopsworks.internal.fs.ge_validation_result import ValidationResult
 
 
 if HAS_GREAT_EXPECTATIONS:

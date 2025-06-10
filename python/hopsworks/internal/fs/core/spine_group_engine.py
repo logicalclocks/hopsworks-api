@@ -14,9 +14,9 @@
 #
 from __future__ import annotations
 
-from hopsworks_common.client.exceptions import FeatureStoreException
-from hsfs import engine, util
-from hsfs.core import feature_group_base_engine
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
+from hopsworks.internal.fs import engine, util
+from hopsworks.internal.fs.core import feature_group_base_engine
 
 
 class SpineGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):

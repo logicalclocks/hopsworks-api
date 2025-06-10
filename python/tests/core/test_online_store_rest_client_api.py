@@ -17,7 +17,7 @@ import json
 
 import pytest
 import requests
-from hsfs.core import online_store_rest_client_api
+from hopsworks.internal.fs.core import online_store_rest_client_api
 
 
 class TestOnlineStoreRestClientApi:

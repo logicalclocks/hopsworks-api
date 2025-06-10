@@ -15,12 +15,12 @@
 #
 import warnings
 
-from hopsworks_common import version
-from hsfs import feature_view, training_dataset_feature
-from hsfs.constructor import query
-from hsfs.feature_store import FeatureStore
-from hsfs.hopsworks_udf import udf
-from hsfs.transformation_function import TransformationType
+from hopsworks import version
+from hopsworks.internal.fs import feature_view, training_dataset_feature
+from hopsworks.internal.fs.constructor import query
+from hopsworks.internal.fs.feature_store import FeatureStore
+from hopsworks.internal.fs.hopsworks_udf import udf
+from hopsworks.internal.fs.transformation_function import TransformationType
 
 
 class TestFeatureView:
@@ -31,7 +31,7 @@ class TestFeatureView:
             "project_id",
             return_value=99,
         )
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mocker.patch("hsfs.engine.get_type")
         mocker.patch("hsfs.core.feature_store_api.FeatureStoreApi.get")
         json = backend_fixtures["feature_view"]["get"]["response"]
@@ -53,7 +53,7 @@ class TestFeatureView:
     def test_from_response_json_basic_info(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         json = backend_fixtures["feature_view"]["get_basic_info"]["response"]
 
         # Act
@@ -78,7 +78,7 @@ class TestFeatureView:
             "project_id",
             return_value=99,
         )
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mocker.patch("hsfs.engine.get_type")
         mocker.patch("hsfs.core.feature_store_api.FeatureStoreApi.get")
         json = backend_fixtures["feature_view"]["get_transformations"]["response"]
@@ -123,7 +123,7 @@ class TestFeatureView:
     def test_from_response_json_basic_info_deprecated(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hsfs.engine.get_type")
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         json = backend_fixtures["feature_view"]["get_basic_info_deprecated"]["response"]
 
         # Act
@@ -152,7 +152,7 @@ class TestFeatureView:
         mocked_connection = mocker.MagicMock()
         mocked_connection.backend_version = version.__version__
         mocked_connection = mocker.patch(
-            "hopsworks_common.client.get_connection", return_value=mocked_connection
+            "hopsworks.internal.platform.client.get_connection", return_value=mocked_connection
         )
         mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine")
         mocker.patch("hsfs.engine.get_type", return_value="python")

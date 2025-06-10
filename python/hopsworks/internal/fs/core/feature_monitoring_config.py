@@ -21,18 +21,18 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
 import humps
-from hopsworks_common.client.exceptions import FeatureStoreException
-from hopsworks_common.constants import FEATURES
-from hsfs import util
-from hsfs.core import (
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
+from hopsworks.internal.platform.constants import FEATURES
+from hopsworks.internal.fs import util
+from hopsworks.internal.fs.core import (
     feature_monitoring_config_engine,
     feature_monitoring_result_engine,
     job_api,
     monitoring_window_config_engine,
 )
-from hsfs.core import monitoring_window_config as mwc
-from hsfs.core.feature_monitoring_result import FeatureMonitoringResult
-from hsfs.core.job_schedule import JobSchedule
+from hopsworks.internal.fs.core import monitoring_window_config as mwc
+from hopsworks.internal.fs.core.feature_monitoring_result import FeatureMonitoringResult
+from hopsworks.internal.fs.core.job_schedule import JobSchedule
 
 
 MAX_LENGTH_DESCRIPTION = 2000

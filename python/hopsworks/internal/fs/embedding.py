@@ -20,10 +20,10 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 import humps
-from hopsworks_common import client
-from hopsworks_common.client.exceptions import FeatureStoreException
-from hsfs import util
-from hsfs.core.vector_db_client import VectorDbClient
+from hopsworks.internal.platform import client
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
+from hopsworks.internal.fs import util
+from hopsworks.internal.fs.core.vector_db_client import VectorDbClient
 
 
 class SimilarityFunctionType:
@@ -76,7 +76,7 @@ class HsmlModel:
     # should get from backend because of authorisation check (unshared project etc)
     def get_model(self):
         try:
-            from hsml.model import Model
+            from hopsworks.internal.ml.model import Model
         except ModuleNotFoundError as err:
             raise FeatureStoreException(
                 "Model is attached to embedding feature but hsml library is not installed."

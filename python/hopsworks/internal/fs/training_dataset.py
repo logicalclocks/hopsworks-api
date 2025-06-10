@@ -20,20 +20,20 @@ from typing import Any, Dict, List, Optional, Set, TypeVar, Union
 
 import humps
 import pandas as pd
-from hopsworks_common import client
-from hopsworks_common.client.exceptions import RestAPIError
-from hopsworks_common.core.constants import HAS_NUMPY
-from hsfs import engine, training_dataset_feature, util
-from hsfs.constructor import filter, query
-from hsfs.core import (
+from hopsworks.internal.platform import client
+from hopsworks.internal.platform.client.exceptions import RestAPIError
+from hopsworks.internal.platform.core.constants import HAS_NUMPY
+from hopsworks.internal.fs import engine, training_dataset_feature, util
+from hopsworks.internal.fs.constructor import filter, query
+from hopsworks.internal.fs.core import (
     statistics_engine,
     training_dataset_api,
     training_dataset_engine,
     vector_server,
 )
-from hsfs.statistics_config import StatisticsConfig
-from hsfs.storage_connector import HopsFSConnector, StorageConnector
-from hsfs.training_dataset_split import TrainingDatasetSplit
+from hopsworks.internal.fs.statistics_config import StatisticsConfig
+from hopsworks.internal.fs.storage_connector import HopsFSConnector, StorageConnector
+from hopsworks.internal.fs.training_dataset_split import TrainingDatasetSplit
 
 
 if HAS_NUMPY:

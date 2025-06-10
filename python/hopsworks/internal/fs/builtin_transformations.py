@@ -17,8 +17,8 @@
 import math
 
 import pandas as pd
-from hsfs.hopsworks_udf import udf
-from hsfs.transformation_statistics import TransformationStatistics
+from hopsworks.internal.fs.hopsworks_udf import udf
+from hopsworks.internal.fs.transformation_statistics import TransformationStatistics
 
 
 feature_statistics = TransformationStatistics("feature")

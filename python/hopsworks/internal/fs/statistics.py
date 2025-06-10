@@ -19,9 +19,9 @@ import json
 from typing import Any, Dict, List, Optional, Union
 
 import humps
-from hsfs import util
-from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
-from hsfs.split_statistics import SplitStatistics
+from hopsworks.internal.fs import util
+from hopsworks.internal.fs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
+from hopsworks.internal.fs.split_statistics import SplitStatistics
 
 
 class Statistics:

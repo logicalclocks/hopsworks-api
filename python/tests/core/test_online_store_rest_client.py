@@ -15,7 +15,7 @@
 #
 import pytest
 from furl import furl
-from hopsworks_common.client import exceptions, online_store_rest_client
+from hopsworks.internal.platform.client import exceptions, online_store_rest_client
 
 
 class TestOnlineStoreRestClient:
@@ -23,14 +23,14 @@ class TestOnlineStoreRestClient:
         # Arrange
         online_store_rest_client._online_store_rest_client = None
 
-        mocker.patch("hopsworks_common.client._is_external", return_value=True)
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client._is_external", return_value=True)
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         variable_api_mock = mocker.patch(
-            "hopsworks_common.core.variable_api.VariableApi.get_loadbalancer_external_domain",
+            "hopsworks.internal.platform.core.variable_api.VariableApi.get_loadbalancer_external_domain",
             return_value="app.hopsworks.ai",
         )
         ping_rdrs_mock = mocker.patch(
-            "hopsworks_common.client.online_store_rest_client.OnlineStoreRestClientSingleton.is_connected",
+            "hopsworks.internal.platform.client.online_store_rest_client.OnlineStoreRestClientSingleton.is_connected",
         )
 
         # Act
@@ -54,15 +54,15 @@ class TestOnlineStoreRestClient:
         # Arrange
         online_store_rest_client._online_store_rest_client = None
 
-        mocker.patch("hopsworks_common.client._is_external", return_value=False)
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client._is_external", return_value=False)
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         variable_api_mock = mocker.patch(
-            "hopsworks_common.core.variable_api.VariableApi.get_service_discovery_domain",
+            "hopsworks.internal.platform.core.variable_api.VariableApi.get_service_discovery_domain",
             return_value="consul",
         )
         optional_config = {"api_key": "provided_api_key"}
         ping_rdrs_mock = mocker.patch(
-            "hopsworks_common.client.online_store_rest_client.OnlineStoreRestClientSingleton.is_connected",
+            "hopsworks.internal.platform.client.online_store_rest_client.OnlineStoreRestClientSingleton.is_connected",
         )
 
         # Act

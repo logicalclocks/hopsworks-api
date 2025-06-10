@@ -15,7 +15,7 @@
 #
 
 import numpy
-from hsml.utils.schema.tensor import Tensor
+from hopsworks.internal.ml.utils.schema.tensor import Tensor
 
 
 class TensorSchema:

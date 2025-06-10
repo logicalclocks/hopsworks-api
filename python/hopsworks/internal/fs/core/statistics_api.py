@@ -17,9 +17,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Union
 
-from hopsworks_common import client
-from hsfs import feature_group, feature_view, statistics, training_dataset
-from hsfs.core import job
+from hopsworks.internal.platform import client
+from hopsworks.internal.fs import feature_group, feature_view, statistics, training_dataset
+from hopsworks.internal.fs.core import job
 
 
 class StatisticsApi:

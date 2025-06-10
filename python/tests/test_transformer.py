@@ -17,8 +17,8 @@
 import copy
 
 import pytest
-from hsml import resources, transformer
-from hsml.constants import RESOURCES
+from hopsworks.internal.ml import resources, transformer
+from hopsworks.internal.ml.constants import RESOURCES
 
 
 SERVING_NUM_INSTANCES_NO_LIMIT = [-1]
@@ -297,10 +297,10 @@ class TestTransformer:
 
     def _mock_serving_variables(self, mocker, num_instances, force_scale_to_zero=False):
         mocker.patch(
-            "hopsworks_common.client.get_serving_num_instances_limits",
+            "hopsworks.internal.platform.client.get_serving_num_instances_limits",
             return_value=num_instances,
         )
         mocker.patch(
-            "hopsworks_common.client.is_scale_to_zero_required",
+            "hopsworks.internal.platform.client.is_scale_to_zero_required",
             return_value=force_scale_to_zero,
         )

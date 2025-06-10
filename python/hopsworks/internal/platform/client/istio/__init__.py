@@ -18,8 +18,8 @@ from __future__ import annotations
 
 from typing import Union
 
-import hopsworks_common.client as _main
-from hopsworks_common.client.istio import external, hopsworks
+import hopsworks.internal.platform.client as _main
+from hopsworks.internal.platform.client.istio import external, hopsworks
 
 
 _client: Union[hopsworks.Client, external.Client, None] = None

@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.job import (
+from hopsworks.internal.platform.job import (
     Job,
 )
 

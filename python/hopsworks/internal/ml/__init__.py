@@ -16,8 +16,9 @@
 
 import warnings
 
-from hopsworks_common import util, version
-from hopsworks_common.connection import Connection
+from hopsworks import version
+from hopsworks.internal.platform import util
+from hopsworks.internal.platform.connection import Connection
 
 
 connection = Connection.connection

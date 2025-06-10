@@ -17,8 +17,8 @@ from __future__ import annotations
 
 from typing import List
 
-from hopsworks_common import client
-from hsfs import feature_store_activity as fsa_mod
+from hopsworks.internal.platform import client
+from hopsworks.internal.fs import feature_store_activity as fsa_mod
 
 
 class FeatureStoreActivityApi:

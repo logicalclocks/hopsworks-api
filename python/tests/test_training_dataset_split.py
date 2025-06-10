@@ -15,7 +15,7 @@
 #
 
 
-from hsfs import training_dataset_split
+from hopsworks.internal.fs import training_dataset_split
 
 
 class TestTrainingDatasetSplit:

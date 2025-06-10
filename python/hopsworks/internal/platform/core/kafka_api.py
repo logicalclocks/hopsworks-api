@@ -20,7 +20,7 @@ import json
 import socket
 from typing import Any, Dict, Optional, Union
 
-from hopsworks_common import (
+from hopsworks.internal.platform import (
     client,
     constants,
     kafka_schema,

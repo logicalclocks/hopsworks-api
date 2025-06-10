@@ -26,9 +26,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Literal, Optional, Union
 
-from hopsworks_common import client, tag, usage, util
-from hopsworks_common.client.exceptions import DatasetException, RestAPIError
-from hopsworks_common.core import inode
+from hopsworks.internal.platform import client, tag, usage, util
+from hopsworks.internal.platform.client.exceptions import DatasetException, RestAPIError
+from hopsworks.internal.platform.core import inode
 from tqdm.auto import tqdm
 
 

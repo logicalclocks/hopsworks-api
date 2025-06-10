@@ -15,7 +15,7 @@
 #
 
 
-from hsfs.core import ingestion_job, job
+from hopsworks.internal.fs.core import ingestion_job, job
 
 
 class TestIngestionJob:
@@ -24,7 +24,7 @@ class TestIngestionJob:
         json = backend_fixtures["ingestion_job"]["get"]["response"]
 
         # Act
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         ij = ingestion_job.IngestionJob.from_response_json(json)
 
         # Assert

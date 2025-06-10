@@ -23,9 +23,9 @@ from warnings import warn
 import requests
 import requests.adapters
 from furl import furl
-from hopsworks_common import client
-from hopsworks_common.client.exceptions import FeatureStoreException
-from hopsworks_common.core import variable_api
+from hopsworks.internal.platform import client
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
+from hopsworks.internal.platform.core import variable_api
 
 
 _logger = logging.getLogger(__name__)

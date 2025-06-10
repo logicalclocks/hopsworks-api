@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.core.git_remote_api import (
+from hopsworks.internal.platform.core.git_remote_api import (
     GitRemoteApi,
 )
 

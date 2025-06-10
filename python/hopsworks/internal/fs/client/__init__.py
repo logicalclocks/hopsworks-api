@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.client import (
+from hopsworks.internal.platform.client import (
     _is_external,
     auth,
     base,
