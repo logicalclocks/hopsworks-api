@@ -27,6 +27,7 @@ import gitignorefile
 
 SOURCES = [
     "hopsworks/__init__.py",
+    "hopsworks/version.py",
     "hopsworks/internal",
 ]
 IGNORED = [

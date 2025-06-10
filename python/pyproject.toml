@@ -110,11 +110,10 @@ include = [
     "hopsworks*",
     "hsfs*",
     "hsml*",
-    "hopsworks_common*",
 ]
 
 [tool.setuptools.dynamic]
-version = { attr = "hopsworks_common.version.__version__" }
+version = { attr = "hopsworks.version.__version__" }
 
 [project.urls]
 Documentation = "https://docs.hopsworks.ai/latest"
@@ -184,7 +183,7 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [tool.ruff.lint.isort]
 lines-after-imports = 2
-known-third-party = ["hopsworks", "hsfs", "hsml", "hopsworks_common"]
+known-third-party = ["hopsworks", "hsfs", "hsml"]
 
 
 [tool.ruff.format]
