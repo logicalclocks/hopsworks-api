@@ -3520,7 +3520,7 @@ class FeatureView:
             self._feature_store_id,
             feature_view_name=self._name,
             feature_view_version=self._version,
-            alert_id=alert_id
+            alert_id=alert_id,
         )
 
     def create_alert(
@@ -3548,7 +3548,7 @@ class FeatureView:
             status: str. The status that will trigger the alert. Can be "feature_monitor_shift_undetected" or "feature_monitor_shift_detected".
             severity: str. The severity of the alert. Can be "info", "warning" or "critical".
         # Returns
-            The created Alert object.
+            The created FeatureViewAlert object.
         # Raises
             `ValueError`: If the status is not valid.
             `ValueError`: If the severity is not valid.
