@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2023. Hopsworks AB
+ *  Copyright (c) 2025. Hopsworks AB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -15,47 +15,35 @@
  *
  */
 
-package com.logicalclocks.hsfs.flink;
-
-import java.io.IOException;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-
-import com.logicalclocks.hsfs.DataSource;
-import com.logicalclocks.hsfs.Feature;
-import com.logicalclocks.hsfs.FeatureGroupBase;
-import com.logicalclocks.hsfs.FeatureStoreException;
-import com.logicalclocks.hsfs.JobConfiguration;
-import com.logicalclocks.hsfs.OnlineConfig;
-import com.logicalclocks.hsfs.StatisticsConfig;
-import com.logicalclocks.hsfs.StorageConnector;
-import com.logicalclocks.hsfs.TimeTravelFormat;
-import com.logicalclocks.hsfs.flink.engine.FeatureGroupEngine;
-import com.logicalclocks.hsfs.flink.constructor.Query;
-
-import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.streaming.api.datastream.DataStreamSink;
+package com.logicalclocks.hsfs;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+import com.logicalclocks.hsfs.constructor.Query;
+import com.logicalclocks.hsfs.engine.FeatureGroupEngine;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.NonNull;
 
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 @AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class StreamFeatureGroup extends FeatureGroupBase<DataStream<?>> {
+public class StreamFeatureGroup<T> extends FeatureGroupBase<List<T>> {
 
   protected FeatureGroupEngine featureGroupEngine = new FeatureGroupEngine();
 
   @Builder
-  public StreamFeatureGroup(FeatureStore featureStore, @NonNull String name, Integer version, String description,
-                            List<String> primaryKeys, List<String> partitionKeys, String hudiPrecombineKey,
-                            boolean onlineEnabled, TimeTravelFormat timeTravelFormat, List<Feature> features,
-                            StatisticsConfig statisticsConfig, String onlineTopicName, String topicName,
-                            String notificationTopicName, String eventTime, OnlineConfig onlineConfig,
-                            StorageConnector storageConnector, String path) {
+  public StreamFeatureGroup(FeatureStoreBase featureStore, @NonNull String name, Integer version, String description,
+                            TimeTravelFormat timeTravelFormat, List<String> primaryKeys, List<String> partitionKeys,
+                            String hudiPrecombineKey, boolean onlineEnabled, List<Feature> features,
+                            StatisticsConfig statisticsConfig, String onlineTopicName, String eventTime,
+                            StorageConnector storageConnector, String path, OnlineConfig onlineConfig) {
     this();
     this.featureStore = featureStore;
     this.name = name;
@@ -67,15 +55,13 @@ public class StreamFeatureGroup extends FeatureGroupBase<DataStream<?>> {
       ? partitionKeys.stream().map(String::toLowerCase).collect(Collectors.toList()) : null;
     this.hudiPrecombineKey = hudiPrecombineKey != null ? hudiPrecombineKey.toLowerCase() : null;
     this.onlineEnabled = onlineEnabled;
-    this.timeTravelFormat = timeTravelFormat != null ? timeTravelFormat : TimeTravelFormat.HUDI;
     this.features = features;
     this.statisticsConfig = statisticsConfig != null ? statisticsConfig : new StatisticsConfig();
     this.onlineTopicName = onlineTopicName;
-    this.topicName = topicName;
-    this.notificationTopicName = notificationTopicName;
     this.eventTime = eventTime;
-    this.onlineConfig = onlineConfig;
+    this.timeTravelFormat = timeTravelFormat;
     this.storageConnector = storageConnector;
+    this.onlineConfig = onlineConfig;
     this.dataSource.setPath(path);
   }
 
@@ -92,7 +78,7 @@ public class StreamFeatureGroup extends FeatureGroupBase<DataStream<?>> {
     this.features = features;
   }
 
-  public StreamFeatureGroup(FeatureStore featureStore, int id) {
+  public StreamFeatureGroup(FeatureStoreBase featureStore, int id) {
     this();
     this.featureStore = featureStore;
     this.id = id;
@@ -124,40 +110,13 @@ public class StreamFeatureGroup extends FeatureGroupBase<DataStream<?>> {
         writeOptions, materializationJobConfiguration);
   }
 
-  /**
-   * Ingest a feature data to the online feature store using Flink DataStream API. Currently, only POJO
-   * types as feature data type are supported.
-   *
-   * <pre>
-   * {@code
-   *        // get feature store handle
-   *        FeatureStore fs = HopsworksConnection.builder().build().getFeatureStore();
-   *
-   *        // get feature group handle
-   *        StreamFeatureGroup fg = fs.getStreamFeatureGroup("card_transactions", 1);
-   *
-   *        // read stream from the source and aggregate stream
-   *        DataStream<TransactionAgg> aggregationStream =
-   *          env.fromSource(transactionSource, customWatermark, "Transaction Kafka Source")
-   *          .keyBy(r -> r.getCcNum())
-   *          .window(SlidingEventTimeWindows.of(Time.minutes(windowLength), Time.minutes(1)))
-   *          .aggregate(new TransactionCountAggregate());
-   *
-   *        // insert streaming feature data
-   *        fg.insertStream(featureData);
-   * }
-   * </pre>
-   *
-   * @param featureData Features in Streaming Dataframe to be saved.
-   * @return DataStreamSink object.
-   */
   @Override
-  public DataStreamSink<?> insertStream(DataStream<?> featureData) throws Exception {
-    return featureGroupEngine.insertStream(this, featureData, null);
+  public List<T> insertStream(List<T> featureData) throws Exception {
+    return insertStream(featureData, new HashMap<>());
   }
 
   @Override
-  public DataStreamSink<?>  insertStream(DataStream<?> featureData, Map<String, String> writeOptions) throws Exception {
+  public List<T> insertStream(List<T> featureData, Map<String, String> writeOptions) throws Exception {
     return featureGroupEngine.insertStream(this, featureData, writeOptions);
   }
 
