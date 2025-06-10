@@ -2025,7 +2025,7 @@ class FeatureGroupBase:
         """Get all alerts for this feature group.
 
         # Returns
-            `List[FeatureGroupAlert]`: The list of alerts.
+            `List[FeatureGroupAlert]`: The list of FeatureGroupAlerts.
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
 
@@ -2033,9 +2033,6 @@ class FeatureGroupBase:
             ```python
             # Get all alerts
             alerts = fg.get_alerts()
-
-            # Get a specific alert
-            alert = fg.get_alerts()
             ```
         """
         return self._alert_api.get_feature_group_alerts(
@@ -2049,17 +2046,14 @@ class FeatureGroupBase:
         # Arguments
             alert_id: The id of the alert to get.
         # Returns
-            `FeatureGroupAlert`: The alert object.
+            `FeatureGroupAlert`: The FeatureGroupAlert object.
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
 
         !!! Example
             ```python
-            # Get all alerts
-            alerts = fg.get_alerts()
-
             # Get a specific alert
-            alert = fg.get_alerts(alert_id=1)
+            alert = fg.get_alert(alert_id=1)
             ```
         """
         return self._alert_api.get_feature_group_alert(
@@ -2081,7 +2075,7 @@ class FeatureGroupBase:
             status: str. The status that will trigger the alert. Can be "feature_validation_success", "feature_validation_warning", "feature_validation_failure", "feature_monitor_shift_undetected", "feature_monitor_shift_detected".
             severity: str. The severity of the alert. Can be "info", "warning" or "critical".
         # Returns
-            The created Alert object.
+            The created FeatureGroupAlert object.
         # Raises
             `ValueError`: If the status is not valid.
             `ValueError`: If the severity is not valid.

@@ -19,10 +19,10 @@ from __future__ import annotations
 import json
 import warnings
 from datetime import datetime, timezone
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 import humps
-from hopsworks_common import client, usage, util
+from hopsworks_common import alert, client, usage, util
 from hopsworks_common.client.exceptions import JobException
 from hopsworks_common.core import alerts_api, execution_api, job_api
 from hopsworks_common.engine import execution_engine
@@ -378,7 +378,7 @@ class Job:
         return self._update_schedule(job_schedule)
 
     @usage.method_logger
-    def get_alerts(self):
+    def get_alerts(self) -> List[alert.JobAlert]:
         """Get all alerts for the job.
 
         # Returns
@@ -389,13 +389,13 @@ class Job:
         return self._alerts_api.get_job_alerts(self._name)
 
     @usage.method_logger
-    def get_alert(self, alert_id: int):
+    def get_alert(self, alert_id: int) -> alert.JobAlert:
         """Get an alert for the job by ID.
 
         # Arguments
             alert_id: ID of the alert
         # Returns
-            `JobAlert`: list of JobAlert objects
+            `JobAlert`: the JobAlert object
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -407,7 +407,7 @@ class Job:
         receiver: str,
         status: str,
         severity: str,
-    ):
+    ) -> alert.JobAlert:
         """Create an alert for the job.
 
         ```python
@@ -423,7 +423,7 @@ class Job:
             status: The status of the alert. Valid values are "long_running", "failed", "finished", "killed"
             severity: The severity of the alert. Valid values are "critical", "warning", "info"
         # Returns
-            `JobAlert`: The created Alert object
+            `JobAlert`: The created JobAlert object
         # Raises
             `ValueError`: If the status is not valid.
             `ValueError`: If the severity is not valid.

@@ -252,7 +252,7 @@ class Project:
         """Get all alerts for the project.
 
         # Returns
-            `List[ProjectAlert]`: List of AleProjectAlertrt objects
+            `List[ProjectAlert]`: List of ProjectAlert objects
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -291,9 +291,7 @@ class Project:
         """
         return self._alerts_api.create_project_alert(receiver, status, severity, "Jobs")
 
-    def create_featurestore_alert(
-        self, receiver: str, status: str, severity: str
-    ):
+    def create_featurestore_alert(self, receiver: str, status: str, severity: str):
         """Create an alert for feature validation and monitoring in this project.
 
         !!!example "Example for creating a featurestore alert"

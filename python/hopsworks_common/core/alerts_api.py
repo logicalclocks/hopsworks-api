@@ -113,7 +113,7 @@ class AlertsApi:
 
         ```
         # Returns
-            `Alert`: List of alerts.
+            `List[ProjectAlert]`: List of ProjectAlert objects.
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -146,7 +146,7 @@ class AlertsApi:
         # Arguments
             alert_id: The ID of the alert to retrieve.
         # Returns
-            `Alert`: The alert object.
+            `ProjectAlert`: The ProjectAlert object.
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -176,7 +176,7 @@ class AlertsApi:
         # Arguments
             job_name: The name of the job.
         # Returns
-            `Alert`: List of alerts.
+            `List[JobAlert]`: List of JobAlert objects.
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -208,7 +208,7 @@ class AlertsApi:
             job_name: The name of the job.
             alert_id: The ID of the alert to retrieve.
         # Returns
-            `Alert`: The alert object.
+            `JobAlert`: The JobAlert object.
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -250,7 +250,7 @@ class AlertsApi:
             feature_store_id: The ID of the feature store.
             feature_group_id: The ID of the feature group.
         # Returns
-            `Alert`: List of alerts.
+            `List[FeatureGroupAlert]`: List of FeatureGroupAlert objects.
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -298,7 +298,7 @@ class AlertsApi:
             feature_group_id: The ID of the feature group.
             alert_id: The ID of the alert to retrieve.
         # Returns
-            `Alert`: The alert object.
+            `FeatureGroupAlert`: The FeatureGroupAlert object.
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -343,7 +343,7 @@ class AlertsApi:
             feature_view_name: The name of the feature view.
             feature_view_version: The version of the feature view.
         # Returns
-            `Alert`: List of alerts.
+            `List[FeatureViewAlert]`: List of FeatureViewAlert objects.
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -394,7 +394,7 @@ class AlertsApi:
             feature_view_version: The version of the feature view.
             alert_id: The ID of the alert to retrieve.
         # Returns
-            `Alert`: The alert object.
+            `FeatureViewAlert`: The FeatureViewAlert object.
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -424,7 +424,7 @@ class AlertsApi:
         severity: _SEVERITY_ARG,
         service: _SERVICES_ARG,
         threshold=0,
-    ):
+    ) -> alert.ProjectAlert:
         """
         Create a new alert.
         ```python
@@ -445,7 +445,7 @@ class AlertsApi:
             service: The service associated with the alert (Featurestore, Jobs).
             threshold: The threshold for the alert (default is 0).
         # Returns
-            `Alert`: The created alert object.
+            `ProjectAlert`: The created ProjectAlert object.
         # Raises
             `ValueError`: If the service is not Featurestore or Jobs, or if the status is not valid for the specified service.
             `ValueError`: If the severity is not valid.
@@ -497,7 +497,7 @@ class AlertsApi:
         receiver: str,
         status: Union[_VALIDATION_STATUS_ARG, _MONITORING_STATUS_ARG],
         severity: _SEVERITY_ARG,
-    ):
+    ) -> alert.FeatureGroupAlert:
         """
         Create a new feature group alert.
         ```python
@@ -518,7 +518,7 @@ class AlertsApi:
             status: The status that will trigger the alert (feature_validation_success, feature_validation_warning, feature_validation_failure, feature_monitor_shift_undetected, feature_monitor_shift_detected).
             severity: The severity of the alert (warning, critical, info).
         # Returns
-            `Alert`: The created alert object.
+            `FeatureGroupAlert`: The created FeatureGroupAlert object.
         # Raises
             `ValueError`: If the status is not valid.
             `ValueError`: If the severity is not valid.
@@ -573,7 +573,7 @@ class AlertsApi:
         receiver: str,
         status: _MONITORING_STATUS_ARG,
         severity: _SEVERITY_ARG,
-    ):
+    ) -> alert.FeatureViewAlert:
         """
         Create a new feature view alert.
         ```python
@@ -594,7 +594,7 @@ class AlertsApi:
             status: The status that will trigger the alert (feature_monitor_shift_undetected, feature_monitor_shift_detected).
             severity: The severity of the alert (warning, critical, info).
         # Returns
-            `Alert`: The created alert object.
+            `FeatureViewAlert`: The created FeatureViewAlert object.
         # Raises
             `ValueError`: if status is not valid.
             `ValueError`: if severity is not valid.
@@ -638,7 +638,7 @@ class AlertsApi:
         receiver: str,
         status: _JOB_STATUS_ARG,
         severity: _SEVERITY_ARG,
-    ):
+    ) -> alert.JobAlert:
         """
         Create a new job alert.
         ```python
@@ -658,7 +658,7 @@ class AlertsApi:
             status: The status of the alert (finished, failed, killed, long_running).
             severity: The severity of the alert (warning, critical, info).
         # Returns
-            `Alert`: The created alert object.
+            `JobAlert`: The created JobAlert object.
         # Raises
             `ValueError`: If the job name is not provided.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
@@ -709,7 +709,7 @@ class AlertsApi:
 
         ```
         # Returns
-            `AlertReceiver`: List of alert receivers.
+            `List[AlertReceiver]`: List of alert receivers.
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -729,7 +729,7 @@ class AlertsApi:
     )
     def get_alert_receiver(self, name: str) -> Optional[alert_receiver.AlertReceiver]:
         """
-        Get a spcific alert receivers by name.
+        Get a specific alert receivers by name.
         ```python
 
         import hopsworks
@@ -738,7 +738,7 @@ class AlertsApi:
 
         alerts_api = project.get_alerts_api()
 
-        alert_receivers = alerts_api.get_alert_receivers("email")
+        alert_receiver = alerts_api.get_alert_receiver("email")
 
         ```
         # Arguments
@@ -765,7 +765,7 @@ class AlertsApi:
         slack_configs: List[alert_receiver.SlackConfig] = None,
         pagerduty_configs: List[alert_receiver.PagerDutyConfig] = None,
         webhook_configs: List[alert_receiver.WebhookConfig] = None,
-    ):
+    ) -> alert_receiver.AlertReceiver:
         """
         Create a new alert receiver.
         ```python
@@ -898,7 +898,7 @@ class AlertsApi:
         severity: _SEVERITY_ARG,
         status: str,
         name: str,
-        generatorURL: str = None,
+        generator_url: str = None,
         expire_after_sec: int = None,
     ):
         """
@@ -921,7 +921,7 @@ class AlertsApi:
             severity: The severity of the alert (warning, critical, info).
             status: The status of the alert.
             name: The name of the alert.
-            generatorURL: The URL of the alert generator (optional).
+            generator_url: The URL of the alert generator (optional).
             expire_after_sec: The time in seconds after which the alert should expire (optional).
         # Returns
             `None`
@@ -956,7 +956,7 @@ class AlertsApi:
                     ).isoformat()
                     if expire_after_sec
                     else None,
-                    "generatorURL": generatorURL,
+                    "generatorURL": generator_url,
                 }
             ]
         }
@@ -967,7 +967,7 @@ class AlertsApi:
     @usage.method_logger
     def get_triggered_alerts(
         self, active: bool = True, silenced: bool = False, inhibited: bool = False
-    ):
+    ) -> List[triggered_alert.TriggeredAlert]:
         """
         Get triggered alerts.
         ```python
@@ -985,7 +985,7 @@ class AlertsApi:
             silenced: Whether to include silenced alerts (default is False).
             inhibited: Whether to include inhibited alerts (default is False).
         # Returns
-            `Alert`: The triggered alert object.
+            `List[TriggeredAlert]`: The triggered alert objects.
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
