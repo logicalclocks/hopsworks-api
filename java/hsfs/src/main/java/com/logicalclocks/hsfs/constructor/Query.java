@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2023. Hopsworks AB
+ *  Copyright (c) 2025. Hopsworks AB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -15,22 +15,18 @@
  *
  */
 
-package com.logicalclocks.hsfs.beam.constructor;
+package com.logicalclocks.hsfs.constructor;
 
 import com.logicalclocks.hsfs.Feature;
-import com.logicalclocks.hsfs.FeatureGroupBase;
-import com.logicalclocks.hsfs.beam.StreamFeatureGroup;
-import com.logicalclocks.hsfs.constructor.QueryBase;
-
+import com.logicalclocks.hsfs.StreamFeatureGroup;
 import lombok.NoArgsConstructor;
-import org.apache.beam.sdk.values.PCollection;
 
 import java.util.List;
 
 @NoArgsConstructor
-public class Query extends QueryBase<Query, StreamFeatureGroup, PCollection<Object>> {
+public class Query extends QueryBase<Query, StreamFeatureGroup, List<Object>> {
 
-  public Query(FeatureGroupBase leftFeatureGroup, List<Feature> leftFeatures) {
+  public Query(StreamFeatureGroup leftFeatureGroup, List<Feature> leftFeatures) {
     super(leftFeatureGroup, leftFeatures);
   }
 

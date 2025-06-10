@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2023. Hopsworks AB
+ *  Copyright (c) 2025. Hopsworks AB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -15,18 +15,11 @@
  *
  */
 
-package com.logicalclocks.hsfs.beam;
+package com.logicalclocks.hsfs;
 
-import com.logicalclocks.hsfs.Feature;
-import com.logicalclocks.hsfs.FeatureStoreBase;
-import com.logicalclocks.hsfs.FeatureStoreException;
-import com.logicalclocks.hsfs.OnlineConfig;
-import com.logicalclocks.hsfs.StatisticsConfig;
-import com.logicalclocks.hsfs.StorageConnector;
-import com.logicalclocks.hsfs.TimeTravelFormat;
-import com.logicalclocks.hsfs.beam.constructor.Query;
-import com.logicalclocks.hsfs.beam.engine.FeatureGroupEngine;
-import com.logicalclocks.hsfs.beam.engine.FeatureViewEngine;
+import com.logicalclocks.hsfs.constructor.Query;
+import com.logicalclocks.hsfs.engine.FeatureGroupEngine;
+import com.logicalclocks.hsfs.engine.FeatureViewEngine;
 import com.logicalclocks.hsfs.metadata.StorageConnectorApi;
 import lombok.NonNull;
 
@@ -75,18 +68,18 @@ public class FeatureStore extends FeatureStoreBase<Query> {
 
   @Override
   public StreamFeatureGroup createStreamFeatureGroup(@NonNull String name,
-                                                     Integer version,
-                                                     String description,
-                                                     Boolean onlineEnabled,
-                                                     TimeTravelFormat timeTravelFormat,
-                                                     List<String> primaryKeys,
-                                                     List<String> partitionKeys,
-                                                     String eventTime,
-                                                     String hudiPrecombineKey,
-                                                     List<Feature> features,
-                                                     StatisticsConfig statisticsConfig,
-                                                     StorageConnector storageConnector,
-                                                     String path) {
+                                                   Integer version,
+                                                   String description,
+                                                   Boolean onlineEnabled,
+                                                   TimeTravelFormat timeTravelFormat,
+                                                   List<String> primaryKeys,
+                                                   List<String> partitionKeys,
+                                                   String eventTime,
+                                                   String hudiPrecombineKey,
+                                                   List<Feature> features,
+                                                   StatisticsConfig statisticsConfig,
+                                                   StorageConnector storageConnector,
+                                                   String path) {
 
     return new StreamFeatureGroup.StreamFeatureGroupBuilder()
         .featureStore(this)
@@ -108,19 +101,19 @@ public class FeatureStore extends FeatureStoreBase<Query> {
 
   @Override
   public StreamFeatureGroup getOrCreateStreamFeatureGroup(@NonNull String name,
-                                                     Integer version,
-                                                     String description,
-                                                     Boolean onlineEnabled,
-                                                     TimeTravelFormat timeTravelFormat,
-                                                     List<String> primaryKeys,
-                                                     List<String> partitionKeys,
-                                                     String eventTime,
-                                                     String hudiPrecombineKey,
-                                                     List<Feature> features,
-                                                     StatisticsConfig statisticsConfig,
-                                                     StorageConnector storageConnector,
-                                                     String path,
-                                                     OnlineConfig onlineConfig)
+                                                          Integer version,
+                                                          String description,
+                                                          Boolean onlineEnabled,
+                                                          TimeTravelFormat timeTravelFormat,
+                                                          List<String> primaryKeys,
+                                                          List<String> partitionKeys,
+                                                          String eventTime,
+                                                          String hudiPrecombineKey,
+                                                          List<Feature> features,
+                                                          StatisticsConfig statisticsConfig,
+                                                          StorageConnector storageConnector,
+                                                          String path,
+                                                          OnlineConfig onlineConfig)
           throws IOException, FeatureStoreException {
 
     return featureGroupEngine.getOrCreateFeatureGroup(this, name, version, description, onlineEnabled,
@@ -149,7 +142,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
    * @throws IOException Generic IO exception.
    */
   @Override
-  public Object getStreamFeatureGroup(String name) throws FeatureStoreException, IOException {
+  public StreamFeatureGroup getStreamFeatureGroup(String name) throws FeatureStoreException, IOException {
     LOGGER.info("VersionWarning: No version provided for getting feature group `" + name + "`, defaulting to `"
         + DEFAULT_VERSION + "`.");
     return getStreamFeatureGroup(name, DEFAULT_VERSION);
@@ -215,7 +208,7 @@ public class FeatureStore extends FeatureStoreBase<Query> {
    * }
    * </pre>
    *
-   * @param name Name of the feature view.
+   * @param name    Name of the feature view.
    * @return FeatureView The feature view metadata object.
    * @throws FeatureStoreException If unable to retrieve FeatureView from the feature store.
    * @throws IOException Generic IO exception.
@@ -270,7 +263,6 @@ public class FeatureStore extends FeatureStoreBase<Query> {
       throws FeatureStoreException, IOException {
     return featureViewEngine.getOrCreateFeatureView(this, name, version, query, null, null);
   }
-
 
   @Override
   public StorageConnector.RdsConnector getRdsConnector(String name) throws FeatureStoreException, IOException {
