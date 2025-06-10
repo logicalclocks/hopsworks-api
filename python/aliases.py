@@ -31,11 +31,6 @@ SOURCES = [
 ]
 IGNORED = [
     "tests",
-    "hsfs",
-    "hopsworks",
-    "hsml",
-    "hopsworks_common",
-    "hopsworks.egg-info",
 ]
 GITIGNORE = gitignorefile.parse(".gitignore")
 # Everything that is not a top-level file, a part of sources, or a part of ignored is considered to be automatically managed.
