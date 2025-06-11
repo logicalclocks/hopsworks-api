@@ -1734,6 +1734,12 @@ class Engine:
                 List[str],
             ]
         ] = None,
+        request_id: Optional[
+            Tuple[
+                Union[pd.DataFrame, "pyspark.sql.DataFrame", List[List], np.ndarray],
+                List[str],
+            ]
+        ] = None,
         td_col_name: Optional[str] = None,
         time_col_name: Optional[str] = None,
         model_col_name: Optional[str] = None,
@@ -1761,12 +1767,13 @@ class Engine:
                 "row_id",
                 row_number().over(Window.orderBy(monotonically_increasing_id())),
             )
-        for data, feature_names in [
+        for data, feature_names, log_component_name in [
             transformed_features,
             untransformed_features,
             predictions,
             serving_keys,
             helper_columns,
+            request_id,
             request_parameters,
             event_time,
             extra_logging_features,
@@ -1804,7 +1811,7 @@ class Engine:
                 )
             elif df.count() != logging_df.count():
                 raise FeatureStoreException(
-                    "Length of logging data provided do not match. Please check the logging data to make sure all data has the same length."
+                    f"Length of `{log_component_name}` provided do not match other arguments. Please check the logging data to make sure that all arguments have the same length."
                 )
             else:
                 df = df.withColumn(
@@ -1818,7 +1825,7 @@ class Engine:
                 logging_df = logging_df.join(df.select(*missing_columns), "row_id")
 
         # Renaming prediction columns
-        _, predictions_feature_names = predictions
+        _, predictions_feature_names, _ = predictions
         for prediction_feature_name in predictions_feature_names:
             logging_df = logging_df.withColumnRenamed(
                 prediction_feature_name, "predicted_" + prediction_feature_name
@@ -1826,7 +1833,7 @@ class Engine:
 
         # Renaming prediction columns
         # Creating a json column for request parameters
-        _, request_parameter_columns = request_parameters
+        _, request_parameter_columns, _ = request_parameters
         if request_parameter_columns:
             if "request_parameters" not in logging_df.columns:
                 from pyspark.sql.functions import struct, to_json
