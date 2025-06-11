@@ -17,6 +17,7 @@
 import json
 from typing import Dict, List, Union
 
+from hopsworks.internal import aliases
 from hopsworks.internal.ml import (
     deployable_component_logs,
     deployment,
@@ -31,6 +32,9 @@ from hopsworks.internal.platform.client.istio.utils.infer_type import (
 )
 from hopsworks.internal.platform.constants import ARTIFACT_VERSION
 from hopsworks.internal.platform.constants import INFERENCE_ENDPOINTS as IE
+
+
+aliases.publish("hsml.core.serving_api")
 
 
 class ServingApi:

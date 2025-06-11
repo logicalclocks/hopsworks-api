@@ -26,6 +26,12 @@ except ImportError:
     pass
 
 
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsml.utils.schema.columnar_schema")
+
+
 class ColumnarSchema:
     """Metadata object representing a columnar schema for a model."""
 

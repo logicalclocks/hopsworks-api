@@ -15,7 +15,11 @@
 #
 
 import numpy
+from hopsworks.internal import aliases
 from hopsworks.internal.ml.utils.schema.tensor import Tensor
+
+
+aliases.publish("hsml.utils.schema.tensor_schema")
 
 
 class TensorSchema:

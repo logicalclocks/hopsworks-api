@@ -14,6 +14,11 @@
 #   limitations under the License.
 #
 
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsml.utils.schema.column")
+
 
 class Column:
     """Metadata object representing a column in the schema for a model."""

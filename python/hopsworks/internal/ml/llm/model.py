@@ -15,8 +15,12 @@
 #
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.ml.model import Model
 from hopsworks.internal.platform.constants import MODEL
+
+
+aliases.publish("hsml.llm.model")
 
 
 class Model(Model):

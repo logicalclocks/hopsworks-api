@@ -37,7 +37,6 @@ import pandas as pd
 from hopsworks.internal.fs import (
     feature_group,
     storage_connector,
-    tag,
     training_dataset,
     training_dataset_feature,
     usage,
@@ -73,6 +72,7 @@ from hopsworks.internal.fs.transformation_function import (
     TransformationType,
 )
 from hopsworks.internal.ml.model import Model
+from hopsworks.internal.platform import tag
 from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.platform.core.constants import HAS_NUMPY, HAS_POLARS
 from hopsworks.internal.platform.decorators import typechecked

@@ -18,12 +18,16 @@ from typing import Optional, Union
 
 import numpy
 import pandas
+from hopsworks.internal import aliases
 from hopsworks.internal.ml.model_schema import ModelSchema
 from hopsworks.internal.ml.tensorflow.model import Model
 from hopsworks.internal.platform import usage
 
 
 _mr = None
+
+
+aliases.publish("hsml.tensorflow.signature")
 
 
 @usage.method_logger

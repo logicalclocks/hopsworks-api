@@ -17,9 +17,13 @@
 import json
 from typing import Union
 
-from hopsworks.internal.ml import model, tag
+from hopsworks.internal import aliases
+from hopsworks.internal.ml import model
 from hopsworks.internal.ml.core import explicit_provenance
-from hopsworks.internal.platform import client, decorators
+from hopsworks.internal.platform import client, decorators, tag
+
+
+aliases.publish("hsml.core.model_api")
 
 
 class ModelApi:

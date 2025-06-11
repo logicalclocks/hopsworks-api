@@ -29,6 +29,10 @@ from hopsworks.internal.ml.transformer import Transformer
 from hopsworks.internal.platform import usage, util
 from hopsworks.internal.platform.constants import ARTIFACT_VERSION, PREDICTOR_STATE
 from hopsworks.internal.platform.constants import INFERENCE_ENDPOINTS as IE
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsml.model_serving")
 
 
 class ModelServing:

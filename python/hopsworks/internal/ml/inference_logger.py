@@ -20,6 +20,10 @@ import humps
 from hopsworks.internal.platform import util
 from hopsworks.internal.platform.constants import DEFAULT, INFERENCE_LOGGER, Default
 from hopsworks.internal.platform.kafka_topic import KafkaTopic
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsml.inference_logger")
 
 
 class InferenceLogger:

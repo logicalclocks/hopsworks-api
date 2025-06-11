@@ -34,6 +34,10 @@ from hopsworks.internal.platform.constants import (
     RESOURCES,
     Default,
 )
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsml.predictor")
 
 
 class Predictor(DeployableComponent):

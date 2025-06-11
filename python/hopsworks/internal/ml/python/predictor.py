@@ -14,8 +14,12 @@
 #   limitations under the License.
 #
 
+from hopsworks.internal import aliases
 from hopsworks.internal.ml.predictor import Predictor
 from hopsworks.internal.platform.constants import MODEL, PREDICTOR
+
+
+aliases.publish("hsml.python.predictor")
 
 
 class Predictor(Predictor):

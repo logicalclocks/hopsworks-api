@@ -15,6 +15,12 @@
 #
 
 
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsml.utils.schema.tensor")
+
+
 class Tensor:
     """Metadata object representing a tensor in the schema for a model."""
 

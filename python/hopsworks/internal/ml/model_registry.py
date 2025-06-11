@@ -28,6 +28,10 @@ from hopsworks.internal.ml.tensorflow import (
 )
 from hopsworks.internal.ml.torch import signature as torch_signature  # noqa: F401
 from hopsworks.internal.platform import usage, util
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsml.model_registry")
 
 
 class ModelRegistry:

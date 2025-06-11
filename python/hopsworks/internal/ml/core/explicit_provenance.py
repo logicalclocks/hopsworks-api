@@ -20,9 +20,13 @@ from enum import Enum
 from typing import Set
 
 import humps
+from hopsworks.internal import aliases
 
 
 _logger = logging.getLogger(__name__)
+
+
+aliases.publish("hsml.core.explicit_provenance")
 
 
 class Artifact:

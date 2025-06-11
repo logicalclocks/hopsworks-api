@@ -22,6 +22,10 @@ from hopsworks.internal.ml.inference_batcher import InferenceBatcher
 from hopsworks.internal.ml.resources import Resources
 from hopsworks.internal.platform import util
 from hopsworks.internal.platform.constants import Default
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsml.deployable_component")
 
 
 class DeployableComponent(ABC):

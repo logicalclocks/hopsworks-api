@@ -20,6 +20,7 @@ import tempfile
 import time
 import uuid
 
+from hopsworks.internal import aliases
 from hopsworks.internal.ml.core import model_api
 from hopsworks.internal.ml.engine import local_engine
 from hopsworks.internal.platform import client, constants, util
@@ -29,6 +30,9 @@ from hopsworks.internal.platform.client.exceptions import (
 )
 from hopsworks.internal.platform.core import dataset_api
 from tqdm.auto import tqdm
+
+
+aliases.publish("hsml.engine.model_engine")
 
 
 class ModelEngine:

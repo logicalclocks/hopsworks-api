@@ -14,10 +14,14 @@
 #   limitations under the License.
 #
 
+from hopsworks.internal import aliases
 from hopsworks.internal.ml.model_registry import ModelRegistry
 from hopsworks.internal.platform import client
 from hopsworks.internal.platform.client.exceptions import ModelRegistryException
 from hopsworks.internal.platform.core import dataset_api
+
+
+aliases.publish("hsml.core.model_registry_api")
 
 
 class ModelRegistryApi:

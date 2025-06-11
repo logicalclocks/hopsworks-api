@@ -20,6 +20,10 @@ from hopsworks.internal.ml.deployable_component import DeployableComponent
 from hopsworks.internal.ml.resources import TransformerResources
 from hopsworks.internal.platform import client, util
 from hopsworks.internal.platform.constants import RESOURCES, Default
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsml.transformer")
 
 
 class Transformer(DeployableComponent):

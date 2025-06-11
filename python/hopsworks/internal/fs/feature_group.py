@@ -40,7 +40,6 @@ from hopsworks.internal.fs import (
     engine,
     feature,
     feature_group_writer,
-    tag,
     user,
     util,
 )
@@ -94,6 +93,7 @@ from hopsworks.internal.platform.client.exceptions import (
     FeatureStoreException,
     RestAPIError,
 )
+from hopsworks.internal.platform import tag
 from hopsworks.internal.platform.core import job_api
 from hopsworks.internal.platform.core.constants import HAS_NUMPY, HAS_POLARS
 

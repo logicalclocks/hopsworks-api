@@ -18,6 +18,10 @@ from typing import Optional
 import humps
 from hopsworks.internal.ml.predictor_state_condition import PredictorStateCondition
 from hopsworks.internal.platform import util
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsml.predictor_state")
 
 
 class PredictorState:

@@ -17,8 +17,12 @@
 import warnings
 
 from hopsworks import version
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import util
 from hopsworks.internal.platform.connection import Connection
+
+
+aliases.publish("hsml")
 
 
 connection = Connection.connection

@@ -18,6 +18,11 @@ from __future__ import annotations
 
 import os
 
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsml.core.hdfs_api")
+
 
 class HdfsApi:
     def __init__(self):

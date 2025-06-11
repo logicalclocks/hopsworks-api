@@ -22,7 +22,7 @@ import warnings
 from typing import Any, Dict, Optional, Union
 
 import humps
-from hopsworks.internal.ml import deployment, predictor, tag
+from hopsworks.internal.ml import deployment, predictor
 from hopsworks.internal.ml.core import explicit_provenance
 from hopsworks.internal.ml.engine import model_engine
 from hopsworks.internal.ml.inference_batcher import InferenceBatcher
@@ -31,12 +31,15 @@ from hopsworks.internal.ml.model_schema import ModelSchema
 from hopsworks.internal.ml.resources import PredictorResources
 from hopsworks.internal.ml.schema import Schema
 from hopsworks.internal.ml.transformer import Transformer
-from hopsworks.internal.platform import client, usage, util
+from hopsworks.internal.platform import client, usage, util, tag
 from hopsworks.internal.platform.constants import ARTIFACT_VERSION, MODEL_REGISTRY
 from hopsworks.internal.platform.constants import INFERENCE_ENDPOINTS as IE
-
+from hopsworks.internal import aliases
 
 _logger = logging.getLogger(__name__)
+
+
+aliases.publish("hsml.model")
 
 
 class Model:

@@ -16,9 +16,13 @@
 
 import os
 
+from hopsworks.internal import aliases
 from hopsworks.internal.ml.core import hdfs_api, model_api
 from hopsworks.internal.platform import client
 from hopsworks.internal.platform.core import dataset_api
+
+
+aliases.publish("hsml.engine.local_engine")
 
 
 class LocalEngine:

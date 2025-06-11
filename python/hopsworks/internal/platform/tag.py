@@ -20,6 +20,10 @@ import json
 
 import humps
 from hopsworks.internal.platform import util
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsml.tag", "hsfs.tag")
 
 
 class Tag:

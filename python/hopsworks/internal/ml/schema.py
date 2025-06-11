@@ -21,6 +21,10 @@ import numpy
 import pandas
 from hopsworks.internal.ml.utils.schema.columnar_schema import ColumnarSchema
 from hopsworks.internal.ml.utils.schema.tensor_schema import TensorSchema
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsml.schema")
 
 
 class Schema:

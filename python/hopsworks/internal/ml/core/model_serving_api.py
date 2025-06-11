@@ -16,6 +16,7 @@
 
 import socket
 
+from hopsworks.internal import aliases
 from hopsworks.internal.ml.core import serving_api
 from hopsworks.internal.ml.inference_endpoint import get_endpoint_by_type
 from hopsworks.internal.ml.model_serving import ModelServing
@@ -23,6 +24,9 @@ from hopsworks.internal.platform import client
 from hopsworks.internal.platform.client.exceptions import ModelRegistryException
 from hopsworks.internal.platform.constants import INFERENCE_ENDPOINTS
 from hopsworks.internal.platform.core import dataset_api
+
+
+aliases.publish("hsml.core.model_serving_api")
 
 
 class ModelServingApi:
