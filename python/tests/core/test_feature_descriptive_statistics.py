@@ -14,7 +14,9 @@
 #   limitations under the License.
 #
 
-from hopsworks.internal.fs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
+from hopsworks.internal.fs.core.feature_descriptive_statistics import (
+    FeatureDescriptiveStatistics,
+)
 
 
 class TestFeatureDescriptiveStatistics:

@@ -34,7 +34,6 @@ from hopsworks.internal.fs import (
     transformation_function,
     util,
 )
-from hopsworks.internal.platform.client import exceptions
 from hopsworks.internal.fs.constructor import hudi_feature_group_alias, query
 from hopsworks.internal.fs.core import online_ingestion, training_dataset_engine
 from hopsworks.internal.fs.core.constants import HAS_GREAT_EXPECTATIONS
@@ -42,6 +41,7 @@ from hopsworks.internal.fs.engine import spark
 from hopsworks.internal.fs.hopsworks_udf import udf
 from hopsworks.internal.fs.training_dataset_feature import TrainingDatasetFeature
 from hopsworks.internal.fs.transformation_function import TransformationType
+from hopsworks.internal.platform.client import exceptions
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import lit
 from pyspark.sql.types import (
@@ -862,7 +862,9 @@ class TestSpark:
         mock_common_client_get_instance = mocker.patch(
             "hopsworks.internal.platform.client.get_instance"
         )
-        mocker.patch("hopsworks.internal.platform.client._is_external", return_value=False)
+        mocker.patch(
+            "hopsworks.internal.platform.client._is_external", return_value=False
+        )
         mock_spark_engine_serialize_to_avro = mocker.patch(
             "hsfs.engine.spark.Engine._serialize_to_avro"
         )
@@ -990,7 +992,9 @@ class TestSpark:
         mock_common_client_get_instance = mocker.patch(
             "hopsworks.internal.platform.client.get_instance"
         )
-        mocker.patch("hopsworks.internal.platform.client._is_external", return_value=False)
+        mocker.patch(
+            "hopsworks.internal.platform.client._is_external", return_value=False
+        )
         mock_spark_engine_serialize_to_avro = mocker.patch(
             "hsfs.engine.spark.Engine._serialize_to_avro"
         )
@@ -1122,7 +1126,9 @@ class TestSpark:
         mock_common_client_get_instance = mocker.patch(
             "hopsworks.internal.platform.client.get_instance"
         )
-        mocker.patch("hopsworks.internal.platform.client._is_external", return_value=False)
+        mocker.patch(
+            "hopsworks.internal.platform.client._is_external", return_value=False
+        )
         mock_spark_engine_serialize_to_avro = mocker.patch(
             "hsfs.engine.spark.Engine._serialize_to_avro"
         )
@@ -1250,7 +1256,9 @@ class TestSpark:
         mock_common_client_get_instance = mocker.patch(
             "hopsworks.internal.platform.client.get_instance"
         )
-        mocker.patch("hopsworks.internal.platform.client._is_external", return_value=False)
+        mocker.patch(
+            "hopsworks.internal.platform.client._is_external", return_value=False
+        )
         mock_spark_engine_serialize_to_avro = mocker.patch(
             "hsfs.engine.spark.Engine._serialize_to_avro"
         )
@@ -1515,7 +1523,9 @@ class TestSpark:
     def test_save_online_dataframe(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks.internal.platform.client.get_instance")
-        mocker.patch("hopsworks.internal.platform.client._is_external", return_value=False)
+        mocker.patch(
+            "hopsworks.internal.platform.client._is_external", return_value=False
+        )
         mock_spark_engine_serialize_to_avro = mocker.patch(
             "hsfs.engine.spark.Engine._serialize_to_avro"
         )
@@ -1660,7 +1670,7 @@ class TestSpark:
         data = []
         data.append((b"2121", b"21212121"))
         data.append((b"1212", b"12121212"))
-        pandas_df = pd.DataFrame(data, columns =["key", "value"])
+        pandas_df = pd.DataFrame(data, columns=["key", "value"])
 
         df = spark_engine._spark_session.createDataFrame(pandas_df)
 
@@ -1680,10 +1690,10 @@ class TestSpark:
             features=features,
         )
         fg._subject = {
-            'id': 1025,
-            'subject': 'fg_1',
-            'version': 1,
-            'schema': '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]},{"name":"event_time","type":["null",{"type":"long","logicalType":"timestamp-micros"}]}]}'
+            "id": 1025,
+            "subject": "fg_1",
+            "version": 1,
+            "schema": '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]},{"name":"event_time","type":["null",{"type":"long","logicalType":"timestamp-micros"}]}]}',
         }
 
         # Act
@@ -1693,7 +1703,7 @@ class TestSpark:
         )
 
         # Assert
-        expected_schema = json.loads('''{
+        expected_schema = json.loads("""{
             "fields": [
                 {"metadata": {}, "name": "key", "nullable": true, "type": "binary"},
                 {"metadata": {}, "name": "value", "nullable": false, "type": {
@@ -1707,7 +1717,7 @@ class TestSpark:
                 }}
             ],
             "type": "struct"
-        }''')
+        }""")
 
         actual_schema = json.loads(deserialized_df.schema.json())
         assert actual_schema == expected_schema
@@ -1719,9 +1729,15 @@ class TestSpark:
         now = datetime.datetime.now()
 
         fg_data = []
-        fg_data.append(("ekarson", ["GRAVITY RUSH 2", "KING'S QUEST"], pd.Timestamp(now)))
-        fg_data.append(("ratmilkdrinker", ["NBA 2K", "CALL OF DUTY"], pd.Timestamp(now)))
-        pandas_df = pd.DataFrame(fg_data, columns =["account_id", "last_played_games", "event_time"])
+        fg_data.append(
+            ("ekarson", ["GRAVITY RUSH 2", "KING'S QUEST"], pd.Timestamp(now))
+        )
+        fg_data.append(
+            ("ratmilkdrinker", ["NBA 2K", "CALL OF DUTY"], pd.Timestamp(now))
+        )
+        pandas_df = pd.DataFrame(
+            fg_data, columns=["account_id", "last_played_games", "event_time"]
+        )
 
         df = spark_engine._spark_session.createDataFrame(pandas_df)
 
@@ -1741,10 +1757,10 @@ class TestSpark:
             features=features,
         )
         fg._subject = {
-            'id': 1025,
-            'subject': 'fg_1',
-            'version': 1,
-            'schema': '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]},{"name":"event_time","type":["null",{"type":"long","logicalType":"timestamp-micros"}]}]}'
+            "id": 1025,
+            "subject": "fg_1",
+            "version": 1,
+            "schema": '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]},{"name":"event_time","type":["null",{"type":"long","logicalType":"timestamp-micros"}]}]}',
         }
 
         # Act
@@ -1759,7 +1775,10 @@ class TestSpark:
         )
 
         # Assert
-        assert serialized_df.schema.json() == '{"fields":[{"metadata":{},"name":"key","nullable":false,"type":"binary"},{"metadata":{},"name":"value","nullable":false,"type":"binary"}],"type":"struct"}'
+        assert (
+            serialized_df.schema.json()
+            == '{"fields":[{"metadata":{},"name":"key","nullable":false,"type":"binary"},{"metadata":{},"name":"value","nullable":false,"type":"binary"}],"type":"struct"}'
+        )
         assert df.schema == deserialized_df.schema["value"].dataType
         assert df.collect() == deserialized_df.select("value.*").collect()
 
@@ -3584,7 +3603,9 @@ class TestSpark:
             "pyspark.sql.session.SparkSession.builder.getOrCreate"
         )
         mock_pyspark_files_get = mocker.patch("pyspark.files.SparkFiles.get")
-        mocker.patch("hopsworks.internal.platform.client._is_external", return_value=False)
+        mocker.patch(
+            "hopsworks.internal.platform.client._is_external", return_value=False
+        )
         mocker.patch("shutil.copy")
 
         spark_engine = spark.Engine()

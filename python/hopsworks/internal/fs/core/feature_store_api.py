@@ -17,12 +17,12 @@ from __future__ import annotations
 
 from typing import Union
 
-import hopsworks.internal.fs.feature_store
+from hopsworks.internal.fs import feature_store
 from hopsworks.internal.platform import client
 
 
 class FeatureStoreApi:
-    def get(self, identifier: Union[int, str]) -> hsfs.feature_store.FeatureStore:
+    def get(self, identifier: Union[int, str]) -> feature_store.FeatureStore:
         """Get feature store with specific id or name.
 
         :param identifier: id or name of the feature store
@@ -32,6 +32,6 @@ class FeatureStoreApi:
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "featurestores", identifier]
-        return hsfs.feature_store.FeatureStore.from_response_json(
+        return feature_store.FeatureStore.from_response_json(
             _client._send_request("GET", path_params)
         )

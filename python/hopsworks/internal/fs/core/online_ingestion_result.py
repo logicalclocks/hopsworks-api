@@ -39,9 +39,7 @@ class OnlineIngestionResult:
         self._rows = rows
 
     @classmethod
-    def from_response_json(
-        cls, json_dict: Dict[str, Any]
-    ) -> OnlineIngestionResult:
+    def from_response_json(cls, json_dict: Dict[str, Any]) -> OnlineIngestionResult:
         if json_dict is None:
             return None
 

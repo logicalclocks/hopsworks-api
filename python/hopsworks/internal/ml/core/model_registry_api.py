@@ -14,10 +14,10 @@
 #   limitations under the License.
 #
 
+from hopsworks.internal.ml.model_registry import ModelRegistry
 from hopsworks.internal.platform import client
 from hopsworks.internal.platform.client.exceptions import ModelRegistryException
 from hopsworks.internal.platform.core import dataset_api
-from hopsworks.internal.ml.model_registry import ModelRegistry
 
 
 class ModelRegistryApi:

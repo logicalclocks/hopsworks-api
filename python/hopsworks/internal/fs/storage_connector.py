@@ -26,11 +26,11 @@ from typing import Any, Dict, List, Optional, TypeVar, Union
 
 import humps
 import pandas as pd
-from hopsworks.internal.platform import client
-from hopsworks.internal.platform.core.constants import HAS_NUMPY, HAS_POLARS
 from hopsworks.internal.fs import engine
 from hopsworks.internal.fs.core import data_source as ds
 from hopsworks.internal.fs.core import data_source_api, storage_connector_api
+from hopsworks.internal.platform import client
+from hopsworks.internal.platform.core.constants import HAS_NUMPY, HAS_POLARS
 
 
 if HAS_NUMPY:
@@ -259,13 +259,19 @@ class StorageConnector(ABC):
                     "Database name is required for this connector type. "
                     "Please provide a database name."
                 )
-        return self._data_source_api.get_tables(self._featurestore_id, self._name, database)
+        return self._data_source_api.get_tables(
+            self._featurestore_id, self._name, database
+        )
 
     def get_data(self, data_source: ds.DataSource):
-        return self._data_source_api.get_data(self._featurestore_id, self._name, data_source)
+        return self._data_source_api.get_data(
+            self._featurestore_id, self._name, data_source
+        )
 
     def get_metadata(self, data_source: ds.DataSource):
-        return self._data_source_api.get_metadata(self._featurestore_id, self._name, data_source)
+        return self._data_source_api.get_metadata(
+            self._featurestore_id, self._name, data_source
+        )
 
 
 class HopsFSConnector(StorageConnector):
@@ -1819,6 +1825,7 @@ class BigQueryConnector(StorageConnector):
             self, self.BIGQUERY_FORMAT, options, path, dataframe_type
         )
 
+
 class RdsConnector(StorageConnector):
     type = StorageConnector.RDS
     JDBC_FORMAT = "jdbc"
@@ -1878,9 +1885,9 @@ class RdsConnector(StorageConnector):
         arguments.
         """
         return {
-            "user":  self.user,
-            "password":  self.password,
-            "driver":  "org.postgresql.Driver"
+            "user": self.user,
+            "password": self.password,
+            "driver": "org.postgresql.Driver",
         }
 
     def connector_options(self) -> Dict[str, Any]:

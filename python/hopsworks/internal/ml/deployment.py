@@ -15,11 +15,7 @@
 
 from typing import Dict, List, Optional, Union
 
-from hopsworks.internal.platform import client, usage, util
 from hopsworks.internal.ml import predictor as predictor_mod
-from hopsworks.internal.platform.client.exceptions import ModelServingException
-from hopsworks.internal.platform.client.istio.utils.infer_type import InferInput
-from hopsworks.internal.platform.constants import DEPLOYABLE_COMPONENT, PREDICTOR_STATE
 from hopsworks.internal.ml.core import model_api, serving_api
 from hopsworks.internal.ml.engine import serving_engine
 from hopsworks.internal.ml.inference_batcher import InferenceBatcher
@@ -27,6 +23,10 @@ from hopsworks.internal.ml.inference_logger import InferenceLogger
 from hopsworks.internal.ml.predictor_state import PredictorState
 from hopsworks.internal.ml.resources import Resources
 from hopsworks.internal.ml.transformer import Transformer
+from hopsworks.internal.platform import client, usage, util
+from hopsworks.internal.platform.client.exceptions import ModelServingException
+from hopsworks.internal.platform.client.istio.utils.infer_type import InferInput
+from hopsworks.internal.platform.constants import DEPLOYABLE_COMPONENT, PREDICTOR_STATE
 
 
 class Deployment:

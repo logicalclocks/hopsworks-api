@@ -21,7 +21,10 @@ from typing import Optional, Tuple
 
 from hopsworks.internal import aliases
 from hopsworks.internal.platform import client
-from hopsworks.internal.platform.client.exceptions import FeatureStoreException, RestAPIError
+from hopsworks.internal.platform.client.exceptions import (
+    FeatureStoreException,
+    RestAPIError,
+)
 
 
 aliases.publish("hopsworks.core.variable_api")

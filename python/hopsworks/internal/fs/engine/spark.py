@@ -32,12 +32,12 @@ if TYPE_CHECKING:
 
 import pandas as pd
 import tzlocal
-from hopsworks.internal.platform.core.constants import HAS_NUMPY, HAS_PANDAS
 from hopsworks.internal.fs.constructor import query
 from hopsworks.internal.fs.core import feature_group_api
 
 # in case importing in %%local
 from hopsworks.internal.fs.core.vector_db_client import VectorDbClient
+from hopsworks.internal.platform.core.constants import HAS_NUMPY, HAS_PANDAS
 
 
 if HAS_NUMPY:
@@ -86,9 +86,6 @@ try:
 except ImportError:
     pass
 
-from hopsworks.internal.platform import client
-from hopsworks.internal.platform.client.exceptions import FeatureStoreException
-from hopsworks.internal.platform.core import dataset_api
 from hopsworks.internal.fs import (
     feature,
     feature_view,
@@ -105,9 +102,12 @@ from hopsworks.internal.fs.core import (
     transformation_function_engine,
 )
 from hopsworks.internal.fs.core.constants import HAS_AVRO, HAS_GREAT_EXPECTATIONS
-from hopsworks.internal.platform.decorators import uses_great_expectations
 from hopsworks.internal.fs.storage_connector import StorageConnector
 from hopsworks.internal.fs.training_dataset_split import TrainingDatasetSplit
+from hopsworks.internal.platform import client
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
+from hopsworks.internal.platform.core import dataset_api
+from hopsworks.internal.platform.decorators import uses_great_expectations
 
 
 if HAS_GREAT_EXPECTATIONS:
@@ -656,7 +656,8 @@ class Engine:
         Step 1: Deserializes 'value' column from binary using avro schema.
         """
         decoded_dataframe = dataframe.withColumn(
-            serialized_column, from_avro(serialized_column, feature_group._get_encoded_avro_schema())
+            serialized_column,
+            from_avro(serialized_column, feature_group._get_encoded_avro_schema()),
         )
 
         """
@@ -669,10 +670,12 @@ class Engine:
                 # re-apply from_avro on the nested field
                 decoded_field = from_avro(
                     col(f"{serialized_column}.{field_name}"),
-                    feature_group._get_feature_avro_schema(field_name)
+                    feature_group._get_feature_avro_schema(field_name),
                 ).alias(field_name)
             else:
-                decoded_field = col(f"{serialized_column}.{field_name}").alias(field_name)
+                decoded_field = col(f"{serialized_column}.{field_name}").alias(
+                    field_name
+                )
             new_value_fields.append(decoded_field)
 
         """
@@ -680,7 +683,10 @@ class Engine:
         """
         updated_value_col = struct(*new_value_fields).alias(serialized_column)
 
-        return decoded_dataframe.select(*[col(c) for c in decoded_dataframe.columns if c != serialized_column], updated_value_col)
+        return decoded_dataframe.select(
+            *[col(c) for c in decoded_dataframe.columns if c != serialized_column],
+            updated_value_col,
+        )
 
     def get_training_data(
         self,

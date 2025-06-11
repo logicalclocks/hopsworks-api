@@ -17,9 +17,6 @@
 import os
 from typing import List, Optional, Union
 
-from hopsworks.internal.platform import usage, util
-from hopsworks.internal.platform.constants import ARTIFACT_VERSION, PREDICTOR_STATE
-from hopsworks.internal.platform.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks.internal.ml.core import serving_api
 from hopsworks.internal.ml.deployment import Deployment
 from hopsworks.internal.ml.inference_batcher import InferenceBatcher
@@ -29,6 +26,9 @@ from hopsworks.internal.ml.model import Model
 from hopsworks.internal.ml.predictor import Predictor
 from hopsworks.internal.ml.resources import PredictorResources
 from hopsworks.internal.ml.transformer import Transformer
+from hopsworks.internal.platform import usage, util
+from hopsworks.internal.platform.constants import ARTIFACT_VERSION, PREDICTOR_STATE
+from hopsworks.internal.platform.constants import INFERENCE_ENDPOINTS as IE
 
 
 class ModelServing:

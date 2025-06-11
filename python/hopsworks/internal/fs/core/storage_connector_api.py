@@ -17,8 +17,8 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from hopsworks.internal.platform import client, decorators
 from hopsworks.internal.fs import storage_connector
+from hopsworks.internal.platform import client, decorators
 
 
 class StorageConnectorApi:

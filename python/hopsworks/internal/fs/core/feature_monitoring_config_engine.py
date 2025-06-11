@@ -20,14 +20,19 @@ from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Union
 
 import pandas as pd
-from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.fs import feature_group, feature_view
 from hopsworks.internal.fs.core import feature_monitoring_config as fmc
-from hopsworks.internal.fs.core import feature_monitoring_config_api, monitoring_window_config_engine
+from hopsworks.internal.fs.core import (
+    feature_monitoring_config_api,
+    monitoring_window_config_engine,
+)
 from hopsworks.internal.fs.core import monitoring_window_config as mwc
 from hopsworks.internal.fs.core.feature_monitoring_result import FeatureMonitoringResult
-from hopsworks.internal.fs.core.feature_monitoring_result_engine import FeatureMonitoringResultEngine
+from hopsworks.internal.fs.core.feature_monitoring_result_engine import (
+    FeatureMonitoringResultEngine,
+)
 from hopsworks.internal.fs.core.job import Job
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.platform.core.job_api import JobApi
 
 
@@ -152,7 +157,7 @@ class FeatureMonitoringConfigEngine:
             and metric.lower() not in self._VALID_FRACTIONAL_METRICS
         ):
             raise ValueError(
-                f"Invalid metric {metric.lower()}. " "Supported metrics are {}.".format(
+                f"Invalid metric {metric.lower()}. Supported metrics are {{}}.".format(
                     set(self._VALID_FRACTIONAL_METRICS).union(
                         set(self._VALID_CATEGORICAL_METRICS)
                     )

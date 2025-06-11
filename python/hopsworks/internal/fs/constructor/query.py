@@ -23,16 +23,16 @@ from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 
 import humps
 import pandas as pd
-from hopsworks.internal.platform.client.exceptions import FeatureStoreException
-from hopsworks.internal.platform.core.constants import HAS_NUMPY
 from hopsworks.internal.fs import engine, storage_connector, util
 from hopsworks.internal.fs import feature_group as fg_mod
 from hopsworks.internal.fs.constructor import join
 from hopsworks.internal.fs.constructor.filter import Filter, Logic
 from hopsworks.internal.fs.constructor.fs_query import FsQuery
 from hopsworks.internal.fs.core import query_constructor_api, storage_connector_api
-from hopsworks.internal.platform.decorators import typechecked
 from hopsworks.internal.fs.feature import Feature
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
+from hopsworks.internal.platform.core.constants import HAS_NUMPY
+from hopsworks.internal.platform.decorators import typechecked
 
 
 _logger = logging.getLogger(__name__)
@@ -188,9 +188,7 @@ class Query:
 
             for feature in join_features:
                 ambiguous_feature_feature_group_mapping[feature] = (
-                    ambiguous_feature_feature_group_mapping.get(
-                        feature, set()
-                    ).union(
+                    ambiguous_feature_feature_group_mapping.get(feature, set()).union(
                         [
                             f"{query._left_feature_group.name} version {query._left_feature_group.version}"
                         ]

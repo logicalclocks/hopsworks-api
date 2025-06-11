@@ -21,7 +21,9 @@ import dateutil
 from hopsworks.internal.fs import util
 from hopsworks.internal.fs.core import feature_monitoring_config as fmc
 from hopsworks.internal.fs.core import feature_monitoring_result_engine
-from hopsworks.internal.fs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
+from hopsworks.internal.fs.core.feature_descriptive_statistics import (
+    FeatureDescriptiveStatistics,
+)
 
 
 DEFAULT_MONITORING_TIME_SORT_BY = "monitoring_time:desc"

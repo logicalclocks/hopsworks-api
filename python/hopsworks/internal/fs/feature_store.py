@@ -22,7 +22,6 @@ from typing import Any, Dict, List, Optional, TypeVar, Union
 
 import humps
 import pandas as pd
-from hopsworks.internal.platform.core.constants import HAS_NUMPY, HAS_POLARS
 from hopsworks.internal.fs import (
     expectation_suite,
     feature,
@@ -45,12 +44,13 @@ from hopsworks.internal.fs.core import (
     training_dataset_api,
     transformation_function_engine,
 )
-from hopsworks.internal.platform.decorators import typechecked
 from hopsworks.internal.fs.embedding import EmbeddingIndex
 from hopsworks.internal.fs.hopsworks_udf import HopsworksUdf
 from hopsworks.internal.fs.online_config import OnlineConfig
 from hopsworks.internal.fs.statistics_config import StatisticsConfig
 from hopsworks.internal.fs.transformation_function import TransformationFunction
+from hopsworks.internal.platform.core.constants import HAS_NUMPY, HAS_POLARS
+from hopsworks.internal.platform.decorators import typechecked
 
 
 if HAS_NUMPY:

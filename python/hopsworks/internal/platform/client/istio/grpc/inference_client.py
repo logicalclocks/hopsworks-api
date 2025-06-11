@@ -17,7 +17,10 @@ import grpc
 from hopsworks.internal.platform.client.istio.grpc.proto.grpc_predict_v2_pb2_grpc import (
     GRPCInferenceServiceStub,
 )
-from hopsworks.internal.platform.client.istio.utils.infer_type import InferRequest, InferResponse
+from hopsworks.internal.platform.client.istio.utils.infer_type import (
+    InferRequest,
+    InferResponse,
+)
 
 
 class GRPCInferenceServerClient:

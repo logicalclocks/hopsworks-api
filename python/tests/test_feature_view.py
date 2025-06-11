@@ -152,7 +152,8 @@ class TestFeatureView:
         mocked_connection = mocker.MagicMock()
         mocked_connection.backend_version = version.__version__
         mocked_connection = mocker.patch(
-            "hopsworks.internal.platform.client.get_connection", return_value=mocked_connection
+            "hopsworks.internal.platform.client.get_connection",
+            return_value=mocked_connection,
         )
         mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine")
         mocker.patch("hsfs.engine.get_type", return_value="python")

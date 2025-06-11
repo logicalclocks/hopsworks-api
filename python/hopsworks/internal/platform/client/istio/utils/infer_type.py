@@ -27,7 +27,10 @@ from hopsworks.internal.platform.client.istio.grpc.proto.grpc_predict_v2_pb2 imp
     ModelInferRequest,
     ModelInferResponse,
 )
-from hopsworks.internal.platform.client.istio.utils.numpy_codec import from_np_dtype, to_np_dtype
+from hopsworks.internal.platform.client.istio.utils.numpy_codec import (
+    from_np_dtype,
+    to_np_dtype,
+)
 
 
 GRPC_CONTENT_DATATYPE_MAPPINGS = {

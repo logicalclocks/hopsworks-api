@@ -24,7 +24,9 @@ from hopsworks.internal import aliases
 from requests.exceptions import SSLError
 
 
-aliases.publish("hopsworks.client.exceptions", "hsfs.client.exceptions", "hsml.client.exceptions")
+aliases.publish(
+    "hopsworks.client.exceptions", "hsfs.client.exceptions", "hsml.client.exceptions"
+)
 
 
 class RestAPIError(Exception):

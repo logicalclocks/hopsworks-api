@@ -68,7 +68,8 @@ class TestKafkaTopic:
             return_value=json,
         )
         mock_kt_init = mocker.patch(
-            "hopsworks.internal.platform.kafka_topic.KafkaTopic.__init__", return_value=None
+            "hopsworks.internal.platform.kafka_topic.KafkaTopic.__init__",
+            return_value=None,
         )
 
         # Act
@@ -88,7 +89,8 @@ class TestKafkaTopic:
             return_value=json,
         )
         mock_kt_init = mocker.patch(
-            "hopsworks.internal.platform.kafka_topic.KafkaTopic.__init__", return_value=None
+            "hopsworks.internal.platform.kafka_topic.KafkaTopic.__init__",
+            return_value=None,
         )
 
         # Act

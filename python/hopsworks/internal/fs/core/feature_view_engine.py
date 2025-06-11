@@ -20,9 +20,6 @@ import warnings
 from typing import Any, Dict, List, Optional, TypeVar, Union
 
 import pandas as pd
-from hopsworks.internal.platform import client
-from hopsworks.internal.platform.client.exceptions import FeatureStoreException
-from hopsworks.internal.platform.core.constants import HAS_NUMPY
 from hopsworks.internal.fs import (
     engine,
     feature_group,
@@ -30,7 +27,6 @@ from hopsworks.internal.fs import (
     training_dataset_feature,
     util,
 )
-from hopsworks.internal.platform.client import exceptions
 from hopsworks.internal.fs.constructor.filter import Filter, Logic
 from hopsworks.internal.fs.constructor.join import Join
 from hopsworks.internal.fs.constructor.query import Query
@@ -45,6 +41,10 @@ from hopsworks.internal.fs.core import (
 from hopsworks.internal.fs.core.feature_logging import FeatureLogging
 from hopsworks.internal.fs.feature_logger import FeatureLogger
 from hopsworks.internal.fs.training_dataset_split import TrainingDatasetSplit
+from hopsworks.internal.platform import client
+from hopsworks.internal.platform.client import exceptions
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
+from hopsworks.internal.platform.core.constants import HAS_NUMPY
 
 
 if HAS_NUMPY:

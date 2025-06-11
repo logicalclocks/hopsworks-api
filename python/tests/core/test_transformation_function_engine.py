@@ -438,7 +438,9 @@ class TestTransformationFunctionEngine:
         tf_engine = transformation_function_engine.TransformationFunctionEngine(
             feature_store_id
         )
-        from hopsworks.internal.fs.transformation_statistics import TransformationStatistics
+        from hopsworks.internal.fs.transformation_statistics import (
+            TransformationStatistics,
+        )
 
         stats = TransformationStatistics("col1")
 

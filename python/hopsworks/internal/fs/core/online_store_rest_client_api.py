@@ -19,8 +19,8 @@ from datetime import date, datetime
 from typing import Any, Dict
 
 from hopsworks.internal.fs import util
-from hopsworks.internal.platform.client import exceptions, online_store_rest_client
 from hopsworks.internal.fs.core.constants import HAS_NUMPY
+from hopsworks.internal.platform.client import exceptions, online_store_rest_client
 from requests import Response
 
 

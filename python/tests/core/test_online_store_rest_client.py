@@ -23,7 +23,9 @@ class TestOnlineStoreRestClient:
         # Arrange
         online_store_rest_client._online_store_rest_client = None
 
-        mocker.patch("hopsworks.internal.platform.client._is_external", return_value=True)
+        mocker.patch(
+            "hopsworks.internal.platform.client._is_external", return_value=True
+        )
         mocker.patch("hopsworks.internal.platform.client.get_instance")
         variable_api_mock = mocker.patch(
             "hopsworks.internal.platform.core.variable_api.VariableApi.get_loadbalancer_external_domain",
@@ -54,7 +56,9 @@ class TestOnlineStoreRestClient:
         # Arrange
         online_store_rest_client._online_store_rest_client = None
 
-        mocker.patch("hopsworks.internal.platform.client._is_external", return_value=False)
+        mocker.patch(
+            "hopsworks.internal.platform.client._is_external", return_value=False
+        )
         mocker.patch("hopsworks.internal.platform.client.get_instance")
         variable_api_mock = mocker.patch(
             "hopsworks.internal.platform.core.variable_api.VariableApi.get_service_discovery_domain",

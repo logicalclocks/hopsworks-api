@@ -23,12 +23,12 @@ from hopsworks.internal.ml import (
     inference_endpoint,
     predictor_state,
 )
+from hopsworks.internal.platform import client, decorators
 from hopsworks.internal.platform.client.istio.utils.infer_type import (
     InferInput,
     InferOutput,
     InferRequest,
 )
-from hopsworks.internal.platform import client, decorators
 from hopsworks.internal.platform.constants import ARTIFACT_VERSION
 from hopsworks.internal.platform.constants import INFERENCE_ENDPOINTS as IE
 

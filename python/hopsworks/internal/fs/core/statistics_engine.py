@@ -21,12 +21,12 @@ from datetime import date, datetime
 from typing import List, Optional, Union
 
 from hopsworks.internal.fs import engine, split_statistics, statistics, util
-from hopsworks.internal.platform.client import exceptions
 from hopsworks.internal.fs.core import job, statistics_api
 from hopsworks.internal.fs.core.feature_descriptive_statistics import (
     FeatureDescriptiveStatistics,
 )
 from hopsworks.internal.platform import decorators
+from hopsworks.internal.platform.client import exceptions
 
 
 class StatisticsEngine:
@@ -308,7 +308,8 @@ class StatisticsEngine:
         )
 
     @decorators.catch_not_found(
-        "hsfs.statistics.Statistics", "hsfs.feature_group_commit.FeatureGroupCommit",
+        "hsfs.statistics.Statistics",
+        "hsfs.feature_group_commit.FeatureGroupCommit",
         fallback_return=None,
     )
     def get_by_time_window(

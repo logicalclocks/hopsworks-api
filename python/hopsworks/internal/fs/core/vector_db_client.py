@@ -19,15 +19,15 @@ import base64
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import hopsworks.internal.fs
-from hopsworks.internal.platform.client.exceptions import (
-    FeatureStoreException,
-    VectorDatabaseException,
-)
+import hopsworks.internal.fs as hsfs
 from hopsworks.internal.fs.constructor.filter import Filter, Logic
 from hopsworks.internal.fs.constructor.join import Join
 from hopsworks.internal.fs.core.opensearch import OpenSearchClientSingleton
 from hopsworks.internal.fs.feature import Feature
+from hopsworks.internal.platform.client.exceptions import (
+    FeatureStoreException,
+    VectorDatabaseException,
+)
 
 
 class VectorDbClient:

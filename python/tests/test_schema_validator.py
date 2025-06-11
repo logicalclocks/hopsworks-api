@@ -4,7 +4,6 @@ from unittest import mock
 
 import pandas as pd
 import pytest
-from hopsworks.internal.platform.core.constants import HAS_POLARS
 from hopsworks.internal.fs import engine, feature_group
 from hopsworks.internal.fs.core.schema_validation import (
     DataFrameValidator,
@@ -14,6 +13,7 @@ from hopsworks.internal.fs.core.schema_validation import (
 )
 from hopsworks.internal.fs.engine import spark
 from hopsworks.internal.fs.feature import Feature
+from hopsworks.internal.platform.core.constants import HAS_POLARS
 
 
 if HAS_POLARS:

@@ -76,7 +76,9 @@ class TagsApi:
         _client._send_request("DELETE", path_params)
 
     @usage.method_logger
-    @decorators.catch_not_found("hopsworks.internal.platform.tag.Tag", fallback_return={})
+    @decorators.catch_not_found(
+        "hopsworks.internal.platform.tag.Tag", fallback_return={}
+    )
     def get(self, metadata_instance, name: str = None, training_dataset_version=None):
         """Get the tags of a training dataset or feature group.
 

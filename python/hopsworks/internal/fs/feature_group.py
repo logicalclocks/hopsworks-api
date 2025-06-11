@@ -33,11 +33,9 @@ from typing import (
 )
 
 import avro.schema
-import hopsworks.internal.fs.expectation_suite
+import hopsworks.internal.fs as hsfs
 import humps
 import pandas as pd
-from hopsworks.internal.platform.client.exceptions import FeatureStoreException, RestAPIError
-from hopsworks.internal.platform.core.constants import HAS_NUMPY, HAS_POLARS
 from hopsworks.internal.fs import (
     engine,
     feature,
@@ -55,7 +53,6 @@ from hopsworks.internal.fs import (
 from hopsworks.internal.fs.constructor import filter, query
 from hopsworks.internal.fs.constructor.filter import Filter, Logic
 from hopsworks.internal.fs.core import data_source as ds
-from hopsworks.internal.platform.core import job_api
 from hopsworks.internal.fs.core import (
     deltastreamer_jobconf,
     expectation_suite_engine,
@@ -82,17 +79,26 @@ from hopsworks.internal.fs.core.constants import (
 from hopsworks.internal.fs.core.job import Job
 from hopsworks.internal.fs.core.variable_api import VariableApi
 from hopsworks.internal.fs.core.vector_db_client import VectorDbClient
-
-# if great_expectations is not installed, we will default to using native Hopsworks class as return values
-from hopsworks.internal.platform.decorators import typechecked, uses_great_expectations
 from hopsworks.internal.fs.embedding import EmbeddingIndex
 from hopsworks.internal.fs.ge_validation_result import ValidationResult
 from hopsworks.internal.fs.hopsworks_udf import HopsworksUdf
 from hopsworks.internal.fs.online_config import OnlineConfig
 from hopsworks.internal.fs.statistics import Statistics
 from hopsworks.internal.fs.statistics_config import StatisticsConfig
-from hopsworks.internal.fs.transformation_function import TransformationFunction, TransformationType
+from hopsworks.internal.fs.transformation_function import (
+    TransformationFunction,
+    TransformationType,
+)
 from hopsworks.internal.fs.validation_report import ValidationReport
+from hopsworks.internal.platform.client.exceptions import (
+    FeatureStoreException,
+    RestAPIError,
+)
+from hopsworks.internal.platform.core import job_api
+from hopsworks.internal.platform.core.constants import HAS_NUMPY, HAS_POLARS
+
+# if great_expectations is not installed, we will default to using native Hopsworks class as return values
+from hopsworks.internal.platform.decorators import typechecked, uses_great_expectations
 
 
 if HAS_GREAT_EXPECTATIONS:

@@ -17,8 +17,8 @@ from __future__ import annotations
 
 from typing import List
 
-from hopsworks.internal.platform import client
 from hopsworks.internal.fs.ge_expectation import GeExpectation
+from hopsworks.internal.platform import client
 
 
 class ExpectationApi:

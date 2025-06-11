@@ -28,10 +28,10 @@ from typing import (
 )
 
 import humps
-from hopsworks.internal.platform import client, util
 from hopsworks.internal.fs import feature_group as fg_mod
 from hopsworks.internal.fs.core import online_ingestion_result
 from hopsworks.internal.fs.core.opensearch import OpenSearchClientSingleton
+from hopsworks.internal.platform import client, util
 from tqdm.auto import tqdm
 
 

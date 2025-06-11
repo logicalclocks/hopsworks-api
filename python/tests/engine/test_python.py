@@ -21,7 +21,6 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from hopsworks.internal.platform.core.constants import HAS_POLARS
 from hopsworks.internal.fs import (
     feature,
     feature_group,
@@ -30,15 +29,18 @@ from hopsworks.internal.fs import (
     training_dataset,
     util,
 )
-from hopsworks.internal.platform.client import exceptions
 from hopsworks.internal.fs.constructor import query
-from hopsworks.internal.fs.constructor.hudi_feature_group_alias import HudiFeatureGroupAlias
+from hopsworks.internal.fs.constructor.hudi_feature_group_alias import (
+    HudiFeatureGroupAlias,
+)
 from hopsworks.internal.fs.core import inode, job, online_ingestion
 from hopsworks.internal.fs.core.constants import HAS_GREAT_EXPECTATIONS
 from hopsworks.internal.fs.engine import python
 from hopsworks.internal.fs.expectation_suite import ExpectationSuite
 from hopsworks.internal.fs.hopsworks_udf import udf
 from hopsworks.internal.fs.training_dataset_feature import TrainingDatasetFeature
+from hopsworks.internal.platform.client import exceptions
+from hopsworks.internal.platform.core.constants import HAS_POLARS
 
 
 if HAS_POLARS:
@@ -1490,7 +1492,9 @@ class TestPython:
     def test_legacy_save_dataframe(self, mocker):
         # Arrange
         mocker.patch("hopsworks.internal.platform.client.get_instance")
-        mock_get_url = mocker.patch("hopsworks.internal.platform.execution.Execution.get_url")
+        mock_get_url = mocker.patch(
+            "hopsworks.internal.platform.execution.Execution.get_url"
+        )
         mock_execution_api = mocker.patch(
             "hopsworks.internal.platform.core.execution_api.ExecutionApi",
         )

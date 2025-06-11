@@ -15,9 +15,9 @@
 #
 import importlib
 
-from hopsworks.internal.platform.core import constants
 from hopsworks.internal.fs import feature_group, storage_connector
 from hopsworks.internal.fs.core import kafka_engine, online_ingestion
+from hopsworks.internal.platform.core import constants
 
 
 if constants.HAS_CONFLUENT_KAFKA:
@@ -149,7 +149,9 @@ class TestKafkaEngine:
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
 
-        mocker.patch("hopsworks.internal.platform.client._is_external", return_value=False)
+        mocker.patch(
+            "hopsworks.internal.platform.client._is_external", return_value=False
+        )
         mock_client = mocker.patch("hopsworks.internal.platform.client.get_instance")
         mock_client.return_value._write_pem.return_value = (
             "test_ssl_ca_location",
@@ -191,7 +193,9 @@ class TestKafkaEngine:
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
 
-        mocker.patch("hopsworks.internal.platform.client._is_external", return_value=True)
+        mocker.patch(
+            "hopsworks.internal.platform.client._is_external", return_value=True
+        )
         mock_client = mocker.patch("hopsworks.internal.platform.client.get_instance")
         mock_client.return_value._write_pem.return_value = (
             "test_ssl_ca_location",
@@ -233,7 +237,9 @@ class TestKafkaEngine:
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
 
-        mocker.patch("hopsworks.internal.platform.client._is_external", return_value=False)
+        mocker.patch(
+            "hopsworks.internal.platform.client._is_external", return_value=False
+        )
         mock_client = mocker.patch("hopsworks.internal.platform.client.get_instance")
         mock_client.return_value._write_pem.return_value = (
             "test_ssl_ca_location",
@@ -278,7 +284,9 @@ class TestKafkaEngine:
         sc = storage_connector.StorageConnector.from_response_json(json)
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
 
-        mocker.patch("hopsworks.internal.platform.client._is_external", return_value=True)
+        mocker.patch(
+            "hopsworks.internal.platform.client._is_external", return_value=True
+        )
 
         mock_client = mocker.patch("hopsworks.internal.platform.client.get_instance")
         mock_client.return_value._write_pem.return_value = (
@@ -416,7 +424,9 @@ class TestKafkaEngine:
         mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
         mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
 
-        mocker.patch("hopsworks.internal.platform.client._is_external", return_value=False)
+        mocker.patch(
+            "hopsworks.internal.platform.client._is_external", return_value=False
+        )
         # Act
         results = kafka_engine.get_kafka_config(
             1, write_options={"user_opt": "ABC"}, engine="spark"
@@ -446,7 +456,9 @@ class TestKafkaEngine:
     def test_spark_get_kafka_config_external_client(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks.internal.platform.client.get_instance")
-        mocker.patch("hopsworks.internal.platform.client._is_external", return_value=True)
+        mocker.patch(
+            "hopsworks.internal.platform.client._is_external", return_value=True
+        )
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
         mock_engine_get_instance.return_value.add_file.return_value = (
             "result_from_add_file"
@@ -488,7 +500,9 @@ class TestKafkaEngine:
     def test_spark_get_kafka_config_internal_kafka(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks.internal.platform.client.get_instance")
-        mocker.patch("hopsworks.internal.platform.client._is_external", return_value=True)
+        mocker.patch(
+            "hopsworks.internal.platform.client._is_external", return_value=True
+        )
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
         mock_engine_get_instance.return_value.add_file.return_value = (
             "result_from_add_file"

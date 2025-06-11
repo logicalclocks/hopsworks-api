@@ -15,7 +15,10 @@
 #
 
 
-from hopsworks.internal.fs.constructor import prepared_statement_parameter, serving_prepared_statement
+from hopsworks.internal.fs.constructor import (
+    prepared_statement_parameter,
+    serving_prepared_statement,
+)
 
 
 class TestServingPreparedStatement:

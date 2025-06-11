@@ -20,9 +20,12 @@ import logging
 import pandas as pd
 import pytest
 from hopsworks import version
-from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.fs.hopsworks_udf import udf
-from hopsworks.internal.fs.transformation_function import TransformationFunction, TransformationType
+from hopsworks.internal.fs.transformation_function import (
+    TransformationFunction,
+    TransformationType,
+)
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from packaging.version import Version
 
 
@@ -236,7 +239,8 @@ class TestTransformationFunction:
             version.__version__
         )  # Mocking backend version to be the same as the current version
         mocked_connection = mocker.patch(
-            "hopsworks.internal.platform.client.get_connection", return_value=mocked_connection
+            "hopsworks.internal.platform.client.get_connection",
+            return_value=mocked_connection,
         )
 
         @udf(int)
@@ -570,7 +574,9 @@ class TestTransformationFunction:
         ]
 
     def test_validate_udf_type_on_demand_statistics(self):
-        from hopsworks.internal.fs.transformation_statistics import TransformationStatistics
+        from hopsworks.internal.fs.transformation_statistics import (
+            TransformationStatistics,
+        )
 
         stats = TransformationStatistics("col1")
 
@@ -976,7 +982,8 @@ class TestTransformationFunction:
             version.__version__
         )  # Mocking backend version to be the same as the current version
         mocked_connection = mocker.patch(
-            "hopsworks.internal.platform.client.get_connection", return_value=mocked_connection
+            "hopsworks.internal.platform.client.get_connection",
+            return_value=mocked_connection,
         )
 
         @udf([int])
@@ -1007,7 +1014,8 @@ class TestTransformationFunction:
             version.__version__
         )  # Mocking backend version to be the same as the current version
         mocked_connection = mocker.patch(
-            "hopsworks.internal.platform.client.get_connection", return_value=mocked_connection
+            "hopsworks.internal.platform.client.get_connection",
+            return_value=mocked_connection,
         )
 
         @udf([int])
@@ -1038,7 +1046,8 @@ class TestTransformationFunction:
             version.__version__
         )  # Mocking backend version to be the same as the current version
         mocked_connection = mocker.patch(
-            "hopsworks.internal.platform.client.get_connection", return_value=mocked_connection
+            "hopsworks.internal.platform.client.get_connection",
+            return_value=mocked_connection,
         )
 
         @udf([int])

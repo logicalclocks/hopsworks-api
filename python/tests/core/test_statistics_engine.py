@@ -25,8 +25,8 @@ from hopsworks.internal.fs import (
     statistics_config,
     training_dataset,
 )
-from hopsworks.internal.platform.client import exceptions
 from hopsworks.internal.fs.core import statistics_engine
+from hopsworks.internal.platform.client import exceptions
 
 
 hopsworks.internal.platform.connection._hsfs_engine_type = "python"

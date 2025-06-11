@@ -19,7 +19,10 @@ from typing import Any, Dict, List, Optional, TypeVar, Union
 
 import humps
 from hopsworks.internal.fs import engine
-from hopsworks.internal.fs.constructor import external_feature_group_alias, hudi_feature_group_alias
+from hopsworks.internal.fs.constructor import (
+    external_feature_group_alias,
+    hudi_feature_group_alias,
+)
 
 
 class FsQuery:

@@ -16,10 +16,10 @@
 
 import pytest
 from hopsworks.internal.ml import deployment, predictor
-from hopsworks.internal.platform.client.exceptions import ModelServingException
-from hopsworks.internal.platform.constants import PREDICTOR_STATE
 from hopsworks.internal.ml.core import serving_api
 from hopsworks.internal.ml.engine import serving_engine
+from hopsworks.internal.platform.client.exceptions import ModelServingException
+from hopsworks.internal.platform.constants import PREDICTOR_STATE
 
 
 class TestDeployment:
@@ -760,7 +760,8 @@ class TestDeployment:
         path = "/p/" + str(mock_client._project_id) + "/deployments/" + str(d.id)
 
         mock_util_get_hostname_replaced_url = mocker.patch(
-            "hopsworks.internal.platform.util.get_hostname_replaced_url", return_value="url"
+            "hopsworks.internal.platform.util.get_hostname_replaced_url",
+            return_value="url",
         )
         mock_client_get_instance = mocker.patch(
             "hopsworks.internal.platform.client.get_instance", return_value=mock_client

@@ -34,8 +34,6 @@ from typing import (
 
 import humps
 import pandas as pd
-from hopsworks.internal.platform.client.exceptions import FeatureStoreException
-from hopsworks.internal.platform.core.constants import HAS_NUMPY, HAS_POLARS
 from hopsworks.internal.fs import (
     feature_group,
     storage_connector,
@@ -64,15 +62,20 @@ from hopsworks.internal.fs.core.feature_logging import FeatureLogging
 from hopsworks.internal.fs.core.feature_view_api import FeatureViewApi
 from hopsworks.internal.fs.core.job import Job
 from hopsworks.internal.fs.core.vector_db_client import VectorDbClient
-from hopsworks.internal.platform.decorators import typechecked
 from hopsworks.internal.fs.feature import Feature
 from hopsworks.internal.fs.feature_logger import FeatureLogger
 from hopsworks.internal.fs.hopsworks_udf import HopsworksUdf
 from hopsworks.internal.fs.statistics import Statistics
 from hopsworks.internal.fs.statistics_config import StatisticsConfig
 from hopsworks.internal.fs.training_dataset_split import TrainingDatasetSplit
-from hopsworks.internal.fs.transformation_function import TransformationFunction, TransformationType
+from hopsworks.internal.fs.transformation_function import (
+    TransformationFunction,
+    TransformationType,
+)
 from hopsworks.internal.ml.model import Model
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
+from hopsworks.internal.platform.core.constants import HAS_NUMPY, HAS_POLARS
+from hopsworks.internal.platform.decorators import typechecked
 
 
 if HAS_NUMPY:

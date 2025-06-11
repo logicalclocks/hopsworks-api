@@ -20,9 +20,6 @@ from typing import Any, Dict, List, Optional, Set, TypeVar, Union
 
 import humps
 import pandas as pd
-from hopsworks.internal.platform import client
-from hopsworks.internal.platform.client.exceptions import RestAPIError
-from hopsworks.internal.platform.core.constants import HAS_NUMPY
 from hopsworks.internal.fs import engine, training_dataset_feature, util
 from hopsworks.internal.fs.constructor import filter, query
 from hopsworks.internal.fs.core import (
@@ -34,6 +31,9 @@ from hopsworks.internal.fs.core import (
 from hopsworks.internal.fs.statistics_config import StatisticsConfig
 from hopsworks.internal.fs.storage_connector import HopsFSConnector, StorageConnector
 from hopsworks.internal.fs.training_dataset_split import TrainingDatasetSplit
+from hopsworks.internal.platform import client
+from hopsworks.internal.platform.client.exceptions import RestAPIError
+from hopsworks.internal.platform.core.constants import HAS_NUMPY
 
 
 if HAS_NUMPY:
@@ -430,7 +430,7 @@ class TrainingDatasetBase:
         valid_type = [self.IN_MEMORY, self.HOPSFS, self.EXTERNAL]
         if training_dataset_type not in valid_type:
             raise ValueError(
-                "Training dataset type should be one of " ", ".join(valid_type)
+                "Training dataset type should be one of , ".join(valid_type)
             )
         else:
             self._training_dataset_type = training_dataset_type

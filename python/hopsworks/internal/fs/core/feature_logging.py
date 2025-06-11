@@ -20,7 +20,9 @@ class FeatureLogging:
 
     @classmethod
     def from_response_json(cls, json_dict: Dict[str, Any]) -> "FeatureLogging":
-        from hopsworks.internal.fs.feature_group import FeatureGroup  # avoid circular import
+        from hopsworks.internal.fs.feature_group import (
+            FeatureGroup,
+        )  # avoid circular import
 
         json_decamelized = humps.decamelize(json_dict)
         transformed_features = json_decamelized.get("transformed_log_fg")

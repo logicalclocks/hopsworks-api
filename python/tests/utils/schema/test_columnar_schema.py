@@ -217,7 +217,7 @@ class TestColumnarSchema:
     def test_constructor_hsfs_td(self, mocker):
         # Arrange
         try:
-            import hopsworks.internal.fs
+            import hopsworks.internal.fs as hsfs
         except ImportError:
             pytest.skip("hsfs not available")
 

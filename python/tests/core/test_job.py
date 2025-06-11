@@ -16,8 +16,8 @@
 
 
 import pytest
-from hopsworks.internal.platform.client import exceptions
 from hopsworks.internal.fs.core import execution, job
+from hopsworks.internal.platform.client import exceptions
 
 
 class TestJob:
@@ -72,7 +72,9 @@ class TestJob:
     def test_wait_for_job_wait_for_job_false(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks.internal.platform.client.get_instance")
-        mock_job_api = mocker.patch("hopsworks.internal.platform.core.execution_api.ExecutionApi")
+        mock_job_api = mocker.patch(
+            "hopsworks.internal.platform.core.execution_api.ExecutionApi"
+        )
 
         json = backend_fixtures["job"]["get"]["response"]
         job.Job.from_response_json(json).run(await_termination=False)

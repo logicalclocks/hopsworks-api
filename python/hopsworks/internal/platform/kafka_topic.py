@@ -29,7 +29,6 @@ from hopsworks.internal.platform.core import kafka_api
 aliases.publish("hopsworks.kafka_topic", "hsml.kafka_topic")
 
 
-
 class KafkaTopic:
     """Configuration for a Kafka topic."""
 

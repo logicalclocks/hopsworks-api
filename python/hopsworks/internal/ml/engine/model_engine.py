@@ -20,11 +20,14 @@ import tempfile
 import time
 import uuid
 
-from hopsworks.internal.platform import client, constants, util
-from hopsworks.internal.platform.client.exceptions import ModelRegistryException, RestAPIError
-from hopsworks.internal.platform.core import dataset_api
 from hopsworks.internal.ml.core import model_api
 from hopsworks.internal.ml.engine import local_engine
+from hopsworks.internal.platform import client, constants, util
+from hopsworks.internal.platform.client.exceptions import (
+    ModelRegistryException,
+    RestAPIError,
+)
+from hopsworks.internal.platform.core import dataset_api
 from tqdm.auto import tqdm
 
 
@@ -273,11 +276,15 @@ class ModelEngine:
             files = []
             offset = 0
             limit = 1000
-            items = self._dataset_api.list(dataset_model_path, sort_by="NAME:desc", offset=offset, limit=limit)["items"]
+            items = self._dataset_api.list(
+                dataset_model_path, sort_by="NAME:desc", offset=offset, limit=limit
+            )["items"]
             while items:
-              files = files + items
-              offset += limit
-              items = self._dataset_api.list(dataset_model_path, sort_by="NAME:desc", offset=offset, limit=limit)["items"]
+                files = files + items
+                offset += limit
+                items = self._dataset_api.list(
+                    dataset_model_path, sort_by="NAME:desc", offset=offset, limit=limit
+                )["items"]
             for item in files:
                 _, file_name = os.path.split(item["attributes"]["path"])
                 # Get highest version folder
@@ -295,25 +302,40 @@ class ModelEngine:
 
             # Get highest available model metadata version
             # This makes sure we skip corrupt versions where the model folder is deleted manually but the backend metadata is still there
-            model = self._model_api.get(model_instance._name, current_highest_version, model_instance.model_registry_id)
+            model = self._model_api.get(
+                model_instance._name,
+                current_highest_version,
+                model_instance.model_registry_id,
+            )
             while model:
-              current_highest_version += 1
-              model = self._model_api.get(model_instance._name, current_highest_version, model_instance.model_registry_id)
+                current_highest_version += 1
+                model = self._model_api.get(
+                    model_instance._name,
+                    current_highest_version,
+                    model_instance.model_registry_id,
+                )
 
             model_instance._version = current_highest_version
         else:
-            model_backend_object_exists = self._model_api.get(model_instance._name, model_instance._version, model_instance.model_registry_id) is not None
+            model_backend_object_exists = (
+                self._model_api.get(
+                    model_instance._name,
+                    model_instance._version,
+                    model_instance.model_registry_id,
+                )
+                is not None
+            )
             model_version_folder_exists = self._dataset_api.path_exists(
-                                                          dataset_models_root_path
-                                                          + "/"
-                                                          + model_instance._name
-                                                          + "/"
-                                                          + str(model_instance._version)
-                                                      )
+                dataset_models_root_path
+                + "/"
+                + model_instance._name
+                + "/"
+                + str(model_instance._version)
+            )
 
             # Perform validations to handle possible inconsistency between db and filesystem
             if model_backend_object_exists and not model_version_folder_exists:
-              raise ModelRegistryException(
+                raise ModelRegistryException(
                     "Model with name {0} and version {1} looks to be corrupt as the version is registered but there is no Models/{0}/{1} folder in the filesystem. Delete this version using Model.delete() or the UI and try to export this version again.".format(
                         model_instance._name, model_instance._version
                     )

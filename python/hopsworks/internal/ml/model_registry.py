@@ -18,14 +18,16 @@ import warnings
 from typing import List, Optional
 
 import humps
-from hopsworks.internal.platform import usage, util
 from hopsworks.internal.ml import model
 from hopsworks.internal.ml.core import model_api
 from hopsworks.internal.ml.llm import signature as llm_signature  # noqa: F401
 from hopsworks.internal.ml.python import signature as python_signature  # noqa: F401
 from hopsworks.internal.ml.sklearn import signature as sklearn_signature  # noqa: F401
-from hopsworks.internal.ml.tensorflow import signature as tensorflow_signature  # noqa: F401
+from hopsworks.internal.ml.tensorflow import (
+    signature as tensorflow_signature,  # noqa: F401
+)
 from hopsworks.internal.ml.torch import signature as torch_signature  # noqa: F401
+from hopsworks.internal.platform import usage, util
 
 
 class ModelRegistry:

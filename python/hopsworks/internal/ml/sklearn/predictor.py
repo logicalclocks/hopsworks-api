@@ -14,8 +14,8 @@
 #   limitations under the License.
 #
 
-from hopsworks.internal.platform.constants import MODEL, PREDICTOR
 from hopsworks.internal.ml.predictor import Predictor
+from hopsworks.internal.platform.constants import MODEL, PREDICTOR
 
 
 class Predictor(Predictor):

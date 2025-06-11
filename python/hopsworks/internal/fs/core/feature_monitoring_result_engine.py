@@ -18,13 +18,19 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Dict, List, Optional, Tuple, Union
 
-from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.fs import util
 from hopsworks.internal.fs.core import feature_monitoring_config as fmc
-from hopsworks.internal.fs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
-from hopsworks.internal.fs.core.feature_monitoring_config_api import FeatureMonitoringConfigApi
+from hopsworks.internal.fs.core.feature_descriptive_statistics import (
+    FeatureDescriptiveStatistics,
+)
+from hopsworks.internal.fs.core.feature_monitoring_config_api import (
+    FeatureMonitoringConfigApi,
+)
 from hopsworks.internal.fs.core.feature_monitoring_result import FeatureMonitoringResult
-from hopsworks.internal.fs.core.feature_monitoring_result_api import FeatureMonitoringResultApi
+from hopsworks.internal.fs.core.feature_monitoring_result_api import (
+    FeatureMonitoringResultApi,
+)
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.platform.core.job_api import JobApi
 
 
@@ -361,9 +367,9 @@ class FeatureMonitoringResultEngine:
         detection_statistics: List[FeatureDescriptiveStatistics],
         reference_statistics: List[FeatureDescriptiveStatistics],
     ):
-        assert (
-            len(reference_statistics) == len(detection_statistics)
-        ), "detection_statistics and reference_statistics must contain the same number of feature statistics"
+        assert len(reference_statistics) == len(detection_statistics), (
+            "detection_statistics and reference_statistics must contain the same number of feature statistics"
+        )
         det_stats_set, ref_stats_set = set(), set()
         for det_fds, ref_fds in zip(detection_statistics, reference_statistics):
             det_stats_set.add((det_fds.feature_name, det_fds.feature_type))

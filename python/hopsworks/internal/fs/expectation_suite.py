@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     import great_expectations
 
 import humps
-from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.fs import util
 from hopsworks.internal.fs.core import expectation_suite_engine
 from hopsworks.internal.fs.core.constants import (
@@ -33,10 +32,11 @@ from hopsworks.internal.fs.core.constants import (
 )
 from hopsworks.internal.fs.core.expectation_engine import ExpectationEngine
 from hopsworks.internal.fs.core.variable_api import VariableApi
+from hopsworks.internal.fs.ge_expectation import GeExpectation
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 
 # if great_expectations is not installed, we will default to using native Hopsworks class as return values
 from hopsworks.internal.platform.decorators import uses_great_expectations
-from hopsworks.internal.fs.ge_expectation import GeExpectation
 
 
 if HAS_GREAT_EXPECTATIONS:
@@ -95,12 +95,12 @@ class ExpectationSuite:
         ] = None
 
         if self.id:
-            assert (
-                self._feature_store_id is not None
-            ), "feature_store_id should not be None if expectation suite id is provided"
-            assert (
-                self._feature_group_id is not None
-            ), "feature_group_id should not be None if expectation suite id is provided"
+            assert self._feature_store_id is not None, (
+                "feature_store_id should not be None if expectation suite id is provided"
+            )
+            assert self._feature_group_id is not None, (
+                "feature_group_id should not be None if expectation suite id is provided"
+            )
             self._expectation_engine = ExpectationEngine(
                 feature_store_id=self._feature_store_id,
                 feature_group_id=self._feature_group_id,

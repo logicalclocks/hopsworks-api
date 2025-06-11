@@ -21,8 +21,6 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
 
-from hopsworks.internal.platform.core import variable_api
-from hopsworks.internal.platform.util import AsyncTask, AsyncTaskThread
 from hopsworks.internal.fs import util
 from hopsworks.internal.fs.core import (
     feature_view_api,
@@ -30,11 +28,15 @@ from hopsworks.internal.fs.core import (
     training_dataset_api,
 )
 from hopsworks.internal.fs.core.constants import HAS_AIOMYSQL, HAS_SQLALCHEMY
+from hopsworks.internal.platform.core import variable_api
+from hopsworks.internal.platform.util import AsyncTask, AsyncTaskThread
 
 
 if TYPE_CHECKING:
     from hopsworks.internal.fs import feature_view, storage_connector, training_dataset
-    from hopsworks.internal.fs.constructor.serving_prepared_statement import ServingPreparedStatement
+    from hopsworks.internal.fs.constructor.serving_prepared_statement import (
+        ServingPreparedStatement,
+    )
     from hopsworks.internal.fs.serving_key import ServingKey
 
 

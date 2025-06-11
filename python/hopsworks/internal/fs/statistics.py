@@ -20,7 +20,9 @@ from typing import Any, Dict, List, Optional, Union
 
 import humps
 from hopsworks.internal.fs import util
-from hopsworks.internal.fs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
+from hopsworks.internal.fs.core.feature_descriptive_statistics import (
+    FeatureDescriptiveStatistics,
+)
 from hopsworks.internal.fs.split_statistics import SplitStatistics
 
 

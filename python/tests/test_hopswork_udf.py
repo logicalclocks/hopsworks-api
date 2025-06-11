@@ -18,13 +18,13 @@ from datetime import date, datetime, time
 
 import pandas as pd
 import pytest
-from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.fs.hopsworks_udf import (
     HopsworksUdf,
     TransformationFeature,
     UDFExecutionMode,
     udf,
 )
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 
 
 class TestHopsworksUdf:
@@ -1181,7 +1181,9 @@ def test_function():
         assert test_func("new_feature").statistics_features == []
 
     def test_HopsworkUDf_call_one_argument_statistics(self):
-        from hopsworks.internal.fs.transformation_statistics import TransformationStatistics
+        from hopsworks.internal.fs.transformation_statistics import (
+            TransformationStatistics,
+        )
 
         stats = TransformationStatistics("col1")
 
@@ -1210,7 +1212,9 @@ def test_function():
         assert test_func("new_feature")._statistics_argument_names == ["col1"]
 
     def test_HopsworkUDf_call_multiple_argument_statistics(self):
-        from hopsworks.internal.fs.transformation_statistics import TransformationStatistics
+        from hopsworks.internal.fs.transformation_statistics import (
+            TransformationStatistics,
+        )
 
         stats = TransformationStatistics("col1", "col3")
 

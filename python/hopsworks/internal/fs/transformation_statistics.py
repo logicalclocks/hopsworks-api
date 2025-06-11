@@ -29,26 +29,26 @@ class FeatureTransformationStatistics:
     Data class that contains all the statistics parameters that can be used for transformations inside a custom transformation function.
     """
 
-    feature_name: str
-    count: int = None
+    _feature_name: str
+    _count: int = None
     # for any feature type
-    completeness: Optional[float] = None
-    num_non_null_values: Optional[int] = None
-    num_null_values: Optional[int] = None
-    approx_num_distinct_values: Optional[int] = None
+    _completeness: Optional[float] = None
+    _num_non_null_values: Optional[int] = None
+    _num_null_values: Optional[int] = None
+    _approx_num_distinct_values: Optional[int] = None
     # for numerical features
-    min: Optional[float] = None
-    max: Optional[float] = None
-    sum: Optional[float] = None
-    mean: Optional[float] = None
-    stddev: Optional[float] = None
-    percentiles: Optional[Mapping[str, float]] = None
+    _min: Optional[float] = None
+    _max: Optional[float] = None
+    _sum: Optional[float] = None
+    _mean: Optional[float] = None
+    _stddev: Optional[float] = None
+    _percentiles: Optional[Mapping[str, float]] = None
     # with exact uniqueness
-    distinctness: Optional[float] = None
-    entropy: Optional[float] = None
-    uniqueness: Optional[float] = None
-    exact_num_distinct_values: Optional[int] = None
-    extended_statistics: Optional[Union[dict, str]] = None
+    _distinctness: Optional[float] = None
+    _entropy: Optional[float] = None
+    _uniqueness: Optional[float] = None
+    _exact_num_distinct_values: Optional[int] = None
+    _extended_statistics: Optional[Union[dict, str]] = None
 
     def __init__(
         self,

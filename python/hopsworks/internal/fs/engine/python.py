@@ -53,11 +53,6 @@ import hopsworks.internal.fs as hsfs
 import pandas as pd
 import pyarrow as pa
 from botocore.response import StreamingBody
-from hopsworks.internal.platform import client
-from hopsworks.internal.platform.client.exceptions import FeatureStoreException
-from hopsworks.internal.platform.core.constants import HAS_POLARS, polars_not_installed_message
-from hopsworks.internal.platform.decorators import uses_great_expectations, uses_polars
-from hopsworks.internal.platform.core import dataset_api, job_api
 from hopsworks.internal.fs import (
     feature,
     feature_view,
@@ -93,6 +88,14 @@ from hopsworks.internal.fs.hopsworks_udf import HopsworksUdf, UDFExecutionMode
 from hopsworks.internal.fs.training_dataset import TrainingDataset
 from hopsworks.internal.fs.training_dataset_feature import TrainingDatasetFeature
 from hopsworks.internal.fs.training_dataset_split import TrainingDatasetSplit
+from hopsworks.internal.platform import client
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
+from hopsworks.internal.platform.core import dataset_api, job_api
+from hopsworks.internal.platform.core.constants import (
+    HAS_POLARS,
+    polars_not_installed_message,
+)
+from hopsworks.internal.platform.decorators import uses_great_expectations, uses_polars
 
 
 if HAS_GREAT_EXPECTATIONS:
@@ -108,7 +111,9 @@ if HAS_SQLALCHEMY:
     from sqlalchemy import sql
 
 if HAS_PANDAS:
-    from hopsworks.internal.fs.core.type_systems import convert_pandas_dtype_to_offline_type
+    from hopsworks.internal.fs.core.type_systems import (
+        convert_pandas_dtype_to_offline_type,
+    )
 
 if HAS_POLARS:
     import polars as pl
@@ -1678,9 +1683,9 @@ class Engine:
             provided_len = len(feature_log[0])
         else:
             provided_len = 1
-        assert provided_len == len(
-            cols
-        ), f"Expecting {len(cols)} features/labels but {provided_len} provided."
+        assert provided_len == len(cols), (
+            f"Expecting {len(cols)} features/labels but {provided_len} provided."
+        )
 
     @staticmethod
     def get_logging_metadata(

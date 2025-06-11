@@ -18,15 +18,15 @@ from __future__ import annotations
 import warnings
 from typing import List, Optional, Union
 
-from hopsworks.internal.platform import client, decorators
-from hopsworks.internal.fs import feature_group_commit, util
 from hopsworks.internal.fs import feature_group as fg_mod
+from hopsworks.internal.fs import feature_group_commit, util
 from hopsworks.internal.fs.core import (
     explicit_provenance,
     ingestion_job,
     ingestion_job_conf,
     job,
 )
+from hopsworks.internal.platform import client, decorators
 
 
 class FeatureGroupApi:

@@ -18,7 +18,12 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
-from hopsworks.internal.fs import feature_group, feature_view, storage_connector, training_dataset
+from hopsworks.internal.fs import (
+    feature_group,
+    feature_view,
+    storage_connector,
+    training_dataset,
+)
 from hopsworks.internal.fs.constructor import fs_query
 from hopsworks.internal.fs.core import arrow_flight_client
 from hopsworks.internal.fs.engine import python

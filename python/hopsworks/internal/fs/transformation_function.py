@@ -21,15 +21,17 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
 import humps
+from hopsworks.internal.fs import util
+from hopsworks.internal.fs.core import transformation_function_engine
+from hopsworks.internal.fs.core.feature_descriptive_statistics import (
+    FeatureDescriptiveStatistics,
+)
+from hopsworks.internal.fs.hopsworks_udf import HopsworksUdf
+from hopsworks.internal.fs.transformation_statistics import TransformationStatistics
 from hopsworks.internal.platform import client
 from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.platform.constants import FEATURES
-from hopsworks.internal.fs import util
-from hopsworks.internal.fs.core import transformation_function_engine
-from hopsworks.internal.fs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hopsworks.internal.platform.decorators import typechecked
-from hopsworks.internal.fs.hopsworks_udf import HopsworksUdf
-from hopsworks.internal.fs.transformation_statistics import TransformationStatistics
 from packaging.version import Version
 
 
@@ -288,7 +290,7 @@ class TransformationFunction:
             output_col_names = [self.__hopsworks_udf.function_name]
         else:
             if self.transformation_type == TransformationType.MODEL_DEPENDENT:
-                _BASE_COLUMN_NAME = f'{self.__hopsworks_udf.function_name}_{"_".join(self.__hopsworks_udf.transformation_features)}_'
+                _BASE_COLUMN_NAME = f"{self.__hopsworks_udf.function_name}_{'_'.join(self.__hopsworks_udf.transformation_features)}_"
             elif self.transformation_type == TransformationType.ON_DEMAND:
                 _BASE_COLUMN_NAME = (
                     self.__hopsworks_udf.function_name
@@ -316,7 +318,7 @@ class TransformationFunction:
                 # Slicing the output column names
                 for index, output_col_name in enumerate(output_col_names):
                     output_col_names[index] = (
-                        f"{output_col_name[:FEATURES.MAX_LENGTH_NAME-(len(output_col_names) + 1)]}_{str(index)}"
+                        f"{output_col_name[: FEATURES.MAX_LENGTH_NAME - (len(output_col_names) + 1)]}_{str(index)}"
                         if len(output_col_name) > FEATURES.MAX_LENGTH_NAME
                         else output_col_name
                     )

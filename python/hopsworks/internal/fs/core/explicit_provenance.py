@@ -20,7 +20,13 @@ from enum import Enum
 from typing import Optional, Set
 
 import humps
-from hopsworks.internal.fs import feature_group, feature_view, storage_connector, training_dataset, util
+from hopsworks.internal.fs import (
+    feature_group,
+    feature_view,
+    storage_connector,
+    training_dataset,
+    util,
+)
 
 
 class Artifact:
@@ -270,7 +276,9 @@ class Links:
         links_json: dict, training_dataset_version: Optional[int] = None
     ):
         from hopsworks.internal.ml import model
-        from hopsworks.internal.ml.core import explicit_provenance as hsml_explicit_provenance
+        from hopsworks.internal.ml.core import (
+            explicit_provenance as hsml_explicit_provenance,
+        )
 
         links = Links()
         for link_json in links_json:
@@ -433,7 +441,9 @@ class ProvenanceEncoder(json.JSONEncoder):
 
             if importlib.util.find_spec("hsml"):
                 from hopsworks.internal.ml import model
-                from hopsworks.internal.ml.core import explicit_provenance as hsml_explicit_provenance
+                from hopsworks.internal.ml.core import (
+                    explicit_provenance as hsml_explicit_provenance,
+                )
 
                 if isinstance(
                     obj,

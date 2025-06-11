@@ -26,13 +26,15 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import humps
+from hopsworks.internal.fs import engine, util
+from hopsworks.internal.fs.core.feature_descriptive_statistics import (
+    FeatureDescriptiveStatistics,
+)
+from hopsworks.internal.fs.transformation_statistics import TransformationStatistics
 from hopsworks.internal.platform import client
 from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.platform.constants import FEATURES
-from hopsworks.internal.fs import engine, util
-from hopsworks.internal.fs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hopsworks.internal.platform.decorators import typechecked
-from hopsworks.internal.fs.transformation_statistics import TransformationStatistics
 from packaging.version import Version
 
 
@@ -1154,4 +1156,4 @@ def renaming_wrapper(*args):
         self._output_column_names = output_col_names
 
     def __repr__(self):
-        return f'{self.function_name}({", ".join(self.transformation_features)})'
+        return f"{self.function_name}({', '.join(self.transformation_features)})"

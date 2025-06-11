@@ -16,9 +16,9 @@
 
 import os
 
+from hopsworks.internal.ml.core import hdfs_api, model_api
 from hopsworks.internal.platform import client
 from hopsworks.internal.platform.core import dataset_api
-from hopsworks.internal.ml.core import hdfs_api, model_api
 
 
 class LocalEngine:

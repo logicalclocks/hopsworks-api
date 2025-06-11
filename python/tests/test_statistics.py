@@ -16,7 +16,9 @@
 
 
 from hopsworks.internal.fs import split_statistics, statistics
-from hopsworks.internal.fs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
+from hopsworks.internal.fs.core.feature_descriptive_statistics import (
+    FeatureDescriptiveStatistics,
+)
 
 
 class TestStatistics:

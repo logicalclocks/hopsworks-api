@@ -28,11 +28,13 @@ from hopsworks.internal.fs import (
     training_dataset_feature,
     transformation_function,
 )
-from hopsworks.internal.platform.client.exceptions import FeatureStoreException
-from hopsworks.internal.fs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
+from hopsworks.internal.fs.core.feature_descriptive_statistics import (
+    FeatureDescriptiveStatistics,
+)
 from hopsworks.internal.fs.engine import python, spark
 from hopsworks.internal.fs.hopsworks_udf import HopsworksUdf, udf
 from hopsworks.internal.fs.transformation_function import TransformationType
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from pyspark.sql.types import (
     BooleanType,
     DateType,

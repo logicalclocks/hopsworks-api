@@ -20,6 +20,11 @@ from datetime import datetime, timezone
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Callable, Dict, Literal, Optional, Tuple, Union
 
+from hopsworks.internal.fs.core import (
+    online_ingestion,
+    online_ingestion_api,
+    storage_connector_api,
+)
 from hopsworks.internal.platform import client
 from hopsworks.internal.platform.core.constants import (
     HAS_AVRO,
@@ -30,7 +35,6 @@ from hopsworks.internal.platform.core.constants import (
     avro_not_installed_message,
 )
 from hopsworks.internal.platform.decorators import uses_confluent_kafka
-from hopsworks.internal.fs.core import online_ingestion, online_ingestion_api, storage_connector_api
 from tqdm import tqdm
 
 

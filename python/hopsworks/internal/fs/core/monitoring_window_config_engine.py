@@ -19,12 +19,14 @@ import re
 from datetime import datetime, timedelta
 from typing import List, Optional, Tuple, TypeVar, Union
 
-from hopsworks.internal.platform.client.exceptions import RestAPIError
 from hopsworks.internal.fs import feature_group, feature_view, util
 from hopsworks.internal.fs.core import monitoring_window_config as mwc
 from hopsworks.internal.fs.core import statistics_engine
-from hopsworks.internal.fs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
+from hopsworks.internal.fs.core.feature_descriptive_statistics import (
+    FeatureDescriptiveStatistics,
+)
 from hopsworks.internal.fs.training_dataset_split import TrainingDatasetSplit
+from hopsworks.internal.platform.client.exceptions import RestAPIError
 
 
 class MonitoringWindowConfigEngine:
@@ -311,9 +313,9 @@ class MonitoringWindowConfigEngine:
                 )
             )
 
-        assert (
-            registered_stats.feature_descriptive_statistics is not None
-        ), "statistics should contain the feature descriptive statistics"
+        assert registered_stats.feature_descriptive_statistics is not None, (
+            "statistics should contain the feature descriptive statistics"
+        )
 
         return registered_stats.feature_descriptive_statistics
 

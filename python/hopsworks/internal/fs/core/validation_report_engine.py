@@ -21,11 +21,11 @@ from typing import TYPE_CHECKING, List, Union
 if TYPE_CHECKING:
     import great_expectations
 
-from hopsworks.internal.platform import client
 from hopsworks.internal.fs import util
 from hopsworks.internal.fs.core import validation_report_api
 from hopsworks.internal.fs.core.constants import HAS_GREAT_EXPECTATIONS
 from hopsworks.internal.fs.validation_report import ValidationReport
+from hopsworks.internal.platform import client
 
 
 if HAS_GREAT_EXPECTATIONS:

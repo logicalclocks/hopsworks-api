@@ -213,7 +213,9 @@ class Links:
     @staticmethod
     def __parse_feature_views(links_json: dict, artifacts: Set[str]):
         from hopsworks.internal.fs import feature_view
-        from hopsworks.internal.fs.core import explicit_provenance as hsfs_explicit_provenance
+        from hopsworks.internal.fs.core import (
+            explicit_provenance as hsfs_explicit_provenance,
+        )
 
         links = Links()
         for link_json in links_json:
@@ -254,7 +256,9 @@ class Links:
     @staticmethod
     def __parse_training_datasets(links_json: dict, artifacts: Set[str]):
         from hopsworks.internal.fs import training_dataset
-        from hopsworks.internal.fs.core import explicit_provenance as hsfs_explicit_provenance
+        from hopsworks.internal.fs.core import (
+            explicit_provenance as hsfs_explicit_provenance,
+        )
 
         links = Links()
         for link_json in links_json:
@@ -359,7 +363,9 @@ class ProvenanceEncoder(json.JSONEncoder):
 
             if importlib.util.find_spec("hsfs"):
                 from hopsworks.internal.fs import feature_view
-                from hopsworks.internal.fs.core import explicit_provenance as hsfs_explicit_provenance
+                from hopsworks.internal.fs.core import (
+                    explicit_provenance as hsfs_explicit_provenance,
+                )
 
                 if isinstance(
                     obj,

@@ -26,14 +26,16 @@ from hopsworks.internal.fs import (
     split_statistics,
     training_dataset,
 )
-from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.fs.constructor import fs_query
 from hopsworks.internal.fs.constructor.query import Query
 from hopsworks.internal.fs.core import arrow_flight_client, feature_view_engine
-from hopsworks.internal.fs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
+from hopsworks.internal.fs.core.feature_descriptive_statistics import (
+    FeatureDescriptiveStatistics,
+)
 from hopsworks.internal.fs.hopsworks_udf import udf
 from hopsworks.internal.fs.storage_connector import BigQueryConnector, StorageConnector
 from hopsworks.internal.fs.training_dataset_feature import TrainingDatasetFeature
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 
 
 engine.init("python")
@@ -2531,7 +2533,9 @@ class TestFeatureViewEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hopsworks.internal.platform.client.get_instance")  # for arrow_flight_client
+        mocker.patch(
+            "hopsworks.internal.platform.client.get_instance"
+        )  # for arrow_flight_client
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mock_engine_get_type = mocker.patch("hsfs.engine.get_type")
         mock_constructor_query = mocker.patch("hsfs.constructor.query.Query")
@@ -2566,7 +2570,9 @@ class TestFeatureViewEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hopsworks.internal.platform.client.get_instance")  # for arrow_flight_client
+        mocker.patch(
+            "hopsworks.internal.platform.client.get_instance"
+        )  # for arrow_flight_client
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
@@ -2608,7 +2614,9 @@ class TestFeatureViewEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hopsworks.internal.platform.client.get_instance")  # for arrow_flight_client
+        mocker.patch(
+            "hopsworks.internal.platform.client.get_instance"
+        )  # for arrow_flight_client
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
@@ -2720,7 +2728,9 @@ class TestFeatureViewEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
-        mock_client_get_instance = mocker.patch("hopsworks.internal.platform.client.get_instance")
+        mock_client_get_instance = mocker.patch(
+            "hopsworks.internal.platform.client.get_instance"
+        )
         mock_util_get_hostname_replaced_url = mocker.patch(
             "hsfs.util.get_hostname_replaced_url"
         )

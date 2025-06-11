@@ -82,7 +82,9 @@ class JobApi:
         return created_job
 
     @usage.method_logger
-    @decorators.catch_not_found("hopsworks.internal.platform.job.Job", fallback_return=None)
+    @decorators.catch_not_found(
+        "hopsworks.internal.platform.job.Job", fallback_return=None
+    )
     def get_job(self, name: str) -> Optional[job.Job]:
         """Get a job.
 

@@ -22,10 +22,6 @@ from urllib.parse import ParseResult
 import hopsworks.internal.platform.util
 import pytest
 import pytz
-from hopsworks.internal.platform import util
-from hopsworks.internal.platform.client.exceptions import FeatureStoreException
-from hopsworks.internal.platform.constants import MODEL
-from hopsworks.internal.platform.core.constants import HAS_AIOMYSQL, HAS_SQLALCHEMY
 from hopsworks.internal.fs.embedding import EmbeddingFeature, EmbeddingIndex
 from hopsworks.internal.fs.feature import Feature
 from hopsworks.internal.ml.llm.model import Model as LLMModel
@@ -40,6 +36,10 @@ from hopsworks.internal.ml.tensorflow.model import Model as TensorflowModel
 from hopsworks.internal.ml.tensorflow.predictor import Predictor as TFPredictor
 from hopsworks.internal.ml.torch.model import Model as TorchModel
 from hopsworks.internal.ml.torch.predictor import Predictor as TorchPredictor
+from hopsworks.internal.platform import util
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
+from hopsworks.internal.platform.constants import MODEL
+from hopsworks.internal.platform.core.constants import HAS_AIOMYSQL, HAS_SQLALCHEMY
 from mock import patch
 
 
@@ -573,7 +573,9 @@ class TestUtil:
         mock_client = mocker.MagicMock()
         mock_client._base_url = base_url + "url"
         mock_client.replace_public_host = mocker.MagicMock(return_value=mock_url_parsed)
-        mocker.patch("hopsworks.internal.platform.client.get_instance", return_value=mock_client)
+        mocker.patch(
+            "hopsworks.internal.platform.client.get_instance", return_value=mock_client
+        )
 
         # Act
         url = util.get_hostname_replaced_url(sub_path)
@@ -617,7 +619,9 @@ class TestUtil:
     def test_extract_field_from_json(self, mocker):
         # Arrange
         json = {"a": "1", "b": "2"}
-        get_obj_from_json = mocker.patch("hopsworks.internal.platform.util.get_obj_from_json")
+        get_obj_from_json = mocker.patch(
+            "hopsworks.internal.platform.util.get_obj_from_json"
+        )
 
         # Act
         b = util.extract_field_from_json(json, "b")
@@ -629,7 +633,9 @@ class TestUtil:
     def test_extract_field_from_json_fields(self, mocker):
         # Arrange
         json = {"a": "1", "b": "2"}
-        get_obj_from_json = mocker.patch("hopsworks.internal.platform.util.get_obj_from_json")
+        get_obj_from_json = mocker.patch(
+            "hopsworks.internal.platform.util.get_obj_from_json"
+        )
 
         # Act
         b = util.extract_field_from_json(json, ["B", "b"])  # alternative fields
@@ -728,11 +734,15 @@ class TestUtil:
         assert "cannot be converted to class" in str(e_info.value)
 
     def test_get_hudi_datestr_from_timestamp(self):
-        dt = hopsworks.internal.platform.util.get_hudi_datestr_from_timestamp(1640995200000)
+        dt = hopsworks.internal.platform.util.get_hudi_datestr_from_timestamp(
+            1640995200000
+        )
         assert dt == "20220101000000000"
 
     def test_convert_event_time_to_timestamp_timestamp(self):
-        dt = hopsworks.internal.platform.util.convert_event_time_to_timestamp(1640995200)
+        dt = hopsworks.internal.platform.util.convert_event_time_to_timestamp(
+            1640995200
+        )
         assert dt == 1640995200000
 
     def test_convert_event_time_to_timestamp_datetime(self):
@@ -748,7 +758,9 @@ class TestUtil:
         assert dt == 1640995200000
 
     def test_convert_event_time_to_timestamp_date(self):
-        dt = hopsworks.internal.platform.util.convert_event_time_to_timestamp(date(2022, 1, 1))
+        dt = hopsworks.internal.platform.util.convert_event_time_to_timestamp(
+            date(2022, 1, 1)
+        )
         assert dt == 1640995200000
 
     def test_convert_event_time_to_timestamp_string(self):
@@ -764,7 +776,9 @@ class TestUtil:
         assert dt == 1640995200000
 
     def test_convert_event_time_to_timestamp_yyyy_mm_dd(self):
-        timestamp = hopsworks.internal.platform.util.get_timestamp_from_date_string("2022-01-01")
+        timestamp = hopsworks.internal.platform.util.get_timestamp_from_date_string(
+            "2022-01-01"
+        )
         assert timestamp == 1640995200000
 
     def test_convert_event_time_to_timestamp_yyyy_mm_dd_hh(self):
@@ -793,15 +807,21 @@ class TestUtil:
 
     def test_convert_event_time_to_timestamp_yyyy_mm_dd_hh_mm_ss_error(self):
         with pytest.raises(ValueError):
-            hopsworks.internal.platform.util.get_timestamp_from_date_string("2022-13-01 00:00:00")
+            hopsworks.internal.platform.util.get_timestamp_from_date_string(
+                "2022-13-01 00:00:00"
+            )
 
     def test_convert_event_time_to_timestamp_yyyy_mm_dd_hh_mm_ss_error2(self):
         with pytest.raises(ValueError):
-            hopsworks.internal.platform.util.get_timestamp_from_date_string("202-13-01 00:00:00")
+            hopsworks.internal.platform.util.get_timestamp_from_date_string(
+                "202-13-01 00:00:00"
+            )
 
     def test_convert_event_time_to_timestamp_yyyy_mm_dd_hh_mm_ss_error3(self):
         with pytest.raises(ValueError):
-            hopsworks.internal.platform.util.get_timestamp_from_date_string("00:00:00 2022-01-01")
+            hopsworks.internal.platform.util.get_timestamp_from_date_string(
+                "00:00:00 2022-01-01"
+            )
 
     def test_convert_hudi_commit_time_to_timestamp(self):
         timestamp = hopsworks.internal.platform.util.get_timestamp_from_date_string(
@@ -835,7 +855,9 @@ class TestUtil:
 
     def test_get_job_url(self, mocker):
         # Arrange
-        mock_client_get_instance = mocker.patch("hopsworks.internal.platform.client.get_instance")
+        mock_client_get_instance = mocker.patch(
+            "hopsworks.internal.platform.client.get_instance"
+        )
 
         # Act
         hopsworks.internal.platform.util.get_job_url(href="1/2/3/4/5/6/7/8")
@@ -852,7 +874,9 @@ class TestUtil:
         # Arrange
         feature_store_id = 99
         feature_group_id = 10
-        mock_client_get_instance = mocker.patch("hopsworks.internal.platform.client.get_instance")
+        mock_client_get_instance = mocker.patch(
+            "hopsworks.internal.platform.client.get_instance"
+        )
         mock_util_get_hostname_replaced_url = mocker.patch(
             "hopsworks.internal.platform.util.get_hostname_replaced_url"
         )
@@ -886,7 +910,9 @@ class TestUtil:
             Feature(name="feature4", type="array<double>"),
         ]
         # Call the method and expect no exceptions
-        hopsworks.internal.platform.util.validate_embedding_feature_type(embedding_index, schema)
+        hopsworks.internal.platform.util.validate_embedding_feature_type(
+            embedding_index, schema
+        )
 
     def test_invalid_embedding_type(self):
         embedding_index = EmbeddingIndex(
@@ -926,7 +952,9 @@ class TestUtil:
         # Define an empty schema
         schema = []
         # Call the method with an empty schema
-        hopsworks.internal.platform.util.validate_embedding_feature_type(embedding_index, schema)
+        hopsworks.internal.platform.util.validate_embedding_feature_type(
+            embedding_index, schema
+        )
         # No exception should be raised
 
     @pytest.mark.skipif(

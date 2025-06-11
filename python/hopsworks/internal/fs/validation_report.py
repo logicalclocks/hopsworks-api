@@ -25,8 +25,8 @@ if TYPE_CHECKING:
 import humps
 from hopsworks.internal.fs import util
 from hopsworks.internal.fs.core.constants import HAS_GREAT_EXPECTATIONS
-from hopsworks.internal.platform.decorators import uses_great_expectations
 from hopsworks.internal.fs.ge_validation_result import ValidationResult
+from hopsworks.internal.platform.decorators import uses_great_expectations
 
 
 if HAS_GREAT_EXPECTATIONS:
