@@ -1,0 +1,47 @@
+{
+    "get": {
+        "response": {
+            "count": 2,
+            "items": [
+                {
+                    "groupBy": [
+                        "..."
+                    ],
+                    "groupInterval": 0,
+                    "groupWait": 0,
+                    "repeatInterval": 0,
+                    "receiver": "project1__slack_receiver",
+                    "match": {
+                        "api": "alerts-api",
+                        "project": "project1",
+                        "severity": "info",
+                        "status": "script_finished",
+                        "type": "project-alert"
+                    }
+                },
+                {
+                    "groupBy": [
+                        "..."
+                    ],
+                    "groupInterval": 0,
+                    "groupWait": 0,
+                    "repeatInterval": 0,
+                    "receiver": "project1__email_receiver",
+                    "match": {
+                        "api": "alerts-api",
+                        "project": "project1",
+                        "severity": "Warning",
+                        "status": "script_failed",
+                        "type": "project-alert"
+                    }
+                }
+            ]
+        }
+    },
+    "get_empty": {
+        "response": {
+            "count": 0,
+            "items": []
+        }
+    }
+}

@@ -19,13 +19,13 @@ from __future__ import annotations
 import json
 import warnings
 from datetime import datetime, timezone
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 import humps
 from hopsworks.internal import aliases
-from hopsworks.internal.platform import client, usage, util
+from hopsworks.internal.platform import alert, client, usage, util
 from hopsworks.internal.platform.client.exceptions import JobException
-from hopsworks.internal.platform.core import execution_api, job_api
+from hopsworks.internal.platform.core import alerts_api, execution_api, job_api
 from hopsworks.internal.platform.engine import execution_engine
 from hopsworks.internal.platform.job_schedule import JobSchedule
 
@@ -71,6 +71,7 @@ class Job:
         self._execution_api = execution_api.ExecutionApi()
         self._execution_engine = execution_engine.ExecutionEngine()
         self._job_api = job_api.JobApi()
+        self._alerts_api = alerts_api.AlertsApi()
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -379,6 +380,60 @@ class Job:
             enabled=True,
         )
         return self._update_schedule(job_schedule)
+
+    @usage.method_logger
+    def get_alerts(self) -> List[alert.JobAlert]:
+        """Get all alerts for the job.
+
+        # Returns
+            `List[JobAlert]`: list of JobAlert objects
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        """
+        return self._alerts_api.get_job_alerts(self._name)
+
+    @usage.method_logger
+    def get_alert(self, alert_id: int) -> alert.JobAlert:
+        """Get an alert for the job by ID.
+
+        # Arguments
+            alert_id: ID of the alert
+        # Returns
+            `JobAlert`: the JobAlert object
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        """
+        return self._alerts_api.get_job_alert(self._name, alert_id)
+
+    @usage.method_logger
+    def create_alert(
+        self,
+        receiver: str,
+        status: str,
+        severity: str,
+    ) -> alert.JobAlert:
+        """Create an alert for the job.
+
+        ```python
+        # Create alert for the job
+        job.create_alert(
+            receiver="email",
+            status="failed",
+            severity="critical"
+        )
+        ```
+        # Arguments
+            receiver: The receiver of the alert
+            status: The status of the alert. Valid values are "long_running", "failed", "finished", "killed"
+            severity: The severity of the alert. Valid values are "critical", "warning", "info"
+        # Returns
+            `JobAlert`: The created JobAlert object
+        # Raises
+            `ValueError`: If the status is not valid.
+            `ValueError`: If the severity is not valid.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        """
+        return self._alerts_api.create_job_alert(self._name, receiver, status, severity)
 
     def _update_schedule(self, job_schedule):
         self._job_schedule = self._job_api.create_or_update_schedule_job(
