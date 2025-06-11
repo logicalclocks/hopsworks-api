@@ -18,6 +18,10 @@ from typing import List, Optional
 
 import humps
 from hopsworks.internal.platform import util
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsml.inference_endpoint")
 
 
 class InferenceEndpointPort:

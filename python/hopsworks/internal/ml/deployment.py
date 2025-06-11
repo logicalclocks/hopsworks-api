@@ -27,6 +27,10 @@ from hopsworks.internal.platform import client, usage, util
 from hopsworks.internal.platform.client.exceptions import ModelServingException
 from hopsworks.internal.platform.client.istio.utils.infer_type import InferInput
 from hopsworks.internal.platform.constants import DEPLOYABLE_COMPONENT, PREDICTOR_STATE
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsml.deployment")
 
 
 class Deployment:
