@@ -18,11 +18,15 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, TypeVar, Union
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import engine
 from hopsworks.internal.fs.constructor import (
     external_feature_group_alias,
     hudi_feature_group_alias,
 )
+
+
+aliases.publish("hsfs.constructor.fs_query")
 
 
 class FsQuery:

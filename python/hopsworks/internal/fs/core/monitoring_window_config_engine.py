@@ -19,6 +19,7 @@ import re
 from datetime import datetime, timedelta
 from typing import List, Optional, Tuple, TypeVar, Union
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import feature_group, feature_view, util
 from hopsworks.internal.fs.core import monitoring_window_config as mwc
 from hopsworks.internal.fs.core import statistics_engine
@@ -27,6 +28,9 @@ from hopsworks.internal.fs.core.feature_descriptive_statistics import (
 )
 from hopsworks.internal.fs.training_dataset_split import TrainingDatasetSplit
 from hopsworks.internal.platform.client.exceptions import RestAPIError
+
+
+aliases.publish("hsfs.core.monitoring_window_config_engine")
 
 
 class MonitoringWindowConfigEngine:

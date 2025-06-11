@@ -23,7 +23,11 @@ from typing import (
 )
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import util
+
+
+aliases.publish("hsfs.core.data_source")
 
 
 class DataSource:

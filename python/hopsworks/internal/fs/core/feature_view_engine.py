@@ -34,7 +34,6 @@ from hopsworks.internal.fs.core import (
     feature_view_api,
     query_constructor_api,
     statistics_engine,
-    tags_api,
     training_dataset_engine,
     transformation_function_engine,
 )
@@ -44,11 +43,16 @@ from hopsworks.internal.fs.training_dataset_split import TrainingDatasetSplit
 from hopsworks.internal.platform import client
 from hopsworks.internal.platform.client import exceptions
 from hopsworks.internal.platform.client.exceptions import FeatureStoreException
+from hopsworks.internal.platform.core import tags_api
 from hopsworks.internal.platform.core.constants import HAS_NUMPY
 
 
 if HAS_NUMPY:
     import numpy as np
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsfs.core.feature_view_engine")
 
 
 class FeatureViewEngine:

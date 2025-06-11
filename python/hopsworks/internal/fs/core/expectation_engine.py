@@ -17,8 +17,12 @@ from __future__ import annotations
 
 from typing import Optional
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs.core import expectation_api
 from hopsworks.internal.fs.ge_expectation import GeExpectation
+
+
+aliases.publish("hsfs.core.expectation_engine")
 
 
 class ExpectationEngine:

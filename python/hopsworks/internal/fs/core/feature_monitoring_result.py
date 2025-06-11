@@ -20,10 +20,14 @@ from datetime import date, datetime
 from typing import Optional, Union
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import util
 from hopsworks.internal.fs.core.feature_descriptive_statistics import (
     FeatureDescriptiveStatistics,
 )
+
+
+aliases.publish("hsfs.core.feature_monitoring_result")
 
 
 class FeatureMonitoringResult:

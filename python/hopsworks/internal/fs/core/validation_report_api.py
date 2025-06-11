@@ -17,9 +17,13 @@ from __future__ import annotations
 
 from typing import List, Union
 
-from hopsworks.internal.fs.core.variable_api import VariableApi
+from hopsworks.internal import aliases
 from hopsworks.internal.fs.validation_report import ValidationReport
 from hopsworks.internal.platform import client
+from hopsworks.internal.platform.core.variable_api import VariableApi
+
+
+aliases.publish("hsfs.core.valiadation_report_api")
 
 
 class ValidationReportApi:

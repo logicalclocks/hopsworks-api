@@ -18,7 +18,11 @@ from __future__ import annotations
 import json
 import warnings
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import util
+
+
+aliases.publish("hsfs.core.deltastreamer_jobconf")
 
 
 class DeltaStreamerJobConf:

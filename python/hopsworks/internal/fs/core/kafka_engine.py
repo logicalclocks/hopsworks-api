@@ -59,6 +59,12 @@ if TYPE_CHECKING:
     from hopsworks.internal.fs.feature_group import ExternalFeatureGroup, FeatureGroup
 
 
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsfs.core.kafka_engine")
+
+
 @uses_confluent_kafka
 def init_kafka_consumer(
     feature_store_id: int,

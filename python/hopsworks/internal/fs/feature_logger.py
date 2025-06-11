@@ -17,6 +17,11 @@
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, TypeVar
 
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsfs.feature_logger")
+
 
 class FeatureLogger(ABC):
     @abstractmethod

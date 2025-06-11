@@ -26,6 +26,7 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import engine, util
 from hopsworks.internal.fs.core.feature_descriptive_statistics import (
     FeatureDescriptiveStatistics,
@@ -36,6 +37,9 @@ from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.platform.constants import FEATURES
 from hopsworks.internal.platform.decorators import typechecked
 from packaging.version import Version
+
+
+aliases.publish("hsfs.hopsworks_udf")
 
 
 class UDFExecutionMode(Enum):

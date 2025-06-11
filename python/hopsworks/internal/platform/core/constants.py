@@ -16,6 +16,11 @@
 
 import importlib.util
 
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsfs.core.constants")
+
 
 # Avro
 HAS_FAST_AVRO: bool = importlib.util.find_spec("fastavro") is not None

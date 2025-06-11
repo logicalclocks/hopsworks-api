@@ -18,9 +18,13 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import util
 from hopsworks.internal.fs.constructor import query
 from hopsworks.internal.platform.decorators import typechecked
+
+
+aliases.publish("hsfs.constructor.join")
 
 
 @typechecked

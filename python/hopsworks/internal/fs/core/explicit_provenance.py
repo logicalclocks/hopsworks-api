@@ -20,6 +20,7 @@ from enum import Enum
 from typing import Optional, Set
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import (
     feature_group,
     feature_view,
@@ -27,6 +28,9 @@ from hopsworks.internal.fs import (
     training_dataset,
     util,
 )
+
+
+aliases.publish("hsfs.core.explicit_provenance")
 
 
 class Artifact:

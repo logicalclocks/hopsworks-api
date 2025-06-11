@@ -15,8 +15,12 @@
 #
 from __future__ import annotations
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs.constructor import fs_query
 from hopsworks.internal.platform import client
+
+
+aliases.publish("hsfs.core.query_constructor_api")
 
 
 class QueryConstructorApi:

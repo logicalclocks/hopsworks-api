@@ -39,7 +39,7 @@ from typing import (
     Union,
 )
 
-from hopsworks.internal.fs.core.type_systems import (
+from hopsworks.internal.platform.core.type_systems import (
     cast_column_to_offline_type,
     cast_column_to_online_type,
 )
@@ -53,6 +53,7 @@ import hopsworks.internal.fs as hsfs
 import pandas as pd
 import pyarrow as pa
 from botocore.response import StreamingBody
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import (
     feature,
     feature_view,
@@ -64,8 +65,6 @@ from hopsworks.internal.fs.constructor import query
 from hopsworks.internal.fs.core import (
     feature_group_api,
     feature_view_api,
-    ingestion_job_conf,
-    job,
     kafka_engine,
     statistics_api,
     storage_connector_api,
@@ -73,27 +72,27 @@ from hopsworks.internal.fs.core import (
     training_dataset_job_conf,
     transformation_function_engine,
 )
-from hopsworks.internal.fs.core.constants import (
-    HAS_AIOMYSQL,
-    HAS_GREAT_EXPECTATIONS,
-    HAS_NUMPY,
-    HAS_PANDAS,
-    HAS_PYARROW,
-    HAS_SQLALCHEMY,
-)
-from hopsworks.internal.fs.core.type_systems import PYARROW_HOPSWORKS_DTYPE_MAPPING
 from hopsworks.internal.fs.core.vector_db_client import VectorDbClient
 from hopsworks.internal.fs.feature_group import ExternalFeatureGroup, FeatureGroup
 from hopsworks.internal.fs.hopsworks_udf import HopsworksUdf, UDFExecutionMode
 from hopsworks.internal.fs.training_dataset import TrainingDataset
 from hopsworks.internal.fs.training_dataset_feature import TrainingDatasetFeature
 from hopsworks.internal.fs.training_dataset_split import TrainingDatasetSplit
-from hopsworks.internal.platform import client
+from hopsworks.internal.platform import client, job
 from hopsworks.internal.platform.client.exceptions import FeatureStoreException
-from hopsworks.internal.platform.core import dataset_api, job_api
+from hopsworks.internal.platform.core import dataset_api, ingestion_job_conf, job_api
 from hopsworks.internal.platform.core.constants import (
+    HAS_AIOMYSQL,
+    HAS_GREAT_EXPECTATIONS,
+    HAS_NUMPY,
+    HAS_PANDAS,
     HAS_POLARS,
+    HAS_PYARROW,
+    HAS_SQLALCHEMY,
     polars_not_installed_message,
+)
+from hopsworks.internal.platform.core.type_systems import (
+    PYARROW_HOPSWORKS_DTYPE_MAPPING,
 )
 from hopsworks.internal.platform.decorators import uses_great_expectations, uses_polars
 
@@ -111,7 +110,7 @@ if HAS_SQLALCHEMY:
     from sqlalchemy import sql
 
 if HAS_PANDAS:
-    from hopsworks.internal.fs.core.type_systems import (
+    from hopsworks.internal.platform.core.type_systems import (
         convert_pandas_dtype_to_offline_type,
     )
 
@@ -119,6 +118,9 @@ if HAS_POLARS:
     import polars as pl
 
 _logger = logging.getLogger(__name__)
+
+
+aliases.publish("hsfs.engine.python")
 
 
 class Engine:

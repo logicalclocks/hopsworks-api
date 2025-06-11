@@ -21,6 +21,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import util
 from hopsworks.internal.fs.core import transformation_function_engine
 from hopsworks.internal.fs.core.feature_descriptive_statistics import (
@@ -36,6 +37,9 @@ from packaging.version import Version
 
 
 _logger = logging.getLogger(__name__)
+
+
+aliases.publish("hsfs.transformation_function")
 
 
 class TransformationType(Enum):

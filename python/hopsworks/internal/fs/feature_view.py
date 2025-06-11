@@ -34,12 +34,12 @@ from typing import (
 
 import humps
 import pandas as pd
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import (
     feature_group,
     storage_connector,
     training_dataset,
     training_dataset_feature,
-    usage,
     util,
 )
 from hopsworks.internal.fs import serving_key as skm
@@ -50,7 +50,6 @@ from hopsworks.internal.fs.core import (
     feature_monitoring_config_engine,
     feature_monitoring_result_engine,
     feature_view_engine,
-    job,
     statistics_engine,
     transformation_function_engine,
     vector_server,
@@ -59,7 +58,6 @@ from hopsworks.internal.fs.core import feature_monitoring_config as fmc
 from hopsworks.internal.fs.core import feature_monitoring_result as fmr
 from hopsworks.internal.fs.core.feature_logging import FeatureLogging
 from hopsworks.internal.fs.core.feature_view_api import FeatureViewApi
-from hopsworks.internal.fs.core.job import Job
 from hopsworks.internal.fs.core.vector_db_client import VectorDbClient
 from hopsworks.internal.fs.feature import Feature
 from hopsworks.internal.fs.feature_logger import FeatureLogger
@@ -72,10 +70,11 @@ from hopsworks.internal.fs.transformation_function import (
     TransformationType,
 )
 from hopsworks.internal.ml.model import Model
-from hopsworks.internal.platform import tag
+from hopsworks.internal.platform import job, tag, usage
 from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.platform.core.constants import HAS_NUMPY, HAS_POLARS
 from hopsworks.internal.platform.decorators import typechecked
+from hopsworks.internal.platform.job import Job
 
 
 if HAS_NUMPY:
@@ -83,6 +82,10 @@ if HAS_NUMPY:
 
 
 _logger = logging.getLogger(__name__)
+
+
+aliases.publish("hsfs.feature_view")
+
 
 TrainingDatasetDataFrameTypes = Union[
     pd.DataFrame,

@@ -18,7 +18,11 @@ import json
 from typing import Any, Dict, Optional
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import util
+
+
+aliases.publish("hsfs.constructor.prepared_statement_parameter")
 
 
 class PreparedStatementParameter:

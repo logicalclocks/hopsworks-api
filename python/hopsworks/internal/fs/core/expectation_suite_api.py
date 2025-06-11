@@ -17,9 +17,13 @@ from __future__ import annotations
 
 from typing import Optional
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import expectation_suite as es
-from hopsworks.internal.fs.core.variable_api import VariableApi
 from hopsworks.internal.platform import client
+from hopsworks.internal.platform.core.variable_api import VariableApi
+
+
+aliases.publish("hsfs.core.expectation_suite_api")
 
 
 class ExpectationSuiteApi:

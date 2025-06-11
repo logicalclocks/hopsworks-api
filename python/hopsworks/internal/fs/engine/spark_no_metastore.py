@@ -21,7 +21,11 @@ try:
 except ImportError:
     pass
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs.engine import spark
+
+
+aliases.publish("hsfs.engine.spark_no_metastore")
 
 
 class Engine(spark.Engine):

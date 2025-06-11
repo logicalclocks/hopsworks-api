@@ -17,9 +17,13 @@ from __future__ import annotations
 
 from typing import List, Optional, Union
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs.core import feature_monitoring_config as fmc
-from hopsworks.internal.fs.core.job import Job
 from hopsworks.internal.platform import client, decorators
+from hopsworks.internal.platform.job import Job
+
+
+aliases.publish("hsfs.core.feature_monitoring_config_api")
 
 
 class FeatureMonitoringConfigApi:

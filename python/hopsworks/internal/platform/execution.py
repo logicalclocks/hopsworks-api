@@ -27,7 +27,7 @@ from hopsworks.internal.platform.core import execution_api
 from hopsworks.internal.platform.engine import execution_engine
 
 
-aliases.publish("hopsworks.execution")
+aliases.publish("hopsworks.execution", "hsfs.core.execution")
 
 
 class Execution:

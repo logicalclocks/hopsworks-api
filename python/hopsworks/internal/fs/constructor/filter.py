@@ -18,7 +18,11 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, Optional, Union
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import feature, util
+
+
+aliases.publish("hsfs.constructor.filter")
 
 
 class Filter:

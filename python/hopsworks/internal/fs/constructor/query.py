@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 
 import humps
 import pandas as pd
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import engine, storage_connector, util
 from hopsworks.internal.fs import feature_group as fg_mod
 from hopsworks.internal.fs.constructor import join
@@ -40,6 +41,9 @@ _logger = logging.getLogger(__name__)
 
 if HAS_NUMPY:
     import numpy as np
+
+
+aliases.publish("hsfs.constructor.query")
 
 
 @typechecked

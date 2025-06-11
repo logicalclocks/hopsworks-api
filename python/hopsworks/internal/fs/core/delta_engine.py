@@ -24,6 +24,10 @@ try:
     from delta.tables import DeltaTable
 except ImportError:
     pass
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsfs.core.delta_engine")
 
 
 class DeltaEngine:

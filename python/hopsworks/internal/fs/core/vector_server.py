@@ -35,6 +35,7 @@ from typing import (
 )
 
 import pandas as pd
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import (
     feature_view,
     training_dataset,
@@ -82,6 +83,9 @@ if TYPE_CHECKING:
     from hopsworks.internal.fs.feature_group import FeatureGroup
 
 _logger = logging.getLogger(__name__)
+
+
+aliases.publish("hsfs.core.vector_server")
 
 
 class VectorServer:

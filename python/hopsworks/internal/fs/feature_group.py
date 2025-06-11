@@ -36,11 +36,11 @@ import avro.schema
 import hopsworks.internal.fs as hsfs
 import humps
 import pandas as pd
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import (
     engine,
     feature,
     feature_group_writer,
-    user,
     util,
 )
 from hopsworks.internal.fs import (
@@ -71,12 +71,6 @@ from hopsworks.internal.fs.core import (
 )
 from hopsworks.internal.fs.core import feature_monitoring_config as fmc
 from hopsworks.internal.fs.core import feature_monitoring_result as fmr
-from hopsworks.internal.fs.core.constants import (
-    HAS_CONFLUENT_KAFKA,
-    HAS_GREAT_EXPECTATIONS,
-)
-from hopsworks.internal.fs.core.job import Job
-from hopsworks.internal.fs.core.variable_api import VariableApi
 from hopsworks.internal.fs.core.vector_db_client import VectorDbClient
 from hopsworks.internal.fs.embedding import EmbeddingIndex
 from hopsworks.internal.fs.ge_validation_result import ValidationResult
@@ -89,16 +83,23 @@ from hopsworks.internal.fs.transformation_function import (
     TransformationType,
 )
 from hopsworks.internal.fs.validation_report import ValidationReport
-from hopsworks.internal.platform import tag
+from hopsworks.internal.platform import tag, user
 from hopsworks.internal.platform.client.exceptions import (
     FeatureStoreException,
     RestAPIError,
 )
 from hopsworks.internal.platform.core import job_api
-from hopsworks.internal.platform.core.constants import HAS_NUMPY, HAS_POLARS
+from hopsworks.internal.platform.core.constants import (
+    HAS_CONFLUENT_KAFKA,
+    HAS_GREAT_EXPECTATIONS,
+    HAS_NUMPY,
+    HAS_POLARS,
+)
+from hopsworks.internal.platform.core.variable_api import VariableApi
 
 # if great_expectations is not installed, we will default to using native Hopsworks class as return values
 from hopsworks.internal.platform.decorators import typechecked, uses_great_expectations
+from hopsworks.internal.platform.job import Job
 
 
 if HAS_GREAT_EXPECTATIONS:
@@ -115,6 +116,9 @@ if HAS_POLARS:
 
 
 _logger = logging.getLogger(__name__)
+
+
+aliases.publish("hsfs.feature_group")
 
 
 @typechecked

@@ -31,6 +31,12 @@ if TYPE_CHECKING:
     import polars as pl
 
 
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsfs.core.transformation_function_engine")
+
+
 class TransformationFunctionEngine:
     BUILTIN_FN_NAMES = [
         "min_max_scaler",

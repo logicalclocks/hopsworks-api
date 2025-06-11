@@ -17,8 +17,12 @@ from __future__ import annotations
 
 from typing import Dict, List, Union
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import ge_validation_result
 from hopsworks.internal.platform import client
+
+
+aliases.publish("hsfs.core.validation_result_api")
 
 
 class ValidationResultApi:

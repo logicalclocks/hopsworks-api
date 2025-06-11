@@ -30,7 +30,7 @@ from hopsworks.internal.platform.engine import execution_engine
 from hopsworks.internal.platform.job_schedule import JobSchedule
 
 
-aliases.publish("hopsworks.job")
+aliases.publish("hopsworks.job", "hsfs.core.job")
 
 
 class Job:

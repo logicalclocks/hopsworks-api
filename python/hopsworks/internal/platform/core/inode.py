@@ -18,6 +18,10 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 import humps
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsfs.core.inode")
 
 
 class Inode:

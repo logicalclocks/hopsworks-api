@@ -29,7 +29,6 @@ from hopsworks.internal.fs import (
     feature_view,
     storage_connector,
     training_dataset,
-    usage,
     util,
 )
 from hopsworks.internal.fs.constructor.query import Query
@@ -49,6 +48,7 @@ from hopsworks.internal.fs.hopsworks_udf import HopsworksUdf
 from hopsworks.internal.fs.online_config import OnlineConfig
 from hopsworks.internal.fs.statistics_config import StatisticsConfig
 from hopsworks.internal.fs.transformation_function import TransformationFunction
+from hopsworks.internal.platform import usage
 from hopsworks.internal.platform.core.constants import HAS_NUMPY, HAS_POLARS
 from hopsworks.internal.platform.decorators import typechecked
 
@@ -58,6 +58,10 @@ if HAS_NUMPY:
 
 if HAS_POLARS:
     import polars as pl
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsfs.feature_store")
 
 
 @typechecked

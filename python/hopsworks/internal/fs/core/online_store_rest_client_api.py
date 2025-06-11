@@ -18,9 +18,10 @@ import logging
 from datetime import date, datetime
 from typing import Any, Dict
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import util
-from hopsworks.internal.fs.core.constants import HAS_NUMPY
 from hopsworks.internal.platform.client import exceptions, online_store_rest_client
+from hopsworks.internal.platform.core.constants import HAS_NUMPY
 from requests import Response
 
 
@@ -28,6 +29,10 @@ if HAS_NUMPY:
     import numpy as np
 
 _logger = logging.getLogger(__name__)
+
+
+aliases.publish("hsfs.core.online_store_rest_client_api")
+
 
 if HAS_NUMPY:
     # Custom JSON encoder to handle numpy/datetime types in case

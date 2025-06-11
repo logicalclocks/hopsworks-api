@@ -22,6 +22,7 @@ from functools import wraps
 
 import opensearchpy
 import urllib3
+from hopsworks.internal import aliases
 from hopsworks.internal.platform.client.exceptions import (
     FeatureStoreException,
     VectorDatabaseException,
@@ -73,6 +74,9 @@ def _handle_opensearch_exception(func):
                 raise e
 
     return error_handler_wrapper
+
+
+aliases.publish("hsfs.core.opensearch")
 
 
 class OpensearchRequestOption:

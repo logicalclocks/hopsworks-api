@@ -22,7 +22,7 @@ from hopsworks.internal import aliases
 from hopsworks.internal.platform import util
 
 
-aliases.publish("hopsworks.job_schedule")
+aliases.publish("hopsworks.job_schedule", "hsfs.core.job_schedule")
 
 
 class JobSchedule:

@@ -101,12 +101,12 @@ from hopsworks.internal.fs.core import (
     kafka_engine,
     transformation_function_engine,
 )
-from hopsworks.internal.fs.core.constants import HAS_AVRO, HAS_GREAT_EXPECTATIONS
 from hopsworks.internal.fs.storage_connector import StorageConnector
 from hopsworks.internal.fs.training_dataset_split import TrainingDatasetSplit
 from hopsworks.internal.platform import client
 from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.platform.core import dataset_api
+from hopsworks.internal.platform.core.constants import HAS_AVRO, HAS_GREAT_EXPECTATIONS
 from hopsworks.internal.platform.decorators import uses_great_expectations
 
 
@@ -115,6 +115,12 @@ if HAS_GREAT_EXPECTATIONS:
 
 if HAS_AVRO:
     import avro
+
+
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsfs.engine.spark")
 
 
 class Engine:

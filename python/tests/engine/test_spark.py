@@ -36,12 +36,12 @@ from hopsworks.internal.fs import (
 )
 from hopsworks.internal.fs.constructor import hudi_feature_group_alias, query
 from hopsworks.internal.fs.core import online_ingestion, training_dataset_engine
-from hopsworks.internal.fs.core.constants import HAS_GREAT_EXPECTATIONS
 from hopsworks.internal.fs.engine import spark
 from hopsworks.internal.fs.hopsworks_udf import udf
 from hopsworks.internal.fs.training_dataset_feature import TrainingDatasetFeature
 from hopsworks.internal.fs.transformation_function import TransformationType
 from hopsworks.internal.platform.client import exceptions
+from hopsworks.internal.platform.core.constants import HAS_GREAT_EXPECTATIONS
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import lit
 from pyspark.sql.types import (

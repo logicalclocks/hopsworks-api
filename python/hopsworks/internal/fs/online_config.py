@@ -18,6 +18,10 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 import humps
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsfs.online_config")
 
 
 class OnlineConfig:

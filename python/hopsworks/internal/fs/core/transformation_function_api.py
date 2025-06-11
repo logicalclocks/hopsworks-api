@@ -17,8 +17,12 @@ from __future__ import annotations
 
 from typing import List, Optional, Union
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import transformation_function
 from hopsworks.internal.platform import client, decorators
+
+
+aliases.publish("hsfs.core.transformation_function_api")
 
 
 class TransformationFunctionApi:

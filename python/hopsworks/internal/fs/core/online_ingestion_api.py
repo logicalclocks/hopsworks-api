@@ -17,9 +17,13 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import feature_group as fg_mod
 from hopsworks.internal.fs.core import online_ingestion
 from hopsworks.internal.platform import client
+
+
+aliases.publish("hsfs.core.online_ingestion_api")
 
 
 class OnlineIngestionApi:

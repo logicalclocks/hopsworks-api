@@ -39,6 +39,11 @@ from hopsworks.internal.platform.core.constants import HAS_NUMPY
 if HAS_NUMPY:
     import numpy as np
 
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsfs.training_dataset")
+
 
 class TrainingDatasetBase:
     NOT_FOUND_ERROR_CODE = 270012

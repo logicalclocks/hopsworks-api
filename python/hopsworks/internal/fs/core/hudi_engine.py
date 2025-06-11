@@ -15,8 +15,12 @@
 #
 from __future__ import annotations
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import feature_group_commit, util
 from hopsworks.internal.fs.core import feature_group_api
+
+
+aliases.publish("hsfs.core.hudi_engine")
 
 
 class HudiEngine:

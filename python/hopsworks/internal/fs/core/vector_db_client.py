@@ -20,14 +20,18 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import hopsworks.internal.fs as hsfs
+from hopsworks.internal import aliases
 from hopsworks.internal.fs.constructor.filter import Filter, Logic
 from hopsworks.internal.fs.constructor.join import Join
-from hopsworks.internal.fs.core.opensearch import OpenSearchClientSingleton
 from hopsworks.internal.fs.feature import Feature
 from hopsworks.internal.platform.client.exceptions import (
     FeatureStoreException,
     VectorDatabaseException,
 )
+from hopsworks.internal.platform.core.opensearch import OpenSearchClientSingleton
+
+
+aliases.publish("hsfs.core.vector_db_client")
 
 
 class VectorDbClient:

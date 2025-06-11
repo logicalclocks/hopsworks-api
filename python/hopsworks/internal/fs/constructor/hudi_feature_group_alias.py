@@ -18,7 +18,11 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import feature_group as feature_group_module
+
+
+aliases.publish("hsfs.constructor.hudi_feature_group_alias")
 
 
 class HudiFeatureGroupAlias:

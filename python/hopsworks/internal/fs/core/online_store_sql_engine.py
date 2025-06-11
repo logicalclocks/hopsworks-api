@@ -21,14 +21,15 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import util
 from hopsworks.internal.fs.core import (
     feature_view_api,
     storage_connector_api,
     training_dataset_api,
 )
-from hopsworks.internal.fs.core.constants import HAS_AIOMYSQL, HAS_SQLALCHEMY
 from hopsworks.internal.platform.core import variable_api
+from hopsworks.internal.platform.core.constants import HAS_AIOMYSQL, HAS_SQLALCHEMY
 from hopsworks.internal.platform.util import AsyncTask, AsyncTaskThread
 
 
@@ -52,6 +53,9 @@ if HAS_AIOMYSQL and HAS_SQLALCHEMY:
 
 
 _logger = logging.getLogger(__name__)
+
+
+aliases.publish("hsfs.core.online_store_sql_engine")
 
 
 class OnlineStoreSqlClient:

@@ -23,13 +23,19 @@ if TYPE_CHECKING:
 
 from hopsworks.internal.fs import util
 from hopsworks.internal.fs.core import validation_report_api
-from hopsworks.internal.fs.core.constants import HAS_GREAT_EXPECTATIONS
 from hopsworks.internal.fs.validation_report import ValidationReport
 from hopsworks.internal.platform import client
+from hopsworks.internal.platform.core.constants import HAS_GREAT_EXPECTATIONS
 
 
 if HAS_GREAT_EXPECTATIONS:
     import great_expectations
+
+
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsfs.core.validation_report_engine")
 
 
 class ValidationReportEngine:

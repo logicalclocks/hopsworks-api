@@ -26,6 +26,7 @@ from typing import Any, Dict, List, Optional, TypeVar, Union
 
 import humps
 import pandas as pd
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import engine
 from hopsworks.internal.fs.core import data_source as ds
 from hopsworks.internal.fs.core import data_source_api, storage_connector_api
@@ -40,6 +41,9 @@ if HAS_POLARS:
     import polars as pl
 
 _logger = logging.getLogger(__name__)
+
+
+aliases.publish("hsfs.storage_connector")
 
 
 class StorageConnector(ABC):

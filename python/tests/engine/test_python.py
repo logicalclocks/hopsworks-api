@@ -34,13 +34,15 @@ from hopsworks.internal.fs.constructor.hudi_feature_group_alias import (
     HudiFeatureGroupAlias,
 )
 from hopsworks.internal.fs.core import inode, job, online_ingestion
-from hopsworks.internal.fs.core.constants import HAS_GREAT_EXPECTATIONS
 from hopsworks.internal.fs.engine import python
 from hopsworks.internal.fs.expectation_suite import ExpectationSuite
 from hopsworks.internal.fs.hopsworks_udf import udf
 from hopsworks.internal.fs.training_dataset_feature import TrainingDatasetFeature
 from hopsworks.internal.platform.client import exceptions
-from hopsworks.internal.platform.core.constants import HAS_POLARS
+from hopsworks.internal.platform.core.constants import (
+    HAS_GREAT_EXPECTATIONS,
+    HAS_POLARS,
+)
 
 
 if HAS_POLARS:

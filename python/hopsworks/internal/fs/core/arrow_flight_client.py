@@ -35,9 +35,9 @@ if not HAS_PYARROW:
 import pyarrow
 import pyarrow._flight
 import pyarrow.flight
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import feature_group
 from hopsworks.internal.fs.constructor import query
-from hopsworks.internal.fs.core.variable_api import VariableApi
 from hopsworks.internal.fs.storage_connector import StorageConnector
 from hopsworks.internal.platform import client
 from hopsworks.internal.platform.client.exceptions import FeatureStoreException
@@ -45,6 +45,7 @@ from hopsworks.internal.platform.core.constants import (
     HAS_POLARS,
     polars_not_installed_message,
 )
+from hopsworks.internal.platform.core.variable_api import VariableApi
 from pyarrow.flight import FlightServerError
 from retrying import retry
 
@@ -55,6 +56,9 @@ if HAS_POLARS:
 _logger = logging.getLogger(__name__)
 
 _arrow_flight_instance = None
+
+
+aliases.publish("hsfs.core.arrow_flight_client")
 
 
 def get_instance() -> ArrowFlightClient:

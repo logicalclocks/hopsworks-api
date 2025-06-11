@@ -15,14 +15,17 @@
 #
 from __future__ import annotations
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import util
 from hopsworks.internal.fs.core import (
     feature_group_api,
     storage_connector_api,
-    tags_api,
 )
 from hopsworks.internal.platform.client.exceptions import FeatureStoreException
-from hopsworks.internal.platform.core import kafka_api
+from hopsworks.internal.platform.core import kafka_api, tags_api
+
+
+aliases.publish("hsfs.core.feature_group_base_engine")
 
 
 class FeatureGroupBaseEngine:

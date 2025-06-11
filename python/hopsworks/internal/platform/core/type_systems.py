@@ -35,6 +35,12 @@ if TYPE_CHECKING:
     import pandas as pd
     import polars as pl
 
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsfs.core.type_systems")
+
+
 if HAS_PYARROW:
     import pyarrow as pa
 

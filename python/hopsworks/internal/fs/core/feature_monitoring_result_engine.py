@@ -18,6 +18,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Dict, List, Optional, Tuple, Union
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import util
 from hopsworks.internal.fs.core import feature_monitoring_config as fmc
 from hopsworks.internal.fs.core.feature_descriptive_statistics import (
@@ -32,6 +33,9 @@ from hopsworks.internal.fs.core.feature_monitoring_result_api import (
 )
 from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.platform.core.job_api import JobApi
+
+
+aliases.publish("hsfs.core.feature_monitoring_result_engine")
 
 
 class FeatureMonitoringResultEngine:

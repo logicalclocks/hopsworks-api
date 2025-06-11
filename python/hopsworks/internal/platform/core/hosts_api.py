@@ -18,7 +18,11 @@ from __future__ import annotations
 
 from typing import Any, List
 
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import client
+
+
+aliases.publish("hsfs.core.hosts_api")
 
 
 class HostsApi:

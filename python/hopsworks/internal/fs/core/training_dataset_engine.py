@@ -17,12 +17,16 @@ from __future__ import annotations
 
 import warnings
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import engine, training_dataset_feature
 from hopsworks.internal.fs.constructor import query
 from hopsworks.internal.fs.core import (
-    tags_api,
     training_dataset_api,
 )
+from hopsworks.internal.platform.core import tags_api
+
+
+aliases.publish("hsfs.core.training_dataset_engine")
 
 
 class TrainingDatasetEngine:

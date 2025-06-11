@@ -17,10 +17,14 @@ from __future__ import annotations
 
 from typing import List, Optional, Union
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import training_dataset
 from hopsworks.internal.fs.constructor import fs_query, serving_prepared_statement
-from hopsworks.internal.fs.core import job, training_dataset_job_conf
-from hopsworks.internal.platform import client, decorators
+from hopsworks.internal.fs.core import training_dataset_job_conf
+from hopsworks.internal.platform import client, decorators, job
+
+
+aliases.publish("hsfs.core.training_dataset_api")
 
 
 class TrainingDatasetApi:

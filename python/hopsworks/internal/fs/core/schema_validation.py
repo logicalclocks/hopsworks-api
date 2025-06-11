@@ -2,10 +2,14 @@ import logging
 import re
 
 import pandas as pd
+from hopsworks.internal import aliases
 from hopsworks.internal.platform.core.constants import HAS_POLARS
 
 
 logger = logging.getLogger(__name__)
+
+
+aliases.publish("hsfs.core.schema_validation")
 
 
 class DataFrameValidator:

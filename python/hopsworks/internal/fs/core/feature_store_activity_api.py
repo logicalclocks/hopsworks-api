@@ -17,8 +17,12 @@ from __future__ import annotations
 
 from typing import List
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import feature_store_activity as fsa_mod
 from hopsworks.internal.platform import client
+
+
+aliases.publish("hsfs.core.feature_store_activity_api")
 
 
 class FeatureStoreActivityApi:

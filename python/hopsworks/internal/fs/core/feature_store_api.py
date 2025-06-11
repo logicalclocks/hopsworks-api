@@ -17,8 +17,12 @@ from __future__ import annotations
 
 from typing import Union
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import feature_store
 from hopsworks.internal.platform import client
+
+
+aliases.publish("hsfs.core.feature_store_api")
 
 
 class FeatureStoreApi:

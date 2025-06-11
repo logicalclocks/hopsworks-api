@@ -20,13 +20,17 @@ import warnings
 from datetime import date, datetime
 from typing import List, Optional, Union
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import engine, split_statistics, statistics, util
-from hopsworks.internal.fs.core import job, statistics_api
+from hopsworks.internal.fs.core import statistics_api
 from hopsworks.internal.fs.core.feature_descriptive_statistics import (
     FeatureDescriptiveStatistics,
 )
-from hopsworks.internal.platform import decorators
+from hopsworks.internal.platform import decorators, job
 from hopsworks.internal.platform.client import exceptions
+
+
+aliases.publish("hsfs.core.statistics_engine")
 
 
 class StatisticsEngine:

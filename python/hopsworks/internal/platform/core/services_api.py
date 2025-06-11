@@ -18,7 +18,11 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import client
+
+
+aliases.publish("hsfs.core.services_api")
 
 
 class ServicesApi:

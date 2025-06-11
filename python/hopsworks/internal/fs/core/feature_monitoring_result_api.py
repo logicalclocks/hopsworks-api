@@ -17,8 +17,12 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, Union
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs.core.feature_monitoring_result import FeatureMonitoringResult
 from hopsworks.internal.platform import client, decorators
+
+
+aliases.publish("hsfs.core.feature_monitoring_result_api")
 
 
 class FeatureMonitoringResultApi:

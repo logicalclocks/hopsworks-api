@@ -18,13 +18,17 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 
 import pandas as pd
-from hopsworks.internal.fs.core.job import Job
 from hopsworks.internal.fs.validation_report import ValidationReport
 from hopsworks.internal.platform.core.constants import HAS_NUMPY
+from hopsworks.internal.platform.job import Job
 
 
 if HAS_NUMPY:
     import numpy as np
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsfs.feature_group_writer")
 
 
 class FeatureGroupWriter:

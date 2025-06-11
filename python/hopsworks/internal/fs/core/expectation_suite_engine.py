@@ -17,11 +17,15 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Union
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import expectation_suite as es
 from hopsworks.internal.fs import util
 from hopsworks.internal.fs.core import expectation_suite_api
 from hopsworks.internal.fs.ge_expectation import GeExpectation
 from hopsworks.internal.platform import client
+
+
+aliases.publish("hsfs.core.expectation_suite_engine")
 
 
 class ExpectationSuiteEngine:

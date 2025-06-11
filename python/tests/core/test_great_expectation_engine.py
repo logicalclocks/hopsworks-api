@@ -19,7 +19,7 @@ import pandas as pd
 import pytest
 from hopsworks.internal.fs import feature_group, validation_report
 from hopsworks.internal.fs.core import great_expectation_engine
-from hopsworks.internal.fs.core.constants import HAS_GREAT_EXPECTATIONS
+from hopsworks.internal.platform.core.constants import HAS_GREAT_EXPECTATIONS
 
 
 if HAS_GREAT_EXPECTATIONS:

@@ -14,9 +14,13 @@
 #
 from __future__ import annotations
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import engine, util
 from hopsworks.internal.fs.core import feature_group_base_engine
 from hopsworks.internal.platform.client.exceptions import FeatureStoreException
+
+
+aliases.publish("hsfs.core.spine_group_engine")
 
 
 class SpineGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):

@@ -18,10 +18,14 @@ from __future__ import annotations
 import json
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import util
 from hopsworks.internal.fs.core.feature_descriptive_statistics import (
     FeatureDescriptiveStatistics,
 )
+
+
+aliases.publish("hsfs.split_statistics")
 
 
 class SplitStatistics:

@@ -23,13 +23,17 @@ import warnings
 os.environ["POLARS_SKIP_CPU_CHECK"] = "1"
 
 from hopsworks import version
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import (  # noqa: E402,  Module level import not at top of file because os.environ must be set before importing hsfs
-    usage,
     util,
 )
+from hopsworks.internal.platform import usage
 from hopsworks.internal.platform.connection import (  # noqa: E402,  Module level import not at top of file because os.environ must be set before importing hsfs
     Connection,
 )
+
+
+aliases.publish("hsfs")
 
 
 __version__ = version.__version__

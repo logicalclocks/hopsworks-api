@@ -28,6 +28,10 @@ from hopsworks.internal.platform.decorators import typechecked
 
 if TYPE_CHECKING:
     from hopsworks.internal.fs.feature_group import FeatureGroup
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsfs.feature")
 
 
 @typechecked

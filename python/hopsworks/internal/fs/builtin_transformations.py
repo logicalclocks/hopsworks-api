@@ -17,8 +17,12 @@
 import math
 
 import pandas as pd
+from hopsworks.internal import aliases
 from hopsworks.internal.fs.hopsworks_udf import udf
 from hopsworks.internal.fs.transformation_statistics import TransformationStatistics
+
+
+aliases.publish("hsfs.builtin_transformations")
 
 
 feature_statistics = TransformationStatistics("feature")

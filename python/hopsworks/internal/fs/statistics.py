@@ -19,11 +19,15 @@ import json
 from typing import Any, Dict, List, Optional, Union
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import util
 from hopsworks.internal.fs.core.feature_descriptive_statistics import (
     FeatureDescriptiveStatistics,
 )
 from hopsworks.internal.fs.split_statistics import SplitStatistics
+
+
+aliases.publish("hsfs.statistics")
 
 
 class Statistics:

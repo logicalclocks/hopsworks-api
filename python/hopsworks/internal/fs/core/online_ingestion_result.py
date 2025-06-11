@@ -19,7 +19,11 @@ import json
 from typing import Any, Dict
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import util
+
+
+aliases.publish("hsfs.core.online_ingestion_result")
 
 
 class OnlineIngestionResult:

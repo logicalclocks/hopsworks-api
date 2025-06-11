@@ -23,9 +23,13 @@ if TYPE_CHECKING:
     import great_expectations
 
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import util
 from hopsworks.internal.fs.core import validation_result_api
 from hopsworks.internal.fs.ge_validation_result import ValidationResult
+
+
+aliases.publish("hsfs.core.validation_result_engine")
 
 
 class ValidationResultEngine:

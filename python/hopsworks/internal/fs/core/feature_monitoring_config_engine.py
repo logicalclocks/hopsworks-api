@@ -20,6 +20,7 @@ from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Union
 
 import pandas as pd
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import feature_group, feature_view
 from hopsworks.internal.fs.core import feature_monitoring_config as fmc
 from hopsworks.internal.fs.core import (
@@ -31,9 +32,12 @@ from hopsworks.internal.fs.core.feature_monitoring_result import FeatureMonitori
 from hopsworks.internal.fs.core.feature_monitoring_result_engine import (
     FeatureMonitoringResultEngine,
 )
-from hopsworks.internal.fs.core.job import Job
 from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.platform.core.job_api import JobApi
+from hopsworks.internal.platform.job import Job
+
+
+aliases.publish("hsfs.core.feature_monitoring_config_engine")
 
 
 class FeatureMonitoringConfigEngine:

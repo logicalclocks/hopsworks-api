@@ -19,8 +19,8 @@ import asyncio
 import re
 from typing import Any, Dict, Optional
 
-from hopsworks.internal.fs.core.constants import HAS_AIOMYSQL, HAS_SQLALCHEMY
 from hopsworks.internal.platform.core import variable_api
+from hopsworks.internal.platform.core.constants import HAS_AIOMYSQL, HAS_SQLALCHEMY
 
 
 if HAS_SQLALCHEMY:
@@ -29,6 +29,12 @@ if HAS_SQLALCHEMY:
 
 if HAS_AIOMYSQL:
     from aiomysql.sa import create_engine as async_create_engine
+
+
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsfs.core.util_sql")
 
 
 def create_mysql_engine(

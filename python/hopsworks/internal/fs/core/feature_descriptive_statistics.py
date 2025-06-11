@@ -19,7 +19,11 @@ import json
 from typing import Mapping, Optional, Union
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import util
+
+
+aliases.publish("hsfs.core.feature_descriptive_statistics")
 
 
 class FeatureDescriptiveStatistics:

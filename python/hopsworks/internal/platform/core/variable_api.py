@@ -27,7 +27,7 @@ from hopsworks.internal.platform.client.exceptions import (
 )
 
 
-aliases.publish("hopsworks.core.variable_api")
+aliases.publish("hopsworks.core.variable_api", "hsfs.core.variable_api")
 
 
 LOADBALANCER_SERVICES = {

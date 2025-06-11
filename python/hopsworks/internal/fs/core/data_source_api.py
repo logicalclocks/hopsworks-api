@@ -15,9 +15,13 @@
 #
 from __future__ import annotations
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs.core import data_source as ds
 from hopsworks.internal.fs.core import data_source_data as dsd
 from hopsworks.internal.platform import client
+
+
+aliases.publish("hsfs.core.data_source_api")
 
 
 class DataSourceApi:

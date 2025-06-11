@@ -14,6 +14,7 @@
 #
 from __future__ import annotations
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import engine, util
 from hopsworks.internal.fs import feature_group as fg
 from hopsworks.internal.fs.core import feature_group_base_engine
@@ -21,6 +22,9 @@ from hopsworks.internal.platform.client.exceptions import (
     DataValidationException,
     FeatureStoreException,
 )
+
+
+aliases.publish("hsfs.core.external_feature_group_engine")
 
 
 class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):

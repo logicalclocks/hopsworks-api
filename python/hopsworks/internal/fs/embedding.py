@@ -20,10 +20,14 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import util
 from hopsworks.internal.fs.core.vector_db_client import VectorDbClient
 from hopsworks.internal.platform import client
 from hopsworks.internal.platform.client.exceptions import FeatureStoreException
+
+
+aliases.publish("hsfs.embedding")
 
 
 class SimilarityFunctionType:

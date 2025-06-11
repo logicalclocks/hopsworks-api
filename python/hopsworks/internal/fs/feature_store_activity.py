@@ -35,6 +35,10 @@ if TYPE_CHECKING or HAS_GREAT_EXPECTATIONS:
         ExpectationSuite,
         ExpectationSuiteValidationResult,
     )
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsfs.feature_store_activity")
 
 
 class FeatureStoreActivityType(Enum):

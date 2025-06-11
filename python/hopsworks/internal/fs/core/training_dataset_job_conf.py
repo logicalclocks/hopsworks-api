@@ -17,7 +17,11 @@ from __future__ import annotations
 
 import json
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import util
+
+
+aliases.publish("hsfs.core.training_dataset_job_conf")
 
 
 class TrainingDatasetJobConf:

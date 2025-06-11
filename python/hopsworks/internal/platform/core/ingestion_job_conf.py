@@ -18,7 +18,11 @@ from __future__ import annotations
 
 import json
 
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import util
+
+
+aliases.publish("hsfs.core.ingestion_job_conf")
 
 
 class IngestionJobConf:

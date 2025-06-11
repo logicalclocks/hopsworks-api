@@ -19,8 +19,12 @@ import json
 from typing import Any, Dict, List, Optional, Union
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import feature_group as fg_mod
 from hopsworks.internal.fs import util
+
+
+aliases.publish("hsfs.serving_key")
 
 
 class ServingKey:

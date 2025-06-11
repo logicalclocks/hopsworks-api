@@ -32,6 +32,11 @@ import uuid
 from datetime import datetime, timezone
 from os.path import expanduser, join
 
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsfs.usage")
+
 
 class EnvironmentAttribute:
     def __init__(self):

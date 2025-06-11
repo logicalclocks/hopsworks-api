@@ -21,6 +21,10 @@ from dataclasses import dataclass
 from typing import Any, Dict, Mapping, Optional, Union
 
 import humps
+from hopsworks.internal import aliases
+
+
+aliases.publish("hsfs.transformation_statistics")
 
 
 @dataclass

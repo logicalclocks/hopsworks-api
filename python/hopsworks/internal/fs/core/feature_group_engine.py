@@ -17,6 +17,7 @@ from __future__ import annotations
 import warnings
 from typing import Any, Dict, List, Union
 
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import engine, feature, util
 from hopsworks.internal.fs import feature_group as fg
 from hopsworks.internal.fs.core import (
@@ -27,6 +28,9 @@ from hopsworks.internal.fs.core import (
 from hopsworks.internal.fs.core.deltastreamer_jobconf import DeltaStreamerJobConf
 from hopsworks.internal.fs.core.schema_validation import DataFrameValidator
 from hopsworks.internal.platform.client import exceptions
+
+
+aliases.publish("hsfs.core.feature_group_engine")
 
 
 class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):

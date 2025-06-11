@@ -17,7 +17,11 @@
 from __future__ import annotations
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.platform.job import Job
+
+
+aliases.publish("hsfs.core.ingestion_job")
 
 
 class IngestionJob:

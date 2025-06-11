@@ -18,7 +18,11 @@ from __future__ import annotations
 
 import json
 
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import client, decorators, tag, usage
+
+
+aliases.publish("hsfs.core.tags_api")
 
 
 class TagsApi:
