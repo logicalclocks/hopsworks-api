@@ -22,19 +22,18 @@ import warnings
 from typing import Any, Dict, Optional, Union
 
 import humps
-from hopsworks.internal.platform import client, usage, util
-from hopsworks.internal.platform.constants import ARTIFACT_VERSION, MODEL_REGISTRY
-from hopsworks.internal.platform.constants import INFERENCE_ENDPOINTS as IE
-from hopsworks.internal.ml import deployment, tag
+from hopsworks.internal.ml import deployment, predictor, tag
 from hopsworks.internal.ml.core import explicit_provenance
 from hopsworks.internal.ml.engine import model_engine
 from hopsworks.internal.ml.inference_batcher import InferenceBatcher
 from hopsworks.internal.ml.inference_logger import InferenceLogger
 from hopsworks.internal.ml.model_schema import ModelSchema
-from hopsworks.internal.ml.predictor import Predictor
 from hopsworks.internal.ml.resources import PredictorResources
 from hopsworks.internal.ml.schema import Schema
 from hopsworks.internal.ml.transformer import Transformer
+from hopsworks.internal.platform import client, usage, util
+from hopsworks.internal.platform.constants import ARTIFACT_VERSION, MODEL_REGISTRY
+from hopsworks.internal.platform.constants import INFERENCE_ENDPOINTS as IE
 
 
 _logger = logging.getLogger(__name__)
@@ -206,7 +205,7 @@ class Model:
         transformer: Optional[Union[Transformer, dict]] = None,
         api_protocol: Optional[str] = IE.API_PROTOCOL_REST,
         environment: Optional[str] = None,
-    ) -> deployment.Deployment:
+    ) -> "deployment.Deployment":
         """Deploy the model.
 
         !!! example
@@ -251,7 +250,7 @@ class Model:
         if name is None:
             name = self._get_default_serving_name()
 
-        predictor = Predictor.for_model(
+        pred = predictor.Predictor.for_model(
             self,
             name=name,
             description=description,
@@ -267,7 +266,7 @@ class Model:
             environment=environment,
         )
 
-        return predictor.deploy()
+        return pred.deploy()
 
     @usage.method_logger
     def add_tag(self, name: str, value: Union[str, dict]):

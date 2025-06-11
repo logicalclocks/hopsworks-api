@@ -47,7 +47,7 @@ class GitApi:
     @usage.method_logger
     def clone(
         self, url: str, path: str, provider: str = None, branch: str = None
-    ) -> git_repo.GitRepo:
+    ) -> "git_repo.GitRepo":
         """Clone a new Git Repo in to Hopsworks Filesystem.
 
         ```python
@@ -111,7 +111,7 @@ class GitApi:
         return created_repo
 
     @usage.method_logger
-    def get_repos(self) -> List[git_repo.GitRepo]:
+    def get_repos(self) -> List["git_repo.GitRepo"]:
         """Get the existing Git repositories
 
         # Returns
@@ -184,7 +184,7 @@ class GitApi:
         self._git_provider_api._set_provider(provider, username, token, host)
 
     @usage.method_logger
-    def get_repo(self, name: str, path: str = None) -> Optional[git_repo.GitRepo]:
+    def get_repo(self, name: str, path: str = None) -> Optional["git_repo.GitRepo"]:
         """Get the cloned Git repository
 
         # Arguments
