@@ -15,7 +15,7 @@
 #
 
 
-from hopsworks.internal.fs.core import inode
+from hopsworks.internal.platform.core import inode
 
 
 class TestInode:

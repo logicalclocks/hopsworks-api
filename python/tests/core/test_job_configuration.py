@@ -15,7 +15,7 @@
 #
 
 
-from hopsworks.internal.fs.core import job_configuration
+from hopsworks.internal.platform.core import job_configuration
 
 
 class TestJobConfiguration:

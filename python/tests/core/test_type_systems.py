@@ -16,7 +16,7 @@
 import datetime
 
 import pytest
-from hopsworks.internal.fs.core import type_systems
+from hopsworks.internal.platform.core import type_systems
 from hopsworks.internal.platform.core.constants import HAS_PANDAS, HAS_PYARROW
 
 

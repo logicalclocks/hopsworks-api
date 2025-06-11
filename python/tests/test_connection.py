@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks.internal.ml.connection import (
+from hopsworks.internal.platform.connection import (
     HOPSWORKS_PORT_DEFAULT,
     HOSTNAME_VERIFICATION_DEFAULT,
     Connection,

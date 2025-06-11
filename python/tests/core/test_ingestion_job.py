@@ -15,7 +15,8 @@
 #
 
 
-from hopsworks.internal.fs.core import ingestion_job, job
+from hopsworks.internal.platform import job
+from hopsworks.internal.platform.core import ingestion_job
 
 
 class TestIngestionJob:

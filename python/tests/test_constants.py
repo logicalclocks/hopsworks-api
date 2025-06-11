@@ -15,7 +15,7 @@
 
 import inspect
 
-from hopsworks.internal.ml import constants
+from hopsworks.internal.platform import constants
 
 
 class TestConstants:

@@ -27,11 +27,11 @@ from hopsworks.internal.fs import (
     feature_store,
     statistics_config,
     storage_connector,
-    user,
     util,
 )
 from hopsworks.internal.fs.engine import python, spark
 from hopsworks.internal.fs.transformation_function import TransformationType
+from hopsworks.internal.platform import user
 from hopsworks.internal.platform.client.exceptions import (
     FeatureStoreException,
     RestAPIError,

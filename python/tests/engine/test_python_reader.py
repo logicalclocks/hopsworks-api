@@ -16,9 +16,10 @@
 
 import boto3
 import pandas as pd
-from hopsworks.internal.fs.core import arrow_flight_client, inode
+from hopsworks.internal.fs.core import arrow_flight_client
 from hopsworks.internal.fs.engine import python
 from hopsworks.internal.fs.storage_connector import S3Connector
+from hopsworks.internal.platform.core import inode
 from moto import mock_aws
 
 
