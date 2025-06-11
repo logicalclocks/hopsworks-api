@@ -113,11 +113,7 @@ class AlertsApi:
 
         ```
         # Returns
-<<<<<<< HEAD
             `List[ProjectAlert]`: List of ProjectAlert objects.
-=======
-            `Alert`: List of alerts.
->>>>>>> 781832d3 (create docs)
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -180,11 +176,7 @@ class AlertsApi:
         # Arguments
             job_name: The name of the job.
         # Returns
-<<<<<<< HEAD
             `List[JobAlert]`: List of JobAlert objects.
-=======
-            `Alert`: List of alerts.
->>>>>>> 781832d3 (create docs)
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -216,11 +208,7 @@ class AlertsApi:
             job_name: The name of the job.
             alert_id: The ID of the alert to retrieve.
         # Returns
-<<<<<<< HEAD
             `JobAlert`: The JobAlert object.
-=======
-            `Alert`: The alert object.
->>>>>>> 781832d3 (create docs)
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -262,11 +250,7 @@ class AlertsApi:
             feature_store_id: The ID of the feature store.
             feature_group_id: The ID of the feature group.
         # Returns
-<<<<<<< HEAD
             `List[FeatureGroupAlert]`: List of FeatureGroupAlert objects.
-=======
-            `Alert`: List of alerts.
->>>>>>> 781832d3 (create docs)
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -314,11 +298,7 @@ class AlertsApi:
             feature_group_id: The ID of the feature group.
             alert_id: The ID of the alert to retrieve.
         # Returns
-<<<<<<< HEAD
             `FeatureGroupAlert`: The FeatureGroupAlert object.
-=======
-            `Alert`: The alert object.
->>>>>>> 781832d3 (create docs)
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -729,11 +709,7 @@ class AlertsApi:
 
         ```
         # Returns
-<<<<<<< HEAD
             `List[AlertReceiver]`: List of alert receivers.
-=======
-            `AlertReceiver`: List of alert receivers.
->>>>>>> 781832d3 (create docs)
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
