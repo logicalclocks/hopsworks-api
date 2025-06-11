@@ -17,7 +17,6 @@ init = hopsworks.internal.platform.client.init
 is_kserve_installed = hopsworks.internal.platform.client.is_kserve_installed
 is_saas_connection = hopsworks.internal.platform.client.is_saas_connection
 is_scale_to_zero_required = hopsworks.internal.platform.client.is_scale_to_zero_required
-online_store_rest_client = hopsworks.internal.platform.client.online_store_rest_client
 set_connection = hopsworks.internal.platform.client.set_connection
 set_knative_domain = hopsworks.internal.platform.client.set_knative_domain
 set_kserve_installed = hopsworks.internal.platform.client.set_kserve_installed

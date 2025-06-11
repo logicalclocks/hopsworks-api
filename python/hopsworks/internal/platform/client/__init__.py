@@ -20,6 +20,9 @@ from typing import Literal, Optional, Union
 
 from hopsworks.internal import aliases
 from hopsworks.internal.platform.client import external, hopsworks, istio
+from hopsworks.internal.platform.client import (
+    online_store_rest_client as online_store_rest_client,
+)
 from hopsworks.internal.platform.constants import HOSTS
 
 

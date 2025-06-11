@@ -23,7 +23,7 @@ from hopsworks.internal.platform import client, decorators, secret
 from hopsworks.internal.platform.core import project_api
 
 
-aliases.publish("hopsworks.core.secrets_api")
+aliases.publish("hopsworks.core.secret_api")
 
 
 class SecretsApi:

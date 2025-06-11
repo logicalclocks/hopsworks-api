@@ -71,9 +71,14 @@ def collect_aliases(root):
 
 
 def collect_managed(root):
+    ignored = [root / path for path in SOURCES + IGNORED]
     managed = {}
     for pkg, imports in collect_aliases(root).items():
         pkg = root / pkg.replace(".", "/") / "__init__.py"
+        if pkg.parent == root or any(pkg.is_relative_to(p) for p in ignored):
+            continue
+        if GITIGNORE(pkg.relative_to(root.parent).as_posix()):
+            continue
         managed[pkg] = (
             "# ruff: noqa\n"
             "# fmt: off\n"

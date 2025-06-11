@@ -33,15 +33,15 @@ from hopsworks.client.exceptions import (
 from hopsworks.connection import Connection
 from hopsworks.core import project_api, secret_api
 from hopsworks.decorators import NoHopsworksConnectionError
-from hopsworks_common import usage
+from hopsworks.internal.platform import usage
 from requests.exceptions import SSLError
 
 
 # Needs to run before import of hsml and hsfs
 warnings.filterwarnings(action="ignore", category=UserWarning, module=r".*psycopg2")
 
-import hsfs  # noqa: E402
-import hsml  # noqa: E402
+import hopsworks.internal.fs as hsfs  # noqa: E402
+import hopsworks.internal.ml as hsml  # noqa: E402
 
 
 sys.modules["hopsworks.hsfs"] = hsfs
