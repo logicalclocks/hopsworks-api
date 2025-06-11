@@ -17,9 +17,9 @@ import json
 from typing import Optional
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import util
 from hopsworks.internal.platform.constants import INFERENCE_BATCHER
-from hopsworks.internal import aliases
 
 
 aliases.publish("hsml.inference_batcher")

@@ -17,8 +17,8 @@
 import json
 from typing import Optional
 
-from hopsworks.internal.ml.schema import Schema
 from hopsworks.internal import aliases
+from hopsworks.internal.ml.schema import Schema
 
 
 aliases.publish("hsml.model_schema")

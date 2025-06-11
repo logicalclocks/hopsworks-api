@@ -19,8 +19,8 @@ from __future__ import annotations
 import json
 
 import humps
-from hopsworks.internal.platform import util
 from hopsworks.internal import aliases
+from hopsworks.internal.platform import util
 
 
 aliases.publish("hsml.tag", "hsfs.tag")

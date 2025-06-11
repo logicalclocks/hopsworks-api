@@ -17,6 +17,7 @@ import json
 from typing import Optional, Union
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.ml import deployment
 from hopsworks.internal.ml.deployable_component import DeployableComponent
 from hopsworks.internal.ml.inference_batcher import InferenceBatcher
@@ -34,7 +35,6 @@ from hopsworks.internal.platform.constants import (
     RESOURCES,
     Default,
 )
-from hopsworks.internal import aliases
 
 
 aliases.publish("hsml.predictor")

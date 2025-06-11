@@ -89,11 +89,11 @@ from hopsworks.internal.fs.transformation_function import (
     TransformationType,
 )
 from hopsworks.internal.fs.validation_report import ValidationReport
+from hopsworks.internal.platform import tag
 from hopsworks.internal.platform.client.exceptions import (
     FeatureStoreException,
     RestAPIError,
 )
-from hopsworks.internal.platform import tag
 from hopsworks.internal.platform.core import job_api
 from hopsworks.internal.platform.core.constants import HAS_NUMPY, HAS_POLARS
 

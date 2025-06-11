@@ -17,8 +17,8 @@ import json
 from typing import Optional
 
 import humps
-from hopsworks.internal.platform import util
 from hopsworks.internal import aliases
+from hopsworks.internal.platform import util
 
 
 aliases.publish("hsml.predictor_state_condition")

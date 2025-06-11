@@ -16,8 +16,8 @@
 from datetime import datetime
 
 import humps
-from hopsworks.internal.platform import util
 from hopsworks.internal import aliases
+from hopsworks.internal.platform import util
 
 
 aliases.publish("hsml.deployable_component_logs")

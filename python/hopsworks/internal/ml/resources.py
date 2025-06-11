@@ -18,9 +18,9 @@ from abc import ABC, abstractmethod
 from typing import Optional, Union
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import util
 from hopsworks.internal.platform.constants import RESOURCES, Default
-from hopsworks.internal import aliases
 
 
 aliases.publish("hsml.resources")

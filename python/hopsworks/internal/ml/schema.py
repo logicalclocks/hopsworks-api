@@ -19,9 +19,9 @@ from typing import Optional, TypeVar, Union
 
 import numpy
 import pandas
+from hopsworks.internal import aliases
 from hopsworks.internal.ml.utils.schema.columnar_schema import ColumnarSchema
 from hopsworks.internal.ml.utils.schema.tensor_schema import TensorSchema
-from hopsworks.internal import aliases
 
 
 aliases.publish("hsml.schema")

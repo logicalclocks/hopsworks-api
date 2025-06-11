@@ -17,6 +17,7 @@
 import os
 from typing import List, Optional, Union
 
+from hopsworks.internal import aliases
 from hopsworks.internal.ml.core import serving_api
 from hopsworks.internal.ml.deployment import Deployment
 from hopsworks.internal.ml.inference_batcher import InferenceBatcher
@@ -29,7 +30,6 @@ from hopsworks.internal.ml.transformer import Transformer
 from hopsworks.internal.platform import usage, util
 from hopsworks.internal.platform.constants import ARTIFACT_VERSION, PREDICTOR_STATE
 from hopsworks.internal.platform.constants import INFERENCE_ENDPOINTS as IE
-from hopsworks.internal import aliases
 
 
 aliases.publish("hsml.model_serving")
