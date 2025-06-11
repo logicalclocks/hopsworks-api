@@ -45,7 +45,7 @@ from hopsworks.internal.fs.core import (
     training_dataset_api,
     transformation_function_engine,
 )
-from hopsworks.internal.fs.decorators import typechecked
+from hopsworks.internal.platform.decorators import typechecked
 from hopsworks.internal.fs.embedding import EmbeddingIndex
 from hopsworks.internal.fs.hopsworks_udf import HopsworksUdf
 from hopsworks.internal.fs.online_config import OnlineConfig

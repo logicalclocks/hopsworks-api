@@ -26,7 +26,7 @@ from hopsworks.internal.fs import (
     split_statistics,
     training_dataset,
 )
-from hopsworks.internal.fs.client.exceptions import FeatureStoreException
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.fs.constructor import fs_query
 from hopsworks.internal.fs.constructor.query import Query
 from hopsworks.internal.fs.core import arrow_flight_client, feature_view_engine

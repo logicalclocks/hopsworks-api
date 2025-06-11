@@ -17,7 +17,7 @@
 import copy
 
 from hopsworks.internal.ml import resources
-from hopsworks.internal.ml.constants import RESOURCES
+from hopsworks.internal.platform.constants import RESOURCES
 from mock import call
 
 

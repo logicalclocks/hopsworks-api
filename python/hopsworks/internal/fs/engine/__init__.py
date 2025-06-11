@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import TypeVar, Union
 
 import hopsworks.internal.platform.connection
-from hopsworks.internal.fs.client import exceptions
+from hopsworks.internal.platform.client import exceptions
 from hopsworks.internal.fs.engine import spark, spark_no_metastore
 
 

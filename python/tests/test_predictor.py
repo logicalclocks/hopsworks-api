@@ -25,7 +25,7 @@ from hopsworks.internal.ml import (
     transformer,
     util,
 )
-from hopsworks.internal.ml.constants import MODEL, PREDICTOR, RESOURCES
+from hopsworks.internal.platform.constants import MODEL, PREDICTOR, RESOURCES
 
 
 SERVING_NUM_INSTANCES_NO_LIMIT = [-1]

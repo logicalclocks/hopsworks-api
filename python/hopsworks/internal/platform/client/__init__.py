@@ -18,8 +18,12 @@ from __future__ import annotations
 
 from typing import Literal, Optional, Union
 
+from hopsworks.internal import aliases
 from hopsworks.internal.platform.client import external, hopsworks, istio
 from hopsworks.internal.platform.constants import HOSTS
+
+
+aliases.publish("hopsworks.client", "hsfs.client", "hsml.client")
 
 
 _client: Union[hopsworks.Client, external.Client, None] = None

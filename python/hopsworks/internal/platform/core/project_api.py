@@ -18,8 +18,12 @@ from __future__ import annotations
 
 import json
 
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import client, constants, project
 from hopsworks.internal.platform.client.exceptions import RestAPIError
+
+
+aliases.publish("hopsworks.core.project_api", "hsfs.core.project_api")
 
 
 class ProjectApi:

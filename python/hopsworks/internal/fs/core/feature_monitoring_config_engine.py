@@ -28,7 +28,7 @@ from hopsworks.internal.fs.core import monitoring_window_config as mwc
 from hopsworks.internal.fs.core.feature_monitoring_result import FeatureMonitoringResult
 from hopsworks.internal.fs.core.feature_monitoring_result_engine import FeatureMonitoringResultEngine
 from hopsworks.internal.fs.core.job import Job
-from hopsworks.internal.fs.core.job_api import JobApi
+from hopsworks.internal.platform.core.job_api import JobApi
 
 
 class FeatureMonitoringConfigEngine:

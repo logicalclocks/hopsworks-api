@@ -20,6 +20,7 @@ import json
 import socket
 from typing import Any, Dict, Optional, Union
 
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import (
     client,
     constants,
@@ -27,6 +28,9 @@ from hopsworks.internal.platform import (
     kafka_topic,
     usage,
 )
+
+
+aliases.publish("hopsworks.core.kafka_api", "hsfs.core.kafka_api")
 
 
 class KafkaApi:

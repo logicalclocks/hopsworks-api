@@ -17,13 +17,17 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Union
 
-from hopsworks.internal.platform import client
-from hopsworks.internal.platform.client.exceptions import RestAPIError
-from hopsworks.internal.fs import decorators, feature_view, training_dataset
+from hopsworks.internal.fs import feature_view, training_dataset
 from hopsworks.internal.fs.constructor import query, serving_prepared_statement
-from hopsworks.internal.fs.core import explicit_provenance, job, training_dataset_job_conf
+from hopsworks.internal.fs.core import (
+    explicit_provenance,
+    job,
+    training_dataset_job_conf,
+)
 from hopsworks.internal.fs.core.feature_logging import FeatureLogging
 from hopsworks.internal.fs.core.job import Job
+from hopsworks.internal.platform import client, decorators
+from hopsworks.internal.platform.client.exceptions import RestAPIError
 
 
 class FeatureViewApi:

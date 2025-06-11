@@ -19,7 +19,11 @@ from __future__ import annotations
 import os
 
 import requests
+from hopsworks.internal import aliases
 from hopsworks.internal.platform.client import exceptions
+
+
+aliases.publish("hopsworks.client.auth", "hsfs.client.auth", "hsml.client.auth")
 
 
 class BearerAuth(requests.auth.AuthBase):

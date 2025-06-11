@@ -15,7 +15,7 @@
 #
 
 import humps
-from hopsworks.internal.ml.constants import MODEL
+from hopsworks.internal.platform.constants import MODEL
 from hopsworks.internal.ml.model import Model
 
 

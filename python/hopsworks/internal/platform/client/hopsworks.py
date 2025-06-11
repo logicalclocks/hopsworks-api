@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 
 import requests
+from hopsworks.internal import aliases
 from hopsworks.internal.platform.client import auth, base
 
 
@@ -25,6 +26,13 @@ try:
     import jks
 except ImportError:
     pass
+
+
+aliases.publish(
+    "hopsworks.client.hopsworks",
+    "hsfs.client.hopsworks",
+    "hsml.client.hopsworks",
+)
 
 
 class Client(base.Client):

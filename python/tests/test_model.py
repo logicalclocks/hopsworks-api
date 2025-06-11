@@ -19,7 +19,7 @@ import os
 
 import humps
 from hopsworks.internal.ml import model
-from hopsworks.internal.ml.constants import MODEL
+from hopsworks.internal.platform.constants import MODEL
 from hopsworks.internal.ml.core import explicit_provenance
 
 

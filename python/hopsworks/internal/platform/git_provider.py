@@ -17,8 +17,12 @@
 import json
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import usage, util
 from hopsworks.internal.platform.core import git_provider_api
+
+
+aliases.publish("hopsworks.git_provider")
 
 
 class GitProvider:

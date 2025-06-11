@@ -31,7 +31,7 @@ from hopsworks.internal.fs.constructor import join
 from hopsworks.internal.fs.constructor.filter import Filter, Logic
 from hopsworks.internal.fs.constructor.fs_query import FsQuery
 from hopsworks.internal.fs.core import query_constructor_api, storage_connector_api
-from hopsworks.internal.fs.decorators import typechecked
+from hopsworks.internal.platform.decorators import typechecked
 from hopsworks.internal.fs.feature import Feature
 
 

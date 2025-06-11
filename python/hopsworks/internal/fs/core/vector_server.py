@@ -54,7 +54,7 @@ from hopsworks.internal.fs import (
     serving_key as sk_mod,
 )
 from hopsworks.internal.fs import training_dataset_feature as tdf_mod
-from hopsworks.internal.fs.client import exceptions, online_store_rest_client
+from hopsworks.internal.platform.client import exceptions, online_store_rest_client
 from hopsworks.internal.fs.core import (
     online_store_rest_client_engine,
     online_store_sql_engine,

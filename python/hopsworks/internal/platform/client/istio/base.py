@@ -16,10 +16,14 @@
 
 from abc import abstractmethod
 
+from hopsworks.internal import aliases
 from hopsworks.internal.platform.client import base
 from hopsworks.internal.platform.client.istio.grpc.inference_client import (
     GRPCInferenceServerClient,
 )
+
+
+aliases.publish("hsml.client.istio.base")
 
 
 class Client(base.Client):

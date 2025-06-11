@@ -25,7 +25,7 @@ from hopsworks.internal.fs.core.feature_descriptive_statistics import FeatureDes
 from hopsworks.internal.fs.core.feature_monitoring_config_api import FeatureMonitoringConfigApi
 from hopsworks.internal.fs.core.feature_monitoring_result import FeatureMonitoringResult
 from hopsworks.internal.fs.core.feature_monitoring_result_api import FeatureMonitoringResultApi
-from hopsworks.internal.fs.core.job_api import JobApi
+from hopsworks.internal.platform.core.job_api import JobApi
 
 
 class FeatureMonitoringResultEngine:

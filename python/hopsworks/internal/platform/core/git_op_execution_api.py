@@ -14,7 +14,11 @@
 #   limitations under the License.
 #
 
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import client, git_op_execution
+
+
+aliases.publish("hopsworks.core.git_op_execution_api")
 
 
 class GitOpExecutionApi:

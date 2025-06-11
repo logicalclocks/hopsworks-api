@@ -19,6 +19,7 @@ import json
 from typing import Optional
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import client, util
 from hopsworks.internal.platform.core import (
     dataset_api,
@@ -29,6 +30,9 @@ from hopsworks.internal.platform.core import (
     kafka_api,
     opensearch_api,
 )
+
+
+aliases.publish("hopsworks.project")
 
 
 class Project:

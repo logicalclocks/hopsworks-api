@@ -19,9 +19,13 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from furl import furl
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import client, usage
 from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.platform.core.variable_api import VariableApi
+
+
+aliases.publish("hopsworks.core.opensearch_api", "hsfs.core.opensearch_api")
 
 
 class OPENSEARCH_CONFIG:

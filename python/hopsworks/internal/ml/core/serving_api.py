@@ -18,20 +18,19 @@ import json
 from typing import Dict, List, Union
 
 from hopsworks.internal.ml import (
-    client,
-    decorators,
     deployable_component_logs,
     deployment,
     inference_endpoint,
     predictor_state,
 )
-from hopsworks.internal.ml.client.istio.utils.infer_type import (
+from hopsworks.internal.platform.client.istio.utils.infer_type import (
     InferInput,
     InferOutput,
     InferRequest,
 )
-from hopsworks.internal.ml.constants import ARTIFACT_VERSION
-from hopsworks.internal.ml.constants import INFERENCE_ENDPOINTS as IE
+from hopsworks.internal.platform import client, decorators
+from hopsworks.internal.platform.constants import ARTIFACT_VERSION
+from hopsworks.internal.platform.constants import INFERENCE_ENDPOINTS as IE
 
 
 class ServingApi:

@@ -18,9 +18,13 @@ import os
 from typing import Optional
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import client, command, usage, util
 from hopsworks.internal.platform.core import environment_api, library_api
 from hopsworks.internal.platform.engine import environment_engine
+
+
+aliases.publish("hopsworks.environment")
 
 
 class Environment:

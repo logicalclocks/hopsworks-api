@@ -49,7 +49,7 @@ if TYPE_CHECKING:
     import great_expectations
 
 import boto3
-import hopsworks.internal.fs
+import hopsworks.internal.fs as hsfs
 import pandas as pd
 import pyarrow as pa
 from botocore.response import StreamingBody
@@ -57,6 +57,7 @@ from hopsworks.internal.platform import client
 from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.platform.core.constants import HAS_POLARS, polars_not_installed_message
 from hopsworks.internal.platform.decorators import uses_great_expectations, uses_polars
+from hopsworks.internal.platform.core import dataset_api, job_api
 from hopsworks.internal.fs import (
     feature,
     feature_view,
@@ -66,12 +67,10 @@ from hopsworks.internal.fs import (
 from hopsworks.internal.fs import storage_connector as sc
 from hopsworks.internal.fs.constructor import query
 from hopsworks.internal.fs.core import (
-    dataset_api,
     feature_group_api,
     feature_view_api,
     ingestion_job_conf,
     job,
-    job_api,
     kafka_engine,
     statistics_api,
     storage_connector_api,

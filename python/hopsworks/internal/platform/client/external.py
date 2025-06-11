@@ -22,6 +22,7 @@ import os
 
 import hopsworks.internal.platform.client
 import requests
+from hopsworks.internal import aliases
 from hopsworks.internal.platform.client import auth, base, exceptions
 from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 
@@ -33,6 +34,13 @@ except ImportError:
 
 
 _logger = logging.getLogger(__name__)
+
+
+aliases.publish(
+    "hopsworks.client.external",
+    "hsfs.client.external",
+    "hsml.client.external",
+)
 
 
 class Client(base.Client):

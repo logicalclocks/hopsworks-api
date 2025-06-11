@@ -18,8 +18,12 @@ import getpass
 import json
 from typing import List, Optional
 
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import client, decorators, secret
 from hopsworks.internal.platform.core import project_api
+
+
+aliases.publish("hopsworks.core.secrets_api")
 
 
 class SecretsApi:

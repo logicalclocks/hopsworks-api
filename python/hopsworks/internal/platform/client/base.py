@@ -26,6 +26,7 @@ from pathlib import Path
 import furl
 import requests
 import urllib3
+from hopsworks.internal import aliases
 from hopsworks.internal.platform.client import auth, exceptions
 from hopsworks.internal.platform.decorators import connected
 
@@ -40,6 +41,9 @@ _logger = logging.getLogger(__name__)
 
 urllib3.disable_warnings(urllib3.exceptions.SecurityWarning)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+
+aliases.publish("hopsworks.client.base", "hsfs.client.base", "hsml.client.base")
 
 
 class Client:

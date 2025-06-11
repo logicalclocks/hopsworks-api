@@ -17,8 +17,12 @@
 import json
 from typing import List, Optional
 
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import client, decorators, environment, usage
 from hopsworks.internal.platform.engine import environment_engine
+
+
+aliases.publish("hopsworks.core.environment_api")
 
 
 class EnvironmentApi:

@@ -20,6 +20,7 @@ import functools
 import importlib
 import os
 
+from hopsworks.internal import aliases
 from hopsworks.internal.platform.core.constants import (
     HAS_CONFLUENT_KAFKA,
     HAS_GREAT_EXPECTATIONS,
@@ -28,6 +29,9 @@ from hopsworks.internal.platform.core.constants import (
     great_expectations_not_installed_message,
     polars_not_installed_message,
 )
+
+
+aliases.publish("hopsworks.decorators", "hsfs.decorators", "hsml.decorators")
 
 
 def not_connected(fn):

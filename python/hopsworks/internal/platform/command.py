@@ -15,6 +15,10 @@
 #
 
 import humps
+from hopsworks.internal import aliases
+
+
+aliases.publish("hopsworks.command")
 
 
 class Command:

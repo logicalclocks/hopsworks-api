@@ -18,9 +18,13 @@ import json
 from typing import List, Union
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import git_commit, usage, user, util
 from hopsworks.internal.platform.core import dataset_api, git_api, git_remote_api
 from hopsworks.internal.platform.git_file_status import GitFileStatus
+
+
+aliases.publish("hopsworks.git_repo")
 
 
 class GitRepo:

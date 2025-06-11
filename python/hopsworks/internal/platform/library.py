@@ -15,7 +15,11 @@
 #
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import command
+
+
+aliases.publish("hopsworks.library")
 
 
 class Library:

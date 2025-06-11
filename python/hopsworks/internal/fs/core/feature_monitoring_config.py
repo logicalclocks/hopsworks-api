@@ -23,11 +23,11 @@ from typing import Any, Dict, List, Optional, Union
 import humps
 from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.platform.constants import FEATURES
+from hopsworks.internal.platform.core import job_api
 from hopsworks.internal.fs import util
 from hopsworks.internal.fs.core import (
     feature_monitoring_config_engine,
     feature_monitoring_result_engine,
-    job_api,
     monitoring_window_config_engine,
 )
 from hopsworks.internal.fs.core import monitoring_window_config as mwc

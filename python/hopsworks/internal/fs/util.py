@@ -18,42 +18,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict, List, Set, Union
 
-from hopsworks.internal.platform.util import (
-    FEATURE_STORE_NAME_SUFFIX,
-    VALID_EMBEDDING_TYPE,
-    Encoder,
-    FeatureGroupWarning,
-    JobWarning,
-    StatisticsWarning,
-    StorageWarning,
-    ValidationWarning,
-    VersionWarning,
-    _loading_animation,
-    append_feature_store_suffix,
-    autofix_feature_name,
-    check_timestamp_format_from_date_string,
-    contains_uppercase,
-    contains_whitespace,
-    convert_event_time_to_timestamp,
-    convert_git_status_to_files,
-    convert_to_abs,
-    feature_group_name,
-    generate_fully_qualified_feature_name,
-    get_dataset_type,
-    get_delta_datestr_from_timestamp,
-    get_feature_group_url,
-    get_hostname_replaced_url,
-    get_hudi_datestr_from_timestamp,
-    get_job_url,
-    get_timestamp_from_date_string,
-    is_interactive,
-    is_runtime_notebook,
-    run_with_loading_animation,
-    strip_feature_store_suffix,
-    validate_embedding_feature_type,
-    validate_job_conf,
-    verify_attribute_key_names,
-)
+from hopsworks.internal import aliases
 from hopsworks.internal.fs import feature, serving_key
 from hopsworks.internal.fs.core import feature_group_api
 
@@ -62,7 +27,10 @@ if TYPE_CHECKING:
     from hopsworks.internal.fs.constructor import serving_prepared_statement
 
 
-FeatureStoreEncoder = Encoder
+aliases.publish("hsfs.util")
+
+
+from hopsworks.internal.platform.util import *  # noqa: E402, F403
 
 
 def validate_feature(
@@ -109,45 +77,3 @@ def build_serving_keys_from_prepared_statements(
                 )
             )
     return serving_keys
-
-
-__all__ = [
-    "FEATURE_STORE_NAME_SUFFIX",
-    "VALID_EMBEDDING_TYPE",
-    "Encoder",
-    "FeatureStoreEncoder",
-    "FeatureGroupWarning",
-    "JobWarning",
-    "StatisticsWarning",
-    "StorageWarning",
-    "ValidationWarning",
-    "VersionWarning",
-    "_loading_animation",
-    "append_feature_store_suffix",
-    "autofix_feature_name",
-    "check_timestamp_format_from_date_string",
-    "contains_uppercase",
-    "contains_whitespace",
-    "convert_event_time_to_timestamp",
-    "convert_git_status_to_files",
-    "convert_to_abs",
-    "feature_group_name",
-    "generate_fully_qualified_feature_name",
-    "get_dataset_type",
-    "get_delta_datestr_from_timestamp",
-    "get_feature_group_url",
-    "get_hostname_replaced_url",
-    "get_hudi_datestr_from_timestamp",
-    "get_job_url",
-    "get_timestamp_from_date_string",
-    "is_interactive",
-    "is_runtime_notebook",
-    "run_with_loading_animation",
-    "strip_feature_store_suffix",
-    "validate_embedding_feature_type",
-    "validate_job_conf",
-    "verify_attribute_key_names",
-    "validate_feature",
-    "parse_features",
-    "build_serving_keys_from_prepared_statements",
-]

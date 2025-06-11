@@ -15,7 +15,11 @@
 #
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import constants, git_repo
+
+
+aliases.publish("hopsworks.git_op_execution")
 
 
 class GitOpExecution:

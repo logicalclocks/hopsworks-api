@@ -30,7 +30,7 @@ from hopsworks.internal.fs import (
     training_dataset_feature,
     util,
 )
-from hopsworks.internal.fs.client import exceptions
+from hopsworks.internal.platform.client import exceptions
 from hopsworks.internal.fs.constructor.filter import Filter, Logic
 from hopsworks.internal.fs.constructor.join import Join
 from hopsworks.internal.fs.constructor.query import Query

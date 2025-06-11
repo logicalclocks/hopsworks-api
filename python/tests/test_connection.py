@@ -19,7 +19,7 @@ from hopsworks.internal.ml.connection import (
     HOSTNAME_VERIFICATION_DEFAULT,
     Connection,
 )
-from hopsworks.internal.ml.constants import HOSTS
+from hopsworks.internal.platform.constants import HOSTS
 
 
 class TestConnection:

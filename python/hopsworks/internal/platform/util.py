@@ -33,8 +33,12 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Literal, Optional, Tuple,
 from urllib.parse import urljoin, urlparse
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import client
-from hopsworks.internal.platform.client.exceptions import FeatureStoreException, JobException
+from hopsworks.internal.platform.client.exceptions import (
+    FeatureStoreException,
+    JobException,
+)
 from hopsworks.internal.platform.constants import MODEL, PREDICTOR, Default
 from hopsworks.internal.platform.core.constants import HAS_PANDAS
 from hopsworks.internal.platform.git_file_status import GitFileStatus
@@ -43,6 +47,9 @@ from six import string_types
 
 if HAS_PANDAS:
     import pandas as pd
+
+
+aliases.publish("hopsworks.util", "hsfs.util", "hsml.util")
 
 
 FEATURE_STORE_NAME_SUFFIX = "_featurestore"
@@ -58,6 +65,10 @@ class Encoder(json.JSONEncoder):
             return o.to_dict()
         except AttributeError:
             return super().default(o)
+
+
+FeatureStoreEncoder = Encoder
+MLEncoder = Encoder
 
 
 class NumpyEncoder(json.JSONEncoder):

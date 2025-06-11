@@ -23,6 +23,7 @@ from warnings import warn
 import requests
 import requests.adapters
 from furl import furl
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import client
 from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.platform.core import variable_api
@@ -31,6 +32,9 @@ from hopsworks.internal.platform.core import variable_api
 _logger = logging.getLogger(__name__)
 
 _online_store_rest_client = None
+
+
+aliases.publish("hsfs.client.online_store_rest_client")
 
 
 def init_or_reset_online_store_rest_client(
@@ -189,18 +193,18 @@ class OnlineStoreRestClientSingleton:
             f"{scheme}://{self._current_config[self.HOST]}:{self._current_config[self.PORT]}/{self._current_config[self.SERVER_API_VERSION]}"
         )
 
-        assert (
-            self._session is not None
-        ), "Online Store REST Client failed to initialise."
-        assert (
-            self._auth is not None
-        ), "Online Store REST Client Authentication failed to initialise. Check API Key."
-        assert (
-            self._base_url is not None
-        ), "Online Store REST Client Base URL failed to initialise. Check host and port parameters."
-        assert (
-            self._current_config is not None
-        ), "Online Store REST Client Configuration failed to initialise."
+        assert self._session is not None, (
+            "Online Store REST Client failed to initialise."
+        )
+        assert self._auth is not None, (
+            "Online Store REST Client Authentication failed to initialise. Check API Key."
+        )
+        assert self._base_url is not None, (
+            "Online Store REST Client Base URL failed to initialise. Check host and port parameters."
+        )
+        assert self._current_config is not None, (
+            "Online Store REST Client Configuration failed to initialise."
+        )
 
     def _get_default_client_config(self) -> Dict[str, Any]:
         _logger.debug("Retrieving default configuration for Online Store REST Client.")
@@ -317,9 +321,9 @@ class OnlineStoreRestClientSingleton:
         """
         _logger.debug("Setting authentication for Online Store REST Client.")
         if client._is_external():
-            assert hasattr(
-                client.get_instance()._auth, "_token"
-            ), "External client must use API Key authentication. Contact your system administrator."
+            assert hasattr(client.get_instance()._auth, "_token"), (
+                "External client must use API Key authentication. Contact your system administrator."
+            )
             _logger.debug(
                 "External Online Store REST Client : Setting authentication using Hopsworks Client API Key."
             )

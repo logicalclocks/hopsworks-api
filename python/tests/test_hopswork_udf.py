@@ -18,7 +18,7 @@ from datetime import date, datetime, time
 
 import pandas as pd
 import pytest
-from hopsworks.internal.fs.client.exceptions import FeatureStoreException
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.fs.hopsworks_udf import (
     HopsworksUdf,
     TransformationFeature,

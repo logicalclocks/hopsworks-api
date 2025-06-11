@@ -18,7 +18,7 @@ import copy
 
 import pytest
 from hopsworks.internal.ml import resources, transformer
-from hopsworks.internal.ml.constants import RESOURCES
+from hopsworks.internal.platform.constants import RESOURCES
 
 
 SERVING_NUM_INSTANCES_NO_LIMIT = [-1]

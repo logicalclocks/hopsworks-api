@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional
 import humps
 from hopsworks.internal.fs import util
 from hopsworks.internal.fs.constructor import query
-from hopsworks.internal.fs.decorators import typechecked
+from hopsworks.internal.platform.decorators import typechecked
 
 
 @typechecked

@@ -25,7 +25,7 @@ from hopsworks.internal.fs import (
     statistics_config,
     training_dataset,
 )
-from hopsworks.internal.fs.client import exceptions
+from hopsworks.internal.platform.client import exceptions
 from hopsworks.internal.fs.core import statistics_engine
 
 

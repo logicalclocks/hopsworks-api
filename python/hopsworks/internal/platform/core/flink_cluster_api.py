@@ -18,9 +18,13 @@ import json
 import os
 from typing import Optional
 
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import client, decorators, flink_cluster, job, usage, util
 from hopsworks.internal.platform.client.exceptions import RestAPIError
 from hopsworks.internal.platform.core import job_api
+
+
+aliases.publish("hopsworks.core.flink_cluster_api")
 
 
 class FlinkClusterApi:

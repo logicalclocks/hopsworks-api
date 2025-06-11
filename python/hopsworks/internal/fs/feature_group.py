@@ -55,6 +55,7 @@ from hopsworks.internal.fs import (
 from hopsworks.internal.fs.constructor import filter, query
 from hopsworks.internal.fs.constructor.filter import Filter, Logic
 from hopsworks.internal.fs.core import data_source as ds
+from hopsworks.internal.platform.core import job_api
 from hopsworks.internal.fs.core import (
     deltastreamer_jobconf,
     expectation_suite_engine,
@@ -65,7 +66,6 @@ from hopsworks.internal.fs.core import (
     feature_monitoring_result_engine,
     feature_store_api,
     great_expectation_engine,
-    job_api,
     online_ingestion,
     online_ingestion_api,
     spine_group_engine,
@@ -84,7 +84,7 @@ from hopsworks.internal.fs.core.variable_api import VariableApi
 from hopsworks.internal.fs.core.vector_db_client import VectorDbClient
 
 # if great_expectations is not installed, we will default to using native Hopsworks class as return values
-from hopsworks.internal.fs.decorators import typechecked, uses_great_expectations
+from hopsworks.internal.platform.decorators import typechecked, uses_great_expectations
 from hopsworks.internal.fs.embedding import EmbeddingIndex
 from hopsworks.internal.fs.ge_validation_result import ValidationResult
 from hopsworks.internal.fs.hopsworks_udf import HopsworksUdf

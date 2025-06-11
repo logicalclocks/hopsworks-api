@@ -15,6 +15,12 @@
 #
 
 
+from hopsworks.internal import aliases
+
+
+aliases.publish("hopsworks.constants", "hsml.constants")
+
+
 class Default:
     """An object of this class is used in place of optional arguments in
     cases when passing None should result in an exception or other behaviour.

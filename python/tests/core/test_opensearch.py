@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 import pytest
-from hopsworks.internal.fs.client.exceptions import VectorDatabaseException
+from hopsworks.internal.platform.client.exceptions import VectorDatabaseException
 from hopsworks.internal.fs.core.opensearch import OpenSearchClientSingleton, OpensearchRequestOption
 
 

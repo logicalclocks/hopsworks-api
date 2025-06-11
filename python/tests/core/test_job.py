@@ -16,7 +16,7 @@
 
 
 import pytest
-from hopsworks.internal.fs.client import exceptions
+from hopsworks.internal.platform.client import exceptions
 from hopsworks.internal.fs.core import execution, job
 
 

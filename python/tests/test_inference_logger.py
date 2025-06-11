@@ -19,7 +19,7 @@ import copy
 import humps
 import pytest
 from hopsworks.internal.ml import inference_logger, kafka_topic
-from hopsworks.internal.ml.constants import DEFAULT, INFERENCE_LOGGER
+from hopsworks.internal.platform.constants import DEFAULT, INFERENCE_LOGGER
 
 
 class TestInferenceLogger:

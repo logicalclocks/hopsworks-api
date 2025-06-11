@@ -20,7 +20,11 @@ from enum import Enum
 from typing import Any, Union
 
 import requests
+from hopsworks.internal import aliases
 from requests.exceptions import SSLError
+
+
+aliases.publish("hopsworks.client.exceptions", "hsfs.client.exceptions", "hsml.client.exceptions")
 
 
 class RestAPIError(Exception):

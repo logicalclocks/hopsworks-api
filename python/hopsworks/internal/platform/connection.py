@@ -26,6 +26,7 @@ import weakref
 from typing import Any, Optional
 
 from hopsworks import version
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import client, constants, usage, util
 from hopsworks.internal.platform.client.exceptions import RestAPIError
 from hopsworks.internal.platform.core import (
@@ -38,6 +39,9 @@ from hopsworks.internal.platform.core import (
 from hopsworks.internal.platform.core.opensearch import OpenSearchClientSingleton
 from hopsworks.internal.platform.decorators import connected, not_connected
 from requests.exceptions import ConnectionError
+
+
+aliases.publish("hopsworks.connection", "hsfs.connection", "hsml.connection")
 
 
 HOPSWORKS_PORT_DEFAULT = 443

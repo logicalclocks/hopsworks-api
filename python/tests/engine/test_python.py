@@ -30,7 +30,7 @@ from hopsworks.internal.fs import (
     training_dataset,
     util,
 )
-from hopsworks.internal.fs.client import exceptions
+from hopsworks.internal.platform.client import exceptions
 from hopsworks.internal.fs.constructor import query
 from hopsworks.internal.fs.constructor.hudi_feature_group_alias import HudiFeatureGroupAlias
 from hopsworks.internal.fs.core import inode, job, online_ingestion

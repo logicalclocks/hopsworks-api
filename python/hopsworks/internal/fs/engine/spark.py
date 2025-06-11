@@ -88,6 +88,7 @@ except ImportError:
 
 from hopsworks.internal.platform import client
 from hopsworks.internal.platform.client.exceptions import FeatureStoreException
+from hopsworks.internal.platform.core import dataset_api
 from hopsworks.internal.fs import (
     feature,
     feature_view,
@@ -98,14 +99,13 @@ from hopsworks.internal.fs import (
 )
 from hopsworks.internal.fs import feature_group as fg_mod
 from hopsworks.internal.fs.core import (
-    dataset_api,
     delta_engine,
     hudi_engine,
     kafka_engine,
     transformation_function_engine,
 )
 from hopsworks.internal.fs.core.constants import HAS_AVRO, HAS_GREAT_EXPECTATIONS
-from hopsworks.internal.fs.decorators import uses_great_expectations
+from hopsworks.internal.platform.decorators import uses_great_expectations
 from hopsworks.internal.fs.storage_connector import StorageConnector
 from hopsworks.internal.fs.training_dataset_split import TrainingDatasetSplit
 

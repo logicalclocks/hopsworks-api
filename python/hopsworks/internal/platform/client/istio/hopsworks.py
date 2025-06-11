@@ -17,8 +17,12 @@
 import os
 
 import requests
+from hopsworks.internal import aliases
 from hopsworks.internal.platform.client import auth, exceptions
 from hopsworks.internal.platform.client.istio import base as istio
+
+
+aliases.publish("hsml.client.istio.hopsworks")
 
 
 class Client(istio.Client):

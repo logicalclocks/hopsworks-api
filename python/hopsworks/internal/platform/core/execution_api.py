@@ -14,7 +14,11 @@
 #   limitations under the License.
 #
 
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import client, execution
+
+
+aliases.publish("hopsworks.core.execution_api")
 
 
 class ExecutionApi:

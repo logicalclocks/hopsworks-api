@@ -18,7 +18,7 @@ import copy
 
 import humps
 from hopsworks.internal.ml import inference_batcher
-from hopsworks.internal.ml.constants import INFERENCE_BATCHER
+from hopsworks.internal.platform.constants import INFERENCE_BATCHER
 
 
 class TestInferenceBatcher:

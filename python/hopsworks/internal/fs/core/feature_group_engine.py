@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Union
 
 from hopsworks.internal.fs import engine, feature, util
 from hopsworks.internal.fs import feature_group as fg
-from hopsworks.internal.fs.client import exceptions
+from hopsworks.internal.platform.client import exceptions
 from hopsworks.internal.fs.core import delta_engine, feature_group_base_engine, hudi_engine
 from hopsworks.internal.fs.core.deltastreamer_jobconf import DeltaStreamerJobConf
 from hopsworks.internal.fs.core.schema_validation import DataFrameValidator

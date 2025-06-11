@@ -19,7 +19,11 @@ from __future__ import annotations
 from typing import Union
 
 import hopsworks.internal.platform.client as _main
+from hopsworks.internal import aliases
 from hopsworks.internal.platform.client.istio import external, hopsworks
+
+
+aliases.publish("hsml.client.istio")
 
 
 _client: Union[hopsworks.Client, external.Client, None] = None

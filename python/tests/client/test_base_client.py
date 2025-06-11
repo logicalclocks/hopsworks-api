@@ -18,8 +18,8 @@ import os
 
 import pytest
 import requests
-from hopsworks.internal.fs.client.base import Client
-from hopsworks.internal.fs.client.exceptions import RestAPIError
+from hopsworks.internal.platform.client.base import Client
+from hopsworks.internal.platform.client.exceptions import RestAPIError
 
 from tests.util import changes_environ
 

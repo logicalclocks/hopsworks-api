@@ -26,10 +26,18 @@ import time
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Literal, Optional, Union
 
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import client, tag, usage, util
 from hopsworks.internal.platform.client.exceptions import DatasetException, RestAPIError
 from hopsworks.internal.platform.core import inode
 from tqdm.auto import tqdm
+
+
+aliases.publish(
+    "hopsworks.core.dataset_api",
+    "hsfs.core.dataset_api",
+    "hsml.core.dataset_api",
+)
 
 
 class Chunk:
@@ -308,7 +316,7 @@ class DatasetApi:
                     chunks = []
 
                     if os.path.getsize(local_path) == 0:
-                        chunks.append(Chunk(b'', 1, "pending"))
+                        chunks.append(Chunk(b"", 1, "pending"))
                         all_chunks_processed = True
                     else:
                         for _ in range(simultaneous_chunks):

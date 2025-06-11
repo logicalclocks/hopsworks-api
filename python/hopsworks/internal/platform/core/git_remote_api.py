@@ -14,8 +14,12 @@
 #   limitations under the License.
 #
 
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import client, git_op_execution, git_remote
 from hopsworks.internal.platform.engine import git_engine
+
+
+aliases.publish("hopsworks.core.git_remote_api")
 
 
 class GitRemoteApi:

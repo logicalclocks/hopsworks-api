@@ -16,8 +16,8 @@
 
 import pytest
 from hopsworks.internal.ml import deployment, predictor
-from hopsworks.internal.ml.client.exceptions import ModelServingException
-from hopsworks.internal.ml.constants import PREDICTOR_STATE
+from hopsworks.internal.platform.client.exceptions import ModelServingException
+from hopsworks.internal.platform.constants import PREDICTOR_STATE
 from hopsworks.internal.ml.core import serving_api
 from hopsworks.internal.ml.engine import serving_engine
 

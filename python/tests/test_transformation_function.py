@@ -20,7 +20,7 @@ import logging
 import pandas as pd
 import pytest
 from hopsworks import version
-from hopsworks.internal.fs.client.exceptions import FeatureStoreException
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.fs.hopsworks_udf import udf
 from hopsworks.internal.fs.transformation_function import TransformationFunction, TransformationType
 from packaging.version import Version

@@ -27,7 +27,7 @@ from hopsworks.internal.fs import (  # noqa: E402,  Module level import not at t
     usage,
     util,
 )
-from hopsworks.internal.fs.connection import (  # noqa: E402,  Module level import not at top of file because os.environ must be set before importing hsfs
+from hopsworks.internal.platform.connection import (  # noqa: E402,  Module level import not at top of file because os.environ must be set before importing hsfs
     Connection,
 )
 

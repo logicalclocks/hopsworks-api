@@ -21,7 +21,11 @@ from dataclasses import asdict, dataclass
 from typing import Any, Dict, Optional
 
 import humps
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import util
+
+
+aliases.publish("hopsworks.user", "hsfs.user")
 
 
 @dataclass

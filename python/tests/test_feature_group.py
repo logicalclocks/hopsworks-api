@@ -30,7 +30,7 @@ from hopsworks.internal.fs import (
     user,
     util,
 )
-from hopsworks.internal.fs.client.exceptions import FeatureStoreException, RestAPIError
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks.internal.fs.core.constants import HAS_GREAT_EXPECTATIONS
 from hopsworks.internal.fs.engine import python, spark
 from hopsworks.internal.fs.transformation_function import TransformationType

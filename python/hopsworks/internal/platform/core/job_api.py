@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Optional, Union
 
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import (
     client,
     decorators,
@@ -32,6 +33,9 @@ from hopsworks.internal.platform.core import (
     ingestion_job_conf,
     job_configuration,
 )
+
+
+aliases.publish("hopsworks.core.job_api", "hsfs.core.job_api")
 
 
 class JobApi:

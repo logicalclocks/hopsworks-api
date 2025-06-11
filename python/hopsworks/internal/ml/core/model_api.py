@@ -17,8 +17,9 @@
 import json
 from typing import Union
 
-from hopsworks.internal.ml import client, decorators, model, tag
+from hopsworks.internal.ml import model, tag
 from hopsworks.internal.ml.core import explicit_provenance
+from hopsworks.internal.platform import decorators, client
 
 
 class ModelApi:

@@ -18,7 +18,7 @@ import warnings
 
 import pytest
 from hopsworks.internal.fs import feature, feature_group
-from hopsworks.internal.fs.client.exceptions import FeatureStoreException
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.fs.constructor import filter, join, query
 
 

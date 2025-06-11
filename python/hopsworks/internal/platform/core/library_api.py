@@ -16,7 +16,11 @@
 
 import json
 
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import client, library
+
+
+aliases.publish("hopsworks.core.library_api")
 
 
 class LibraryApi:

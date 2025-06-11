@@ -64,7 +64,7 @@ from hopsworks.internal.fs.core.feature_logging import FeatureLogging
 from hopsworks.internal.fs.core.feature_view_api import FeatureViewApi
 from hopsworks.internal.fs.core.job import Job
 from hopsworks.internal.fs.core.vector_db_client import VectorDbClient
-from hopsworks.internal.fs.decorators import typechecked
+from hopsworks.internal.platform.decorators import typechecked
 from hopsworks.internal.fs.feature import Feature
 from hopsworks.internal.fs.feature_logger import FeatureLogger
 from hopsworks.internal.fs.hopsworks_udf import HopsworksUdf

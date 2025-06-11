@@ -16,9 +16,13 @@
 
 import time
 
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import client, usage, util
 from hopsworks.internal.platform.core import execution_api, flink_cluster_api
 from hopsworks.internal.platform.engine import execution_engine
+
+
+aliases.publish("hopsworks.flink_cluster")
 
 
 class FlinkCluster:

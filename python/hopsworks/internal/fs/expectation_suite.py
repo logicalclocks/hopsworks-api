@@ -35,7 +35,7 @@ from hopsworks.internal.fs.core.expectation_engine import ExpectationEngine
 from hopsworks.internal.fs.core.variable_api import VariableApi
 
 # if great_expectations is not installed, we will default to using native Hopsworks class as return values
-from hopsworks.internal.fs.decorators import uses_great_expectations
+from hopsworks.internal.platform.decorators import uses_great_expectations
 from hopsworks.internal.fs.ge_expectation import GeExpectation
 
 

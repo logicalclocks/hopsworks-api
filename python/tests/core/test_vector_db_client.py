@@ -17,7 +17,7 @@ from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest
-from hopsworks.internal.fs.client.exceptions import FeatureStoreException
+from hopsworks.internal.platform.client.exceptions import FeatureStoreException
 from hopsworks.internal.fs.core import vector_db_client
 from hopsworks.internal.fs.embedding import EmbeddingIndex
 from hopsworks.internal.fs.feature import Feature

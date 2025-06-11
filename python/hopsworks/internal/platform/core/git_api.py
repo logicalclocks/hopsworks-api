@@ -18,6 +18,7 @@ import json
 import logging
 from typing import List, Optional, Union
 
+from hopsworks.internal import aliases
 from hopsworks.internal.platform import (
     client,
     git_commit,
@@ -32,6 +33,9 @@ from hopsworks.internal.platform.client.exceptions import GitException
 from hopsworks.internal.platform.core import git_provider_api
 from hopsworks.internal.platform.engine import git_engine
 from hopsworks.internal.platform.git_file_status import GitFileStatus
+
+
+aliases.publish("hopsworks.core.git_api")
 
 
 class GitApi:
