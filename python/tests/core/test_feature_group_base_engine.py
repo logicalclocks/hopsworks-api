@@ -14,8 +14,8 @@
 #   limitations under the License.
 #
 
-from hsfs import feature, feature_group
-from hsfs.core import feature_group_base_engine
+from hopsworks.internal.fs import feature, feature_group
+from hopsworks.internal.fs.core import feature_group_base_engine
 
 
 class TestFeatureGroupBaseEngine:

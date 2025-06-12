@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 import pytest
-from hsfs.core import monitoring_window_config as mwc
+from hopsworks.internal.fs.core import monitoring_window_config as mwc
 
 
 class TestMonitoringWindowConfig:

@@ -14,13 +14,13 @@
 #   limitations under the License.
 #
 
-from hsfs import (
+from hopsworks.internal.fs import (
     feature_group,
     training_dataset,
     training_dataset_feature,
 )
-from hsfs.constructor import query
-from hsfs.core import training_dataset_engine
+from hopsworks.internal.fs.constructor import query
+from hopsworks.internal.fs.core import training_dataset_engine
 
 
 class TestTrainingDatasetEngine:
@@ -28,7 +28,7 @@ class TestTrainingDatasetEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
         mock_td_api = mocker.patch("hsfs.core.training_dataset_api.TrainingDatasetApi")
 
@@ -67,7 +67,7 @@ class TestTrainingDatasetEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mocker.patch("hsfs.engine.get_type")
 
         mocker.patch("hsfs.engine.get_instance")
@@ -102,7 +102,7 @@ class TestTrainingDatasetEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
 
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
         mock_td_api = mocker.patch("hsfs.core.training_dataset_api.TrainingDatasetApi")
@@ -196,7 +196,7 @@ class TestTrainingDatasetEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mocker.patch("hsfs.engine.get_instance")
         mock_storage_connector_read = mocker.patch(
             "hsfs.storage_connector.StorageConnector.read"
@@ -225,7 +225,7 @@ class TestTrainingDatasetEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         mocker.patch("hsfs.engine.get_instance")
         mock_storage_connector_read = mocker.patch(
             "hsfs.storage_connector.StorageConnector.read"

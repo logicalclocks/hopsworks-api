@@ -15,7 +15,7 @@
 #
 
 
-from hsfs import ge_validation_result
+from hopsworks.internal.fs import ge_validation_result
 
 
 class TestValidationResult:

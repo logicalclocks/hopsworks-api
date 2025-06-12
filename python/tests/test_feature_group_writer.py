@@ -14,8 +14,8 @@
 #   limitations under the License.
 #
 
-from hsfs import feature_group
-from hsfs.engine import python
+from hopsworks.internal.fs import feature_group
+from hopsworks.internal.fs.engine import python
 
 
 class TestFeatureGroupWriter:
@@ -51,7 +51,7 @@ class TestFeatureGroupWriter:
     def test_fg_writer_cache_management(self, mocker, dataframe_fixture_basic):
         engine = python.Engine()
         mocker.patch("hsfs.engine.get_instance", return_value=engine)
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         producer, feature_writers, writer_m = (
             mocker.MagicMock(),
             mocker.MagicMock(),
@@ -109,7 +109,7 @@ class TestFeatureGroupWriter:
     def test_fg_writer_without_context_manager(self, mocker, dataframe_fixture_basic):
         engine = python.Engine()
         mocker.patch("hsfs.engine.get_instance", return_value=engine)
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         producer, feature_writers, writer_m = (
             mocker.MagicMock(),
             mocker.MagicMock(),

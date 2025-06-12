@@ -15,7 +15,7 @@
 
 import numpy as np
 import pytest
-from hsml.utils.schema import tensor, tensor_schema
+from hopsworks.internal.ml.utils.schema import tensor, tensor_schema
 
 
 class TestTensorSchema:

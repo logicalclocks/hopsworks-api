@@ -15,7 +15,7 @@
 #
 
 
-from hsfs import user
+from hopsworks.internal.platform import user
 
 
 class TestUser:

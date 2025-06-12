@@ -1,0 +1,91 @@
+#
+#   Copyright 2025 Hopsworks AB
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+#
+import json
+from typing import Any, Dict
+
+import humps
+from hopsworks.internal import aliases
+from hopsworks.internal.fs import feature_group, util
+
+
+aliases.publish("hsfs.core.feature_logging")
+
+
+class FeatureLogging:
+    NOT_FOUND_ERROR_CODE = 270248
+
+    def __init__(
+        self,
+        id: int,
+        transformed_features: "feature_group.FeatureGroup",
+        untransformed_features: "feature_group.FeatureGroup",
+    ):
+        self._id = id
+        self._transformed_features = transformed_features
+        self._untransformed_features = untransformed_features
+
+    @classmethod
+    def from_response_json(cls, json_dict: Dict[str, Any]) -> "FeatureLogging":
+        # avoid circular import:
+        from hopsworks.internal.fs.feature_group import FeatureGroup
+
+        json_decamelized = humps.decamelize(json_dict)
+        transformed_features = json_decamelized.get("transformed_log_fg")
+        untransformed_features = json_decamelized.get("untransformed_log_fg")
+        if transformed_features:
+            transformed_features = FeatureGroup.from_response_json(transformed_features)
+        if untransformed_features:
+            untransformed_features = FeatureGroup.from_response_json(
+                untransformed_features
+            )
+        return cls(
+            json_decamelized.get("id"), transformed_features, untransformed_features
+        )
+
+    def update(self, others):
+        self._transformed_features = others.transformed_features
+        self._untransformed_features = others.untransformed_features
+        return self
+
+    @property
+    def transformed_features(self) -> "feature_group.FeatureGroup":
+        return self._transformed_features
+
+    @property
+    def untransformed_features(self) -> "feature_group.FeatureGroup":
+        return self._untransformed_features
+
+    def get_feature_group(self, transformed):
+        if transformed:
+            return self._transformed_features
+        else:
+            return self._untransformed_features
+
+    @property
+    def id(self) -> str:
+        return self._id
+
+    def to_dict(self):
+        return {
+            "id": self._id,
+            "transformed_log_fg": self._transformed_features,
+            "untransformed_log_fg": self._untransformed_features,
+        }
+
+    def json(self) -> Dict[str, Any]:
+        return json.dumps(self, cls=util.Encoder)
+
+    def __repr__(self):
+        return self.json()

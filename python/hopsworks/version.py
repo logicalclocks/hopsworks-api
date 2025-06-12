@@ -14,11 +14,4 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.version import (
-    __version__,
-)
-
-
-__all__ = [
-    "__version__",
-]
+__version__ = "4.4.0.dev1"

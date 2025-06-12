@@ -16,8 +16,8 @@
 
 import warnings
 
-from hsfs import feature_group as fg_mod
-from hsfs.core import feature_group_api
+from hopsworks.internal.fs import feature_group as fg_mod
+from hopsworks.internal.fs.core import feature_group_api
 from mock import Mock
 
 
@@ -34,7 +34,7 @@ class TestFeatureGroupApi:
         client_mock = Mock()
         client_mock.configure_mock(**{"_send_request.side_effect": side_effects})
         mocker.patch(
-            "hopsworks_common.client.get_instance",
+            "hopsworks.internal.platform.client.get_instance",
             return_value=client_mock,
         )
         mocker.patch("hsfs.engine.get_instance")

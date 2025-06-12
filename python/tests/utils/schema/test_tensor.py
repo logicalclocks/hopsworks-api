@@ -13,7 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
-from hsml.utils.schema import tensor
+from hopsworks.internal.ml.utils.schema import tensor
 
 
 class TestTensor:

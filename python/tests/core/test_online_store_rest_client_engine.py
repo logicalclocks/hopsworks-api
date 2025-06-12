@@ -15,8 +15,8 @@
 #
 
 import pytest
-from hsfs import training_dataset_feature
-from hsfs.core import online_store_rest_client_engine
+from hopsworks.internal.fs import training_dataset_feature
+from hopsworks.internal.fs.core import online_store_rest_client_engine
 
 
 ONLINE_STORE_REST_CLIENT_API_GET_BATCH_RAW_FEATURE_VECTORS = "hsfs.core.online_store_rest_client_api.OnlineStoreRestClientApi.get_batch_raw_feature_vectors"

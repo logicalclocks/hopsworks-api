@@ -17,7 +17,7 @@
 import copy
 
 import humps
-from hsml import inference_endpoint
+from hopsworks.internal.ml import inference_endpoint
 
 
 class TestInferenceEndpoint:

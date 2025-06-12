@@ -15,8 +15,8 @@
 #
 
 import pytest
-from hopsworks_common.core.alerts_api import _API_MATCH
-from hopsworks_common.engine import alerts_engine
+from hopsworks.internal.platform.core.alerts_api import _API_MATCH
+from hopsworks.internal.platform.engine import alerts_engine
 from mock import Mock
 
 
