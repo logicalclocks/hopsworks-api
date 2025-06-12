@@ -30,31 +30,29 @@ from hopsworks.internal.platform import usage  # noqa: E402
 from hopsworks.internal.platform.connection import Connection  # noqa: E402
 
 
-aliases.publish("hsfs")
+with aliases.Publisher("hsfs"):
+    __version__ = version.__version__
+
+    connection = Connection.connection
 
 
-__version__ = version.__version__
-
-connection = Connection.connection
-
-
-def fs_formatwarning(message, category, filename, lineno, line=None):
-    return "{}: {}\n".format(category.__name__, message)
+    def fs_formatwarning(message, category, filename, lineno, line=None):
+        return "{}: {}\n".format(category.__name__, message)
 
 
-warnings.formatwarning = fs_formatwarning
-warnings.simplefilter("always", util.VersionWarning)
-warnings.filterwarnings(
-    action="ignore", category=DeprecationWarning, module=r".*ipykernel"
-)
+    warnings.formatwarning = fs_formatwarning
+    warnings.simplefilter("always", util.VersionWarning)
+    warnings.filterwarnings(
+        action="ignore", category=DeprecationWarning, module=r".*ipykernel"
+    )
 
 
-def disable_usage_logging():
-    usage.disable()
+    def disable_usage_logging():
+        usage.disable()
 
 
-def get_sdk_info():
-    return usage.get_env()
+    def get_sdk_info():
+        return usage.get_env()
 
 
-__all__ = ["connection", "disable_usage_logging", "get_sdk_info"]
+    __all__ = ["connection", "disable_usage_logging", "get_sdk_info"]

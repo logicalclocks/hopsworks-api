@@ -5,9 +5,7 @@ import hopsworks.internal.aliases
 import hopsworks.internal.fs
 __all__ = hopsworks.internal.fs.__all__
 __version__ = hopsworks.internal.fs.__version__
-builtin_transformations = hopsworks.internal.fs.builtin_transformations
 connection = hopsworks.internal.fs.connection
 disable_usage_logging = hopsworks.internal.fs.disable_usage_logging
-feature_store_activity = hopsworks.internal.fs.feature_store_activity
 fs_formatwarning = hopsworks.internal.fs.fs_formatwarning
 get_sdk_info = hopsworks.internal.fs.get_sdk_info

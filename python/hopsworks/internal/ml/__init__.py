@@ -22,19 +22,17 @@ from hopsworks.internal.platform import util
 from hopsworks.internal.platform.connection import Connection
 
 
-aliases.publish("hsml")
+with aliases.Publisher("hsml"):
+    connection = Connection.connection
+
+    __version__ = version.__version__
 
 
-connection = Connection.connection
-
-__version__ = version.__version__
-
-
-def ml_formatwarning(message, category, filename, lineno, line=None):
-    return "{}: {}\n".format(category.__name__, message)
+    def ml_formatwarning(message, category, filename, lineno, line=None):
+        return "{}: {}\n".format(category.__name__, message)
 
 
-warnings.formatwarning = ml_formatwarning
-warnings.simplefilter("always", util.VersionWarning)
+    warnings.formatwarning = ml_formatwarning
+    warnings.simplefilter("always", util.VersionWarning)
 
-__all__ = ["connection"]
+    __all__ = ["connection"]
