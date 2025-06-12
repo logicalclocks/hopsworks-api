@@ -18,71 +18,73 @@ from __future__ import annotations
 from typing import TypeVar, Union
 
 import hopsworks.internal.platform.connection
+from hopsworks.internal import aliases
 from hopsworks.internal.fs.engine import spark, spark_no_metastore
 from hopsworks.internal.platform.client import exceptions
 
 
-_engine = None
-_engine_type = None
-
-
-def init(engine_type: str) -> None:
-    global _engine, _engine_type
-    python_types = ["python", "training"]
-    if _engine_type != engine_type:
-        if engine_type in python_types and _engine_type in python_types:
-            _engine_type = engine_type
-        else:
-            stop()
-    if not _engine:
-        if engine_type == "spark":
-            _engine = spark.Engine()
-        elif engine_type == "hive":
-            raise ValueError(
-                "Hive engine is not supported in hopsworks client version >= 4.0."
-            )
-        elif engine_type == "spark-no-metastore" or engine_type == "spark-delta":
-            _engine = spark_no_metastore.Engine()
-        elif engine_type in python_types:
-            try:
-                from hopsworks.internal.fs.engine import python
-            except ImportError as err:
-                raise exceptions.FeatureStoreException(
-                    "Trying to instantiate Python as engine, but 'python' extras are "
-                    "missing in HSFS installation. Install with `pip install "
-                    "hsfs[python]`."
-                ) from err
-            _engine = python.Engine()
-        if _engine:
-            _engine_type = engine_type
-
-
-def get_instance() -> Union[
-    spark.Engine, spark_no_metastore.Engine, TypeVar("python.Engine")
-]:
-    init(hopsworks.internal.platform.connection._hsfs_engine_type)
-    return _engine
-
-
-# Used for testing
-def set_instance(
-    engine_type: str,
-    engine: Union[spark.Engine, spark_no_metastore.Engine, TypeVar("python.Engine")],
-) -> None:
-    global _engine
-    hopsworks.internal.platform.connection._hsfs_engine_type = engine_type
-    _engine = engine
-
-
-def get_type() -> str:
-    if _engine:
-        return hopsworks.internal.platform.connection._hsfs_engine_type
-    raise Exception("Couldn't find execution engine. Try reconnecting to Hopsworks.")
-
-
-def stop() -> None:
-    global _engine
-    from hopsworks.internal.fs.core import arrow_flight_client
-
+with aliases.Publisher("hsfs.engine"):
     _engine = None
-    arrow_flight_client.close()
+    _engine_type = None
+
+
+    def init(engine_type: str) -> None:
+        global _engine, _engine_type
+        python_types = ["python", "training"]
+        if _engine_type != engine_type:
+            if engine_type in python_types and _engine_type in python_types:
+                _engine_type = engine_type
+            else:
+                stop()
+        if not _engine:
+            if engine_type == "spark":
+                _engine = spark.Engine()
+            elif engine_type == "hive":
+                raise ValueError(
+                    "Hive engine is not supported in hopsworks client version >= 4.0."
+                )
+            elif engine_type == "spark-no-metastore" or engine_type == "spark-delta":
+                _engine = spark_no_metastore.Engine()
+            elif engine_type in python_types:
+                try:
+                    from hopsworks.internal.fs.engine import python
+                except ImportError as err:
+                    raise exceptions.FeatureStoreException(
+                        "Trying to instantiate Python as engine, but 'python' extras are "
+                        "missing in HSFS installation. Install with `pip install "
+                        "hsfs[python]`."
+                    ) from err
+                _engine = python.Engine()
+            if _engine:
+                _engine_type = engine_type
+
+
+    def get_instance() -> Union[
+        spark.Engine, spark_no_metastore.Engine, TypeVar("python.Engine")
+    ]:
+        init(hopsworks.internal.platform.connection._hsfs_engine_type)
+        return _engine
+
+
+    # Used for testing
+    def set_instance(
+        engine_type: str,
+        engine: Union[spark.Engine, spark_no_metastore.Engine, TypeVar("python.Engine")],
+    ) -> None:
+        global _engine
+        hopsworks.internal.platform.connection._hsfs_engine_type = engine_type
+        _engine = engine
+
+
+    def get_type() -> str:
+        if _engine:
+            return hopsworks.internal.platform.connection._hsfs_engine_type
+        raise Exception("Couldn't find execution engine. Try reconnecting to Hopsworks.")
+
+
+    def stop() -> None:
+        global _engine
+        from hopsworks.internal.fs.core import arrow_flight_client
+
+        _engine = None
+        arrow_flight_client.close()
