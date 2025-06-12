@@ -828,6 +828,7 @@ class AsyncTaskThread(threading.Thread):
     def __init__(
         self,
         connection_pool_initializer: Callable = None,
+        connection_test: Callable = None,
         connection_pool_params: Tuple = (),
         *thread_args,
         **thread_kwargs,
@@ -837,6 +838,7 @@ class AsyncTaskThread(threading.Thread):
         self._event_loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
         self.stop_event = threading.Event()
         self._connection_pool_initializer: Callable = connection_pool_initializer
+        self._connection_test_function: Callable = connection_test
         self._connection_pool_params: Tuple = connection_pool_params
         self._connection_pool = None
         self.daemon = True  # Setting the thread as a daemon thread by default, so it will be terminated when the main thread is terminated.
@@ -852,8 +854,13 @@ class AsyncTaskThread(threading.Thread):
             task = self.task_queue.get()
             # Run the task in the event loop and get the result
             try:
-                # Check if the task requires a connection pool and pass it to the function if it does.
                 if task.requires_connection_pool:
+                    # Try checking connection to mysql and refresh it if required before running the task.
+                    try:
+                        await self._connection_test_function(self._connection_pool)
+                    except Exception as e:
+                        raise e
+
                     task.result = await task.task_function(
                         *task.task_args,
                         **task.task_kwargs,
@@ -869,7 +876,6 @@ class AsyncTaskThread(threading.Thread):
             except Exception as e:
                 task.result = e
                 task.event.set()
-                raise e
 
     def stop(self):
         """
@@ -893,9 +899,14 @@ class AsyncTaskThread(threading.Thread):
         try:
             self._event_loop.run_forever()
         except Exception as e:
+            print(
+                "An error occurred in the async task thread the event loop has been closed: {}".format(
+                    str(e)
+                )
+            )
             self._event_loop.stop()
             self._event_loop.close()
-            raise e
+            # raise e
         finally:
             self._event_loop.close()
 

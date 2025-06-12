@@ -257,6 +257,7 @@ class OnlineStoreSqlClient:
             # Create the async event thread if it is not already running and start it.
             self._async_task_thread = AsyncTaskThread(
                 connection_pool_initializer=self._get_connection_pool,
+                connection_test=self._test_connection,
                 connection_pool_params=(
                     len(self._prepared_statements[self.SINGLE_VECTOR_KEY]),
                 ),
@@ -560,6 +561,17 @@ class OnlineStoreSqlClient:
             hostname=self._hostname,
         )
         return connection_pool
+
+    async def _test_connection(
+        self, connection_pool: aiomysql.utils._ConnectionContextManager
+    ):
+        """Test the connection to the MySQL database."""
+        try:
+            async with connection_pool.acquire() as conn:
+                await conn._connection.ping(reconnect=True)
+        except Exception as e:
+            _logger.error(f"Failed to connect to MySQL: {e}")
+            raise e
 
     async def _query_async_sql(
         self,

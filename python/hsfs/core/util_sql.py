@@ -98,7 +98,10 @@ async def create_async_engine(
                 "mysqld"
             )
         else:
-            hostname = url.host
+            service_discovery_domain = (
+                variable_api.VariableApi().get_service_discovery_domain()
+            )
+            hostname = f"onlinefs.mysql.service.{service_discovery_domain}"
 
     if options is None:
         options = {}
@@ -113,7 +116,7 @@ async def create_async_engine(
         loop=loop,
         minsize=options.get("minsize", default_min_size),
         maxsize=options.get("maxsize", default_min_size),
-        pool_recycle=options.get("pool_recycle", -1),
+        pool_recycle=options.get("pool_recycle", 14400),
         autocommit=options.get("autocommit", True),
     )
     return pool
