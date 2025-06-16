@@ -37,6 +37,7 @@ import hsfs.expectation_suite
 import humps
 import pandas as pd
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
+from hopsworks_common.core import alerts_api
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import (
     engine,
@@ -165,6 +166,7 @@ class FeatureGroupBase:
         self._feature_store_id = featurestore_id
         self._feature_store = None
         self._variable_api: VariableApi = VariableApi()
+        self._alert_api = alerts_api.AlertsApi()
 
         if storage_connector is not None and isinstance(storage_connector, dict):
             self._storage_connector = sc.StorageConnector.from_response_json(
@@ -2018,6 +2020,83 @@ class FeatureGroupBase:
                 util.StorageWarning,
                 stacklevel=1,
             )
+
+    def get_alerts(self):
+        """Get all alerts for this feature group.
+
+        # Returns
+            `List[FeatureGroupAlert]`: The list of FeatureGroupAlerts.
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        !!! Example
+            ```python
+            # Get all alerts
+            alerts = fg.get_alerts()
+            ```
+        """
+        return self._alert_api.get_feature_group_alerts(
+            feature_store_id=self._feature_store_id,
+            feature_group_id=self._id,
+        )
+
+    def get_alert(self, alert_id: int):
+        """Get an alert for this feature group by ID.
+
+        # Arguments
+            alert_id: The id of the alert to get.
+        # Returns
+            `FeatureGroupAlert`: The FeatureGroupAlert object.
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        !!! Example
+            ```python
+            # Get a specific alert
+            alert = fg.get_alert(alert_id=1)
+            ```
+        """
+        return self._alert_api.get_feature_group_alert(
+            feature_store_id=self._feature_store_id,
+            feature_group_id=self._id,
+            alert_id=alert_id,
+        )
+
+    def create_alert(
+        self,
+        receiver: str,
+        status: str,
+        severity: str,
+    ):
+        """Create an alert for this feature group.
+
+        # Arguments
+            receiver: str. The receiver of the alert.
+            status: str. The status that will trigger the alert. Can be "feature_validation_success", "feature_validation_warning", "feature_validation_failure", "feature_monitor_shift_undetected", "feature_monitor_shift_detected".
+            severity: str. The severity of the alert. Can be "info", "warning" or "critical".
+        # Returns
+            The created FeatureGroupAlert object.
+        # Raises
+            `ValueError`: If the status is not valid.
+            `ValueError`: If the severity is not valid.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        !!! Example
+            ```python
+            fg.create_alert(
+                receiver="email",
+                status="feature_validation_failure",
+                severity="critical",
+            )
+            ```
+        """
+        return self._alert_api.create_feature_group_alert(
+            feature_store_id=self._feature_store_id,
+            feature_group_id=self._id,
+            receiver=receiver,
+            status=status,
+            severity=severity,
+        )
 
     @property
     def embedding_index(self) -> Optional["EmbeddingIndex"]:

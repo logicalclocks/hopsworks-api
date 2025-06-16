@@ -17,49 +17,21 @@
 
 package com.logicalclocks.hsfs.beam.constructor;
 
-import com.logicalclocks.hsfs.FeatureStoreException;
-import com.logicalclocks.hsfs.Storage;
+import com.logicalclocks.hsfs.Feature;
+import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.beam.StreamFeatureGroup;
 import com.logicalclocks.hsfs.constructor.QueryBase;
 
+import lombok.NoArgsConstructor;
 import org.apache.beam.sdk.values.PCollection;
 
-import java.io.IOException;
-import java.util.Map;
+import java.util.List;
 
+@NoArgsConstructor
 public class Query extends QueryBase<Query, StreamFeatureGroup, PCollection<Object>> {
-  @Override
-  public String sql() {
-    throw new UnsupportedOperationException("Not supported for Beam");
+
+  public Query(FeatureGroupBase leftFeatureGroup, List<Feature> leftFeatures) {
+    super(leftFeatureGroup, leftFeatures);
   }
 
-  @Override
-  public String sql(Storage storage) {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public Object read() throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public Object read(boolean online) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public Object read(boolean online, Map<String, String> readOptions) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void show(int numRows) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
-
-  @Override
-  public void show(boolean online, int numRows) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Beam");
-  }
 }

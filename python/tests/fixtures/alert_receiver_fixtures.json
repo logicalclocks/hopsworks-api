@@ -1,0 +1,80 @@
+{
+    "get": {
+        "response": {
+            "count": 4,
+            "items": [
+                {
+                    "name": "project1__email_receiver",
+                    "email_configs": [
+                        {
+                            "to": "test_to",
+                            "send_resolved": true,
+                            "html": "test_html"
+                        },
+                        {
+                            "to": "test_to1",
+                            "send_resolved": true,
+                            "html": "test_html"
+                        }
+                    ]
+                },
+                {
+                    "name": "project1__pagerduty_receiver",
+                    "pagerduty_configs": [
+                        {
+                            "routing_key": "test_routing_key",
+                            "service_key": "test_service_key",
+                            "sendResolved": false,
+                            "client": "test_client",
+                            "client_url": "test_client_url"
+                        }
+                    ]
+                },
+                {
+                    "name": "project1__slack_receiver",
+                    "slack_configs": [
+                        {
+                            "channel": "test_channel",
+                            "sendResolved": false,
+                            "icon_emoji": "test_icon_emoji",
+                            "icon_url": "test_icon_url",
+                            "text": "test_text",
+                            "color": "test_color",
+                            "username": "test_user_name"
+                        }
+                    ]
+                },
+                {
+                    "name": "project1__webhook_receiver",
+                    "webhook_configs": [
+                        {
+                            "url": "test_url",
+                            "sendResolved": false,
+                            "max_alerts": 5
+                        }
+                    ]
+                },
+                {
+                    "name": "global-receiver__slack",
+                    "slack_configs": [
+                        {
+                            "channel": "test_channel",
+                            "sendResolved": false,
+                            "icon_emoji": "test_icon_emoji",
+                            "icon_url": "test_icon_url",
+                            "text": "test_text",
+                            "color": "test_color",
+                            "username": "test_user_name"
+                        }
+                    ]
+                }
+            ]
+        }
+    },
+    "get_empty": {
+        "response": {
+            "count": 0,
+            "items": []
+        }
+    }
+}

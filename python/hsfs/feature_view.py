@@ -35,6 +35,7 @@ from typing import (
 import humps
 import pandas as pd
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.core import alerts_api
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import (
     feature_group,
@@ -202,6 +203,7 @@ class FeatureView:
         )
         self._logging_enabled = logging_enabled
         self._feature_logging = None
+        self._alert_api = alerts_api.AlertsApi()
 
         if self._id:
             self._init_feature_monitoring_engine()
@@ -3488,6 +3490,77 @@ class FeatureView:
             valid_feature_names=[feat.name for feat in self._features],
             end_date_time=end_date_time,
             cron_expression=cron_expression,
+        )
+
+    def get_alerts(self):
+        """Get all alerts for this feature view.
+
+        # Returns
+            List[FeatureViewAlert] or Alert.
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request.
+        """
+        return self._alert_api.get_feature_view_alerts(
+            self._feature_store_id,
+            feature_view_name=self._name,
+            feature_view_version=self._version,
+        )
+
+    def get_alert(self, alert_id: int):
+        """Get an alert for this feature view by ID.
+
+        # Arguments
+            alert_id: The id of the alert to get..
+        # Returns
+            A single FeatureViewAlert object is returned.
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request.
+        """
+        return self._alert_api.get_feature_view_alert(
+            self._feature_store_id,
+            feature_view_name=self._name,
+            feature_view_version=self._version,
+            alert_id=alert_id,
+        )
+
+    def create_alert(
+        self,
+        receiver: str,
+        status: str,
+        severity: str,
+    ):
+        """Create an alert for this feature view.
+        !!! example
+            ```python
+            # get feature store instance
+            fs = ...
+            # get feature view instance
+            feature_view = fs.get_feature_view(...)
+            # create an alert
+            alert = feature_view.create_alert(
+                receiver="email",
+                status="feature_monitor_shift_undetected",
+                severity="info",
+            )
+            ```
+        # Arguments
+            receiver: str. The receiver of the alert.
+            status: str. The status that will trigger the alert. Can be "feature_monitor_shift_undetected" or "feature_monitor_shift_detected".
+            severity: str. The severity of the alert. Can be "info", "warning" or "critical".
+        # Returns
+            The created FeatureViewAlert object.
+        # Raises
+            `ValueError`: If the status is not valid.
+            `ValueError`: If the severity is not valid.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        """
+        return self._alert_api.create_feature_view_alert(
+            feature_store_id=self._feature_store_id,
+            feature_view_name=self._name,
+            feature_view_version=self._version,
+            receiver=receiver,
+            status=status,
+            severity=severity,
         )
 
     @classmethod
