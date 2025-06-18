@@ -188,12 +188,12 @@ class SearchApi:
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
-            `TrainingdatasetSearchResult`: The results.
+            `TrainingDatasetSearchResult`: The results.
         # Raises
             `ValueError`: If the search term is not provided or if the filter_by is not one of the allowed values.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        return search_results.TrainingdatasetSearchResult(
+        return search_results.TrainingDatasetSearchResult(
             self._search(
                 search_term,
                 "TRAININGDATASET",

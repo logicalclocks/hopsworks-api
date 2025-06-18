@@ -1346,7 +1346,7 @@ class FeatureSearchResult:
         return f"FeatureSearchResult(features={self.features}, features_from={self.features_from}, features_total={self.features_total})"
 
 
-class TrainingdatasetSearchResult:
+class TrainingDatasetSearchResult:
     def __init__(self, result: FeaturestoreSearchResultBase):
         self._trainingdatasets = result.trainingdatasets
         self._trainingdatasets_from = result.trainingdatasets_from
