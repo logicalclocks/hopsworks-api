@@ -15,7 +15,7 @@
 #
 
 
-from hsfs import feature_group_commit
+from hopsworks.internal.fs import feature_group_commit
 
 
 class TestFeatureGroupCommit:

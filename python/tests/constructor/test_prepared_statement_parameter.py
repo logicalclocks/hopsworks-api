@@ -15,7 +15,7 @@
 #
 
 
-from hsfs.constructor import prepared_statement_parameter
+from hopsworks.internal.fs.constructor import prepared_statement_parameter
 
 
 class TestPreparedStatementParameter:

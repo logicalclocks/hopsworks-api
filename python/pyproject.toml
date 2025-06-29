@@ -110,11 +110,10 @@ include = [
     "hopsworks*",
     "hsfs*",
     "hsml*",
-    "hopsworks_common*",
 ]
 
 [tool.setuptools.dynamic]
-version = { attr = "hopsworks_common.version.__version__" }
+version = { attr = "hopsworks.version.__version__" }
 
 [project.urls]
 Documentation = "https://docs.hopsworks.ai/latest"
@@ -154,6 +153,8 @@ exclude = [
     "java",
     "transformation_test_helper.py"  # File excluded from ruff formatting to maintain formatting required for tests
 ]
+extend-exclude = ["*.ipynb"]
+
 
 # Same as Black.
 line-length = 88
@@ -167,8 +168,6 @@ target-version = "py38"
 select = ["E4", "E7", "E9", "F", "B", "I", "W"] #, "ANN"]
 ignore = [
     "B905",   # zip has no strict kwarg until Python 3.10
-    "ANN101", # Missing type annotation for self in method
-    "ANN102", # Missing type annotation for cls in classmethod
     "ANN003", # Missing type annotation for **kwarg in function
     "ANN002", # Missing type annotation for *args in function
     "ANN401", # Allow Any in type annotations
@@ -184,7 +183,7 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [tool.ruff.lint.isort]
 lines-after-imports = 2
-known-third-party = ["hopsworks", "hsfs", "hsml", "hopsworks_common"]
+known-third-party = ["hopsworks", "hsfs", "hsml"]
 
 
 [tool.ruff.format]

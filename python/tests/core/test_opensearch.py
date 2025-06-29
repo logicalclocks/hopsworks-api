@@ -14,8 +14,11 @@
 #   limitations under the License.
 #
 import pytest
-from hsfs.client.exceptions import VectorDatabaseException
-from hsfs.core.opensearch import OpenSearchClientSingleton, OpensearchRequestOption
+from hopsworks.internal.platform.client.exceptions import VectorDatabaseException
+from hopsworks.internal.platform.core.opensearch import (
+    OpenSearchClientSingleton,
+    OpensearchRequestOption,
+)
 
 
 class TestOpenSearchClientSingleton:

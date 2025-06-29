@@ -15,14 +15,14 @@
 #
 from __future__ import annotations
 
-from hsfs.engine import python, spark
+from hopsworks.internal.fs.engine import python, spark
 
 
 class TestPythonSparkConvertDataframe:
     def test_convert_to_default_dataframe_w_timezone_notz(
         self, mocker, dataframe_fixture_times
     ):
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         python_engine = python.Engine()
 
         default_df_python = python_engine.convert_to_default_dataframe(
@@ -46,7 +46,7 @@ class TestPythonSparkConvertDataframe:
     def test_convert_to_default_dataframe_w_timezone_utc(
         self, mocker, dataframe_fixture_times
     ):
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         python_engine = python.Engine()
 
         default_df_python = python_engine.convert_to_default_dataframe(
@@ -67,7 +67,7 @@ class TestPythonSparkConvertDataframe:
     def test_convert_to_default_dataframe_w_timezone_utc_3(
         self, mocker, dataframe_fixture_times
     ):
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         python_engine = python.Engine()
 
         default_df_python = python_engine.convert_to_default_dataframe(
@@ -88,7 +88,7 @@ class TestPythonSparkConvertDataframe:
     def test_convert_to_default_dataframe_w_timezone_timestamp(
         self, mocker, dataframe_fixture_times
     ):
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         python_engine = python.Engine()
 
         default_df_python = python_engine.convert_to_default_dataframe(
@@ -109,7 +109,7 @@ class TestPythonSparkConvertDataframe:
     def test_convert_to_default_dataframe_w_timezone_timestamp_pacific(
         self, mocker, dataframe_fixture_times
     ):
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks.internal.platform.client.get_instance")
         python_engine = python.Engine()
 
         default_df_python = python_engine.convert_to_default_dataframe(

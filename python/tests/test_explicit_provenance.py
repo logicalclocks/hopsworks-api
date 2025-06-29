@@ -17,7 +17,7 @@
 import unittest
 from unittest import mock
 
-from hsml.core import explicit_provenance
+from hopsworks.internal.ml.core import explicit_provenance
 
 
 class TestExplicitProvenance(unittest.TestCase):

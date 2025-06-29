@@ -15,8 +15,8 @@
 #
 
 
-from hsfs import feature_group, training_dataset_feature
-from hsfs.transformation_function import TransformationType
+from hopsworks.internal.fs import feature_group, training_dataset_feature
+from hopsworks.internal.fs.transformation_function import TransformationType
 
 
 class TestTrainingDatasetFeature:

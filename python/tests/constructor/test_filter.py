@@ -15,8 +15,8 @@
 #
 
 
-from hsfs import feature
-from hsfs.constructor import filter
+from hopsworks.internal.fs import feature
+from hopsworks.internal.fs.constructor import filter
 
 
 class TestFilter:

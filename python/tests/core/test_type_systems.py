@@ -16,8 +16,8 @@
 import datetime
 
 import pytest
-from hsfs.core import type_systems
-from hsfs.core.constants import HAS_PANDAS, HAS_PYARROW
+from hopsworks.internal.platform.core import type_systems
+from hopsworks.internal.platform.core.constants import HAS_PANDAS, HAS_PYARROW
 
 
 if HAS_PYARROW:

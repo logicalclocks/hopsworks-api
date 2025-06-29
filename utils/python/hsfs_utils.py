@@ -18,10 +18,10 @@ from pyspark.sql.window import Window
 
 import hopsworks
 
-from hsfs import engine
-from hsfs.constructor import query
-from hsfs.statistics_config import StatisticsConfig
-from hsfs.core import feature_monitoring_config_engine, feature_view_engine, kafka_engine
+from hopsworks.internal.fs import engine
+from hopsworks.internal.fs.constructor import query
+from hopsworks.internal.fs.statistics_config import StatisticsConfig
+from hopsworks.internal.fs.core import feature_monitoring_config_engine, feature_view_engine, kafka_engine
 
 
 def read_job_conf(path: str) -> Dict[Any, Any]:
@@ -377,13 +377,13 @@ def _build_offsets(initial_check_point_string: str):
 
     # Split the input string into the topic and partition-offset pairs
     topic, offsets = initial_check_point_string.split(',', 1)
-    
+
     # Split the offsets and build a dictionary from them
     offsets_dict = {partition: int(offset) for partition, offset in (pair.split(':') for pair in offsets.split(','))}
-    
+
     # Create the final dictionary structure
     result = {topic: offsets_dict}
-    
+
     return result
 
 if __name__ == "__main__":

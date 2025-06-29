@@ -17,7 +17,7 @@
 import copy
 
 import humps
-from hsml import predictor_state_condition
+from hopsworks.internal.ml import predictor_state_condition
 
 
 class TestPredictorStateCondition:
