@@ -28,6 +28,16 @@ import java.util.Map;
 
 public abstract class EngineBase {
 
+  private static EngineBase instance;
+
+  public static synchronized void setInstance(EngineBase instance) {
+    EngineBase.instance = instance;
+  }
+
+  public static synchronized EngineBase getInstance() {
+    return instance;
+  }
+
   protected static final Logger LOGGER = LoggerFactory.getLogger(EngineBase.class);
 
   public StorageConnectorApi storageConnectorApi = new StorageConnectorApi();

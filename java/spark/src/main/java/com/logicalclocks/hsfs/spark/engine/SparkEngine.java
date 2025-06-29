@@ -42,7 +42,6 @@ import com.logicalclocks.hsfs.engine.FeatureGroupUtils;
 import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.metadata.HopsworksClient;
 import com.logicalclocks.hsfs.metadata.OnDemandOptions;
-import com.logicalclocks.hsfs.metadata.OnlineIngestionApi;
 import com.logicalclocks.hsfs.metadata.Option;
 import com.logicalclocks.hsfs.util.Constants;
 import com.logicalclocks.hsfs.spark.ExternalFeatureGroup;
@@ -126,7 +125,6 @@ public class SparkEngine extends EngineBase {
 
   private final StorageConnectorUtils storageConnectorUtils = new StorageConnectorUtils();
   private FeatureGroupUtils featureGroupUtils = new FeatureGroupUtils();
-  private OnlineIngestionApi onlineIngestionApi = new OnlineIngestionApi();
 
   private static SparkEngine INSTANCE = null;
 
@@ -929,8 +927,6 @@ public class SparkEngine extends EngineBase {
 
     StorageConnector.KafkaConnector storageConnector =
         storageConnectorApi.getKafkaStorageConnector(featureGroup.getFeatureStore(), external);
-    storageConnector.setSslTruststoreLocation(addFile(storageConnector.getSslTruststoreLocation()));
-    storageConnector.setSslKeystoreLocation(addFile(storageConnector.getSslKeystoreLocation()));
 
     Map<String, String> config = storageConnector.sparkOptions();
 
