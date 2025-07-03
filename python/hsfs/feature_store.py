@@ -711,7 +711,6 @@ class FeatureStore:
             offline_backfill_every_hr=offline_backfill_every_hr,
             storage_connector=storage_connector,
             data_source=data_source,
-            data_source=data_source.DataSource(path=path),
             ttl=ttl,
             ttl_enabled=ttl_enabled,
         )
@@ -902,7 +901,6 @@ class FeatureStore:
                 offline_backfill_every_hr=offline_backfill_every_hr,
                 storage_connector=storage_connector,
                 data_source=data_source,
-                data_source=data_source.DataSource(path=path),
                 ttl=ttl,
                 ttl_enabled=ttl_enabled,
             )
@@ -1037,7 +1035,6 @@ class FeatureStore:
             topic_name=topic_name,
             notification_topic_name=notification_topic_name,
             data_source=data_source,
-            data_source=data_source.DataSource(query=query, path=path),
             ttl=ttl,
             ttl_enabled=ttl_enabled,
         )
@@ -1223,7 +1220,6 @@ class FeatureStore:
             notification_topic_name=notification_topic_name,
             online_config=online_config,
             data_source=data_source,
-            data_source=data_source.DataSource(query=query, path=path),
             ttl=ttl,
             ttl_enabled=ttl_enabled,
         )
