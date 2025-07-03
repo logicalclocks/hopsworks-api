@@ -678,7 +678,8 @@ class FeatureStore:
             ttl: Optional time-to-live duration for features in this group. Can be specified as:
                 - An integer or float representing seconds
                 - A timedelta object
-                Features older than the TTL will be automatically removed. Defaults to None (no TTL).
+                This ttl value is added to the event time of the feature group and when the system time exceeds the event time + ttl, the entries will be automatically removed.
+                The system time zone is in UTC. Defaults to None (no TTL).
             ttl_enabled: Optionally, enable TTL for this feature group. Defaults to True if ttl is set.
         # Returns
             `FeatureGroup`. The feature group metadata object.
@@ -862,11 +863,11 @@ class FeatureStore:
             path: The location within the scope of the storage connector, from where to read
                 the data for the external feature group
             data_source: The data source specifying the location of the data. Overrides the path and query arguments when specified.
-
             ttl: Optional time-to-live duration for features in this group. Can be specified as:
                 - An integer or float representing seconds
                 - A timedelta object
-                Features older than the TTL will be automatically removed. Defaults to None (no TTL).
+                This ttl value is added to the event time of the feature group and when the system time exceeds the event time + ttl, the entries will be automatically removed.
+                The system time zone is in UTC. Defaults to None (no TTL).
             ttl_enabled: Optionally, enable TTL for this feature group. Defaults to True if ttl is set.
         # Returns
             `FeatureGroup`. The feature group metadata object.
@@ -937,6 +938,7 @@ class FeatureStore:
                 Dict[str, Any],
             ]
         ] = None,
+        online_enabled: bool = False,
         ttl: Optional[Union[int, float, timedelta]] = None,
         ttl_enabled: Optional[bool] = None,
     ) -> feature_group.ExternalFeatureGroup:
@@ -1002,15 +1004,14 @@ class FeatureStore:
                 group which dataframes should be validated against upon insertion.
                 Defaults to `None`.
             data_source: The data source specifying the location of the data. Overrides the path and query arguments when specified.
-
-
-
-
-            ttl: Optionally, set the time-to-live (TTL) for the feature group.
-                The feature group will be deleted after the specified time period.
-                Defaults to `None`.
-            ttl_enabled: Optionally, enable TTL for the feature group.
-                Defaults to `True` if ttl is set.
+            online_enabled: Define whether it should be possible to sync the feature group to
+                the online feature store for low latency access, defaults to `False`.
+            ttl: Optional time-to-live duration for features in this group. Can be specified as:
+                - An integer or float representing seconds
+                - A timedelta object
+                This ttl value is added to the event time of the feature group and when the system time exceeds the event time + ttl, the entries will be automatically removed.
+                The system time zone is in UTC. Defaults to None (no TTL).
+            ttl_enabled: Optionally, enable TTL for this feature group. Defaults to True if ttl is set.
 
         # Returns
             `ExternalFeatureGroup`. The external feature group metadata object.
@@ -1035,6 +1036,7 @@ class FeatureStore:
             topic_name=topic_name,
             notification_topic_name=notification_topic_name,
             data_source=data_source,
+            online_enabled=online_enabled,
             ttl=ttl,
             ttl_enabled=ttl_enabled,
         )
@@ -1188,11 +1190,12 @@ class FeatureStore:
                 are inserted or updated on the online feature store. If left undefined no notifications are sent.
             online_config: Optionally, define configuration which is used to configure online table.
             data_source: The data source specifying the location of the data. Overrides the path and query arguments when specified.
-            ttl: Optionally, set the time-to-live (TTL) for the feature group.
-                The feature group will be deleted after the specified time period.
-                Defaults to `None`.
-            ttl_enabled: Optionally, enable TTL for the feature group.
-                Defaults to `True` if ttl is set.
+            ttl: Optional time-to-live duration for features in this group. Can be specified as:
+                - An integer or float representing seconds
+                - A timedelta object
+                This ttl value is added to the event time of the feature group and when the system time exceeds the event time + ttl, the entries will be automatically removed.
+                The system time zone is in UTC. Defaults to None (no TTL).
+            ttl_enabled: Optionally, enable TTL for this feature group. Defaults to True if ttl is set.
 
         # Returns
             `ExternalFeatureGroup`. The external feature group metadata object.
