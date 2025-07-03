@@ -17,8 +17,8 @@
 from __future__ import annotations
 
 import datetime
-from datetime import timedelta
 import warnings
+from datetime import timedelta
 from typing import Any, Dict, List, Optional, TypeVar, Union
 
 import humps
