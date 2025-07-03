@@ -98,10 +98,7 @@ async def create_async_engine(
                 "mysqld"
             )
         else:
-            service_discovery_domain = (
-                variable_api.VariableApi().get_service_discovery_domain()
-            )
-            hostname = f"onlinefs.mysql.service.{service_discovery_domain}"
+            hostname = online_conn.consul_connection_string
 
     if options is None:
         options = {}
