@@ -2414,25 +2414,25 @@ class FeatureGroupBase:
     @property
     def ttl(self) -> Optional[int]:
         """Get the time-to-live duration in seconds for features in this group.
-        
+
         The TTL determines how long features should be retained before being automatically removed.
         The value is always returned in seconds, regardless of how it was originally specified.
-        
+
         # Returns
             int: The TTL value in seconds, or None if no TTL is set.
         """
         return self._ttl
 
-    @ttl.setter 
+    @ttl.setter
     def ttl(self, new_ttl: Optional[Union[int, float, timedelta]]) -> None:
         """Set the time-to-live duration for features in this group.
-        
+
         # Arguments
             new_ttl: The new TTL value. Can be specified as:
                 - An integer or float representing seconds
                 - A timedelta object
                 - None to remove TTL
-                
+
         The value will be stored internally in seconds.
         """
         if new_ttl is not None:
@@ -2446,7 +2446,7 @@ class FeatureGroupBase:
     @property
     def ttl_enabled(self) -> bool:
         """Get whether TTL (time-to-live) is enabled for this feature group.
-        
+
         # Returns
             bool: True if TTL is enabled, False otherwise
         """
@@ -2455,7 +2455,7 @@ class FeatureGroupBase:
     @ttl_enabled.setter
     def ttl_enabled(self, enabled: bool) -> None:
         """Set whether TTL (time-to-live) is enabled for this feature group.
-        
+
         # Arguments
             enabled: Boolean indicating whether TTL should be enabled
         """
@@ -2592,7 +2592,7 @@ class FeatureGroup(FeatureGroupBase):
             ttl=ttl,
             ttl_enabled=ttl_enabled,
         )
-        
+
         self._feature_store_name: Optional[str] = featurestore_name
         self._description: Optional[str] = description
         self._created = created
