@@ -3,6 +3,7 @@
     "version": "4.4.0-RC0",
     "title": "4.4.0-RC0",
     "aliases": [
+      "latest",
       "4.4"
     ]
   },
@@ -10,8 +11,7 @@
     "version": "4.3.1",
     "title": "4.3.1",
     "aliases": [
-      "4.3",
-      "latest"
+      "4.3"
     ]
   },
   {
