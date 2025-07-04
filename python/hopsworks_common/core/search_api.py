@@ -57,7 +57,7 @@ class SearchApi:
         ```
         # Arguments
             search_term: the term to search for.
-            filter_by: filter results by a specific field (default is None). Allowed values are 'tag', 'tag_name', 'tag_key', 'tag_value', 'keyword'.
+            filter_by: filter results by a specific field (default is None).
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
@@ -98,7 +98,7 @@ class SearchApi:
         ```
         # Arguments
             search_term: the term to search for.
-            filter_by: filter results by a specific field (default is None). Allowed values are 'tag', 'tag_name', 'tag_key', 'tag_value', 'keyword'.
+            filter_by: filter results by a specific field (default is None).
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
@@ -145,7 +145,7 @@ class SearchApi:
         ```
         # Arguments
             search_term: the term to search for.
-            filter_by: filter results by a specific field (default is None). Allowed values are 'tag', 'tag_name', 'tag_key', 'tag_value', 'keyword'.
+            filter_by: filter results by a specific field (default is None).
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
@@ -192,7 +192,7 @@ class SearchApi:
         ```
         # Arguments
             search_term: the term to search for.
-            filter_by: filter results by a specific field (default is None). Allowed values are 'tag', 'tag_name', 'tag_key', 'tag_value', 'keyword'.
+            filter_by: filter results by a specific field (default is None).
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
