@@ -39,6 +39,8 @@ class SearchApi:
     ):
         """
         Search for feature groups, feature views, training datasets and features.
+        Returns matching results from all feature stores in the project including shared feature stores.
+
         ```python
 
         import hopsworks
@@ -55,7 +57,7 @@ class SearchApi:
         ```
         # Arguments
             search_term: the term to search for.
-            filter_by: filter results by a specific field (default is None).
+            filter_by: filter results by a specific field (default is None). Allowed values are 'tag', 'tag_name', 'tag_key', 'tag_value', 'keyword'.
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
@@ -78,6 +80,8 @@ class SearchApi:
     ):
         """
         Search for feature group.
+        Returns matching feature groups from all feature stores in the project including shared feature stores.
+
         ```python
 
         import hopsworks
@@ -94,7 +98,7 @@ class SearchApi:
         ```
         # Arguments
             search_term: the term to search for.
-            filter_by: filter results by a specific field (default is None).
+            filter_by: filter results by a specific field (default is None). Allowed values are 'tag', 'tag_name', 'tag_key', 'tag_value', 'keyword'.
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
@@ -123,6 +127,8 @@ class SearchApi:
     ):
         """
         Search for feature views.
+        Returns matching feature views from all feature stores in the project including shared feature stores.
+
         ```python
 
         import hopsworks
@@ -139,7 +145,7 @@ class SearchApi:
         ```
         # Arguments
             search_term: the term to search for.
-            filter_by: filter results by a specific field (default is None).
+            filter_by: filter results by a specific field (default is None). Allowed values are 'tag', 'tag_name', 'tag_key', 'tag_value', 'keyword'.
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
@@ -168,6 +174,8 @@ class SearchApi:
     ):
         """
         Search for training datasets.
+        Returns matching training datasets from all feature stores in the project including shared feature stores.
+
         ```python
 
         import hopsworks
@@ -184,7 +192,7 @@ class SearchApi:
         ```
         # Arguments
             search_term: the term to search for.
-            filter_by: filter results by a specific field (default is None).
+            filter_by: filter results by a specific field (default is None). Allowed values are 'tag', 'tag_name', 'tag_key', 'tag_value', 'keyword'.
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
         # Returns
@@ -212,6 +220,8 @@ class SearchApi:
     ):
         """
         Search for features.
+        Returns matching features from all feature stores in the project including shared feature stores.
+
         ```python
 
         import hopsworks
