@@ -2532,7 +2532,7 @@ class FeatureGroupBase:
         """
         self._feature_group_engine.update_ttl(self, None, False)
         return self
-    
+
 
 @typechecked
 class FeatureGroup(FeatureGroupBase):
