@@ -2461,12 +2461,12 @@ class FeatureGroupBase:
         """
         self._ttl_enabled = enabled
 
-    def update_ttl(
+    def enable_ttl(
         self,
         ttl: Optional[Union[int, float, timedelta]] = None,
-        enabled: Optional[bool] = None,
     ) -> Union[FeatureGroupBase, FeatureGroup, ExternalFeatureGroup, SpineGroup]:
-        """Update the time-to-live (TTL) configuration of the feature group.
+        """Enable or update the time-to-live (TTL) configuration of the feature group.
+        If ttl is not set, the feature group will be enabled with the last TTL value being set.
 
         !!! example
             ```python
@@ -2476,14 +2476,14 @@ class FeatureGroupBase:
             # get the Feature Group instance
             fg = fs.get_or_create_feature_group(...)
 
-            # Update TTL to 7 days and enable it
-            fg.update_ttl(timedelta(days=7), enabled=True)
+            # Enable TTL with a TTL of 7 days
+            fg.enable_ttl(timedelta(days=7))
 
-            # Disable TTL but keep the value
-            fg.update_ttl(enabled=False)
+            # Disable TTL
+            fg.disable_ttl()
 
-            # Update just the TTL value
-            fg.update_ttl(3600)  # 1 hour in seconds
+            # Enable TTL again with a TTL of 7 days
+            fg.enable_ttl()
             ```
 
         !!! info "Safe update"
@@ -2495,7 +2495,6 @@ class FeatureGroupBase:
                 - An integer or float representing seconds
                 - A timedelta object
                 - None to keep current value
-            enabled: Optional boolean to enable/disable TTL. None to keep current setting.
 
         # Returns
             `FeatureGroup`. The updated feature group object.
@@ -2503,9 +2502,37 @@ class FeatureGroupBase:
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        self._feature_group_engine.update_ttl(self, ttl, enabled)
+        self._feature_group_engine.update_ttl(self, ttl, True)
         return self
 
+    def disable_ttl(self) -> "FeatureGroup":
+        """Disable the time-to-live (TTL) configuration of the feature group.
+
+        !!! example
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            # get the Feature Group instance
+            fg = fs.get_or_create_feature_group(...)
+
+            # Disable TTL
+            fg.disable_ttl()
+            ```
+
+        !!! info "Safe update"
+            This method updates the TTL configuration safely. In case of failure
+            your local metadata object will keep the old configuration.
+
+        # Returns
+            `FeatureGroup`. The updated feature group object.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        """
+        self._feature_group_engine.update_ttl(self, None, False)
+        return self
+    
 
 @typechecked
 class FeatureGroup(FeatureGroupBase):
