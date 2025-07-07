@@ -1827,11 +1827,50 @@ class FeatureGroupBase:
             )
 
     def get_latest_online_ingestion(self) -> online_ingestion.OnlineIngestion:
+        """
+        Retrieve the latest online ingestion operation for this feature group.
+
+        This method fetches metadata about the most recent online ingestion job,
+        including its status and progress, if available.
+
+        # Returns
+            `OnlineIngestion`: The latest OnlineIngestion object for this feature group.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request.
+
+        !!! example
+            ```python
+            fg = fs.get_feature_group("my_fg", 1)
+            latest_ingestion = fg.get_latest_online_ingestion()
+            ```
+        """
         return online_ingestion_api.OnlineIngestionApi().get_online_ingestion(
             self, query_params={"filter_by": "LATEST"}
         )
 
     def get_online_ingestion(self, id) -> online_ingestion.OnlineIngestion:
+        """
+        Retrieve a specific online ingestion operation by its ID for this feature group.
+
+        This method fetches metadata about a particular online ingestion job,
+        including its status and progress, if available.
+
+        # Arguments
+            id: The unique identifier of the online ingestion operation.
+
+        # Returns
+            `OnlineIngestion`: The OnlineIngestion object with the specified ID.
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request.
+
+        !!! example
+            ```python
+            fg = fs.get_feature_group("my_fg", 1)
+            ingestion = fg.get_online_ingestion(123)
+            ```
+        """
         return online_ingestion_api.OnlineIngestionApi().get_online_ingestion(
             self, query_params={"filter_by": f"ID:{id}"}
         )
