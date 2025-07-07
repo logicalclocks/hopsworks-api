@@ -63,6 +63,8 @@ nav:
         - TransformationFunction: generated/api/transformation_functions_api.md
         - UDF: generated/api/udf.md
       - ValidationReport: generated/api/validation_report_api.md
+      - Online Ingestion: generated/api/online_ingestion.md
+      - Online Ingestion Result: generated/api/online_ingestion_result.md
     - Machine Learning API:
       - Model Registry:
         - Model: generated/model-registry/model_api.md
