@@ -351,13 +351,13 @@ public class HudiEngine {
     properties.setProperty(HoodieTableConfig.NAME.key(), utils.getFgName(streamFeatureGroup));
     LOG.log(Level.INFO, "Creating empty table with properties: " + properties);
     Configuration configuration = sparkSession.sparkContext().hadoopConfiguration();
-    HoodieTableMetaClient metaClient = HoodieTableMetaClient.newTableBuilder()
+    HoodieTableMetaClient.newTableBuilder()
         .fromProperties(properties)
         .setTableType(HUDI_COPY_ON_WRITE)
         .setTableName(utils.getFgName(streamFeatureGroup))
         .initTable(HadoopFSUtils.getStorageConfWithCopy(configuration), streamFeatureGroup.getLocation());
     
-    //create metadata
+    // Bootstrap the metadata table
     HoodieWriteConfig hudiWriteConfig = HoodieWriteConfig.newBuilder()
         .withProperties(properties)
         .withPath(streamFeatureGroup.getLocation())
