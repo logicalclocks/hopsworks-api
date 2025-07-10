@@ -259,19 +259,13 @@ class StorageConnector(ABC):
                     "Database name is required for this connector type. "
                     "Please provide a database name."
                 )
-        return self._data_source_api.get_tables(
-            self._featurestore_id, self._name, database
-        )
+        return self._data_source_api.get_tables(self._featurestore_id, self._name, database)
 
     def get_data(self, data_source: ds.DataSource):
-        return self._data_source_api.get_data(
-            self._featurestore_id, self._name, data_source
-        )
+        return self._data_source_api.get_data(self._featurestore_id, self._name, data_source)
 
     def get_metadata(self, data_source: ds.DataSource):
-        return self._data_source_api.get_metadata(
-            self._featurestore_id, self._name, data_source
-        )
+        return self._data_source_api.get_metadata(self._featurestore_id, self._name, data_source)
 
 
 class HopsFSConnector(StorageConnector):
@@ -1054,7 +1048,6 @@ class JdbcConnector(StorageConnector):
         description: Optional[str] = None,
         # members specific to type of connector
         connection_string: Optional[str] = None,
-        consul_connection_string: Optional[str] = None,
         arguments: Dict[str, Any] = None,
         **kwargs,
     ) -> None:
@@ -1063,17 +1056,11 @@ class JdbcConnector(StorageConnector):
         # JDBC
         self._connection_string = connection_string
         self._arguments = arguments
-        self._consul_connection_string = consul_connection_string
 
     @property
     def connection_string(self) -> Optional[str]:
         """JDBC connection string."""
         return self._connection_string
-
-    @property
-    def consul_connection_string(self) -> Optional[str]:
-        """Consul connection string for the JDBC connector. This should be used when connecting inside hopsworks"""
-        return self._consul_connection_string
 
     @property
     def arguments(self) -> Optional[Dict[str, Any]]:
@@ -1093,7 +1080,6 @@ class JdbcConnector(StorageConnector):
         )
 
         options["url"] = self._connection_string
-        options["consul_url"] = self._consul_connection_string
 
         return options
 
@@ -1833,7 +1819,6 @@ class BigQueryConnector(StorageConnector):
             self, self.BIGQUERY_FORMAT, options, path, dataframe_type
         )
 
-
 class RdsConnector(StorageConnector):
     type = StorageConnector.RDS
     JDBC_FORMAT = "jdbc"
@@ -1893,9 +1878,9 @@ class RdsConnector(StorageConnector):
         arguments.
         """
         return {
-            "user": self.user,
-            "password": self.password,
-            "driver": "org.postgresql.Driver",
+            "user":  self.user,
+            "password":  self.password,
+            "driver":  "org.postgresql.Driver"
         }
 
     def connector_options(self) -> Dict[str, Any]:
