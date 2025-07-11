@@ -1877,7 +1877,9 @@ class VectorServer:
         """True if all features in the feature view are on-demand."""
         if self.__all_features_on_demand is None:
             self.__all_features_on_demand = all(
-                feature.on_demand_transformation_function for feature in self._features
+                feature.on_demand_transformation_function
+                for feature in self._features
+                if not feature.label
             )
         return self.__all_features_on_demand
 
