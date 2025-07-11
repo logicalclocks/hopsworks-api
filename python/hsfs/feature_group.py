@@ -108,7 +108,6 @@ if HAS_NUMPY:
 if HAS_POLARS:
     import polars as pl
 
-
 _logger = logging.getLogger(__name__)
 
 
@@ -2517,8 +2516,21 @@ class FeatureGroup(FeatureGroupBase):
         else:
             # initialized by user
             # for python engine we always use stream feature group
-            if engine.get_type() == "python":
-                self._stream = True
+            if time_travel_format is None:
+                if engine.get_type() == "python":
+                    if not online_enabled and not self._stream:
+                        self._time_travel_format = "DELTA"
+                    else:
+                        self._stream = True
+                        self._time_travel_format = "HUDI"
+                else:
+                    self._time_travel_format = "HUDI"
+            elif time_travel_format == "HUDI":
+                self._time_travel_format = time_travel_format
+                if engine.get_type() == "python":
+                    self._stream = True
+            else:
+                self._time_travel_format = time_travel_format
 
             self.primary_key = primary_key
             self.foreign_key = foreign_key
