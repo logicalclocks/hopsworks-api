@@ -16,17 +16,8 @@
 
 """MCP server for Hopsworks."""
 
-import os
-
 from fastmcp import FastMCP
 
 
-HOST = os.getenv("HOPSWORKS_MCP_HOST", "0.0.0.0")
-PORT = int(os.getenv("HOPSWORKS_MCP_PORT", 8001))
-TRANSPORT = os.getenv("HOPSWORKS_MCP_TRANSPORT", "sse")
-
 # Create a FastMCP server instance
 mcp = FastMCP(name="Hopsworks MCP")
-
-if __name__ == "__main__":
-    mcp.run(transport=TRANSPORT, host=HOST, port=PORT)
