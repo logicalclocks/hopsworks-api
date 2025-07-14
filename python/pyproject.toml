@@ -97,6 +97,11 @@ polars=[
     "polars>=0.20.18,<=0.21.0",
     "pyarrow>=17.0",
 ]
+mcp=[
+    "fastmcp>=2.10.5",
+    "httpx",
+    "pydantic>=2.11.7",
+]
 
 [build-system]
 requires = ["setuptools", "wheel"]
