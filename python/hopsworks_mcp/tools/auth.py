@@ -33,7 +33,7 @@ class AuthTools:
         self.mcp = mcp
 
         # Register tools
-        self.mcp.tool()(self.login)
+        self.mcp.tool(tags=["Auth"])(self.login)
 
     async def login(
         self,
@@ -54,7 +54,7 @@ class AuthTools:
             engine: The engine to use for data processing (python, spark, or hive)
 
         Returns:
-            Connection information
+            dict: A dictionary containing the project details or an error message.
         """
         if ctx:
             await ctx.info(
