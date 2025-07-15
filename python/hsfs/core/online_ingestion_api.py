@@ -23,11 +23,31 @@ from hsfs.core import online_ingestion
 
 
 class OnlineIngestionApi:
+    """
+    API class for managing online ingestion operations.
+
+    This class provides methods to create and retrieve online ingestion operations,
+    interacting with the Hopsworks backend.
+    """
+
     def create_online_ingestion(
         self,
         feature_group_instance: fg_mod.FeatureGroup,
         online_ingestion_instance: online_ingestion.OnlineIngestion,
     ) -> online_ingestion.OnlineIngestion:
+        """
+        Create a new online ingestion operation for a feature group.
+
+        This method sends a request to the backend to start an online ingestion job
+        for the specified feature group.
+
+        # Arguments
+            feature_group_instance (FeatureGroup): The feature group for which to create the ingestion.
+            online_ingestion_instance (OnlineIngestion): The OnlineIngestion object containing ingestion details.
+
+        # Returns
+            OnlineIngestion: The created OnlineIngestion object with metadata from the backend.
+        """
         _client = client.get_instance()
         path_params = [
             "project",
@@ -55,6 +75,21 @@ class OnlineIngestionApi:
         feature_group_instance: fg_mod.FeatureGroup,
         query_params: Optional[Dict[str, str]] = None,
     ) -> online_ingestion.OnlineIngestion:
+        """
+        Retrieve online ingestion operations for a feature group.
+
+        This method fetches metadata about online ingestion jobs for the specified feature group.
+        You can filter the results using query parameters, such as retrieving the latest job
+        or a job by its ID.
+
+        # Arguments
+            feature_group_instance (FeatureGroup): The feature group for which to retrieve ingestion jobs.
+            query_params (Optional[Dict[str, str]]): Optional query parameters for filtering results,
+                e.g., {"filter_by": "LATEST"} or {"filter_by": "ID:123"}.
+
+        # Returns
+            OnlineIngestion: The OnlineIngestion object(s) matching the query.
+        """
         _client = client.get_instance()
         path_params = [
             "project",

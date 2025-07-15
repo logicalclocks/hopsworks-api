@@ -423,6 +423,24 @@ PAGES = {
             "hsfs.validation_report.ValidationReport", exclude=EXCLUDE_METHODS
         ),
     },
+    "api/online_ingestion.md": {
+        "online_ingestion": ["hsfs.core.online_ingestion.OnlineIngestion"],
+        "online_ingestion_properties": keras_autodoc.get_properties(
+            "hsfs.core.online_ingestion.OnlineIngestion"
+        ),
+        "online_ingestion_methods": keras_autodoc.get_methods(
+            "hsfs.core.online_ingestion.OnlineIngestion", exclude=EXCLUDE_METHODS
+        ),
+    },
+    "api/online_ingestion_result.md": {
+        "online_ingestion_result": ["hsfs.core.online_ingestion_result.OnlineIngestionResult"],
+        "online_ingestion_result_properties": keras_autodoc.get_properties(
+            "hsfs.core.online_ingestion_result.OnlineIngestionResult"
+        ),
+        "online_ingestion_result_methods": keras_autodoc.get_methods(
+            "hsfs.core.online_ingestion_result.OnlineIngestionResult", exclude=EXCLUDE_METHODS
+        ),
+    },
     "api/query_api.md": {
         "query_methods": keras_autodoc.get_methods(
             "hsfs.constructor.query.Query",
