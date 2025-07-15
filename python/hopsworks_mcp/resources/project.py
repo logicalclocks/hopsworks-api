@@ -31,22 +31,16 @@ class ProjectResources:
         self.mcp = mcp
         self.mcp.resource(
             uri="project://projects",
-            name="list_projects",
-            description="List all projects",
             mime_type="application/json",
             tags=["Project"],
         )(self.list_projects)
         self.mcp.resource(
             uri="project://projects/{name}",
-            name="get_project_details",
-            description="Get project details",
             mime_type="application/json",
             tags=["Project"],
         )(self.get_project_details)
         self.mcp.resource(
             uri="project://projects/current",
-            name="get_current_project_details",
-            description="Get details of the current project",
             mime_type="application/json",
             tags=["Project"],
         )(self.get_current_project_details)

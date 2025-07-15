@@ -18,6 +18,18 @@
 
 from fastmcp import FastMCP
 
+from .prompts import ProjectPrompts
+from .resources import FeatureStoreResources, ProjectResources
+from .tools import AuthTools, FeatureStoreTools, ProjectTools
+
 
 # Create a FastMCP server instance
 mcp = FastMCP(name="Hopsworks MCP")
+
+# Initialize tools and resources
+_auth_tools = AuthTools(mcp)
+_project_tools = ProjectTools(mcp)
+_feature_store_tools = FeatureStoreTools(mcp)
+_feature_store_resources = FeatureStoreResources(mcp)
+_project_resource = ProjectResources(mcp)
+_project_prompts = ProjectPrompts(mcp)

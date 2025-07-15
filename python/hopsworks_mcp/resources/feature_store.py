@@ -30,15 +30,11 @@ class FeatureStoreResources:
         self.mcp = mcp
         self.mcp.resource(
             uri="featurestore://feature-store",
-            name="get_feature_store",
-            description="Get the feature store for the current project",
             mime_type="application/json",
             tags=["Feature Store"],
         )(self.get_feature_store)
         self.mcp.resource(
             uri="featurestore://feature-store/{name}",
-            name="get_feature_store_by_name",
-            description="Get the feature store by its name",
             mime_type="application/json",
             tags=["Feature Store"],
         )(self.get_feature_store_by_name)

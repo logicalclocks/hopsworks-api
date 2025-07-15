@@ -15,5 +15,4 @@
 #
 """Resources for the Hopsworks MCP server."""
 
-from .feature_store import FeatureStoreResources  # noqa: F401
-from .project import ProjectResources  # noqa: F401
+from .project import ProjectPrompts  # noqa: F401
