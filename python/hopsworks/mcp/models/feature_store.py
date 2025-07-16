@@ -14,11 +14,16 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.version import (
-    __version__,
-)
+from pydantic import BaseModel
 
 
-__all__ = [
-    "__version__",
-]
+class FeatureStore(BaseModel):
+    """Model representing a feature store in Hopsworks MCP."""
+
+    name: str
+    id: int
+    project_id: int
+    project_name: str
+    online_featurestore_name: str
+    online_enabled: bool
+    offline_featurestore_name: str
