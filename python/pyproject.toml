@@ -41,7 +41,7 @@ dependencies = [
     "requests",
     "furl",
     "boto3",
-    "pandas[mysql]<2.3.0",
+    "pandas[mysql]<2.4.0",
     "numpy<2",
     "pyjks",
     "mock",
@@ -62,7 +62,7 @@ dependencies = [
 python = [
     "pyarrow>=10.0",
     "confluent-kafka<=2.6.1",
-    "fastavro>=1.4.11,<=1.8.4",
+    "fastavro>=1.4.11,<=1.11.1",
     "tqdm",
 ]
 sqlalchemy-1 = [
