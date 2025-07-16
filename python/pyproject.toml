@@ -58,6 +58,9 @@ dependencies = [
     "packaging",         # ^21.0
 ]
 
+[project.scripts]
+hopsworks-mcp = "hopsworks.mcp.main:main"
+
 [project.optional-dependencies]
 python = [
     "pyarrow>=17.0",

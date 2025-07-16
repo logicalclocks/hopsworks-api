@@ -19,6 +19,7 @@ from typing import Literal
 
 import hopsworks
 from fastmcp import Context
+from hopsworks.mcp.models.project import Project
 
 
 class AuthTools:
@@ -43,7 +44,7 @@ class AuthTools:
         api_key_value: str = None,
         engine: Literal["python", "spark", "hive"] = "python",
         ctx: Context = None,
-    ) -> dict:
+    ) -> Project:
         """Connect to a Hopsworks instance.
 
         Args:
@@ -54,7 +55,7 @@ class AuthTools:
             engine: The engine to use for data processing (python, spark, or hive)
 
         Returns:
-            dict: A dictionary containing the project details or an error message.
+            Project: The project details or an error message.
         """
         if ctx:
             await ctx.info(
@@ -70,10 +71,10 @@ class AuthTools:
             engine=engine,
         )
 
-        return {
-            "name": project.name,
-            "id": project.id,
-            "owner": project.owner,
-            "description": project.description,
-            "created": project.created,
-        }
+        return Project(
+            name=project.name,
+            id=project.id,
+            owner=project.owner,
+            description=project.description,
+            created=project.created,
+        )
