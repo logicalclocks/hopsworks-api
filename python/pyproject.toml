@@ -63,7 +63,7 @@ python = [
     "numpy<2",
     "pyarrow>=10.0",
     "confluent-kafka<=2.6.1",
-    "fastavro>=1.4.11,<=1.8.4",
+    "fastavro>=1.4.11,<=1.11.1",
     "tqdm",
 ]
 great-expectations = ["great_expectations==0.18.12"]
