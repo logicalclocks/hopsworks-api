@@ -57,4 +57,7 @@ public class FeatureGroupCommit extends RestDto<FeatureGroupCommit> {
   @Getter
   @Setter
   private Long lastActiveCommitTime;
+  @Getter
+  @Setter
+  private Long tableSize; // in bytes
 }
