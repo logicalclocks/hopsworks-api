@@ -21,6 +21,7 @@ from typing import Optional
 import humps
 from hopsworks_common import client, util
 from hopsworks_common.core import (
+    alerts_api,
     dataset_api,
     environment_api,
     flink_cluster_api,
@@ -68,6 +69,7 @@ class Project:
         self._git_api = git_api.GitApi()
         self._dataset_api = dataset_api.DatasetApi()
         self._environment_api = environment_api.EnvironmentApi()
+        self._alerts_api = alerts_api.AlertsApi()
         self._project_namespace = project_namespace
 
     @classmethod
@@ -237,6 +239,82 @@ class Project:
             `EnvironmentApi`: The Python Environment Api handle
         """
         return self._environment_api
+
+    def get_alerts_api(self):
+        """Get the alerts api for the project.
+
+        # Returns
+            `AlertsApi`: The Alerts Api handle
+        """
+        return self._alerts_api
+
+    def get_alerts(self):
+        """Get all alerts for the project.
+
+        # Returns
+            `List[ProjectAlert]`: List of ProjectAlert objects
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        """
+        return self._alerts_api.get_alerts()
+
+    def get_alert(self, alert_id: int):
+        """Get an alert for the project by ID.
+
+        # Arguments
+            alert_id: The ID of the alert.
+        # Returns
+            `ProjectAlert`: The ProjectAlert object.
+        """
+        return self._alerts_api.get_alert(alert_id)
+
+    def create_job_alert(self, receiver: str, status: str, severity: str):
+        """Create an alert for jobs in this project.
+
+        !!!example "Example for creating a job alert"
+            ```python
+            import hopsworks
+            project = hopsworks.login()
+            project.create_job_alert("my_receiver", "long_running", "info")
+            ```
+
+        # Arguments
+            receiver: The receiver of the alert.
+            status: The status of the alert. Valid values are "job_finished", "job_failed", "job_killed", "job_long_running".
+            severity: The severity of the alert. Valid values are "critical", "warning", "info".
+        # Returns
+            `ProjectAlert`: The created ProjectAlert object.
+        # Raises
+            `ValueError`: If the status or severity is invalid.
+            `ValueError`: If the receiver is None.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        """
+        return self._alerts_api.create_project_alert(receiver, status, severity, "Jobs")
+
+    def create_featurestore_alert(self, receiver: str, status: str, severity: str):
+        """Create an alert for feature validation and monitoring in this project.
+
+        !!!example "Example for creating a featurestore alert"
+            ```python
+            import hopsworks
+            project = hopsworks.login()
+            project.create_featurestore_alert("my_receiver", "feature_validation_success", "info")
+            ```
+
+        # Arguments
+            receiver: The receiver of the alert.
+            status: The status of the alert. Valid values are "feature_validation_success", "feature_validation_warning", "feature_validation_failure", "feature_monitor_shift_undetected", "feature_monitor_shift_detected".
+            severity: The severity of the alert. Valid values are "critical", "warning", "info".
+        # Returns
+            `ProjectAlert`: The created ProjectAlert object.
+        # Raises
+            `ValueError`: If the status or severity is invalid.
+            `ValueError`: If the receiver is None.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        """
+        return self._alerts_api.create_project_alert(
+            receiver, status, severity, "Featurestore"
+        )
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)

@@ -44,7 +44,13 @@ PAGES = {
         "project_create": ["hopsworks.create_project"],
         "project_properties": keras_autodoc.get_properties("hopsworks.project.Project"),
         "project_methods": keras_autodoc.get_methods(
-            "hopsworks.project.Project", exclude=EXCLUDE_METHODS + ["get_jobs_api"]
+            "hopsworks.project.Project", exclude=EXCLUDE_METHODS + ["get_jobs_api", "get_alerts_api"]
+        ),
+    },
+    "api/alerts.md": {
+        "alerts_api_handle": ["hopsworks.project.Project.get_alerts_api"],
+        "alert_methods": keras_autodoc.get_methods(
+            "hopsworks.core.alerts_api.AlertsApi", exclude=EXCLUDE_METHODS
         ),
     },
     "api/jobs.md": {
@@ -415,6 +421,24 @@ PAGES = {
         ),
         "validation_report_methods": keras_autodoc.get_methods(
             "hsfs.validation_report.ValidationReport", exclude=EXCLUDE_METHODS
+        ),
+    },
+    "api/online_ingestion.md": {
+        "online_ingestion": ["hsfs.core.online_ingestion.OnlineIngestion"],
+        "online_ingestion_properties": keras_autodoc.get_properties(
+            "hsfs.core.online_ingestion.OnlineIngestion"
+        ),
+        "online_ingestion_methods": keras_autodoc.get_methods(
+            "hsfs.core.online_ingestion.OnlineIngestion", exclude=EXCLUDE_METHODS
+        ),
+    },
+    "api/online_ingestion_result.md": {
+        "online_ingestion_result": ["hsfs.core.online_ingestion_result.OnlineIngestionResult"],
+        "online_ingestion_result_properties": keras_autodoc.get_properties(
+            "hsfs.core.online_ingestion_result.OnlineIngestionResult"
+        ),
+        "online_ingestion_result_methods": keras_autodoc.get_methods(
+            "hsfs.core.online_ingestion_result.OnlineIngestionResult", exclude=EXCLUDE_METHODS
         ),
     },
     "api/query_api.md": {

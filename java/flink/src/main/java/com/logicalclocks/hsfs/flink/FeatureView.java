@@ -21,135 +21,83 @@ import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.FeatureViewBase;
 import com.logicalclocks.hsfs.flink.constructor.Query;
 
+import com.logicalclocks.hsfs.flink.engine.FeatureViewEngine;
+import lombok.NonNull;
 import org.apache.flink.streaming.api.datastream.DataStream;
 
 import lombok.NoArgsConstructor;
 
 import java.io.IOException;
-import java.text.ParseException;
-
-import java.util.Map;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @NoArgsConstructor
 public class FeatureView extends FeatureViewBase<FeatureView, FeatureStore, Query, DataStream<?>> {
 
-  @Override
-  public void addTag(String s, Object o) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
+  private static final FeatureViewEngine featureViewEngine = new FeatureViewEngine();
+
+  public static class FeatureViewBuilder {
+
+    private String name;
+    private Integer version;
+    private String description;
+    private FeatureStore featureStore;
+    private Query query;
+    private List<String> labels;
+
+    public FeatureViewBuilder(FeatureStore featureStore) {
+      this.featureStore = featureStore;
+    }
+
+    public FeatureViewBuilder name(String name) {
+      this.name = name;
+      return this;
+    }
+
+    public FeatureViewBuilder version(Integer version) {
+      this.version = version;
+      return this;
+    }
+
+    public FeatureViewBuilder description(String description) {
+      this.description = description;
+      return this;
+    }
+
+    /**
+     * Query of a feature view. Note that `as_of` argument in the `Query` will be ignored because feature view does
+     * not support time travel query.
+     *
+     * @param query Query object
+     * @return builder
+     */
+    public FeatureViewBuilder query(Query query) {
+      this.query = query;
+      if (query.isTimeTravel()) {
+        FeatureViewBase.LOGGER.info("`as_of` argument in the `Query` will be ignored because "
+            + "feature view does not support time travel query.");
+      }
+      return this;
+    }
+
+    public FeatureViewBuilder labels(List<String> labels) {
+      this.labels = labels;
+      return this;
+    }
+
+    public FeatureView build() throws FeatureStoreException, IOException {
+      FeatureView featureView = new FeatureView(name, version, query, description, featureStore, labels);
+      return featureViewEngine.save(featureView, FeatureView.class);
+    }
   }
 
-  @Override
-  public Map<String, Object> getTags() throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public Object getTag(String s) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void deleteTag(String s) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void addTrainingDatasetTag(Integer integer, String s, Object o) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public Map<String, Object> getTrainingDatasetTags(Integer integer) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public Object getTrainingDatasetTag(Integer integer, String s) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void deleteTrainingDatasetTag(Integer integer, String s) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void delete() throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void clean(FeatureStore featureStore, String s, Integer integer) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public FeatureView update(FeatureView featureView) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public String getBatchQuery() throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public String getBatchQuery(String s, String s1) throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public DataStream<Object> getBatchData() throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public DataStream<Object> getBatchData(String s, String s1)
-      throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public DataStream<Object> getBatchData(String s, String s1, Map<String, String> map)
-      throws FeatureStoreException, IOException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public Object getTrainingData(Integer integer, Map<String, String> map)
-      throws IOException, FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public Object getTrainTestSplit(Integer integer, Map<String, String> map)
-      throws IOException, FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public Object getTrainValidationTestSplit(Integer integer, Map<String, String> map)
-      throws IOException, FeatureStoreException, ParseException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void purgeTrainingData(Integer integer) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void purgeAllTrainingData() throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void deleteTrainingDataset(Integer integer) throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
-  }
-
-  @Override
-  public void deleteAllTrainingDatasets() throws FeatureStoreException, IOException {
-    throw new UnsupportedOperationException("Not supported for Flink");
+  public FeatureView(@NonNull String name, Integer version, @NonNull Query query, String description,
+                     @NonNull FeatureStore featureStore, List<String> labels) {
+    this.name = name;
+    this.version = version;
+    this.query = query;
+    this.description = description;
+    this.featureStore = featureStore;
+    this.labels = labels != null ? labels.stream().map(String::toLowerCase).collect(Collectors.toList()) : null;
   }
 }

@@ -4,8 +4,6 @@ site_author: "Logical Clocks"
 site_url: "https://docs.hopsworks.ai/hopsworks-api/latest"
 
 # Repository
-repo_name: logicalclocks/hopsworks
-repo_url: https://github.com/logicalclocks/hopsworks
 edit_uri: ""
 
 nav:
@@ -18,11 +16,12 @@ nav:
   - API<div class="dropdown"><button class="dropbtn"> API </button> <div id="myDropdown" class="dropdown-content"> <a id="hopsworks_api_link" href="https://docs.hopsworks.ai/hopsworks-api/latest">Hopsworks API</a> <a id="hsfs_javadoc_link" href="https://docs.hopsworks.ai/hopsworks-api/latest/javadoc">Feature Store JavaDoc</a> </div></div>:
     - Login: generated/api/login.md
     - Platform API:
+      - Alerts: generated/api/alerts.md
       - Datasets: generated/api/datasets.md
       - Environment: generated/api/environment.md
       - Executions: generated/api/executions.md
       - FlinkCluster: generated/api/flink_cluster.md
-      - GitProvider: generated/api/git_provider.md
+      - GitProvider: generated/api/git_provider.md 
       - GitRemote: generated/api/git_remote.md
       - GitRepo: generated/api/git_repo.md
       - Jobs: generated/api/jobs.md
@@ -63,6 +62,8 @@ nav:
         - TransformationFunction: generated/api/transformation_functions_api.md
         - UDF: generated/api/udf.md
       - ValidationReport: generated/api/validation_report_api.md
+      - Online Ingestion: generated/api/online_ingestion.md
+      - Online Ingestion Result: generated/api/online_ingestion_result.md
     - Machine Learning API:
       - Model Registry:
         - Model: generated/model-registry/model_api.md

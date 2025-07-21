@@ -175,7 +175,7 @@ class FeatureStore:
         return feature_group_object
 
     def get_feature_groups(
-        self, name: str
+        self, name: str | None = None
     ) -> List[
         Union[
             feature_group.FeatureGroup,
@@ -183,7 +183,7 @@ class FeatureStore:
             feature_group.SpineGroup,
         ]
     ]:
-        """Get a list of all versions of a feature group entity from the feature store.
+        """Get all feature groups from the feature store, or all versions of a feature group specified by its name.
 
         Getting a feature group from the Feature Store means getting its metadata handle
         so you can subsequently read the data into a Spark or Pandas DataFrame or use
@@ -194,21 +194,34 @@ class FeatureStore:
             # connect to the Feature Store
             fs = ...
 
+            # retrieve all versions of electricity_prices feature group
             fgs_list = fs.get_feature_groups(
                     name="electricity_prices"
                 )
             ```
 
+        !!! example
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            # retrieve all feature groups available in the feature store
+            fgs_list = fs.get_feature_groups()
+            ```
+
         # Arguments
-            name: Name of the feature group to get.
+            name: Name of the feature group to get the versions of; by default it is `None` and all feature groups are returned.
 
         # Returns
-            `FeatureGroup`: List of feature group metadata objects.
+            `list[FeatureGroup]`: List of feature group metadata objects.
 
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        feature_group_object = self._feature_group_api.get(self.id, name, None)
+        if name:
+            feature_group_object = self._feature_group_api.get(self.id, name, None)
+        else:
+            feature_group_object = self._feature_group_api.get_all(self.id)
         for fg_object in feature_group_object:
             fg_object.feature_store = self
         return feature_group_object
@@ -312,9 +325,9 @@ class FeatureStore:
 
     @usage.method_logger
     def get_external_feature_groups(
-        self, name: str
+        self, name: str | None = None
     ) -> List[feature_group.ExternalFeatureGroup]:
-        """Get a list of all versions of an external feature group entity from the feature store.
+        """Get a list of all external feature groups from the feature store, or all versions of an external feature group.
 
         Getting an external feature group from the Feature Store means getting its
         metadata handle so you can subsequently read the data into a Spark or
@@ -328,21 +341,26 @@ class FeatureStore:
             external_fgs_list = fs.get_external_feature_groups("external_fg_test")
             ```
 
+        !!! example
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            # retrieve all external feature groups available in the feature store
+            external_fgs_list = fs.get_external_feature_groups()
+            ```
+
         # Arguments
-            name: Name of the external feature group to get.
+            name: Name of the external feature group to get the versions of; by default it is `None` and all external feature groups are returned.
 
         # Returns
-            `ExternalFeatureGroup`: List of external feature group metadata objects.
+            `list[ExternalFeatureGroup]`: List of external feature group metadata objects.
 
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-        feature_group_object = self._feature_group_api.get(
-            feature_store_id=self.id, name=name, version=None
-        )
-        for fg_object in feature_group_object:
-            fg_object.feature_store = self
-        return feature_group_object
+        fgs = self.get_feature_groups(name)
+        return [fg for fg in fgs if isinstance(fg, feature_group.ExternalFeatureGroup)]
 
     def get_training_dataset(
         self, name: str, version: int = None
