@@ -55,9 +55,10 @@ class OnlineStoreRestClientEngine:
             features: A list of features to be used for the feature vector conversion. Note that the features
                 must be ordered according to the feature vector schema.
         """
-        _logger.debug(
-            f"Initializing Online Store Rest Client Engine for Feature View {feature_view_name}, version: {feature_view_version} in Feature Store {feature_store_name}."
-        )
+        if _logger.isEnabledFor(logging.DEBUG):
+            _logger.debug(
+                f"Initializing Online Store Rest Client Engine for Feature View {feature_view_name}, version: {feature_view_version} in Feature Store {feature_store_name}."
+            )
         self._online_store_rest_client_api = (
             online_store_rest_client_api.OnlineStoreRestClientApi()
         )
@@ -84,9 +85,10 @@ class OnlineStoreRestClientEngine:
                 elif not feat.training_helper_column:
                     self._is_inference_helpers_list.append(False)
         self._feature_to_decode = self.get_feature_to_decode(features)
-        _logger.debug(
-            f"Mapping fg_id to feature names: {self._feature_names_per_fg_id}."
-        )
+        if _logger.isEnabledFor(logging.DEBUG):
+            _logger.debug(
+                f"Mapping fg_id to feature names: {self._feature_names_per_fg_id}."
+            )
 
     def get_feature_to_decode(
         self, features: List[td_feature_mod.TrainingDatasetFeature]
@@ -133,9 +135,10 @@ class OnlineStoreRestClientEngine:
         Returns:
             A payload dictionary containing metadata information to send to the RonDB REST Server Feature Store API.
         """
-        _logger.debug(
-            f"Building base payload for Feature View {self._feature_view_name}, version: {self._feature_view_version} in Feature Store {self._feature_store_name}."
-        )
+        if _logger.isEnabledFor(logging.DEBUG):
+            _logger.debug(
+                f"Building base payload for Feature View {self._feature_view_name}, version: {self._feature_view_version} in Feature Store {self._feature_store_name}."
+            )
         base_payload = {
             "featureStoreName": util.strip_feature_store_suffix(
                 self._feature_store_name
@@ -153,8 +156,8 @@ class OnlineStoreRestClientEngine:
                 "featureName": metadata_options.get("featureName", False),
                 "featureType": metadata_options.get("featureType", False),
             }
-
-        _logger.debug(f"Base payload: {base_payload}")
+        if _logger.isEnabledFor(logging.DEBUG):
+            _logger.debug(f"Base payload: {base_payload}")
         return base_payload
 
     def decode_rdrs_feature_values(self, feature_values: List[Any]) -> List[Any]:
@@ -224,10 +227,11 @@ class OnlineStoreRestClientEngine:
             `hopsworks.client.exceptions.RestAPIError`: If the server response status code is not 200.
             `ValueError`: If the length of the feature values and metadata in the reponse does not match.
         """
-        _logger.debug(
-            f"Getting single raw feature vector for Feature View {self._feature_view_name}, version: {self._feature_view_version} in Feature Store {self._feature_store_name}."
-        )
-        _logger.debug(f"entry: {entry}, passed features: {passed_features}")
+        if _logger.isEnabledFor(logging.DEBUG):
+            _logger.debug(
+                f"Getting single raw feature vector for Feature View {self._feature_view_name}, version: {self._feature_view_version} in Feature Store {self._feature_store_name}."
+            )
+            _logger.debug(f"entry: {entry}, passed features: {passed_features}")
         payload = self.build_base_payload(
             metadata_options=metadata_options,
             # This ensures consistency with the sql client behaviour.
@@ -294,10 +298,11 @@ class OnlineStoreRestClientEngine:
             `hsfs.client.exceptions.RestAPIError`: If the server response status code is not 200.
             `ValueError`: If the length of the passed features does not match the length of the entries.
         """
-        _logger.debug(
-            f"Getting batch raw feature vectors for Feature View {self._feature_view_name}, version: {self._feature_view_version} in Feature Store {self._feature_store_name}."
-        )
-        _logger.debug(f"entries: {entries}\npassed features: {passed_features}")
+        if _logger.isEnabledFor(logging.DEBUG):
+            _logger.debug(
+                f"Getting batch raw feature vectors for Feature View {self._feature_view_name}, version: {self._feature_view_version} in Feature Store {self._feature_store_name}."
+            )
+            _logger.debug(f"entries: {entries}\npassed features: {passed_features}")
         payload = self.build_base_payload(
             metadata_options=metadata_options,
             # This ensures consistency with the sql client behaviour.
@@ -323,7 +328,10 @@ class OnlineStoreRestClientEngine:
         )
 
         if return_type != self.RETURN_TYPE_RESPONSE_JSON:
-            _logger.debug("Converting batch response to feature value rows for each.")
+            if _logger.isEnabledFor(logging.DEBUG):
+                _logger.debug(
+                    "Converting batch response to feature value rows for each."
+                )
             return [
                 self.convert_rdrs_response_to_feature_value_row(
                     row_feature_values=row,
@@ -378,27 +386,31 @@ class OnlineStoreRestClientEngine:
                     failed_read_feature_names.extend(
                         self.feature_names_per_fg_id[operation_status["featureGroupId"]]
                     )
-            _logger.debug(
-                f"Feature names which failed on read: {failed_read_feature_names}."
-            )
+            if _logger.isEnabledFor(logging.DEBUG):
+                _logger.debug(
+                    f"Feature names which failed on read: {failed_read_feature_names}."
+                )
 
         if return_type == self.RETURN_TYPE_FEATURE_VALUE_LIST:
             if row_feature_values is None and drop_missing:
-                _logger.debug("Convert null feature vector to empty list.")
+                if _logger.isEnabledFor(logging.DEBUG):
+                    _logger.debug("Convert null feature vector to empty list.")
                 return []
             elif row_feature_values is None:
-                _logger.debug(
-                    "Feature vector is null, returning None for all features."
-                )
+                if _logger.isEnabledFor(logging.DEBUG):
+                    _logger.debug(
+                        "Feature vector is null, returning None for all features."
+                    )
                 return [
                     None
                     for is_helper in self.is_inference_helpers_list
                     if is_helper is inference_helpers_only
                 ]
             elif drop_missing:
-                _logger.debug(
-                    "Dropping missing features from the feature vector and return as list."
-                )
+                if _logger.isEnabledFor(logging.DEBUG):
+                    _logger.debug(
+                        "Dropping missing features from the feature vector and return as list."
+                    )
                 return [
                     value
                     for (name, value, is_helper) in zip(
@@ -411,17 +423,20 @@ class OnlineStoreRestClientEngine:
                         and is_helper is inference_helpers_only
                     )
                 ]
-            _logger.debug("Returning feature vector as list.")
+            if _logger.isEnabledFor(logging.DEBUG):
+                _logger.debug("Returning feature vector as list.")
             return row_feature_values
 
         elif return_type == self.RETURN_TYPE_FEATURE_VALUE_DICT:
             if row_feature_values is None and drop_missing:
-                _logger.debug("Convert null feature vector to empty dict.")
+                if _logger.isEnabledFor(logging.DEBUG):
+                    _logger.debug("Convert null feature vector to empty dict.")
                 return {}
             elif row_feature_values is None:
-                _logger.debug(
-                    "Feature vector is null, returning None for all features."
-                )
+                if _logger.isEnabledFor(logging.DEBUG):
+                    _logger.debug(
+                        "Feature vector is null, returning None for all features."
+                    )
                 return {
                     name: None
                     for (name, is_helper) in zip(
@@ -430,9 +445,10 @@ class OnlineStoreRestClientEngine:
                     if is_helper is inference_helpers_only
                 }
             elif drop_missing:
-                _logger.debug(
-                    "Dropping missing features from the feature vector and return as dict."
-                )
+                if _logger.isEnabledFor(logging.DEBUG):
+                    _logger.debug(
+                        "Dropping missing features from the feature vector and return as dict."
+                    )
                 return {
                     name: value
                     for (name, value, is_helper) in zip(
@@ -446,7 +462,8 @@ class OnlineStoreRestClientEngine:
                     )
                 }
             else:
-                _logger.debug("Returning feature vector as dict.")
+                if _logger.isEnabledFor(logging.DEBUG):
+                    _logger.debug("Returning feature vector as dict.")
                 return dict(
                     {
                         name: value
