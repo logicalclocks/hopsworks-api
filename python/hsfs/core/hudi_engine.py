@@ -235,7 +235,6 @@ class HudiEngine:
             hudi_options.update(read_options)
 
         return hudi_options
-    
 
     @staticmethod
     def _get_last_commit_metadata(spark_context, base_path):

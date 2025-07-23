@@ -115,7 +115,7 @@ class FeatureGroupCommit:
     @property
     def last_active_commit_time(self):
         return self._last_active_commit_time
-    
+
     @property
     def table_size(self):
         return self._table_size
