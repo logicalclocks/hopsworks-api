@@ -92,7 +92,6 @@ from hsfs.core.vector_db_client import VectorDbClient
 from hsfs.feature_group import ExternalFeatureGroup, FeatureGroup
 from hsfs.hopsworks_udf import HopsworksUdf, UDFExecutionMode
 from hsfs.training_dataset import TrainingDataset
-from hsfs.training_dataset_feature import TrainingDatasetFeature
 from hsfs.training_dataset_split import TrainingDatasetSplit
 
 
@@ -1663,13 +1662,15 @@ class Engine:
         if isinstance(feature_log, list) or (
             HAS_NUMPY and isinstance(feature_log, np.ndarray)
         ):
+            if all(isinstance(item, dict) for item in feature_log):
+                return pd.DataFrame(feature_log)
             Engine._validate_logging_list(feature_log, cols)
             return pd.DataFrame(feature_log, columns=cols)
         else:
             if isinstance(feature_log, pl.DataFrame):
                 return feature_log.clone().to_pandas()
             elif isinstance(feature_log, pd.DataFrame):
-                return feature_log.copy(deep=False)
+                return feature_log.copy(deep=False).reset_index(drop=True)
 
     @staticmethod
     def _validate_logging_list(feature_log, cols):
@@ -1699,7 +1700,10 @@ class Engine:
 
         now = datetime.now()
         metadata = {
-            td_col_name: [training_dataset_version for _ in range(size)],
+            td_col_name: [
+                training_dataset_version if training_dataset_version else pd.NA
+                for _ in range(size)
+            ],
             model_col_name: [hsml_model for _ in range(size)],
             time_col_name: pd.Series([now for _ in range(size)]),
             "log_id": [str(uuid.uuid4()) for _ in range(size)],
@@ -1710,33 +1714,136 @@ class Engine:
                 metadata[k] = v[0]
         return metadata
 
-    @staticmethod
     def get_feature_logging_df(
-        features: Union[pd.DataFrame, list[list], np.ndarray],
-        fg: FeatureGroup = None,
-        td_features: List[str] = None,
-        td_predictions: List[TrainingDatasetFeature] = None,
+        self,
+        logging_data: Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray] = None,
+        logging_feature_group_features: List[feature.Feature] = None,
+        transformed_features: Optional[
+            Tuple[Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray], List[str]]
+        ] = None,
+        untransformed_features: Optional[
+            Tuple[Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray], List[str]]
+        ] = None,
+        predictions: Optional[
+            Tuple[Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray], List[str]]
+        ] = None,
+        serving_keys: Optional[
+            Tuple[Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray], List[str]]
+        ] = None,
+        helper_columns: Optional[
+            Tuple[Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray], List[str]]
+        ] = None,
+        request_parameters: Optional[
+            Tuple[Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray], List[str]]
+        ] = None,
+        event_time: Optional[
+            Tuple[Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray], List[str]]
+        ] = None,
+        request_id: Optional[
+            Tuple[Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray], List[str]]
+        ] = None,
+        extra_logging_features: Optional[
+            Tuple[Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray], List[str]]
+        ] = None,
         td_col_name: Optional[str] = None,
         time_col_name: Optional[str] = None,
         model_col_name: Optional[str] = None,
-        predictions: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
         training_dataset_version: Optional[int] = None,
         hsml_model: str = None,
     ) -> pd.DataFrame:
-        features = Engine._convert_feature_log_to_df(features, td_features)
-        if td_predictions:
-            predictions = Engine._convert_feature_log_to_df(
-                predictions, [f.name for f in td_predictions]
+        logging_feature_group_feature_names = [
+            feature.name for feature in logging_feature_group_features
+        ]
+        try:
+            logging_df = Engine._convert_feature_log_to_df(
+                logging_data, logging_feature_group_feature_names
             )
-            for f in td_predictions:
-                predictions[f.name] = cast_column_to_offline_type(
-                    predictions[f.name], f.type
+        except AssertionError as e:
+            raise FeatureStoreException(
+                f"Error logging data `logging_data` do not have all required features. Please check the `logging_data` to ensure that it has the following features : {logging_feature_group_feature_names}."
+            ) from e
+        for data, feature_names, log_component_name in [
+            transformed_features,
+            untransformed_features,
+            predictions,
+            serving_keys,
+            helper_columns,
+            request_id,
+            request_parameters,
+            event_time,
+            extra_logging_features,
+        ]:
+            try:
+                df = (
+                    Engine._convert_feature_log_to_df(data, feature_names)
+                    if data is not None or feature_names is not None
+                    else None
                 )
-            if not set(predictions.columns).intersection(set(features.columns)):
-                features = pd.concat([features, predictions], axis=1)
+            except AssertionError as e:
+                raise FeatureStoreException(
+                    f"Error logging data `{log_component_name}` do not have all required features. Please check the `{log_component_name}` to ensure that it has the following features : {feature_names}."
+                ) from e
 
+            if df is None or df.empty:
+                continue
+            elif logging_df.empty:
+                logging_df = df
+            elif len(df) == 1 and len(logging_df) > 1:
+                for col in df.columns:
+                    if col not in logging_df.columns:
+                        logging_df[col] = (
+                            df[col].loc[df.index.repeat(len(logging_df))].reset_index()
+                        )
+            elif len(df) != len(logging_df):
+                raise FeatureStoreException(
+                    f"Length of `{log_component_name}` provided do not match other arguments. Please check the logging data to make sure that all arguments have the same length."
+                )
+            else:
+                for col in df.columns:
+                    if col not in logging_df.columns:
+                        logging_df[col] = df[col]
+
+        # Rename prediction columns
+        _, predictions_feature_names, _ = predictions
+        if predictions_feature_names:
+            for feature_name in predictions_feature_names:
+                logging_df = logging_df.rename(
+                    columns={feature_name: f"predicted_{feature_name}"}
+                )
+
+        # Creating a json column for request parameters
+        _, request_parameter_columns, _ = request_parameters
+        if request_parameter_columns:
+            if "request_parameters" not in logging_df.columns:
+                avaiable_request_parameters = [
+                    feature
+                    for feature in request_parameter_columns
+                    if feature in logging_df.columns
+                ]
+
+                request_parameter = logging_df[avaiable_request_parameters]
+
+                logging_df["request_parameters"] = (
+                    "{}"
+                    if request_parameter.empty
+                    else request_parameter.apply(
+                        lambda x: json.dumps(x.to_dict()), axis=1
+                    )
+                )
+
+                logging_df.drop(
+                    [
+                        feature
+                        for feature in avaiable_request_parameters
+                        if feature not in logging_feature_group_feature_names
+                    ],
+                    axis=1,
+                    inplace=True,
+                )
+
+        # Add meta data columns
         logging_metadata = Engine.get_logging_metadata(
-            size=len(features),
+            size=len(logging_df),
             td_col_name=td_col_name,
             time_col_name=time_col_name,
             model_col_name=model_col_name,
@@ -1745,65 +1852,287 @@ class Engine:
         )
 
         for k, v in logging_metadata.items():
-            features[k] = pd.Series(v)
-        # _cast_column_to_offline_type cannot cast string type
-        features[model_col_name] = features[model_col_name].astype(pd.StringDtype())
-        return features[[feat.name for feat in fg.features]]
+            logging_df[k] = pd.Series(v)
 
-    @staticmethod
+        # _cast_column_to_offline_type cannot cast string type
+        missing_logging_features = set(logging_feature_group_feature_names).difference(
+            set(logging_df.columns)
+        ) - set(request_parameter_columns)
+        additional_logging_features = set(logging_df.columns).difference(
+            set(logging_feature_group_feature_names)
+        )
+
+        if additional_logging_features:
+            _logger.info(
+                f"The following columns : `{'`, `'.join(additional_logging_features)}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored."
+            )
+
+        for f in logging_feature_group_features:
+            if f.name in logging_df.columns:
+                logging_df[f.name] = cast_column_to_offline_type(
+                    logging_df[f.name], f.type
+                )
+
+        if missing_logging_features:
+            _logger.info(
+                f"The following columns : `{'`, `'.join(missing_logging_features)}` are missing in the logged dataframe. Setting them to None."
+            )
+            # Set missing columns to None
+            for col in missing_logging_features:
+                logging_df[col] = None
+
+        missing_event_time_feature = [
+            feature.name
+            for feature in logging_feature_group_features
+            if (feature.type == "timestamp" or feature.type == "date")
+            and feature.name in missing_logging_features
+        ]
+
+        # Replace NaT with None for event time feature as pd.NaT is not serializable by fastavro.
+        if missing_event_time_feature:
+            logging_df[missing_event_time_feature] = logging_df[
+                missing_event_time_feature
+            ].replace({pd.NaT: None})
+        return logging_df[logging_feature_group_feature_names]
+
     def get_feature_logging_list(
-        features: Union[pd.DataFrame, list[list], np.ndarray],
-        fg: FeatureGroup = None,
-        td_features: List[str] = None,
-        td_predictions: List[TrainingDatasetFeature] = None,
+        self,
+        logging_data: Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray] = None,
+        logging_feature_group_features: List[feature.Feature] = None,
+        transformed_features: Optional[
+            Tuple[
+                Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray],
+                List[str],
+                str,
+            ]
+        ] = None,
+        untransformed_features: Optional[
+            Tuple[
+                Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray],
+                List[str],
+                str,
+            ]
+        ] = None,
+        predictions: Optional[
+            Tuple[
+                Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray],
+                List[str],
+                str,
+            ]
+        ] = None,
+        serving_keys: Optional[
+            Tuple[
+                Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray],
+                List[str],
+                str,
+            ]
+        ] = None,
+        helper_columns: Optional[
+            Tuple[
+                Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray],
+                List[str],
+                str,
+            ]
+        ] = None,
+        request_parameters: Optional[
+            Tuple[
+                Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray],
+                List[str],
+                str,
+            ]
+        ] = None,
+        request_id: Optional[
+            Tuple[
+                Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray],
+                List[str],
+                str,
+            ]
+        ] = None,
+        event_time: Optional[
+            Tuple[
+                Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray],
+                List[str],
+                str,
+            ]
+        ] = None,
+        extra_logging_features: Optional[
+            Tuple[
+                Union[pd.DataFrame, pl.DataFrame, List[List], np.ndarray],
+                List[str],
+                str,
+            ]
+        ] = None,
         td_col_name: Optional[str] = None,
         time_col_name: Optional[str] = None,
         model_col_name: Optional[str] = None,
-        predictions: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
         training_dataset_version: Optional[int] = None,
-        hsml_model=None,
-    ) -> list:
-        if isinstance(features, pd.DataFrame):
-            return Engine.get_feature_logging_df(
-                features,
-                fg,
-                td_features,
-                td_predictions,
-                td_col_name,
-                time_col_name,
-                model_col_name,
+        hsml_model: str = None,
+    ) -> List[Dict[str, Any]]:
+        logging_feature_group_feature_names = [
+            feature.name for feature in logging_feature_group_features
+        ]
+
+        if any(
+            (HAS_PANDAS and isinstance(data, pd.DataFrame))
+            or (HAS_POLARS and isinstance(data, pl.DataFrame))
+            for data, _, _ in [
+                (logging_data, logging_feature_group_feature_names, "logging_data"),
+                transformed_features,
+                untransformed_features,
                 predictions,
-                training_dataset_version,
-                hsml_model,
+                serving_keys,
+                helper_columns,
+                request_parameters,
+                event_time,
+                extra_logging_features,
+                request_id,
+            ]
+        ):
+            return self.get_feature_logging_df(
+                logging_data=logging_data,
+                logging_feature_group_features=logging_feature_group_features,
+                transformed_features=transformed_features,
+                untransformed_features=untransformed_features,
+                predictions=predictions,
+                serving_keys=serving_keys,
+                helper_columns=helper_columns,
+                request_parameters=request_parameters,
+                event_time=event_time,
+                request_id=request_id,
+                extra_logging_features=extra_logging_features,
+                td_col_name=td_col_name,
+                time_col_name=time_col_name,
+                model_col_name=model_col_name,
+                training_dataset_version=training_dataset_version,
+                hsml_model=hsml_model,
             ).to_dict(orient="records")
-        else:
-            log_vectors = []
-
+        log_vectors: List[Dict[Any, str]] = None
+        for data, feature_names, log_component_name in [
+            (logging_data, logging_feature_group_feature_names, "logging_data"),
+            transformed_features,
+            untransformed_features,
+            predictions,
+            serving_keys,
+            helper_columns,
+            request_parameters,
+            event_time,
+            extra_logging_features,
+            request_id,
+        ]:
+            print(f"{data=}, {feature_names=}, {log_component_name=}")
             # convert features to dict
-            Engine._validate_logging_list(features, td_features)
-            for row in features:
-                log_vectors.append(dict(zip(td_features, row)))
+            if not data:
+                continue
+            try:
+                if not all(isinstance(row, dict) for row in data):
+                    Engine._validate_logging_list(data, feature_names)
+                else:
+                    for row in data:
+                        missing_columns = set(feature_names).difference(set(row.keys()))
+                        additional_logging_features = set(row.keys()).difference(
+                            (feature_names)
+                        )
+                        if missing_columns:
+                            _logger.info(
+                                f"The following columns : `{'`, `'.join(missing_columns)}` are missing in the logging data provided `{log_component_name}`. Setting them to None."
+                            )
+                            for col in missing_columns:
+                                row[col] = None
+                        if additional_logging_features:
+                            _logger.info(
+                                f"The following columns : `{'`, `'.join(additional_logging_features)}` are additional columns the logging data provided `{log_component_name}` and is not present in the logging feature groups. They will be ignored."
+                            )
+                            for col in additional_logging_features:
+                                row.pop(col)
 
-            # convert prediction to dict
-            if predictions:
-                Engine._validate_logging_list(predictions, td_predictions)
-                for log_vector, row in zip(log_vectors, predictions):
-                    log_vector.update(dict(zip([f.name for f in td_predictions], row)))
-
-            # get metadata
-            for row in log_vectors:
-                row.update(
-                    Engine.get_logging_metadata(
-                        td_col_name=td_col_name,
-                        time_col_name=time_col_name,
-                        model_col_name=model_col_name,
-                        training_dataset_version=training_dataset_version,
-                        hsml_model=hsml_model,
+            except AssertionError as e:
+                raise FeatureStoreException(
+                    f"Error logging data `{log_component_name}` do not have all required features. Please check the `{log_component_name}` to ensure that it has the following features : {feature_names}."
+                ) from e
+            if log_vectors is None:
+                log_vectors = [
+                    dict(zip(feature_names, row)) if not isinstance(row, dict) else row
+                    for row in data
+                ]
+            elif len(data) == 1 and len(log_vectors) > 1:
+                for log_vector in log_vectors:
+                    log_vector.update(
+                        dict(
+                            zip(feature_names, data[0])
+                            if not isinstance(data, dict)
+                            else data
+                        )
                     )
+            elif len(data) != len(log_vectors):
+                if len(log_vectors) != len(data):
+                    raise FeatureStoreException(
+                        f"Length of `{log_component_name}` provided do not match other arguments. Please check the logging data to make sure that all arguments have the same length."
+                    )
+            else:
+                for log_vector, row in zip(log_vectors, data):
+                    log_vector.update(
+                        dict(zip(feature_names, row))
+                        if not isinstance(row, dict)
+                        else row
+                    )
+
+        # rename prediction columns
+        _, predictions_feature_names, _ = predictions
+        if predictions_feature_names:
+            for log_vector in log_vectors:
+                for feature_name in predictions_feature_names:
+                    log_vector[f"predicted_{feature_name}"] = log_vector.pop(
+                        feature_name
+                    )
+
+        # Create a json column for request parameters
+        _, request_parameter_names, _ = request_parameters
+        if request_parameter_names:
+            for log_vector in log_vectors:
+                avaiable_request_parameters = [
+                    feature
+                    for feature in request_parameter_names
+                    if feature in log_vector
+                ]
+                if avaiable_request_parameters:
+                    log_vector["request_parameters"] = json.dumps(
+                        {k: log_vector[k] for k in avaiable_request_parameters}
+                    )
+                    for feature in avaiable_request_parameters:
+                        if feature not in logging_feature_group_feature_names:
+                            _ = log_vector.pop(feature)
+
+        # get metadata
+        for row in log_vectors:
+            row.update(
+                Engine.get_logging_metadata(
+                    td_col_name=td_col_name,
+                    time_col_name=time_col_name,
+                    model_col_name=model_col_name,
+                    training_dataset_version=training_dataset_version,
+                    hsml_model=hsml_model,
                 )
-            return log_vectors
+            )
+        return log_vectors
 
     @staticmethod
     def read_feature_log(query, time_col):
         df = query.read()
         return df.drop(["log_id", time_col], axis=1)
+
+    def check_supported_dataframe(self, dataframe: Any) -> bool:
+        """
+        Check if a dataframe is supported by the engine.
+
+        Both Pandas and Polars dataframes are supported in the Python Engine.
+
+        # Arguments:
+            dataframe `Any`: A dataframe to check.
+
+        # Returns:
+            `bool`: True if the dataframe is supported, False otherwise.
+        """
+        if (HAS_POLARS and isinstance(dataframe, pl.DataFrame)) or (
+            HAS_PANDAS and isinstance(dataframe, pd.DataFrame)
+        ):
+            return True
