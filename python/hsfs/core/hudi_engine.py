@@ -252,7 +252,7 @@ class HudiEngine:
             commits_to_return,
             spark_context._jvm.org.apache.hudi.common.model.HoodieCommitMetadata().getClass(),
         )
-        table_size = spark_context._jvm.com.logicalclocks.hsfs.spark.engine.HudiEngine.getInstance().getTableSize(
+        table_size = spark_context._jvm.com.logicalclocks.hsfs.spark.engine.hudi.HudiEngine.getInstance().getHudiTableSize(
             spark_context._jsc, base_path
         )
         return feature_group_commit.FeatureGroupCommit(

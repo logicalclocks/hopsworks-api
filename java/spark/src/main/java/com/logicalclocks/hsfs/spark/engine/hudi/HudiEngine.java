@@ -435,7 +435,7 @@ public class HudiEngine {
   }
   
   // Extracted from org.apache.hudi.utilities.TableSizeStats
-  private Long getHudiTableSize(JavaSparkContext jsc, String basePath) throws IOException {
+  public Long getHudiTableSize(JavaSparkContext jsc, String basePath) throws IOException {
     LOGGER.info("Calculating Hudi table size for base path: " + basePath);
     HoodieMetadataConfig metadataConfig = HoodieMetadataConfig.newBuilder()
         .enable(true)
