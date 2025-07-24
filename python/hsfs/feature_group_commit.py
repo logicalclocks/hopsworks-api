@@ -35,6 +35,7 @@ class FeatureGroupCommit:
         commit_time=None,
         archived=None,
         last_active_commit_time=None,
+        table_size=None,
         items=None,
         count=None,
         href=None,
@@ -49,6 +50,7 @@ class FeatureGroupCommit:
         self._validation_id = validation_id
         self._archived = archived
         self._last_active_commit_time = last_active_commit_time
+        self._table_size = table_size
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -75,6 +77,7 @@ class FeatureGroupCommit:
             "validationId": self._validation_id,
             "archived": self._archived,
             "lastActiveCommitTime": self._last_active_commit_time,
+            "tableSize": self._table_size,
         }
 
     @property
@@ -113,6 +116,10 @@ class FeatureGroupCommit:
     def last_active_commit_time(self):
         return self._last_active_commit_time
 
+    @property
+    def table_size(self):
+        return self._table_size
+
     @commitid.setter
     def commitid(self, commitid):
         self._commitid = commitid
@@ -140,3 +147,7 @@ class FeatureGroupCommit:
     @last_active_commit_time.setter
     def last_active_commit_time(self, last_active_commit_time):
         self._last_active_commit_time = last_active_commit_time
+
+    @table_size.setter
+    def table_size(self, table_size):
+        self._table_size = table_size
