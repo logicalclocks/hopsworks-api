@@ -60,7 +60,7 @@ dependencies = [
 
 [project.optional-dependencies]
 python = [
-    "pyarrow>=10.0",
+    "pyarrow>=17.0",
     "confluent-kafka<=2.6.1",
     "fastavro>=1.4.11,<=1.11.1",
     "tqdm",
@@ -95,7 +95,7 @@ dev-pandas1 = [
 dev = ["hopsworks[dev-no-opt,great-expectations,polars]"]
 polars=[
     "polars>=0.20.18,<=0.21.0",
-    "pyarrow>=10.0",
+    "pyarrow>=17.0",
 ]
 
 [build-system]
