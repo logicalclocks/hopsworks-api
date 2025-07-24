@@ -446,13 +446,13 @@ public class HudiEngine {
     SerializableConfiguration serializableConfiguration = new SerializableConfiguration(jsc.hadoopConfiguration());
     List<String> allPartitions = tableMetadata.getAllPartitionPaths();
     final Histogram tableHistogram = new Histogram(new UniformReservoir(1_000_000));
+    HoodieTableMetaClient metaClientLocal = HoodieTableMetaClient.builder()
+        .setBasePath(basePath)
+        .setConf(serializableConfiguration.get()).build();
+    HoodieMetadataConfig metadataConfig1 = HoodieMetadataConfig.newBuilder()
+        .enable(false)
+        .build();
     allPartitions.forEach(partition -> {
-      HoodieTableMetaClient metaClientLocal = HoodieTableMetaClient.builder()
-          .setBasePath(basePath)
-          .setConf(serializableConfiguration.get()).build();
-      HoodieMetadataConfig metadataConfig1 = HoodieMetadataConfig.newBuilder()
-          .enable(false)
-          .build();
       HoodieTableFileSystemView fileSystemView = FileSystemViewManager
           .createInMemoryFileSystemView(new HoodieLocalEngineContext(serializableConfiguration.get()),
             metaClientLocal, metadataConfig1);
