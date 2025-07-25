@@ -59,7 +59,7 @@ class ProjectTools:
             await ctx.info(f"Changing to project {name}...")
 
         conn = client.get_connection()
-        if conn is None or not conn.is_connected():
+        if conn is None:
             raise ConnectionError("Not connected to Hopsworks.")
 
         project = hopsworks.login(
