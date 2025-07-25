@@ -14,8 +14,11 @@
 #   limitations under the License.
 #
 
-
+import atexit
 import logging
+import signal
+import sys
+from typing import Literal, Optional, Union
 
 import click
 import hopsworks
@@ -23,10 +26,31 @@ import hopsworks
 from .server import mcp
 
 
-log = logging.getLogger("mcp.main")
+log = logging.getLogger("hopsworks-mcp")
 
 
-@click.command()
+def handle_shutdown(signum, frame):
+    log.info(f"Received signal {signum}, will shut down...")
+    hopsworks.logout()  # Checks if a session is active and logs out
+    sys.exit(0)
+
+
+def cleanup_sync():
+    log.info("Cleaning up resources...")
+    hopsworks.logout()
+
+
+# Register cleanup functions
+atexit.register(cleanup_sync)
+
+
+@click.command(
+    "hopsworks-mcp",
+    short_help="Run the Hopsworks MCP server.",
+    help="In addition to setting arguments directly, you can set environment variables: \
+        HOPSWORKS_HOST, HOPSWORKS_PORT, HOPSWORKS_PROJECT, HOPSWORKS_API_KEY, \
+            HOPSWORKS_HOSTNAME_VERIFICATION, HOPSWORKS_TRUST_STORE_PATH and HOPSWORKS_ENGINE.",
+)
 @click.option(
     "--host", default="0.0.0.0", help="Host to run the server on. (default: 0.0.0.0)"
 )
@@ -36,17 +60,59 @@ log = logging.getLogger("mcp.main")
     default="sse",
     help="Transport method to use. (default: sse). Options: 'stdio', 'http', 'sse', 'streamable-http'",
 )
-@click.option("--api_key", default=None, help="API key for authentication")
+@click.option(
+    "--create_session",
+    default=True,
+    help="Create a Hopsworks session for the MCP server. (default: True)",
+)
 @click.option("--hopsworks_host", default=None, help="Hopsworks host URL")
 @click.option("--hopsworks_port", default=443, help="Hopsworks port (default 443)")
 @click.option("--project", default=None, help="Project name to access")
 @click.option(
+    "--api_key_value",
+    default=None,
+    help="API key value for Hopsworks authentication",
+)
+@click.option(
+    "--api_key_file",
+    default=None,
+    help="Path to a file containing the API key for Hopsworks authentication",
+)
+@click.option(
+    "--hostname_verification",
+    default=False,
+    help="Enable hostname verification for Hopsworks authentication",
+)
+@click.option(
+    "--trust_store_path",
+    default=None,
+    help="Path to the trust store for Hopsworks authentication",
+)
+@click.option(
     "--engine",
     default="python",
-    help="Engine to use (python, spark, hive) (default: python)",
+    help="Engine to use (python, spark, training, spark-no-metastore, spark-delta) (default: python)",
 )
 def main(
-    host, port, transport, api_key, hopsworks_host, hopsworks_port, project, engine
+    host: Optional[str] = None,
+    port: int = 8001,
+    transport: Optional[str] = None,
+    create_session: bool = True,
+    hopsworks_host: Optional[str] = None,
+    hopsworks_port: int = 443,
+    project: Optional[str] = None,
+    api_key_value: Optional[str] = None,
+    api_key_file: Optional[str] = None,
+    hostname_verification: bool = False,
+    trust_store_path: Optional[str] = None,
+    engine: Union[
+        None,
+        Literal["spark"],
+        Literal["python"],
+        Literal["training"],
+        Literal["spark-no-metastore"],
+        Literal["spark-delta"],
+    ] = None,
 ):
     """Run the Hopsworks MCP server."""
     if transport not in ["stdio", "http", "sse", "streamable-http"]:
@@ -54,24 +120,27 @@ def main(
             "Invalid transport type. Choose from 'stdio', 'http', 'sse', or 'streamable-http'."
         )
 
-    if api_key:
-        if not hopsworks_host:
-            raise ValueError("Hopsworks host must be provided when using API key.")
-
+    if create_session:
         # Set the API key for the Hopsworks client
         project = hopsworks.login(
             host=hopsworks_host,
             port=hopsworks_port,
             project=project,
-            api_key_value=api_key,
+            api_key_value=api_key_value,
+            api_key_file=api_key_file,
+            hostname_verification=hostname_verification,
+            trust_store_path=trust_store_path,
             engine=engine,
         )
         log.info(
             f"Connected to Hopsworks project '{project.name}' at {hopsworks_host}:{hopsworks_port} using API key."
         )
 
+    signal.signal(signal.SIGTERM, handle_shutdown)
+    signal.signal(signal.SIGINT, handle_shutdown)
+
     if transport == "stdio":
-        print(f"Starting Hopsworks MCP server using {transport} transport.")
-        mcp.run(transport=transport)
+        log.info(f"Starting Hopsworks MCP server using {transport} transport.")
+        mcp.run(transport=transport, show_banner=False)
     else:
-        mcp.run(transport=transport, host=host, port=port)
+        mcp.run(transport=transport, host=host, port=port, show_banner=False)
