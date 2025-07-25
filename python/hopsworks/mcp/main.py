@@ -14,7 +14,6 @@
 #   limitations under the License.
 #
 
-import atexit
 import logging
 import signal
 import sys
@@ -26,6 +25,18 @@ import hopsworks
 from .server import mcp
 
 
+# Configure logging to handle closed streams gracefully
+class SafeStreamHandler(logging.StreamHandler):
+    def emit(self, record):
+        try:
+            if self.stream and not getattr(self.stream, "closed", False):
+                super().emit(record)
+        except (ValueError, BrokenPipeError, OSError):
+            print("Error writing log message to stream, stream may be closed.")
+            # Ignore errors from closed streams
+            pass
+
+
 log = logging.getLogger("hopsworks-mcp")
 
 
@@ -33,15 +44,6 @@ def handle_shutdown(signum, frame):
     log.info(f"Received signal {signum}, will shut down...")
     hopsworks.logout()  # Checks if a session is active and logs out
     sys.exit(0)
-
-
-def cleanup_sync():
-    log.info("Cleaning up resources...")
-    hopsworks.logout()
-
-
-# Register cleanup functions
-atexit.register(cleanup_sync)
 
 
 @click.command(
@@ -119,6 +121,10 @@ def main(
         raise ValueError(
             "Invalid transport type. Choose from 'stdio', 'http', 'sse', or 'streamable-http'."
         )
+    # To avoid Multiple projects found and error if there are no projects.
+    # TODO: In the future, we might want to create a http connection to Hopsworks even if there is no project
+    if create_session and project is None:
+        raise ValueError("Project name must be provided.")
 
     if create_session:
         # Set the API key for the Hopsworks client
@@ -132,14 +138,16 @@ def main(
             trust_store_path=trust_store_path,
             engine=engine,
         )
-        log.info(
-            f"Connected to Hopsworks project '{project.name}' at {hopsworks_host}:{hopsworks_port} using API key."
-        )
 
     signal.signal(signal.SIGTERM, handle_shutdown)
     signal.signal(signal.SIGINT, handle_shutdown)
 
     if transport == "stdio":
+        # For stdio transport, suppress all logging from imported libraries
+        # that might try to write to closed streams
+        logging.getLogger().handlers.clear()
+        logging.getLogger().addHandler(SafeStreamHandler(sys.stdout))
+
         log.info(f"Starting Hopsworks MCP server using {transport} transport.")
         mcp.run(transport=transport, show_banner=False)
     else:

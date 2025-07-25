@@ -473,7 +473,7 @@ class Connection:
         engine.stop()
         self._feature_store_api = None
         self._connected = False
-        print("Connection closed.")
+        _logger.info("Connection closed.")
 
     @classmethod
     def connection(
