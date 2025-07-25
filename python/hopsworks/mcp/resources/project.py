@@ -58,7 +58,7 @@ class ProjectResources:
         conn = client.get_connection()
         projects = conn.get_projects()
         return Projects(
-            [
+            projects=[
                 Project(
                     name=project.name,
                     id=project.id,
