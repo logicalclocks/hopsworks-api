@@ -34,5 +34,49 @@ PORT = int(os.getenv("HOPSWORKS_MCP_PORT", 8001))
 TRANSPORT = os.getenv("HOPSWORKS_MCP_TRANSPORT", "sse")
 
 if __name__ == "__main__":
-    mcp.run(transport=TRANSPORT, host=HOST, port=PORT)
+    if transport == "stdio":
+        mcp.run(transport=TRANSPORT)
+    else:
+        mcp.run(transport=TRANSPORT, host=HOST, port=PORT)
+```
+
+```
+[07/25/25 17:36:59] INFO     Starting MCP server 'Hopsworks MCP' with transport 'stdio' server.py:1371
+User: What is the current project?
+================================ Human Message =================================
+
+What is the current project?
+================================== Ai Message ==================================
+
+", "parameters": {}}
+Tool Calls:
+  get_current_project_details (d43fb478-c927-48bc-b2fd-f40249b7829c)
+ Call ID: d43fb478-c927-48bc-b2fd-f40249b7829c
+  Args:
+[07/25/25 17:37:15] INFO     Starting MCP server 'Hopsworks MCP' with transport 'stdio' server.py:1371
+================================= Tool Message =================================
+Name: get_current_project_details
+
+{"name":"project1","id":120,"owner":"admin@hopsworks.ai","description":"project one","created":"2025-07-22T07:02:04.000Z"}
+================================== Ai Message ==================================
+
+The current project is project1, with an ID of 120, owned by admin@hopsworks.ai, and created on July 22, 2025.
+User: change to project2
+================================ Human Message =================================
+
+change to project2
+================================== Ai Message ==================================
+Tool Calls:
+  use_project (f5c3b87c-c48f-421d-888e-431416eb5135)
+ Call ID: f5c3b87c-c48f-421d-888e-431416eb5135
+  Args:
+    name: project2
+[07/25/25 17:37:25] INFO     Starting MCP server 'Hopsworks MCP' with transport 'stdio' server.py:1371
+================================= Tool Message =================================
+Name: use_project
+
+{"name":"project2","id":121,"owner":"admin@hopsworks.ai","description":"Test project2","created":"2025-07-25T14:52:32.000Z"}
+================================== Ai Message ==================================
+
+You have switched to project2, which is a test project with an ID of 121, owned by admin@hopsworks.ai, and created on July 25, 2025.
 ```
