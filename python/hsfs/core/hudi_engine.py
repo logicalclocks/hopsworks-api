@@ -252,6 +252,9 @@ class HudiEngine:
             commits_to_return,
             spark_context._jvm.org.apache.hudi.common.model.HoodieCommitMetadata().getClass(),
         )
+        table_size = spark_context._jvm.com.logicalclocks.hsfs.spark.engine.hudi.HudiEngine.getInstance().getHudiTableSize(
+            spark_context._jsc, base_path
+        )
         return feature_group_commit.FeatureGroupCommit(
             commitid=None,
             commit_date_string=commit_timeline.lastInstant().get().getTimestamp(),
@@ -264,4 +267,5 @@ class HudiEngine:
             last_active_commit_time=util.get_timestamp_from_date_string(
                 commit_timeline.firstInstant().get().getTimestamp()
             ),
+            table_size=table_size,
         )
