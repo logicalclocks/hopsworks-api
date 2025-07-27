@@ -113,7 +113,7 @@ async def create_async_engine(
         loop=loop,
         minsize=options.get("minsize", default_min_size),
         maxsize=options.get("maxsize", default_min_size),
-        pool_recycle=options.get("pool_recycle", -1),
+        pool_recycle=options.get("pool_recycle", 14400),
         autocommit=options.get("autocommit", True),
     )
     return pool
