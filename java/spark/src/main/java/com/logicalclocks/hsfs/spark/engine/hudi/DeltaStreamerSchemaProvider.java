@@ -21,7 +21,7 @@ import com.logicalclocks.hsfs.FeatureStoreException;
 import lombok.SneakyThrows;
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaParseException;
-import org.apache.hudi.DataSourceUtils;
+import static org.apache.hudi.common.util.ConfigUtils.checkRequiredProperties;
 import org.apache.hudi.common.config.TypedProperties;
 import org.apache.hudi.utilities.schema.SchemaProvider;
 import org.apache.spark.api.java.JavaSparkContext;
@@ -32,8 +32,7 @@ public class DeltaStreamerSchemaProvider extends SchemaProvider {
 
   public DeltaStreamerSchemaProvider(TypedProperties props, JavaSparkContext jssc) {
     super(props, jssc);
-    DataSourceUtils.checkRequiredProperties(props,
-        Collections.singletonList(HudiEngine.FEATURE_GROUP_SCHEMA));
+    checkRequiredProperties(props, Collections.singletonList(HudiEngine.FEATURE_GROUP_SCHEMA));
   }
 
   @SneakyThrows
