@@ -39,12 +39,8 @@
         <junit.version>5.9.1</junit.version>
         <surefire-plugin.version>2.22.0</surefire-plugin.version>
         <mockito.version>4.3.1</mockito.version>
-<<<<<<< HEAD
         <avro.version>1.11.4</avro.version>
-=======
-        <avro.version>1.8.2</avro.version>
         <commons-text.version>1.13.1</commons-text.version>
->>>>>>> main
 
         <artifact.spark.version>spark3.5</artifact.spark.version>
 
