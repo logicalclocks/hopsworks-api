@@ -53,8 +53,6 @@ public class DeltaStreamerConfig implements Serializable {
     cfg.targetBasePath = writeOptions.get(HudiEngine.HUDI_BASE_PATH);
     // name of the target table
     cfg.targetTableName = writeOptions.get(HudiEngine.HUDI_TABLE_NAME);
-    //cfg.propsFilePath = writeOptions.get(HudiEngine.HUDI_BASE_PATH + "/.hoodie/hoodie.properties");
-    // hudi table type
     cfg.tableType = writeOptions.get(HudiEngine.HUDI_TABLE_STORAGE_TYPE);
     if (Strings.isNullOrEmpty(cfg.tableType)) {
       cfg.tableType = HudiEngine.HUDI_COPY_ON_WRITE;

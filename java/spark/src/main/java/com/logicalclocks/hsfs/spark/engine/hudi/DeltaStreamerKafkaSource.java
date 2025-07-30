@@ -106,17 +106,8 @@ public class DeltaStreamerKafkaSource extends KafkaSource<JavaRDD<GenericRecord>
   
   @Override
   protected JavaRDD<GenericRecord> toBatch(OffsetRange[] offsetRanges) {
-    JavaRDD<ConsumerRecord<Object, Object>> kafkaRDd;
-    LOG.info("Kafka offset ranges: " + offsetRanges.length);
-    kafkaRDd = KafkaUtils.createRDD(sparkContext, offsetGen.getKafkaParams(), offsetRanges,
-      LocationStrategies.PreferConsistent());
-    LOG.info("KafkaRDD count: " + kafkaRDd.count());
-    /* Read and log the data in kafkaRDD
-    kafkaRDd.collect().forEach(record -> {
-        LOG.info("Key: " + record.key() + ", Value: " + record.value()
-            + ", Partition: " + record.partition() + ", Offset: " + record.offset());
-    });*/
-    return maybeAppendKafkaOffsets(kafkaRDd.filter(consemerRec -> consemerRec.value() != null));
+    return maybeAppendKafkaOffsets(KafkaUtils.createRDD(sparkContext, offsetGen.getKafkaParams(), offsetRanges,
+        LocationStrategies.PreferConsistent()).filter(consemerRec -> consemerRec.value() != null));
   }
 
   @Override

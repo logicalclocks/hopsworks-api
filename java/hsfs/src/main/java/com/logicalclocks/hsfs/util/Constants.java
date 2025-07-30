@@ -81,7 +81,6 @@ public class Constants {
   public static final String KAFKA_SSL_KEY_PASSWORD = "ssl.key.password";
   public static final String KAFKA_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM =
       "ssl.endpoint.identification.algorithm";
-  public static final String KAFKA_CLIENT_DNS_LOOKUP = "client.dns.lookup";
   //GCS
   public static final String PROPERTY_KEY_FILE = "fs.gs.auth.service.account.json.keyfile";
   public static final String PROPERTY_ENCRYPTION_KEY = "fs.gs.encryption.key";
