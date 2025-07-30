@@ -82,7 +82,9 @@ class HudiEngine:
     HUDI_TABLE_BASE_FILE_FORMAT = "hoodie.table.base.file.format"
     HUDI_TABLE_METADATA_PARTITIONS = "hoodie.table.metadata.partitions"
     HUDI_HIVE_SYNC_USE_JDBC = "hoodie.datasource.hive_sync.use_jdbc"
-    HUDI_HIVE_SYNC_AUTO_CREATE_DATABASE = "hoodie.datasource.hive_sync.auto_create_database"
+    HUDI_HIVE_SYNC_AUTO_CREATE_DATABASE = (
+        "hoodie.datasource.hive_sync.auto_create_database"
+    )
 
     def __init__(
         self,
@@ -191,7 +193,7 @@ class HudiEngine:
             self.HUDI_TABLE_BASE_FILE_FORMAT: "PARQUET",
             self.HUDI_TABLE_METADATA_PARTITIONS: "files",
             self.HUDI_HIVE_SYNC_USE_JDBC: "false",
-            self.HUDI_HIVE_SYNC_AUTO_CREATE_DATABASE: "false"
+            self.HUDI_HIVE_SYNC_AUTO_CREATE_DATABASE: "false",
         }
         hudi_options.update(HudiEngine.HUDI_DEFAULT_PARALLELISM)
 
@@ -268,8 +270,12 @@ class HudiEngine:
             hopsfs_conf, base_path
         )
         commit_metadata = spark_context._jvm.org.apache.hudi.common.table.timeline.TimelineUtils.getCommitMetadata(
-            latest_commit, commit_timeline)
+            latest_commit, commit_timeline
+        )
 
+        table_size = spark_context._jvm.com.logicalclocks.hsfs.spark.engine.hudi.HudiEngine.getInstance().getHudiTableSize(
+            spark_context._jsc, base_path
+        )
         return feature_group_commit.FeatureGroupCommit(
             commitid=None,
             commit_date_string=latest_commit.getCompletionTime(),
@@ -282,4 +288,5 @@ class HudiEngine:
             last_active_commit_time=util.get_timestamp_from_date_string(
                 latest_commit.getCompletionTime()
             ),
+            table_size=table_size,
         )

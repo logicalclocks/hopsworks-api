@@ -17,59 +17,70 @@
 
 package com.logicalclocks.hsfs.spark.engine.hudi;
 
-import com.logicalclocks.hsfs.Feature;
-import com.logicalclocks.hsfs.FeatureGroupCommit;
-import com.logicalclocks.hsfs.FeatureStoreException;
-import com.logicalclocks.hsfs.HudiOperationType;
-import com.logicalclocks.hsfs.constructor.FeatureGroupAlias;
-import com.logicalclocks.hsfs.engine.FeatureGroupUtils;
-import com.logicalclocks.hsfs.metadata.FeatureGroupApi;
-import com.logicalclocks.hsfs.FeatureGroupBase;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.nio.file.FileSystem;
+import java.nio.file.Path;
+import java.text.ParseException;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
-import com.logicalclocks.hsfs.spark.FeatureGroup;
-import com.logicalclocks.hsfs.spark.FeatureStore;
-import com.logicalclocks.hsfs.spark.StreamFeatureGroup;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.Path;
+import javax.security.auth.login.Configuration;
+import javax.swing.text.html.Option;
+
+import org.apache.hudi.HoodieDataSourceHelpers;
+import org.apache.hudi.client.common.HoodieSparkEngineContext;
+import org.apache.hudi.common.config.HoodieMetadataConfig;
+import org.apache.hudi.common.config.SerializableConfiguration;
+import org.apache.hudi.common.engine.HoodieLocalEngineContext;
+import org.apache.hudi.common.model.HoodieBaseFile;
 import org.apache.hudi.common.model.HoodieCommitMetadata;
 import org.apache.hudi.common.model.HoodieFailedWritesCleaningPolicy;
 import org.apache.hudi.common.table.HoodieTableConfig;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.common.table.timeline.HoodieInstant;
 import org.apache.hudi.common.table.timeline.HoodieTimeline;
-import org.apache.hudi.HoodieDataSourceHelpers;
-
 import org.apache.hudi.common.table.timeline.versioning.v2.CommitMetadataSerDeV2;
-import org.apache.hudi.common.util.Option;
+import org.apache.hudi.common.table.view.FileSystemViewManager;
+import org.apache.hudi.common.table.view.FileSystemViewStorageConfig;
+import org.apache.hudi.common.table.view.HoodieTableFileSystemView;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.hadoop.fs.HadoopFSUtils;
 import org.apache.hudi.metadata.HoodieMetadataWriteUtils;
+import org.apache.hudi.metadata.HoodieTableMetadata;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.parquet.Strings;
-import org.apache.spark.sql.SparkSession;
+import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SaveMode;
-
-import org.apache.hadoop.fs.FileSystem;
+import org.apache.spark.sql.SparkSession;
 import org.json.JSONArray;
+
+import com.codahale.metrics.Histogram;
+import com.codahale.metrics.UniformReservoir;
+import com.logicalclocks.hsfs.Feature;
+import com.logicalclocks.hsfs.FeatureGroupBase;
+import com.logicalclocks.hsfs.FeatureGroupCommit;
+import com.logicalclocks.hsfs.FeatureStoreException;
+import com.logicalclocks.hsfs.HudiOperationType;
+import com.logicalclocks.hsfs.constructor.FeatureGroupAlias;
+import com.logicalclocks.hsfs.engine.FeatureGroupUtils;
+import com.logicalclocks.hsfs.metadata.FeatureGroupApi;
+import com.logicalclocks.hsfs.spark.FeatureGroup;
+import com.logicalclocks.hsfs.spark.FeatureStore;
+import com.logicalclocks.hsfs.spark.StreamFeatureGroup;
+
 import scala.collection.Seq;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.text.ParseException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Arrays;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 public class HudiEngine {
-  
-  private static Logger LOG = Logger.getLogger(HudiEngine.class.getName());
-
+  private static Logger LOGGER = Logger.getLogger(HudiEngine.class.getName());
   public static final String HUDI_SPARK_FORMAT = "org.apache.hudi";
 
   protected static final String HUDI_BASE_PATH = "hoodie.base.path";
@@ -239,6 +250,8 @@ public class HudiEngine {
       fgCommitMetadata.setRowsUpdated(commitMetadata.fetchTotalUpdateRecordsWritten());
       fgCommitMetadata.setRowsInserted(commitMetadata.fetchTotalInsertRecordsWritten());
       fgCommitMetadata.setRowsDeleted(commitMetadata.getTotalRecordsDeleted());
+      fgCommitMetadata.setTableSize(getHudiTableSize(JavaSparkContext.fromSparkContext(sparkSession.sparkContext()),
+          basePath));
       return fgCommitMetadata;
     } else {
       return null;
@@ -469,5 +482,37 @@ public class HudiEngine {
       featureGroupApi.featureGroupCommit(streamFeatureGroup, fgCommit);
       streamFeatureGroup.computeStatistics();
     }
+  }
+  
+  // Extracted from org.apache.hudi.utilities.TableSizeStats
+  public Long getHudiTableSize(JavaSparkContext jsc, String basePath) throws IOException {
+    LOGGER.info("Calculating Hudi table size for base path: " + basePath);
+    HoodieMetadataConfig metadataConfig = HoodieMetadataConfig.newBuilder()
+        .enable(true)
+        .build();
+    HoodieSparkEngineContext engineContext = new HoodieSparkEngineContext(jsc);
+    HoodieTableMetadata tableMetadata = HoodieTableMetadata.create(engineContext, metadataConfig, basePath,
+        FileSystemViewStorageConfig.SPILLABLE_DIR.defaultValue());
+    SerializableConfiguration serializableConfiguration = new SerializableConfiguration(jsc.hadoopConfiguration());
+    List<String> allPartitions = tableMetadata.getAllPartitionPaths();
+    final Histogram tableHistogram = new Histogram(new UniformReservoir(1_000_000));
+    HoodieTableMetaClient metaClientLocal = HoodieTableMetaClient.builder()
+        .setBasePath(basePath)
+        .setConf(serializableConfiguration.get()).build();
+    HoodieMetadataConfig metadataConfig1 = HoodieMetadataConfig.newBuilder()
+        .enable(false)
+        .build();
+    allPartitions.forEach(partition -> {
+      HoodieTableFileSystemView fileSystemView = FileSystemViewManager
+          .createInMemoryFileSystemView(new HoodieLocalEngineContext(serializableConfiguration.get()),
+            metaClientLocal, metadataConfig1);
+      List<HoodieBaseFile> baseFiles = fileSystemView.getLatestBaseFiles(partition).collect(Collectors.toList());
+      baseFiles.forEach(baseFile -> {
+        tableHistogram.update(baseFile.getFileSize());
+      });
+    });
+    Long totalSize = Arrays.stream(tableHistogram.getSnapshot().getValues()).sum();
+    LOGGER.info("Total size of Hudi table at base path " + basePath + " is: " + totalSize + " bytes");
+    return totalSize;
   }
 }
