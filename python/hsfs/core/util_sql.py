@@ -46,8 +46,8 @@ def create_mysql_engine(
         # Hopsworks clients should use the storage connector
         host = variable_api.VariableApi().get_loadbalancer_external_domain("mysqld")
         online_options["url"] = re.sub(
-            "/[0-9.]+:",
-            "/{}:".format(host),
+            "://[0-9a-zA-Z.]+:",
+            "://{}:".format(host),
             online_options["url"],
         )
 
