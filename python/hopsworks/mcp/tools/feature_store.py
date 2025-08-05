@@ -29,8 +29,8 @@ class FeatureStoreTools:
             mcp: The MCP server instance
         """
         self.mcp = mcp
-        self.mcp.tool(tags=["Feature Store"])(self.get_feature_store)
-        self.mcp.tool(tags=["Feature Store"])(self.get_feature_store_by_name)
+        self.mcp.tool(tags=["Feature Store", "read"])(self.get_feature_store)
+        self.mcp.tool(tags=["Feature Store", "read"])(self.get_feature_store_by_name)
 
     async def get_feature_store(self, ctx: Context = None) -> FeatureStore:
         """Get the feature store for the current project.

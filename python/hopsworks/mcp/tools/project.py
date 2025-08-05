@@ -32,11 +32,11 @@ class ProjectTools:
             mcp: The MCP server instance
         """
         self.mcp = mcp
-        self.mcp.tool(tags=["Project"])(self.use_project)
-        self.mcp.tool(tags=["Project"])(self.create_project)
-        self.mcp.tool(tags=["Project"])(self.list_projects)
-        self.mcp.tool(tags=["Project"])(self.get_current_project_details)
-        self.mcp.tool(tags=["Project"])(self.get_project_details)
+        self.mcp.tool(tags=["Project", "read"])(self.use_project)
+        self.mcp.tool(tags=["Project", "write"])(self.create_project)
+        self.mcp.tool(tags=["Project", "read"])(self.list_projects)
+        self.mcp.tool(tags=["Project", "read"])(self.get_current_project_details)
+        self.mcp.tool(tags=["Project", "read"])(self.get_project_details)
 
     async def _create_project(
         self, conn, name: str = None, description: str = None
