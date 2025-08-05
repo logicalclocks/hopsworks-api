@@ -19,7 +19,7 @@ from typing import Literal, Optional, Union
 
 from fastmcp import Context
 from hopsworks.mcp.models.project import Project
-from utils.auth import login as hw_login
+from hopsworks.mcp.utils.auth import login as hw_login
 
 
 class AuthTools:
