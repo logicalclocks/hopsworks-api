@@ -23,6 +23,7 @@ import click
 import hopsworks
 
 from .server import mcp
+from .utils.auth import login
 
 
 # Configure logging to handle closed streams gracefully
@@ -114,21 +115,17 @@ def main(
         Literal["training"],
         Literal["spark-no-metastore"],
         Literal["spark-delta"],
-    ] = None,
+    ] = "python",
 ):
     """Run the Hopsworks MCP server."""
     if transport not in ["stdio", "http", "sse", "streamable-http"]:
         raise ValueError(
             "Invalid transport type. Choose from 'stdio', 'http', 'sse', or 'streamable-http'."
         )
-    # To avoid Multiple projects found and error if there are no projects.
-    # TODO: In the future, we might want to create a http connection to Hopsworks even if there is no project
-    if create_session and project is None:
-        raise ValueError("Project name must be provided.")
 
     if create_session:
         # Set the API key for the Hopsworks client
-        project = hopsworks.login(
+        project = login(
             host=hopsworks_host,
             port=hopsworks_port,
             project=project,
