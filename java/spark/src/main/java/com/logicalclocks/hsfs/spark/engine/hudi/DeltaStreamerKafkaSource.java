@@ -17,23 +17,26 @@
 
 package com.logicalclocks.hsfs.spark.engine.hudi;
 
-import java.util.Arrays;
-import java.util.stream.Collectors;
-
 import org.apache.avro.generic.GenericRecord;
 
 import org.apache.hudi.DataSourceWriteOptions;
 import org.apache.hudi.common.config.TypedProperties;
+import org.apache.hudi.common.table.checkpoint.Checkpoint;
 import org.apache.hudi.common.util.Option;
-import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.exception.HoodieIOException;
-import org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamerMetrics;
+import org.apache.hudi.utilities.UtilHelpers;
+import org.apache.hudi.utilities.config.KafkaSourceConfig;
+import org.apache.hudi.utilities.ingestion.HoodieIngestionMetrics;
 import org.apache.hudi.utilities.schema.SchemaProvider;
-import org.apache.hudi.utilities.sources.AvroSource;
 import org.apache.hudi.utilities.sources.InputBatch;
+import org.apache.hudi.utilities.sources.KafkaSource;
+import org.apache.hudi.utilities.sources.helpers.AvroConvertor;
 import org.apache.hudi.utilities.sources.helpers.KafkaOffsetGen;
 
+import org.apache.hudi.utilities.streamer.DefaultStreamContext;
+import org.apache.hudi.utilities.streamer.StreamContext;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.serialization.StringDeserializer;
 
 import org.apache.log4j.LogManager;
@@ -46,27 +49,34 @@ import org.apache.spark.streaming.kafka010.KafkaUtils;
 import org.apache.spark.streaming.kafka010.LocationStrategies;
 import org.apache.spark.streaming.kafka010.OffsetRange;
 
-public class DeltaStreamerKafkaSource extends AvroSource {
+import static org.apache.hudi.common.util.ConfigUtils.getBooleanWithAltKeys;
+
+public class DeltaStreamerKafkaSource extends KafkaSource<JavaRDD<GenericRecord>> {
   private static final Logger LOG = LogManager.getLogger(DeltaStreamerKafkaSource.class);
   private static final String NATIVE_KAFKA_KEY_DESERIALIZER_PROP = "key.deserializer";
   private static final String NATIVE_KAFKA_VALUE_DESERIALIZER_PROP = "value.deserializer";
-  private final KafkaOffsetGen offsetGen;
-  private final HoodieDeltaStreamerMetrics metrics;
 
   public DeltaStreamerKafkaSource(TypedProperties props, JavaSparkContext sparkContext, SparkSession sparkSession,
-                                  SchemaProvider schemaProvider) {
-    super(props, sparkContext, sparkSession, schemaProvider);
-    props.put(NATIVE_KAFKA_KEY_DESERIALIZER_PROP, StringDeserializer.class);
+      SchemaProvider schemaProvider, HoodieIngestionMetrics metrics) {
+    this(props, sparkContext, sparkSession, metrics, new DefaultStreamContext(schemaProvider, Option.empty()));
+  }
+  
+  public DeltaStreamerKafkaSource(TypedProperties properties, JavaSparkContext sparkContext, SparkSession sparkSession,
+      HoodieIngestionMetrics metrics, StreamContext streamContext) {
+    super(properties, sparkContext, sparkSession, SourceType.AVRO, metrics,
+        new DefaultStreamContext(UtilHelpers.getSchemaProviderForKafkaSource(streamContext.getSchemaProvider(),
+            properties, sparkContext), streamContext.getSourceProfileSupplier()));
+    props.put(NATIVE_KAFKA_KEY_DESERIALIZER_PROP, StringDeserializer.class.getName());
+    
     String deserializerClassName =
         props.getString(DataSourceWriteOptions.KAFKA_AVRO_VALUE_DESERIALIZER_CLASS().key(), "");
     if (deserializerClassName.isEmpty()) {
-      props.put(NATIVE_KAFKA_VALUE_DESERIALIZER_PROP, DeltaStreamerAvroDeserializer.class);
+      props.put(NATIVE_KAFKA_VALUE_DESERIALIZER_PROP, DeltaStreamerAvroDeserializer.class.getName());
     } else {
       try {
         if (schemaProvider == null) {
           throw new HoodieIOException("SchemaProvider has to be set to use custom Deserializer");
         }
-
         props.put(DataSourceWriteOptions.SCHEMA_PROVIDER_CLASS_PROP(), schemaProvider.getClass().getName());
         props.put(NATIVE_KAFKA_VALUE_DESERIALIZER_PROP, Class.forName(deserializerClassName));
       } catch (ClassNotFoundException var9) {
@@ -75,39 +85,34 @@ public class DeltaStreamerKafkaSource extends AvroSource {
         throw new HoodieException(error, var9);
       }
     }
-
-    HoodieWriteConfig.Builder builder = HoodieWriteConfig.newBuilder();
-    this.metrics = new HoodieDeltaStreamerMetrics(builder.withProperties(props).build());
-    this.offsetGen = new KafkaOffsetGen(props);
+    offsetGen = new KafkaOffsetGen(props);
   }
-
-  protected InputBatch<JavaRDD<GenericRecord>> fetchNewData(Option<String> lastCheckpointStr, long sourceLimit) {
-    OffsetRange[] offsetRanges = this.offsetGen.getNextOffsetRanges(lastCheckpointStr, sourceLimit, this.metrics);
-    long totalNewMsgs = KafkaOffsetGen.CheckpointUtils.totalNewMessages(offsetRanges);
-    LOG.info("About to read " + totalNewMsgs + " from Kafka for topic: " + this.offsetGen.getTopicName()
-        + " from offsets: " + Arrays.stream(offsetRanges)
-            .map(r -> String.format("%s:%d", r.partition(), r.fromOffset())).collect(Collectors.joining(","))
-        + " until offsets: " + Arrays.stream(offsetRanges)
-            .map(r -> String.format("%s:%d", r.partition(), r.untilOffset())).collect(Collectors.joining(",")));
-    if (totalNewMsgs <= 0L) {
-      return new InputBatch(Option.empty(), KafkaOffsetGen.CheckpointUtils.offsetsToStr(offsetRanges));
+  
+  
+  @Override
+  protected InputBatch<JavaRDD<GenericRecord>> readFromCheckpoint(Option<Checkpoint> lastCheckpointStr,
+      long sourceLimit) {
+    return super.readFromCheckpoint(lastCheckpointStr, sourceLimit);
+  }
+  
+  protected JavaRDD<GenericRecord> maybeAppendKafkaOffsets(JavaRDD<ConsumerRecord<Object, Object>> kafkaRDd) {
+    if (shouldAddOffsets) {
+      AvroConvertor convertor = new AvroConvertor(schemaProvider.getSourceSchema());
+      return kafkaRDd.map(convertor::withKafkaFieldsAppended);
     } else {
-      JavaRDD<GenericRecord> newDataRdd = this.toRdd(offsetRanges);
-      return new InputBatch(Option.of(newDataRdd), KafkaOffsetGen.CheckpointUtils.offsetsToStr(offsetRanges));
+      return kafkaRDd.map(consumerRecord -> (GenericRecord) consumerRecord.value());
     }
   }
-
-  private JavaRDD<GenericRecord> toRdd(OffsetRange[] offsetRanges) {
-    return KafkaUtils.createRDD(this.sparkContext, this.offsetGen.getKafkaParams(), offsetRanges,
-        LocationStrategies.PreferConsistent())
-            .filter(obj -> obj.value() != null)
-            .map(obj -> (GenericRecord) obj.value());
+  
+  @Override
+  protected JavaRDD<GenericRecord> toBatch(OffsetRange[] offsetRanges) {
+    return maybeAppendKafkaOffsets(KafkaUtils.createRDD(sparkContext, offsetGen.getKafkaParams(), offsetRanges,
+        LocationStrategies.PreferConsistent()).filter(consemerRec -> consemerRec.value() != null));
   }
 
   @Override
   public void onCommit(String lastCkptStr) {
-    if (this.props.getBoolean(KafkaOffsetGen.Config.ENABLE_KAFKA_COMMIT_OFFSET.key(),
-        KafkaOffsetGen.Config.ENABLE_KAFKA_COMMIT_OFFSET.defaultValue())) {
+    if (getBooleanWithAltKeys(props, KafkaSourceConfig.ENABLE_KAFKA_COMMIT_OFFSET)) {
       LOG.info("Committing offset: " + lastCkptStr);
       offsetGen.commitOffsetToKafka(lastCkptStr);
     }
