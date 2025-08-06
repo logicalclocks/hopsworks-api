@@ -22,8 +22,8 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.functions.OpenContext;
 import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
-import org.apache.flink.configuration.Configuration;
 import org.apache.flink.formats.avro.typeutils.GenericRecordAvroTypeInfo;
 
 import java.util.Map;
@@ -58,7 +58,7 @@ public class PojoToAvroRecord<T> extends RichMapFunction<T, GenericRecord> imple
   }
 
   @Override
-  public void open(Configuration configuration) throws Exception {
+  public void open(OpenContext openContext) throws Exception {
     this.featureGroupSchema = new Schema.Parser().parse(this.featureGroupSchemaStr);
     this.encodedFeatureGroupSchema = new Schema.Parser().parse(this.encodedFeatureGroupSchemaStr);
     this.complexFeatureSchemas = this.complexFeatureSchemasStr

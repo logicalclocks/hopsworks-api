@@ -30,7 +30,6 @@ import com.logicalclocks.hsfs.metadata.HopsworksClient;
 import com.logicalclocks.hsfs.metadata.HopsworksExternalClient;
 import com.logicalclocks.hsfs.metadata.HopsworksInternalClient;
 import com.logicalclocks.hsfs.metadata.StorageConnectorApi;
-import com.twitter.chill.Base64;
 import lombok.Getter;
 
 import org.apache.avro.generic.GenericRecord;
@@ -53,6 +52,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateEncodingException;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -87,7 +87,7 @@ public class FlinkEngine extends EngineBase {
             .setBootstrapServers(properties.getProperty("bootstrap.servers"))
             .setKafkaProducerConfig(properties)
             .setRecordSerializer(new KafkaRecordSerializer(streamFeatureGroup))
-            .setDeliverGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
+            .setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
             .build();
     Map<String, String> complexFeatureSchemas = new HashMap<>();
     for (String featureName : streamFeatureGroup.getComplexFeatures()) {
@@ -187,7 +187,7 @@ public class FlinkEngine extends EngineBase {
           throws KeyStoreException, UnrecoverableKeyException, NoSuchAlgorithmException {
     String keyAlias = keyStore.aliases().nextElement();
     return "-----BEGIN PRIVATE KEY-----\n"
-            + Base64.encodeBytes(keyStore.getKey(keyAlias, password.toCharArray()).getEncoded())
+            + Base64.getEncoder().encodeToString(keyStore.getKey(keyAlias, password.toCharArray()).getEncoded())
             + "\n-----END PRIVATE KEY-----";
   }
 
@@ -198,7 +198,7 @@ public class FlinkEngine extends EngineBase {
     StringBuilder certificateChainBuilder = new StringBuilder();
     for (Certificate certificate : certificateChain) {
       certificateChainBuilder.append("-----BEGIN CERTIFICATE-----\n")
-              .append(Base64.encodeBytes(certificate.getEncoded()))
+              .append(Base64.getEncoder().encodeToString(certificate.getEncoded()))
               .append("\n-----END CERTIFICATE-----\n");
     }
 
@@ -208,7 +208,7 @@ public class FlinkEngine extends EngineBase {
   private String getRootCA(KeyStore trustStore) throws KeyStoreException, CertificateEncodingException {
     String rootCaAlias = trustStore.aliases().nextElement();
     return "-----BEGIN CERTIFICATE-----\n"
-            + Base64.encodeBytes(trustStore.getCertificate(rootCaAlias).getEncoded())
+            + Base64.getEncoder().encodeToString(trustStore.getCertificate(rootCaAlias).getEncoded())
             + "\n-----END CERTIFICATE-----";
   }
 
