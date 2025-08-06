@@ -47,8 +47,8 @@ class DatasetTools:
 
     async def get_datasets_in_current_project(
         self,
-        offset: int = 0,
-        limit: int = 100,
+        offset: int | str = 0,
+        limit: int | str = 100,
         ctx: Context = None,
     ) -> Datasets:
         """Get the dataset for the current project.
@@ -64,6 +64,11 @@ class DatasetTools:
         project = hopsworks.get_current_project()
         if ctx:
             await ctx.info(f"Listing files in project {project.name} ...")
+
+        if isinstance(offset, str):
+            offset = int(offset)
+        if isinstance(limit, str):
+            limit = int(limit)
 
         datasets = project.get_dataset_api().list(
             remote_path="", offset=offset, limit=limit
@@ -88,8 +93,8 @@ class DatasetTools:
     async def get_datasets(
         self,
         project_name: str,
-        offset: int = 0,
-        limit: int = 100,
+        offset: int | str = 0,
+        limit: int | str = 100,
         ctx: Context = None,
     ) -> Datasets:
         """Get the dataset for a specific project.
@@ -104,6 +109,11 @@ class DatasetTools:
         """
         if ctx:
             await ctx.info(f"Listing files in project {project_name} ...")
+
+        if isinstance(offset, str):
+            offset = int(offset)
+        if isinstance(limit, str):
+            limit = int(limit)
 
         conn = client.get_connection()
         project = conn.get_project(project_name)
@@ -130,8 +140,8 @@ class DatasetTools:
     async def list_files_in_current_project(
         self,
         path: str,
-        offset: int = 0,
-        limit: int = 100,
+        offset: int | str = 0,
+        limit: int | str = 100,
         ctx: Context = None,
     ) -> Files:
         """List files in a specific path.
@@ -146,6 +156,11 @@ class DatasetTools:
         """
         if ctx:
             await ctx.info(f"Listing files in path {path} ...")
+
+        if isinstance(offset, str):
+            offset = int(offset)
+        if isinstance(limit, str):
+            limit = int(limit)
 
         project = hopsworks.get_current_project()
         files = project.get_dataset_api().list(
@@ -177,8 +192,8 @@ class DatasetTools:
         self,
         project_name: str,
         path: str,
-        offset: int = 0,
-        limit: int = 100,
+        offset: int | str = 0,
+        limit: int | str = 100,
         ctx: Context = None,
     ) -> Files:
         """List files in a specific path of a project.
@@ -196,6 +211,11 @@ class DatasetTools:
             await ctx.info(
                 f"Listing files in project {project_name} at path {path} ..."
             )
+
+        if isinstance(offset, str):
+            offset = int(offset)
+        if isinstance(limit, str):
+            limit = int(limit)
 
         conn = client.get_connection()
         project = conn.get_project(project_name)
