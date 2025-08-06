@@ -17,6 +17,7 @@
 import hopsworks
 from fastmcp import Context
 from hopsworks.mcp.models.project import Project, Projects
+from hopsworks.mcp.utils.tags import TAGS
 from hopsworks_common import client
 
 
@@ -33,17 +34,17 @@ class ProjectResources:
         self.mcp.resource(
             uri="project://projects",
             mime_type="application/json",
-            tags=["Project"],
+            tags=[TAGS.PROJECT, TAGS.STATELESS],
         )(self.list_projects)
         self.mcp.resource(
             uri="project://projects/{name}",
             mime_type="application/json",
-            tags=["Project"],
+            tags=[TAGS.PROJECT, TAGS.STATELESS],
         )(self.get_project_details)
         self.mcp.resource(
             uri="project://projects/current",
             mime_type="application/json",
-            tags=["Project"],
+            tags=[TAGS.PROJECT, TAGS.STATEFUL],
         )(self.get_current_project_details)
 
     async def list_projects(self, ctx: Context = None) -> Projects:

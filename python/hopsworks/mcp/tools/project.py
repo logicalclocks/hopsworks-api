@@ -19,6 +19,7 @@ import asyncio
 import hopsworks
 from fastmcp import Context
 from hopsworks.mcp.models.project import Project, Projects
+from hopsworks.mcp.utils.tags import TAGS
 from hopsworks_common import client
 
 
@@ -32,11 +33,19 @@ class ProjectTools:
             mcp: The MCP server instance
         """
         self.mcp = mcp
-        self.mcp.tool(tags=["Project", "read"])(self.use_project)
-        self.mcp.tool(tags=["Project", "write"])(self.create_project)
-        self.mcp.tool(tags=["Project", "read"])(self.list_projects)
-        self.mcp.tool(tags=["Project", "read"])(self.get_current_project_details)
-        self.mcp.tool(tags=["Project", "read"])(self.get_project_details)
+        self.mcp.tool(tags=[TAGS.PROJECT, TAGS.READ, TAGS.STATEFUL])(self.use_project)
+        self.mcp.tool(tags=[TAGS.PROJECT, TAGS.WRITE, TAGS.STATELESS])(
+            self.create_project
+        )
+        self.mcp.tool(tags=[TAGS.PROJECT, TAGS.READ, TAGS.STATELESS])(
+            self.list_projects
+        )
+        self.mcp.tool(tags=[TAGS.PROJECT, TAGS.READ, TAGS.STATEFUL])(
+            self.get_current_project_details
+        )
+        self.mcp.tool(tags=[TAGS.PROJECT, TAGS.READ, TAGS.STATELESS])(
+            self.get_project_details
+        )
 
     async def _create_project(
         self, conn, name: str = None, description: str = None

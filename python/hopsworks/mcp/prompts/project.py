@@ -15,6 +15,9 @@
 #
 
 
+from hopsworks.mcp.utils.tags import TAGS
+
+
 class ProjectPrompts:
     """Prompts for Hopsworks projects."""
 
@@ -25,11 +28,11 @@ class ProjectPrompts:
             mcp: The MCP server instance
         """
         self.mcp = mcp
-        self.mcp.prompt(tags=["Project"])(self.create_project_request)
-        self.mcp.prompt(tags=["Project"])(self.change_project_request)
-        self.mcp.prompt(tags=["Project"])(self.get_project_details_request)
-        self.mcp.prompt(tags=["Project"])(self.get_current_project_details_request)
-        self.mcp.prompt(tags=["Project"])(self.get_all_projects_request)
+        self.mcp.prompt(tags=[TAGS.PROJECT])(self.create_project_request)
+        self.mcp.prompt(tags=[TAGS.PROJECT])(self.change_project_request)
+        self.mcp.prompt(tags=[TAGS.PROJECT])(self.get_project_details_request)
+        self.mcp.prompt(tags=[TAGS.PROJECT])(self.get_current_project_details_request)
+        self.mcp.prompt(tags=[TAGS.PROJECT])(self.get_all_projects_request)
 
     def create_project_request(self, name: str = None, description: str = None) -> str:
         """

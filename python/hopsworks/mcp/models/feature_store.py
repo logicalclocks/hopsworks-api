@@ -24,6 +24,6 @@ class FeatureStore(BaseModel):
     id: int
     project_id: int
     project_name: str
-    online_featurestore_name: str
+    online_featurestore_name: str | None = None
     online_enabled: bool
-    offline_featurestore_name: str
+    offline_featurestore_name: str | None = None

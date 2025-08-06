@@ -15,11 +15,10 @@
 #
 """Authentication tools for Hopsworks."""
 
-from typing import Literal, Optional, Union
-
 from fastmcp import Context
 from hopsworks.mcp.models.project import Project
 from hopsworks.mcp.utils.auth import login as hw_login
+from hopsworks.mcp.utils.tags import TAGS
 
 
 class AuthTools:
@@ -34,39 +33,31 @@ class AuthTools:
         self.mcp = mcp
 
         # Register tools
-        self.mcp.tool(tags=["Auth"])(self.login)
+        self.mcp.tool(tags=[TAGS.AUTH, TAGS.STATEFUL])(self.login)
 
     async def login(
         self,
-        host: Optional[str] = None,
+        host: str = None,
         port: int = 443,
-        project: Optional[str] = None,
-        api_key_value: Optional[str] = None,
-        api_key_file: Optional[str] = None,
+        project: str = None,
+        api_key_value: str = None,
+        api_key_file: str = None,
         hostname_verification: bool = False,
-        trust_store_path: Optional[str] = None,
-        engine: Union[
-            None,
-            Literal["spark"],
-            Literal["python"],
-            Literal["training"],
-            Literal["spark-no-metastore"],
-            Literal["spark-delta"],
-        ] = "python",
+        trust_store_path: str = None,
+        engine: str = "python",
         ctx: Context = None,
     ) -> Project:
         """Connect to a Hopsworks instance.
 
         Args:
-            host (Optional[str]): Hopsworks host URL.
+            host (str): Hopsworks host URL.
             port (int): Hopsworks port (default 443).
-            project (Optional[str]): Project name to access.
-            api_key_value (Optional[str]): API key value for Hopsworks authentication.
-            api_key_file (Optional[str]): Path to a file containing the API key for Hopsworks authentication.
+            project (str): Project name to access.
+            api_key_value (str): API key value for Hopsworks authentication.
+            api_key_file (str): Path to a file containing the API key for Hopsworks authentication.
             hostname_verification (bool): Enable hostname verification for Hopsworks authentication.
-            trust_store_path (Optional[str]): Path to the trust store for Hopsworks authentication.
-            engine (Union[None, Literal["spark"], Literal["python"], Literal["training"], Literal["spark-no-metastore"], Literal["spark-delta"]]): Engine to use (default: python).
-            ctx (Context): FastMCP context for logging and interaction.
+            trust_store_path (str): Path to the trust store for Hopsworks authentication.
+            engine (str): Engine to use (default: python).
 
         Returns:
             Project: The project details or an error message.

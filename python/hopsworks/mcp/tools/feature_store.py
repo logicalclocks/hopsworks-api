@@ -17,6 +17,8 @@
 import hopsworks
 from fastmcp import Context
 from hopsworks.mcp.models.feature_store import FeatureStore
+from hopsworks.mcp.utils.tags import TAGS
+from hopsworks_common import client
 
 
 class FeatureStoreTools:
@@ -29,12 +31,19 @@ class FeatureStoreTools:
             mcp: The MCP server instance
         """
         self.mcp = mcp
-        self.mcp.tool(tags=["Feature Store", "read"])(self.get_feature_store)
-        self.mcp.tool(tags=["Feature Store", "read"])(self.get_feature_store_by_name)
+        self.mcp.tool(tags=[TAGS.FEATURE_STORE, TAGS.READ, TAGS.STATEFUL])(
+            self.get_feature_store_in_current_project
+        )
+        self.mcp.tool(tags=[TAGS.FEATURE_STORE, TAGS.READ, TAGS.STATELESS])(
+            self.get_feature_store
+        )
 
-    async def get_feature_store(self, ctx: Context = None) -> FeatureStore:
+    async def get_feature_store_in_current_project(
+        self, name: str = None, ctx: Context = None
+    ) -> FeatureStore:
         """Get the feature store for the current project.
-
+        Args:
+            name (str): The name of the feature store to retrieve. If None, retrieves the default feature store.
         Returns:
             FeatureStore: The feature store information for the current project or an error message.
         """
@@ -42,34 +51,6 @@ class FeatureStoreTools:
             await ctx.info("Retrieving feature store for the current project...")
 
         # Get the current project and its feature store
-        project = hopsworks.get_current_project()
-        feature_store = project.get_feature_store()
-
-        # Return the feature store details
-        return FeatureStore(
-            name=feature_store.name,
-            id=feature_store.id,
-            project_name=feature_store.project_name,
-            project_id=feature_store.project_id,
-            online_feature_store_name=feature_store.online_featurestore_name,
-            online_enabled=feature_store.online_enabled,
-            offline_feature_store_name=feature_store.offline_featurestore_name,
-        )
-
-    async def get_feature_store_by_name(
-        self, name: str, ctx: Context = None
-    ) -> FeatureStore:
-        """Get the feature store by its name.
-
-        Args:
-            name (str): The name of the feature store.
-
-        Returns:
-            FeatureStore: The feature store information or an error message.
-        """
-        if ctx:
-            await ctx.info(f"Retrieving feature store with name {name}...")
-
         project = hopsworks.get_current_project()
         feature_store = project.get_feature_store(name=name)
 
@@ -79,7 +60,34 @@ class FeatureStoreTools:
             id=feature_store.id,
             project_name=feature_store.project_name,
             project_id=feature_store.project_id,
-            online_feature_store_name=feature_store.online_featurestore_name,
             online_enabled=feature_store.online_enabled,
-            offline_feature_store_name=feature_store.offline_featurestore_name,
+        )
+
+    async def get_feature_store(
+        self, project_name: str, name: str = None, ctx: Context = None
+    ) -> FeatureStore:
+        """Get the feature store for a specific project.
+
+        Args:
+            project_name (str): The name of the project to get the feature store for.
+            name (str): The name of the feature store to retrieve. If None, retrieves the default feature store.
+
+        Returns:
+            FeatureStore: The feature store information for the specified project or an error message.
+        """
+        if ctx:
+            await ctx.info(f"Retrieving feature store for project {project_name}...")
+
+        # Get the project and its feature store
+        conn = client.get_connection()
+        project = conn.get_project(project_name)
+        feature_store = project.get_feature_store(name=name)
+
+        # Return the feature store details
+        return FeatureStore(
+            name=feature_store.name,
+            id=feature_store.id,
+            project_name=feature_store.project_name,
+            project_id=feature_store.project_id,
+            online_enabled=feature_store.online_enabled,
         )

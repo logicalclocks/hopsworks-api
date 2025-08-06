@@ -20,7 +20,14 @@ from fastmcp import FastMCP
 
 from .prompts import ProjectPrompts
 from .resources import FeatureStoreResources, ProjectResources
-from .tools import AuthTools, FeatureStoreTools, ProjectTools
+from .tools import (
+    AuthTools,
+    DatasetTools,
+    FeatureGroupTools,
+    FeatureStoreTools,
+    JobTools,
+    ProjectTools,
+)
 
 
 # Create a FastMCP server instance
@@ -33,3 +40,6 @@ _feature_store_tools = FeatureStoreTools(mcp)
 _feature_store_resources = FeatureStoreResources(mcp)
 _project_resource = ProjectResources(mcp)
 _project_prompts = ProjectPrompts(mcp)
+_job_tools = JobTools(mcp)
+_dataset_tools = DatasetTools(mcp)
+_feature_group_tools = FeatureGroupTools(mcp)

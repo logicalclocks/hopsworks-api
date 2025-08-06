@@ -17,6 +17,7 @@
 import hopsworks
 from fastmcp import Context
 from hopsworks.mcp.models.feature_store import FeatureStore
+from hopsworks.mcp.utils.tags import TAGS
 
 
 class FeatureStoreResources:
@@ -32,12 +33,12 @@ class FeatureStoreResources:
         self.mcp.resource(
             uri="featurestore://feature-store",
             mime_type="application/json",
-            tags=["Feature Store"],
+            tags=[TAGS.FEATURE_STORE, TAGS.STATEFUL],
         )(self.get_feature_store)
         self.mcp.resource(
             uri="featurestore://feature-store/{name}",
             mime_type="application/json",
-            tags=["Feature Store"],
+            tags=[TAGS.FEATURE_STORE, TAGS.STATELESS],
         )(self.get_feature_store_by_name)
 
     async def get_feature_store(self, ctx: Context = None) -> FeatureStore:
@@ -58,9 +59,7 @@ class FeatureStoreResources:
             id=feature_store.id,
             project_name=feature_store.project_name,
             project_id=feature_store.project_id,
-            online_feature_store_name=feature_store.online_featurestore_name,
             online_enabled=feature_store.online_enabled,
-            offline_feature_store_name=feature_store.offline_featurestore_name,
         )
 
     async def get_feature_store_by_name(
@@ -84,7 +83,5 @@ class FeatureStoreResources:
             id=feature_store.id,
             project_name=feature_store.project_name,
             project_id=feature_store.project_id,
-            online_feature_store_name=feature_store.online_featurestore_name,
             online_enabled=feature_store.online_enabled,
-            offline_feature_store_name=feature_store.offline_featurestore_name,
         )
