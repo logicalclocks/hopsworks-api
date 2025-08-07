@@ -435,6 +435,9 @@ class FeatureStore:
         `get_online_storage_connector` method to get the JDBC connector for the Online
         Feature Store.
 
+        !!! warning "Deprecated"
+                    `get_storage_connector` method is deprecated. Use `get_data_source` instead.
+
         !!! example
             ```python
             # connect to the Feature Store
@@ -449,7 +452,34 @@ class FeatureStore:
         # Returns
             `StorageConnector`. Storage connector object.
         """
-        return self._storage_connector_api.get(self._id, name)
+        return self.get_data_source(name).storage_connector
+    
+    @usage.method_logger
+    def get_data_source(self, name: str) -> ds.DataSource:
+        """Get a data source from the feature store.
+
+        Data sources encapsulate all information needed for the execution engine
+        to read and write to specific storage.
+
+        If you want to connect to the online feature store, see the
+        `get_online_data_source` method to get the JDBC connector for the Online
+        Feature Store.
+
+        !!! example
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            sc = fs.get_data_source("demo_fs_meb10000_Training_Datasets")
+            ```
+
+        # Arguments
+            name: Name of the data source to retrieve.
+
+        # Returns
+            `DataSource`. Data source object.
+        """
+        return ds.DataSource(storage_connector=self._storage_connector_api.get(self._id, name))
 
     def sql(
         self,
@@ -500,6 +530,9 @@ class FeatureStore:
 
         The returned storage connector depends on the project that you are connected to.
 
+        !!! warning "Deprecated"
+                    `get_online_storage_connector` method is deprecated. Use `get_online_data_source` instead.
+
         !!! example
             ```python
             # connect to the Feature Store
@@ -511,7 +544,27 @@ class FeatureStore:
         # Returns
             `StorageConnector`. JDBC storage connector to the Online Feature Store.
         """
-        return self._storage_connector_api.get_online_connector(self._id)
+        return self.get_online_data_source().storage_connector
+    
+    @usage.method_logger
+    def get_online_data_source(self) -> ds.DataSource:
+        """Get the data source for the Online Feature Store of the respective
+        project's feature store.
+
+        The returned data source depends on the project that you are connected to.
+
+        !!! example
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            online_data_source = fs.get_online_data_source()
+            ```
+
+        # Returns
+            `DataSource`. JDBC data source to the Online Feature Store.
+        """
+        return ds.DataSource(storage_connector=self._storage_connector_api.get_online_connector(self._id))
 
     @usage.method_logger
     def create_feature_group(
@@ -676,7 +729,7 @@ class FeatureStore:
             `FeatureGroup`. The feature group metadata object.
         """
         if not data_source:
-            data_source = ds.DataSource(path=path)
+            data_source = ds.DataSource(storage_connector=storage_connector, path=path)
         feature_group_object = feature_group.FeatureGroup(
             name=name,
             version=version,
@@ -701,7 +754,6 @@ class FeatureStore:
             transformation_functions=transformation_functions,
             online_config=online_config,
             offline_backfill_every_hr=offline_backfill_every_hr,
-            storage_connector=storage_connector,
             data_source=data_source,
         )
         feature_group_object.feature_store = self
@@ -857,7 +909,7 @@ class FeatureStore:
         feature_group_object = self._feature_group_api.get(self.id, name, version)
         if not feature_group_object:
             if not data_source:
-                data_source = ds.DataSource(path=path)
+                data_source = ds.DataSource(storage_connector=storage_connector, path=path)
             feature_group_object = feature_group.FeatureGroup(
                 name=name,
                 version=version,
@@ -882,7 +934,6 @@ class FeatureStore:
                 transformation_functions=transformation_functions,
                 online_config=online_config,
                 offline_backfill_every_hr=offline_backfill_every_hr,
-                storage_connector=storage_connector,
                 data_source=data_source,
             )
         feature_group_object.feature_store = self
@@ -990,12 +1041,11 @@ class FeatureStore:
             `ExternalFeatureGroup`. The external feature group metadata object.
         """
         if not data_source:
-            data_source = ds.DataSource(query=query, path=path)
+            data_source = ds.DataSource(storage_connector=storage_connector, query=query, path=path)
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,
             data_format=data_format,
             options=options or {},
-            storage_connector=storage_connector,
             version=version,
             description=description,
             primary_key=primary_key or [],
@@ -1161,12 +1211,11 @@ class FeatureStore:
             `ExternalFeatureGroup`. The external feature group metadata object.
         """
         if not data_source:
-            data_source = ds.DataSource(query=query, path=path)
+            data_source = ds.DataSource(storage_connector=storage_connector, query=query, path=path)
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,
             data_format=data_format,
             options=options or {},
-            storage_connector=storage_connector,
             version=version,
             description=description,
             primary_key=primary_key or [],

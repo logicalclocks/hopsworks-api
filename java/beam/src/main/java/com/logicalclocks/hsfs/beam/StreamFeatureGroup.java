@@ -68,7 +68,7 @@ public class StreamFeatureGroup extends FeatureGroupBase<PCollection<Object>> {
     this.onlineTopicName = onlineTopicName;
     this.eventTime = eventTime;
     this.onlineConfig = onlineConfig;
-    this.storageConnector = storageConnector;
+    this.dataSource.setStorageConnector(storageConnector);
     this.dataSource.setPath(path);
   }
 

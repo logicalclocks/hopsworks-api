@@ -242,7 +242,7 @@ class StorageConnector(ABC):
             return []
 
     def get_databases(self):
-        return self._data_source_api.get_databases(self._featurestore_id, self._name)
+        return self._data_source_api.get_databases(self)
 
     def get_tables(self, database: str):
         if not database:
@@ -259,13 +259,13 @@ class StorageConnector(ABC):
                     "Database name is required for this connector type. "
                     "Please provide a database name."
                 )
-        return self._data_source_api.get_tables(self._featurestore_id, self._name, database)
+        return self._data_source_api.get_tables(self, database)
 
     def get_data(self, data_source: ds.DataSource):
-        return self._data_source_api.get_data(self._featurestore_id, self._name, data_source)
+        return self._data_source_api.get_data(data_source)
 
     def get_metadata(self, data_source: ds.DataSource):
-        return self._data_source_api.get_metadata(self._featurestore_id, self._name, data_source)
+        return self._data_source_api.get_metadata(data_source)
 
 
 class HopsFSConnector(StorageConnector):
