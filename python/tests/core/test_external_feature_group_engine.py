@@ -16,8 +16,8 @@
 import pytest
 from hsfs import feature, feature_group, storage_connector
 from hsfs.client import exceptions
-from hsfs.core import external_feature_group_engine
 from hsfs.core import data_source as ds
+from hsfs.core import external_feature_group_engine
 from hsfs.engine import python
 
 

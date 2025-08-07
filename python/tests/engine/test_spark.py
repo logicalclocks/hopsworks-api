@@ -36,8 +36,8 @@ from hsfs import (
 )
 from hsfs.client import exceptions
 from hsfs.constructor import hudi_feature_group_alias, query
-from hsfs.core import online_ingestion, training_dataset_engine
 from hsfs.core import data_source as ds
+from hsfs.core import online_ingestion, training_dataset_engine
 from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
 from hsfs.engine import spark
 from hsfs.hopsworks_udf import udf
