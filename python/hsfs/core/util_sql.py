@@ -46,8 +46,8 @@ def create_mysql_engine(
         # Hopsworks clients should use the storage connector
         host = variable_api.VariableApi().get_loadbalancer_external_domain("mysqld")
         online_options["url"] = re.sub(
-            "/[0-9.]+:",
-            "/{}:".format(host),
+            "://[0-9a-zA-Z.]+:",
+            "://{}:".format(host),
             online_options["url"],
         )
 
@@ -113,7 +113,7 @@ async def create_async_engine(
         loop=loop,
         minsize=options.get("minsize", default_min_size),
         maxsize=options.get("maxsize", default_min_size),
-        pool_recycle=options.get("pool_recycle", -1),
+        pool_recycle=options.get("pool_recycle", 14400),
         autocommit=options.get("autocommit", True),
     )
     return pool

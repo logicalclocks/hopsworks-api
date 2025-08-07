@@ -53,7 +53,7 @@ public class OnlineIngestion extends RestDto<OnlineIngestion> {
   @Setter
   private FeatureGroupBase featureGroup;
 
-  public OnlineIngestion(long numEntries) {
+  public OnlineIngestion(Long numEntries) {
     this.numEntries = numEntries;
   }
 
