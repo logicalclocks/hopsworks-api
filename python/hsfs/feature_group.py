@@ -2307,10 +2307,6 @@ class FeatureGroupBase:
         self._deprecated = deprecated
 
     @property
-    def data_source(self) -> Optional[ds.DataSource]:
-        return self._data_source
-
-    @property
     def subject(self) -> Dict[str, Any]:
         """Subject of the feature group."""
         if self._subject is None:
