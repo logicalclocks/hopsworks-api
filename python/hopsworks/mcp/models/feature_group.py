@@ -39,7 +39,7 @@ class FeatureGroup(BaseModel):
 class FeatureGroups(BaseModel):
     """Model representing a collection of feature groups in Hopsworks MCP."""
 
-    featureGroups: list[FeatureGroup]
+    feature_groups: list[FeatureGroup]
     total: int
     offset: int
     limit: int

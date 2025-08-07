@@ -11,6 +11,7 @@ class TAGS:
     DATASET = "dataset"
     ENVIRONMENT = "environment"
     JOB = "job"
+    SYSTEM = "system"
 
     STATEFUL = "stateful"
     STATELESS = "stateless"

@@ -16,3 +16,4 @@
 """Resources for the Hopsworks MCP server."""
 
 from .project import ProjectPrompts  # noqa: F401
+from .system import SystemPrompts  # noqa: F401

@@ -54,8 +54,8 @@ class DatasetTools:
         """Get the dataset for the current project.
 
         Args:
-            offset (int): The offset for pagination. Defaults to 0.
-            limit (int): The limit for pagination. Defaults to 100.
+            offset (int | str): The offset for pagination. Defaults to 0.
+            limit (int | str): The limit for pagination. Defaults to 100.
 
         Returns:
             Datasets: The dataset information for the current project or an error message.
@@ -101,8 +101,8 @@ class DatasetTools:
 
         Args:
             project_name (str): The name of the project to get the dataset for.
-            offset (int): The offset for pagination. Defaults to 0.
-            limit (int): The limit for pagination. Defaults to 100.
+            offset (int | str): The offset for pagination. Defaults to 0.
+            limit (int | str): The limit for pagination. Defaults to 100.
 
         Returns:
             Datasets: The dataset information for the specified project or an error message.
@@ -148,8 +148,8 @@ class DatasetTools:
 
         Args:
             path (str): The path to list files in.
-            offset (int): The offset for pagination. Defaults to 0.
-            limit (int): The limit for pagination. Defaults to 100.
+            offset (int | str): The offset for pagination. Defaults to 0.
+            limit (int | str): The limit for pagination. Defaults to 100.
 
         Returns:
             Files: List of files in the specified path or an error message.
@@ -172,7 +172,7 @@ class DatasetTools:
             files=[
                 File(
                     name=f["attributes"]["name"],
-                    isDirectory=f["attributes"]["dir"],
+                    is_directory=f["attributes"]["dir"],
                     owner=f["attributes"]["owner"],
                     path=f["attributes"]["path"],
                     permission=f["attributes"]["permission"],
@@ -201,8 +201,8 @@ class DatasetTools:
         Args:
             project_name (str): The name of the project to list files for.
             path (str): The path to list files in.
-            offset (int): The offset for pagination. Defaults to 0.
-            limit (int): The limit for pagination. Defaults to 100.
+            offset (int | str): The offset for pagination. Defaults to 0.
+            limit (int | str): The limit for pagination. Defaults to 100.
 
         Returns:
             Files: List of files in the specified path or an error message.
@@ -228,7 +228,7 @@ class DatasetTools:
             files=[
                 File(
                     name=f["attributes"]["name"],
-                    isDirectory=f["attributes"]["dir"],
+                    is_directory=f["attributes"]["dir"],
                     owner=f["attributes"]["owner"],
                     path=f["attributes"]["path"],
                     permission=f["attributes"]["permission"],

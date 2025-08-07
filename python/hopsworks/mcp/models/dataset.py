@@ -39,7 +39,7 @@ class File(BaseModel):
     """Model representing a file in a dataset."""
 
     name: str
-    isDirectory: bool
+    is_directory: bool
     owner: str
     path: str
     permission: str
