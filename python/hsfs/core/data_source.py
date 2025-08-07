@@ -28,6 +28,7 @@ from hopsworks_common import util
 from hsfs import storage_connector as sc
 from hsfs.core import data_source_api
 
+
 class DataSource:
     """
     Metadata object used to provide data source information.

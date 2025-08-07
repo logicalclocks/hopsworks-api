@@ -453,7 +453,7 @@ class FeatureStore:
             `StorageConnector`. Storage connector object.
         """
         return self.get_data_source(name).storage_connector
-    
+
     @usage.method_logger
     def get_data_source(self, name: str) -> ds.DataSource:
         """Get a data source from the feature store.
@@ -545,7 +545,7 @@ class FeatureStore:
             `StorageConnector`. JDBC storage connector to the Online Feature Store.
         """
         return self.get_online_data_source().storage_connector
-    
+
     @usage.method_logger
     def get_online_data_source(self) -> ds.DataSource:
         """Get the data source for the Online Feature Store of the respective

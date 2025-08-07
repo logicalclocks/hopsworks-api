@@ -751,7 +751,7 @@ class FeatureGroupBase:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self.get_data_source()
-        
+
     def get_data_source(self) -> Optional["ds.DataSource"]:
         """Get the data source using this feature group, based on explicit
         provenance. Only the accessible data source is returned.
@@ -2268,7 +2268,7 @@ class FeatureGroupBase:
     @property
     def storage_connector(self) -> "sc.StorageConnector":
         return self._data_source.storage_connector
-    
+
     @property
     def data_source(self) -> "ds.DataSource":
         return self._data_source
