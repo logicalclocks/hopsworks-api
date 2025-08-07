@@ -20,7 +20,8 @@ import pandas as pd
 import pytest
 from hsfs import feature_group, feature_view, storage_connector, training_dataset
 from hsfs.constructor import fs_query
-from hsfs.core import arrow_flight_client, data_source as ds
+from hsfs.core import arrow_flight_client
+from hsfs.core import data_source as ds
 from hsfs.engine import python
 from hsfs.feature import Feature
 from hsfs.feature_store import FeatureStore
