@@ -392,7 +392,7 @@ class TestArrowFlightClient:
 
         json1 = backend_fixtures["feature_group"]["get_external_snowflake"]["response"]
         test_fg1 = feature_group.ExternalFeatureGroup.from_response_json(json1)
-        test_fg1._storage_connector = sc
+        test_fg1._data_source._storage_connector = sc
 
         mocker.patch("hsfs.constructor.query.Query.to_string", return_value="")
         mocker.patch("hsfs.constructor.query.Query._to_string", return_value="")

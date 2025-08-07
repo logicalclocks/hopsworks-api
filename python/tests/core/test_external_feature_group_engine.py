@@ -17,6 +17,7 @@ import pytest
 from hsfs import feature, feature_group, storage_connector
 from hsfs.client import exceptions
 from hsfs.core import external_feature_group_engine
+from hsfs.core import data_source as ds
 from hsfs.engine import python
 
 
@@ -145,7 +146,7 @@ class TestExternalFeatureGroupEngine:
         features = [f]
 
         external_fg = feature_group.ExternalFeatureGroup(
-            storage_connector=jdbc_connector, id=10
+            id=10, data_source=ds.DataSource(storage_connector=jdbc_connector)
         )
 
         # Act

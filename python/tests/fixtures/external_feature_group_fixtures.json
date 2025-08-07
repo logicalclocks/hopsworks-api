@@ -234,8 +234,6 @@
       "type": "onDemandFeaturegroupDTO",
       "id": 15,
       "dataSource": {
-        "query": "Select * from ",
-        "path": "test_path",
         "storageConnector": {
           "type": "featurestoreJdbcConnectorDTO",
           "featurestoreId": 67,
