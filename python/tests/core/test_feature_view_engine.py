@@ -30,6 +30,7 @@ from hsfs.client.exceptions import FeatureStoreException
 from hsfs.constructor import fs_query
 from hsfs.constructor.query import Query
 from hsfs.core import arrow_flight_client, feature_view_engine
+from hsfs.core import data_source as ds
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hsfs.hopsworks_udf import udf
 from hsfs.storage_connector import BigQueryConnector, StorageConnector
@@ -2577,7 +2578,7 @@ class TestFeatureViewEngine:
         mock_constructor_query = mocker.patch("hsfs.constructor.query.Query")
         connector = BigQueryConnector(0, "BigQueryConnector", 99)
         mock_external_feature_group = feature_group.ExternalFeatureGroup(
-            storage_connector=connector, primary_key=""
+            primary_key="", data_source=ds.DataSource(storage_connector=connector)
         )
         mock_feature_group = MagicMock(spec=feature_group.FeatureGroup)
         mock_constructor_query.featuregroups = [
@@ -2626,7 +2627,7 @@ class TestFeatureViewEngine:
 
         connector = FakeConnector()
         mock_external_feature_group = feature_group.ExternalFeatureGroup(
-            storage_connector=connector, primary_key=""
+            primary_key="", data_source=ds.DataSource(storage_connector=connector)
         )
         mock_feature_group = MagicMock(spec=feature_group.FeatureGroup)
         mock_constructor_query.featuregroups = [

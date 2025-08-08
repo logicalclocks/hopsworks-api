@@ -955,7 +955,7 @@ class TestExternalFeatureGroup:
         json = backend_fixtures["feature_group"]["get_basic_info"]["response"]
         fg = feature_group.FeatureGroup.from_response_json(json)
         fg._location = f"{fg.name}_{fg.version}"
-        fg._storage_connector = storage_connector.S3Connector(
+        fg._data_source._storage_connector = storage_connector.S3Connector(
             id=1, name="s3_conn", featurestore_id=fg.feature_store_id
         )
 
@@ -977,7 +977,7 @@ class TestExternalFeatureGroup:
         json = backend_fixtures["feature_group"]["get_basic_info"]["response"]
         fg = feature_group.FeatureGroup.from_response_json(json)
         fg._location = f"{fg.name}_{fg.version}"
-        fg._storage_connector = storage_connector.S3Connector(
+        fg._data_source._storage_connector = storage_connector.S3Connector(
             id=1, name="s3_conn", featurestore_id=fg.feature_store_id
         )
 

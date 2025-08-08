@@ -21,6 +21,7 @@ import pytest
 from hsfs import feature_group, feature_view, storage_connector, training_dataset
 from hsfs.constructor import fs_query
 from hsfs.core import arrow_flight_client
+from hsfs.core import data_source as ds
 from hsfs.engine import python
 from hsfs.feature import Feature
 from hsfs.feature_store import FeatureStore
@@ -391,7 +392,7 @@ class TestArrowFlightClient:
 
         json1 = backend_fixtures["feature_group"]["get_external_snowflake"]["response"]
         test_fg1 = feature_group.ExternalFeatureGroup.from_response_json(json1)
-        test_fg1._storage_connector = sc
+        test_fg1._data_source._storage_connector = sc
 
         mocker.patch("hsfs.constructor.query.Query.to_string", return_value="")
         mocker.patch("hsfs.constructor.query.Query._to_string", return_value="")
@@ -471,7 +472,7 @@ class TestArrowFlightClient:
         # Arrange
         connector = storage_connector.BigQueryConnector(0, "BigQueryConnector", 99)
         external_feature_group = feature_group.ExternalFeatureGroup(
-            storage_connector=connector, primary_key=[""]
+            primary_key=[""], data_source=ds.DataSource(storage_connector=connector)
         )
 
         # Act
@@ -490,7 +491,7 @@ class TestArrowFlightClient:
     def test_supports_unsupported(self):
         # Arrange
         external_feature_group = feature_group.ExternalFeatureGroup(
-            storage_connector=self.FakeConnector(), primary_key=[""]
+            primary_key=[""], data_source=ds.DataSource(storage_connector=self.FakeConnector())
         )
 
         # Act
@@ -503,7 +504,7 @@ class TestArrowFlightClient:
         # Arrange
         connector = storage_connector.BigQueryConnector(0, "BigQueryConnector", 99)
         external_feature_group = feature_group.ExternalFeatureGroup(
-            storage_connector=connector, primary_key=[""]
+            primary_key=[""], data_source=ds.DataSource(storage_connector=connector)
         )
         mock_feature_group = MagicMock(spec=feature_group.FeatureGroup)
 
@@ -518,7 +519,7 @@ class TestArrowFlightClient:
     def test_supports_mixed_featuregroups_unsupported(self):
         # Arrange
         external_feature_group = feature_group.ExternalFeatureGroup(
-            storage_connector=self.FakeConnector(), primary_key=[""]
+            primary_key=[""], data_source=ds.DataSource(storage_connector=self.FakeConnector())
         )
         mock_feature_group = MagicMock(spec=feature_group.FeatureGroup)
 
