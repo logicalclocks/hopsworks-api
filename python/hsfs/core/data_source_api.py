@@ -77,15 +77,15 @@ class DataSourceApi:
         )
 
 
-    def get_metadata(self, feature_store_id: int, name: str, data_source: ds.DataSource) -> dict:
+    def get_metadata(self, data_source: ds.DataSource) -> dict:
         _client = client.get_instance()
         path_params = [
             "project",
             _client._project_id,
             "featurestores",
-            feature_store_id,
+            data_source._storage_connector._featurestore_id,
             "storageconnectors",
-            name,
+            data_source._storage_connector._name,
             "data_source",
             "metadata",
         ]

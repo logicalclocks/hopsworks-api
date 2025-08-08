@@ -84,13 +84,14 @@ class DataSource:
 
     @classmethod
     def from_response_json(
-        cls, json_dict: Dict[str, Any]
+        cls, json_dict: Dict[str, Any], storage_connector: Optional[sc.StorageConnector] = None
     ) -> "DataSource":
         """
         Create a DataSource object (or list of objects) from a JSON response.
 
         Args:
             json_dict (Dict[str, Any]): The JSON dictionary from the API response.
+            storage_connector (Optional[sc.StorageConnector]): The storage connector object.
 
         Returns:
             DataSource or List[DataSource] or None: The created object(s), or None if input is None.
@@ -101,10 +102,13 @@ class DataSource:
         json_decamelized: dict = humps.decamelize(json_dict)
 
         if "items" not in json_decamelized:
-            return cls(**json_decamelized)
+            data_source = cls(**json_decamelized)
+            if storage_connector is not None:
+                data_source.storage_connector = storage_connector
+            return data_source
         else:
             return [
-                cls(**item)
+                DataSource.from_response_json(item, storage_connector)
                 for item in json_decamelized["items"]
             ]
 
