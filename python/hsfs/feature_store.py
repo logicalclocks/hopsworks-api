@@ -470,7 +470,7 @@ class FeatureStore:
             # connect to the Feature Store
             fs = ...
 
-            sc = fs.get_data_source("demo_fs_meb10000_Training_Datasets")
+            data_source = fs.get_data_source("test_data_source")
             ```
 
         # Arguments
@@ -720,10 +720,10 @@ class FeatureStore:
                 or a string representing a cron expression. Set the value to None to avoid scheduling the materialization
                 job. Defaults to None (i.e no scheduling).
             storage_connector: the storage connector used to establish connectivity
-                with the data source.
+                with the data source. **[DEPRECATED: Use `data_source` instead.]**
             path: The location within the scope of the storage connector, from where to read
-                the data for the external feature group
-            data_source: The data source specifying the location of the data. Overrides the path and query arguments when specified.
+                the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
+            data_source: The data source specifying the location of the data. Overrides the storage_connector and path arguments when specified.
 
         # Returns
             `FeatureGroup`. The feature group metadata object.
@@ -898,10 +898,10 @@ class FeatureStore:
                 or a string representing a cron expression. Set the value to None to avoid scheduling the materialization
                 job. Defaults to None (i.e no automatic scheduling). Applies only on Feature Group creation.
             storage_connector: the storage connector used to establish connectivity
-                with the data source.
+                with the data source. **[DEPRECATED: Use `data_source` instead.]**
             path: The location within the scope of the storage connector, from where to read
-                the data for the external feature group
-            data_source: The data source specifying the location of the data. Overrides the path and query arguments when specified.
+                the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
+            data_source: The data source specifying the location of the data. Overrides the storage_connector and path arguments when specified.
 
         # Returns
             `FeatureGroup`. The feature group metadata object.
@@ -943,7 +943,7 @@ class FeatureStore:
     def create_on_demand_feature_group(
         self,
         name: str,
-        storage_connector: storage_connector.StorageConnector,
+        storage_connector: Optional[storage_connector.StorageConnector] = None,
         query: Optional[str] = None,
         data_format: Optional[str] = None,
         path: Optional[str] = "",
@@ -983,14 +983,14 @@ class FeatureStore:
         # Arguments
             name: Name of the external feature group to create.
             storage_connector: the storage connector used to establish connectivity
-                with the data source.
+                with the data source. **[DEPRECATED: Use `data_source` instead.]**
             query: A string containing a SQL query valid for the target data source.
                 the query will be used to pull data from the data sources when the
-                feature group is used.
+                feature group is used. **[DEPRECATED: Use `data_source` instead.]**
             data_format: If the external feature groups refers to a directory with data,
                 the data format to use when reading it
             path: The location within the scope of the storage connector, from where to read
-                the data for the external feature group
+                the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
             options: Additional options to be used by the engine when reading data from the
                 specified storage connector. For example, `{"header": True}` when reading
                 CSV files with column names in the first row.
@@ -1031,7 +1031,7 @@ class FeatureStore:
             expectation_suite: Optionally, attach an expectation suite to the feature
                 group which dataframes should be validated against upon insertion.
                 Defaults to `None`.
-            data_source: The data source specifying the location of the data. Overrides the path and query arguments when specified.
+            data_source: The data source specifying the location of the data. Overrides the storage_connector, path and query arguments when specified.
 
 
 
@@ -1041,6 +1041,8 @@ class FeatureStore:
             `ExternalFeatureGroup`. The external feature group metadata object.
         """
         if not data_source:
+            if not storage_connector:
+                raise ValueError("Data source must be provided to create an external feature group.")
             data_source = ds.DataSource(storage_connector=storage_connector, query=query, path=path)
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,
@@ -1067,7 +1069,7 @@ class FeatureStore:
     def create_external_feature_group(
         self,
         name: str,
-        storage_connector: storage_connector.StorageConnector,
+        storage_connector: Optional[storage_connector.StorageConnector] = None,
         query: Optional[str] = None,
         data_format: Optional[str] = None,
         path: Optional[str] = "",
@@ -1113,8 +1115,7 @@ class FeatureStore:
                                 name="sales",
                                 version=1,
                                 description="Physical shop sales features",
-                                query=query,
-                                storage_connector=connector,
+                                data_source=data_source,
                                 primary_key=['ss_store_sk'],
                                 event_time='sale_date'
                                 )
@@ -1133,8 +1134,7 @@ class FeatureStore:
                     name="sales",
                     version=1,
                     description="Physical shop sales features",
-                    query=query,
-                    storage_connector=connector,
+                    data_source=data_source,
                     primary_key=['ss_store_sk'],
                     event_time='sale_date',
                     online_enabled=True,
@@ -1152,14 +1152,14 @@ class FeatureStore:
         # Arguments
             name: Name of the external feature group to create.
             storage_connector: the storage connector used to establish connectivity
-                with the data source.
+                with the data source. **[DEPRECATED: Use `data_source` instead.]**
             query: A string containing a SQL query valid for the target data source.
                 the query will be used to pull data from the data sources when the
-                feature group is used.
+                feature group is used. **[DEPRECATED: Use `data_source` instead.]**
             data_format: If the external feature groups refers to a directory with data,
                 the data format to use when reading it
             path: The location within the scope of the storage connector, from where to read
-                the data for the external feature group
+                the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
             options: Additional options to be used by the engine when reading data from the
                 specified storage connector. For example, `{"header": True}` when reading
                 CSV files with column names in the first row.
@@ -1205,12 +1205,14 @@ class FeatureStore:
             notification_topic_name: Optionally, define the name of the topic used for sending notifications when entries
                 are inserted or updated on the online feature store. If left undefined no notifications are sent.
             online_config: Optionally, define configuration which is used to configure online table.
-            data_source: The data source specifying the location of the data. Overrides the path and query arguments when specified.
+            data_source: The data source specifying the location of the data. Overrides the storage_connector, path and query arguments when specified.
 
         # Returns
             `ExternalFeatureGroup`. The external feature group metadata object.
         """
         if not data_source:
+            if not storage_connector:
+                raise ValueError("Data source must be provided to create an external feature group.")
             data_source = ds.DataSource(storage_connector=storage_connector, query=query, path=path)
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,

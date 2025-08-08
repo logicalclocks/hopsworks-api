@@ -27,6 +27,7 @@ import humps
 from hopsworks_common import util
 from hsfs import storage_connector as sc
 from hsfs.core import data_source_api
+from hsfs.core import data_source_data as dsd
 
 
 class DataSource:
@@ -127,7 +128,7 @@ class DataSource:
             "path": self._path
         }
         if self._storage_connector:
-            ds_meta_dict["storage_connector"] = self._storage_connector.to_dict()
+            ds_meta_dict["storageConnector"] = self._storage_connector.to_dict()
         return ds_meta_dict
 
     def json(self):
@@ -223,14 +224,82 @@ class DataSource:
     def storage_connector(self, storage_connector: sc.StorageConnector) -> None:
         self._storage_connector = storage_connector
 
-    def get_databases(self):
+    def get_databases(self) -> list[str]:
+        """
+        Retrieve the list of available databases.
+
+        !!! example
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            data_source = fs.get_data_source("test_data_source")
+
+            databases = data_source.get_databases()
+            ```
+
+        Returns:
+            list[str]: A list of database names available in the data source.
+        """
         return self._storage_connector.get_databases()
 
-    def get_tables(self, database: str):
+    def get_tables(self, database: str = None) -> list[DataSource]:
+        """
+        Retrieve the list of tables from the specified database.
+
+        !!! example
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            data_source = fs.get_data_source("test_data_source")
+
+            tables = data_source.get_tables()
+            ```
+
+        Args:
+            database (str, optional): The name of the database to list tables from.
+                If not provided, the default database is used.
+
+        Returns:
+            list[DataSource]: A list of DataSource objects representing the tables.
+        """
         return self._storage_connector.get_tables(database)
 
-    def get_data(self):
+    def get_data(self) -> dsd.DataSourceData:
+        """
+        Retrieve the data from the data source.
+
+        !!! example
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            table = fs.get_data_source("test_data_source").get_tables()[0]
+
+            data = table.get_data()
+            ```
+
+        Returns:
+            DataSourceData: An object containing the data retrieved from the data source.
+        """
         return self._storage_connector.get_data(self)
 
-    def get_metadata(self):
+    def get_metadata(self) -> dict:
+        """
+        Retrieve metadata information about the data source.
+
+        !!! example
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            table = fs.get_data_source("test_data_source").get_tables()[0]
+
+            metadata = table.get_metadata()
+            ```
+
+        Returns:
+            dict: A dictionary containing metadata about the data source.
+        """
         return self._storage_connector.get_metadata(self)

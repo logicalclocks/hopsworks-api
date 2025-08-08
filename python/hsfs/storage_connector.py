@@ -30,6 +30,7 @@ from hopsworks_common import client
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import engine
 from hsfs.core import data_source as ds
+from hsfs.core import data_source_data as dsd
 from hsfs.core import data_source_api, storage_connector_api
 
 
@@ -241,10 +242,10 @@ class StorageConnector(ABC):
         else:
             return []
 
-    def get_databases(self):
+    def get_databases(self) -> list[str]:
         return self._data_source_api.get_databases(self)
 
-    def get_tables(self, database: str):
+    def get_tables(self, database: str = None) -> list[ds.DataSource]:
         if not database:
             if self.type == StorageConnector.REDSHIFT:
                 database = self.database_name
@@ -261,10 +262,10 @@ class StorageConnector(ABC):
                 )
         return self._data_source_api.get_tables(self, database)
 
-    def get_data(self, data_source: ds.DataSource):
+    def get_data(self, data_source: ds.DataSource) -> dsd.DataSourceData:
         return self._data_source_api.get_data(data_source)
 
-    def get_metadata(self, data_source: ds.DataSource):
+    def get_metadata(self, data_source: ds.DataSource) -> dict:
         return self._data_source_api.get_metadata(data_source)
 
 
