@@ -1156,7 +1156,7 @@ class Engine:
 
         # for external clients, download the file using the dataset API
         # also if the client is internal, but we only need the files on the driver
-        if isinstance(client.get_instance(), client.external.Client) or not distribute:
+        if client._is_external or not distribute:
             tmp_file = f"/tmp/{file_name}"
             print("Reading key file from storage connector.")
             response = self._dataset_api.read_content(file, util.get_dataset_type(file))
