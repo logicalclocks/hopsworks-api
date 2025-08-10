@@ -521,7 +521,7 @@ class TestKafkaConnector:
     # Unit test for storage connector created by user (i.e. without the external flag)
     def test_kafka_options_user_sc(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         json = backend_fixtures["storage_connector"]["get_kafka"]["response"]
 
         sc = storage_connector.StorageConnector.from_response_json(json)
@@ -545,7 +545,7 @@ class TestKafkaConnector:
     def test_kafka_options_internal(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hsfs.engine.get_instance")
-        mock_client_get_instance = mocker.patch("hsfs.client.get_instance")
+        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
         json = backend_fixtures["storage_connector"]["get_kafka_internal"]["response"]
 
         mock_client_get_instance.return_value._get_jks_trust_store_path.return_value = (
@@ -599,7 +599,7 @@ class TestKafkaConnector:
     def test_spark_options(self, mocker, backend_fixtures):
         # Arrange
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mock_client_get_instance = mocker.patch("hsfs.client.get_instance")
+        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
         json = backend_fixtures["storage_connector"]["get_kafka_internal"]["response"]
 
         mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
@@ -661,7 +661,7 @@ class TestKafkaConnector:
     def test_spark_options_spark_35(self, mocker, backend_fixtures):
         # Arrange
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mock_client_get_instance = mocker.patch("hsfs.client.get_instance")
+        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
         json = backend_fixtures["storage_connector"]["get_kafka_internal"]["response"]
 
         mock_engine_get_instance.return_value.get_spark_version.return_value = "3.5.0"
@@ -726,7 +726,7 @@ class TestKafkaConnector:
 
         sc = storage_connector.StorageConnector.from_response_json(json)
 
-        mock_client = mocker.patch("hsfs.client.get_instance")
+        mock_client = mocker.patch("hopsworks_common.client.get_instance")
         mock_client.return_value._write_pem.return_value = (
             "test_ssl_ca_location",
             "test_ssl_certificate_location",
@@ -750,7 +750,7 @@ class TestKafkaConnector:
         # Arrange
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
         mock_engine_get_instance.return_value.add_file.return_value = None
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         sc = storage_connector.KafkaConnector(
             1,
             "kafka_connector",
@@ -781,7 +781,7 @@ class TestKafkaConnector:
         # Arrange
         mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
         mock_engine_get_instance.return_value.add_file.return_value = None
-        mocker.patch("hsfs.client.get_instance")
+        mocker.patch("hopsworks_common.client.get_instance")
         sc = storage_connector.KafkaConnector(
             1,
             "kafka_connector",
