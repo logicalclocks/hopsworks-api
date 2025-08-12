@@ -20,6 +20,8 @@ package com.logicalclocks.hsfs.flink;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.HopsworksConnectionBase;
 import com.logicalclocks.hsfs.SecretStore;
+import com.logicalclocks.hsfs.engine.EngineBase;
+import com.logicalclocks.hsfs.flink.engine.FlinkEngine;
 import com.logicalclocks.hsfs.metadata.Credentials;
 import com.logicalclocks.hsfs.metadata.HopsworksClient;
 
@@ -56,6 +58,7 @@ public class HopsworksConnection extends HopsworksConnectionBase {
         hostnameVerification, trustStorePath, this.apiKeyFilePath, this.apiKeyValue);
     this.projectObj = getProject();
     HopsworksClient.getInstance().setProject(this.projectObj);
+    EngineBase.setInstance(FlinkEngine.getInstance());
     if (!System.getProperties().containsKey(HopsworksInternalClient.REST_ENDPOINT_SYS)) {
       Credentials credentials = HopsworksClient.getInstance().getCredentials();
       HopsworksHttpClient hopsworksHttpClient =  HopsworksClient.getInstance().getHopsworksHttpClient();

@@ -17,14 +17,27 @@
 
 package com.logicalclocks.hsfs;
 
+import java.io.IOException;
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.google.common.base.Strings;
+import com.logicalclocks.hsfs.engine.EngineBase;
+import com.logicalclocks.hsfs.metadata.HopsworksClient;
 import com.logicalclocks.hsfs.metadata.HopsworksHttpClient;
 import com.logicalclocks.hsfs.metadata.Option;
 import com.logicalclocks.hsfs.metadata.StorageConnectorApi;
-import com.logicalclocks.hsfs.metadata.HopsworksClient;
 import com.logicalclocks.hsfs.util.Constants;
 
 import lombok.AllArgsConstructor;
@@ -32,16 +45,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.utils.CollectionUtils;
-
-import java.io.IOException;
-import java.time.Instant;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 @AllArgsConstructor
 @NoArgsConstructor
@@ -407,13 +411,13 @@ public abstract class StorageConnector {
     @Getter @Setter
     protected SecurityProtocol securityProtocol;
 
-    @Getter @Setter
+    @Getter
     protected String sslTruststoreLocation;
 
     @Getter @Setter
     protected String sslTruststorePassword;
 
-    @Getter @Setter
+    @Getter
     protected String sslKeystoreLocation;
 
     @Getter @Setter
@@ -425,11 +429,35 @@ public abstract class StorageConnector {
     @Getter @Setter
     protected SslEndpointIdentificationAlgorithm sslEndpointIdentificationAlgorithm;
 
-    @Getter @Setter
+    @Getter
     protected List<Option> options;
 
     @Getter @Setter
     protected Boolean externalKafka;
+
+    public void setSslTruststoreLocation(String sslTruststoreLocation) throws IOException, FeatureStoreException {
+      this.sslTruststoreLocation = EngineBase.getInstance().addFile(sslTruststoreLocation);
+    }
+
+    public void setSslKeystoreLocation(String sslKeystoreLocation) throws IOException, FeatureStoreException {
+      this.sslKeystoreLocation = EngineBase.getInstance().addFile(sslKeystoreLocation);
+    }
+
+    public void setOptions(List<Option> options) throws IOException, FeatureStoreException {
+      // add keytab file
+      for (Option option: options) {
+        if (option.getName().equals("sasl.jaas.config")) {
+          Pattern pattern = Pattern.compile("keyTab=[\"'](.+?)[\"']");
+          Matcher matcher = pattern.matcher(option.getValue());
+          while (matcher.find()) {
+            String originalKeytabLocation = matcher.group(1);
+            String newKeytabLocation = EngineBase.getInstance().addFile(originalKeytabLocation);
+            option.setValue(option.getValue().replace(originalKeytabLocation, newKeytabLocation));
+          }
+        }
+      }
+      this.options = options;
+    }
 
     public Map<String, String> kafkaOptions() throws FeatureStoreException {
       HopsworksHttpClient client = HopsworksClient.getInstance().getHopsworksHttpClient();
