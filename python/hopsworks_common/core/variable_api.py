@@ -29,6 +29,8 @@ LOADBALANCER_SERVICES = {
     "opensearch": "opensearch",
     "kafka": "kafka",
     "feature_query": "flyingduck",
+    "datanode": "datanode",
+    "namenode": "namenode",
 }
 
 
