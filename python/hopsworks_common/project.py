@@ -29,6 +29,7 @@ from hopsworks_common.core import (
     job_api,
     kafka_api,
     opensearch_api,
+    search_api,
 )
 
 
@@ -70,6 +71,7 @@ class Project:
         self._dataset_api = dataset_api.DatasetApi()
         self._environment_api = environment_api.EnvironmentApi()
         self._alerts_api = alerts_api.AlertsApi()
+        self._search_api = search_api.SearchApi()
         self._project_namespace = project_namespace
 
     @classmethod
@@ -247,6 +249,14 @@ class Project:
             `AlertsApi`: The Alerts Api handle
         """
         return self._alerts_api
+
+    def get_search_api(self):
+        """Get the search api for the project.
+
+        # Returns
+            `SearchApi`: The Search Api handle
+        """
+        return self._search_api
 
     def get_alerts(self):
         """Get all alerts for the project.
