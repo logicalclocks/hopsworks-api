@@ -25,13 +25,13 @@ from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.core.constants import HAS_NUMPY
 from hsfs import engine, training_dataset_feature, util
 from hsfs.constructor import filter, query
+from hsfs.core import data_source as ds
 from hsfs.core import (
     statistics_engine,
     training_dataset_api,
     training_dataset_engine,
     vector_server,
 )
-from hsfs.core import data_source as ds
 from hsfs.statistics_config import StatisticsConfig
 from hsfs.storage_connector import HopsFSConnector, StorageConnector
 from hsfs.training_dataset_split import TrainingDatasetSplit

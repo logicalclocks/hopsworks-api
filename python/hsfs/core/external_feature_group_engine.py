@@ -18,7 +18,7 @@ from hopsworks_common.client.exceptions import (
     DataValidationException,
     FeatureStoreException,
 )
-from hsfs import engine, util, feature
+from hsfs import engine, feature, util
 from hsfs import feature_group as fg
 from hsfs.core import feature_group_base_engine
 
