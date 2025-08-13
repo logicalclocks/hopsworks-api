@@ -35,7 +35,7 @@ public class PojoToAvroRecord<T> extends RichMapFunction<T, GenericRecord> imple
   private final String encodedFeatureGroupSchemaStr;
   private final Map<String, String> complexFeatureSchemasStr;
 
-  // org.apache.avro.Schema$Field is not serializable. Create in once and reused later on
+  // org.apache.avro.Schema$Field is not serializable. Create once and reused later on
   private transient Schema featureGroupSchema;
   private transient Schema encodedFeatureGroupSchema;
   private transient Map<String, Schema> complexFeatureSchemas;
