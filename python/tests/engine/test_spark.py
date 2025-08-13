@@ -3605,6 +3605,29 @@ class TestSpark:
         )
         assert mock_pyspark_files_get.call_args[0][0] == "test_file"
 
+    def test_add_file_if_present_in_job_configuration(self, mocker):
+        # Arrange
+        mock_pyspark_getOrCreate = mocker.patch(
+            "pyspark.sql.session.SparkSession.builder.getOrCreate"
+        )
+        mocker.patch("os.environ", {
+            "APP_FILES": "/Projects/test_file",
+            "MATERIALISATION_DIR": "/tmp/materialisation_dir"
+        })
+
+        spark_engine = spark.Engine()
+
+        # Act
+        path = spark_engine.add_file(
+            file="/Projects/test_file",
+        )
+
+        # Assert
+        assert (path == "/tmp/materialisation_dir/test_file")
+        assert (
+            mock_pyspark_getOrCreate.return_value.sparkContext.addFile.call_count == 0
+        )
+
     def test_profile(self, mocker):
         # Arrange
         mock_pyspark_getOrCreate = mocker.patch(
