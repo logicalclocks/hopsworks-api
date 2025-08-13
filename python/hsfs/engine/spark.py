@@ -1144,7 +1144,7 @@ class Engine:
             return stream.load()
         return stream.load().select("key", "value")
 
-    def add_file(self, file):
+    def add_file(self, file, distribute=True):
         if not file:
             return file
 
@@ -1154,8 +1154,9 @@ class Engine:
 
         file_name = os.path.basename(file)
 
-        # for external clients, download the file
-        if client._is_external():
+        # for external clients, download the file using the dataset API
+        # also if the client is internal, but we only need the files on the driver
+        if client._is_external() or not distribute:
             tmp_file = f"/tmp/{file_name}"
             print("Reading key file from storage connector.")
             response = self._dataset_api.read_content(file, util.get_dataset_type(file))
@@ -1165,9 +1166,13 @@ class Engine:
 
             file = f"file://{tmp_file}"
 
-        self._spark_context.addFile(file)
-
-        return SparkFiles.get(file_name)
+        # If we need the files on the executors, then we should call addFile
+        if distribute:
+            self._spark_context.addFile(file)
+            return SparkFiles.get(file_name)
+        else:
+            # Remove the 'file://' prefix for local file paths
+            return file[7:]
 
     def profile(
         self,
