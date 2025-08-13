@@ -2204,6 +2204,7 @@ class FeatureGroupBase:
 
     @property
     def location(self) -> Optional[str]:
+        """Storage specific location. Including data source path if specified."""
         return self._location
 
     @property
@@ -2267,6 +2268,11 @@ class FeatureGroupBase:
 
     @property
     def storage_connector(self) -> "sc.StorageConnector":
+        """"
+            !!! warning "Deprecated"
+                    `storage_connector` method is deprecated. Use
+                    `data_source` instead.
+        """
         return self._data_source.storage_connector
 
     @property

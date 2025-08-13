@@ -69,7 +69,7 @@ public class TrainingDatasetEngine {
     trainingDataset.setLocation(apiTD.getLocation());
     trainingDataset.setVersion(apiTD.getVersion());
     trainingDataset.setId(apiTD.getId());
-    trainingDataset.setStorageConnector(apiTD.getStorageConnector());
+    trainingDataset.setDataSource(apiTD.getDataSource());
 
     // Build write options map
     Map<String, String> writeOptions =
@@ -93,7 +93,7 @@ public class TrainingDatasetEngine {
     }
     DataSource dataSource = new DataSource();
     dataSource.setPath(path);
-    return storageConnectorUtils.read(trainingDataset.getStorageConnector(), dataSource,
+    return storageConnectorUtils.read(trainingDataset.getDataSource().getStorageConnector(), dataSource,
         trainingDataset.getDataFormat().toString(), readOptions);
   }
 }

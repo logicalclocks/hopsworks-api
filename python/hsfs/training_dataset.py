@@ -31,6 +31,7 @@ from hsfs.core import (
     training_dataset_engine,
     vector_server,
 )
+from hsfs.core import data_source as ds
 from hsfs.statistics_config import StatisticsConfig
 from hsfs.storage_connector import HopsFSConnector, StorageConnector
 from hsfs.training_dataset_split import TrainingDatasetSplit
@@ -55,12 +56,11 @@ class TrainingDatasetBase:
         name,
         version,
         data_format,
-        location="",
+        location=None,
         event_start_time=None,
         event_end_time=None,
         coalesce=False,
         description=None,
-        storage_connector=None,
         splits=None,
         validation_size=None,
         test_size=None,
@@ -80,6 +80,7 @@ class TrainingDatasetBase:
         train_split=None,
         time_split_size=None,
         extra_filter=None,
+        data_source=None,
         **kwargs,
     ):
         self._name = name
@@ -109,7 +110,7 @@ class TrainingDatasetBase:
             self._end_time = util.convert_event_time_to_timestamp(event_end_time)
             # no type -> user init
             self._features = features
-            self.storage_connector = storage_connector
+            self._data_source = data_source
             self.splits = splits
             self.statistics_config = statistics_config
             self._label = label
@@ -140,9 +141,8 @@ class TrainingDatasetBase:
             self._start_time = event_start_time
             self._end_time = event_end_time
             # type available -> init from backend response
-            # make rest call to get all connector information, description etc.
-            self._storage_connector = StorageConnector.from_response_json(
-                storage_connector
+            self.data_source = ds.DataSource.from_response_json(
+                data_source
             )
 
             if features is None:
@@ -240,14 +240,12 @@ class TrainingDatasetBase:
             )
 
     def to_dict(self):
-        return {
+        td_meta_dict = {
             "name": self._name,
             "version": self._version,
             "description": self._description,
             "dataFormat": self._data_format,
             "coalesce": self._coalesce,
-            "storageConnector": self._storage_connector,
-            "location": self._location,
             "trainingDatasetType": self._training_dataset_type,
             "splits": self._splits,
             "seed": self._seed,
@@ -257,6 +255,9 @@ class TrainingDatasetBase:
             "eventEndTime": self._end_time,
             "extraFilter": self._extra_filter,
         }
+        if self._data_source:
+            td_meta_dict["dataSource"] = self._data_source.to_dict()
+        return td_meta_dict
 
     @property
     def name(self) -> str:
@@ -306,17 +307,28 @@ class TrainingDatasetBase:
         self._coalesce = coalesce
 
     @property
-    def storage_connector(self):
-        """Storage connector."""
-        return self._storage_connector
+    def data_source(self) -> "ds.DataSource":
+        return self._data_source
+
+    @property
+    def storage_connector(self) -> StorageConnector:
+        """"
+            !!! warning "Deprecated"
+                    `storage_connector` method is deprecated. Use
+                    `data_source` instead.
+        """
+        return self._data_source.storage_connector
 
     @storage_connector.setter
     def storage_connector(self, storage_connector):
+        if self._data_source is None:
+            self._data_source = ds.DataSource()
+
         if isinstance(storage_connector, StorageConnector):
-            self._storage_connector = storage_connector
+            self._data_source.storage_connector = storage_connector
         elif storage_connector is None:
             # init empty connector, otherwise will have to handle it at serialization time
-            self._storage_connector = HopsFSConnector(
+            self._data_source.storage_connector = HopsFSConnector(
                 None, None, None, None, None, None
             )
         else:
@@ -327,7 +339,7 @@ class TrainingDatasetBase:
             )
         if self.training_dataset_type != self.IN_MEMORY:
             self._training_dataset_type = self._infer_training_dataset_type(
-                self._storage_connector.type
+                self._data_source.storage_connector.type
             )
 
     @property
@@ -357,12 +369,8 @@ class TrainingDatasetBase:
 
     @property
     def location(self) -> str:
-        """Path to the training dataset location. Can be an empty string if e.g. the training dataset is in-memory."""
+        """Storage specific location. Including data source path if specified. Can be an empty string if e.g. the training dataset is in-memory."""
         return self._location
-
-    @location.setter
-    def location(self, location: str):
-        self._location = location
 
     @property
     def seed(self) -> Optional[int]:
@@ -515,12 +523,11 @@ class TrainingDataset(TrainingDatasetBase):
         version,
         data_format,
         featurestore_id,
-        location="",
+        location=None,
         event_start_time=None,
         event_end_time=None,
         coalesce=False,
         description=None,
-        storage_connector=None,
         splits=None,
         validation_size=None,
         test_size=None,
@@ -545,6 +552,7 @@ class TrainingDataset(TrainingDatasetBase):
         train_split=None,
         time_split_size=None,
         extra_filter=None,
+        data_source=None,
         **kwargs,
     ):
         super().__init__(
@@ -556,7 +564,6 @@ class TrainingDataset(TrainingDatasetBase):
             event_end_time=event_end_time,
             coalesce=coalesce,
             description=description,
-            storage_connector=storage_connector,
             splits=splits,
             validation_size=validation_size,
             test_size=test_size,
@@ -576,6 +583,7 @@ class TrainingDataset(TrainingDatasetBase):
             train_split=train_split,
             time_split_size=time_split_size,
             extra_filter=extra_filter,
+            data_source=data_source,
         )
 
         self._id = id
@@ -644,7 +652,7 @@ class TrainingDataset(TrainingDatasetBase):
         training_dataset, td_job = self._training_dataset_engine.save(
             self, features, write_options or {}
         )
-        self.storage_connector = training_dataset.storage_connector
+        self.data_source = training_dataset.data_source
         # currently we do not save the training dataset statistics config for training datasets
         self.statistics_config = user_stats_config
         if self.statistics_config.enabled and engine.get_type().startswith("spark"):
@@ -916,14 +924,12 @@ class TrainingDataset(TrainingDatasetBase):
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        return {
+        td_meta_dict = {
             "name": self._name,
             "version": self._version,
             "description": self._description,
             "dataFormat": self._data_format,
             "coalesce": self._coalesce,
-            "storageConnector": self._storage_connector,
-            "location": self._location,
             "trainingDatasetType": self._training_dataset_type,
             "features": self._features,
             "splits": self._splits,
@@ -936,6 +942,9 @@ class TrainingDataset(TrainingDatasetBase):
             "extraFilter": self._extra_filter,
             "type": "trainingDatasetDTO",
         }
+        if self._data_source:
+            td_meta_dict["dataSource"] = self._data_source.to_dict()
+        return td_meta_dict
 
     @property
     def id(self):

@@ -159,8 +159,8 @@ class TestExternalFeatureGroupEngine:
         assert (
             mock_fg_api.return_value.update_metadata.call_args[0][
                 1
-            ].storage_connector.id
-            == external_fg.storage_connector.id
+            ].data_source.storage_connector.id
+            == external_fg.data_source.storage_connector.id
         )
         assert (
             mock_fg_api.return_value.update_metadata.call_args[0][1].id
@@ -382,8 +382,8 @@ class TestExternalFeatureGroupEngine:
         assert mock_fg_api.return_value.save.call_count == 1
         assert len(mock_fg_api.return_value.save.call_args[0][0].features) == 2
         assert (
-            mock_fg_api.return_value.save.call_args[0][0].storage_connector
-            == fg.storage_connector
+            mock_fg_api.return_value.save.call_args[0][0].data_source.storage_connector
+            == fg.data_source.storage_connector
         )
         assert mock_fg_api.return_value.save.call_args[0][0].features == features
         assert mock_fg_api.return_value.save.call_args[0][0].id == fg.id

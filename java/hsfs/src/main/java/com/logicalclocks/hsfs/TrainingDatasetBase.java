@@ -115,7 +115,7 @@ public class TrainingDatasetBase {
 
   @Getter
   @Setter
-  protected StorageConnector storageConnector;
+  protected DataSource dataSource;
 
   @Getter
   @Setter
@@ -138,14 +138,18 @@ public class TrainingDatasetBase {
                          TrainingDatasetType trainingDatasetType, Float validationSize, Float testSize,
                          String trainStart, String trainEnd, String validationStart,
                          String validationEnd, String testStart, String testEnd, Integer timeSplitSize,
-                         FilterLogic extraFilterLogic, Filter extraFilter)
+                         FilterLogic extraFilterLogic, Filter extraFilter, DataSource dataSource)
       throws FeatureStoreException, ParseException {
     this.version = version;
     this.description = description;
     this.dataFormat = dataFormat != null ? dataFormat : DataFormat.PARQUET;
     this.coalesce = coalesce != null ? coalesce : false;
     this.location = location;
-    this.storageConnector = storageConnector;
+    this.dataSource = dataSource;
+    if (dataSource == null && storageConnector != null) {
+      this.dataSource = new DataSource();
+      this.dataSource.setStorageConnector(storageConnector);
+    }
     this.trainSplit = trainSplit;
     this.splits = splits == null ? Lists.newArrayList() : splits;
     this.seed = seed;

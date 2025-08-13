@@ -122,16 +122,16 @@ def _is_query_supported_rec(query: query.Query):
     )
     supported_connector = (
         isinstance(query._left_feature_group, feature_group.ExternalFeatureGroup)
-        and query._left_feature_group.storage_connector.type
+        and query._left_feature_group.data_source.storage_connector.type
         in ArrowFlightClient.SUPPORTED_EXTERNAL_CONNECTORS
     )
     delta_data_sources = (
         isinstance(query._left_feature_group, feature_group.FeatureGroup)
         and query._left_feature_group.time_travel_format == "DELTA"
-        and query._left_feature_group.storage_connector
+        and query._left_feature_group.data_source.storage_connector
         and (
-            query._left_feature_group.storage_connector.type == StorageConnector.S3
-            or query._left_feature_group.storage_connector.type == StorageConnector.GCS
+            query._left_feature_group.data_source.storage_connector.type == StorageConnector.S3
+            or query._left_feature_group.data_source.storage_connector.type == StorageConnector.GCS
         )
     )
 
@@ -595,7 +595,7 @@ def _serialize_featuregroup_connector(fg, query, on_demand_fg_aliases):
     connector = {}
     if isinstance(fg, feature_group.ExternalFeatureGroup):
         connector["time_travel_type"] = None
-        connector["type"] = fg.storage_connector.type
+        connector["type"] = fg.data_source.storage_connector.type
         connector["options"] = _get_connector_options(fg)
         connector["query"] = fg.data_source.query
         for on_demand_fg_alias in on_demand_fg_aliases:
@@ -625,7 +625,7 @@ def _serialize_featuregroup_connector(fg, query, on_demand_fg_aliases):
                     )
     elif fg.time_travel_format == "DELTA":
         connector["time_travel_type"] = "delta"
-        connector["type"] = fg.storage_connector.type
+        connector["type"] = fg.data_source.storage_connector.type
         connector["options"] = _get_connector_options(fg)
         connector["query"] = ""
         if query._left_feature_group == fg:
@@ -648,7 +648,7 @@ def _get_connector_options(fg):
     option_map = {}
 
     datasource = fg.data_source
-    connector = fg.storage_connector
+    connector = fg.data_source.storage_connector
     connector_type = connector.type
 
     if connector_type == StorageConnector.SNOWFLAKE:
@@ -800,7 +800,7 @@ def supports(featuregroups):
         lambda fg: isinstance(fg, feature_group.ExternalFeatureGroup), featuregroups
     ):
         if (
-            fg.storage_connector.type
+            fg.data_source.storage_connector.type
             not in ArrowFlightClient.SUPPORTED_EXTERNAL_CONNECTORS
         ):
             return False

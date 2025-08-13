@@ -281,7 +281,7 @@ public class SparkEngine extends EngineBase {
   public Dataset<Row>[] write(TrainingDataset trainingDataset, Query query, Map<String, String> queryReadOptions,
                               Map<String, String> writeOptions, SaveMode saveMode)
       throws FeatureStoreException, IOException {
-    setupConnectorHadoopConf(trainingDataset.getStorageConnector());
+    setupConnectorHadoopConf(trainingDataset.getDataSource().getStorageConnector());
 
     if (trainingDataset.getSplits() == null || trainingDataset.getSplits().isEmpty()) {
       // Write a single dataset
