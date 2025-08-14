@@ -31,6 +31,7 @@ from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import engine
 from hsfs.core import data_source as ds
 from hsfs.core import data_source_api, storage_connector_api
+from hsfs.core import data_source_data as dsd
 
 
 if HAS_NUMPY:
@@ -241,10 +242,10 @@ class StorageConnector(ABC):
         else:
             return []
 
-    def get_databases(self):
-        return self._data_source_api.get_databases(self._featurestore_id, self._name)
+    def get_databases(self) -> list[str]:
+        return self._data_source_api.get_databases(self)
 
-    def get_tables(self, database: str):
+    def get_tables(self, database: str = None) -> list[ds.DataSource]:
         if not database:
             if self.type == StorageConnector.REDSHIFT:
                 database = self.database_name
@@ -259,13 +260,13 @@ class StorageConnector(ABC):
                     "Database name is required for this connector type. "
                     "Please provide a database name."
                 )
-        return self._data_source_api.get_tables(self._featurestore_id, self._name, database)
+        return self._data_source_api.get_tables(self, database)
 
-    def get_data(self, data_source: ds.DataSource):
-        return self._data_source_api.get_data(self._featurestore_id, self._name, data_source)
+    def get_data(self, data_source: ds.DataSource) -> dsd.DataSourceData:
+        return self._data_source_api.get_data(data_source)
 
-    def get_metadata(self, data_source: ds.DataSource):
-        return self._data_source_api.get_metadata(self._featurestore_id, self._name, data_source)
+    def get_metadata(self, data_source: ds.DataSource) -> dict:
+        return self._data_source_api.get_metadata(data_source)
 
 
 class HopsFSConnector(StorageConnector):
