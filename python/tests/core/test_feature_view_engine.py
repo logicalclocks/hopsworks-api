@@ -1577,6 +1577,7 @@ class TestFeatureViewEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mock_drop_helper_columns = mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._drop_helper_columns")
         mock_sc_read = mocker.patch("hsfs.storage_connector.StorageConnector.read")
 
         fv_engine = feature_view_engine.FeatureViewEngine(
@@ -1609,6 +1610,7 @@ class TestFeatureViewEngine:
 
         # Assert
         assert mock_sc_read.call_count == 1
+        assert mock_drop_helper_columns.call_count == 3
 
     def test_read_dir_from_storage_connector_file_not_found(self, mocker):
         # Arrange

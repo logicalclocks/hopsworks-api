@@ -42,7 +42,6 @@ class TestExternalFeatureGroupEngine:
             featurestore_id=feature_store_id,
             primary_key=[],
             id=10,
-            storage_connector=mocker.patch("hsfs.storage_connector.JdbcConnector"),
         )
 
         mock_engine_get_instance.return_value.parse_schema_feature_group.return_value = [

@@ -26,7 +26,7 @@ from hsfs.core import feature_group_base_engine
 class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
     def save(self, feature_group):
         if feature_group.features is None or len(feature_group.features) == 0:
-            if feature_group.data_source is not None:
+            if feature_group.data_source.database and feature_group.data_source.schema and feature_group.data_source.table:
                 # If the user provided a data source, we can use it to infer the schema
                 feature_group._features = [
                     feature.Feature.from_response_json(feat) if isinstance(feat, dict) else feat

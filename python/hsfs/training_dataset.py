@@ -56,7 +56,7 @@ class TrainingDatasetBase:
         name,
         version,
         data_format,
-        location=None,
+        location="",
         event_start_time=None,
         event_end_time=None,
         coalesce=False,
@@ -104,13 +104,19 @@ class TrainingDatasetBase:
             self.training_dataset_type = training_dataset_type
         else:
             self._training_dataset_type = None
+
+        self.data_source = (
+            ds.DataSource.from_response_json(data_source)
+            if isinstance(data_source, dict)
+            else data_source
+        )
+
         # set up depending on user initialized or coming from backend response
         if created is None:
             self._start_time = util.convert_event_time_to_timestamp(event_start_time)
             self._end_time = util.convert_event_time_to_timestamp(event_end_time)
             # no type -> user init
             self._features = features
-            self._data_source = data_source
             self.splits = splits
             self.statistics_config = statistics_config
             self._label = label
@@ -141,9 +147,6 @@ class TrainingDatasetBase:
             self._start_time = event_start_time
             self._end_time = event_end_time
             # type available -> init from backend response
-            self.data_source = ds.DataSource.from_response_json(
-                data_source
-            )
 
             if features is None:
                 features = []
@@ -309,6 +312,14 @@ class TrainingDatasetBase:
     @property
     def data_source(self) -> "ds.DataSource":
         return self._data_source
+
+    @data_source.setter
+    def data_source(self, data_source):
+        if isinstance(data_source, ds.DataSource):
+            self._data_source = data_source
+        else:
+            self._data_source = ds.DataSource()
+            self.storage_connector = None
 
     @property
     def storage_connector(self) -> StorageConnector:
@@ -523,7 +534,7 @@ class TrainingDataset(TrainingDatasetBase):
         version,
         data_format,
         featurestore_id,
-        location=None,
+        location="",
         event_start_time=None,
         event_end_time=None,
         coalesce=False,

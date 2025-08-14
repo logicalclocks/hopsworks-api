@@ -11,28 +11,34 @@
         "event_end_time": 1646697600000,
         "coalesce": true,
         "description": "test_description",
-        "storage_connector": {
-          "type": "featurestoreJdbcConnectorDTO",
-          "description": "JDBC connector description",
-          "featurestoreId": 67,
-          "id": 1,
-          "name": "test_jdbc",
-          "storageConnectorType": "JDBC",
-          "arguments": [
-            {
-              "name": "sslTrustStore"
-            },
-            {
-              "name": "trustStorePassword"
-            },
-            {
-              "name": "sslKeyStore"
-            },
-            {
-              "name": "keyStorePassword"
-            }
-          ],
-          "connectionString": "test_conn_string"
+        "dataSource": {
+          "query": "select * from Customer",
+          "database": "test_database",
+          "group": "test_schema",
+          "path": "",
+          "storage_connector": {
+            "type": "featurestoreJdbcConnectorDTO",
+            "description": "JDBC connector description",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_jdbc",
+            "storageConnectorType": "JDBC",
+            "arguments": [
+              {
+                "name": "sslTrustStore"
+              },
+              {
+                "name": "trustStorePassword"
+              },
+              {
+                "name": "sslKeyStore"
+              },
+              {
+                "name": "keyStorePassword"
+              }
+            ],
+            "connectionString": "test_conn_string"
+          }
         },
         "splits": [
           {
@@ -159,28 +165,34 @@
         "featurestore_id": 22,
         "type": "trainingDatasetDTO",
         "created": "test_created",
-        "storage_connector": {
-          "type": "featurestoreJdbcConnectorDTO",
-          "description": "JDBC connector description",
-          "featurestoreId": 67,
-          "id": 1,
-          "name": "test_jdbc",
-          "storageConnectorType": "JDBC",
-          "arguments": [
-            {
-              "name": "sslTrustStore"
-            },
-            {
-              "name": "trustStorePassword"
-            },
-            {
-              "name": "sslKeyStore"
-            },
-            {
-              "name": "keyStorePassword"
-            }
-          ],
-          "connectionString": "test_conn_string"
+        "dataSource": {
+          "query": "select * from Customer",
+          "database": "test_database",
+          "group": "test_schema",
+          "path": "",
+          "storage_connector": {
+            "type": "featurestoreJdbcConnectorDTO",
+            "description": "JDBC connector description",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_jdbc",
+            "storageConnectorType": "JDBC",
+            "arguments": [
+              {
+                "name": "sslTrustStore"
+              },
+              {
+                "name": "trustStorePassword"
+              },
+              {
+                "name": "sslKeyStore"
+              },
+              {
+                "name": "keyStorePassword"
+              }
+            ],
+            "connectionString": "test_conn_string"
+          }
         },
         "splits": [],
         "statistics_config": {}
