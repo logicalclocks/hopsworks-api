@@ -42,14 +42,6 @@
           <groupId>com.databricks</groupId>
           <artifactId>*</artifactId>
         </exclusion>
-        <exclusion>
-          <groupId>org.scala-lang</groupId>
-          <artifactId>*</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>org.apache.kafka</groupId>
-          <artifactId>*</artifactId>
-        </exclusion>
       </exclusions>
     </dependency>
 
