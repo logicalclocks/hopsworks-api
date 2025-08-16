@@ -1148,11 +1148,19 @@ class Engine:
         if not file:
             return file
 
+        file_name = os.path.basename(file)
+
+        # Another edge / workaround here. In k8s since the materialization doesn't work as in Yarn
+        # If you want to use the Kafka connector for instance, you need to attach the files to the Spark job
+        # from Hopsworks. This is done already in Hopsworks. When that happens, the files will be available
+        # on both drivers and executors under `/srv/hops/artifacts`. In that case, the paths are also going
+        # to be present in the APP_FILES environment variable.
+        if "APP_FILES" in os.environ and file in os.environ["APP_FILES"]:
+            return f"{os.environ['MATERIALISATION_DIR']}/{file_name}"
+
         # This is used for unit testing
         if not file.startswith("file://"):
             file = "hdfs://" + file
-
-        file_name = os.path.basename(file)
 
         # for external clients, download the file using the dataset API
         # also if the client is internal, but we only need the files on the driver
