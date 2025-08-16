@@ -10,7 +10,7 @@
     <properties>
         <hops.version>3.2.0.0-SNAPSHOT</hops.version>
         <hsfs.version>${project.version}</hsfs.version>
-        <slf4j.version>1.7.30</slf4j.version>
+        <slf4j.version>2.0.17</slf4j.version>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
     </properties>
@@ -18,7 +18,7 @@
     <dependencies>
         <dependency>
             <groupId>com.logicalclocks</groupId>
-            <artifactId>hsfs-spark-spark3.1</artifactId>
+            <artifactId>hsfs-spark-spark3.5</artifactId>
             <version>${hsfs.version}</version>
             <scope>provided</scope>
         </dependency>
@@ -109,6 +109,17 @@
             <id>Hops</id>
             <name>Hops Repo</name>
             <url>https://archiva.hops.works/repository/Hops/</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+        </repository>
+        <repository>
+            <id>HopsEE</id>
+            <name>HopsEE Repo</name>
+            <url>https://nexus.hops.works/repository/hops-artifacts/</url>
             <releases>
                 <enabled>true</enabled>
             </releases>
