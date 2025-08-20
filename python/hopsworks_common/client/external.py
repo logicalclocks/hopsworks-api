@@ -173,6 +173,11 @@ class Client(base.Client):
         self._write_pem_file(res["clientKey"], self._get_client_key_path())
         return res
 
+    def get_certs_folder(self):
+        return os.path.join(
+            self._cert_folder_base, self._host, self._project_name
+        )
+
     def _materialize_certs(self):
         self._cert_folder = os.path.join(
             self._cert_folder_base, self._host, self._project_name
@@ -337,3 +342,7 @@ class Client(base.Client):
     @property
     def host(self):
         return self._host
+
+    @property
+    def project_name(self):
+        return self._project_name
