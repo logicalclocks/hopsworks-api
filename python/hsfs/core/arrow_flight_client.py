@@ -709,7 +709,6 @@ def _get_connector_options(fg):
         option_map["path"] = fg.location
     elif connector_type == StorageConnector.GCS:
         option_map = {
-            "bucket": connector.bucket,
             "key_path": connector.key_path,
             "path": fg.location,
         }
