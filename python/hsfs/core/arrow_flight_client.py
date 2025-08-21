@@ -536,7 +536,9 @@ class ArrowFlightClient:
             fg_connector = _serialize_featuregroup_connector(
                 fg, query, on_demand_fg_aliases
             )
-            features[fg_name] = [feat.name for feat in fg.features]
+            features[fg_name] = [
+                {"name": feat.name, "type": feat.type} for feat in fg.features
+            ]
             connectors[fg_name] = fg_connector
         filters = _serialize_filter_expression(query.filters, query)
 
