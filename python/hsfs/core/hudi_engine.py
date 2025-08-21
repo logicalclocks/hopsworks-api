@@ -191,7 +191,7 @@ class HudiEngine:
             self.HUDI_TABLE_OPERATION: operation,
             self.HUDI_HIVE_SYNC_SUPPORT_TIMESTAMP: "true",
             self.HUDI_TABLE_BASE_FILE_FORMAT: "PARQUET",
-            self.HUDI_TABLE_METADATA_PARTITIONS: "files",
+            self.HUDI_TABLE_METADATA_PARTITIONS: "column_stats,files",
             self.HUDI_HIVE_SYNC_USE_JDBC: "false",
             self.HUDI_HIVE_SYNC_AUTO_CREATE_DATABASE: "false",
         }
