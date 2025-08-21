@@ -304,7 +304,7 @@ public class HudiEngine {
     hudiArgs.put(HUDI_WRITE_PRECOMBINE_FIELD, precombineKey);
     hudiArgs.put(HUDI_TABLE_PRECOMBINE_FIELD, precombineKey);
     hudiArgs.put(HUDI_TABLE_BASE_FILE_FORMAT, "PARQUET");
-    hudiArgs.put(HUDI_TABLE_METADATA_PARTITIONS, "files");
+    hudiArgs.put(HUDI_TABLE_METADATA_PARTITIONS, "column_stats,files");
 
     // Hive args
     hudiArgs.put(HUDI_HIVE_SYNC_ENABLE, "true");
