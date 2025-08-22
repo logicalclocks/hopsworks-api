@@ -17,11 +17,17 @@
     "aliases": []
   },
   {
+    "version": "4.4.1",
+    "title": "4.4.1",
+    "aliases": [
+      "4.4"
+    ]
+  },
+  {
     "version": "4.4.0",
     "title": "4.4.0",
     "aliases": [
-      "latest",
-      "4.4"
+      "latest"
     ]
   },
   {
