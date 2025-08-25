@@ -89,6 +89,8 @@ import logging
 
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.core.type_systems import create_extended_type
+from hopsworks_common.util import generate_fully_qualified_feature_name
 from hsfs import (
     feature,
     feature_view,
@@ -106,6 +108,7 @@ from hsfs.core import (
     transformation_function_engine,
 )
 from hsfs.core.constants import HAS_AVRO, HAS_GREAT_EXPECTATIONS
+from hsfs.core.feature_logging import LoggingMetaData
 from hsfs.decorators import uses_great_expectations
 from hsfs.storage_connector import StorageConnector
 from hsfs.training_dataset_split import TrainingDatasetSplit
@@ -641,7 +644,8 @@ class Engine:
         Step 1: Deserializes 'value' column from binary using avro schema.
         """
         decoded_dataframe = dataframe.withColumn(
-            serialized_column, from_avro(serialized_column, feature_group._get_encoded_avro_schema())
+            serialized_column,
+            from_avro(serialized_column, feature_group._get_encoded_avro_schema()),
         )
 
         """
@@ -654,10 +658,12 @@ class Engine:
                 # re-apply from_avro on the nested field
                 decoded_field = from_avro(
                     col(f"{serialized_column}.{field_name}"),
-                    feature_group._get_feature_avro_schema(field_name)
+                    feature_group._get_feature_avro_schema(field_name),
                 ).alias(field_name)
             else:
-                decoded_field = col(f"{serialized_column}.{field_name}").alias(field_name)
+                decoded_field = col(f"{serialized_column}.{field_name}").alias(
+                    field_name
+                )
             new_value_fields.append(decoded_field)
 
         """
@@ -665,7 +671,10 @@ class Engine:
         """
         updated_value_col = struct(*new_value_fields).alias(serialized_column)
 
-        return decoded_dataframe.select(*[col(c) for c in decoded_dataframe.columns if c != serialized_column], updated_value_col)
+        return decoded_dataframe.select(
+            *[col(c) for c in decoded_dataframe.columns if c != serialized_column],
+            updated_value_col,
+        )
 
     def get_training_data(
         self,
@@ -1525,6 +1534,102 @@ class Engine:
         ).select(*untransformed_columns, *explode_name)
 
         return transformed_dataset
+
+    def extract_logging_metadata(
+        self,
+        untransformed_features: DataFrame,
+        transformed_features: DataFrame,
+        feature_view: feature_view.FeatureView,
+        transformed: bool,
+        inference_helpers: bool,
+        event_time: bool,
+        primary_key: bool,
+        request_parameters: DataFrame = None,
+    ):
+        # Extract primary keys and event time from fully qualified names
+        fully_qualified_primary_keys = feature_view._fully_qualified_primary_keys
+        fully_qualified_event_time = feature_view._fully_qualified_event_time
+
+        fully_qualified_root_fg_event_time = generate_fully_qualified_feature_name(
+            feature_view.query._left_feature_group,
+            feature_view.query._left_feature_group.event_time,
+        )
+        root_feature_group_event_time = (
+            feature_view.query._left_feature_group.event_time
+        )
+
+        fully_qualified_serving_key_mapper = {
+            generate_fully_qualified_feature_name(
+                key._feature_group, key.feature_name
+            ): key.feature_name
+            for key in feature_view.serving_keys
+            if key.required
+        }
+
+        severing_key_select_expr = []
+        for col in fully_qualified_primary_keys:
+            if col in fully_qualified_serving_key_mapper.keys():
+                severing_key_select_expr.append(
+                    f"{col} as {fully_qualified_serving_key_mapper[col]}"
+                )
+            elif col in fully_qualified_serving_key_mapper.values():
+                severing_key_select_expr.append(col)
+
+        event_time_select_expr = []
+        if fully_qualified_root_fg_event_time in fully_qualified_event_time:
+            event_time_select_expr.append(
+                f"{fully_qualified_root_fg_event_time} as {root_feature_group_event_time}"
+            )
+        else:
+            event_time_select_expr.append(root_feature_group_event_time)
+
+        serving_keys_df = untransformed_features.selectExpr(*severing_key_select_expr)
+        event_time_df = untransformed_features.selectExpr(*event_time_select_expr)
+
+        # Extract inference_helpers
+        inference_helpers_df = untransformed_features.selectExpr(
+            *feature_view.inference_helper_columns
+        )
+
+        # Drop unneeded columns and prepare dataframe to be be returned to user
+        dropped_columns = []
+
+        if not inference_helpers:
+            dropped_columns.extend(feature_view.inference_helper_columns)
+
+        if not event_time:
+            dropped_columns.extend(feature_view._fully_qualified_event_time)
+
+        if not primary_key:
+            dropped_columns.extend(feature_view._fully_qualified_primary_keys)
+
+        if dropped_columns:
+            untransformed_features = self.drop_columns(
+                untransformed_features, drop_cols=dropped_columns
+            )
+            transformed_features = self.drop_columns(
+                transformed_features, drop_cols=dropped_columns
+            )
+
+        # Create Logging metadata
+        logging_meta_data = LoggingMetaData()
+        logging_meta_data.inference_helper = inference_helpers_df
+        logging_meta_data.untransformed_features = untransformed_features
+        logging_meta_data.transformed_features = transformed_features
+        logging_meta_data.request_parameters = request_parameters
+        logging_meta_data.serving_keys = serving_keys_df
+        logging_meta_data.event_time = event_time_df
+
+        # Create extended dataframe that includes logging metadata and return to user
+        batch_dataframe = (
+            transformed_features if transformed else untransformed_features
+        )
+
+        extended_type = create_extended_type(type(batch_dataframe))
+        batch_dataframe = extended_type(batch_dataframe)
+        batch_dataframe.hopsworks_logging_meta_data = logging_meta_data
+
+        return batch_dataframe
 
     def _setup_gcp_hadoop_conf(self, storage_connector, path):
         PROPERTY_ENCRYPTION_KEY = "fs.gs.encryption.key"
