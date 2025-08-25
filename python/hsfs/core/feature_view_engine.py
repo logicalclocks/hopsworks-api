@@ -928,6 +928,7 @@ class FeatureViewEngine:
         dataframe_type="default",
         transformed=True,
         transformation_context: Dict[str, Any] = None,
+        logging_data: bool = True,
     ):
         self._check_feature_group_accessibility(feature_view_obj)
 
@@ -942,21 +943,38 @@ class FeatureViewEngine:
             start_time,
             end_time,
             with_label=False,
-            primary_keys=primary_keys,
-            event_time=event_time,
-            inference_helper_columns=inference_helper_columns or not transformed,
+            primary_keys=primary_keys or logging_data,
+            event_time=event_time or logging_data,
+            inference_helper_columns=inference_helper_columns
+            or not transformed
+            or logging_data,
             training_helper_columns=False,
             training_dataset_version=training_dataset_version,
             spine=spine,
         ).read(read_options=read_options, dataframe_type=dataframe_type)
-        if transformation_functions and transformed:
-            return engine.get_instance()._apply_transformation_function(
+        if transformation_functions and (transformed or logging_data):
+            transformed_dataframe = engine.get_instance()._apply_transformation_function(
                 transformation_functions,
-                dataset=feature_dataframe,
+                dataset=feature_dataframe.copy(),  # Creating a shallow copy so that the metadata of the dataframe like columns remain unchanged.
                 transformation_context=transformation_context,
             )
         else:
-            return feature_dataframe
+            transformed_dataframe = None
+
+        batch_dataframe = transformed_dataframe if transformed else feature_dataframe
+
+        if logging_data:
+            batch_dataframe = engine.get_instance().extract_logging_metadata(
+                untransformed_features=feature_dataframe,
+                transformed_features=transformed_dataframe,
+                feature_view=feature_view_obj,
+                transformed=transformed,
+                inference_helpers=inference_helper_columns,
+                event_time=event_time,
+                primary_key=primary_keys,
+            )
+
+        return batch_dataframe
 
     def transform_batch_data(self, features, transformation_functions):
         return engine.get_instance()._apply_transformation_function(

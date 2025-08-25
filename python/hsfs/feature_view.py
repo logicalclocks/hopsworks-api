@@ -194,7 +194,8 @@ class FeatureView:
         )
         self.__vector_server: Optional[vector_server.VectorServer] = None
         self.__batch_scoring_server: Optional[vector_server.VectorServer] = None
-        self.__feature_groups: List[feature_group.FeatureGroup] = None
+        self.__fully_qualified_primary_keys: List[str] = None
+        self.__fully_qualified_event_time: List[str] = None
         self._serving_keys = serving_keys if serving_keys else []
         self._prefix_serving_key_map = {}
         self._primary_keys: Set[str] = set()  # Lazy initialized via serving keys
@@ -1040,6 +1041,7 @@ class FeatureView:
         dataframe_type: Optional[str] = "default",
         transformed: Optional[bool] = True,
         transformation_context: Dict[str, Any] = None,
+        logging_data: bool = True,
         **kwargs,
     ) -> TrainingDatasetDataFrameTypes:
         """Get a batch of data from an event time interval from the offline feature store.
@@ -1124,6 +1126,7 @@ class FeatureView:
             dataframe_type,
             transformed=transformed,
             transformation_context=transformation_context,
+            logging_data=logging_data,
         )
 
     def add_tag(self, name: str, value: Any) -> None:
@@ -4372,9 +4375,17 @@ class FeatureView:
         return self.__batch_scoring_server
 
     @property
-    def _feature_groups(self) -> List[feature_group.FeatureGroup]:
-        if not self.__feature_groups:
-            self.__feature_groups = (
-                self._feature_view_engine._get_feature_group_from_query(self.query)
+    def _fully_qualified_primary_keys(self) -> List[str]:
+        if not self.__fully_qualified_primary_keys:
+            self.__fully_qualified_primary_keys = (
+                self._feature_view_engine._get_primary_keys_from_query(self.query)
             )
-        return self.__feature_groups
+        return self.__fully_qualified_primary_keys
+
+    @property
+    def _fully_qualified_event_time(self) -> List[str]:
+        if not self.__fully_qualified_event_time:
+            self.__fully_qualified_event_time = (
+                self._feature_view_engine._get_eventtimes_from_query(self.query)
+            )
+        return self.__fully_qualified_event_time
