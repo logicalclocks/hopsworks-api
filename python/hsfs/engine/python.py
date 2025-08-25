@@ -57,7 +57,9 @@ from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import inode
 from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
+from hopsworks_common.core.type_systems import create_extended_type
 from hopsworks_common.decorators import uses_great_expectations, uses_polars
+from hopsworks_common.util import generate_fully_qualified_feature_name
 from hsfs import (
     engine,
     feature,
@@ -90,6 +92,7 @@ from hsfs.core.constants import (
     HAS_PYARROW,
     HAS_SQLALCHEMY,
 )
+from hsfs.core.feature_logging import LoggingMetaData
 from hsfs.core.type_systems import PYARROW_HOPSWORKS_DTYPE_MAPPING
 from hsfs.core.vector_db_client import VectorDbClient
 from hsfs.feature_group import ExternalFeatureGroup, FeatureGroup
@@ -176,6 +179,102 @@ class Engine:
             raise FeatureStoreException(
                 f'dataframe_type : {dataframe_type} not supported. Possible values are "default", "pandas", "polars", "numpy" or "python"'
             )
+
+    def extract_logging_metadata(
+        self,
+        untransformed_features: Union[pd.DataFrame, pl.DataFrame],
+        transformed_features: Union[pd.DataFrame, pl.DataFrame],
+        feature_view: feature_view.FeatureView,
+        transformed: bool,
+        inference_helpers: bool,
+        event_time: bool,
+        primary_key: bool,
+        request_parameters: Union[pd.DataFrame, pl.DataFrame] = None,
+    ):
+        # Extract primary keys and event time from fully qualified names
+        fully_qualified_primary_keys = feature_view._fully_qualified_primary_keys
+        fully_qualified_event_time = feature_view._fully_qualified_event_time
+
+        fully_qualified_root_fg_event_time = generate_fully_qualified_feature_name(
+            feature_view.query._left_feature_group,
+            feature_view.query._left_feature_group.event_time,
+        )
+        root_feature_group_event_time = (
+            feature_view.query._left_feature_group.event_time
+        )
+
+        fully_qualified_serving_key_mapper = {
+            generate_fully_qualified_feature_name(
+                key._feature_group, key.feature_name
+            ): key.feature_name
+            for key in feature_view.serving_keys
+            if key.required
+        }
+        fully_qualified_event_time_mapper = {
+            fully_qualified_root_fg_event_time: root_feature_group_event_time
+        }
+
+        serving_keys_df = untransformed_features[
+            [
+                col
+                for col in fully_qualified_primary_keys
+                if col in fully_qualified_serving_key_mapper.keys()
+                or col in fully_qualified_serving_key_mapper.values()
+            ]
+        ].rename(columns=fully_qualified_serving_key_mapper)
+
+        event_time_df = untransformed_features[
+            [
+                fully_qualified_root_fg_event_time
+                if fully_qualified_root_fg_event_time in fully_qualified_event_time
+                else root_feature_group_event_time
+            ]
+        ].rename(columns=fully_qualified_event_time_mapper)
+
+        # Extract inference_helpers
+        inference_helpers_df = untransformed_features[
+            feature_view.inference_helper_columns
+        ]
+
+        # Drop unneeded columns and prepare dataframe to be be returned to user
+        dropped_columns = []
+
+        if not inference_helpers:
+            dropped_columns.extend(feature_view.inference_helper_columns)
+
+        if not event_time:
+            dropped_columns.extend(feature_view._fully_qualified_event_time)
+
+        if not primary_key:
+            dropped_columns.extend(feature_view._fully_qualified_primary_keys)
+
+        if dropped_columns:
+            untransformed_features = self.drop_columns(
+                untransformed_features, drop_cols=dropped_columns
+            )
+            transformed_features = self.drop_columns(
+                transformed_features, drop_cols=dropped_columns
+            )
+
+        # Create Logging metadata
+        logging_meta_data = LoggingMetaData()
+        logging_meta_data.inference_helper = inference_helpers_df
+        logging_meta_data.untransformed_features = untransformed_features
+        logging_meta_data.transformed_features = transformed_features
+        logging_meta_data.request_parameters = request_parameters
+        logging_meta_data.serving_keys = serving_keys_df
+        logging_meta_data.event_time = event_time_df
+
+        # Create extended dataframe that includes logging metadata and return to user
+        batch_dataframe = (
+            transformed_features if transformed else untransformed_features
+        )
+
+        extended_type = create_extended_type(type(batch_dataframe))
+        batch_dataframe = extended_type(batch_dataframe)
+        batch_dataframe.hopsworks_logging_meta_data = logging_meta_data
+
+        return batch_dataframe
 
     def _sql_offline(
         self,
