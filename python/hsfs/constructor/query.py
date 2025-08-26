@@ -355,7 +355,6 @@ class Query:
 
         If no join keys are specified, Hopsworks will use the maximal matching subset of
         the primary keys of the feature groups you are joining.
-        Joins of one level are supported, no nested joins.
 
         !!! example "Join two feature groups"
             ```python
