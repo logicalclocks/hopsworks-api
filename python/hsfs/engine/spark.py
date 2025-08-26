@@ -89,7 +89,6 @@ import logging
 
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
-from hopsworks_common.core.type_systems import create_extended_type
 from hopsworks_common.util import generate_fully_qualified_feature_name
 from hsfs import (
     feature,
@@ -1625,8 +1624,7 @@ class Engine:
             transformed_features if transformed else untransformed_features
         )
 
-        extended_type = create_extended_type(type(batch_dataframe))
-        batch_dataframe = extended_type(batch_dataframe)
+        # Setting data directly in spark dataframe since spark dataframe cannot be created directly using a constructor
         batch_dataframe.hopsworks_logging_meta_data = logging_meta_data
 
         return batch_dataframe
