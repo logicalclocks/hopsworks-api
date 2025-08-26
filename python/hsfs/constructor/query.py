@@ -384,7 +384,7 @@ class Query:
             right_on: List of feature names to join on from the right feature group of
                 the join. Defaults to `[]`.
             join_type: Type of join to perform, can be `"inner"`, `"outer"`, `"left"` or
-                `"right"`. Defaults to "inner".
+                `"right"`. Defaults to "left".
             prefix: User provided prefix to avoid feature name clash. If no prefix was provided and there is feature
                 name clash then prefixes will be automatically generated and applied. Generated prefix is feature group
                 alias in the query (e.g. fg1, fg2). Prefix is applied to the right feature group of the query.
