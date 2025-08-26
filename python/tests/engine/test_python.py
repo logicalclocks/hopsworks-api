@@ -227,6 +227,38 @@ class TestPython:
         assert mock_python_engine_read_hopsfs.call_count == 1
         assert mock_python_engine_read_s3.call_count == 0
 
+    def test_read_s3_connector_endpoint_url(self, mocker):
+        # Arrange
+        mocker.patch("pandas.concat")
+        mock_boto_3 = mocker.patch("boto3.client")
+        mock_boto_3.return_value.list_objects_v2.return_value = {"Contents": []}
+
+        python_engine = python.Engine()
+
+        connector = storage_connector.S3Connector(
+            id=1, name="test_connector", featurestore_id=1,
+            arguments=[{"name": "fs.s3a.endpoint", "value": "http://localhost:9000"}],
+            access_key="test_access_key",
+            secret_key="test_secret_key",
+            region="eu-north-1"
+        )
+
+        # Act
+        python_engine.read(
+            storage_connector=connector,
+            data_format="csv",
+            read_options=None,
+            location="s3://test_bucket/test_file.csv",
+            dataframe_type="default",
+        )
+
+        # Assert
+        assert mock_boto_3.call_count == 1
+        assert "endpoint_url" in mock_boto_3.call_args[1]
+        assert mock_boto_3.call_args[1]['endpoint_url'] == "http://localhost:9000"
+        assert "region_name" in mock_boto_3.call_args[1]
+        assert mock_boto_3.call_args[1]['region_name'] == "eu-north-1"
+
     def test_read_hopsfs_connector_empty_dataframe(self, mocker):
         # Arrange
 

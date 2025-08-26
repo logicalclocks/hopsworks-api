@@ -58,6 +58,9 @@ dependencies = [
     "packaging",         # ^21.0
 ]
 
+[project.scripts]
+hopsworks-mcp = "hopsworks.mcp.main:main"
+
 [project.optional-dependencies]
 python = [
     "pyarrow>=17.0",
@@ -96,6 +99,11 @@ dev = ["hopsworks[dev-no-opt,great-expectations,polars]"]
 polars=[
     "polars>=0.20.18,<=0.21.0",
     "pyarrow>=17.0",
+]
+mcp=[
+    "fastmcp>=2.10.5",
+    "httpx",
+    "pydantic>=2.11.7",
 ]
 
 [build-system]
