@@ -953,10 +953,12 @@ class FeatureViewEngine:
             spine=spine,
         ).read(read_options=read_options, dataframe_type=dataframe_type)
         if transformation_functions and (transformed or logging_data):
-            transformed_dataframe = engine.get_instance()._apply_transformation_function(
-                transformation_functions,
-                dataset=feature_dataframe.copy(),  # Creating a shallow copy so that the metadata of the dataframe like columns remain unchanged.
-                transformation_context=transformation_context,
+            transformed_dataframe = (
+                engine.get_instance()._apply_transformation_function(
+                    transformation_functions,
+                    dataset=feature_dataframe,
+                    transformation_context=transformation_context,
+                )
             )
         else:
             transformed_dataframe = None
