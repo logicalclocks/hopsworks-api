@@ -438,6 +438,14 @@ def convert_to_abs(path, current_proj_name):
         return path
 
 
+def convert_to_project_rel_path(path, current_proj_name):
+    abs_project_prefix = "/Projects/{}".format(current_proj_name)
+    if path.startswith(abs_project_prefix):
+        return path.replace(abs_project_prefix, "")
+    else:
+        return path
+
+
 def validate_job_conf(config, project_name):
     # User is required to set the appPath programmatically after getting the configuration
     if (

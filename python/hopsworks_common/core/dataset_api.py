@@ -24,11 +24,11 @@ import os
 import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
-from typing import Literal, Optional, Union
+from typing import Literal, Optional, Union, List, Type
 
 from hopsworks_common import client, tag, usage, util
 from hopsworks_common.client.exceptions import DatasetException, RestAPIError
-from hopsworks_common.core import inode
+from hopsworks_common.core import dataset, inode
 from tqdm.auto import tqdm
 
 
@@ -638,9 +638,53 @@ class DatasetApi:
             chunk_number += 1
 
     @usage.method_logger
-    def list_files(self, path: str, offset: int, limit: int):
-        """**Deprecated**
+    def list(self, path: str, offset: int = 0, limit: int = 1000) -> List[str]:
+        """List the files and directories from a path in the Hopsworks Filesystem.
 
+        ```python
+
+        import hopsworks
+
+        project = hopsworks.login()
+
+        dataset_api = project.get_dataset_api()
+
+        # list all files in the Resources dataset
+        files = dataset_api.list("/Resources")
+
+        # list all datasets in the project
+        files = dataset_api.list("/")
+
+        ```
+        # Arguments
+            path: path in Hopsworks filesystem to the directory
+            offset: the number of entities to skip
+            limit: max number of the returned entities
+        # Returns
+            `list[str]`: List of path to files and directories in the provided path
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        """
+        _client = client.get_instance()
+        # Normalize path so we can check if the path refers to the root or not
+        # That is needed as different backend entities are returned depending on if it is a top level dataset or a subdirectory
+        normalized_path = os.path.normpath(path)
+        if normalized_path == "/":
+            normalized_path = ""
+            cls = dataset.Dataset
+        else:
+            cls = inode.Inode
+
+        count, items = self._list_dataset_path(normalized_path, cls, offset=offset, limit=limit)
+
+        files = []
+        for item in items:
+            files.append(util.convert_to_project_rel_path(item.path, _client._project_name))
+        return files
+
+    @usage.method_logger
+    def _list_dataset_path(self, path: str, cls: Union[Type[dataset.Dataset], Type[inode.Inode]], offset: int = 0, limit: int = 1000, sort_by: str = "ID:asc"):
+        """
         List contents of a directory in the Hopsworks Filesystem.
 
         # Arguments
@@ -648,58 +692,26 @@ class DatasetApi:
             offset: the number of Inodes to skip.
             limit: max number of the returned Inodes.
         # Returns
-            `tuple[int, list[hopsworks.core.inode.Inode]]`: count of Inodes in the directory and the list of them.
+            `tuple[int, tuple[int, list[inode.Inode]] | tuple[int, list[Dataset]]]`: count of Dataset or Inodes and objects
         """
         _client = client.get_instance()
         path_params = [
             "project",
             _client._project_id,
             "dataset",
-            path[(path.index("/", 10) + 1) :],
+            path,
         ]
         query_params = {
             "action": "listing",
             "offset": offset,
             "limit": limit,
-            "sort_by": "ID:asc",
-        }
-
-        inode_lst = _client._send_request("GET", path_params, query_params)
-
-        return inode_lst["count"], inode.Inode.from_response_json(inode_lst)
-
-    @usage.method_logger
-    def list(
-        self,
-        remote_path: str,
-        sort_by: str | None = None,
-        offset: int = 0,
-        limit: int = 1000,
-    ):
-        """**Deprecated**
-
-        List contents of a directory in the Hopsworks Filesystem.
-
-        # Arguments
-            remote_path: path to the directory to list the contents of.
-            sort_by: sort string, for example `"ID:asc"`.
-            offset: the number of entities to skip.
-            limit: max number of the returned entities.
-        """
-        # this method is probably to be merged with list_files
-        # they seem to handle paths differently and return different results, which prevents the merge at the moment (2024-09-03), due to the requirement of backwards-compatibility
-        _client = client.get_instance()
-        path_params = ["project", _client._project_id, "dataset", remote_path]
-        query_params = {
-            "action": "listing",
             "sort_by": sort_by,
-            "limit": limit,
-            "offset": offset,
+            "expand": "inodes",
         }
-        headers = {"content-type": "application/json"}
-        return _client._send_request(
-            "GET", path_params, headers=headers, query_params=query_params
-        )
+
+        items = _client._send_request("GET", path_params, query_params)
+
+        return items["count"], cls.from_response_json(items)
 
     @usage.method_logger
     def read_content(self, path: str, dataset_type: str = "DATASET"):
