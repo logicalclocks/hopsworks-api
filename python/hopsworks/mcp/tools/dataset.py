@@ -19,6 +19,7 @@ from fastmcp import Context
 from hopsworks.mcp.models.dataset import Dataset, Datasets, File, Files
 from hopsworks.mcp.utils.tags import TAGS
 from hopsworks_common import client
+from hopsworks_common.core import inode, dataset
 
 
 class DatasetTools:
@@ -70,8 +71,8 @@ class DatasetTools:
         if isinstance(limit, str):
             limit = int(limit)
 
-        datasets = project.get_dataset_api().list(
-            remote_path="", offset=offset, limit=limit
+        datasets = project.get_dataset_api()._list_dataset_path(
+            "", dataset.Dataset, offset=offset, limit=limit
         )
 
         # Return the dataset details
@@ -117,8 +118,8 @@ class DatasetTools:
 
         conn = client.get_connection()
         project = conn.get_project(project_name)
-        datasets = project.get_dataset_api().list(
-            remote_path="", offset=offset, limit=limit
+        datasets = project.get_dataset_api()._list_dataset_path(
+            "", dataset.Dataset, offset=offset, limit=limit
         )
 
         # Return the dataset details
@@ -163,8 +164,8 @@ class DatasetTools:
             limit = int(limit)
 
         project = hopsworks.get_current_project()
-        files = project.get_dataset_api().list(
-            remote_path=path, offset=offset, limit=limit
+        files = project.get_dataset_api()._list_dataset_path(
+            path, inode.Inode, offset=offset, limit=limit
         )
 
         # Return the file details
@@ -219,8 +220,8 @@ class DatasetTools:
 
         conn = client.get_connection()
         project = conn.get_project(project_name)
-        files = project.get_dataset_api().list(
-            remote_path=path, offset=offset, limit=limit
+        files = project.get_dataset_api()._list_dataset_path(
+            path, inode.Inode, offset=offset, limit=limit
         )
 
         # Return the file details
