@@ -1379,6 +1379,11 @@ class Engine:
                 f"{prefix}.session.token",
                 storage_connector.session_token,
             )
+        if storage_connector.region:
+            self._spark_context._jsc.hadoopConfiguration().set(
+                f"{prefix}.endpoint.region",
+                storage_connector.region,
+            )
 
         # Forward all user-specified fs.s3a.* options to Hadoop conf
         for key, value in storage_connector.spark_options().items():
