@@ -1300,6 +1300,7 @@ class KafkaConnector(StorageConnector):
         https://docs.confluent.io/platform/current/clients/librdkafka/html/md_CONFIGURATION.html
         """
 
+        pem_files_assigned = False
         config = {}
         kafka_options = self.kafka_options()
         for key, value in kafka_options.items():
@@ -1311,11 +1312,13 @@ class KafkaConnector(StorageConnector):
                     "ssl.keystore.location",
                     "ssl.keystore.password",
                 ]
+                and not pem_files_assigned
             ):
                 self.create_pem_files(kafka_options)
                 config["ssl.ca.location"] = self.ca_chain_path
                 config["ssl.certificate.location"] = self.client_cert_path
                 config["ssl.key.location"] = self.client_key_path
+                pem_files_assigned = True
             elif key == "sasl.jaas.config":
                 groups = re.search(
                     "(.+?) .*username=[\"'](.+?)[\"'] .*password=[\"'](.+?)[\"']",
@@ -1393,6 +1396,7 @@ class KafkaConnector(StorageConnector):
             engine.get_instance().get_spark_version()
         ) >= version.parse("3.2.0")
 
+        pem_files_assigned = False
         spark_config = {}
         # Only distribute the files if the Kafka client does not support being configured with PEM content
         kafka_options = self.kafka_options(distribute=not kafka_client_supports_pem)
@@ -1404,20 +1408,22 @@ class KafkaConnector(StorageConnector):
                 "ssl.keystore.password",
                 "ssl.key.password",
             ] and kafka_client_supports_pem:
-                # We can only use this in the newer version of Spark which depend on Kafka > 2.7.0
-                # Kafka 2.7.0 adds support for providing the SSL credentials as PEM objects.
-                self.create_pem_files(kafka_options)
-                spark_config["kafka.ssl.truststore.certificates"] = self._read_pem(
-                    self.ca_chain_path
-                )
-                spark_config["kafka.ssl.keystore.certificate.chain"] = (
-                    self._read_pem(self.client_cert_path)
-                )
-                spark_config["kafka.ssl.keystore.key"] = self._read_pem(
-                    self.client_key_path
-                )
-                spark_config["kafka.ssl.truststore.type"] = "PEM"
-                spark_config["kafka.ssl.keystore.type"] = "PEM"
+                if not pem_files_assigned:
+                    # We can only use this in the newer version of Spark which depend on Kafka > 2.7.0
+                    # Kafka 2.7.0 adds support for providing the SSL credentials as PEM objects.
+                    self.create_pem_files(kafka_options)
+                    spark_config["kafka.ssl.truststore.certificates"] = self._read_pem(
+                        self.ca_chain_path
+                    )
+                    spark_config["kafka.ssl.keystore.certificate.chain"] = (
+                        self._read_pem(self.client_cert_path)
+                    )
+                    spark_config["kafka.ssl.keystore.key"] = self._read_pem(
+                        self.client_key_path
+                    )
+                    spark_config["kafka.ssl.truststore.type"] = "PEM"
+                    spark_config["kafka.ssl.keystore.type"] = "PEM"
+                    pem_files_assigned = True
             else:
                 spark_config[f"{KafkaConnector.SPARK_FORMAT}.{key}"] = value
 
