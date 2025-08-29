@@ -17,7 +17,11 @@
 
 package com.logicalclocks.hsfs.spark.engine.hudi;
 
-import com.google.common.base.Strings;
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.logging.Logger;
+
 import org.apache.commons.lang3.EnumUtils;
 import org.apache.hudi.client.common.HoodieSparkEngineContext;
 import org.apache.hudi.common.model.HoodieFailedWritesCleaningPolicy;
@@ -28,18 +32,15 @@ import org.apache.hudi.common.table.HoodieTableVersion;
 import org.apache.hudi.config.HoodieCleanConfig;
 import org.apache.hudi.config.HoodieIndexConfig;
 import org.apache.hudi.config.HoodieWriteConfig;
-import org.apache.hudi.hadoop.fs.HadoopFSUtils;
 import org.apache.hudi.index.HoodieIndex;
 import org.apache.hudi.table.upgrade.SparkUpgradeDowngradeHelper;
 import org.apache.hudi.table.upgrade.UpgradeDowngrade;
 import org.apache.hudi.utilities.streamer.HoodieStreamer;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.sql.SparkSession;
+import org.apache.spark.util.HadoopFSUtils;
 
-import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Map;
-import java.util.logging.Logger;
+import com.google.common.base.Strings;
 
 public class DeltaStreamerConfig implements Serializable {
   
@@ -157,7 +158,13 @@ public class DeltaStreamerConfig implements Serializable {
           .withCleanConfig(HoodieCleanConfig.newBuilder()
               .withFailedWritesCleaningPolicy(HoodieFailedWritesCleaningPolicy.EAGER).build())
           .withIndexConfig(HoodieIndexConfig.newBuilder().withIndexType(HoodieIndex.IndexType.BLOOM).build()).build();
-
+      
+      if (metaClient.getTableConfig().getTableVersion() == HoodieTableVersion.FIVE) {
+        new UpgradeDowngrade(metaClient, updatedConfig, new HoodieSparkEngineContext(javaSparkContext),
+            SparkUpgradeDowngradeHelper.getInstance())
+            .run(HoodieTableVersion.SIX, null);
+      }
+      
       new UpgradeDowngrade(metaClient, updatedConfig, new HoodieSparkEngineContext(javaSparkContext),
           SparkUpgradeDowngradeHelper.getInstance())
           .run(HoodieTableVersion.EIGHT, null);
