@@ -160,14 +160,20 @@ public class DeltaStreamerConfig implements Serializable {
           .withIndexConfig(HoodieIndexConfig.newBuilder().withIndexType(HoodieIndex.IndexType.BLOOM).build()).build();
       
       if (metaClient.getTableConfig().getTableVersion() == HoodieTableVersion.FIVE) {
+        LOG.info("Upgrading Hudi table at " + writeOptions.get(HudiEngine.HUDI_BASE_PATH)
+            + " to version " + HoodieTableVersion.SIX);
         new UpgradeDowngrade(metaClient, updatedConfig, new HoodieSparkEngineContext(javaSparkContext),
             SparkUpgradeDowngradeHelper.getInstance())
             .run(HoodieTableVersion.SIX, null);
+        LOG.info("Upgrade to version " + HoodieTableVersion.SIX + " completed");
       }
       
+      LOG.info("Upgrading Hudi table at " + writeOptions.get(HudiEngine.HUDI_BASE_PATH)
+          + " to version " + HoodieTableVersion.EIGHT);
       new UpgradeDowngrade(metaClient, updatedConfig, new HoodieSparkEngineContext(javaSparkContext),
           SparkUpgradeDowngradeHelper.getInstance())
           .run(HoodieTableVersion.EIGHT, null);
+      LOG.info("Upgrade to version " + HoodieTableVersion.EIGHT + " completed");
     }
   }
 }
