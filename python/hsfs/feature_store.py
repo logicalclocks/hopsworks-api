@@ -436,6 +436,9 @@ class FeatureStore:
         `get_online_storage_connector` method to get the JDBC connector for the Online
         Feature Store.
 
+        !!! warning "Deprecated"
+                    `get_storage_connector` method is deprecated. Use `get_data_source` instead.
+
         !!! example
             ```python
             # connect to the Feature Store
@@ -450,7 +453,34 @@ class FeatureStore:
         # Returns
             `StorageConnector`. Storage connector object.
         """
-        return self._storage_connector_api.get(self._id, name)
+        return self.get_data_source(name).storage_connector
+
+    @usage.method_logger
+    def get_data_source(self, name: str) -> ds.DataSource:
+        """Get a data source from the feature store.
+
+        Data sources encapsulate all information needed for the execution engine
+        to read and write to specific storage.
+
+        If you want to connect to the online feature store, see the
+        `get_online_data_source` method to get the JDBC connector for the Online
+        Feature Store.
+
+        !!! example
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            data_source = fs.get_data_source("test_data_source")
+            ```
+
+        # Arguments
+            name: Name of the data source to retrieve.
+
+        # Returns
+            `DataSource`. Data source object.
+        """
+        return ds.DataSource(storage_connector=self._storage_connector_api.get(self._id, name))
 
     def sql(
         self,
@@ -501,6 +531,9 @@ class FeatureStore:
 
         The returned storage connector depends on the project that you are connected to.
 
+        !!! warning "Deprecated"
+                    `get_online_storage_connector` method is deprecated. Use `get_online_data_source` instead.
+
         !!! example
             ```python
             # connect to the Feature Store
@@ -512,7 +545,27 @@ class FeatureStore:
         # Returns
             `StorageConnector`. JDBC storage connector to the Online Feature Store.
         """
-        return self._storage_connector_api.get_online_connector(self._id)
+        return self.get_online_data_source().storage_connector
+
+    @usage.method_logger
+    def get_online_data_source(self) -> ds.DataSource:
+        """Get the data source for the Online Feature Store of the respective
+        project's feature store.
+
+        The returned data source depends on the project that you are connected to.
+
+        !!! example
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            online_data_source = fs.get_online_data_source()
+            ```
+
+        # Returns
+            `DataSource`. JDBC data source to the Online Feature Store.
+        """
+        return ds.DataSource(storage_connector=self._storage_connector_api.get_online_connector(self._id))
 
     @usage.method_logger
     def create_feature_group(
@@ -670,10 +723,10 @@ class FeatureStore:
                 or a string representing a cron expression. Set the value to None to avoid scheduling the materialization
                 job. Defaults to None (i.e no scheduling).
             storage_connector: the storage connector used to establish connectivity
-                with the data source.
+                with the data source. **[DEPRECATED: Use `data_source` instead.]**
             path: The location within the scope of the storage connector, from where to read
-                the data for the external feature group
-            data_source: The data source specifying the location of the data. Overrides the path and query arguments when specified.
+                the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
+            data_source: The data source specifying the location of the data. Overrides the storage_connector and path arguments when specified.
 
             ttl: Optional time-to-live duration for features in this group. Can be specified as:
                 - An integer or float representing seconds
@@ -685,7 +738,7 @@ class FeatureStore:
             `FeatureGroup`. The feature group metadata object.
         """
         if not data_source:
-            data_source = ds.DataSource(path=path)
+            data_source = ds.DataSource(storage_connector=storage_connector, path=path)
         feature_group_object = feature_group.FeatureGroup(
             name=name,
             version=version,
@@ -710,7 +763,6 @@ class FeatureStore:
             transformation_functions=transformation_functions,
             online_config=online_config,
             offline_backfill_every_hr=offline_backfill_every_hr,
-            storage_connector=storage_connector,
             data_source=data_source,
             ttl=ttl,
             ttl_enabled=ttl_enabled,
@@ -859,10 +911,10 @@ class FeatureStore:
                 or a string representing a cron expression. Set the value to None to avoid scheduling the materialization
                 job. Defaults to None (i.e no automatic scheduling). Applies only on Feature Group creation.
             storage_connector: the storage connector used to establish connectivity
-                with the data source.
+                with the data source. **[DEPRECATED: Use `data_source` instead.]**
             path: The location within the scope of the storage connector, from where to read
-                the data for the external feature group
-            data_source: The data source specifying the location of the data. Overrides the path and query arguments when specified.
+                the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
+            data_source: The data source specifying the location of the data. Overrides the storage_connector and path arguments when specified.
             ttl: Optional time-to-live duration for features in this group. Can be specified as:
                 - An integer or float representing seconds
                 - A timedelta object
@@ -875,7 +927,7 @@ class FeatureStore:
         feature_group_object = self._feature_group_api.get(self.id, name, version)
         if not feature_group_object:
             if not data_source:
-                data_source = ds.DataSource(path=path)
+                data_source = ds.DataSource(storage_connector=storage_connector, path=path)
             feature_group_object = feature_group.FeatureGroup(
                 name=name,
                 version=version,
@@ -900,7 +952,6 @@ class FeatureStore:
                 transformation_functions=transformation_functions,
                 online_config=online_config,
                 offline_backfill_every_hr=offline_backfill_every_hr,
-                storage_connector=storage_connector,
                 data_source=data_source,
                 ttl=ttl,
                 ttl_enabled=ttl_enabled,
@@ -912,7 +963,7 @@ class FeatureStore:
     def create_on_demand_feature_group(
         self,
         name: str,
-        storage_connector: storage_connector.StorageConnector,
+        storage_connector: Optional[storage_connector.StorageConnector] = None,
         query: Optional[str] = None,
         data_format: Optional[str] = None,
         path: Optional[str] = "",
@@ -955,14 +1006,14 @@ class FeatureStore:
         # Arguments
             name: Name of the external feature group to create.
             storage_connector: the storage connector used to establish connectivity
-                with the data source.
+                with the data source. **[DEPRECATED: Use `data_source` instead.]**
             query: A string containing a SQL query valid for the target data source.
                 the query will be used to pull data from the data sources when the
-                feature group is used.
+                feature group is used. **[DEPRECATED: Use `data_source` instead.]**
             data_format: If the external feature groups refers to a directory with data,
                 the data format to use when reading it
             path: The location within the scope of the storage connector, from where to read
-                the data for the external feature group
+                the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
             options: Additional options to be used by the engine when reading data from the
                 specified storage connector. For example, `{"header": True}` when reading
                 CSV files with column names in the first row.
@@ -1003,7 +1054,7 @@ class FeatureStore:
             expectation_suite: Optionally, attach an expectation suite to the feature
                 group which dataframes should be validated against upon insertion.
                 Defaults to `None`.
-            data_source: The data source specifying the location of the data. Overrides the path and query arguments when specified.
+            data_source: The data source specifying the location of the data. Overrides the storage_connector, path and query arguments when specified.
             online_enabled: Define whether it should be possible to sync the feature group to
                 the online feature store for low latency access, defaults to `False`.
             ttl: Optional time-to-live duration for features in this group. Can be specified as:
@@ -1017,12 +1068,13 @@ class FeatureStore:
             `ExternalFeatureGroup`. The external feature group metadata object.
         """
         if not data_source:
-            data_source = ds.DataSource(query=query, path=path)
+            if not storage_connector:
+                raise ValueError("Data source must be provided to create an external feature group.")
+            data_source = ds.DataSource(storage_connector=storage_connector, query=query, path=path)
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,
             data_format=data_format,
             options=options or {},
-            storage_connector=storage_connector,
             version=version,
             description=description,
             primary_key=primary_key or [],
@@ -1047,7 +1099,7 @@ class FeatureStore:
     def create_external_feature_group(
         self,
         name: str,
-        storage_connector: storage_connector.StorageConnector,
+        storage_connector: Optional[storage_connector.StorageConnector] = None,
         query: Optional[str] = None,
         data_format: Optional[str] = None,
         path: Optional[str] = "",
@@ -1095,8 +1147,7 @@ class FeatureStore:
                                 name="sales",
                                 version=1,
                                 description="Physical shop sales features",
-                                query=query,
-                                storage_connector=connector,
+                                data_source=data_source,
                                 primary_key=['ss_store_sk'],
                                 event_time='sale_date',
                                 ttl=timedelta(days=30),
@@ -1116,8 +1167,7 @@ class FeatureStore:
                     name="sales",
                     version=1,
                     description="Physical shop sales features",
-                    query=query,
-                    storage_connector=connector,
+                    data_source=data_source,
                     primary_key=['ss_store_sk'],
                     event_time='sale_date',
                     online_enabled=True,
@@ -1136,14 +1186,14 @@ class FeatureStore:
         # Arguments
             name: Name of the external feature group to create.
             storage_connector: the storage connector used to establish connectivity
-                with the data source.
+                with the data source. **[DEPRECATED: Use `data_source` instead.]**
             query: A string containing a SQL query valid for the target data source.
                 the query will be used to pull data from the data sources when the
-                feature group is used.
+                feature group is used. **[DEPRECATED: Use `data_source` instead.]**
             data_format: If the external feature groups refers to a directory with data,
                 the data format to use when reading it
             path: The location within the scope of the storage connector, from where to read
-                the data for the external feature group
+                the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
             options: Additional options to be used by the engine when reading data from the
                 specified storage connector. For example, `{"header": True}` when reading
                 CSV files with column names in the first row.
@@ -1189,7 +1239,7 @@ class FeatureStore:
             notification_topic_name: Optionally, define the name of the topic used for sending notifications when entries
                 are inserted or updated on the online feature store. If left undefined no notifications are sent.
             online_config: Optionally, define configuration which is used to configure online table.
-            data_source: The data source specifying the location of the data. Overrides the path and query arguments when specified.
+            data_source: The data source specifying the location of the data. Overrides the storage_connector, path and query arguments when specified.
             ttl: Optional time-to-live duration for features in this group. Can be specified as:
                 - An integer or float representing seconds
                 - A timedelta object
@@ -1201,12 +1251,13 @@ class FeatureStore:
             `ExternalFeatureGroup`. The external feature group metadata object.
         """
         if not data_source:
-            data_source = ds.DataSource(query=query, path=path)
+            if not storage_connector:
+                raise ValueError("Data source must be provided to create an external feature group.")
+            data_source = ds.DataSource(storage_connector=storage_connector, query=query, path=path)
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,
             data_format=data_format,
             options=options or {},
-            storage_connector=storage_connector,
             version=version,
             description=description,
             primary_key=primary_key or [],
