@@ -148,6 +148,7 @@ public class DeltaStreamerConfig implements Serializable {
       // We need to update the hoodie.datasource.write.operation option in the metadata table as newer
       // HoodieStreamer versions fail if the value doesn't match with the operation (upsert).
       metaClient.getTableConfig().setValue(HudiEngine.HUDI_TABLE_OPERATION, WriteOperationType.UPSERT.value());
+      metaClient.getTableConfig().setValue(HudiEngine.HUDI_TABLE_METADATA_PARTITIONS, writeOptions.get(HudiEngine.HUDI_TABLE_METADATA_PARTITIONS));
       HoodieTableConfig.update(metaClient.getStorage(), metaClient.getMetaPath(),
           metaClient.getTableConfig().getProps());
 
@@ -157,7 +158,8 @@ public class DeltaStreamerConfig implements Serializable {
           .withRollbackUsingMarkers(true)
           .withCleanConfig(HoodieCleanConfig.newBuilder()
               .withFailedWritesCleaningPolicy(HoodieFailedWritesCleaningPolicy.EAGER).build())
-          .withIndexConfig(HoodieIndexConfig.newBuilder().withIndexType(HoodieIndex.IndexType.BLOOM).build()).build();
+          .withIndexConfig(HoodieIndexConfig.newBuilder().withIndexType(HoodieIndex.IndexType.BLOOM).build())
+          .build();
       
       if (metaClient.getTableConfig().getTableVersion() == HoodieTableVersion.FIVE) {
         LOG.info("Upgrading Hudi table at " + writeOptions.get(HudiEngine.HUDI_BASE_PATH)
@@ -165,8 +167,8 @@ public class DeltaStreamerConfig implements Serializable {
         new UpgradeDowngrade(metaClient, updatedConfig, new HoodieSparkEngineContext(javaSparkContext),
             SparkUpgradeDowngradeHelper.getInstance())
             .run(HoodieTableVersion.SIX, null);
-        LOG.info("Upgrade to version " + HoodieTableVersion.SIX + " completed");
-        // reload to avoid stale metadata after upgrade
+        LOG.info("Upgrade to version " + HoodieTableVersion.SIX + " completed." 
+            + " Reloading the meta client to avoid stale metadata");
         metaClient = HoodieTableMetaClient.reload(metaClient);
       }
       
@@ -179,4 +181,6 @@ public class DeltaStreamerConfig implements Serializable {
           + HoodieTableVersion.EIGHT + " completed");
     }
   }
+
+  
 }
