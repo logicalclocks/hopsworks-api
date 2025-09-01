@@ -460,7 +460,9 @@ class VectorServer:
         else:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("get_feature_vector Online SQL client")
-            serving_vector = self.sql_client.get_single_feature_vector(rondb_entry)
+            serving_vector = self.sql_client.get_single_feature_vector(
+                rondb_entry, logging_data=logging_data
+            )
 
         self._raise_transformation_warnings(
             transform=transform, on_demand_features=on_demand_features
@@ -607,7 +609,9 @@ class VectorServer:
             # get result row
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("get_batch_feature_vectors through SQL client")
-            batch_results, _ = self.sql_client.get_batch_feature_vectors(rondb_entries)
+            batch_results, _ = self.sql_client.get_batch_feature_vectors(
+                rondb_entries, logging_data=logging_data
+            )
         else:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("Empty entries for rondb, skipping fetching.")
@@ -1086,7 +1090,7 @@ class VectorServer:
         if return_type.lower() == "list" and not inference_helper:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("Returning feature vector as value list")
-            return feature_vectorz
+            feature_vector = feature_vectorz
         elif return_type.lower() == "numpy" and not inference_helper:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("Returning feature vector as numpy array")
@@ -1097,7 +1101,7 @@ class VectorServer:
         elif return_type.lower() == "dict" and inference_helper:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("Returning feature vector as dictionary")
-            return feature_vectorz
+            feature_vector = feature_vectorz
         # Both can return pandas and polars
         elif return_type.lower() == "pandas":
             if _logger.isEnabledFor(logging.DEBUG):
