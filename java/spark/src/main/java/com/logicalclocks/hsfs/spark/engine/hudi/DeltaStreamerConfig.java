@@ -175,7 +175,8 @@ public class DeltaStreamerConfig implements Serializable {
       new UpgradeDowngrade(metaClient, updatedConfig, new HoodieSparkEngineContext(javaSparkContext),
           SparkUpgradeDowngradeHelper.getInstance())
           .run(HoodieTableVersion.EIGHT, null);
-      LOG.info("Upgrade " + metaClient.getTableConfig().getTableName() + " to version " + HoodieTableVersion.EIGHT + " completed");
+      LOG.info("Upgrade " + metaClient.getTableConfig().getTableName() + " to version " 
+        + HoodieTableVersion.EIGHT + " completed");
     }
   }
 }
