@@ -144,23 +144,40 @@ public class DeltaStreamerConfig implements Serializable {
     // During Hudi upgrades we might need to bump this version. This version matches Hudi 0.12.x
     if (metaClient.getTableConfig().contains(HoodieTableConfig.VERSION)
         && metaClient.getTableConfig().getTableVersion() != HoodieTableVersion.EIGHT) {
+      migrateToVersionSix(writeOptions, metaClient, javaSparkContext);
       // We need to update the hoodie.datasource.write.operation option in the metadata table as newer
       // HoodieStreamer versions fail if the value doesn't match with the operation (upsert).
       metaClient.getTableConfig().setValue(HudiEngine.HUDI_TABLE_OPERATION, WriteOperationType.UPSERT.value());
       HoodieTableConfig.update(metaClient.getStorage(), metaClient.getMetaPath(),
           metaClient.getTableConfig().getProps());
-
-      HoodieWriteConfig updatedConfig = HoodieWriteConfig.newBuilder()
-          .forTable(metaClient.getTableConfig().getTableName())
-          .withPath(writeOptions.get(HudiEngine.HUDI_BASE_PATH))
-          .withRollbackUsingMarkers(true)
-          .withCleanConfig(HoodieCleanConfig.newBuilder()
-              .withFailedWritesCleaningPolicy(HoodieFailedWritesCleaningPolicy.EAGER).build())
-          .withIndexConfig(HoodieIndexConfig.newBuilder().withIndexType(HoodieIndex.IndexType.BLOOM).build()).build();
-
-      new UpgradeDowngrade(metaClient, updatedConfig, new HoodieSparkEngineContext(javaSparkContext),
+      
+      new UpgradeDowngrade(metaClient, getUpdatedWriteConfig(writeOptions, metaClient),
+          new HoodieSparkEngineContext(javaSparkContext),
           SparkUpgradeDowngradeHelper.getInstance())
           .run(HoodieTableVersion.EIGHT, null);
     }
+  }
+  
+  private void migrateToVersionSix(Map<String, String> writeOptions, HoodieTableMetaClient metaClient,
+      JavaSparkContext jsc) {
+    LOG.info("Migrating Hudi table at " + writeOptions.get(HudiEngine.HUDI_BASE_PATH) + " to version 6");
+    metaClient.getTableConfig().setValue(HudiEngine.HUDI_TABLE_OPERATION, WriteOperationType.UPSERT.value());
+    metaClient.getTableConfig().setValue("hoodie.table.version", String.valueOf(HoodieTableVersion.SIX));
+    HoodieTableConfig.update(metaClient.getStorage(), metaClient.getMetaPath(), metaClient.getTableConfig().getProps());
+    
+    new UpgradeDowngrade(metaClient, getUpdatedWriteConfig(writeOptions, metaClient), new HoodieSparkEngineContext(jsc),
+      SparkUpgradeDowngradeHelper.getInstance())
+      .run(HoodieTableVersion.SIX, null);
+    LOG.info("Migration to version 6 completed");
+  }
+  
+  private HoodieWriteConfig getUpdatedWriteConfig(Map<String, String> writeOptions, HoodieTableMetaClient metaClient) {
+    return HoodieWriteConfig.newBuilder()
+        .forTable(metaClient.getTableConfig().getTableName())
+        .withPath(writeOptions.get(HudiEngine.HUDI_BASE_PATH))
+        .withRollbackUsingMarkers(true)
+        .withCleanConfig(HoodieCleanConfig.newBuilder()
+            .withFailedWritesCleaningPolicy(HoodieFailedWritesCleaningPolicy.EAGER).build())
+        .withIndexConfig(HoodieIndexConfig.newBuilder().withIndexType(HoodieIndex.IndexType.BLOOM).build()).build();
   }
 }

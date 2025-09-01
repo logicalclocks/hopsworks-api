@@ -80,7 +80,6 @@ class HudiEngine:
     HUDI_TABLE_KEY_GENERATOR_CLASS = "hoodie.table.keygenerator.class"
     HUDI_TABLE_PRECOMBINE_FIELD = "hoodie.table.precombine.field"
     HUDI_TABLE_BASE_FILE_FORMAT = "hoodie.table.base.file.format"
-    HUDI_TABLE_METADATA_PARTITIONS = "hoodie.table.metadata.partitions"
     HUDI_HIVE_SYNC_USE_JDBC = "hoodie.datasource.hive_sync.use_jdbc"
     HUDI_HIVE_SYNC_AUTO_CREATE_DATABASE = (
         "hoodie.datasource.hive_sync.auto_create_database"
@@ -191,7 +190,6 @@ class HudiEngine:
             self.HUDI_TABLE_OPERATION: operation,
             self.HUDI_HIVE_SYNC_SUPPORT_TIMESTAMP: "true",
             self.HUDI_TABLE_BASE_FILE_FORMAT: "PARQUET",
-            self.HUDI_TABLE_METADATA_PARTITIONS: "column_stats,files",
             self.HUDI_HIVE_SYNC_USE_JDBC: "false",
             self.HUDI_HIVE_SYNC_AUTO_CREATE_DATABASE: "false",
         }
