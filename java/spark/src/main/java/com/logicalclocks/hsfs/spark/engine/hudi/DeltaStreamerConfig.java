@@ -166,6 +166,8 @@ public class DeltaStreamerConfig implements Serializable {
             SparkUpgradeDowngradeHelper.getInstance())
             .run(HoodieTableVersion.SIX, null);
         LOG.info("Upgrade to version " + HoodieTableVersion.SIX + " completed");
+        // reload to avoid stale metadata after upgrade
+        metaClient = HoodieTableMetaClient.reload(metaClient);
       }
       
       LOG.info("Upgrading Hudi table at " + writeOptions.get(HudiEngine.HUDI_BASE_PATH)
@@ -173,7 +175,7 @@ public class DeltaStreamerConfig implements Serializable {
       new UpgradeDowngrade(metaClient, updatedConfig, new HoodieSparkEngineContext(javaSparkContext),
           SparkUpgradeDowngradeHelper.getInstance())
           .run(HoodieTableVersion.EIGHT, null);
-      LOG.info("Upgrade to version " + HoodieTableVersion.EIGHT + " completed");
+      LOG.info("Upgrade " + metaClient.getTableName() + " to version " + HoodieTableVersion.EIGHT + " completed");
     }
   }
 }
