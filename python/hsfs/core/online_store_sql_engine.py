@@ -111,7 +111,9 @@ class OnlineStoreSqlClient:
                 _logger.debug(
                     f"Initialising prepared statements for feature view {entity.name} version {entity.version}."
                 )
-            for key in self.get_prepared_statement_labels(inference_helper_columns):
+            for key in self.get_prepared_statement_labels(
+                inference_helper_columns, with_logging_meta_data
+            ):
                 if _logger.isEnabledFor(logging.DEBUG):
                     _logger.debug(f"Fetching prepared statement for key {key}")
                 self.prepared_statements[key] = (
@@ -131,7 +133,8 @@ class OnlineStoreSqlClient:
                     f"Initialising prepared statements for training dataset {entity.name} version {entity.version}."
                 )
             for key in self.get_prepared_statement_labels(
-                with_inference_helper_column=False
+                with_inference_helper_column=False,
+                with_logging_meta_data=with_logging_meta_data,
             ):
                 if _logger.isEnabledFor(logging.DEBUG):
                     _logger.debug(f"Fetching prepared statement for key {key}")
@@ -166,13 +169,19 @@ class OnlineStoreSqlClient:
             _logger.debug(
                 "Fetch and reset prepared statements and external as user may be re-initialising with different parameters"
             )
-        self.fetch_prepared_statements(entity, inference_helper_columns)
+        self.fetch_prepared_statements(
+            entity,
+            inference_helper_columns,
+            with_logging_meta_data=with_logging_meta_data,
+        )
 
         self.init_parametrize_and_serving_utils(
             self.prepared_statements[self.BATCH_VECTOR_KEY]
         )
 
-        for key in self.get_prepared_statement_labels(inference_helper_columns):
+        for key in self.get_prepared_statement_labels(
+            inference_helper_columns, with_logging_meta_data
+        ):
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug(f"Parametrize prepared statements for key {key}")
             self._parametrised_prepared_statements[key] = (
