@@ -679,6 +679,7 @@ class FeatureView:
         on_demand_features: Optional[bool] = True,
         request_parameters: Optional[List[Dict[str, Any]]] = None,
         transformation_context: Dict[str, Any] = None,
+        logging_data: bool = True,
     ) -> Union[List[List[Any]], pd.DataFrame, np.ndarray, pl.DataFrame]:
         """Returns assembled feature vectors in batches from online feature store.
             Call [`feature_view.init_serving`](#init_serving) before this method if the following configurations are needed.
@@ -788,6 +789,7 @@ class FeatureView:
             on_demand_features=on_demand_features,
             request_parameters=request_parameters,
             transformation_context=transformation_context,
+            logging_data=logging_data,
         )
 
     def get_inference_helper(
