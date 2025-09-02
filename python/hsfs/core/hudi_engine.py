@@ -86,6 +86,15 @@ class HudiEngine:
         "hoodie.datasource.hive_sync.auto_create_database"
     )
 
+    HUDI_METRICS_ENABLE = "hoodie.metrics.on"
+    HUDI_METRICS_REPORTER_TYPE = "hoodie.metrics.reporter.type"
+    HUDI_METRICS_PUSHGATEWAY_HOST = "hoodie.metrics.pushgateway.host"
+    HUDI_METRICS_PUSHGATEWAY_PORT = "hoodie.metrics.pushgateway.port"
+    HUDI_METRICS_PUSHGATEWAY_JOB_NAME = "hoodie.metrics.pushgateway.job.name"
+    HUDI_METRICS_PUSHGATEWAY_DELETE_ON_SHUTDOWN = (
+        "hoodie.metrics.pushgateway.delete.on.shutdown"
+    )
+
     def __init__(
         self,
         feature_store_id,
@@ -194,6 +203,11 @@ class HudiEngine:
             self.HUDI_TABLE_METADATA_PARTITIONS: "column_stats,files",
             self.HUDI_HIVE_SYNC_USE_JDBC: "false",
             self.HUDI_HIVE_SYNC_AUTO_CREATE_DATABASE: "false",
+            self.HUDI_METRICS_ENABLE: "true",
+            self.HUDI_METRICS_REPORTER_TYPE: "PROMETHEUS_PUSHGATEWAY",
+            self.HUDI_METRICS_PUSHGATEWAY_HOST: "hopsworks-prometheus-pushgateway",
+            self.HUDI_METRICS_PUSHGATEWAY_PORT: "9091",
+            self.HUDI_METRICS_PUSHGATEWAY_JOB_NAME: f"hudi_metrics_{table_name}",
         }
         hudi_options.update(HudiEngine.HUDI_DEFAULT_PARALLELISM)
 

@@ -142,7 +142,7 @@ public class DeltaStreamerConfig implements Serializable {
             .setLoadActiveTimelineOnLoad(false)
             .build();
 
-    
+
 
     // During Hudi upgrades we might need to bump this version. This version matches Hudi 0.12.x
     if (metaClient.getTableConfig().contains(HoodieTableConfig.VERSION)
@@ -150,6 +150,7 @@ public class DeltaStreamerConfig implements Serializable {
       // We need to update the hoodie.datasource.write.operation option in the metadata table as newer
       // HoodieStreamer versions fail if the value doesn't match with the operation (upsert).
       metaClient.getTableConfig().setValue(HudiEngine.HUDI_TABLE_OPERATION, WriteOperationType.UPSERT.value());
+      metaClient.getTableConfig().setValue(, HoodieTableVersion.EIGHT.name());
       metaClient.getTableConfig().setMetadataPartitionState(
           writeOptions.get(HudiEngine.HUDI_TABLE_METADATA_PARTITIONS), true);
       HoodieTableConfig.update(metaClient.getStorage(), metaClient.getMetaPath(),
@@ -161,6 +162,9 @@ public class DeltaStreamerConfig implements Serializable {
           .withRollbackUsingMarkers(true)
           .withCleanConfig(HoodieCleanConfig.newBuilder()
               .withFailedWritesCleaningPolicy(HoodieFailedWritesCleaningPolicy.EAGER).build())
+          .withMetadataConfig(
+            HoodieMetadataConfig.fromProperties(
+              metaClient.getTableConfig().getProps()).withPartitionStatsEnabled(true).build())
           .withIndexConfig(
             HoodieIndexConfig.newBuilder().withIndexType(HoodieIndex.IndexType.BLOOM).build())
           .build();
