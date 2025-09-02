@@ -32,6 +32,7 @@ import org.apache.hudi.common.table.HoodieTableVersion;
 import org.apache.hudi.config.HoodieCleanConfig;
 import org.apache.hudi.config.HoodieIndexConfig;
 import org.apache.hudi.config.HoodieWriteConfig;
+import org.apache.hudi.config.HoodieMetadataConfig;
 import org.apache.hudi.hadoop.fs.HadoopFSUtils;
 import org.apache.hudi.index.HoodieIndex;
 import org.apache.hudi.table.upgrade.SparkUpgradeDowngradeHelper;
