@@ -94,6 +94,7 @@ public class HudiEngine {
   protected static final String HUDI_TABLE_PRECOMBINE_FIELD = "hoodie.table.precombine.field";
   protected static final String HUDI_TABLE_BASE_FILE_FORMAT = "hoodie.table.base.file.format";
   protected static final String HUDI_TABLE_METADATA_PARTITIONS = "hoodie.table.metadata.partitions";
+  protected static final String HUDI_INDEX_COLUMN_STATS_ENABLE = "hoodie.metadata.index.column.stats.enable";
 
   protected static final String HUDI_KEY_GENERATOR_OPT_KEY = "hoodie.datasource.write.keygenerator.class";
   protected static final String HUDI_COMPLEX_KEY_GENERATOR_OPT_VAL = "org.apache.hudi.keygen.CustomKeyGenerator";

@@ -32,7 +32,6 @@ import org.apache.hudi.common.table.HoodieTableVersion;
 import org.apache.hudi.config.HoodieCleanConfig;
 import org.apache.hudi.config.HoodieIndexConfig;
 import org.apache.hudi.config.HoodieWriteConfig;
-import org.apache.hudi.common.config.HoodieMetadataConfig;
 import org.apache.hudi.hadoop.fs.HadoopFSUtils;
 import org.apache.hudi.index.HoodieIndex;
 import org.apache.hudi.table.upgrade.SparkUpgradeDowngradeHelper;
@@ -149,8 +148,14 @@ public class DeltaStreamerConfig implements Serializable {
       // We need to update the hoodie.datasource.write.operation option in the metadata table as newer
       // HoodieStreamer versions fail if the value doesn't match with the operation (upsert).
       metaClient.getTableConfig().setValue(HudiEngine.HUDI_TABLE_OPERATION, WriteOperationType.UPSERT.value());
-      metaClient.getTableConfig().setMetadataPartitionState(
-          metaClient, writeOptions.get(HudiEngine.HUDI_TABLE_METADATA_PARTITIONS), true);
+      if (metaClient.getTableConfig().contains(HudiEngine.HUDI_TABLE_METADATA_PARTITIONS) && 
+          metaClient.getTableConfig().get(HudiEngine.HUDI_TABLE_METADATA_PARTITIONS)
+              .contains("column_stats")) {
+        metaClient.getTableConfig().setValue(HudiEngine.HUDI_INDEX_COLUMN_STATS_ENABLE, "true");
+        metaClient.getTableConfig().setMetadataPartitionState(
+            metaClient, writeOptions.get(HudiEngine.HUDI_TABLE_METADATA_PARTITIONS), true);
+      }
+     
       HoodieTableConfig.update(metaClient.getStorage(), metaClient.getMetaPath(),
           metaClient.getTableConfig().getProps());
 
@@ -160,9 +165,6 @@ public class DeltaStreamerConfig implements Serializable {
           .withRollbackUsingMarkers(true)
           .withCleanConfig(HoodieCleanConfig.newBuilder()
               .withFailedWritesCleaningPolicy(HoodieFailedWritesCleaningPolicy.EAGER).build())
-          .withMetadataConfig(
-            HoodieMetadataConfig.fromProperties(
-              metaClient.getTableConfig().getProps()).withPartitionStatsEnabled(true).build())
           .withIndexConfig(
             HoodieIndexConfig.newBuilder().withIndexType(HoodieIndex.IndexType.BLOOM).build())
           .build();

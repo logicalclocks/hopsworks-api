@@ -81,6 +81,7 @@ class HudiEngine:
     HUDI_TABLE_PRECOMBINE_FIELD = "hoodie.table.precombine.field"
     HUDI_TABLE_BASE_FILE_FORMAT = "hoodie.table.base.file.format"
     HUDI_TABLE_METADATA_PARTITIONS = "hoodie.table.metadata.partitions"
+    HUDI_INDEX_COLUMN_STATS_ENABLE = "hoodie.metadata.index.column.stats.enable"
     HUDI_HIVE_SYNC_USE_JDBC = "hoodie.datasource.hive_sync.use_jdbc"
     HUDI_HIVE_SYNC_AUTO_CREATE_DATABASE = (
         "hoodie.datasource.hive_sync.auto_create_database"
