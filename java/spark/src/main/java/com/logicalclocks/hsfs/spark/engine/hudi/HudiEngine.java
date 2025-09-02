@@ -150,6 +150,13 @@ public class HudiEngine {
       "com.logicalclocks.hsfs.spark.engine.hudi.DeltaStreamerTransformer";
   protected static final String DELTA_SOURCE_ORDERING_FIELD_OPT_KEY = "sourceOrderingField";
 
+  // Hudi Metrics
+  protected static final String HUDI_METRICS_ENABLE = "hoodie.metrics.on";
+  protected static final String HUDI_METRICS_REPORTER_TYPE = "hoodie.metrics.reporter.type";
+  protected static final String HUDI_METRICS_PUSHGATEWAY_HOST = "hoodie.metrics.pushgateway.host";
+  protected static final String HUDI_METRICS_PUSHGATEWAY_PORT = "hoodie.metrics.pushgateway.port";
+  protected static final String HUDI_METRICS_PUSHGATEWAY_JOB_NAME = "hoodie.metrics.pushgateway.job.name";
+
   protected static final String MIN_SYNC_INTERVAL_SECONDS = "minSyncIntervalSeconds";
   protected static final String SPARK_MASTER = "yarn";
   protected static final String PROJECT_ID = "projectId";
@@ -306,6 +313,14 @@ public class HudiEngine {
     hudiArgs.put(HUDI_TABLE_PRECOMBINE_FIELD, precombineKey);
     hudiArgs.put(HUDI_TABLE_BASE_FILE_FORMAT, "PARQUET");
     hudiArgs.put(HUDI_TABLE_METADATA_PARTITIONS, "column_stats,files");
+    hudiArgs.put(HUDI_INDEX_COLUMN_STATS_ENABLE, "true");
+
+    // Prometheus metrics
+    hudiArgs.put(HUDI_METRICS_ENABLE, "true");
+    hudiArgs.put(HUDI_METRICS_REPORTER_TYPE, "PUSHGATEWAY_PROMETHEUS");
+    hudiArgs.put(HUDI_METRICS_PUSHGATEWAY_HOST, "hopsworks-prometheus-pushgateway");
+    hudiArgs.put(HUDI_METRICS_PUSHGATEWAY_PORT, "9091");
+    hudiArgs.put(HUDI_METRICS_PUSHGATEWAY_JOB_NAME, "hudi_metrics_" + tableName);
 
     // Hive args
     hudiArgs.put(HUDI_HIVE_SYNC_ENABLE, "true");
