@@ -205,11 +205,11 @@ class HudiEngine:
             self.HUDI_INDEX_COLUMN_STATS_ENABLE: "true",
             self.HUDI_HIVE_SYNC_USE_JDBC: "false",
             self.HUDI_HIVE_SYNC_AUTO_CREATE_DATABASE: "false",
-            self.HUDI_METRICS_ENABLE: "true",
-            self.HUDI_METRICS_REPORTER_TYPE: "PROMETHEUS_PUSHGATEWAY",
-            self.HUDI_METRICS_PUSHGATEWAY_HOST: "hopsworks-prometheus-pushgateway",
-            self.HUDI_METRICS_PUSHGATEWAY_PORT: "9091",
-            self.HUDI_METRICS_PUSHGATEWAY_JOB_NAME: f"hudi_metrics_{table_name}",
+            # self.HUDI_METRICS_ENABLE: "true",
+            # self.HUDI_METRICS_REPORTER_TYPE: "PROMETHEUS_PUSHGATEWAY",
+            # self.HUDI_METRICS_PUSHGATEWAY_HOST: "hopsworks-prometheus-pushgateway",
+            # self.HUDI_METRICS_PUSHGATEWAY_PORT: "9091",
+            # self.HUDI_METRICS_PUSHGATEWAY_JOB_NAME: f"hudi_metrics_{table_name}",
         }
         hudi_options.update(HudiEngine.HUDI_DEFAULT_PARALLELISM)
 
