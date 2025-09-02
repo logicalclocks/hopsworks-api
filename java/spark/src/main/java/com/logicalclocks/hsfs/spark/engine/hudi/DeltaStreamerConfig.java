@@ -151,7 +151,7 @@ public class DeltaStreamerConfig implements Serializable {
       // HoodieStreamer versions fail if the value doesn't match with the operation (upsert).
       metaClient.getTableConfig().setValue(HudiEngine.HUDI_TABLE_OPERATION, WriteOperationType.UPSERT.value());
       metaClient.getTableConfig().setMetadataPartitionState(
-        writeOptions.get(HudiEngine.HUDI_TABLE_METADATA_PARTITIONS), true);
+          writeOptions.get(HudiEngine.HUDI_TABLE_METADATA_PARTITIONS), true);
       HoodieTableConfig.update(metaClient.getStorage(), metaClient.getMetaPath(),
           metaClient.getTableConfig().getProps());
 
