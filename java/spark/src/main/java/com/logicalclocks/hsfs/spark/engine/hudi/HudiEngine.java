@@ -317,7 +317,7 @@ public class HudiEngine {
 
     // Prometheus metrics
     hudiArgs.put(HUDI_METRICS_ENABLE, "true");
-    hudiArgs.put(HUDI_METRICS_REPORTER_TYPE, "PUSHGATEWAY_PROMETHEUS");
+    hudiArgs.put(HUDI_METRICS_REPORTER_TYPE, "PROMETHEUS_PUSHGATEWAY");
     hudiArgs.put(HUDI_METRICS_PUSHGATEWAY_HOST, "hopsworks-prometheus-pushgateway");
     hudiArgs.put(HUDI_METRICS_PUSHGATEWAY_PORT, "9091");
     hudiArgs.put(HUDI_METRICS_PUSHGATEWAY_JOB_NAME, "hudi_metrics_" + tableName);
