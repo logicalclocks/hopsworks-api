@@ -152,8 +152,11 @@ public class DeltaStreamerConfig implements Serializable {
           && (metaClient.getTableConfig().getMetadataPartitions().contains("column_stats") 
               || writeOptions.get(HudiEngine.HUDI_TABLE_METADATA_PARTITIONS).contains("column_stats"))) {
         metaClient.getTableConfig().setValue(HudiEngine.HUDI_INDEX_COLUMN_STATS_ENABLE, "true");
-        metaClient.getTableConfig().setMetadataPartitionState(
-            metaClient, writeOptions.get(HudiEngine.HUDI_TABLE_METADATA_PARTITIONS), true);
+        metaClient.getTableConfig().setValue(HudiEngine.HUDI_TABLE_METADATA_PARTITIONS, 
+            writeOptions.get(HudiEngine.HUDI_TABLE_METADATA_PARTITIONS));
+      }
+        // metaClient.getTableConfig().setMetadataPartitionState(
+        //     metaClient, writeOptions.get(HudiEngine.HUDI_TABLE_METADATA_PARTITIONS), true);
       }
      
       HoodieTableConfig.update(metaClient.getStorage(), metaClient.getMetaPath(),
