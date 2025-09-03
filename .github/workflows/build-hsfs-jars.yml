@@ -18,6 +18,11 @@ on:
         required: false
         type: string
         default: 'NOJIRA'
+      runner:
+        description: 'The runner to use, default is ubuntu-latest'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
     secrets:
       NEXUS_HARBOR_PASSWORD:
         description: 'Nexus harbor password'
@@ -39,6 +44,11 @@ on:
         required: false
         type: string
         default: 'NOJIRA'
+      runner:
+        description: 'The runner to use, default is ubuntu-latest'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
   pull_request:
     
 
@@ -56,6 +66,8 @@ jobs:
   build-hudi:
     uses: logicalclocks/hudi/.github/workflows/build_hudi_with_hopsfs.yml@HWORKS-2204-vatj
     with:
+      ref: HWORKS-2204-vatj
+      runner: ${{ inputs.runner || 'ubuntu-latest' }}
       jira_tag: ${{ inputs.jira_tag || 'NOJIRA' }}
       build: ${{ (github.event_name == 'pull_request' && contains(join(github.event.pull_request.labels.*.name, ','), 'build-hudi')) }}
     secrets:
@@ -64,6 +76,8 @@ jobs:
   build-spark:
     uses: logicalclocks/spark/.github/workflows/build_spark_with_hopsfs.yaml@HWORKS-2203-vatj
     with:
+      ref: HWORKS-2203-vatj
+      runner: ${{ inputs.runner || 'ubuntu-latest' }}
       jira_tag: ${{ inputs.jira_tag || 'NOJIRA' }}
       build: ${{ (github.event_name == 'pull_request' && contains(join(github.event.pull_request.labels.*.name, ','), 'build-spark')) }}
     secrets:
@@ -87,6 +101,13 @@ jobs:
           repository: logicalclocks/hopsworks-api
           ref: ${{ inputs.ref  || 'main' }}
           path: ${{ github.workspace }}/hopsworks-api
+
+      - name: Extract jira tag
+        id: extract_jira_tag
+        uses: logicalclocks/hosted-runners/.github/actions/extract-jira-tag@main
+        with:
+          branch_name: ${{ inputs.ref || github.head_ref || github.ref_name }}
+          jira_tag: ${{ inputs.jira_tag || 'NOJIRA' }}
 
       - name: Set up .m2 settings.xml
         shell: bash
