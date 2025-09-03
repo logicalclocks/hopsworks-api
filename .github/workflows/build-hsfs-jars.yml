@@ -27,6 +27,64 @@ on:
       NEXUS_HARBOR_PASSWORD:
         description: 'Nexus harbor password'
         required: true
+    outputs:
+      pom_version:
+        value: ${{ jobs.build-hsfs-jars.outputs.pom_version }}
+        description: 'The version from the pom.xml'
+      commit_hash:
+        value: ${{ jobs.build-hsfs-jars.outputs.commit_hash }}
+        description: 'The commit hash of the hopsworks-api repo'
+      jira_tag:
+        value: ${{ jobs.build-hsfs-jars.outputs.jira_tag }}
+        description: 'The jira tag used for the build'
+      hsfs_tar_name:
+        value: ${{ jobs.build-hsfs-jars.outputs.hsfs_tar_name }}
+        description: 'The name of the hsfs tar file'
+      hsfs_tar_url:
+        value: ${{ jobs.build-hsfs-jars.outputs.hsfs_tar_url }}
+        description: 'The URL of the hsfs tar file'
+      hudi_pom_version_no_jira:
+        value: ${{ jobs.build-hudi.outputs.pom_version_no_jira }}
+        description: 'The version from the pom.xml without the jira tag'
+      hudi_pom_version:
+        value: ${{ jobs.build-hudi.outputs.pom_version }}
+        description: 'The version from the pom.xml with the jira tag'
+      hudi_commit_hash:
+        value: ${{ jobs.build-hudi.outputs.commit_hash }}
+        description: 'The commit hash of the hudi repo that was built'
+      hudi_utils_jar_name:
+        value: ${{ jobs.build-hudi.outputs.hudi_utils_jar_name }}
+        description: 'The name of the hudi utilities jar that was built and uploaded to nexus'
+      hudi_utils_jar_url:
+        value: ${{ jobs.build-hudi.outputs.hudi_utils_jar_url }}
+        description: 'The url of the hudi utilities jar that was built and uploaded to nexus'
+      hudi_spark_jar_name:
+        value: ${{ jobs.build-hudi.outputs.hudi_spark_jar_name }}
+        description: 'The name of the hudi spark jar that was built and uploaded to nexus'
+      hudi_spark_jar_url:
+        value: ${{ jobs.build-hudi.outputs.hudi_spark_jar_url }}
+        description: 'The url of the hudi spark jar that was built and uploaded to nexus'
+      hopsfs_version:
+        value: ${{ jobs.build-hudi.outputs.hopsfs_version }}
+        description: 'The version of hopsfs that was used to build hudi'
+      spark_pom_version_no_jira:
+        value: ${{ jobs.build-spark.outputs.pom_version_no_jira }}
+        description: 'The pom version without the jira tag'
+      spark_pom_version:
+        value: ${{ jobs.build-spark.outputs.pom_version }}
+        description: 'The pom version with the jira tag'
+      spark_commit_hash:
+        value: ${{ jobs.build-spark.outputs.commit_hash }}
+        description: 'The commit hash of the spark repo'
+      spark_tar_name:
+        value: ${{ jobs.build-spark.outputs.spark_tar_name }}
+        description: 'The name of the spark tar file'
+      spark_tar_url:
+        value: ${{ jobs.build-spark.outputs.spark_tar_url }}
+        description: 'The url of the spark tar file'
+      spark_hopsfs_version:
+        value: ${{ jobs.build-spark.outputs.hopsfs_version }}
+        description: 'The version of hopsfs used in the build'
   workflow_dispatch:
     inputs:
       ref:
