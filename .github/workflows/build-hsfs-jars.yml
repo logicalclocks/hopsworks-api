@@ -39,6 +39,7 @@ on:
         required: false
         type: string
         default: 'NOJIRA'
+  pull_request:
     
 
 # Used to avoid error on PRs
@@ -52,7 +53,26 @@ env:
   HOPSFS_URL: ${{ inputs.hopsfs-url || 'https://nexus.hops.works/repository/dev/hops-packaging-dev/HWORKS-2203/hops-3.2.0.17-EE-RC1.tgz' }}
 
 jobs:
+  build-hudi:
+    uses: logicalclocks/hudi/.github/workflows/build_hudi_with_hopsfs.yml@HWORKS-2204-vatj
+    with:
+      jira_tag: ${{ inputs.jira_tag || 'NOJIRA' }}
+      build: ${{ (github.event_name == 'pull_request' && contains(join(github.event.pull_request.labels.*.name, ','), 'build-hudi')) }}
+    secrets:
+      NEXUS_HARBOR_PASSWORD: ${{ secrets.NEXUS_HARBOR_PASSWORD }}
+  
+  build-spark:
+    uses: logicalclocks/spark/.github/workflows/build_spark_with_hopsfs.yaml@HWORKS-2203-vatj
+    with:
+      jira_tag: ${{ inputs.jira_tag || 'NOJIRA' }}
+      build: ${{ (github.event_name == 'pull_request' && contains(join(github.event.pull_request.labels.*.name, ','), 'build-spark')) }}
+    secrets:
+      NEXUS_HARBOR_PASSWORD: ${{ secrets.NEXUS_HARBOR_PASSWORD }}
+
   build-hsfs-jars:
+    needs:
+      - build-hudi
+      - build-spark
     runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
     outputs:
       pom_version: ${{ steps.prep_version.outputs.pom_version }}
@@ -76,7 +96,6 @@ jobs:
         run: |
           echo "M2_HOME var is $M2_HOME" >> $GITHUB_STEP_SUMMARY
           mkdir -p ~/.m2 && echo "<settings><servers><server><id>HopsEE</id><username>${{ vars.NEXUS_HARBOR_USER }}</username><password>${{ secrets.NEXUS_HARBOR_PASSWORD }}</password><configuration></configuration></server></servers></settings>" > ~/.m2/settings.xml
-
 
       - name: Cache maven
         id: cache-maven
