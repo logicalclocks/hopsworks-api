@@ -152,6 +152,7 @@ class FeatureGroupBase:
         storage_connector: Union[sc.StorageConnector, Dict[str, Any]] = None,
         ttl: Optional[Union[int, float, timedelta]] = None,
         ttl_enabled: Optional[bool] = None,
+        online_disk: Optional[bool] = None,
         **kwargs,
     ) -> None:
         """Initialize a feature group object.
@@ -175,6 +176,7 @@ class FeatureGroupBase:
             storage_connector: Storage connector configuration
             ttl: Time-to-live (TTL) configuration for this feature group
             ttl_enabled: Whether to enable time-to-live (TTL) for this feature group. Defaults to True if ttl is set.
+            online_disk: Whether to enable online disk for this feature group. Defaults to cluster wide configuration defined in 'featurestore_online_tablespace'
             **kwargs: Additional keyword arguments
         """
         self._version = version
@@ -206,6 +208,16 @@ class FeatureGroupBase:
             if isinstance(online_config, dict)
             else online_config
         )
+        if online_disk is not None:
+            if self._online_config is None:
+                # Make sure online config is initialized
+                self._online_config = OnlineConfig()
+
+            if online_disk:
+                self._online_config.table_space = self._variable_api.get_featurestore_online_tablespace()
+            else:
+                # An empty string is interpreted as don't set table space, while None uses the cluster default
+                self._online_config.table_space = ""
 
         if data_source:
             self._data_source = (
@@ -2597,6 +2609,7 @@ class FeatureGroup(FeatureGroupBase):
         ] = None,
         ttl: Optional[Union[int, float, timedelta]] = None,
         ttl_enabled: Optional[bool] = None,
+        online_disk: Optional[bool] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -2618,6 +2631,7 @@ class FeatureGroup(FeatureGroupBase):
             data_source=data_source,
             ttl=ttl,
             ttl_enabled=ttl_enabled,
+            online_disk=online_disk,
         )
 
         self._feature_store_name: Optional[str] = featurestore_name
@@ -4231,6 +4245,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         ] = None,
         ttl: Optional[Union[int, float, timedelta]] = None,
         ttl_enabled: Optional[bool] = None,
+        online_disk: Optional[bool] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -4252,6 +4267,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
             data_source=data_source,
             ttl=ttl,
             ttl_enabled=ttl_enabled,
+            online_disk=online_disk,
         )
 
         self._feature_store_name = featurestore_name
@@ -4765,6 +4781,7 @@ class SpineGroup(FeatureGroupBase):
                 Dict[str, Any],
             ]
         ] = None,
+        online_disk: Optional[bool] = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -4781,6 +4798,7 @@ class SpineGroup(FeatureGroupBase):
             deprecated=deprecated,
             online_config=online_config,
             data_source=data_source,
+            online_disk=online_disk,
         )
 
         self._feature_store_name = featurestore_name
