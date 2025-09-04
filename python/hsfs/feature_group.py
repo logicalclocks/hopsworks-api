@@ -176,7 +176,8 @@ class FeatureGroupBase:
             storage_connector: Storage connector configuration
             ttl: Time-to-live (TTL) configuration for this feature group
             ttl_enabled: Whether to enable time-to-live (TTL) for this feature group. Defaults to True if ttl is set.
-            online_disk: Whether to enable online disk for this feature group. Defaults to cluster wide configuration defined in 'featurestore_online_tablespace'
+            online_disk: Whether to enable online disk storage for this feature group. Overrides online_config.table_space.
+                Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
             **kwargs: Additional keyword arguments
         """
         self._version = version

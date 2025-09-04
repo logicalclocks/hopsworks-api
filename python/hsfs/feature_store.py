@@ -684,8 +684,8 @@ class FeatureStore:
                 The system time zone is in UTC. Defaults to None (no TTL).
             ttl_enabled: Optionally, enable TTL for this feature group. Defaults to True if ttl is set.
             online_disk: Optionally, specify online data storage for this feature group.
-                When set to True data will be stored on disk, instead of in memory.
-                Defaults to cluster wide configuration defined in 'featurestore_online_disk'.
+                When set to True data will be stored on disk, instead of in memory. Overrides online_config.table_space.
+                Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
         # Returns
             `FeatureGroup`. The feature group metadata object.
         """
@@ -878,8 +878,8 @@ class FeatureStore:
                 The system time zone is in UTC. Defaults to None (no TTL).
             ttl_enabled: Optionally, enable TTL for this feature group. Defaults to True if ttl is set.
             online_disk: Optionally, specify online data storage for this feature group.
-                When set to True data will be stored on disk, instead of in memory.
-                Defaults to cluster wide configuration defined in 'featurestore_online_disk'.
+                When set to True data will be stored on disk, instead of in memory. Overrides online_config.table_space.
+                Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
         # Returns
             `FeatureGroup`. The feature group metadata object.
         """
@@ -1211,8 +1211,8 @@ class FeatureStore:
                 The system time zone is in UTC. Defaults to None (no TTL).
             ttl_enabled: Optionally, enable TTL for this feature group. Defaults to True if ttl is set.
             online_disk: Optionally, specify online data storage for this feature group.
-                When set to True data will be stored on disk, instead of in memory.
-                Defaults to cluster wide configuration defined in 'featurestore_online_disk'.
+                When set to True data will be stored on disk, instead of in memory. Overrides online_config.table_space.
+                Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
 
         # Returns
             `ExternalFeatureGroup`. The external feature group metadata object.
