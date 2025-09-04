@@ -408,6 +408,49 @@ class TestFeatureGroup:
         mock_job_api.assert_called_once  # noqa: B018
         assert fg.materialization_job == mock_job
 
+    def test_feature_group_online_disk_not_set(self, mocker):
+        # Arrange
+        variable_api_mock = mocker.patch(
+            "hopsworks_common.core.variable_api.VariableApi.get_featurestore_online_tablespace",
+            return_value="ts_1",  # Simulate no tablespace set
+        )
+
+        # Act
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=2,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+        )
+
+        # Assert
+        assert variable_api_mock.call_count == 0
+        assert fg._online_config == None
+
+    def test_feature_group_online_disk_not_set_online_config(self, mocker):
+        # Arrange
+        variable_api_mock = mocker.patch(
+            "hopsworks_common.core.variable_api.VariableApi.get_featurestore_online_tablespace",
+            return_value="ts_1",
+        )
+
+        # Act
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=2,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            online_config={'table_space': 'tt', 'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
+        )
+
+        # Assert
+        assert variable_api_mock.call_count == 0
+        assert fg._online_config.to_dict() == {'onlineComments': ['NDB_TABLE=READ_BACKUP=1'], 'tableSpace': 'tt'}
+
     def test_feature_group_online_disk_true(self, mocker):
         # Arrange
         variable_api_mock = mocker.patch(
