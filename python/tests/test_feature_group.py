@@ -427,7 +427,7 @@ class TestFeatureGroup:
 
         # Assert
         assert variable_api_mock.call_count == 0
-        assert fg._online_config == None
+        assert fg._online_config is None
 
     def test_feature_group_online_disk_not_set_online_config(self, mocker):
         # Arrange
