@@ -142,3 +142,15 @@ class VariableApi:
             return self.get_variable("service_discovery_domain")
         except RestAPIError:
             return ""
+
+    def get_featurestore_online_tablespace(self) -> str:
+        """Get domain of featurestore online tablespace.
+
+        # Returns
+            `str`: The name of featurestore online tablespace, if it is set up, otherwise hopsworks default tablespace `ts_1`.
+        """
+        try:
+            tablespace = self.get_variable("featurestore_online_tablespace")
+        except RestAPIError:
+            tablespace = None
+        return tablespace or "ts_1"

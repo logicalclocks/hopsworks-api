@@ -8,7 +8,7 @@
     <version>4.6.0-SNAPSHOT</version>
 
     <properties>
-        <hops.version>3.2.0.0-SNAPSHOT</hops.version>
+        <hops.version>3.2.0.17-EE-RC1</hops.version>
         <hsfs.version>${project.version}</hsfs.version>
         <slf4j.version>1.7.30</slf4j.version>
         <maven.compiler.source>1.8</maven.compiler.source>
@@ -109,6 +109,17 @@
             <id>Hops</id>
             <name>Hops Repo</name>
             <url>https://archiva.hops.works/repository/Hops/</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+        </repository>
+        <repository>
+            <id>HopsEE</id>
+            <name>Hops Enterprise Repository</name>
+            <url>https://nexus.hops.works/repository/hops-artifacts</url>
             <releases>
                 <enabled>true</enabled>
             </releases>
