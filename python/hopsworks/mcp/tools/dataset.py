@@ -118,7 +118,7 @@ class DatasetTools:
 
         conn = client.get_connection()
         project = conn.get_project(project_name)
-        datasets = project.get_dataset_api()._list_dataset_path(
+        count, datasets = project.get_dataset_api()._list_dataset_path(
             "", dataset.Dataset, offset=offset, limit=limit
         )
 
@@ -126,14 +126,14 @@ class DatasetTools:
         return Datasets(
             datasets=[
                 Dataset(
-                    name=ds["name"],
-                    id=ds["id"],
-                    description=ds["description"] if "description" in ds else None,
-                    datasetType=ds["datasetType"],
+                    name=ds.name,
+                    id=ds.id,
+                    description=ds.description,
+                    datasetType=ds.dataset_type,
                 )
                 for ds in datasets["items"]
             ],
-            total=datasets["count"],
+            total=count,
             offset=offset,
             limit=limit,
         )
