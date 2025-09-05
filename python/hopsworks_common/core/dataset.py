@@ -27,14 +27,14 @@ class Dataset:
         id,
         name,
         description,
-        datasetType,
+        dataset_type,
         attributes: Dict[str, Any],
         **kwargs,
     ) -> None:
         self._id = id
         self._name = name
         self._description = description
-        self._datasetType = datasetType
+        self._dataset_type = dataset_type
         self._path = attributes["path"]
 
     @classmethod
@@ -57,7 +57,7 @@ class Dataset:
 
     @property
     def dataset_type(self) -> str:
-        return self._datasetType
+        return self._dataset_type
 
     @property
     def path(self) -> str:
