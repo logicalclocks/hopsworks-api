@@ -26,14 +26,13 @@ class Dataset:
         self,
         id,
         name,
-        description,
         dataset_type,
         attributes: Dict[str, Any],
         **kwargs,
     ) -> None:
         self._id = id
         self._name = name
-        self._description = description
+        self._description = kwargs.get("description", None)
         self._dataset_type = dataset_type
         self._path = attributes["path"]
 
