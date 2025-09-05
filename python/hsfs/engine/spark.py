@@ -1379,13 +1379,25 @@ class Engine:
                 f"{prefix}.session.token",
                 storage_connector.session_token,
             )
-
-        # This is the name of the property as expected from the user, without the bucket name.
-        FS_S3_ENDPOINT = "fs.s3a.endpoint"
-        if FS_S3_ENDPOINT in storage_connector.arguments:
+        if storage_connector.region:
             self._spark_context._jsc.hadoopConfiguration().set(
-                f"{prefix}.endpoint",
-                storage_connector.spark_options().get(FS_S3_ENDPOINT),
+                f"{prefix}.endpoint.region",
+                storage_connector.region,
+            )
+
+        # Forward all user-specified fs.s3a.* options to Hadoop conf
+        for key, value in storage_connector.spark_options().items():
+            if not isinstance(key, str):
+                continue
+            if not key.startswith("fs.s3a."):
+                continue
+            if value is None:
+                continue
+            # Strip the leading 'fs.s3a.' so we can prefix with the connector specific prefix
+            suffix = key.split("fs.s3a.", 1)[1]
+            self._spark_context._jsc.hadoopConfiguration().set(
+                f"{prefix}.{suffix}",
+                str(value),
             )
 
     def _setup_adls_hadoop_conf(self, storage_connector, path):
