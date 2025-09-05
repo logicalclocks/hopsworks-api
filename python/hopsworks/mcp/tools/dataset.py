@@ -79,10 +79,10 @@ class DatasetTools:
         return Datasets(
             datasets=[
                 Dataset(
-                    name=ds["name"],
-                    id=ds["id"],
-                    description=ds["description"] if "description" in ds else None,
-                    datasetType=ds["datasetType"],
+                    name=ds.name,
+                    id=ds.id,
+                    description=ds.description,
+                    datasetType=ds.dataset_type,
                 )
                 for ds in datasets
             ],

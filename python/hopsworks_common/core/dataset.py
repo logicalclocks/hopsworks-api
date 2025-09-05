@@ -24,9 +24,17 @@ import humps
 class Dataset:
     def __init__(
         self,
+        id,
+        name,
+        description,
+        datasetType,
         attributes: Dict[str, Any],
         **kwargs,
     ) -> None:
+        self._id = id
+        self._name = name
+        self._description = description
+        self._datasetType = datasetType
         self._path = attributes["path"]
 
     @classmethod
@@ -35,6 +43,21 @@ class Dataset:
         for dataset in json_decamelized:
             _ = dataset.pop("type", None)
         return [cls(**dataset) for dataset in json_decamelized]
+    @property
+    def id(self) -> str:
+        return self._id
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def description(self) -> str:
+        return self._description
+
+    @property
+    def dataset_type(self) -> str:
+        return self._datasetType
 
     @property
     def path(self) -> str:
