@@ -131,7 +131,7 @@ class DatasetTools:
                     description=ds.description,
                     datasetType=ds.dataset_type,
                 )
-                for ds in datasets["items"]
+                for ds in datasets
             ],
             total=count,
             offset=offset,
@@ -164,27 +164,27 @@ class DatasetTools:
             limit = int(limit)
 
         project = hopsworks.get_current_project()
-        files = project.get_dataset_api()._list_dataset_path(
-            path, inode.Inode, offset=offset, limit=limit
+        count, files = project.get_dataset_api()._list_dataset_path(
+            "", inode.Inode, offset=offset, limit=limit
         )
 
         # Return the file details
         return Files(
             files=[
                 File(
-                    name=f["attributes"]["name"],
-                    is_directory=f["attributes"]["dir"],
-                    owner=f["attributes"]["owner"],
-                    path=f["attributes"]["path"],
-                    permission=f["attributes"]["permission"],
-                    last_modified=f["attributes"]["modificationTime"],
-                    under_construction=f["attributes"]["underConstruction"]
-                    if "underConstruction" in f["attributes"]
+                    name=f.attributes["name"],
+                    is_directory=f.attributes["dir"],
+                    owner=f.attributes["owner"],
+                    path=f.attributes["path"],
+                    permission=f.attributes["permission"],
+                    last_modified=f.attributes["modificationTime"],
+                    under_construction=f.attributes["underConstruction"]
+                    if "underConstruction" in f.attributes
                     else None,
                 )
-                for f in files["items"]
+                for f in files
             ],
-            total=files["count"],
+            total=count,
             offset=offset,
             limit=limit,
         )

@@ -29,7 +29,7 @@ class Inode:
         tags: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> None:
-        self._path = attributes["path"]
+        self._attributes = attributes
 
     @classmethod
     def from_response_json(cls, json_dict: Dict[str, Any]) -> List[Inode]:
@@ -40,4 +40,9 @@ class Inode:
 
     @property
     def path(self) -> str:
-        return self._path
+        return self._attributes["path"]
+
+    @property
+    def attributes(self) -> str:
+        return self._attributes
+
