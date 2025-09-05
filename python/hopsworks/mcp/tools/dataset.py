@@ -71,7 +71,7 @@ class DatasetTools:
         if isinstance(limit, str):
             limit = int(limit)
 
-        datasets = project.get_dataset_api()._list_dataset_path(
+        count, datasets = project.get_dataset_api()._list_dataset_path(
             "", dataset.Dataset, offset=offset, limit=limit
         )
 
@@ -84,9 +84,9 @@ class DatasetTools:
                     description=ds["description"] if "description" in ds else None,
                     datasetType=ds["datasetType"],
                 )
-                for ds in datasets["items"]
+                for ds in datasets
             ],
-            total=datasets["count"],
+            total=count,
             offset=offset,
             limit=limit,
         )
