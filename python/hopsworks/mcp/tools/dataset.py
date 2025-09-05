@@ -172,15 +172,13 @@ class DatasetTools:
         return Files(
             files=[
                 File(
-                    name=f.attributes["name"],
-                    is_directory=f.attributes["dir"],
-                    owner=f.attributes["owner"],
-                    path=f.attributes["path"],
-                    permission=f.attributes["permission"],
-                    last_modified=f.attributes["modificationTime"],
-                    under_construction=f.attributes["underConstruction"]
-                    if "underConstruction" in f.attributes
-                    else None,
+                    name=f.name
+                    is_directory=f.dir,
+                    owner=f.owner,
+                    path=f.path,
+                    permission=f.permission,
+                    last_modified=f.modification_time,
+                    under_construction=f.under_construction,
                 )
                 for f in files
             ],

@@ -35,7 +35,7 @@ class Inode:
         self._path = attributes["path"]
         self._permission = attributes["permission"]
         self._modification_time = attributes["modification_time"]
-        self._under_construction = attributes["under_construction"]
+        self._under_construction = attributes.get("under_construction", None)
 
     @classmethod
     def from_response_json(cls, json_dict: Dict[str, Any]) -> List[Inode]:
