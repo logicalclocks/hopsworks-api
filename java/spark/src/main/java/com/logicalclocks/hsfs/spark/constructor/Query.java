@@ -73,7 +73,7 @@ public class Query extends QueryBase<Query, StreamFeatureGroup, Dataset<Row>> {
 
       DataSource dataSource = leftFeatureGroup.getDataSource();
       dataSource.setQuery(fsQuery.getStorageQuery(Storage.ONLINE));
-      return storageConnectorUtils.read(onlineConnector, dataSource, null);
+      return storageConnectorUtils.read(onlineConnector, dataSource, readOptions);
     } else {
       fsQuery.registerOnDemandFeatureGroups();
       fsQuery.registerHudiFeatureGroups(readOptions);
