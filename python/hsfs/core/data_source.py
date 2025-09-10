@@ -303,3 +303,28 @@ class DataSource:
             dict: A dictionary containing metadata about the data source.
         """
         return self._storage_connector.get_metadata(self)
+    
+    def get_feature_groups_provenance(self):
+        """Get the generated feature groups using this data source, based on explicit
+        provenance. These feature groups can be accessible or inaccessible. Explicit
+        provenance does not track deleted generated feature group links, so deleted
+        will always be empty.
+        For inaccessible feature groups, only a minimal information is returned.
+
+        # Returns
+            `Links`: the feature groups generated using this data source or `None` if none were created
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+        """
+        return self._storage_connector.get_feature_groups_provenance()
+
+    def get_feature_groups(self):
+        """Get the feature groups using this data source, based on explicit
+        provenance. Only the accessible feature groups are returned.
+        For more items use the base method - get_feature_groups_provenance
+
+        # Returns
+            `List[FeatureGroup]`: List of feature groups.
+        """
+        return self._storage_connector.get_feature_groups()
