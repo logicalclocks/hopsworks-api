@@ -319,7 +319,7 @@ class TrainingDatasetBase:
             self._data_source = data_source
         else:
             self._data_source = ds.DataSource()
-            self.storage_connector = None
+        self.storage_connector = data_source.storage_connector
 
     @property
     def storage_connector(self) -> StorageConnector:

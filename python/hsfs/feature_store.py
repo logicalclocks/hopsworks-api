@@ -1456,6 +1456,12 @@ class FeatureStore:
         label: Optional[List[str]] = None,
         transformation_functions: Optional[Dict[str, TransformationFunction]] = None,
         train_split: str = None,
+        data_source: Optional[
+            Union[
+                ds.DataSource,
+                Dict[str, Any],
+            ]
+        ] = None,
     ) -> "training_dataset.TrainingDataset":
         """Create a training dataset metadata object.
 
@@ -1497,7 +1503,7 @@ class FeatureStore:
                 will be a single file per split. Default False.
             storage_connector: Storage connector defining the sink location for the
                 training dataset, defaults to `None`, and materializes training dataset
-                on HopsFS.
+                on HopsFS. **[DEPRECATED: Use `data_source` instead.]**
             splits: A dictionary defining training dataset splits to be created. Keys in
                 the dictionary define the name of the split as `str`, values represent
                 percentage of samples in the split as `float`. Currently, only random
@@ -1507,7 +1513,7 @@ class FeatureStore:
                 storage connector points to an S3 bucket, this path can be used to
                 define a sub-directory inside the bucket to place the training dataset.
                 Defaults to `""`, saving the training dataset at the root defined by the
-                storage connector.
+                storage connector. **[DEPRECATED: Use `data_source` instead.]**
             seed: Optionally, define a seed to create the random splits with, in order
                 to guarantee reproducability, defaults to `None`.
             statistics_config: A configuration object, or a dictionary with keys
@@ -1528,17 +1534,19 @@ class FeatureStore:
             train_split: If `splits` is set, provide the name of the split that is going
                 to be used for training. The statistics of this split will be used for
                 transformation functions if necessary. Defaults to `None`.
+            data_source: The data source specifying the location of the data. Overrides the storage_connector and location arguments when specified.
 
         # Returns:
             `TrainingDataset`: The training dataset metadata object.
         """
+        if not data_source:
+            data_source = ds.DataSource(storage_connector=storage_connector, path=location)
         return training_dataset.TrainingDataset(
             name=name,
             version=version,
             description=description,
             data_format=data_format,
-            storage_connector=storage_connector,
-            location=location,
+            data_source=data_source,
             featurestore_id=self._id,
             splits=splits or {},
             seed=seed,
