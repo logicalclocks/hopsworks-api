@@ -45,7 +45,7 @@ dependencies = [
     "numpy<2",
     "pyjks",
     "mock",
-    "avro==1.11.4",
+    "avro==1.11.3",
     "PyMySQL[rsa]",
     "tzlocal",
     "fsspec",
