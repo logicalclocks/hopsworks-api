@@ -105,11 +105,7 @@ class TrainingDatasetBase:
         else:
             self._training_dataset_type = None
 
-        self.data_source = (
-            ds.DataSource.from_response_json(data_source)
-            if isinstance(data_source, dict)
-            else data_source
-        )
+        self.data_source = data_source
 
         # set up depending on user initialized or coming from backend response
         if created is None:
@@ -315,11 +311,14 @@ class TrainingDatasetBase:
 
     @data_source.setter
     def data_source(self, data_source):
-        if isinstance(data_source, ds.DataSource):
-            self._data_source = data_source
-        else:
+        self._data_source = (
+            ds.DataSource.from_response_json(data_source)
+            if isinstance(data_source, dict)
+            else data_source
+        )
+        if self._data_source is None:
             self._data_source = ds.DataSource()
-        self.storage_connector = data_source.storage_connector
+        self.storage_connector = self._data_source.storage_connector
 
     @property
     def storage_connector(self) -> StorageConnector:
