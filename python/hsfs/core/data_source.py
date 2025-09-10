@@ -303,7 +303,7 @@ class DataSource:
             dict: A dictionary containing metadata about the data source.
         """
         return self._storage_connector.get_metadata(self)
-    
+
     def get_feature_groups_provenance(self):
         """Get the generated feature groups using this data source, based on explicit
         provenance. These feature groups can be accessible or inaccessible. Explicit
