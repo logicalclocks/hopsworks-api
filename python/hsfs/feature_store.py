@@ -615,6 +615,7 @@ class FeatureStore:
         ] = None,
         ttl: Optional[Union[int, float, timedelta]] = None,
         ttl_enabled: Optional[bool] = None,
+        online_disk: Optional[bool] = None,
     ) -> feature_group.FeatureGroup:
         """Create a feature group metadata object.
 
@@ -643,7 +644,8 @@ class FeatureStore:
                     online_enabled=True,
                     event_time='date',
                     transformation_functions=transformation_functions,
-                    online_config={'table_space': 'ts_1', 'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
+                    online_config={'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
+                    online_disk=True, # Online data will be stored on disk instead of in memory
                     ttl=timedelta(days=7)  # features will be deleted after 7 days
                 )
             ```
@@ -734,6 +736,9 @@ class FeatureStore:
                 This ttl value is added to the event time of the feature group and when the system time exceeds the event time + ttl, the entries will be automatically removed.
                 The system time zone is in UTC. Defaults to None (no TTL).
             ttl_enabled: Optionally, enable TTL for this feature group. Defaults to True if ttl is set.
+            online_disk: Optionally, specify online data storage for this feature group.
+                When set to True data will be stored on disk, instead of in memory. Overrides online_config.table_space.
+                Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
         # Returns
             `FeatureGroup`. The feature group metadata object.
         """
@@ -766,6 +771,7 @@ class FeatureStore:
             data_source=data_source,
             ttl=ttl,
             ttl_enabled=ttl_enabled,
+            online_disk=online_disk,
         )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -813,6 +819,7 @@ class FeatureStore:
         ] = None,
         ttl: Optional[Union[int, float, timedelta]] = None,
         ttl_enabled: Optional[bool] = None,
+        online_disk: Optional[bool] = None,
     ) -> Union[
         feature_group.FeatureGroup,
         feature_group.ExternalFeatureGroup,
@@ -833,7 +840,8 @@ class FeatureStore:
                     online_enabled=True,
                     event_time="timestamp",
                     transformation_functions=transformation_functions,
-                    online_config={'table_space': 'ts_1', 'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
+                    online_config={'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
+                    online_disk=True, # Online data will be stored on disk instead of in memory
                     ttl=timedelta(days=30),
                     )
             ```
@@ -921,6 +929,9 @@ class FeatureStore:
                 This ttl value is added to the event time of the feature group and when the system time exceeds the event time + ttl, the entries will be automatically removed.
                 The system time zone is in UTC. Defaults to None (no TTL).
             ttl_enabled: Optionally, enable TTL for this feature group. Defaults to True if ttl is set.
+            online_disk: Optionally, specify online data storage for this feature group.
+                When set to True data will be stored on disk, instead of in memory. Overrides online_config.table_space.
+                Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
         # Returns
             `FeatureGroup`. The feature group metadata object.
         """
@@ -955,6 +966,7 @@ class FeatureStore:
                 data_source=data_source,
                 ttl=ttl,
                 ttl_enabled=ttl_enabled,
+                online_disk=online_disk,
             )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -1135,6 +1147,7 @@ class FeatureStore:
         ] = None,
         ttl: Optional[Union[int, float, timedelta]] = None,
         ttl_enabled: Optional[bool] = None,
+        online_disk: Optional[bool] = None,
     ) -> feature_group.ExternalFeatureGroup:
         """Create an external feature group metadata object.
 
@@ -1171,7 +1184,8 @@ class FeatureStore:
                     primary_key=['ss_store_sk'],
                     event_time='sale_date',
                     online_enabled=True,
-                    online_config={'table_space': 'ts_1', 'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
+                    online_config={'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
+                    online_disk=True, # Online data will be stored on disk instead of in memory
                     ttl=timedelta(days=30),
                     )
         external_fg.save()
@@ -1246,6 +1260,9 @@ class FeatureStore:
                 This ttl value is added to the event time of the feature group and when the system time exceeds the event time + ttl, the entries will be automatically removed.
                 The system time zone is in UTC. Defaults to None (no TTL).
             ttl_enabled: Optionally, enable TTL for this feature group. Defaults to True if ttl is set.
+            online_disk: Optionally, specify online data storage for this feature group.
+                When set to True data will be stored on disk, instead of in memory. Overrides online_config.table_space.
+                Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
 
         # Returns
             `ExternalFeatureGroup`. The external feature group metadata object.
@@ -1276,6 +1293,7 @@ class FeatureStore:
             data_source=data_source,
             ttl=ttl,
             ttl_enabled=ttl_enabled,
+            online_disk=online_disk,
         )
         feature_group_object.feature_store = self
         return feature_group_object
