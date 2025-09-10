@@ -49,6 +49,7 @@ from hsfs import (
 from hsfs import serving_key as skm
 from hsfs.constructor import filter, query
 from hsfs.constructor.filter import Filter, Logic
+from hsfs.core import data_source as ds
 from hsfs.core import (
     explicit_provenance,
     feature_monitoring_config_engine,
@@ -61,7 +62,6 @@ from hsfs.core import (
 )
 from hsfs.core import feature_monitoring_config as fmc
 from hsfs.core import feature_monitoring_result as fmr
-from hsfs.core import data_source as ds
 from hsfs.core.feature_logging import FeatureLogging
 from hsfs.core.feature_view_api import FeatureViewApi
 from hsfs.core.job import Job
