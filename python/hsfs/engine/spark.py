@@ -1144,18 +1144,27 @@ class Engine:
             return stream.load()
         return stream.load().select("key", "value")
 
-    def add_file(self, file):
+    def add_file(self, file, distribute=True):
         if not file:
             return file
+
+        file_name = os.path.basename(file)
+
+        # Another edge / workaround here. In k8s since the materialization doesn't work as in Yarn
+        # If you want to use the Kafka connector for instance, you need to attach the files to the Spark job
+        # from Hopsworks. This is done already in Hopsworks. When that happens, the files will be available
+        # on both drivers and executors under `/srv/hops/artifacts`. In that case, the paths are also going
+        # to be present in the APP_FILES environment variable.
+        if "APP_FILES" in os.environ and file in os.environ["APP_FILES"]:
+            return f"{os.environ['MATERIALISATION_DIR']}/{file_name}"
 
         # This is used for unit testing
         if not file.startswith("file://"):
             file = "hdfs://" + file
 
-        file_name = os.path.basename(file)
-
-        # for external clients, download the file
-        if client._is_external():
+        # for external clients, download the file using the dataset API
+        # also if the client is internal, but we only need the files on the driver
+        if client._is_external() or not distribute:
             tmp_file = f"/tmp/{file_name}"
             print("Reading key file from storage connector.")
             response = self._dataset_api.read_content(file, util.get_dataset_type(file))
@@ -1165,9 +1174,13 @@ class Engine:
 
             file = f"file://{tmp_file}"
 
-        self._spark_context.addFile(file)
-
-        return SparkFiles.get(file_name)
+        # If we need the files on the executors, then we should call addFile
+        if distribute:
+            self._spark_context.addFile(file)
+            return SparkFiles.get(file_name)
+        else:
+            # Remove the 'file://' prefix for local file paths
+            return file[7:]
 
     def profile(
         self,
@@ -1366,13 +1379,25 @@ class Engine:
                 f"{prefix}.session.token",
                 storage_connector.session_token,
             )
-
-        # This is the name of the property as expected from the user, without the bucket name.
-        FS_S3_ENDPOINT = "fs.s3a.endpoint"
-        if FS_S3_ENDPOINT in storage_connector.arguments:
+        if storage_connector.region:
             self._spark_context._jsc.hadoopConfiguration().set(
-                f"{prefix}.endpoint",
-                storage_connector.spark_options().get(FS_S3_ENDPOINT),
+                f"{prefix}.endpoint.region",
+                storage_connector.region,
+            )
+
+        # Forward all user-specified fs.s3a.* options to Hadoop conf
+        for key, value in storage_connector.spark_options().items():
+            if not isinstance(key, str):
+                continue
+            if not key.startswith("fs.s3a."):
+                continue
+            if value is None:
+                continue
+            # Strip the leading 'fs.s3a.' so we can prefix with the connector specific prefix
+            suffix = key.split("fs.s3a.", 1)[1]
+            self._spark_context._jsc.hadoopConfiguration().set(
+                f"{prefix}.{suffix}",
+                str(value),
             )
 
     def _setup_adls_hadoop_conf(self, storage_connector, path):

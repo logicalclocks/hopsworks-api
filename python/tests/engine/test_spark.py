@@ -3605,6 +3605,29 @@ class TestSpark:
         )
         assert mock_pyspark_files_get.call_args[0][0] == "test_file"
 
+    def test_add_file_if_present_in_job_configuration(self, mocker):
+        # Arrange
+        mock_pyspark_getOrCreate = mocker.patch(
+            "pyspark.sql.session.SparkSession.builder.getOrCreate"
+        )
+        mocker.patch("os.environ", {
+            "APP_FILES": "/Projects/test_file",
+            "MATERIALISATION_DIR": "/tmp/materialisation_dir"
+        })
+
+        spark_engine = spark.Engine()
+
+        # Act
+        path = spark_engine.add_file(
+            file="/Projects/test_file",
+        )
+
+        # Assert
+        assert (path == "/tmp/materialisation_dir/test_file")
+        assert (
+            mock_pyspark_getOrCreate.return_value.sparkContext.addFile.call_count == 0
+        )
+
     def test_profile(self, mocker):
         # Arrange
         mock_pyspark_getOrCreate = mocker.patch(
@@ -4399,10 +4422,13 @@ class TestSpark:
             secret_key="2",
             server_encryption_algorithm="3",
             server_encryption_key="4",
+            region="eu-west-1",
             session_token="5",
             arguments=[
                 {"name": "fs.s3a.endpoint", "value": "testEndpoint"},
                 {"name": "fs.s3a.global-conf", "value": "False"},
+                {"name": "fs.s3a.path.style.access", "value": "True"},
+                {"name": "fs.s3a.connection.timeout", "value": "200000"},
             ],
         )
 
@@ -4416,7 +4442,7 @@ class TestSpark:
         assert result == "s3a://_test_path"
         assert (
             mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.call_count
-            == 7  # Options should only be set at bucket level
+            == 11  # Options should only be set at bucket level
         )
         assert (
             call("fs.s3a.access.key", s3_connector.access_key)

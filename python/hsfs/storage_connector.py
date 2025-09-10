@@ -1153,13 +1153,9 @@ class KafkaConnector(StorageConnector):
         # KAFKA
         self._bootstrap_servers = bootstrap_servers
         self._security_protocol = security_protocol
-        self._ssl_truststore_location = engine.get_instance().add_file(
-            ssl_truststore_location
-        )
+        self._ssl_truststore_location = ssl_truststore_location
         self._ssl_truststore_password = ssl_truststore_password
-        self._ssl_keystore_location = engine.get_instance().add_file(
-            ssl_keystore_location
-        )
+        self._ssl_keystore_location = ssl_keystore_location
         self._ssl_keystore_password = ssl_keystore_password
         self._ssl_key_password = ssl_key_password
         self._ssl_endpoint_identification_algorithm = (
@@ -1203,7 +1199,36 @@ class KafkaConnector(StorageConnector):
         """Bootstrap servers string."""
         return self._options
 
-    def kafka_options(self) -> Dict[str, Any]:
+    def create_pem_files(self, kafka_options: Dict[str, Any]) -> None:
+        """
+        Create PEM (Privacy Enhanced Mail) files for Kafka SSL authentication.
+
+        This method writes the necessary PEM files for SSL authentication with Kafka,
+        using the provided keystore and truststore locations and passwords. The generated
+        file paths are stored as the following instance variables:
+
+            - self.ca_chain_path: Path to the generated CA chain PEM file.
+            - self.client_cert_path: Path to the generated client certificate PEM file.
+            - self.client_key_path: Path to the generated client key PEM file.
+
+        These files are used for configuring secure Kafka connections (e.g., with Spark or confluent_kafka).
+        The method is idempotent and will only create the files once per connector instance.
+        """
+        if not self._pem_files_created:
+            (
+                self.ca_chain_path,
+                self.client_cert_path,
+                self.client_key_path,
+            ) = client.get_instance()._write_pem(
+                kafka_options["ssl.keystore.location"],
+                kafka_options["ssl.keystore.password"],
+                kafka_options["ssl.truststore.location"],
+                kafka_options["ssl.truststore.password"],
+                f"kafka_sc_{client.get_instance()._project_id}_{self._id}",
+            )
+            self._pem_files_created = True
+
+    def kafka_options(self, distribute=True) -> Dict[str, Any]:
         """Return prepared options to be passed to kafka, based on the additional arguments.
         https://kafka.apache.org/documentation/
         """
@@ -1229,26 +1254,36 @@ class KafkaConnector(StorageConnector):
         # this option is not set and so the `not self._external_kafka` would return true
         # overwriting the user specified certificates
         if self._external_kafka is False:
-            self._ssl_truststore_location = (
+            ssl_truststore_location = (
                 client.get_instance()._get_jks_trust_store_path()
             )
-            self._ssl_truststore_password = client.get_instance()._cert_key
-            self._ssl_keystore_location = (
+            ssl_truststore_password = client.get_instance()._cert_key
+            ssl_keystore_location = (
                 client.get_instance()._get_jks_key_store_path()
             )
-            self._ssl_keystore_password = client.get_instance()._cert_key
-            self._ssl_key_password = client.get_instance()._cert_key
+            ssl_keystore_password = client.get_instance()._cert_key
+            ssl_key_password = client.get_instance()._cert_key
+        else:
+            ssl_truststore_location = engine.get_instance().add_file(
+                self._ssl_truststore_location, distribute=distribute
+            )
+            ssl_truststore_password = self._ssl_truststore_password
+            ssl_keystore_location = engine.get_instance().add_file(
+                self._ssl_keystore_location, distribute=distribute
+            )
+            ssl_keystore_password = self._ssl_keystore_password
+            ssl_key_password = self._ssl_key_password
 
-        if self._ssl_truststore_location is not None:
-            config["ssl.truststore.location"] = self._ssl_truststore_location
-        if self._ssl_truststore_password is not None:
-            config["ssl.truststore.password"] = self._ssl_truststore_password
-        if self.ssl_keystore_location is not None:
-            config["ssl.keystore.location"] = self._ssl_keystore_location
-        if self._ssl_keystore_password is not None:
-            config["ssl.keystore.password"] = self._ssl_keystore_password
-        if self._ssl_key_password is not None:
-            config["ssl.key.password"] = self._ssl_key_password
+        if ssl_truststore_location is not None:
+            config["ssl.truststore.location"] = ssl_truststore_location
+        if ssl_truststore_password is not None:
+            config["ssl.truststore.password"] = ssl_truststore_password
+        if ssl_keystore_location is not None:
+            config["ssl.keystore.location"] = ssl_keystore_location
+        if ssl_keystore_password is not None:
+            config["ssl.keystore.password"] = ssl_keystore_password
+        if ssl_key_password is not None:
+            config["ssl.key.password"] = ssl_key_password
 
         if self._external_kafka:
             warnings.warn(
@@ -1264,6 +1299,8 @@ class KafkaConnector(StorageConnector):
         Right now only producer values with Importance >= medium are implemented.
         https://docs.confluent.io/platform/current/clients/librdkafka/html/md_CONFIGURATION.html
         """
+
+        pem_files_assigned = False
         config = {}
         kafka_options = self.kafka_options()
         for key, value in kafka_options.items():
@@ -1275,23 +1312,13 @@ class KafkaConnector(StorageConnector):
                     "ssl.keystore.location",
                     "ssl.keystore.password",
                 ]
-                and not self._pem_files_created
+                and not pem_files_assigned
             ):
-                (
-                    ca_chain_path,
-                    client_cert_path,
-                    client_key_path,
-                ) = client.get_instance()._write_pem(
-                    kafka_options["ssl.keystore.location"],
-                    kafka_options["ssl.keystore.password"],
-                    kafka_options["ssl.truststore.location"],
-                    kafka_options["ssl.truststore.password"],
-                    f"kafka_sc_{client.get_instance()._project_id}_{self._id}",
-                )
-                self._pem_files_created = True
-                config["ssl.ca.location"] = ca_chain_path
-                config["ssl.certificate.location"] = client_cert_path
-                config["ssl.key.location"] = client_key_path
+                self.create_pem_files(kafka_options)
+                config["ssl.ca.location"] = self.ca_chain_path
+                config["ssl.certificate.location"] = self.client_cert_path
+                config["ssl.key.location"] = self.client_key_path
+                pem_files_assigned = True
             elif key == "sasl.jaas.config":
                 groups = re.search(
                     "(.+?) .*username=[\"'](.+?)[\"'] .*password=[\"'](.+?)[\"']",
@@ -1364,10 +1391,15 @@ class KafkaConnector(StorageConnector):
         """
         from packaging import version
 
+
+        kafka_client_supports_pem = version.parse(
+            engine.get_instance().get_spark_version()
+        ) >= version.parse("3.2.0")
+
+        pem_files_assigned = False
         spark_config = {}
-
-        kafka_options = self.kafka_options()
-
+        # Only distribute the files if the Kafka client does not support being configured with PEM content
+        kafka_options = self.kafka_options(distribute=not kafka_client_supports_pem)
         for key, value in kafka_options.items():
             if key in [
                 "ssl.truststore.location",
@@ -1375,35 +1407,23 @@ class KafkaConnector(StorageConnector):
                 "ssl.keystore.location",
                 "ssl.keystore.password",
                 "ssl.key.password",
-            ] and version.parse(
-                engine.get_instance().get_spark_version()
-            ) >= version.parse("3.2.0"):
-                # We can only use this in the newer version of Spark which depend on Kafka > 2.7.0
-                # Kafka 2.7.0 adds support for providing the SSL credentials as PEM objects.
-                if not self._pem_files_created:
-                    (
-                        ca_chain_path,
-                        client_cert_path,
-                        client_key_path,
-                    ) = client.get_instance()._write_pem(
-                        kafka_options["ssl.keystore.location"],
-                        kafka_options["ssl.keystore.password"],
-                        kafka_options["ssl.truststore.location"],
-                        kafka_options["ssl.truststore.password"],
-                        f"kafka_sc_{client.get_instance()._project_id}_{self._id}",
-                    )
-                    self._pem_files_created = True
+            ] and kafka_client_supports_pem:
+                if not pem_files_assigned:
+                    # We can only use this in the newer version of Spark which depend on Kafka > 2.7.0
+                    # Kafka 2.7.0 adds support for providing the SSL credentials as PEM objects.
+                    self.create_pem_files(kafka_options)
                     spark_config["kafka.ssl.truststore.certificates"] = self._read_pem(
-                        ca_chain_path
+                        self.ca_chain_path
                     )
                     spark_config["kafka.ssl.keystore.certificate.chain"] = (
-                        self._read_pem(client_cert_path)
+                        self._read_pem(self.client_cert_path)
                     )
                     spark_config["kafka.ssl.keystore.key"] = self._read_pem(
-                        client_key_path
+                        self.client_key_path
                     )
                     spark_config["kafka.ssl.truststore.type"] = "PEM"
                     spark_config["kafka.ssl.keystore.type"] = "PEM"
+                    pem_files_assigned = True
             else:
                 spark_config[f"{KafkaConnector.SPARK_FORMAT}.{key}"] = value
 
