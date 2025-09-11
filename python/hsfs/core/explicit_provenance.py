@@ -265,7 +265,7 @@ class Links:
                         Artifact.from_response_json(link_json["node"])
                     )
         return links
-    
+
     @staticmethod
     def __parse_training_datasets(links_json: dict, artifacts: Set[str]):
         links = Links()

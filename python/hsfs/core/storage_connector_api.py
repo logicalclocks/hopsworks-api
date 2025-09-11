@@ -146,7 +146,7 @@ class StorageConnectorApi:
             explicit_provenance.Links.Direction.DOWNSTREAM,
             explicit_provenance.Links.Type.FEATURE_GROUP,
         )
-    
+
     def get_training_datasets_provenance(self, storage_connector_instance):
         """Get the generated training datasets using this storage connector, based on explicit
         provenance. These training datasets can be accessible or inaccessible. Explicit
