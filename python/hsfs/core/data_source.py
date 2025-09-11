@@ -328,3 +328,28 @@ class DataSource:
             `List[FeatureGroup]`: List of feature groups.
         """
         return self._storage_connector.get_feature_groups()
+
+    def get_training_datasets_provenance(self):
+        """Get the generated training datasets using this data source, based on explicit
+        provenance. These training datasets can be accessible or inaccessible. Explicit
+        provenance does not track deleted generated training dataset links, so deleted
+        will always be empty.
+        For inaccessible training datasets, only a minimal information is returned.
+
+        # Returns
+            `Links`: the training datasets generated using this data source or `None` if none were created
+
+        # Raises
+            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+        """
+        return self._storage_connector.get_training_datasets_provenance()
+
+    def get_training_datasets(self):
+        """Get the training datasets using this data source, based on explicit
+        provenance. Only the accessible training datasets are returned.
+        For more items use the base method - get_training_datasets_provenance
+
+        # Returns
+            `List[TrainingDataset]`: List of training datasets.
+        """
+        return self._storage_connector.get_training_datasets()

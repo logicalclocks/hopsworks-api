@@ -146,3 +146,42 @@ class StorageConnectorApi:
             explicit_provenance.Links.Direction.DOWNSTREAM,
             explicit_provenance.Links.Type.FEATURE_GROUP,
         )
+    
+    def get_training_datasets_provenance(self, storage_connector_instance):
+        """Get the generated training datasets using this storage connector, based on explicit
+        provenance. These training datasets can be accessible or inaccessible. Explicit
+        provenance does not track deleted generated training dataset links, so deleted
+        will always be empty.
+        For inaccessible training datasets, only a minimal information is returned.
+
+        # Arguments
+            storage_connector_instance: Metadata object of storage connector.
+
+        # Returns
+            `ExplicitProvenance.Links`: the training datasets generated using this
+            storage connector
+        """
+        _client = client.get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            storage_connector_instance._featurestore_id,
+            "storageconnectors",
+            storage_connector_instance.name,
+            "provenance",
+            "links",
+        ]
+        query_params = {
+            "expand": "provenance_artifacts",
+            "upstreamLvls": 0,
+            "downstreamLvls": 1,
+        }
+        links_json = _client._send_request("GET", path_params, query_params)
+        from hsfs.core import explicit_provenance
+
+        return explicit_provenance.Links.from_response_json(
+            links_json,
+            explicit_provenance.Links.Direction.DOWNSTREAM,
+            explicit_provenance.Links.Type.TRAINING_DATASET,
+        )

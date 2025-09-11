@@ -890,14 +890,16 @@ class TrainingDataset(TrainingDatasetBase):
                 return []
             tds = []
             for td in json_decamelized["items"]:
-                td.pop("type")
-                td.pop("href")
+                td.pop("type", None)
+                td.pop("href", None)
                 cls._rewrite_location(td)
                 tds.append(cls(**td))
             return tds
+        elif isinstance(json_decamelized, dict):
+            return cls(**json_decamelized)
         else:  # backwards compatibility
             for td in json_decamelized:
-                _ = td.pop("type")
+                _ = td.pop("type", None)
                 cls._rewrite_location(td)
             return [cls(**td) for td in json_decamelized]
 
