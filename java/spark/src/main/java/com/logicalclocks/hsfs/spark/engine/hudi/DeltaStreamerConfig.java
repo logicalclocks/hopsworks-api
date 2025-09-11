@@ -145,7 +145,8 @@ public class DeltaStreamerConfig implements Serializable {
     if (metaClient.getTableConfig().contains(HoodieTableConfig.VERSION)
         && metaClient.getTableConfig().getTableVersion() != HoodieTableVersion.EIGHT) {
       migrateToVersionSix(writeOptions, metaClient, javaSparkContext);
-      metaClient.getTableConfig().setValue("hoodie.table.version", String.valueOf(HoodieTableVersion.EIGHT));
+      metaClient.getTableConfig().setValue("hoodie.table.version",
+          String.valueOf(HoodieTableVersion.EIGHT.versionCode()));
       
       new UpgradeDowngrade(metaClient, getUpdatedWriteConfig(writeOptions, metaClient),
           new HoodieSparkEngineContext(javaSparkContext),
@@ -158,7 +159,8 @@ public class DeltaStreamerConfig implements Serializable {
       JavaSparkContext jsc) {
     LOG.info("Migrating Hudi table at " + writeOptions.get(HudiEngine.HUDI_BASE_PATH) + " to version 6");
     metaClient.getTableConfig().setValue(HudiEngine.HUDI_TABLE_OPERATION, WriteOperationType.UPSERT.value());
-    metaClient.getTableConfig().setValue("hoodie.table.version", String.valueOf(HoodieTableVersion.SIX));
+    metaClient.getTableConfig().setValue("hoodie.table.version",
+        String.valueOf(HoodieTableVersion.SIX.versionCode()));
     HoodieTableConfig.update(metaClient.getStorage(), metaClient.getMetaPath(), metaClient.getTableConfig().getProps());
     
     new UpgradeDowngrade(metaClient, getUpdatedWriteConfig(writeOptions, metaClient), new HoodieSparkEngineContext(jsc),
