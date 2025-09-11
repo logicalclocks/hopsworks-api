@@ -83,7 +83,7 @@ public class TrainingDataset extends TrainingDatasetBase {
     this.eventStartTime = eventStartTime != null ? FeatureGroupUtils.getDateFromDateString(eventStartTime) : null;
     this.eventEndTime = eventEndTime != null ? FeatureGroupUtils.getDateFromDateString(eventEndTime) : null;
     this.trainingDatasetType = trainingDatasetType != null ? trainingDatasetType :
-        getTrainingDatasetType(storageConnector);
+        getTrainingDatasetType(dataSource);
     setValTestSplit(validationSize, testSize);
     setTimeSeriesSplits(timeSplitSize, trainStart, trainEnd, validationStart, validationEnd, testStart, testEnd);
     if (extraFilter != null) {

@@ -160,7 +160,7 @@ public class TrainingDatasetBase {
     this.eventStartTime = eventStartTime != null ? FeatureGroupUtils.getDateFromDateString(eventStartTime) : null;
     this.eventEndTime = eventEndTime != null ? FeatureGroupUtils.getDateFromDateString(eventEndTime) : null;
     this.trainingDatasetType = trainingDatasetType != null ? trainingDatasetType :
-        getTrainingDatasetType(storageConnector);
+        getTrainingDatasetType(dataSource);
     setValTestSplit(validationSize, testSize);
     setTimeSeriesSplits(timeSplitSize, trainStart, trainEnd, validationStart, validationEnd, testStart, testEnd);
     if (extraFilter != null) {
@@ -230,10 +230,10 @@ public class TrainingDatasetBase {
     this.label = label.stream().map(String::toLowerCase).collect(Collectors.toList());
   }
 
-  public TrainingDatasetType getTrainingDatasetType(StorageConnector storageConnector) {
-    if (storageConnector == null) {
+  public TrainingDatasetType getTrainingDatasetType(DataSource dataSource) {
+    if (dataSource == null || dataSource.getStorageConnector() == null) {
       return TrainingDatasetType.HOPSFS_TRAINING_DATASET;
-    } else if (storageConnector.getStorageConnectorType() == StorageConnectorType.HOPSFS) {
+    } else if (dataSource.getStorageConnector().getStorageConnectorType() == StorageConnectorType.HOPSFS) {
       return TrainingDatasetType.HOPSFS_TRAINING_DATASET;
     } else {
       return TrainingDatasetType.EXTERNAL_TRAINING_DATASET;
