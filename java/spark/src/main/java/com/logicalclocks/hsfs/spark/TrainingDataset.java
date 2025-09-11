@@ -67,11 +67,12 @@ public class TrainingDataset extends TrainingDatasetBase {
     this.description = description;
     this.dataFormat = dataFormat != null ? dataFormat : DataFormat.PARQUET;
     this.coalesce = coalesce != null ? coalesce : false;
-    this.location = location;
-    this.dataSource = dataSource;
-    if (dataSource == null && storageConnector != null) {
+    if (dataSource == null) {
       this.dataSource = new DataSource();
       this.dataSource.setStorageConnector(storageConnector);
+      this.dataSource.setPath(location);
+    } else {
+      this.dataSource = dataSource;
     }
     this.trainSplit = trainSplit;
     this.splits = splits == null ? Lists.newArrayList() : splits;
