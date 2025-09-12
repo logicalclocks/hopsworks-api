@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import datetime
 import warnings
-from typing import Any, Dict, List, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar, Union
 
 import pandas as pd
 from hopsworks_common import client
@@ -25,6 +25,7 @@ from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import HAS_NUMPY
 from hsfs import (
     engine,
+    feature,
     feature_group,
     feature_view,
     training_dataset_feature,
@@ -50,6 +51,10 @@ from hsfs.training_dataset_split import TrainingDatasetSplit
 if HAS_NUMPY:
     import numpy as np
 
+if TYPE_CHECKING:
+    import polars as pl
+    from hsfs.core.feature_logging import LoggingMetaData
+
 
 class FeatureViewEngine:
     ENTITY_TYPE = "featureview"
@@ -59,7 +64,7 @@ class FeatureViewEngine:
 
     _LOG_TD_VERSION = "td_version"
     _LOG_TIME = "log_time"
-    _HSML_MODEL = "hsml_model"
+    _HSML_MODEL = "hopsworks_model"
 
     def __init__(self, feature_store_id):
         self._feature_store_id = feature_store_id
@@ -923,6 +928,7 @@ class FeatureViewEngine:
         dataframe_type="default",
         transformed=True,
         transformation_context: Dict[str, Any] = None,
+        logging_data: bool = True,
     ):
         self._check_feature_group_accessibility(feature_view_obj)
 
@@ -937,21 +943,40 @@ class FeatureViewEngine:
             start_time,
             end_time,
             with_label=False,
-            primary_keys=primary_keys,
-            event_time=event_time,
-            inference_helper_columns=inference_helper_columns or not transformed,
+            primary_keys=primary_keys or logging_data,
+            event_time=event_time or logging_data,
+            inference_helper_columns=inference_helper_columns
+            or not transformed
+            or logging_data,
             training_helper_columns=False,
             training_dataset_version=training_dataset_version,
             spine=spine,
         ).read(read_options=read_options, dataframe_type=dataframe_type)
-        if transformation_functions and transformed:
-            return engine.get_instance()._apply_transformation_function(
-                transformation_functions,
-                dataset=feature_dataframe,
-                transformation_context=transformation_context,
+        if transformation_functions and (transformed or logging_data):
+            transformed_dataframe = (
+                engine.get_instance()._apply_transformation_function(
+                    transformation_functions,
+                    dataset=feature_dataframe,
+                    transformation_context=transformation_context,
+                )
             )
         else:
-            return feature_dataframe
+            transformed_dataframe = None
+
+        batch_dataframe = transformed_dataframe if transformed else feature_dataframe
+
+        if logging_data:
+            batch_dataframe = engine.get_instance().extract_logging_metadata(
+                untransformed_features=feature_dataframe,
+                transformed_features=transformed_dataframe,
+                feature_view=feature_view_obj,
+                transformed=transformed,
+                inference_helpers=inference_helper_columns,
+                event_time=event_time,
+                primary_key=primary_keys,
+            )
+
+        return batch_dataframe
 
     def transform_batch_data(self, features, transformation_functions):
         return engine.get_instance()._apply_transformation_function(
@@ -1226,8 +1251,68 @@ class FeatureViewEngine:
         else:
             return f_name
 
-    def enable_feature_logging(self, fv):
-        self._feature_view_api.enable_feature_logging(fv.name, fv.version)
+    def get_logging_feature_from_dataframe(
+        self,
+        feature_view_obj: feature_view.FeatureView,
+        dataframes: List[
+            Union[
+                pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
+            ]
+        ] = None,
+    ) -> List[feature.Feature]:
+        """
+        Function to extract features from logging features
+
+        #Arguments:
+            transformed_features : `DataFrame`. Transformed features dataframe.
+            untransformed_features : `DataFrame`. Untransformed features dataframe.
+        #Returns:
+            `List[feature.Feature]`. List of features extracted from the logging features.
+        """
+        logging_features = []
+        logging_feature_names = []
+        label_features = [
+            feature.name for feature in feature_view_obj.features if feature.label
+        ]
+        for df in dataframes:
+            if df is not None and engine.get_instance().check_supported_dataframe(df):
+                features = engine.get_instance().parse_schema_feature_group(df)
+                for feature in features:
+                    if feature.name in label_features:
+                        feature.name = "predicted_" + feature.name
+                    if feature.name not in logging_feature_names:
+                        logging_feature_names.append(feature.name)
+                        logging_features.append(feature)
+        return logging_features
+
+    def enable_feature_logging(
+        self, fv, extra_log_columns: Union[feature.Feature, Dict[str, Any]] = None
+    ):
+        """
+        Function to enable feature logging for a feature view. This function creates logging feature groups for the feature view.
+
+        #Arguments:
+            fv : `FeatureView`. Feature view object to enable feature logging for.
+            extra_log_columns : `List[feature.Feature]`. List of features to be logged.
+
+        #Returns:
+            `FeatureView`. Feature view object with feature logging enabled.
+        """
+        logging_features = (
+            [
+                feature.Feature.from_response_json(feat)
+                if isinstance(feat, dict)
+                else feat
+                for feat in extra_log_columns
+            ]
+            if extra_log_columns
+            else []
+        )
+
+        feature_logging = FeatureLogging(extra_logging_columns=logging_features)
+        self._feature_view_api.enable_feature_logging(
+            fv.name, fv.version, feature_logging
+        )
         fv.logging_enabled = True
         return fv
 
@@ -1244,6 +1329,9 @@ class FeatureViewEngine:
         self,
         fv: feature_view.FeatureView,
         feature_logging: FeatureLogging,
+        logs: Union[
+            pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
+        ] = None,
         untransformed_features: Union[
             pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
         ] = None,
@@ -1251,12 +1339,27 @@ class FeatureViewEngine:
             pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
         ] = None,
         predictions: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
+        helper_columns: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
+        request_parameters: Optional[
+            Union[pd.DataFrame, list[list], np.ndarray]
+        ] = None,
+        event_time: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
+        serving_keys: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
+        extra_logging_features: Optional[
+            Union[pd.DataFrame, list[list], np.ndarray]
+        ] = None,
+        request_id: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
         write_options: Optional[Dict[str, Any]] = None,
         training_dataset_version: Optional[int] = None,
         hsml_model=None,
         logger: FeatureLogger = None,
     ):
-        if untransformed_features is None and transformed_features is None:
+        if (
+            logs is None
+            and untransformed_features is None
+            and transformed_features is None
+            and predictions is None
+        ):
             return
 
         default_write_options = {
@@ -1265,95 +1368,296 @@ class FeatureViewEngine:
         if write_options:
             default_write_options.update(write_options)
         results = []
+        # FSTORE-1664 combines the untransformed and transformed logging feature groups.
+        # Transformed and untransformed logging features groups are retrived here to maintain backwards compatibility.
         if logger:
             logger.log(
                 **{
                     key: (
                         self._get_feature_logging_data(
-                            features_rows=features,
-                            feature_logging=feature_logging,
-                            transformed=transformed,
                             fv=fv,
+                            logging_feature_group=fg,
+                            logging_data=logs,
+                            untransformed_features=untransformed_features,
+                            transformed_features=transformed_features,
                             predictions=predictions,
+                            helper_columns=helper_columns,
+                            request_parameters=request_parameters,
+                            event_time=event_time,
+                            serving_keys=serving_keys,
+                            request_id=request_id,
+                            extra_logging_features=extra_logging_features,
                             training_dataset_version=training_dataset_version,
                             hsml_model=hsml_model,
                             return_list=True,
                         )
-                        if features
+                        if fg
                         else None
                     )
-                    for transformed, key, features in [
-                        (False, "untransformed_features", untransformed_features),
-                        (True, "transformed_features", transformed_features),
+                    for key, fg in [
+                        (
+                            "untransformed_features",
+                            feature_logging.untransformed_features,
+                        ),
+                        ("transformed_features", feature_logging.transformed_features),
                     ]
                 }
             )
 
         else:
-            for transformed, features in [
-                (False, untransformed_features),
-                (True, transformed_features),
+            for fg in [
+                feature_logging.untransformed_features,
+                feature_logging.transformed_features,
             ]:
-                fg = feature_logging.get_feature_group(transformed)
-                if features is None:
-                    continue
-                results.append(
-                    fg.insert(
-                        self._get_feature_logging_data(
-                            features_rows=features,
-                            feature_logging=feature_logging,
-                            transformed=transformed,
-                            fv=fv,
-                            predictions=predictions,
-                            training_dataset_version=training_dataset_version,
-                            hsml_model=hsml_model,
-                            return_list=False,
-                        ),
-                        write_options=default_write_options,
+                if fg:
+                    logging_df = self._get_feature_logging_data(
+                        fv=fv,
+                        logging_feature_group=fg,
+                        logging_data=logs,
+                        untransformed_features=untransformed_features,
+                        transformed_features=transformed_features,
+                        predictions=predictions,
+                        helper_columns=helper_columns,
+                        request_parameters=request_parameters,
+                        event_time=event_time,
+                        serving_keys=serving_keys,
+                        request_id=request_id,
+                        extra_logging_features=extra_logging_features,
+                        training_dataset_version=training_dataset_version,
+                        hsml_model=hsml_model,
+                        return_list=False,
                     )
-                )
+                    if engine.get_type().startswith("spark"):
+                        fg.stream = False  # Setting stream to directly write to offline logging feature group
+                    results.append(
+                        fg.insert(logging_df, write_options=default_write_options)
+                    )
         return results
 
     def _get_feature_logging_data(
         self,
-        features_rows,
-        feature_logging,
-        transformed,
-        fv,
-        predictions,
-        training_dataset_version,
-        hsml_model,
-        return_list=False,
+        fv: feature_view.FeatureView,
+        logging_feature_group: feature_group.FeatureGroup,
+        logging_data: Optional[
+            Union[
+                pd.DataFrame,
+                pl.DataFrame,
+                list[list],
+                np.ndarray,
+                TypeVar("pyspark.sql.DataFrame"),
+            ]
+        ] = None,
+        untransformed_features: Optional[
+            Union[
+                pd.DataFrame,
+                pl.DataFrame,
+                list[list],
+                np.ndarray,
+                TypeVar("pyspark.sql.DataFrame"),
+            ]
+        ] = None,
+        transformed_features: Optional[
+            Union[
+                pd.DataFrame,
+                pl.DataFrame,
+                list[list],
+                np.ndarray,
+                TypeVar("pyspark.sql.DataFrame"),
+            ]
+        ] = None,
+        predictions: Optional[
+            Union[
+                pd.DataFrame,
+                pl.DataFrame,
+                list[list],
+                np.ndarray,
+                TypeVar("pyspark.sql.DataFrame"),
+            ]
+        ] = None,
+        helper_columns: Optional[
+            Union[
+                pd.DataFrame,
+                pl.DataFrame,
+                list[list],
+                np.ndarray,
+                TypeVar("pyspark.sql.DataFrame"),
+            ]
+        ] = None,
+        request_parameters: Optional[
+            Union[
+                pd.DataFrame,
+                pl.DataFrame,
+                list[list],
+                np.ndarray,
+                TypeVar("pyspark.sql.DataFrame"),
+            ]
+        ] = None,
+        event_time: Optional[
+            Union[
+                pd.DataFrame,
+                pl.DataFrame,
+                list[list],
+                np.ndarray,
+                TypeVar("pyspark.sql.DataFrame"),
+            ]
+        ] = None,
+        serving_keys: Optional[
+            Union[
+                pd.DataFrame,
+                pl.DataFrame,
+                list[list],
+                np.ndarray,
+                TypeVar("pyspark.sql.DataFrame"),
+            ]
+        ] = None,
+        request_id: Optional[
+            Union[
+                str,
+                pd.DataFrame,
+                pl.DataFrame,
+                list[list],
+                np.ndarray,
+                TypeVar("pyspark.sql.DataFrame"),
+            ]
+        ] = None,
+        extra_logging_features: Optional[
+            Union[
+                pd.DataFrame,
+                pl.DataFrame,
+                list[list],
+                np.ndarray,
+                TypeVar("pyspark.sql.DataFrame"),
+            ]
+        ] = None,
+        training_dataset_version: Optional[int] = None,
+        hsml_model: Optional[str] = None,
+        return_list: bool = False,
     ):
-        fg = feature_logging.get_feature_group(transformed)
         training_dataset_schema = fv.get_training_dataset_schema()
+
+        logging_meta_data: LoggingMetaData = getattr(
+            logging_data, "hopsworks_logging_meta_data", None
+        )
+
+        if logging_meta_data:
+            # Setting logging data to None since all parameters required for logging are already in the metadata object.
+            logging_data = (
+                None
+                if isinstance(logging_data, list)
+                or isinstance(logging_data, np.ndarray)
+                else logging_data
+            )
+
+            transformed_features = (
+                logging_meta_data.transformed_features
+                if transformed_features is None
+                else transformed_features
+            )
+            untransformed_features = (
+                logging_meta_data.untransformed_features
+                if untransformed_features is None
+                else untransformed_features
+            )
+            serving_keys = (
+                logging_meta_data.serving_keys if serving_keys is None else serving_keys
+            )
+            helper_columns = (
+                logging_meta_data.inference_helper
+                if helper_columns is None
+                else helper_columns
+            )
+            request_parameters = (
+                logging_meta_data.request_parameters
+                if request_parameters is None
+                else request_parameters
+            )
+            event_time = (
+                logging_meta_data.event_time if event_time is None else event_time
+            )
+
         td_predictions = [
             feature for feature in training_dataset_schema if feature.label
         ]
+
         td_predictions_names = set([feature.name for feature in td_predictions])
-        if transformed:
-            td_features = [
-                feature.name
-                for feature in training_dataset_schema
-                if feature.name not in td_predictions_names
-            ]
-        else:
-            td_features = [
-                feature.name
-                for feature in fv.features
-                if feature.name not in td_predictions_names
-            ]
+
+        td_helper_columns = fv.inference_helper_columns
+
+        td_transformed_features = [
+            feature.name
+            for feature in training_dataset_schema
+            if feature.name not in td_predictions_names
+            and feature.name not in fv.training_helper_columns
+            and feature.name not in fv.inference_helper_columns
+        ]
+
+        td_features = [
+            feature.name
+            for feature in fv.features
+            if feature.name not in td_predictions_names
+            and feature.name not in fv.training_helper_columns
+            and feature.name not in fv.inference_helper_columns
+        ]
+
+        td_serving_keys = [sk.feature_name for sk in fv.serving_keys if sk.required]
+        td_request_parameters = fv.request_parameters
+        td_event_time = [fv.query._left_feature_group.event_time]
+        td_extra_logging_features = [
+            f.name for f in fv.feature_logging.extra_logging_columns
+        ]
+
+        logging_feature_group_features = [
+            feature for feature in logging_feature_group.features
+        ]
 
         if return_list:
             return engine.get_instance().get_feature_logging_list(
-                features_rows,
-                fg=fg,
-                td_features=td_features,
-                td_predictions=td_predictions,
+                logging_data=logging_data,
+                logging_feature_group_features=logging_feature_group_features,
+                transformed_features=(
+                    transformed_features,
+                    td_transformed_features,
+                    "transformed_features",
+                ),
+                untransformed_features=(
+                    untransformed_features,
+                    td_features,
+                    "untransformed_features",
+                ),
+                predictions=(predictions, list(td_predictions_names), "predictions"),
+                serving_keys=(
+                    serving_keys,
+                    td_serving_keys,
+                    "serving_keys",
+                ),
+                helper_columns=(
+                    helper_columns,
+                    td_helper_columns,
+                    "helper_columns",
+                ),
+                request_parameters=(
+                    request_parameters,
+                    td_request_parameters,
+                    "request_parameters",
+                ),
+                event_time=(
+                    event_time,
+                    td_event_time,
+                    "event_time",
+                ),
+                request_id=(
+                    [request_id] if isinstance(request_id, str) else request_id,
+                    ["request_id"],
+                    "request_id",
+                ),
+                extra_logging_features=(
+                    extra_logging_features,
+                    td_extra_logging_features,
+                    "extra_logging_features",
+                ),
                 td_col_name=FeatureViewEngine._LOG_TD_VERSION,
                 time_col_name=FeatureViewEngine._LOG_TIME,
                 model_col_name=FeatureViewEngine._HSML_MODEL,
-                predictions=predictions,
                 training_dataset_version=training_dataset_version,
                 hsml_model=self.get_hsml_model_value(hsml_model)
                 if hsml_model
@@ -1361,14 +1665,48 @@ class FeatureViewEngine:
             )
         else:
             return engine.get_instance().get_feature_logging_df(
-                features_rows,
-                fg=fg,
-                td_features=td_features,
-                td_predictions=td_predictions,
+                logging_data=logging_data,
+                logging_feature_group_features=logging_feature_group_features,
+                transformed_features=(
+                    transformed_features,
+                    td_transformed_features,
+                    "transformed_features",
+                ),
+                untransformed_features=(
+                    untransformed_features,
+                    td_features,
+                    "untransformed_features",
+                ),
+                predictions=(predictions, list(td_predictions_names), "predictions"),
+                serving_keys=(
+                    serving_keys,
+                    td_serving_keys,
+                    "serving_keys",
+                ),
+                helper_columns=(
+                    helper_columns,
+                    td_helper_columns,
+                    "helper_columns",
+                ),
+                request_parameters=(
+                    request_parameters,
+                    td_request_parameters,
+                    "request_parameters",
+                ),
+                event_time=(event_time, td_event_time, "event_time"),
+                request_id=(
+                    [request_id] if isinstance(request_id, str) else request_id,
+                    ["request_id"],
+                    "request_id",
+                ),
+                extra_logging_features=(
+                    extra_logging_features,
+                    td_extra_logging_features,
+                    "extra_logging_features",
+                ),
                 td_col_name=FeatureViewEngine._LOG_TD_VERSION,
                 time_col_name=FeatureViewEngine._LOG_TIME,
                 model_col_name=FeatureViewEngine._HSML_MODEL,
-                predictions=predictions,
                 training_dataset_version=training_dataset_version,
                 hsml_model=self.get_hsml_model_value(hsml_model)
                 if hsml_model
@@ -1414,7 +1752,10 @@ class FeatureViewEngine:
 
     @staticmethod
     def get_hsml_model_value(hsml_model):
-        return f"{hsml_model.name}_{hsml_model.version}"
+        if isinstance(hsml_model, str):
+            return hsml_model
+        else:
+            return f"{hsml_model.name}_{hsml_model.version}"
 
     def _convert_to_log_fg_filter(self, fg, fv, filter, fv_feat_name_map):
         if filter is None:
@@ -1473,11 +1814,15 @@ class FeatureViewEngine:
         self._feature_view_api.resume_feature_logging(fv.name, fv.version)
 
     def materialize_feature_logs(self, fv, wait, transform):
+        # FSTORE-1664 combines the untransformed and transformed logging feature groups.
+        # Here we are checking are fetching both transformed and untransformed logging feature groups to maintain backwards compatibility.
         if transform is None:
-            jobs = [
-                self._get_logging_fg(fv, True).materialization_job,
-                self._get_logging_fg(fv, False).materialization_job,
+            feature_logging = self.get_feature_logging(fv)
+            logging_feature_groups = [
+                feature_logging.untransformed_features,
+                feature_logging.transformed_features,
             ]
+            jobs = [fg.materialization_job for fg in logging_feature_groups if fg]
         else:
             jobs = [self._get_logging_fg(fv, transform).materialization_job]
         for job in jobs:
