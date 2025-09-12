@@ -123,7 +123,6 @@ import static org.apache.spark.sql.functions.lit;
 import static org.apache.spark.sql.functions.struct;
 
 public class SparkEngine extends EngineBase {
-
   private final StorageConnectorUtils storageConnectorUtils = new StorageConnectorUtils();
   private FeatureGroupUtils featureGroupUtils = new FeatureGroupUtils();
   private OnlineIngestionApi onlineIngestionApi = new OnlineIngestionApi();
@@ -824,7 +823,6 @@ public class SparkEngine extends EngineBase {
   public Dataset<Row> convertToDefaultDataframe(Dataset<Row> dataset) {
     Dataset<Row> sanitizedNamesDataset = dataset.select(Arrays.asList(dataset.columns()).stream().map(f ->
             col(f).alias(f.toLowerCase())).toArray(Column[]::new));
-
     // for streaming dataframes this will be handled in DeltaStreamerTransformer.java class
     if (!dataset.isStreaming()) {
       StructType schema = sanitizedNamesDataset.schema();

@@ -459,16 +459,15 @@ if __name__ == "__main__":
             update_table_schema_fg(spark, job_conf)
 
         success = True
-    except Exception:
-        # Printing stack trace of exception so that logs are not lost.
+    except Exception as e:
         print(traceback.format_exc())
     finally:
         if spark is not None:
             try:
+                spark.sparkContext._gateway.jvm.System.exit(0)
                 spark.stop()
             except Exception as e:
                 print(f"Error stopping spark session: {e}")
         if not success:
             sys.exit(1)
-
     sys.exit(0)
