@@ -504,7 +504,7 @@ class Engine:
                 aws_access_key_id=storage_connector.access_key,
                 aws_secret_access_key=storage_connector.secret_key,
                 endpoint_url=storage_connector.arguments.get("fs.s3a.endpoint"),
-                region_name=storage_connector.region
+                region_name=storage_connector.region,
             )
 
         df_list = []
@@ -1773,7 +1773,9 @@ class Engine:
         if feature_log is None and cols:
             return pd.DataFrame(columns=cols)
         if not (
-            isinstance(feature_log, (list, pd.DataFrame, pl.DataFrame))
+            isinstance(
+                feature_log, (list, pd.DataFrame, pl.DataFrame, pd.Series, pl.Series)
+            )
             or (HAS_NUMPY and isinstance(feature_log, np.ndarray))
         ):
             raise ValueError(f"Type '{type(feature_log)}' not accepted")
@@ -1789,6 +1791,10 @@ class Engine:
                 return feature_log.clone().to_pandas()
             elif isinstance(feature_log, pd.DataFrame):
                 return feature_log.copy(deep=False).reset_index(drop=True)
+            elif isinstance(feature_log, pl.Series):
+                return feature_log.to_frame().to_pandas().reset_index(drop=True)
+            elif isinstance(feature_log, pd.Series):
+                return feature_log.to_frame().reset_index(drop=True)
 
     @staticmethod
     def _validate_logging_list(feature_log, cols):
@@ -2125,6 +2131,7 @@ class Engine:
                 hsml_model=hsml_model,
             ).to_dict(orient="records")
         log_vectors: List[Dict[Any, str]] = None
+        all_missing_columns = set()
         for data, feature_names, log_component_name in [
             (logging_data, logging_feature_group_feature_names, "logging_data"),
             transformed_features,
@@ -2140,13 +2147,29 @@ class Engine:
             print(f"{data=}, {feature_names=}, {log_component_name=}")
             # convert features to dict
             if not data:
+                all_missing_columns.update(set(feature_names))
                 continue
             try:
+                # Check and handle cases for a single row.
+                # Check if data is a list
+                if isinstance(data, (list)):
+                    # If not all elements in the row are list or dict, then the data can be single row or a single column.
+                    if not all(isinstance(element, (list, dict)) for element in data):
+                        # If length of data is same as feature names, then it should be a single row else it is a single column.
+                        if len(data) == len(feature_names):
+                            data = [data]
+                        else:
+                            data = [[item] for item in data]
+                # If data is dictionary, then it should be a dictionary representing a single row
+                elif isinstance(data, dict):
+                    data = [data]
+                print(f"cleaned_{data=}, {feature_names=}, {log_component_name=}")
                 if not all(isinstance(row, dict) for row in data):
                     Engine._validate_logging_list(data, feature_names)
                 else:
                     for row in data:
                         missing_columns = set(feature_names).difference(set(row.keys()))
+                        all_missing_columns.update(missing_columns)
                         additional_logging_features = set(row.keys()).difference(
                             (feature_names)
                         )
@@ -2172,14 +2195,12 @@ class Engine:
                     dict(zip(feature_names, row)) if not isinstance(row, dict) else row
                     for row in data
                 ]
-            elif len(data) == 1 and len(log_vectors) > 1:
+            elif len(data) == 1:
                 for log_vector in log_vectors:
                     log_vector.update(
-                        dict(
-                            zip(feature_names, data[0])
-                            if not isinstance(data, dict)
-                            else data
-                        )
+                        dict(zip(feature_names, data[0]))
+                        if not isinstance(data[0], dict)
+                        else data[0]
                     )
             elif len(data) != len(log_vectors):
                 if len(log_vectors) != len(data):
@@ -2205,6 +2226,7 @@ class Engine:
 
         # Create a json column for request parameters
         _, request_parameter_names, _ = request_parameters
+        print(f"{all_missing_columns=}")
         if request_parameter_names:
             for log_vector in log_vectors:
                 avaiable_request_parameters = [
@@ -2219,6 +2241,8 @@ class Engine:
                     for feature in avaiable_request_parameters:
                         if feature not in logging_feature_group_feature_names:
                             _ = log_vector.pop(feature)
+                else:
+                    log_vector["request_parameters"] = "{}"
 
         # get metadata
         for row in log_vectors:
@@ -2231,6 +2255,13 @@ class Engine:
                     hsml_model=hsml_model,
                 )
             )
+
+        # set missing columns to None
+        for row in log_vectors:
+            for col in all_missing_columns:
+                if col not in row:
+                    row[col] = None
+
         return log_vectors
 
     @staticmethod
