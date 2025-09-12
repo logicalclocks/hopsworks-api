@@ -137,10 +137,6 @@ public abstract class FeatureGroupBase<T> {
 
   @Getter
   @Setter
-  protected StorageConnector storageConnector;
-
-  @Getter
-  @Setter
   protected DataSource dataSource;
 
   @JsonIgnore

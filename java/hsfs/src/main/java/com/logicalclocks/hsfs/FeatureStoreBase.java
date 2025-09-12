@@ -206,6 +206,34 @@ public abstract class FeatureStoreBase<T2 extends QueryBase> {
   }
 
   /**
+   * Get a previously created data source from the feature store.
+   *
+   * <p>data sources encapsulate all information needed for the execution engine to read and write to a specific
+   * storage.
+   *
+   * <p>If you want to connect to the online feature store, see the getOnlineDataSource` method to get the
+   * JDBC connector for the Online Feature Store.
+   *
+   * <pre>
+   * {@code
+   *        // get feature store handle
+   *        FeatureStore fs = HopsworksConnection.builder().build().getFeatureStore();
+   *        DataSource ds = fs.getDataSource("ds_name");
+   * }
+   * </pre>
+   *
+   * @param name Name of the data source to retrieve.
+   * @return DataSource Data source object.
+   * @throws FeatureStoreException If unable to retrieve DataSource from the feature store.
+   * @throws IOException Generic IO exception.
+   */
+  public DataSource getDataSource(String name) throws FeatureStoreException, IOException {
+    DataSource dataSource = new DataSource();
+    dataSource.setStorageConnector(getStorageConnector(name));
+    return dataSource;
+  }
+
+  /**
    * Get a previously created HopsFs compliant storage connector from the feature store.
    *
    * <pre>
