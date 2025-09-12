@@ -15,10 +15,14 @@
 #
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any, Dict
 
 from hopsworks_common import client
 from hsfs import decorators, storage_connector
+
+
+if TYPE_CHECKING:
+    from hsfs.core.explicit_provenance import Links
 
 
 class StorageConnectorApi:

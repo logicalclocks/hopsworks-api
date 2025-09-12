@@ -22,7 +22,7 @@ import posixpath
 import re
 import warnings
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar, Union
 
 import humps
 import pandas as pd
@@ -39,6 +39,11 @@ if HAS_NUMPY:
 
 if HAS_POLARS:
     import polars as pl
+
+if TYPE_CHECKING:
+    from hsfs.core.explicit_provenance import Links
+    from hsfs.feature_group import FeatureGroup
+    from hsfs.training_dataset import TrainingDataset
 
 _logger = logging.getLogger(__name__)
 

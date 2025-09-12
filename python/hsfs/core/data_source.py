@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 from typing import (
+    TYPE_CHECKING,
     Any,
     Dict,
     List,
@@ -30,6 +31,11 @@ from hsfs import storage_connector as sc
 from hsfs.core import data_source_api
 from hsfs.core import data_source_data as dsd
 
+
+if TYPE_CHECKING:
+    from hsfs.core.explicit_provenance import Links
+    from hsfs.feature_group import FeatureGroup
+    from hsfs.training_dataset import TrainingDataset
 
 class DataSource:
     """
