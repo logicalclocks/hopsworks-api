@@ -215,7 +215,7 @@ class HudiEngine:
             return
         write_options = copy.deepcopy(write_options)
         write_options[self.HUDI_BASE_PATH] = base_path
-        spark_context._jvm.com.logicalclocks.hsfs.spark.engine.hudi.DeltaStreamerConfig().migrateTable(
+        spark_context._jvm.com.logicalclocks.hsfs.spark.engine.hudi.TableMigrateUtils().migrateTable(
             write_options, spark_context._jsc
         )
 
