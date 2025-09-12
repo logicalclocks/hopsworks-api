@@ -122,9 +122,14 @@ public class MainClass {
       }
       success = true;
     } catch (Exception e) {
-      LOGGER.error("Job failed: ", e.getMessage());
       e.printStackTrace();
     } finally {
+      LOGGER.info("Closing spark session...");
+      try {
+        SparkEngine.getInstance().closeSparkSession();
+      } catch (Exception e) {
+        LOGGER.error("Error closing spark session", e);
+      }
       if (!success) {
         System.exit(1);
       }
