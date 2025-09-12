@@ -182,9 +182,11 @@ class HudiEngine:
             self.HUDI_TABLE_NAME: table_name,
             self.HUDI_TABLE_TYPE: self.HUDI_COPY_ON_WRITE,
             self.HUDI_TABLE_STORAGE_TYPE: self.HUDI_COPY_ON_WRITE,
-            self.HIVE_PARTITION_EXTRACTOR_CLASS_OPT_KEY: self.DEFAULT_HIVE_PARTITION_EXTRACTOR_CLASS_OPT_VAL
-            if len(partition_key) >= 1
-            else self.HIVE_NON_PARTITION_EXTRACTOR_CLASS_OPT_VAL,
+            self.HIVE_PARTITION_EXTRACTOR_CLASS_OPT_KEY: (
+                self.DEFAULT_HIVE_PARTITION_EXTRACTOR_CLASS_OPT_VAL
+                if len(partition_key) >= 1
+                else self.HIVE_NON_PARTITION_EXTRACTOR_CLASS_OPT_VAL
+            ),
             self.HUDI_HIVE_SYNC_ENABLE: str(hive_sync).lower(),
             self.HUDI_HIVE_SYNC_MODE: self.HUDI_HIVE_SYNC_MODE_VAL,
             self.HUDI_HIVE_SYNC_DB: self._feature_store_name,
@@ -202,7 +204,7 @@ class HudiEngine:
             hudi_options.update(write_options)
 
         return hudi_options
-    
+
     def _migrate_table(self, spark_context, write_options, base_path):
         write_options = copy.deepcopy(write_options)
         write_options[self.HUDI_BASE_PATH] = base_path
