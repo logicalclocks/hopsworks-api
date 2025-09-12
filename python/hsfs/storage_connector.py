@@ -203,7 +203,7 @@ class StorageConnector(ABC):
         """
         return {}
 
-    def get_feature_groups_provenance(self):
+    def get_feature_groups_provenance(self) -> "Links":
         """Get the generated feature groups using this storage connector, based on explicit
         provenance. These feature groups can be accessible or inaccessible. Explicit
         provenance does not track deleted generated feature group links, so deleted
@@ -220,7 +220,7 @@ class StorageConnector(ABC):
         if not links.is_empty():
             return links
 
-    def get_feature_groups(self):
+    def get_feature_groups(self) -> List["FeatureGroup"]:
         """Get the feature groups using this storage connector, based on explicit
         provenance. Only the accessible feature groups are returned.
         For more items use the base method - get_feature_groups_provenance
@@ -242,7 +242,7 @@ class StorageConnector(ABC):
         else:
             return []
 
-    def get_training_datasets_provenance(self):
+    def get_training_datasets_provenance(self) -> "Links":
         """Get the generated training datasets using this storage connector, based on explicit
         provenance. These training datasets can be accessible or inaccessible. Explicit
         provenance does not track deleted generated training dataset links, so deleted
@@ -259,7 +259,7 @@ class StorageConnector(ABC):
         if not links.is_empty():
             return links
 
-    def get_training_datasets(self):
+    def get_training_datasets(self) -> List["TrainingDataset"]:
         """Get the training datasets using this storage connector, based on explicit
         provenance. Only the accessible training datasets are returned.
         For more items use the base method - get_training_datasets_provenance
