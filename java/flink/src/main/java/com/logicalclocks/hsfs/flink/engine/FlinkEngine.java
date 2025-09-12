@@ -99,11 +99,15 @@ public class FlinkEngine extends EngineBase {
                             streamFeatureGroup.getAvroSchema(),
                             streamFeatureGroup.getEncodedAvroSchema(),
                             complexFeatureSchemas))
+                    .name("Mapping POJO Objects to Avro")
+                    .uid(getUid("mapPojoAvro", streamFeatureGroup))
                     .returns(
                             new GenericRecordAvroTypeInfo(streamFeatureGroup.getDeserializedEncodedAvroSchema())
                     );
 
-    return avroRecordDataStream.sinkTo(sink);
+    return avroRecordDataStream.sinkTo(sink)
+        .name("Sink feature data to Kafka")
+        .uid(getUid("sink", streamFeatureGroup));
   }
 
   @Override
@@ -215,5 +219,11 @@ public class FlinkEngine extends EngineBase {
   @VisibleForTesting
   public void setStorageConnectorApi(StorageConnectorApi storageConnectorApi) {
     this.storageConnectorApi = storageConnectorApi;
+  }
+
+  private String getUid(String operation, StreamFeatureGroup streamFeatureGroup) {
+    return operation
+        + "_" + streamFeatureGroup.getFeatureStore().getProjectId()
+        + "_" + streamFeatureGroup.getId();
   }
 }
