@@ -20,6 +20,7 @@ from typing import Any, Dict
 from hopsworks_common import client
 from hsfs import decorators, storage_connector
 
+
 class StorageConnectorApi:
     @decorators.catch_not_found(
         "hsfs.storage_connector.StorageConnector", fallback_return=None
