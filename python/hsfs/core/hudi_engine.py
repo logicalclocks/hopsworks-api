@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from hsfs import feature_group_commit, util
 from hsfs.core import feature_group_api
+import copy
 
 
 class HudiEngine:
@@ -28,6 +29,7 @@ class HudiEngine:
         "_hoodie_commit_seqno",
     ]
 
+    HUDI_BASE_PATH = "hoodie.base.path"
     HUDI_SPARK_FORMAT = "org.apache.hudi"
     HUDI_TABLE_NAME = "hoodie.table.name"
     HUDI_TABLE_TYPE = "hoodie.datasource.write.table.type"
@@ -130,6 +132,7 @@ class HudiEngine:
         location = self._feature_group.prepare_spark_location()
 
         hudi_options = self._setup_hudi_write_opts(operation, write_options)
+        self._migrate_table(self._spark_context, hudi_options, location)
         dataset.write.format(HudiEngine.HUDI_SPARK_FORMAT).options(**hudi_options).mode(
             save_mode
         ).save(location)
@@ -199,6 +202,13 @@ class HudiEngine:
             hudi_options.update(write_options)
 
         return hudi_options
+    
+    def _migrate_table(self, spark_context, write_options, base_path):
+        write_options = copy.deepcopy(write_options)
+        write_options[self.HUDI_BASE_PATH] = base_path
+        spark_context._jvm.com.logicalclocks.hsfs.spark.engine.hudi.DeltaStreamerConfig().migrateTable(
+            write_options, spark_context._jsc
+        )
 
     def _setup_hudi_read_opts(self, hudi_fg_alias, read_options):
         if hudi_fg_alias.left_feature_group_end_timestamp is None and (
