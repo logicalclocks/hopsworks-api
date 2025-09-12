@@ -1358,6 +1358,7 @@ class FeatureViewEngine:
             logs is None
             and untransformed_features is None
             and transformed_features is None
+            and predictions is None
         ):
             return
 
@@ -1511,6 +1512,7 @@ class FeatureViewEngine:
         ] = None,
         request_id: Optional[
             Union[
+                str,
                 pd.DataFrame,
                 pl.DataFrame,
                 list[list],
@@ -1643,7 +1645,11 @@ class FeatureViewEngine:
                     td_event_time,
                     "event_time",
                 ),
-                request_id=(request_id, ["request_id"], "request_id"),
+                request_id=(
+                    [request_id] if isinstance(request_id, str) else request_id,
+                    ["request_id"],
+                    "request_id",
+                ),
                 extra_logging_features=(
                     extra_logging_features,
                     td_extra_logging_features,
@@ -1688,7 +1694,11 @@ class FeatureViewEngine:
                     "request_parameters",
                 ),
                 event_time=(event_time, td_event_time, "event_time"),
-                request_id=(request_id, ["request_id"], "request_id"),
+                request_id=(
+                    [request_id] if isinstance(request_id, str) else request_id,
+                    ["request_id"],
+                    "request_id",
+                ),
                 extra_logging_features=(
                     extra_logging_features,
                     td_extra_logging_features,
@@ -1742,7 +1752,10 @@ class FeatureViewEngine:
 
     @staticmethod
     def get_hsml_model_value(hsml_model):
-        return f"{hsml_model.name}_{hsml_model.version}"
+        if isinstance(hsml_model, str):
+            return hsml_model
+        else:
+            return f"{hsml_model.name}_{hsml_model.version}"
 
     def _convert_to_log_fg_filter(self, fg, fv, filter, fv_feat_name_map):
         if filter is None:

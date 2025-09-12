@@ -3762,6 +3762,21 @@ class FeatureView:
         self._feature_logging = self._feature_view_engine.get_feature_logging(fv)
         return fv
 
+    def init_feature_logger(self, feature_logger: FeatureLogger) -> None:
+        """Initialize the feature logger.
+
+        # Arguments
+            feature_logger: The logger to be used for logging features.
+        """
+        if feature_logger:
+            self._feature_logger = feature_logger
+            if not self.logging_enabled:
+                self.enable_logging()
+            self._feature_logger.init(self)
+        else:
+            # reset feature logger in case init_serving is called again without feature logger
+            self._feature_logger = None
+
     def log(
         self,
         logging_data: Union[
@@ -3795,7 +3810,7 @@ class FeatureView:
         request_id: Union[str, list[str]] = None,
         write_options: Optional[Dict[str, Any]] = None,
         training_dataset_version: Optional[int] = None,
-        model: Model = None,
+        model: Union[str, Model] = None,
     ) -> Optional[list[Job]]:
         """Log features and optionally predictions for the current feature view. The logged features are written periodically to the offline store. If you need it to be available immediately, call `materialize_log`.
 
