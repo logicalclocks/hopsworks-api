@@ -136,7 +136,7 @@ public class DeltaStreamerConfig implements Serializable {
     }
   }
 
-  private void migrateTable(Map<String, String> writeOptions, JavaSparkContext javaSparkContext) {
+  public void migrateTable(Map<String, String> writeOptions, JavaSparkContext javaSparkContext) {
     HoodieTableMetaClient metaClient =
         HoodieTableMetaClient.builder()
             .setConf(HadoopFSUtils.getStorageConfWithCopy(javaSparkContext.hadoopConfiguration()))
@@ -187,7 +187,7 @@ public class DeltaStreamerConfig implements Serializable {
       HoodieTableMetaClient metaClient) {
     Properties properties = new Properties();
     for (Map.Entry<String, String> entry : writeOptions.entrySet()) {
-      properties.setProperty(entry.getKey(), entry.getValue());
+      properties.setProperty(entry.getKey(), String.valueOf(entry.getValue()));
     }
     properties.setProperty("hoodie.allow.empty.commit", "true");
     properties.setProperty("hoodie.datasource.meta.sync.base.path", writeOptions.get(HudiEngine.HUDI_BASE_PATH));
