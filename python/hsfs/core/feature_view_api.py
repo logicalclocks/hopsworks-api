@@ -228,6 +228,16 @@ class FeatureViewApi:
         inference_helper_columns: bool,
         logging_meta_data: bool = False,
     ) -> List["serving_prepared_statement.ServingPreparedStatement"]:
+        """
+        Get the prepared statement for fetching feature vectors.
+
+        # Arguments
+            name : `str`. Name of the feature view.
+            version : `int`. Version of the feature view.
+            batch : `bool`. Whether to get the prepared statement for batch feature vector retrieval.
+            inference_helper_columns : `bool`. Whether to include inference helper columns in the prepared statement.
+            logging_meta_data : `bool`. Whether to include logging meta data in the prepared statement. i.e return feature vector along with inference helper columns and event time of the root feature group.
+        """
         path = self._base_path + [
             name,
             self._VERSION,

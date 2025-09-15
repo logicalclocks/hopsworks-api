@@ -1629,7 +1629,7 @@ class Engine:
         )
 
         # Setting data directly in spark dataframe since spark dataframe cannot be created directly using a constructor
-        batch_dataframe.hopsworks_logging_meta_data = logging_meta_data
+        batch_dataframe.hopsworks_logging_metadata = logging_meta_data
 
         return batch_dataframe
 

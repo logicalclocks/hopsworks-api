@@ -1536,7 +1536,7 @@ class FeatureViewEngine:
         training_dataset_schema = fv.get_training_dataset_schema()
 
         logging_meta_data: LoggingMetaData = getattr(
-            logging_data, "hopsworks_logging_meta_data", None
+            logging_data, "hopsworks_logging_metadata", None
         )
 
         if logging_meta_data:
