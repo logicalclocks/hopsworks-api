@@ -17,9 +17,10 @@ from __future__ import annotations
 
 import copy
 import os
+from urllib.parse import unquote, urlsplit
+
 from hsfs import feature_group_commit, util
 from hsfs.core import dataset_api, feature_group_api
-from urllib.parse import urlsplit, unquote
 
 
 class HudiEngine:
