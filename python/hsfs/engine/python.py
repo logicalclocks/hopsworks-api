@@ -272,7 +272,7 @@ class Engine:
 
         extended_type = create_extended_type(type(batch_dataframe))
         batch_dataframe = extended_type(batch_dataframe)
-        batch_dataframe.hopsworks_logging_meta_data = logging_meta_data
+        batch_dataframe.hopsworks_logging_metadata = logging_meta_data
 
         return batch_dataframe
 
