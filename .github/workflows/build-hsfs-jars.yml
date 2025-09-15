@@ -150,6 +150,12 @@ jobs:
       jira_tag: ${{ steps.extract_jira_tag.outputs.jira_tag }}
       hsfs_tar_name: ${{ steps.prep_version.outputs.hsfs_tar_name }}
       hsfs_tar_url: ${{ steps.prep_version.outputs.hsfs_tar_url }}
+      hsfs_utils_python_name: ${{ steps.prep_version.outputs.hsfs_utils_python_name }}
+      hsfs_utils_python_url: ${{ steps.prep_version.outputs.hsfs_utils_python_url }}
+      hsfs_jar_url: ${{ steps.prep_version.outputs.hsfs_jar_url }}
+      hsfs_jar_with_dependencies_url: ${{ steps.prep_version.outputs.hsfs_jar_with_dependencies_url }}
+      hsfs_utils_jar_url: ${{ steps.prep_version.outputs.hsfs_utils_jar_url }}
+      hsfs_utils_jar_with_dependencies_url: ${{ steps.prep_version.outputs.hsfs_utils_jar_with_dependencies_url }}
     steps:
       - name: Checkout hopsworks-api repo
         uses: actions/checkout@v4
@@ -203,12 +209,14 @@ jobs:
           HSFS_SPARK_JAR_NAME=hsfs-spark-spark3.5-${POM_VERSION}.jar
           HSFS_SPARK_JAR_WITH_DEPENDENCIES_NAME=hsfs-spark-spark3.5-${POM_VERSION}-jar-with-dependencies.jar
           HSFS_UTILS_JAR_NAME=hsfs-utils-${POM_VERSION}.jar
+          HSFS_UTILS_PYTHON_NAME=hsfs_utils-${POM_VERSION}.py
           HSFS_JAR_URL="${{ vars.NEXUS_DEV_SPARK_URL }}/${JIRA_TAG}/${HSFS_JAR_NAME}"
           HSFS_JAR_WITH_DEPENDENCIES_URL="${{ vars.NEXUS_DEV_SPARK_URL }}/${JIRA_TAG}/${HSFS_JAR_WITH_DEPENDENCIES_NAME}"
           HSFS_SPARK_JAR_URL="${{ vars.NEXUS_DEV_SPARK_URL }}/${JIRA_TAG}/${HSFS_SPARK_JAR_NAME}"
           HSFS_SPARK_JAR_WITH_DEPENDENCIES_URL="${{ vars.NEXUS_DEV_SPARK_URL }}/${JIRA_TAG}/${HSFS_SPARK_JAR_WITH_DEPENDENCIES_NAME}"
           HSFS_UTILS_JAR_URL="${{ vars.NEXUS_DEV_SPARK_URL }}/${JIRA_TAG}/${HSFS_UTILS_JAR_NAME}"
           HSFS_UTILS_JAR_WITH_DEPENDENCIES_URL="${{ vars.NEXUS_DEV_SPARK_URL }}/${JIRA_TAG}/${HSFS_UTILS_JAR_WITH_DEPENDENCIES_NAME}"
+          HSFS_UTILS_PYTHON_URL="${{ vars.NEXUS_DEV_SPARK_URL }}/${JIRA_TAG}/${HSFS_UTILS_PYTHON_NAME}"
 
           echo "POM_VERSION=${POM_VERSION}" >> $GITHUB_ENV
           echo "COMMIT_HASH=$COMMIT_HASH" >> $GITHUB_ENV
@@ -216,6 +224,8 @@ jobs:
           echo "HSFS_JAR_URL=${HSFS_JAR_URL}" >> $GITHUB_ENV
           echo "HSFS_JAR_WITH_DEPENDENCIES_NAME=${HSFS_JAR_WITH_DEPENDENCIES_NAME}" >> $GITHUB_ENV
           echo "HSFS_JAR_WITH_DEPENDENCIES_URL=${HSFS_JAR_WITH_DEPENDENCIES_URL}" >> $GITHUB_ENV
+          echo "HSFS_UTILS_PYTHON_NAME=${HSFS_UTILS_PYTHON_NAME}" >> $GITHUB_ENV
+          echo "HSFS_UTILS_PYTHON_URL=${HSFS_UTILS_PYTHON_URL}" >> $GITHUB_ENV
           echo "HSFS_UTILS_JAR_NAME=${HSFS_UTILS_JAR_NAME}" >> $GITHUB_ENV
           echo "HSFS_UTILS_JAR_URL=${HSFS_UTILS_JAR_URL}" >> $GITHUB_ENV
           echo "HSFS_UTILS_JAR_WITH_DEPENDENCIES_NAME=${HSFS_UTILS_JAR_WITH_DEPENDENCIES_NAME}" >> $GITHUB_ENV
@@ -232,6 +242,8 @@ jobs:
           echo "HSFS_JAR_URL=${HSFS_JAR_URL}" >> $GITHUB_STEP_SUMMARY
           echo "HSFS_JAR_WITH_DEPENDENCIES_NAME=${HSFS_JAR_WITH_DEPENDENCIES_NAME}" >> $GITHUB_STEP_SUMMARY
           echo "HSFS_JAR_WITH_DEPENDENCIES_URL=${HSFS_JAR_WITH_DEPENDENCIES_URL}" >> $GITHUB_STEP_SUMMARY
+          echo "HSFS_UTILS_PYTHON_NAME=${HSFS_UTILS_PYTHON_NAME}" >> $GITHUB_STEP_SUMMARY
+          echo "HSFS_UTILS_PYTHON_URL=${HSFS_UTILS_PYTHON_URL}" >> $GITHUB_STEP_SUMMARY
           echo "HSFS_UTILS_JAR_NAME=${HSFS_UTILS_JAR_NAME}" >> $GITHUB_STEP_SUMMARY
           echo "HSFS_UTILS_JAR_URL=${HSFS_UTILS_JAR_URL}" >> $GITHUB_STEP_SUMMARY
           echo "HSFS_UTILS_JAR_WITH_DEPENDENCIES_NAME=${HSFS_UTILS_JAR_WITH_DEPENDENCIES_NAME}" >> $GITHUB_STEP_SUMMARY
@@ -247,6 +259,8 @@ jobs:
           echo "HSFS_JAR_URL=${HSFS_JAR_URL}" >> $GITHUB_OUTPUT
           echo "HSFS_JAR_WITH_DEPENDENCIES_NAME=${HSFS_JAR_WITH_DEPENDENCIES_NAME}" >> $GITHUB_OUTPUT
           echo "HSFS_JAR_WITH_DEPENDENCIES_URL=${HSFS_JAR_WITH_DEPENDENCIES_URL}" >> $GITHUB_OUTPUT
+          echo "HSFS_UTILS_PYTHON_NAME=${HSFS_UTILS_PYTHON_NAME}" >> $GITHUB_OUTPUT
+          echo "HSFS_UTILS_PYTHON_URL=${HSFS_UTILS_PYTHON_URL}" >> $GITHUB_OUTPUT
           echo "HSFS_UTILS_JAR_NAME=${HSFS_UTILS_JAR_NAME}" >> $GITHUB_OUTPUT
           echo "HSFS_UTILS_JAR_URL=${HSFS_UTILS_JAR_URL}" >> $GITHUB_OUTPUT
           echo "HSFS_UTILS_JAR_WITH_DEPENDENCIES_NAME=${HSFS_UTILS_JAR_WITH_DEPENDENCIES_NAME}" >> $GITHUB_OUTPUT
@@ -310,6 +324,7 @@ jobs:
         shell: bash
         working-directory: ${{ github.workspace }}/hopsworks-api/utils/java
         run: |
+          curl -u ${{ vars.NEXUS_HARBOR_USER }}:${{ secrets.NEXUS_HARBOR_PASSWORD }} --upload-file ../python/${HSFS_UTILS_PYTHON_NAME} "${HSFS_UTILS_PYTHON_URL}"
           curl -u ${{ vars.NEXUS_HARBOR_USER }}:${{ secrets.NEXUS_HARBOR_PASSWORD }} --upload-file target/${HSFS_UTILS_JAR_WITH_DEPENDENCIES_NAME} "${HSFS_UTILS_JAR_WITH_DEPENDENCIES_URL}"
           curl -u ${{ vars.NEXUS_HARBOR_USER }}:${{ secrets.NEXUS_HARBOR_PASSWORD }} --upload-file target/${HSFS_UTILS_JAR_NAME} "${HSFS_UTILS_JAR_URL}"
 
