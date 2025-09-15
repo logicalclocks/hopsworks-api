@@ -218,6 +218,13 @@ class TestHudiEngine:
             "hoodie.table.name": "test_1",
             "hoodie.upsert.shuffle.parallelism": "5",
             "test_name": "test_value",
+            "hoodie.table.base.file.format": "PARQUET",
+            "hoodie.table.recordkey.fields": "key1,key2",
+            "hoodie.table.partition.fields": "key3,key4",
+            "hoodie.table.keygenerator.class": "org.apache.hudi.keygen.CustomKeyGenerator",
+            "hoodie.table.precombine.field": "key1",
+            "hoodie.datasource.hive_sync.use_jdbc": "false",
+            "hoodie.datasource.hive_sync.auto_create_database": "false",
         }
 
     def test_write_hudi_dataset_hudi_precombine_key(self, mocker):
