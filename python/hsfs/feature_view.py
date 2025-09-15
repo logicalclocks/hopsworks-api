@@ -134,7 +134,7 @@ class FeatureView:
         featurestore_name: Optional[str] = None,
         serving_keys: Optional[List[skm.ServingKey]] = None,
         logging_enabled: Optional[bool] = False,
-        extra_log_columns: Optional[List[Feature], Dict[str, str]] = None,
+        extra_log_columns: Optional[Union[List[Feature], Dict[str, str]]] = None,
         **kwargs,
     ) -> None:
         self._name = name
@@ -554,7 +554,7 @@ class FeatureView:
         on_demand_features: Optional[bool] = True,
         request_parameters: Optional[Dict[str, Any]] = None,
         transformation_context: Dict[str, Any] = None,
-        logging_data: bool = True,
+        logging_data: bool = False,
     ) -> Union[List[Any], pd.DataFrame, np.ndarray, pl.DataFrame]:
         """Returns assembled feature vector from online feature store.
             Call [`feature_view.init_serving`](#init_serving) before this method if the following configurations are needed.
@@ -608,6 +608,30 @@ class FeatureView:
             )
             ```
 
+        !!! example "Logging feature vector"
+            ```python
+            # get feature store instance
+            fs = ...
+            # get feature view instance
+            feature_view = fs.get_feature_view(...)
+
+            # the application provides a feature value 'app_attr'
+            app_attr = ...
+
+            # get a feature vector
+            feature_vector = feature_view.get_feature_vector(
+                entry = {"pk1": 1, "pk2": 2},
+                passed_features = { "app_feature" : app_attr },
+                logging_data = True
+            )
+
+            # make predictions using the feature vector
+            predictions = model.predict(feature_vector)
+
+            # log the feature vector
+            feature_view.log(feature_vector, predictions=predictions)
+            ```
+
         # Arguments
             entry: dictionary of feature group primary key and values provided by serving application.
                 Set of required primary keys is [`feature_view.primary_keys`](#primary_keys)
@@ -634,6 +658,9 @@ class FeatureView:
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            logging_data: `bool`, defaults to `False`. Setting this to `True` return feature vector with logging metadata. The feature vector will contain only contain the required features.
+                The logging metadata is available as part of an additional attribute `hopsworks_logging_metadata` of the returned object. The logging metadata contains the untransformed features, transformed features, inference helpers, serving keys, request parameters and event time.
+                The feature vector object returned can be passed to `feature_view.log()` to log the feature vector along with all the logging metadata.
 
         # Returns
             `list`, `pd.DataFrame`, `polars.DataFrame` or `np.ndarray` if `return type` is set to `"list"`, `"pandas"`, `"polars"` or `"numpy"`
@@ -679,7 +706,7 @@ class FeatureView:
         on_demand_features: Optional[bool] = True,
         request_parameters: Optional[List[Dict[str, Any]]] = None,
         transformation_context: Dict[str, Any] = None,
-        logging_data: bool = True,
+        logging_data: bool = False,
     ) -> Union[List[List[Any]], pd.DataFrame, np.ndarray, pl.DataFrame]:
         """Returns assembled feature vectors in batches from online feature store.
             Call [`feature_view.init_serving`](#init_serving) before this method if the following configurations are needed.
@@ -731,6 +758,33 @@ class FeatureView:
             )
             ```
 
+        !!! example "Logging feature vectors"
+            ```python
+            # get feature store instance
+            fs = ...
+            # get feature view instance
+            feature_view = fs.get_feature_view(...)
+
+            # the application provides a feature value 'app_attr'
+            app_attr = ...
+
+            # get a feature vectors
+            feature_vectors = feature_view.get_feature_vectors(
+                entry = [
+                    {"pk1": 1, "pk2": 2},
+                    {"pk1": 3, "pk2": 4},
+                    {"pk1": 5, "pk2": 6}
+                ],
+                logging_data = True
+            )
+
+            # make predictions using the feature vectors
+            predictions = model.predict(feature_vectors)
+
+            # log the feature vectors
+            feature_view.log(feature_vectors, predictions=predictions)
+            ```
+
         # Arguments
             entry: a list of dictionary of feature group primary key and values provided by serving application.
                 Set of required primary keys is [`feature_view.primary_keys`](#primary_keys)
@@ -757,6 +811,9 @@ class FeatureView:
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            logging_data: `bool`, defaults to `False`. Setting this to `True` return feature vector with logging metadata. The feature vectors will contain only contain the required features.
+                The logging metadata is available as part of an additional attribute `hopsworks_logging_metadata` of the returned object. The logging metadata contains the untransformed features, transformed features, inference helpers, serving keys, request parameters and event time.
+                The feature vector object returned can be passed to `feature_view.log()` to log the feature vectors along with all the logging metadata.
 
         # Returns
             `List[list]`, `pd.DataFrame`, `polars.DataFrame` or `np.ndarray` if `return type` is set to `"list", `"pandas"`,`"polars"` or `"numpy"`
@@ -1043,7 +1100,7 @@ class FeatureView:
         dataframe_type: Optional[str] = "default",
         transformed: Optional[bool] = True,
         transformation_context: Dict[str, Any] = None,
-        logging_data: bool = True,
+        logging_data: bool = False,
         **kwargs,
     ) -> TrainingDatasetDataFrameTypes:
         """Get a batch of data from an event time interval from the offline feature store.
@@ -1066,6 +1123,33 @@ class FeatureView:
                     start_time=start_date,
                     end_time=end_date
                 )
+            ```
+
+        !!! example "Log Batch data for the last 24 hours"
+            ```python
+                # get feature store instance
+                fs = ...
+
+                # get feature view instance
+                feature_view = fs.get_feature_view(...)
+
+                # set up dates
+                import datetime
+                start_date = (datetime.datetime.now() - datetime.timedelta(hours=24))
+                end_date = (datetime.datetime.now())
+
+                # get a batch of data
+                df = feature_view.get_batch_data(
+                    start_time=start_date,
+                    end_time=end_date,
+                    logging_data=True
+                )
+
+                # make predictions using the batch data
+                predictions = model.predict(df)
+
+                # log the batch data
+                feature_view.log(df, predictions=predictions)
             ```
 
         !!! warning "Spine Groups/Dataframes"
@@ -1102,6 +1186,9 @@ class FeatureView:
             transformed: Setting to `False` returns the untransformed feature vectors.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            logging_data: `bool`, defaults to `False`. Setting this to `True` return batch data with logging metadata. The batch data will contain only contain the required features.
+                The logging metadata is available as part of an additional attribute `hopsworks_logging_metadata` of the returned object. The logging metadata contains the untransformed features, transformed features, inference helpers, serving keys, request parameters and event time.
+                The batch data object returned can be passed to `feature_view.log()` to log the feature vectors along with all the logging metadata.
 
         # Returns
             `DataFrame`: The spark dataframe containing the feature data.
@@ -3744,7 +3831,11 @@ class FeatureView:
 
         This method activates logging of features.
 
-        # Example
+        # Arguments
+            extra_log_columns: `Union[Feature, List[Dict[str, str]]]` Additional columns to be logged. Any duplicate columns will be ignored.
+
+
+        !!! example "Enable feature logging"
             ```python
             # get feature store instance
             fs = ...
@@ -3754,6 +3845,19 @@ class FeatureView:
 
             # enable logging
             feature_view.enable_logging()
+            ```
+
+        !!! example "Enable feature logging and add extra log columns"
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # get feature view instance
+            feature_view = fs.get_feature_view(...)
+
+            # enable logging with two extra log columns
+            feature_view.enable_logging(extra_log_columns=[{"name": "logging_col_1", "type": "string"},
+                                                           {"name": "logging_col_2", "type": "int"}])
             ```
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
@@ -3781,31 +3885,64 @@ class FeatureView:
         self,
         logging_data: Union[
             pd.DataFrame,
+            pl.DataFrame,
             list[list],
             np.ndarray,
             TypeVar("pyspark.sql.DataFrame"),
         ] = None,
-        untransformed_features: Union[
-            pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
+        untransformed_features: Optional[
+            Union[
+                pd.DataFrame,
+                pl.DataFrame,
+                list[list],
+                np.ndarray,
+                TypeVar("pyspark.sql.DataFrame"),
+            ]
         ] = None,
-        predictions: Optional[Union[pd.DataFrame, list[list], np.ndarray]] = None,
+        predictions: Optional[
+            Union[pd.DataFrame, pl.DataFrame, list[list], np.ndarray]
+        ] = None,
         transformed_features: Union[
-            pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
+            pd.DataFrame,
+            pl.DataFrame,
+            list[list],
+            np.ndarray,
+            TypeVar("pyspark.sql.DataFrame"),
         ] = None,
         inference_helper_columns: Union[
-            pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
+            pd.DataFrame,
+            pl.DataFrame,
+            list[list],
+            np.ndarray,
+            TypeVar("pyspark.sql.DataFrame"),
         ] = None,
         request_parameters: Union[
-            pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
+            pd.DataFrame,
+            pl.DataFrame,
+            list[list],
+            np.ndarray,
+            TypeVar("pyspark.sql.DataFrame"),
         ] = None,
         event_time: Union[
-            pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
+            pd.DataFrame,
+            pl.DataFrame,
+            list[list],
+            np.ndarray,
+            TypeVar("pyspark.sql.DataFrame"),
         ] = None,
         serving_keys: Union[
-            pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
+            pd.DataFrame,
+            pl.DataFrame,
+            list[list],
+            np.ndarray,
+            TypeVar("pyspark.sql.DataFrame"),
         ] = None,
         extra_logging_features: Union[
-            pd.DataFrame, list[list], np.ndarray, TypeVar("pyspark.sql.DataFrame")
+            pd.DataFrame,
+            pl.DataFrame,
+            list[list],
+            np.ndarray,
+            TypeVar("pyspark.sql.DataFrame"),
         ] = None,
         request_id: Union[str, list[str]] = None,
         write_options: Optional[Dict[str, Any]] = None,
@@ -3818,15 +3955,20 @@ class FeatureView:
             values in `predictions` will be ignored.
 
         # Arguments
-            logging_dataframe: The features to be logged, this can contain both transformed features, untransfored features and predictions. Can be a pandas DataFrame, a list of lists, or a numpy ndarray.
-            untransformed_features: The untransformed features to be logged. Can be a pandas DataFrame, a list of lists, or a numpy ndarray.
-            prediction: The predictions to be logged. Can be a pandas DataFrame, a list of lists, or a numpy ndarray. Defaults to None.
-            transformed_features: The transformed features to be logged. Can be a pandas DataFrame, a list of lists, or a numpy ndarray.
+            logging_dataframe: The features to be logged, this can contain both transformed features, untransfored features and predictions. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
+            untransformed_features: The untransformed features to be logged. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
+            prediction: The predictions to be logged.  Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list, a list of lists, or a numpy ndarray.
+            transformed_features: The transformed features to be logged. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
+            inference_helper_columns: The inference helper columns to be logged. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
+            request_parameters: The request parameters to be logged. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
+            event_time: The event time to be logged. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
+            serving_keys: The serving keys to be logged. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
+            extra_logging_features: Extra features to be logged. The features must be specified when enabled logging or while creating the feature view. Can be a pandas DataFrame, polar DataFrame, or spark DataFrame, a list of lists, a list of dictionaries or a numpy ndarray.
             write_options: Options for writing the log. Defaults to None.
             training_dataset_version: Version of the training dataset. If training dataset version is definied in
                 `init_serving` or `init_batch_scoring`, or model has training dataset version,
                 or training dataset version was cached, then the version will be used, otherwise defaults to None.
-            model: `hsml.model.Model` Hopsworks model associated with the log. Defaults to None.
+            model: `Union[str, hsml.model.Model]` Hopsworks model associated with the log. Defaults to None.
 
         # Returns
             `list[Job]` job information for feature insertion if python engine is used
@@ -3855,7 +3997,6 @@ class FeatureView:
                 "Feature logging is not enabled. It may take longer to enable logging before logging the features. You can call `feature_view.enable_logging()` to enable logging beforehand.",
                 stacklevel=1,
             )
-            # TODO : MOVE THIS TO THE ENGINE
             logging_features = (
                 self._feature_view_engine.get_logging_feature_from_dataframe(
                     dataframes=[
@@ -4393,6 +4534,7 @@ class FeatureView:
 
     @property
     def _fully_qualified_primary_keys(self) -> List[str]:
+        """Get fully qualified names for applicable primary keys from the query."""
         if not self.__fully_qualified_primary_keys:
             self.__fully_qualified_primary_keys = (
                 self._feature_view_engine._get_primary_keys_from_query(self.query)
@@ -4401,6 +4543,7 @@ class FeatureView:
 
     @property
     def _fully_qualified_event_time(self) -> List[str]:
+        """Get fully qualified names for applicable event time from the query."""
         if not self.__fully_qualified_event_time:
             self.__fully_qualified_event_time = (
                 self._feature_view_engine._get_eventtimes_from_query(self.query)
