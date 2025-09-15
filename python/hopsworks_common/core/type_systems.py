@@ -143,20 +143,20 @@ def create_extended_type(base_type: type) -> "ExtendedType":
 
     class ExtendedType(base_type):
         """
-        This is a class that extends the base_type class with a new attribute `hopsworks_logging_meta_data` that can be used to store metadata.
+        This is a class that extends the base_type class with a new attribute `hopsworks_logging_metadata` that can be used to store metadata.
         """
 
         _is_extended_type = True
 
         @property
-        def hopsworks_logging_meta_data(self) -> Optional[LoggingMetaData]:
-            if not hasattr(self, "_hopsworks_logging_meta_data"):
+        def hopsworks_logging_metadata(self) -> Optional[LoggingMetaData]:
+            if not hasattr(self, "_hopsworks_logging_metadata"):
                 return None
-            return self._hopsworks_logging_meta_data
+            return self._hopsworks_logging_metadata
 
-        @hopsworks_logging_meta_data.setter
-        def hopsworks_logging_meta_data(self, meta_data: LoggingMetaData):
-            self._hopsworks_logging_meta_data = meta_data
+        @hopsworks_logging_metadata.setter
+        def hopsworks_logging_metadata(self, meta_data: LoggingMetaData):
+            self._hopsworks_logging_metadata = meta_data
 
     return ExtendedType
 

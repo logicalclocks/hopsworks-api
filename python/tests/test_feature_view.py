@@ -176,3 +176,21 @@ class TestFeatureView:
         transformation_functions = fv.transformation_functions
 
         assert transformation_functions[0] != transformation_functions[1]
+
+    def test_logging_enabled_instances(self, mocker, backend_fixtures):
+        # Arrange
+        mocked_connection = mocker.MagicMock()
+        mocked_connection.backend_version = version.__version__
+        mocked_connection = mocker.patch(
+            "hopsworks_common.client.get_connection", return_value=mocked_connection
+        )
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+        json = backend_fixtures["feature_view"]["get_feature_view_logging_enabled"][
+            "response"
+        ]
+
+        # Act
+        fv = feature_view.FeatureView.from_response_json(json)
+
+        assert fv.logging_enabled is True

@@ -1131,7 +1131,7 @@ class VectorServer:
         if logging_meta_data:
             extended_type = create_extended_type(type(feature_vector))
             feature_vector = extended_type(feature_vector)
-            feature_vector.hopsworks_logging_meta_data = logging_meta_data
+            feature_vector.hopsworks_logging_metadata = logging_meta_data
         return feature_vector
 
     def get_inference_helper(
