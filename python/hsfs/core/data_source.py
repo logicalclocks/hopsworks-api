@@ -19,7 +19,6 @@ import json
 from typing import (
     Any,
     Dict,
-    List,
     Optional,
     Union,
 )
@@ -29,6 +28,7 @@ from hopsworks_common import util
 from hsfs import storage_connector as sc
 from hsfs.core import data_source_api
 from hsfs.core import data_source_data as dsd
+
 
 class DataSource:
     """
