@@ -43,7 +43,7 @@ public class KafkaRecordSerializer implements KafkaRecordSerializationSchema<Gen
   private final List<String> primaryKeys;
   private final Map<String, byte[]> headerMap;
 
-  KafkaRecordSerializer(StreamFeatureGroup streamFeatureGroup) throws FeatureStoreException, IOException {
+  public KafkaRecordSerializer(StreamFeatureGroup streamFeatureGroup) throws FeatureStoreException, IOException {
     this.topic = streamFeatureGroup.getOnlineTopicName();
     this.primaryKeys = streamFeatureGroup.getPrimaryKeys();
     this.headerMap = FeatureGroupUtils.getHeaders(streamFeatureGroup, null);
