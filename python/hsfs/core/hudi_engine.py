@@ -16,7 +16,9 @@
 from __future__ import annotations
 
 from hsfs import feature_group_commit, util
-from hsfs.core import feature_group_api
+from hsfs.core import feature_group_api, dataset_api
+from urllib.parse import urlsplit, unquote
+import os
 import copy
 
 
@@ -102,6 +104,7 @@ class HudiEngine:
         self._feature_store_name = feature_store_name
 
         self._feature_group_api = feature_group_api.FeatureGroupApi()
+        self._dataset_api = dataset_api.DatasetApi()
 
     def save_hudi_fg(
         self, dataset, save_mode, operation, write_options, validation_id=None
@@ -206,9 +209,13 @@ class HudiEngine:
         return hudi_options
 
     def _migrate_table(self, spark_context, write_options, base_path):
+        # check if the table is already a hudi table. If not, skip migration
+        metadata_path = os.path.join(unquote(urlsplit(base_path).path), ".hoodie")
+        if not self._dataset_api.exists(metadata_path):
+            return
         write_options = copy.deepcopy(write_options)
         write_options[self.HUDI_BASE_PATH] = base_path
-        spark_context._jvm.com.logicalclocks.hsfs.spark.engine.hudi.DeltaStreamerConfig().migrateTable(
+        spark_context._jvm.com.logicalclocks.hsfs.spark.engine.hudi.TableMigrateUtils().migrateTable(
             write_options, spark_context._jsc
         )
 
