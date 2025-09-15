@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 from hsfs import feature_group_commit, util
-from hsfs.core import feature_group_api, dataset_api
+from hsfs.core import dataset_api, feature_group_api
 from urllib.parse import urlsplit, unquote
 import os
 import copy
