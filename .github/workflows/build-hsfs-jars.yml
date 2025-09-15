@@ -209,7 +209,7 @@ jobs:
           HSFS_SPARK_JAR_NAME=hsfs-spark-spark3.5-${POM_VERSION}.jar
           HSFS_SPARK_JAR_WITH_DEPENDENCIES_NAME=hsfs-spark-spark3.5-${POM_VERSION}-jar-with-dependencies.jar
           HSFS_UTILS_JAR_NAME=hsfs-utils-${POM_VERSION}.jar
-          HSFS_UTILS_PYTHON_NAME=hsfs_utils-${POM_VERSION}.py
+          HSFS_UTILS_PYTHON_NAME=hsfs_utils.py
           HSFS_JAR_URL="${{ vars.NEXUS_DEV_SPARK_URL }}/${JIRA_TAG}/${HSFS_JAR_NAME}"
           HSFS_JAR_WITH_DEPENDENCIES_URL="${{ vars.NEXUS_DEV_SPARK_URL }}/${JIRA_TAG}/${HSFS_JAR_WITH_DEPENDENCIES_NAME}"
           HSFS_SPARK_JAR_URL="${{ vars.NEXUS_DEV_SPARK_URL }}/${JIRA_TAG}/${HSFS_SPARK_JAR_NAME}"
