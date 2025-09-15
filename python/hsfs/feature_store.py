@@ -1761,6 +1761,10 @@ class FeatureStore:
             transformation_functions: Model Dependent Transformation functions attached to the feature view.
                 It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
                 Defaults to `None`, no transformations.
+            logging_enabled: If true, enable feature logging for the feature view. Defaults to `False`.
+            extra_log_columns: Extra columns to be logged in addition to the features used in the feature view.
+                It can be a single `Feature` or a dictionary of key value pairs where key is the column name.
+                Defaults to `None`, no extra log columns. Setting this argument implicitly enables feature logging.
 
         # Returns:
             `FeatureView`: The feature view metadata object.
@@ -1842,7 +1846,10 @@ class FeatureStore:
             transformation_functions: Model Dependent Transformation functions attached to the feature view.
                 It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
                 Defaults to `None`, no transformations.
-            logging_enabled: If true, enable feature logging for the feature view.
+            logging_enabled: If true, enable feature logging for the feature view. Defaults to `False`.
+            extra_log_columns: Extra columns to be logged in addition to the features used in the feature view.
+                It can be a single `Feature` or a dictionary of key value pairs where key is the column name.
+                Defaults to `None`, no extra log columns. Setting this argument implicitly enables feature logging.
 
         # Returns:
             `FeatureView`: The feature view metadata object.

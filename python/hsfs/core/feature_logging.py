@@ -10,7 +10,7 @@ from hsfs.feature import Feature
 
 class LoggingMetaData:
     """
-    Class that holds the required data for feature logging.
+    Class that holds the data for feature logging.
     """
 
     def __init__(self):
@@ -42,6 +42,15 @@ class FeatureLogging:
         untransformed_features: "feature_group.FeatureGroup" = None,
         extra_logging_columns: Optional[List[Feature]] = None,
     ):
+        """
+        DTO class for feature logging.
+
+        # Arguments
+            id : `int`. Id of the feature logging object.
+            transformed_features : `FeatureGroup`. The feature group containing the transformed features. As of Hopsworks 4.6, transformed and untransformed features are logged in the same feature group. This feature group is maintained for backward compatibility.
+            untransformed_features : `FeatureGroup`. The feature group containing the untransformed features.
+            extra_logging_columns : `List[Feature]`. List of extra logging columns.
+        """
         self._id = id
         self._transformed_features = transformed_features
         self._untransformed_features = untransformed_features
