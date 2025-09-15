@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 from typing import (
-    TYPE_CHECKING,
     Any,
     Dict,
     List,
@@ -30,12 +29,6 @@ from hopsworks_common import util
 from hsfs import storage_connector as sc
 from hsfs.core import data_source_api
 from hsfs.core import data_source_data as dsd
-
-
-if TYPE_CHECKING:
-    from hsfs.core.explicit_provenance import Links
-    from hsfs.feature_group import FeatureGroup
-    from hsfs.training_dataset import TrainingDataset
 
 class DataSource:
     """
@@ -311,7 +304,7 @@ class DataSource:
         """
         return self._storage_connector.get_metadata(self)
 
-    def get_feature_groups_provenance(self) -> "Links":
+    def get_feature_groups_provenance(self):
         """Get the generated feature groups using this data source, based on explicit
         provenance. These feature groups can be accessible or inaccessible. Explicit
         provenance does not track deleted generated feature group links, so deleted
@@ -326,7 +319,7 @@ class DataSource:
         """
         return self._storage_connector.get_feature_groups_provenance()
 
-    def get_feature_groups(self) -> List["FeatureGroup"]:
+    def get_feature_groups(self):
         """Get the feature groups using this data source, based on explicit
         provenance. Only the accessible feature groups are returned.
         For more items use the base method - get_feature_groups_provenance
@@ -336,7 +329,7 @@ class DataSource:
         """
         return self._storage_connector.get_feature_groups()
 
-    def get_training_datasets_provenance(self) -> "Links":
+    def get_training_datasets_provenance(self):
         """Get the generated training datasets using this data source, based on explicit
         provenance. These training datasets can be accessible or inaccessible. Explicit
         provenance does not track deleted generated training dataset links, so deleted
@@ -351,7 +344,7 @@ class DataSource:
         """
         return self._storage_connector.get_training_datasets_provenance()
 
-    def get_training_datasets(self) -> List["TrainingDataset"]:
+    def get_training_datasets(self):
         """Get the training datasets using this data source, based on explicit
         provenance. Only the accessible training datasets are returned.
         For more items use the base method - get_training_datasets_provenance
