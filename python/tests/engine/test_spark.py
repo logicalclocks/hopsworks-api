@@ -17,11 +17,12 @@ from __future__ import annotations
 
 import datetime
 import json
-from unittest.mock import call
+from unittest.mock import MagicMock, PropertyMock, call
 
 import hopsworks_common
 import numpy
 import pandas as pd
+import pyspark.sql
 import pytest
 from hsfs import (
     expectation_suite,
@@ -62,8 +63,6 @@ from pyspark.sql.types import (
     StructType,
     TimestampType,
 )
-from unittest.mock import MagicMock, PropertyMock
-import pyspark.sql
 
 
 hopsworks_common.connection._hsfs_engine_type = "spark"
