@@ -380,10 +380,12 @@ class TestHudiEngine:
         )
 
         spark_context = mocker.Mock()
-        spark_context._jvm.org.apache.hudi.HoodieDataSourceHelpers.allCompletedCommitsCompactions().lastInstant().get().getTimestamp.return_value = 1
-        spark_context._jvm.org.apache.hudi.common.model.HoodieCommitMetadata().fetchTotalInsertRecordsWritten.return_value = 2
-        spark_context._jvm.org.apache.hudi.common.model.HoodieCommitMetadata().fetchTotalUpdateRecordsWritten.return_value = 3
-        spark_context._jvm.org.apache.hudi.common.model.HoodieCommitMetadata().getTotalRecordsDeleted.return_value = 4
+        spark_context._jvm.org.apache.hudi.HoodieDataSourceHelpers.latestCompletedCommit().getCompletionTime.return_value = "1"
+        mock_commit_metadata = mocker.Mock()
+        mock_commit_metadata.fetchTotalInsertRecordsWritten.return_value = 2
+        mock_commit_metadata.fetchTotalUpdateRecordsWritten.return_value = 3
+        mock_commit_metadata.getTotalRecordsDeleted.return_value = 4
+        spark_context._jvm.org.apache.hudi.common.table.timeline.TimelineUtils.getCommitMetadata.return_value = mock_commit_metadata
         mock_util_get_timestamp_from_date_string.return_value = 5
 
         # Act
