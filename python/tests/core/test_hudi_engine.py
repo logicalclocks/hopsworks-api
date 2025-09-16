@@ -391,6 +391,8 @@ class TestHudiEngine:
             spark_context=spark_context, base_path=None
         )
 
+        print(result)
+
         # Assert
         assert result.commitid is None
         assert result.commit_date_string == 1

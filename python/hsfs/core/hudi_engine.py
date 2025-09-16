@@ -210,6 +210,8 @@ class HudiEngine:
         return hudi_options
 
     def _migrate_table(self, spark_context, write_options, base_path):
+        if spark_context is None:
+            return
         # check if the table is already a hudi table. If not, skip migration
         metadata_path = os.path.join(unquote(urlsplit(base_path).path), ".hoodie")
         if not self._dataset_api.exists(metadata_path):
