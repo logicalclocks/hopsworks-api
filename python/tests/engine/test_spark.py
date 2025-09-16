@@ -62,6 +62,8 @@ from pyspark.sql.types import (
     StructType,
     TimestampType,
 )
+from unittest.mock import MagicMock, PropertyMock
+import pyspark.sql
 
 
 hopsworks_common.connection._hsfs_engine_type = "spark"
@@ -123,8 +125,12 @@ class TestSpark:
 
     def test_sql_offline(self, mocker):
         # Arrange
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
+        mock_sql = MagicMock()
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "sql",
+            new_callable=PropertyMock,
+            return_value=mock_sql
         )
 
         spark_engine = spark.Engine()
@@ -136,7 +142,7 @@ class TestSpark:
         )
 
         # Assert
-        assert mock_pyspark_getOrCreate.return_value.sql.call_count == 2
+        assert mock_sql.call_count == 2
 
     def test_show(self, mocker):
         # Arrange
@@ -157,8 +163,12 @@ class TestSpark:
 
     def test_set_job_group(self, mocker):
         # Arrange
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
+        mock_spark_context = MagicMock()
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "sparkContext",
+            new_callable=PropertyMock,
+            return_value=mock_spark_context
         )
 
         spark_engine = spark.Engine()
@@ -170,10 +180,7 @@ class TestSpark:
         )
 
         # Assert
-        assert (
-            mock_pyspark_getOrCreate.return_value.sparkContext.setJobGroup.call_count
-            == 1
-        )
+        mock_spark_context.setJobGroup.assert_called_once()
 
     def test_register_external_temporary_table(self, mocker):
         # Arrange
@@ -3016,8 +3023,6 @@ class TestSpark:
 
     def test_read_none_data_format(self, mocker):
         # Arrange
-        mocker.patch("pyspark.sql.session.SparkSession.builder.getOrCreate")
-
         spark_engine = spark.Engine()
 
         # Act
@@ -3035,8 +3040,6 @@ class TestSpark:
 
     def test_read_empty_data_format(self, mocker):
         # Arrange
-        mocker.patch("pyspark.sql.session.SparkSession.builder.getOrCreate")
-
         spark_engine = spark.Engine()
 
         # Act
@@ -3054,9 +3057,17 @@ class TestSpark:
 
     def test_read_read_options(self, mocker):
         # Arrange
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
+        mock_df = MagicMock(name="DataFrame")
+
+        mock_read = MagicMock()
+        mock_read.format.return_value.options.return_value.load.return_value = mock_df
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "read",
+            new_callable=PropertyMock,
+            return_value=mock_read
         )
+
         mock_spark_engine_setup_storage_connector = mocker.patch(
             "hsfs.engine.spark.Engine.setup_storage_connector"
         )
@@ -3073,24 +3084,26 @@ class TestSpark:
         )
 
         # Assert
-        assert result is not None
-        assert mock_spark_engine_setup_storage_connector.call_count == 1
-        assert mock_spark_engine_setup_storage_connector.call_args[0][1] is None
-        assert (
-            mock_pyspark_getOrCreate.return_value.read.format.call_args[0][0] == "csv"
-        )
-        assert (
-            mock_pyspark_getOrCreate.return_value.read.format.return_value.options.call_args[
-                1
-            ]
-            == {"name": "value"}
-        )
+        assert result == mock_df
+        mock_read.format.assert_called_once_with("csv")
+        mock_read.format.return_value.options.assert_called_once_with(name="value")
+        mock_read.format.return_value.options.return_value.load.assert_called_once()
+        mock_spark_engine_setup_storage_connector.assert_called_once()
+        mock_spark_engine_setup_storage_connector.assert_called_once_with(None, None)
 
     def test_read_location_format_delta(self, mocker):
         # Arrange
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
+        mock_df = MagicMock(name="DataFrame")
+
+        mock_read = MagicMock()
+        mock_read.format.return_value.options.return_value.load.return_value = mock_df
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "read",
+            new_callable=PropertyMock,
+            return_value=mock_read
         )
+
         mock_spark_engine_setup_storage_connector = mocker.patch(
             "hsfs.engine.spark.Engine.setup_storage_connector"
         )
@@ -3101,26 +3114,32 @@ class TestSpark:
         result = spark_engine.read(
             storage_connector=None,
             data_format="delta",
-            read_options=None,
+            read_options={"header": "true"},
             location="test_location",
             dataframe_type="default",
         )
 
         # Assert
-        assert result is not None
-        assert mock_spark_engine_setup_storage_connector.call_count == 1
-        assert (
-            mock_spark_engine_setup_storage_connector.call_args[0][1] == "test_location"
-        )
-        assert (
-            mock_pyspark_getOrCreate.return_value.read.format.call_args[0][0] == "delta"
-        )
+        assert result == mock_df
+        mock_read.format.assert_called_once_with("delta")
+        mock_read.format.return_value.options.assert_called_once_with(header="true")
+        mock_read.format.return_value.options.return_value.load.assert_called_once()
+        mock_spark_engine_setup_storage_connector.assert_called_once()
+        mock_spark_engine_setup_storage_connector.assert_called_once_with(None, "test_location")
 
     def test_read_location_format_parquet(self, mocker):
         # Arrange
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
+        mock_df = MagicMock(name="DataFrame")
+
+        mock_read = MagicMock()
+        mock_read.format.return_value.options.return_value.load.return_value = mock_df
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "read",
+            new_callable=PropertyMock,
+            return_value=mock_read
         )
+
         mock_spark_engine_setup_storage_connector = mocker.patch(
             "hsfs.engine.spark.Engine.setup_storage_connector"
         )
@@ -3131,27 +3150,32 @@ class TestSpark:
         result = spark_engine.read(
             storage_connector=None,
             data_format="parquet",
-            read_options=None,
+            read_options={"header": "true"},
             location="test_location",
             dataframe_type="default",
         )
 
         # Assert
-        assert result is not None
-        assert mock_spark_engine_setup_storage_connector.call_count == 1
-        assert (
-            mock_spark_engine_setup_storage_connector.call_args[0][1] == "test_location"
-        )
-        assert (
-            mock_pyspark_getOrCreate.return_value.read.format.call_args[0][0]
-            == "parquet"
-        )
+        assert result == mock_df
+        mock_read.format.assert_called_once_with("parquet")
+        mock_read.format.return_value.options.assert_called_once_with(header="true")
+        mock_read.format.return_value.options.return_value.load.assert_called_once()
+        mock_spark_engine_setup_storage_connector.assert_called_once()
+        mock_spark_engine_setup_storage_connector.assert_called_once_with(None, "test_location")
 
     def test_read_location_format_hudi(self, mocker):
         # Arrange
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
+        mock_df = MagicMock(name="DataFrame")
+
+        mock_read = MagicMock()
+        mock_read.format.return_value.options.return_value.load.return_value = mock_df
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "read",
+            new_callable=PropertyMock,
+            return_value=mock_read
         )
+
         mock_spark_engine_setup_storage_connector = mocker.patch(
             "hsfs.engine.spark.Engine.setup_storage_connector"
         )
@@ -3162,26 +3186,32 @@ class TestSpark:
         result = spark_engine.read(
             storage_connector=None,
             data_format="hudi",
-            read_options=None,
+            read_options={"header": "true"},
             location="test_location",
             dataframe_type="default",
         )
 
         # Assert
-        assert result is not None
-        assert mock_spark_engine_setup_storage_connector.call_count == 1
-        assert (
-            mock_spark_engine_setup_storage_connector.call_args[0][1] == "test_location"
-        )
-        assert (
-            mock_pyspark_getOrCreate.return_value.read.format.call_args[0][0] == "hudi"
-        )
+        assert result == mock_df
+        mock_read.format.assert_called_once_with("hudi")
+        mock_read.format.return_value.options.assert_called_once_with(header="true")
+        mock_read.format.return_value.options.return_value.load.assert_called_once()
+        mock_spark_engine_setup_storage_connector.assert_called_once()
+        mock_spark_engine_setup_storage_connector.assert_called_once_with(None, "test_location")
 
     def test_read_location_format_orc(self, mocker):
         # Arrange
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
+        mock_df = MagicMock(name="DataFrame")
+
+        mock_read = MagicMock()
+        mock_read.format.return_value.options.return_value.load.return_value = mock_df
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "read",
+            new_callable=PropertyMock,
+            return_value=mock_read
         )
+
         mock_spark_engine_setup_storage_connector = mocker.patch(
             "hsfs.engine.spark.Engine.setup_storage_connector"
         )
@@ -3192,26 +3222,32 @@ class TestSpark:
         result = spark_engine.read(
             storage_connector=None,
             data_format="orc",
-            read_options=None,
+            read_options={"header": "true"},
             location="test_location",
             dataframe_type="default",
         )
 
         # Assert
-        assert result is not None
-        assert mock_spark_engine_setup_storage_connector.call_count == 1
-        assert (
-            mock_spark_engine_setup_storage_connector.call_args[0][1] == "test_location"
-        )
-        assert (
-            mock_pyspark_getOrCreate.return_value.read.format.call_args[0][0] == "orc"
-        )
+        assert result == mock_df
+        mock_read.format.assert_called_once_with("orc")
+        mock_read.format.return_value.options.assert_called_once_with(header="true")
+        mock_read.format.return_value.options.return_value.load.assert_called_once()
+        mock_spark_engine_setup_storage_connector.assert_called_once()
+        mock_spark_engine_setup_storage_connector.assert_called_once_with(None, "test_location")
 
     def test_read_location_format_bigquery(self, mocker):
         # Arrange
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
+        mock_df = MagicMock(name="DataFrame")
+
+        mock_read = MagicMock()
+        mock_read.format.return_value.options.return_value.load.return_value = mock_df
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "read",
+            new_callable=PropertyMock,
+            return_value=mock_read
         )
+
         mock_spark_engine_setup_storage_connector = mocker.patch(
             "hsfs.engine.spark.Engine.setup_storage_connector"
         )
@@ -3222,27 +3258,32 @@ class TestSpark:
         result = spark_engine.read(
             storage_connector=None,
             data_format="bigquery",
-            read_options=None,
+            read_options={"header": "true"},
             location="test_location",
             dataframe_type="default",
         )
 
         # Assert
-        assert result is not None
-        assert mock_spark_engine_setup_storage_connector.call_count == 1
-        assert (
-            mock_spark_engine_setup_storage_connector.call_args[0][1] == "test_location"
-        )
-        assert (
-            mock_pyspark_getOrCreate.return_value.read.format.call_args[0][0]
-            == "bigquery"
-        )
+        assert result == mock_df
+        mock_read.format.assert_called_once_with("bigquery")
+        mock_read.format.return_value.options.assert_called_once_with(header="true")
+        mock_read.format.return_value.options.return_value.load.assert_called_once()
+        mock_spark_engine_setup_storage_connector.assert_called_once()
+        mock_spark_engine_setup_storage_connector.assert_called_once_with(None, "test_location")
 
     def test_read_location_format_csv(self, mocker):
         # Arrange
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
+        mock_df = MagicMock(name="DataFrame")
+
+        mock_read = MagicMock()
+        mock_read.format.return_value.options.return_value.load.return_value = mock_df
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "read",
+            new_callable=PropertyMock,
+            return_value=mock_read
         )
+
         mock_spark_engine_setup_storage_connector = mocker.patch(
             "hsfs.engine.spark.Engine.setup_storage_connector"
         )
@@ -3253,27 +3294,33 @@ class TestSpark:
         result = spark_engine.read(
             storage_connector=None,
             data_format="csv",
-            read_options=None,
+            read_options={"header": "true"},
             location="test_location",
             dataframe_type="default",
         )
 
         # Assert
-        assert result is not None
-        assert mock_spark_engine_setup_storage_connector.call_count == 1
-        assert (
-            mock_spark_engine_setup_storage_connector.call_args[0][1]
-            == "test_location/**"
-        )
-        assert (
-            mock_pyspark_getOrCreate.return_value.read.format.call_args[0][0] == "csv"
-        )
+        assert result == mock_df
+        mock_read.format.assert_called_once_with("csv")
+        mock_read.format.return_value.options.assert_called_once_with(header="true")
+        mock_read.format.return_value.options.return_value.load.assert_called_once()
+        mock_spark_engine_setup_storage_connector.assert_called_once()
+        mock_spark_engine_setup_storage_connector.assert_called_once_with(None, "test_location/**")
 
     def test_read_location_format_tsv(self, mocker):
         # Arrange
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
+        mock_df = MagicMock(name="DataFrame")
+
+        mock_read = MagicMock()
+        mock_read.format.return_value.options.return_value.load.return_value = mock_df
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "read",
+            new_callable=PropertyMock,
+            return_value=mock_read
         )
+
+        # Patch Engine.setup_storage_connector as before
         mock_spark_engine_setup_storage_connector = mocker.patch(
             "hsfs.engine.spark.Engine.setup_storage_connector"
         )
@@ -3284,21 +3331,18 @@ class TestSpark:
         result = spark_engine.read(
             storage_connector=None,
             data_format="csv",
-            read_options=None,
+            read_options={"header": "true"},
             location="test_location",
             dataframe_type="default",
         )
 
         # Assert
-        assert result is not None
-        assert mock_spark_engine_setup_storage_connector.call_count == 1
-        assert (
-            mock_spark_engine_setup_storage_connector.call_args[0][1]
-            == "test_location/**"
-        )
-        assert (
-            mock_pyspark_getOrCreate.return_value.read.format.call_args[0][0] == "csv"
-        )
+        assert result == mock_df
+        mock_read.format.assert_called_once_with("csv")
+        mock_read.format.return_value.options.assert_called_once_with(header="true")
+        mock_read.format.return_value.options.return_value.load.assert_called_once()
+        mock_spark_engine_setup_storage_connector.assert_called_once()
+        mock_spark_engine_setup_storage_connector.assert_called_once_with(None, "test_location/**")
 
     def test_read_stream(self, mocker):
         # Arrange
@@ -3306,9 +3350,14 @@ class TestSpark:
         mocker.patch("hopsworks_common.client.get_instance")
         mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
 
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
+        mock_read_stream = MagicMock()
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "readStream",
+            new_callable=PropertyMock,
+            return_value=mock_read_stream
         )
+
         mock_spark_engine_read_stream_kafka = mocker.patch(
             "hsfs.engine.spark.Engine._read_stream_kafka"
         )
@@ -3321,8 +3370,6 @@ class TestSpark:
             featurestore_id=99,
         )
 
-        mock_pyspark_getOrCreate.return_value.read.format.return_value.options.return_value = {}
-
         # Act
         result = spark_engine.read_stream(
             storage_connector=kafka_connector,
@@ -3334,11 +3381,9 @@ class TestSpark:
 
         # Assert
         assert result is not None
-        assert mock_spark_engine_read_stream_kafka.call_count == 1
-        assert (
-            mock_pyspark_getOrCreate.return_value.readStream.format.call_args[0][0]
-            == "kafka"
-        )
+        mock_spark_engine_read_stream_kafka.assert_called_once()
+        mock_read_stream.format.assert_called_once_with("kafka")
+        mock_read_stream.format.return_value.options.assert_called_once()
 
     def test_read_stream_kafka(self, mocker):
         # Arrange
@@ -3580,12 +3625,11 @@ class TestSpark:
 
     def test_add_file(self, mocker):
         # Arrange
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
-        )
         mock_pyspark_files_get = mocker.patch("pyspark.files.SparkFiles.get")
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
         mocker.patch("shutil.copy")
+
+        mock_add_file = mocker.patch("pyspark.SparkContext.addFile")
 
         spark_engine = spark.Engine()
 
@@ -3595,25 +3639,17 @@ class TestSpark:
         )
 
         # Assert
-        assert (
-            mock_pyspark_getOrCreate.return_value.sparkContext.addFile.call_count == 1
-        )
-        assert mock_pyspark_files_get.call_count == 1
-        assert (
-            mock_pyspark_getOrCreate.return_value.sparkContext.addFile.call_args[0][0]
-            == "hdfs://test_file"
-        )
-        assert mock_pyspark_files_get.call_args[0][0] == "test_file"
+        mock_add_file.assert_called_once_with("hdfs://test_file")
+        mock_pyspark_files_get.assert_called_once_with("test_file")
 
     def test_add_file_if_present_in_job_configuration(self, mocker):
         # Arrange
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
-        )
         mocker.patch("os.environ", {
             "APP_FILES": "/Projects/test_file",
             "MATERIALISATION_DIR": "/tmp/materialisation_dir"
         })
+
+        mock_add_file = mocker.patch("pyspark.SparkContext.addFile")
 
         spark_engine = spark.Engine()
 
@@ -3624,14 +3660,16 @@ class TestSpark:
 
         # Assert
         assert (path == "/tmp/materialisation_dir/test_file")
-        assert (
-            mock_pyspark_getOrCreate.return_value.sparkContext.addFile.call_count == 0
-        )
+        mock_add_file.assert_not_called()
 
     def test_profile(self, mocker):
         # Arrange
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
+        mock_spark_context = MagicMock()
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "sparkContext",
+            new_callable=PropertyMock,
+            return_value=mock_spark_context
         )
 
         spark_engine = spark.Engine()
@@ -3647,7 +3685,7 @@ class TestSpark:
 
         # Assert
         assert (
-            mock_pyspark_getOrCreate.return_value.sparkContext._jvm.com.logicalclocks.hsfs.spark.engine.SparkEngine.getInstance.return_value.profile.call_count
+            mock_spark_context._jvm.com.logicalclocks.hsfs.spark.engine.SparkEngine.getInstance.return_value.profile.call_count
             == 1
         )
 
@@ -4350,8 +4388,12 @@ class TestSpark:
 
     def test_setup_s3_hadoop_conf_legacy(self, mocker):
         # Arrange
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
+        mock_spark_context = MagicMock()
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "sparkContext",
+            new_callable=PropertyMock,
+            return_value=mock_spark_context
         )
 
         spark_engine = spark.Engine()
@@ -4378,37 +4420,41 @@ class TestSpark:
         # Assert
         assert result == "s3a://_test_path"
         assert (
-            mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.call_count
+            mock_spark_context._jsc.hadoopConfiguration.return_value.set.call_count
             == 14
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.access.key", s3_connector.access_key
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.secret.key", s3_connector.secret_key
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.server-side-encryption-algorithm",
             s3_connector.server_encryption_algorithm,
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.server-side-encryption-key", s3_connector.server_encryption_key
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.aws.credentials.provider",
             "org.apache.hadoop.fs.s3a.TemporaryAWSCredentialsProvider",
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.session.token", s3_connector.session_token
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.endpoint", s3_connector.arguments.get("fs.s3a.endpoint")
         )
 
     def test_setup_s3_hadoop_conf_disable_legacy(self, mocker):
         # Arrange
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
+        mock_spark_context = MagicMock()
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "sparkContext",
+            new_callable=PropertyMock,
+            return_value=mock_spark_context
         )
 
         spark_engine = spark.Engine()
@@ -4441,30 +4487,30 @@ class TestSpark:
         # Assert
         assert result == "s3a://_test_path"
         assert (
-            mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.call_count
+            mock_spark_context._jsc.hadoopConfiguration.return_value.set.call_count
             == 11  # Options should only be set at bucket level
         )
         assert (
             call("fs.s3a.access.key", s3_connector.access_key)
-            not in mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.mock_calls
+            not in mock_spark_context._jsc.hadoopConfiguration.return_value.set.mock_calls
         )
         assert (
             call("fs.s3a.secret.key", s3_connector.secret_key)
-            not in mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.mock_calls
+            not in mock_spark_context._jsc.hadoopConfiguration.return_value.set.mock_calls
         )
         assert (
             call(
                 "fs.s3a.server-side-encryption-algorithm",
                 s3_connector.server_encryption_algorithm,
             )
-            not in mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.mock_calls
+            not in mock_spark_context._jsc.hadoopConfiguration.return_value.set.mock_calls
         )
 
         assert (
             call(
                 "fs.s3a.server-side-encryption-key", s3_connector.server_encryption_key
             )
-            not in mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.mock_calls
+            not in mock_spark_context._jsc.hadoopConfiguration.return_value.set.mock_calls
         )
 
         assert (
@@ -4472,49 +4518,53 @@ class TestSpark:
                 "fs.s3a.aws.credentials.provider",
                 "org.apache.hadoop.fs.s3a.TemporaryAWSCredentialsProvider",
             )
-            not in mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.mock_calls
+            not in mock_spark_context._jsc.hadoopConfiguration.return_value.set.mock_calls
         )
 
         assert (
             call("fs.s3a.session.token", s3_connector.session_token)
-            not in mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.mock_calls
+            not in mock_spark_context._jsc.hadoopConfiguration.return_value.set.mock_calls
         )
 
         assert (
             call("fs.s3a.endpoint", s3_connector.arguments.get("fs.s3a.endpoint"))
-            not in mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.mock_calls
+            not in mock_spark_context._jsc.hadoopConfiguration.return_value.set.mock_calls
         )
 
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.bucket.bucket-name.access.key", s3_connector.access_key
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.bucket.bucket-name.secret.key", s3_connector.secret_key
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.bucket.bucket-name.server-side-encryption-algorithm",
             s3_connector.server_encryption_algorithm,
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.bucket.bucket-name.server-side-encryption-key",
             s3_connector.server_encryption_key,
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.bucket.bucket-name.aws.credentials.provider",
             "org.apache.hadoop.fs.s3a.TemporaryAWSCredentialsProvider",
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.bucket.bucket-name.session.token", s3_connector.session_token
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.bucket.bucket-name.endpoint",
             s3_connector.arguments.get("fs.s3a.endpoint"),
         )
 
     def test_setup_s3_hadoop_conf_bucket_scope(self, mocker):
         # Arrange
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
+        mock_spark_context = MagicMock()
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "sparkContext",
+            new_callable=PropertyMock,
+            return_value=mock_spark_context
         )
 
         spark_engine = spark.Engine()
@@ -4541,39 +4591,43 @@ class TestSpark:
         # Assert
         assert result == "s3a://_test_path"
         assert (
-            mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.call_count
+            mock_spark_context._jsc.hadoopConfiguration.return_value.set.call_count
             == 14
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.bucket.bucket-name.access.key", s3_connector.access_key
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.bucket.bucket-name.secret.key", s3_connector.secret_key
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.bucket.bucket-name.server-side-encryption-algorithm",
             s3_connector.server_encryption_algorithm,
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.bucket.bucket-name.server-side-encryption-key",
             s3_connector.server_encryption_key,
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.bucket.bucket-name.aws.credentials.provider",
             "org.apache.hadoop.fs.s3a.TemporaryAWSCredentialsProvider",
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.bucket.bucket-name.session.token", s3_connector.session_token
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.s3a.bucket.bucket-name.endpoint",
             s3_connector.arguments.get("fs.s3a.endpoint"),
         )
 
     def test_setup_adls_hadoop_conf(self, mocker):
         # Arrange
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
+        mock_spark_context = MagicMock()
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "sparkContext",
+            new_callable=PropertyMock,
+            return_value=mock_spark_context
         )
 
         spark_engine = spark.Engine()
@@ -4597,13 +4651,13 @@ class TestSpark:
         # Assert
         assert result == "adls_test_path"
         assert (
-            mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.call_count
+            mock_spark_context._jsc.hadoopConfiguration.return_value.set.call_count
             == 2
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "name_1", "value_1"
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "name_2", "value_2"
         )
 
@@ -5711,8 +5765,13 @@ class TestSpark:
     def test_setup_gcp_hadoop_conf(self, mocker):
         # Arrange
         mock_spark_engine_add_file = mocker.patch("hsfs.engine.spark.Engine.add_file")
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
+
+        mock_spark_context = MagicMock()
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "sparkContext",
+            new_callable=PropertyMock,
+            return_value=mock_spark_context
         )
 
         spark_engine = spark.Engine()
@@ -5741,50 +5800,55 @@ class TestSpark:
         # Assert
         assert result == "test_path"
         assert (
-            mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.setIfUnset.call_count
+            mock_spark_context._jsc.hadoopConfiguration.return_value.setIfUnset.call_count
             == 2
         )
         assert mock_spark_engine_add_file.call_count == 1
         assert (
-            mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.call_count
+            mock_spark_context._jsc.hadoopConfiguration.return_value.set.call_count
             == 3
         )
         assert (
-            mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.unset.call_count
+            mock_spark_context._jsc.hadoopConfiguration.return_value.unset.call_count
             == 3
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.setIfUnset.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.setIfUnset.assert_any_call(
             "fs.AbstractFileSystem.gs.impl",
             "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS",
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.setIfUnset.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.setIfUnset.assert_any_call(
             "google.cloud.auth.service.account.enable", "true"
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.gs.auth.service.account.email", "test@project.iam.gserviceaccount.com"
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.gs.auth.service.account.private.key.id", "123456"
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.gs.auth.service.account.private.key",
             "-----BEGIN PRIVATE KEY-----test-----END PRIVATE KEY-----",
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.unset.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.unset.assert_any_call(
             "fs.gs.encryption.algorithm"
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.unset.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.unset.assert_any_call(
             "fs.gs.encryption.key"
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.unset.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.unset.assert_any_call(
             "fs.gs.encryption.key.hash"
         )
 
     def test_setup_gcp_hadoop_conf_algorithm(self, mocker):
         # Arrange
         mock_spark_engine_add_file = mocker.patch("hsfs.engine.spark.Engine.add_file")
-        mock_pyspark_getOrCreate = mocker.patch(
-            "pyspark.sql.session.SparkSession.builder.getOrCreate"
+
+        mock_spark_context = MagicMock()
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "sparkContext",
+            new_callable=PropertyMock,
+            return_value=mock_spark_context
         )
 
         spark_engine = spark.Engine()
@@ -5819,41 +5883,41 @@ class TestSpark:
         # Assert
         assert result == "test_path"
         assert (
-            mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.setIfUnset.call_count
+            mock_spark_context._jsc.hadoopConfiguration.return_value.setIfUnset.call_count
             == 2
         )
         assert mock_spark_engine_add_file.call_count == 1
         assert (
-            mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.call_count
+            mock_spark_context._jsc.hadoopConfiguration.return_value.set.call_count
             == 6
         )
         assert (
-            mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.unset.call_count
+            mock_spark_context._jsc.hadoopConfiguration.return_value.unset.call_count
             == 0
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.setIfUnset.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.setIfUnset.assert_any_call(
             "fs.AbstractFileSystem.gs.impl",
             "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS",
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.setIfUnset.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.setIfUnset.assert_any_call(
             "google.cloud.auth.service.account.enable", "true"
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.gs.encryption.algorithm", gcs_connector.algorithm
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.gs.encryption.key", gcs_connector.encryption_key
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.gs.encryption.key.hash", gcs_connector.encryption_key_hash
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.gs.auth.service.account.email", "test@project.iam.gserviceaccount.com"
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.gs.auth.service.account.private.key.id", "123456"
         )
-        mock_pyspark_getOrCreate.return_value.sparkContext._jsc.hadoopConfiguration.return_value.set.assert_any_call(
+        mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "fs.gs.auth.service.account.private.key",
             "-----BEGIN PRIVATE KEY-----test-----END PRIVATE KEY-----",
         )
