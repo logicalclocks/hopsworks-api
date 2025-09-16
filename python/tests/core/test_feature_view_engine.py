@@ -1577,6 +1577,8 @@ class TestFeatureViewEngine:
 
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mock_sc_read = mocker.patch("hsfs.storage_connector.StorageConnector.read")
+        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv_engine = feature_view_engine.FeatureViewEngine(
             feature_store_id=feature_store_id
@@ -2748,3 +2750,58 @@ class TestFeatureViewEngine:
             mock_util_get_hostname_replaced_url.call_args[0][0]
             == "/p/50/fs/99/fv/fv_name/version/1"
         )
+
+    def test_get_logging_feature_from_dataframe(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        engine = mocker.patch("hsfs.engine.get_instance", autospec=True).return_value
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+        engine.check_supported_dataframe.return_value = True
+        engine.parse_schema_feature_group.return_value = [
+            feature.Feature(name="id", type="bigint"),
+            feature.Feature(name="feature1", type="bigint"),
+            feature.Feature(name="feature2", type="string"),
+            feature.Feature(name="label", type="string"),
+        ]
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        df1 = pd.DataFrame(
+            {
+                "id": [1, 2, 3],
+                "feature1": [1, 2, 3],
+            }
+        )
+
+        df2 = pd.DataFrame(
+            {
+                "id": [4, 5, 6],
+                "feature2": ["a", "b", "c"],
+                "label": [0, 1, 0],
+            }
+        )
+
+        #
+        fv.schema = [
+            TrainingDatasetFeature(name="id", type="bigint", label=False),
+            TrainingDatasetFeature(name="label", type="bigint", label=True),
+        ]
+
+        dataframe_logging_features = fv_engine.get_logging_feature_from_dataframe(
+            fv, [df1, df2]
+        )
+
+        assert ["id", "feature1", "feature2", "predicted_label"] == [
+            feature.name for feature in dataframe_logging_features
+        ]
