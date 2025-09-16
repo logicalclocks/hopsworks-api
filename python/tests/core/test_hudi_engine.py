@@ -130,6 +130,7 @@ class TestHudiEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.core.hudi_engine.HudiEngine._setup_hudi_write_opts")
+        mocker.patch("hsfs.core.dataset_api.DatasetApi")
         mock_hudi_engine_get_last_commit_metadata = mocker.patch(
             "hsfs.core.hudi_engine.HudiEngine._get_last_commit_metadata"
         )
