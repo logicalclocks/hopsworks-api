@@ -123,6 +123,7 @@ class VectorServer:
                 or feat.training_helper_column
             )
         ]
+        # Names of untransformed features excluding on-demand features.
         self._untransformed_feature_vector_col_name = [
             feat.name
             for feat in features
@@ -133,6 +134,8 @@ class VectorServer:
                 or feat.inference_helper_column
             )
         ]
+        # Names of untransformed features including on-demand features.
+        # The untransformed feature vector will by default contain on-demand features if present in the feature view.
         self._on_demand_feature_vector_col_name = [
             feat.name
             for feat in features
@@ -418,23 +421,26 @@ class VectorServer:
         on_demand_features: Optional[bool] = True,
         request_parameters: Optional[Dict[str, Any]] = None,
         transformation_context: Dict[str, Any] = None,
-        logging_data: bool = True,
+        logging_data: bool = False,
     ) -> Union[pd.DataFrame, pl.DataFrame, np.ndarray, List[Any], Dict[str, Any]]:
         """Assembles serving vector from online feature store."""
         online_client_choice = self.which_client_and_ensure_initialised(
             force_rest_client=force_rest_client, force_sql_client=force_sql_client
         )
 
+        # Create logging meta data object if required and populate it during the function.
         logging_meta_data = (
             LoggingMetaData()
             if self._feature_view_logging_enabled and logging_data
             else None
         )
 
-        # Adding values in entry to request_parameters if it is not explicitly mentioned so that on-demand feature can be computed using the values in entry if they are not present in retrieved feature vector. This happens when no features can be retrieved from the feature view since the serving key is not yet there.
+        # Make a copy of request parameters to be stored in logging meta data since it might be updated below.
         request_parameters_copy = (
             request_parameters.copy() if request_parameters else {}
         )
+
+        # Adding values in entry to request_parameters if it is not explicitly mentioned so that on-demand feature can be computed using the values in entry if they are not present in retrieved feature vector. This happens when no features can be retrieved from the feature view since the serving key is not yet there.
         if request_parameters and entry:
             for key, value in entry.items():
                 request_parameters.setdefault(key, value)
@@ -485,7 +491,11 @@ class VectorServer:
             logging_meta_data.serving_keys.append(entry)
             logging_meta_data.request_parameters.append(request_parameters_copy or {})
             logging_meta_data.event_time.append(
-                [serving_vector.get(self._root_feature_group.event_time, None)]
+                [
+                    serving_vector.get(
+                        self._root_feature_group.event_time, datetime.now()
+                    )
+                ]  # Use current time if event_time is not present in the retrieved vector. For online inference the features will not be the feature group.
             )
             logging_meta_data.inference_helper.append(
                 [
@@ -519,7 +529,7 @@ class VectorServer:
         transform: bool = True,
         on_demand_features: Optional[bool] = True,
         transformation_context: Dict[str, Any] = None,
-        logging_data: bool = True,
+        logging_data: bool = False,
     ) -> Union[pd.DataFrame, pl.DataFrame, np.ndarray, List[Any], List[Dict[str, Any]]]:
         """Assembles serving vector from online feature store."""
         if passed_features is None:
@@ -543,16 +553,17 @@ class VectorServer:
             or len(request_parameters) == len(entries)
         ), "Request Parameters should be a Dictionary, None, empty or have the same length as the entries if they are not None or empty."
 
+        # Create logging meta data object if required and populate it during the function.
         logging_meta_data = (
             LoggingMetaData()
             if self._feature_view_logging_enabled and logging_data
             else None
         )
 
-        # Adding values in entry to request_parameters if it is not explicitly mentioned so that on-demand feature can be computed using the values in entry if they are not present in retrieved feature vector.
         request_parameters_copy = (
             request_parameters.copy() if request_parameters else None
         )
+        # Adding values in entry to request_parameters if it is not explicitly mentioned so that on-demand feature can be computed using the values in entry if they are not present in retrieved feature vector.
         if request_parameters and entries:
             if isinstance(request_parameters, list) and len(entries) == len(
                 request_parameters
@@ -678,7 +689,11 @@ class VectorServer:
 
             if logging_meta_data is not None:
                 logging_meta_data.event_time.append(
-                    [result_dict.get(self._root_feature_group.event_time, None)]
+                    [
+                        result_dict.get(
+                            self._root_feature_group.event_time, datetime.now()
+                        )
+                    ]  # Use current time if event_time is not present in the retrieved vector. For online inference the features will not be the feature group.
                 )
                 logging_meta_data.inference_helper.append(
                     [
