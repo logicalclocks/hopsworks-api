@@ -222,10 +222,11 @@ class TestHudiEngine:
             "hoodie.table.recordkey.fields": "key1,key2",
             "hoodie.table.partition.fields": "key3:SIMPLE,key4:SIMPLE",
             "hoodie.table.keygenerator.class": "org.apache.hudi.keygen.CustomKeyGenerator",
-            "hoodie.table.precombine.field": "key2",
+            "hoodie.table.precombine.field": "key1",
             "hoodie.datasource.hive_sync.use_jdbc": "false",
             "hoodie.datasource.hive_sync.auto_create_database": "false",
             "hoodie.datasource.write.table.type": "COPY_ON_WRITE",
+            "hoodie.datasource.write.storage.type": "COPY_ON_WRITE",
         }
 
     def test_write_hudi_dataset_hudi_precombine_key(self, mocker):
@@ -280,10 +281,11 @@ class TestHudiEngine:
             "hoodie.table.recordkey.fields": "key1,key2",
             "hoodie.table.partition.fields": "key3:SIMPLE,key4:SIMPLE",
             "hoodie.table.keygenerator.class": "org.apache.hudi.keygen.CustomKeyGenerator",
-            "hoodie.table.precombine.field": "key2",
+            "hoodie.table.precombine.field": "key1",
             "hoodie.datasource.hive_sync.use_jdbc": "false",
             "hoodie.datasource.hive_sync.auto_create_database": "false",
             "hoodie.datasource.write.table.type": "COPY_ON_WRITE",
+            "hoodie.datasource.write.storage.type": "COPY_ON_WRITE",
         }
 
     def test_setup_hudi_read_opts(self, mocker, backend_fixtures):
