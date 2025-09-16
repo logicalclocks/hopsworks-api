@@ -1434,7 +1434,14 @@ class Engine:
         """
         dropped_features = set()
 
-        dataset = dataset.copy()  # Shallow copy done prevent overwriting metadata in the dataframe like the columns in it.
+        # Shallow copy done prevent overwriting metadata in the dataframe like the columns in it.
+        if HAS_POLARS and (
+            isinstance(dataset, pl.DataFrame)
+            or isinstance(dataset, pl.dataframe.frame.DataFrame)
+        ):
+            dataset = dataset.clone()
+        else:
+            dataset = dataset.copy()
 
         if HAS_POLARS and (
             isinstance(dataset, pl.DataFrame)
