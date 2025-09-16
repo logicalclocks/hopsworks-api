@@ -1,27 +1,29 @@
 from __future__ import annotations
 
-import sys
-import os
 import argparse
 import json
+import os
+import sys
+import traceback
 from datetime import datetime
 from typing import Any, Dict
-import traceback
 
 import fsspec.implementations.arrow as pfs
 
 hopsfs = pfs.HadoopFileSystem("default", user=os.environ["HADOOP_USER_NAME"])
-from pyspark.sql import SparkSession
-from pyspark.sql.types import StructField, StructType, _parse_datatype_string
-from pyspark.sql.functions import col, max, expr, row_number
-from pyspark.sql.window import Window
-
 import hopsworks
-
 from hsfs import engine
 from hsfs.constructor import query
+from hsfs.core import (
+    feature_monitoring_config_engine,
+    feature_view_engine,
+    kafka_engine,
+)
 from hsfs.statistics_config import StatisticsConfig
-from hsfs.core import feature_monitoring_config_engine, feature_view_engine, kafka_engine
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, expr, max, row_number
+from pyspark.sql.types import StructField, StructType, _parse_datatype_string
+from pyspark.sql.window import Window
 
 
 def read_job_conf(path: str) -> Dict[Any, Any]:

@@ -225,6 +225,7 @@ class TestHudiEngine:
             "hoodie.table.precombine.field": "key1",
             "hoodie.datasource.hive_sync.use_jdbc": "false",
             "hoodie.datasource.hive_sync.auto_create_database": "false",
+            "hoodie.datasource.write.table.type": "COPY_ON_WRITE",
         }
 
     def test_write_hudi_dataset_hudi_precombine_key(self, mocker):
@@ -275,6 +276,14 @@ class TestHudiEngine:
             "hoodie.table.name": "test_1",
             "hoodie.upsert.shuffle.parallelism": "5",
             "test_name": "test_value",
+            "hoodie.table.base.file.format": "PARQUET",
+            "hoodie.table.recordkey.fields": "key1,key2",
+            "hoodie.table.partition.fields": "key3,key4",
+            "hoodie.table.keygenerator.class": "org.apache.hudi.keygen.CustomKeyGenerator",
+            "hoodie.table.precombine.field": "key1",
+            "hoodie.datasource.hive_sync.use_jdbc": "false",
+            "hoodie.datasource.hive_sync.auto_create_database": "false",
+            "hoodie.datasource.write.table.type": "COPY_ON_WRITE",
         }
 
     def test_setup_hudi_read_opts(self, mocker, backend_fixtures):
@@ -369,9 +378,9 @@ class TestHudiEngine:
 
         spark_context = mocker.Mock()
         spark_context._jvm.org.apache.hudi.HoodieDataSourceHelpers.allCompletedCommitsCompactions().lastInstant().get().getTimestamp.return_value = 1
-        spark_context._jvm.org.apache.hudi.common.model.HoodieCommitMetadata.fromBytes().fetchTotalInsertRecordsWritten.return_value = 2
-        spark_context._jvm.org.apache.hudi.common.model.HoodieCommitMetadata.fromBytes().fetchTotalUpdateRecordsWritten.return_value = 3
-        spark_context._jvm.org.apache.hudi.common.model.HoodieCommitMetadata.fromBytes().getTotalRecordsDeleted.return_value = 4
+        spark_context._jvm.org.apache.hudi.common.model.HoodieCommitMetadata().fetchTotalInsertRecordsWritten.return_value = 2
+        spark_context._jvm.org.apache.hudi.common.model.HoodieCommitMetadata().fetchTotalUpdateRecordsWritten.return_value = 3
+        spark_context._jvm.org.apache.hudi.common.model.HoodieCommitMetadata().getTotalRecordsDeleted.return_value = 4
         mock_util_get_timestamp_from_date_string.return_value = 5
 
         # Act
