@@ -106,6 +106,15 @@ class OnlineStoreSqlClient:
         inference_helper_columns: bool,
         with_logging_meta_data: bool = False,
     ) -> None:
+        """
+        Fetch prepared statement for feature vector retrival from the backend.
+
+        # Arguments:
+            entity : FeatureView or TrainingDataset object to fetch prepared statements for.
+            inference_helper_columns : Fetch prepared statements for inference helper columns.
+            with_logging_meta_data : Fetch prepared statements to include logging meta data.
+                i.e The fetched data will include the features along with inference helper columns.
+        """
         if hasattr(entity, "_feature_view_engine"):
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug(
@@ -295,7 +304,12 @@ class OnlineStoreSqlClient:
     def get_single_feature_vector(
         self, entry: Dict[str, Any], logging_data: bool = False
     ) -> Dict[str, Any]:
-        """Retrieve single vector with parallel queries using aiomysql engine."""
+        """
+        Retrieve single vector with parallel queries using aiomysql engine.
+
+        If `logging_data` is True, it will use the prepared statement that includes logging metadata.
+        i.e. The fetched feature vector will also include inference helper columns.
+        """
         return self._single_vector_result(
             entry,
             self.parametrised_prepared_statements[self.SINGLE_VECTOR_KEY]
@@ -306,7 +320,12 @@ class OnlineStoreSqlClient:
     def get_batch_feature_vectors(
         self, entries: List[Dict[str, Any]], logging_data: bool = False
     ) -> List[Dict[str, Any]]:
-        """Retrieve batch vector with parallel queries using aiomysql engine."""
+        """
+        Retrieve batch vector with parallel queries using aiomysql engine.
+
+        If `logging_data` is True, it will use the prepared statement that includes logging metadata.
+        i.e. The fetched feature vector will also include inference helper columns.
+        """
         return self._batch_vector_results(
             entries,
             self.parametrised_prepared_statements[self.BATCH_VECTOR_KEY]
