@@ -395,7 +395,7 @@ class TestHudiEngine:
 
         # Assert
         assert result.commitid is None
-        assert result.commit_date_string == 1
+        assert result.commit_date_string == str(1)
         assert result.rows_inserted == 2
         assert result.rows_updated == 3
         assert result.rows_deleted == 4
