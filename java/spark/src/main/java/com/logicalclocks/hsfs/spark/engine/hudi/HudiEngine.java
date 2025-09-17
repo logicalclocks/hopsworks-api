@@ -82,11 +82,13 @@ public class HudiEngine {
   private static Logger LOGGER = Logger.getLogger(HudiEngine.class.getName());
   public static final String HUDI_SPARK_FORMAT = "org.apache.hudi";
 
+  protected static final String HUDI_TABLE_VERSION = "hoodie.table.version";
   protected static final String HUDI_BASE_PATH = "hoodie.base.path";
   protected static final String HUDI_TABLE_NAME = "hoodie.table.name";
   protected static final String HUDI_TABLE_TYPE = "hoodie.datasource.write.table.type";
   protected static final String HUDI_TABLE_STORAGE_TYPE = "hoodie.datasource.write.storage.type";
   protected static final String HUDI_TABLE_OPERATION = "hoodie.datasource.write.operation";
+  protected static final String HUDI_METADATA_ENABLE = "hoodie.metadata.enable";
   
   protected static final String HUDI_TABLE_RECORD_KEY_FIELD = "hoodie.table.recordkey.fields";
   protected static final String HUDI_TABLE_PARTITION_KEY_FIELDS = "hoodie.table.partition.fields";
@@ -276,8 +278,9 @@ public class HudiEngine {
     hudiArgs.put(HUDI_KEY_GENERATOR_OPT_KEY, HUDI_COMPLEX_KEY_GENERATOR_OPT_VAL);
     hudiArgs.put(HUDI_TABLE_KEY_GENERATOR_CLASS, HUDI_COMPLEX_KEY_GENERATOR_OPT_VAL);
     
-    hudiArgs.put(HUDI_WRITE_RECORD_KEY, getPrimaryColumns(featureGroup));
-    hudiArgs.put(HUDI_TABLE_RECORD_KEY_FIELD, getPrimaryColumns(featureGroup));
+    String primaryColumns = getPrimaryColumns(featureGroup);
+    hudiArgs.put(HUDI_WRITE_RECORD_KEY, primaryColumns);
+    hudiArgs.put(HUDI_TABLE_RECORD_KEY_FIELD, primaryColumns);
 
     // table name
     String tableName = utils.getFgName(featureGroup);
@@ -318,7 +321,7 @@ public class HudiEngine {
     }
     hudiArgs.putAll(HUDI_DEFAULT_PARALLELISM);
     
-    hudiArgs.put("hoodie.metadata.enable", "true");
+    hudiArgs.put(HUDI_METADATA_ENABLE, "true");
 
     // Overwrite with user provided options if any
     if (writeOptions != null && !writeOptions.isEmpty()) {

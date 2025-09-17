@@ -1,3 +1,20 @@
+/*
+ *  Copyright (c) 2025-2025. Hopsworks AB
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *
+ *  See the License for the specific language governing permissions and limitations under the License.
+ *
+ */
+
 package com.logicalclocks.hsfs.spark.engine.hudi;
 
 import org.apache.hudi.client.common.HoodieSparkEngineContext;
@@ -41,8 +58,14 @@ public class TableMigrateUtils {
     if (metaClient.getTableConfig().contains(HoodieTableConfig.VERSION)
         && metaClient.getTableConfig().getTableVersion() != HoodieTableVersion.EIGHT) {
       doHiveSync(writeOptions, javaSparkContext, metaClient);
-      migrateToVersionSix(writeOptions, metaClient, javaSparkContext);
-      metaClient.getTableConfig().setValue("hoodie.table.version",
+      // Migrate to version 6 first if the table is older than version 6.
+      // If the table is version 6 or 7, it will be migrated to version 8 directly
+      if (metaClient.getTableConfig().getTableVersion().lesserThan(HoodieTableVersion.SIX)) {
+        migrateToVersionSix(writeOptions, metaClient, javaSparkContext);
+      } else if (metaClient.getTableConfig().getTableVersion().greaterThan(HoodieTableVersion.EIGHT)) {
+        return;
+      }
+      metaClient.getTableConfig().setValue(HudiEngine.HUDI_TABLE_VERSION,
           String.valueOf(HoodieTableVersion.EIGHT.versionCode()));
       new UpgradeDowngrade(metaClient, getUpdatedWriteConfig(writeOptions, metaClient),
           new HoodieSparkEngineContext(javaSparkContext),
