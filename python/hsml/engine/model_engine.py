@@ -22,7 +22,7 @@ import uuid
 
 from hopsworks_common import client, constants, util
 from hopsworks_common.client.exceptions import ModelRegistryException, RestAPIError
-from hopsworks_common.core import dataset_api
+from hopsworks_common.core import dataset_api, inode
 from hsml.core import model_api
 from hsml.engine import local_engine
 from tqdm.auto import tqdm
@@ -81,15 +81,14 @@ class ModelEngine:
         return model_instance
 
     def _copy_or_move_hopsfs_model_item(
-        self, item_attr, to_model_files_path, keep_original_files
+        self, from_path, to_model_files_path, keep_original_files
     ):
         """Copy or move model item from a hdfs path to the model version folder in the Models dataset. It works with files and folders."""
-        path = item_attr["path"]
-        to_hdfs_path = os.path.join(to_model_files_path, os.path.basename(path))
+        to_hdfs_path = os.path.join(to_model_files_path, os.path.basename(from_path))
         if keep_original_files:
-            self._engine.copy(path, to_hdfs_path)
+            self._engine.copy(from_path, to_hdfs_path)
         else:
-            self._engine.move(path, to_hdfs_path)
+            self._engine.move(from_path, to_hdfs_path)
 
     def _copy_or_move_hopsfs_model(
         self,
@@ -118,14 +117,14 @@ class ModelEngine:
             )
         elif model_path_attr.get("dir", False):
             # if path is a directory, iterate of the directory content
-            for entry in self._dataset_api.list(
-                from_hdfs_model_path, sort_by="NAME:desc"
-            )["items"]:
-                path_attr = entry["attributes"]
+            count, files = self._dataset_api._list_dataset_path(
+                from_hdfs_model_path, inode.Inode, sort_by="NAME:desc"
+            )
+            for entry in files:
                 self._copy_or_move_hopsfs_model_item(
-                    path_attr, to_model_files_path, keep_original_files
+                    entry.path, to_model_files_path, keep_original_files
                 )
-                if path_attr.get("dir", False):
+                if entry.dir:
                     n_dirs += 1
                 else:
                     n_files += 1
@@ -133,7 +132,7 @@ class ModelEngine:
         else:
             # if path is a file, copy/move it
             self._copy_or_move_hopsfs_model_item(
-                model_path_attr, to_model_files_path, keep_original_files
+                model_path_attr["path"], to_model_files_path, keep_original_files
             )
             n_files += 1
             update_upload_progress(n_dirs=n_dirs, n_files=n_files)
@@ -147,15 +146,12 @@ class ModelEngine:
         n_files,
     ):
         """Download model files from a model path in hdfs, recursively"""
-
-        for entry in self._dataset_api.list(from_hdfs_model_path, sort_by="NAME:desc")[
-            "items"
-        ]:
-            path_attr = entry["attributes"]
-            path = path_attr["path"]
-            basename = os.path.basename(path)
-
-            if path_attr.get("dir", False):
+        count, files = self._dataset_api._list_dataset_path(
+            from_hdfs_model_path, inode.Inode, sort_by="NAME:desc"
+        )
+        for entry in files:
+            basename = os.path.basename(entry.path)
+            if entry.dir:
                 # otherwise, make a recursive call for the folder
                 if (
                     basename == constants.MODEL_SERVING.ARTIFACTS_DIR_NAME
@@ -164,7 +160,7 @@ class ModelEngine:
                 local_folder_path = os.path.join(to_local_path, basename)
                 os.mkdir(local_folder_path)
                 n_dirs, n_files = self._download_model_from_hopsfs_recursive(
-                    from_hdfs_model_path=path,
+                    from_hdfs_model_path=entry.path,
                     to_local_path=local_folder_path,
                     update_download_progress=update_download_progress,
                     n_dirs=n_dirs,
@@ -175,7 +171,7 @@ class ModelEngine:
             else:
                 # if it's a file, download it
                 local_file_path = os.path.join(to_local_path, basename)
-                self._engine.download(path, local_file_path)
+                self._engine.download(entry.path, local_file_path)
                 n_files += 1
                 update_download_progress(n_dirs=n_dirs, n_files=n_files)
 
@@ -273,13 +269,17 @@ class ModelEngine:
             files = []
             offset = 0
             limit = 1000
-            items = self._dataset_api.list(dataset_model_path, sort_by="NAME:desc", offset=offset, limit=limit)["items"]
+            count, items = self._dataset_api._list_dataset_path(
+                dataset_model_path, inode.Inode, offset=offset, limit=limit, sort_by="NAME:desc"
+            )
             while items:
               files = files + items
               offset += limit
-              items = self._dataset_api.list(dataset_model_path, sort_by="NAME:desc", offset=offset, limit=limit)["items"]
+              count, items = self._dataset_api._list_dataset_path(
+                  dataset_model_path, inode.Inode, offset=offset, limit=limit, sort_by="NAME:desc"
+              )
             for item in files:
-                _, file_name = os.path.split(item["attributes"]["path"])
+                _, file_name = os.path.split(item.path)
                 # Get highest version folder
                 try:
                     try:
