@@ -108,7 +108,7 @@ jobs:
         run: python --version
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
-        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.1.1 pyspark-shell" >> $GITHUB_ENV
+        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run Pytest suite
         run: pytest python/tests
@@ -141,7 +141,7 @@ jobs:
       - run: pip install -e python[python,dev-no-opt]
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
-        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.1.1 pyspark-shell" >> $GITHUB_ENV
+        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run Pytest suite
         run: pytest python/tests
@@ -177,7 +177,7 @@ jobs:
         run: python --version
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
-        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.1.1 pyspark-shell" >> $GITHUB_ENV
+        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run Pytest suite
         run: pytest python/tests
@@ -213,7 +213,7 @@ jobs:
         run: python --version
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
-        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.1.1 pyspark-shell" >> $GITHUB_ENV
+        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run Pytest suite
         run: pytest python/tests
@@ -237,7 +237,7 @@ jobs:
       - run: pip install -e python[python,dev,docs]
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
-        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.1.1 pyspark-shell" >> $GITHUB_ENV
+        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run Pytest suite
         env:
@@ -272,7 +272,7 @@ jobs:
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         shell: cmd
         run: |
-          echo PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.1.1 pyspark-shell >> %GITHUB_ENV%
+          echo PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell >> %GITHUB_ENV%
 
       - name: Run Pytest suite
         run: pytest python/tests
@@ -307,7 +307,7 @@ jobs:
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         shell: cmd
         run: |
-          echo PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.1.1 pyspark-shell >> %GITHUB_ENV%
+          echo PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell >> %GITHUB_ENV%
 
       - name: Run Pytest suite
         run: pytest python/tests

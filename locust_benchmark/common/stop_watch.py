@@ -1,5 +1,6 @@
 import inspect
 import time
+
 from locust import events
 
 
