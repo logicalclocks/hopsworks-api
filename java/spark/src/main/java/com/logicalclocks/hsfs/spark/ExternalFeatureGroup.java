@@ -88,7 +88,6 @@ public class ExternalFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
     this.description = description;
     this.primaryKeys = primaryKeys != null
         ? primaryKeys.stream().map(String::toLowerCase).collect(Collectors.toList()) : null;
-    this.storageConnector = storageConnector;
     this.features = features;
     this.statisticsConfig = statisticsConfig != null ? statisticsConfig : new StatisticsConfig();
     this.eventTime = eventTime;
@@ -97,6 +96,7 @@ public class ExternalFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
     this.topicName = topicName;
     this.notificationTopicName = notificationTopicName;
     this.onlineConfig = onlineConfig;
+    this.dataSource.setStorageConnector(storageConnector);
     this.dataSource.setPath(path);
     this.dataSource.setQuery(query);
   }
