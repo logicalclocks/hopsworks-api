@@ -285,7 +285,7 @@ class TestOnlineRestClientEngine:
                 "get_batch_vector_response_json_complete"
             ]
         )
-        assert mock_online_rest_api.called_once_with(payload=payload)
+        assert mock_online_rest_api.assert_called_once_with(payload=payload)
 
     @pytest.mark.parametrize(
         "fixture_key",
@@ -332,7 +332,7 @@ class TestOnlineRestClientEngine:
 
         # Assert
         assert feature_vector_dict == reference_batch_vectors
-        assert mock_online_rest_api.called_once_with(payload=payload)
+        assert mock_online_rest_api.assert_called_once_with(payload=payload)
 
     def test_get_batch_feature_partial_pk_missing_vectors_as_dict(
         self,
@@ -368,7 +368,7 @@ class TestOnlineRestClientEngine:
 
         # Assert
         assert feature_vector_dict == reference_batch_vectors
-        assert mock_online_rest_api.called_once_with(payload=payload)
+        assert mock_online_rest_api.assert_called_once_with(payload=payload)
 
     def test_get_batch_feature_partial_error(
         self, mocker, backend_fixtures, rest_client_engine_ticker
@@ -406,4 +406,4 @@ class TestOnlineRestClientEngine:
 
         # Assert
         assert batch_vectors == reference_batch_vectors
-        assert mock_online_rest_api.called_once_with(payload=payload)
+        assert mock_online_rest_api.assert_called_once_with(payload=payload)
