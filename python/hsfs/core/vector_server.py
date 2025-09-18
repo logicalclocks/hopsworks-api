@@ -1038,8 +1038,7 @@ class VectorServer:
             elif batch:
                 return pd.DataFrame(feature_vectorz, columns=column_names)
             else:
-                pandas_df = pd.DataFrame(feature_vectorz).transpose()
-                pandas_df.columns = column_names
+                pandas_df = pd.DataFrame([feature_vectorz], columns=column_names)
                 return pandas_df
         elif return_type.lower() == "polars":
             if _logger.isEnabledFor(logging.DEBUG):
