@@ -221,8 +221,23 @@ class FeatureViewApi:
         )
 
     def get_serving_prepared_statement(
-        self, name: str, version: int, batch: bool, inference_helper_columns: bool
+        self,
+        name: str,
+        version: int,
+        batch: bool,
+        inference_helper_columns: bool,
+        logging_meta_data: bool = False,
     ) -> List["serving_prepared_statement.ServingPreparedStatement"]:
+        """
+        Get the prepared statement for fetching feature vectors.
+
+        # Arguments
+            name : `str`. Name of the feature view.
+            version : `int`. Version of the feature view.
+            batch : `bool`. Whether to get the prepared statement for batch feature vector retrieval.
+            inference_helper_columns : `bool`. Whether to include inference helper columns in the prepared statement.
+            logging_meta_data : `bool`. Whether to include logging meta data in the prepared statement. i.e return feature vector along with inference helper columns and event time of the root feature group.
+        """
         path = self._base_path + [
             name,
             self._VERSION,
@@ -233,6 +248,7 @@ class FeatureViewApi:
         query_params = {
             "batch": batch,
             "inference_helper_columns": inference_helper_columns,
+            "logging_meta_data": logging_meta_data,
         }
         return serving_prepared_statement.ServingPreparedStatement.from_response_json(
             self._client._send_request("GET", path, query_params, headers=headers)
@@ -410,6 +426,7 @@ class FeatureViewApi:
         self,
         feature_view_name: str,
         feature_view_version: int,
+        feature_logging_object: FeatureLogging = None,
     ):
         _client = client.get_instance()
         path_params = self._base_path + [
@@ -418,7 +435,9 @@ class FeatureViewApi:
             feature_view_version,
             self._LOGGING,
         ]
-        _client._send_request("PUT", path_params, {})
+        headers = {"content-type": "application/json"}
+        data = feature_logging_object.json() if feature_logging_object else {}
+        _client._send_request("PUT", path_params, {}, headers=headers, data=data)
 
     def pause_feature_logging(
         self,

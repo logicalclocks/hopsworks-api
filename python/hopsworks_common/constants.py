@@ -262,3 +262,15 @@ class INFERENCE_ENDPOINTS:
 class DEPLOYABLE_COMPONENT:
     PREDICTOR = "predictor"
     TRANSFORMER = "transformer"
+
+
+class FEATURE_LOGGING:
+    # Metadata column names
+    LOG_ID_COLUMN_NAME = "log_id"
+    TRAINING_DATASET_VERSION_COLUMN_NAME = "td_version"
+    LOG_TIME_COLUMN_NAME = "log_time"
+    MODEL_COLUMN_NAME = "hopsworks_model"
+
+    PREFIX_PREDICTIONS = "predicted_"
+    REQUEST_PARAMETERS_COLUMN_NAME = "request_parameters"
+    EMPTY_REQUEST_PARAMETER_COLUMN_VALUE = "{}"
