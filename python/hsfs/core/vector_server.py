@@ -1038,8 +1038,7 @@ class VectorServer:
             elif batch:
                 return pd.DataFrame(feature_vectorz, columns=column_names)
             else:
-                pandas_df = pd.DataFrame([feature_vectorz], columns=column_names)
-                return pandas_df
+                return pd.DataFrame([feature_vectorz], columns=column_names)
         elif return_type.lower() == "polars":
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("Returning feature vector as polars dataframe")
