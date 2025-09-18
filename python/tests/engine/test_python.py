@@ -38,6 +38,7 @@ from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
 from hsfs.engine import python
 from hsfs.expectation_suite import ExpectationSuite
 from hsfs.hopsworks_udf import udf
+from hsfs.serving_key import ServingKey
 from hsfs.training_dataset_feature import TrainingDatasetFeature
 
 
@@ -3986,3 +3987,749 @@ class TestPython:
         fg._materialization_job = job_mock
 
         assert fg.materialization_job.config == {"defaultArgs": "defaults"}
+
+    def test_extract_logging_metadata_all_columns_and_drop_none(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+        python_engine = python.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=["primary_key"],
+            event_time="event_time",
+            partition_key=[],
+            features=[
+                feature.Feature("primary_key", primary=True, type="bigint"),
+                feature.Feature("event_time", type="timestamp"),
+                feature.Feature("feature_1", type="float"),
+                feature.Feature("feature_2", type="float"),
+                feature.Feature("inference_helper_1", type="float"),
+            ],
+            id=11,
+            stream=False,
+            featurestore_name="test_fs",
+        )
+
+        query = fg.select_all()
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=query,
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            inference_helper_columns=["inference_helper_1"],
+            labels=["label"],
+        )
+
+        fv.schema = [
+            TrainingDatasetFeature(name="primary_key", type="bigint", label=False),
+            TrainingDatasetFeature(name="event_time", type="timestamp", label=False),
+            TrainingDatasetFeature(name="feature_1", type="float", label=False),
+            TrainingDatasetFeature(name="feature_2", type="float", label=False),
+            TrainingDatasetFeature(name="label", type="string", label=False),
+            TrainingDatasetFeature(
+                name="inference_helper_1", type="float", label=False
+            ),
+        ]
+
+        fv._serving_keys = [
+            ServingKey(feature_name="primary_key", join_index=0, feature_group=fg)
+        ]
+
+        untransformed_df = pd.DataFrame(
+            {
+                "primary_key": [1, 2, 3],
+                "event_time": pd.to_datetime(
+                    [
+                        "2025-01-01 12:00:00",
+                        "2025-01-02 13:30:00",
+                        "2025-01-03 15:45:00",
+                    ]
+                ),
+                "feature_1": [0.25, 0.75, 1.1],
+                "feature_2": [5.0, 10.2, 7.7],
+                "inference_helper_1": [0.99, 0.85, 0.76],
+            }
+        )
+
+        # Mocked transformed dataframe usually created with a transformation function (transformation functions are not added in the feature view for simplicity)
+        transformed_df = pd.DataFrame(
+            {
+                "primary_key": [1, 2, 3],
+                "event_time": pd.to_datetime(
+                    [
+                        "2025-01-01 12:00:00",
+                        "2025-01-02 13:30:00",
+                        "2025-01-03 15:45:00",
+                    ]
+                ),
+                "min_max_scaler_feature_1": [0.25, 0.75, 1.1],
+                "min_max_scaler_feature_2": [5.0, 10.2, 7.7],
+                "inference_helper_1": [0.99, 0.85, 0.76],
+            }
+        )
+
+        request_parameters = pd.DataFrame({"rp_1": [1, 2, 3], "rp_2": [4, 5, 6]})
+
+        # Act
+        untransformed_result = python_engine.extract_logging_metadata(
+            untransformed_features=untransformed_df,
+            transformed_features=transformed_df,
+            feature_view=fv,
+            transformed=False,
+            inference_helpers=True,
+            event_time=True,
+            primary_key=True,
+            request_parameters=request_parameters,
+        )
+
+        transformed_result = python_engine.extract_logging_metadata(
+            untransformed_features=untransformed_df,
+            transformed_features=transformed_df,
+            feature_view=fv,
+            transformed=True,
+            inference_helpers=True,
+            event_time=True,
+            primary_key=True,
+            request_parameters=request_parameters,
+        )
+
+        # Assert
+
+        # Check the column in the returned dataframe are as expected.
+        assert all(
+            untransformed_result.columns
+            == [
+                "primary_key",
+                "event_time",
+                "feature_1",
+                "feature_2",
+                "inference_helper_1",
+            ]
+        )
+        assert all(
+            transformed_result.columns
+            == [
+                "primary_key",
+                "event_time",
+                "min_max_scaler_feature_1",
+                "min_max_scaler_feature_2",
+                "inference_helper_1",
+            ]
+        )
+
+        # Check if the metadata is correctly attached to the returned dataframe.
+        for result in [untransformed_result, transformed_result]:
+            assert hasattr(result, "hopsworks_logging_metadata")
+            assert all(
+                result.hopsworks_logging_metadata.untransformed_features.columns
+                == untransformed_df.columns
+            )
+            assert (
+                result.hopsworks_logging_metadata.untransformed_features.values.tolist()
+                == untransformed_df.values.tolist()
+            )
+            assert all(
+                result.hopsworks_logging_metadata.transformed_features.columns
+                == transformed_df.columns
+            )
+            assert (
+                result.hopsworks_logging_metadata.transformed_features.values.tolist()
+                == transformed_df.values.tolist()
+            )
+            assert all(
+                result.hopsworks_logging_metadata.event_time.columns == ["event_time"]
+            )
+            assert (
+                result.hopsworks_logging_metadata.event_time.values.tolist()
+                == untransformed_df[["event_time"]].values.tolist()
+            )
+            assert all(
+                result.hopsworks_logging_metadata.serving_keys.columns == "primary_key"
+            )
+            assert (
+                result.hopsworks_logging_metadata.serving_keys.values.tolist()
+                == untransformed_df[["primary_key"]].values.tolist()
+            )
+            assert all(
+                result.hopsworks_logging_metadata.inference_helper.columns
+                == ["inference_helper_1"]
+            )
+            assert (
+                result.hopsworks_logging_metadata.inference_helper.values.tolist()
+                == untransformed_df[["inference_helper_1"]].values.tolist()
+            )
+            assert all(
+                result.hopsworks_logging_metadata.request_parameters.columns
+                == request_parameters.columns
+            )
+            assert (
+                result.hopsworks_logging_metadata.request_parameters.values.tolist()
+                == request_parameters.values.tolist()
+            )
+
+        assert all(
+            transformed_result.columns
+            == [
+                "primary_key",
+                "event_time",
+                "min_max_scaler_feature_1",
+                "min_max_scaler_feature_2",
+                "inference_helper_1",
+            ]
+        )
+
+    def test_extract_logging_metadata_all_columns_and_drop_all(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+        python_engine = python.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=["primary_key"],
+            event_time="event_time",
+            partition_key=[],
+            features=[
+                feature.Feature("primary_key", primary=True, type="bigint"),
+                feature.Feature("event_time", type="timestamp"),
+                feature.Feature("feature_1", type="float"),
+                feature.Feature("feature_2", type="float"),
+                feature.Feature("inference_helper_1", type="float"),
+            ],
+            id=11,
+            stream=False,
+            featurestore_name="test_fs",
+        )
+
+        query = fg.select_all()
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=query,
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            inference_helper_columns=["inference_helper_1"],
+            labels=["label"],
+        )
+
+        fv.schema = [
+            TrainingDatasetFeature(name="primary_key", type="bigint", label=False),
+            TrainingDatasetFeature(name="event_time", type="timestamp", label=False),
+            TrainingDatasetFeature(name="feature_1", type="float", label=False),
+            TrainingDatasetFeature(name="feature_2", type="float", label=False),
+            TrainingDatasetFeature(name="label", type="string", label=False),
+            TrainingDatasetFeature(
+                name="inference_helper_1", type="float", label=False
+            ),
+        ]
+
+        fv._serving_keys = [
+            ServingKey(feature_name="primary_key", join_index=0, feature_group=fg)
+        ]
+
+        untransformed_df = pd.DataFrame(
+            {
+                "primary_key": [1, 2, 3],
+                "event_time": pd.to_datetime(
+                    [
+                        "2025-01-01 12:00:00",
+                        "2025-01-02 13:30:00",
+                        "2025-01-03 15:45:00",
+                    ]
+                ),
+                "feature_1": [0.25, 0.75, 1.1],
+                "feature_2": [5.0, 10.2, 7.7],
+                "inference_helper_1": [0.99, 0.85, 0.76],
+            }
+        )
+
+        # Mocked transformed dataframe usually created with a transformation function (transformation functions are not added in the feature view for simplicity)
+        transformed_df = pd.DataFrame(
+            {
+                "primary_key": [1, 2, 3],
+                "event_time": pd.to_datetime(
+                    [
+                        "2025-01-01 12:00:00",
+                        "2025-01-02 13:30:00",
+                        "2025-01-03 15:45:00",
+                    ]
+                ),
+                "min_max_scaler_feature_1": [0.25, 0.75, 1.1],
+                "min_max_scaler_feature_2": [5.0, 10.2, 7.7],
+                "inference_helper_1": [0.99, 0.85, 0.76],
+            }
+        )
+
+        request_parameters = pd.DataFrame({"rp_1": [1, 2, 3], "rp_2": [4, 5, 6]})
+
+        # Act
+        untransformed_result = python_engine.extract_logging_metadata(
+            untransformed_features=untransformed_df,
+            transformed_features=transformed_df,
+            feature_view=fv,
+            transformed=False,
+            inference_helpers=False,
+            event_time=False,
+            primary_key=False,
+            request_parameters=request_parameters,
+        )
+
+        transformed_result = python_engine.extract_logging_metadata(
+            untransformed_features=untransformed_df,
+            transformed_features=transformed_df,
+            feature_view=fv,
+            transformed=True,
+            inference_helpers=False,
+            event_time=False,
+            primary_key=False,
+            request_parameters=request_parameters,
+        )
+
+        # Assert
+
+        # Check if the column in the returned dataframe are as expected.
+        assert all(untransformed_result.columns == ["feature_1", "feature_2"])
+        assert all(
+            transformed_result.columns
+            == ["min_max_scaler_feature_1", "min_max_scaler_feature_2"]
+        )
+
+        # Check if the metadata is correctly attached to the returned dataframe.
+        for result in [untransformed_result, transformed_result]:
+            assert hasattr(result, "hopsworks_logging_metadata")
+            assert all(
+                result.hopsworks_logging_metadata.untransformed_features.columns
+                == ["feature_1", "feature_2"]
+            )
+            assert (
+                result.hopsworks_logging_metadata.untransformed_features.values.tolist()
+                == untransformed_df[["feature_1", "feature_2"]].values.tolist()
+            )
+            assert all(
+                result.hopsworks_logging_metadata.transformed_features.columns
+                == ["min_max_scaler_feature_1", "min_max_scaler_feature_2"]
+            )
+            assert (
+                result.hopsworks_logging_metadata.transformed_features.values.tolist()
+                == transformed_df[
+                    ["min_max_scaler_feature_1", "min_max_scaler_feature_2"]
+                ].values.tolist()
+            )
+            assert all(
+                result.hopsworks_logging_metadata.event_time.columns == ["event_time"]
+            )
+            assert (
+                result.hopsworks_logging_metadata.event_time.values.tolist()
+                == untransformed_df[["event_time"]].values.tolist()
+            )
+            assert all(
+                result.hopsworks_logging_metadata.serving_keys.columns == "primary_key"
+            )
+            assert (
+                result.hopsworks_logging_metadata.serving_keys.values.tolist()
+                == untransformed_df[["primary_key"]].values.tolist()
+            )
+            assert all(
+                result.hopsworks_logging_metadata.inference_helper.columns
+                == ["inference_helper_1"]
+            )
+            assert (
+                result.hopsworks_logging_metadata.inference_helper.values.tolist()
+                == untransformed_df[["inference_helper_1"]].values.tolist()
+            )
+            assert all(
+                result.hopsworks_logging_metadata.request_parameters.columns
+                == request_parameters.columns
+            )
+            assert (
+                result.hopsworks_logging_metadata.request_parameters.values.tolist()
+                == request_parameters.values.tolist()
+            )
+
+    def test_extract_logging_metadata_all_columns_and_drop_none_fully_qualified_names(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+        python_engine = python.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=["primary_key"],
+            event_time="event_time",
+            partition_key=[],
+            features=[
+                feature.Feature("primary_key", primary=True, type="bigint"),
+                feature.Feature("event_time", type="timestamp"),
+                feature.Feature("feature_1", type="float"),
+                feature.Feature("feature_2", type="float"),
+                feature.Feature("inference_helper_1", type="float"),
+            ],
+            id=11,
+            stream=False,
+            featurestore_name="test_fs",
+        )
+
+        query = fg.select_features()
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=query,
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            inference_helper_columns=["inference_helper_1"],
+            labels=["label"],
+        )
+
+        # Since only features are selected, the primary key and event time are not included in the schema.
+        # They would be read as fully qualified names from the feature view if required.
+        fv.schema = [
+            TrainingDatasetFeature(name="feature_1", type="float", label=False),
+            TrainingDatasetFeature(name="feature_2", type="float", label=False),
+            TrainingDatasetFeature(name="label", type="string", label=False),
+            TrainingDatasetFeature(
+                name="inference_helper_1", type="float", label=False
+            ),
+        ]
+
+        fv._serving_keys = [
+            ServingKey(feature_name="primary_key", join_index=0, feature_group=fg)
+        ]
+
+        # Dataframes read has the fully qualified names for the primary key and event time.
+        # The fully qualified name is constructed as <feature_store_name>_<feature_group_name>_<feature_group_version>_<feature_name>
+        untransformed_df = pd.DataFrame(
+            {
+                "test_fs_test1_1_primary_key": [1, 2, 3],
+                "test_fs_test1_1_event_time": pd.to_datetime(
+                    [
+                        "2025-01-01 12:00:00",
+                        "2025-01-02 13:30:00",
+                        "2025-01-03 15:45:00",
+                    ]
+                ),
+                "feature_1": [0.25, 0.75, 1.1],
+                "feature_2": [5.0, 10.2, 7.7],
+                "inference_helper_1": [0.99, 0.85, 0.76],
+            }
+        )
+
+        # Mocked transformed dataframe usually created with a transformation function (transformation functions are not added in the feature view for simplicity)
+        transformed_df = pd.DataFrame(
+            {
+                "test_fs_test1_1_primary_key": [1, 2, 3],
+                "test_fs_test1_1_event_time": pd.to_datetime(
+                    [
+                        "2025-01-01 12:00:00",
+                        "2025-01-02 13:30:00",
+                        "2025-01-03 15:45:00",
+                    ]
+                ),
+                "min_max_scaler_feature_1": [0.25, 0.75, 1.1],
+                "min_max_scaler_feature_2": [5.0, 10.2, 7.7],
+                "inference_helper_1": [0.99, 0.85, 0.76],
+            }
+        )
+
+        request_parameters = pd.DataFrame({"rp_1": [1, 2, 3], "rp_2": [4, 5, 6]})
+
+        # Act
+        untransformed_result = python_engine.extract_logging_metadata(
+            untransformed_features=untransformed_df,
+            transformed_features=transformed_df,
+            feature_view=fv,
+            transformed=False,
+            inference_helpers=True,
+            event_time=True,
+            primary_key=True,
+            request_parameters=request_parameters,
+        )
+
+        transformed_result = python_engine.extract_logging_metadata(
+            untransformed_features=untransformed_df,
+            transformed_features=transformed_df,
+            feature_view=fv,
+            transformed=True,
+            inference_helpers=True,
+            event_time=True,
+            primary_key=True,
+            request_parameters=request_parameters,
+        )
+
+        # Assert
+
+        # Check the column in the returned dataframe are as expected.
+        assert all(
+            untransformed_result.columns
+            == [
+                "test_fs_test1_1_primary_key",
+                "test_fs_test1_1_event_time",
+                "feature_1",
+                "feature_2",
+                "inference_helper_1",
+            ]
+        )
+        assert all(
+            transformed_result.columns
+            == [
+                "test_fs_test1_1_primary_key",
+                "test_fs_test1_1_event_time",
+                "min_max_scaler_feature_1",
+                "min_max_scaler_feature_2",
+                "inference_helper_1",
+            ]
+        )
+
+        batch_data_df = untransformed_df.rename(
+            columns={
+                "test_fs_test1_1_primary_key": "primary_key",
+                "test_fs_test1_1_event_time": "event_time",
+            }
+        )
+
+        # Check if the metadata is correctly attached to the returned dataframe.
+        for result in [untransformed_result, transformed_result]:
+            assert hasattr(result, "hopsworks_logging_metadata")
+            assert all(
+                result.hopsworks_logging_metadata.untransformed_features.columns
+                == untransformed_result.columns
+            )
+            assert (
+                result.hopsworks_logging_metadata.untransformed_features.values.tolist()
+                == untransformed_result.values.tolist()
+            )
+            assert all(
+                result.hopsworks_logging_metadata.transformed_features.columns
+                == transformed_df.columns
+            )
+            assert (
+                result.hopsworks_logging_metadata.transformed_features.values.tolist()
+                == transformed_df.values.tolist()
+            )
+            assert all(
+                result.hopsworks_logging_metadata.event_time.columns == ["event_time"]
+            )
+            assert (
+                result.hopsworks_logging_metadata.event_time.values.tolist()
+                == batch_data_df[["event_time"]].values.tolist()
+            )
+            assert all(
+                result.hopsworks_logging_metadata.serving_keys.columns
+                == ["primary_key"]
+            )
+            assert (
+                result.hopsworks_logging_metadata.serving_keys.values.tolist()
+                == batch_data_df[["primary_key"]].values.tolist()
+            )
+            assert all(
+                result.hopsworks_logging_metadata.inference_helper.columns
+                == ["inference_helper_1"]
+            )
+            assert (
+                result.hopsworks_logging_metadata.inference_helper.values.tolist()
+                == batch_data_df[["inference_helper_1"]].values.tolist()
+            )
+            assert all(
+                result.hopsworks_logging_metadata.request_parameters.columns
+                == request_parameters.columns
+            )
+            assert (
+                result.hopsworks_logging_metadata.request_parameters.values.tolist()
+                == request_parameters.values.tolist()
+            )
+
+    def test_extract_logging_metadata_all_columns_and_drop_all_fully_qualified_names(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+        python_engine = python.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=["primary_key"],
+            event_time="event_time",
+            partition_key=[],
+            features=[
+                feature.Feature("primary_key", primary=True, type="bigint"),
+                feature.Feature("event_time", type="timestamp"),
+                feature.Feature("feature_1", type="float"),
+                feature.Feature("feature_2", type="float"),
+                feature.Feature("inference_helper_1", type="float"),
+            ],
+            id=11,
+            stream=False,
+            featurestore_name="test_fs",
+        )
+
+        query = fg.select_features()
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=query,
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            inference_helper_columns=["inference_helper_1"],
+            labels=["label"],
+        )
+
+        # Since only features are selected, the primary key and event time are not included in the schema.
+        # They would be read as fully qualified names from the feature view if required.
+        fv.schema = [
+            TrainingDatasetFeature(name="feature_1", type="float", label=False),
+            TrainingDatasetFeature(name="feature_2", type="float", label=False),
+            TrainingDatasetFeature(name="label", type="string", label=False),
+            TrainingDatasetFeature(
+                name="inference_helper_1", type="float", label=False
+            ),
+        ]
+
+        fv._serving_keys = [
+            ServingKey(feature_name="primary_key", join_index=0, feature_group=fg)
+        ]
+
+        # Dataframes read has the fully qualified names for the primary key and event time.
+        # The fully qualified name is constructed as <feature_store_name>_<feature_group_name>_<feature_group_version>_<feature_name>
+        untransformed_df = pd.DataFrame(
+            {
+                "test_fs_test1_1_primary_key": [1, 2, 3],
+                "test_fs_test1_1_event_time": pd.to_datetime(
+                    [
+                        "2025-01-01 12:00:00",
+                        "2025-01-02 13:30:00",
+                        "2025-01-03 15:45:00",
+                    ]
+                ),
+                "feature_1": [0.25, 0.75, 1.1],
+                "feature_2": [5.0, 10.2, 7.7],
+                "inference_helper_1": [0.99, 0.85, 0.76],
+            }
+        )
+
+        # Mocked transformed dataframe usually created with a transformation function (transformation functions are not added in the feature view for simplicity)
+        transformed_df = pd.DataFrame(
+            {
+                "test_fs_test1_1_primary_key": [1, 2, 3],
+                "test_fs_test1_1_event_time": pd.to_datetime(
+                    [
+                        "2025-01-01 12:00:00",
+                        "2025-01-02 13:30:00",
+                        "2025-01-03 15:45:00",
+                    ]
+                ),
+                "min_max_scaler_feature_1": [0.25, 0.75, 1.1],
+                "min_max_scaler_feature_2": [5.0, 10.2, 7.7],
+                "inference_helper_1": [0.99, 0.85, 0.76],
+            }
+        )
+
+        request_parameters = pd.DataFrame({"rp_1": [1, 2, 3], "rp_2": [4, 5, 6]})
+
+        # Act
+        untransformed_result = python_engine.extract_logging_metadata(
+            untransformed_features=untransformed_df,
+            transformed_features=transformed_df,
+            feature_view=fv,
+            transformed=False,
+            inference_helpers=False,
+            event_time=False,
+            primary_key=False,
+            request_parameters=request_parameters,
+        )
+
+        transformed_result = python_engine.extract_logging_metadata(
+            untransformed_features=untransformed_df,
+            transformed_features=transformed_df,
+            feature_view=fv,
+            transformed=True,
+            inference_helpers=False,
+            event_time=False,
+            primary_key=False,
+            request_parameters=request_parameters,
+        )
+
+        # Assert
+        assert all(untransformed_result.columns == ["feature_1", "feature_2"])
+        assert all(
+            transformed_result.columns
+            == ["min_max_scaler_feature_1", "min_max_scaler_feature_2"]
+        )
+
+        expected_untransformed_df = untransformed_df.drop(
+            columns=[
+                "test_fs_test1_1_primary_key",
+                "test_fs_test1_1_event_time",
+                "inference_helper_1",
+            ]
+        )
+
+        expected_transformed_df = transformed_df.drop(
+            columns=[
+                "test_fs_test1_1_primary_key",
+                "test_fs_test1_1_event_time",
+                "inference_helper_1",
+            ]
+        )
+
+        # Check if the metadata is correctly attached to the returned dataframe.
+        for result in [untransformed_result, transformed_result]:
+            assert hasattr(result, "hopsworks_logging_metadata")
+            assert all(
+                result.hopsworks_logging_metadata.untransformed_features.columns
+                == expected_untransformed_df.columns
+            )
+            assert (
+                result.hopsworks_logging_metadata.untransformed_features.values.tolist()
+                == expected_untransformed_df.values.tolist()
+            )
+            assert all(
+                result.hopsworks_logging_metadata.transformed_features.columns
+                == expected_transformed_df.columns
+            )
+            assert (
+                result.hopsworks_logging_metadata.transformed_features.values.tolist()
+                == expected_transformed_df.values.tolist()
+            )
+            assert all(
+                result.hopsworks_logging_metadata.event_time.columns == ["event_time"]
+            )
+            assert (
+                result.hopsworks_logging_metadata.event_time.values.tolist()
+                == untransformed_df[["test_fs_test1_1_event_time"]].values.tolist()
+            )
+            assert all(
+                result.hopsworks_logging_metadata.serving_keys.columns
+                == ["primary_key"]
+            )
+            assert (
+                result.hopsworks_logging_metadata.serving_keys.values.tolist()
+                == untransformed_df[["test_fs_test1_1_primary_key"]].values.tolist()
+            )
+            assert all(
+                result.hopsworks_logging_metadata.inference_helper.columns
+                == ["inference_helper_1"]
+            )
+            assert (
+                result.hopsworks_logging_metadata.inference_helper.values.tolist()
+                == untransformed_df[["inference_helper_1"]].values.tolist()
+            )
+            assert all(
+                result.hopsworks_logging_metadata.request_parameters.columns
+                == request_parameters.columns
+            )
+            assert (
+                result.hopsworks_logging_metadata.request_parameters.values.tolist()
+                == request_parameters.values.tolist()
+            )
