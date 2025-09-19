@@ -120,7 +120,7 @@ env:
 
 jobs:
   build-hudi:
-    uses: logicalclocks/hudi/.github/workflows/build_hudi_with_hopsfs.yml@release-1.0.2
+    uses: logicalclocks/hudi/.github/workflows/build_hudi_with_hopsfs.yml@HWORKS-2204-vatj
     with:
       ref: HWORKS-2204-vatj
       runner: ${{ inputs.runner || 'ubuntu-latest' }}
@@ -130,9 +130,9 @@ jobs:
       NEXUS_HARBOR_PASSWORD: ${{ secrets.NEXUS_HARBOR_PASSWORD }}
   
   build-spark:
-    uses: logicalclocks/spark/.github/workflows/build_spark_with_hopsfs.yaml@branch-3.5
+    uses: logicalclocks/spark/.github/workflows/build_spark_with_hopsfs.yaml@IS-153
     with:
-      ref: HWORKS-2203-vatj3
+      ref: IS-153
       runner: ${{ inputs.runner || 'ubuntu-latest' }}
       jira_tag: ${{ inputs.jira_tag || 'NOJIRA' }}
       build: ${{ (github.event_name == 'pull_request' && contains(join(github.event.pull_request.labels.*.name, ','), 'build-spark')) }}
