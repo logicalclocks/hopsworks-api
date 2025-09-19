@@ -18,7 +18,7 @@
     <dependencies>
         <dependency>
             <groupId>com.logicalclocks</groupId>
-            <artifactId>hsfs-spark-spark3.1</artifactId>
+            <artifactId>hsfs-spark-spark3.5</artifactId>
             <version>${hsfs.version}</version>
             <scope>provided</scope>
         </dependency>

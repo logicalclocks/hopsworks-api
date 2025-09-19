@@ -1,14 +1,12 @@
 import datetime
+import json
 import random
 import string
-import json
-
-import numpy as np
-import pandas as pd
-
-from locust.runners import MasterRunner, LocalRunner
 
 import hopsworks
+import numpy as np
+import pandas as pd
+from locust.runners import LocalRunner, MasterRunner
 
 
 class HopsworksClient:
