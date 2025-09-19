@@ -271,8 +271,6 @@ jobs:
           echo "HSFS_SPARK_JAR_WITH_DEPENDENCIES_URL=${HSFS_SPARK_JAR_WITH_DEPENDENCIES_URL}" >> $GITHUB_OUTPUT
       
       - name: Use jira tagged hudi if exists
-        env:
-          JIRA_TAG: HWORKS-2204
         working-directory: ${{ github.workspace }}/hopsworks-api
         run: |
           hudi_exist=$(curl -u ${{ vars.NEXUS_HARBOR_USER }}:${{ secrets.NEXUS_HARBOR_PASSWORD }} \
