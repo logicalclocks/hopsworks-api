@@ -37,12 +37,24 @@ on:
       jira_tag:
         value: ${{ jobs.build-hsfs-jars.outputs.jira_tag }}
         description: 'The jira tag used for the build'
-      hsfs_tar_name:
-        value: ${{ jobs.build-hsfs-jars.outputs.hsfs_tar_name }}
-        description: 'The name of the hsfs tar file'
-      hsfs_tar_url:
-        value: ${{ jobs.build-hsfs-jars.outputs.hsfs_tar_url }}
-        description: 'The URL of the hsfs tar file'
+      hsfs_jar_with_dependencies_url:
+        value: ${{ jobs.build-hsfs-jars.outputs.hsfs_jar_with_dependencies_url }}
+        description: 'The URL of the hsfs jar with dependencies file'
+      hsfs_jar_url:
+        value: ${{ jobs.build-hsfs-jars.outputs.hsfs_jar_url }}
+        description: 'The URL of the hsfs jar file'
+      hsfs_spark_jar_with_dependencies_url:
+        value: ${{ jobs.build-hsfs-jars.outputs.hsfs_spark_jar_with_dependencies_url }}
+        description: 'The URL of the hsfs spark jar with dependencies file'
+      hsfs_spark_jar_url:
+        value: ${{ jobs.build-hsfs-jars.outputs.hsfs_spark_jar_url }}
+        description: 'The URL of the hsfs spark jar file'
+      hsfs_utils_jar_with_dependencies_url:
+        value: ${{ jobs.build-hsfs-jars.outputs.hsfs_utils_jar_with_dependencies_url }}
+        description: 'The URL of the hsfs utils jar with dependencies file'
+      hsfs_utils_jar_url:
+        value: ${{ jobs.build-hsfs-jars.outputs.hsfs_utils_jar_url }}
+        description: 'The URL of the hsfs utils jar file'
       hudi_pom_version_no_jira:
         value: ${{ jobs.build-hudi.outputs.pom_version_no_jira }}
         description: 'The version from the pom.xml without the jira tag'
@@ -148,12 +160,12 @@ jobs:
       pom_version: ${{ steps.prep_version.outputs.pom_version }}
       commit_hash: ${{ steps.prep_version.outputs.commit_hash }}
       jira_tag: ${{ steps.extract_jira_tag.outputs.jira_tag }}
-      hsfs_tar_name: ${{ steps.prep_version.outputs.hsfs_tar_name }}
-      hsfs_tar_url: ${{ steps.prep_version.outputs.hsfs_tar_url }}
       hsfs_utils_python_name: ${{ steps.prep_version.outputs.hsfs_utils_python_name }}
       hsfs_utils_python_url: ${{ steps.prep_version.outputs.hsfs_utils_python_url }}
       hsfs_jar_url: ${{ steps.prep_version.outputs.hsfs_jar_url }}
       hsfs_jar_with_dependencies_url: ${{ steps.prep_version.outputs.hsfs_jar_with_dependencies_url }}
+      hsfs_spark_jar_url: ${{ steps.prep_version.outputs.hsfs_spark_jar_url }}
+      hsfs_spark_jar_with_dependencies_url: ${{ steps.prep_version.outputs.hsfs_spark_jar_with_dependencies_url }}
       hsfs_utils_jar_url: ${{ steps.prep_version.outputs.hsfs_utils_jar_url }}
       hsfs_utils_jar_with_dependencies_url: ${{ steps.prep_version.outputs.hsfs_utils_jar_with_dependencies_url }}
     steps:
@@ -208,7 +220,7 @@ jobs:
           HSFS_JAR_NAME=hsfs-${POM_VERSION}.jar
           HSFS_SPARK_JAR_NAME=hsfs-spark-spark3.5-${POM_VERSION}.jar
           HSFS_SPARK_JAR_WITH_DEPENDENCIES_NAME=hsfs-spark-spark3.5-${POM_VERSION}-jar-with-dependencies.jar
-          HSFS_UTILS_JAR_NAME=hsfs-utils-${POM_VERSION}.jar
+          HSFS_UTILS_JAR_NAME=hsfs-utils-${POM_VERSION}.jar 
           HSFS_UTILS_PYTHON_NAME=hsfs_utils.py
           HSFS_JAR_URL="${{ vars.NEXUS_DEV_SPARK_URL }}/${JIRA_TAG}/${HSFS_JAR_NAME}"
           HSFS_JAR_WITH_DEPENDENCIES_URL="${{ vars.NEXUS_DEV_SPARK_URL }}/${JIRA_TAG}/${HSFS_JAR_WITH_DEPENDENCIES_NAME}"
