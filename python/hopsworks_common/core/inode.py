@@ -29,12 +29,12 @@ class Inode:
         tags: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> None:
-        self._name = attributes["name"]
+        self._name = attributes.get("name", None)
         self._dir = attributes.get("dir", False)
-        self._owner = attributes["owner"]
-        self._path = attributes["path"]
-        self._permission = attributes["permission"]
-        self._modification_time = attributes["modification_time"]
+        self._owner = attributes.get("owner", None)
+        self._path = attributes.get("path", None)
+        self._permission = attributes.get("permission", None)
+        self._modification_time = attributes.get("modification_time", None)
         self._under_construction = attributes.get("under_construction", None)
 
     @classmethod
