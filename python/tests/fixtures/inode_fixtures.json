@@ -11,8 +11,7 @@
             "name":  "value",
             "owner": "some user",
             "permission": "rwxrwx---",
-            "modification_time": "2025-09-23T07:14:52.069Z",
-            ""
+            "modification_time": "2025-09-23T07:14:52.069Z"
           },
           "zip_state": "test_zip_state",
           "tags": "test_tags"
