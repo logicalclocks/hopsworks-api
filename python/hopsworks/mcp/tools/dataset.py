@@ -19,7 +19,7 @@ from fastmcp import Context
 from hopsworks.mcp.models.dataset import Dataset, Datasets, File, Files
 from hopsworks.mcp.utils.tags import TAGS
 from hopsworks_common import client
-from hopsworks_common.core import inode, dataset
+from hopsworks_common.core import dataset, inode
 
 
 class DatasetTools:
