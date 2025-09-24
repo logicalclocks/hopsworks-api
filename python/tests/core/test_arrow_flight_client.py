@@ -544,12 +544,16 @@ class TestArrowFlightClient:
     def test_override_hostname(self, mocker, backend_fixtures):
         # Arrange
         client = arrow_flight_client.ArrowFlightClient.__new__(
-            arrow_flight_client.ArrowFlightClient) 
+            arrow_flight_client.ArrowFlightClient
+        )
         client.host_url = "grpc+tls://hqs.service.hopsworks.ai:5005"
         client._service_discovery_domain = "hopsworks.ai"
 
-        mocker.patch("hsfs.core.arrow_flight_client.ArrowFlightClient._extract_certs", return_value=(None, None, None))
-        
+        mocker.patch(
+            "hsfs.core.arrow_flight_client.ArrowFlightClient._extract_certs",
+            return_value=(None, None, None),
+        )
+
         flight_client_mock = mocker.patch("pyarrow.flight.FlightClient")
 
         # Act
@@ -559,4 +563,4 @@ class TestArrowFlightClient:
         # Assert that FlightClient was initialized with the correct parameters
         flight_client_mock.assert_called_once()
         args, kwargs = flight_client_mock.call_args
-        assert kwargs.get("override_hostname") == "flyingduck.service.hopsworks.ai" 
+        assert kwargs.get("override_hostname") == "flyingduck.service.hopsworks.ai"
