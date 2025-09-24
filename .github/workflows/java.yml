@@ -39,7 +39,7 @@ jobs:
 
       - name: Test
         working-directory: ./java
-        run: mvn clean test
+        run: mvn -s ~/.m2/settings.xml clean test
 
   unit_tests_local_tz:
     name: Unit Tests (Local TZ)
@@ -77,7 +77,7 @@ jobs:
 
       - name: Test
         working-directory: ./java
-        run: mvn clean test
+        run: mvn -s ~/.m2/settings.xml clean test
 
   unit_tests_spark35:
     name: Unit Tests
@@ -115,4 +115,4 @@ jobs:
 
       - name: Test
         working-directory: ./java
-        run: mvn clean test -Pspark-3.5
+        run: mvn -s ~/.m2/settings.xml clean test -Pspark-3.5
