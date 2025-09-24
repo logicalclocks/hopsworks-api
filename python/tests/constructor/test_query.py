@@ -695,17 +695,17 @@ class TestQuery:
     def test_prep_read_spine(self, mocker):
         engine = spark.Engine()
         mocker.patch("hsfs.engine.get_instance", return_value=engine)
-        mocker.patch(
-            "hsfs.engine.get_type", return_value="spark"
-        )
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
 
         mock_fs_query = mocker.MagicMock(spec=FsQuery)
         mock_fs_query.query = "SELECT * FROM test"
         mock_fs_query.on_demand_feature_groups = []
         mock_fs_query.hudi_cached_feature_groups = []
 
-        mocker.patch("hsfs.core.query_constructor_api.QueryConstructorApi.construct_query", 
-                     return_value=mock_fs_query)
+        mocker.patch(
+            "hsfs.core.query_constructor_api.QueryConstructorApi.construct_query",
+            return_value=mock_fs_query,
+        )
 
         q = query.Query(
             left_feature_group=TestQuery.fg_spine,
@@ -718,21 +718,20 @@ class TestQuery:
         mock_fs_query.register_delta_tables.assert_called()
         mock_fs_query.register_hudi_tables.assert_called()
 
-
     def test_prep_hudi_delta_fg_join(self, mocker):
         engine = spark.Engine()
         mocker.patch("hsfs.engine.get_instance", return_value=engine)
-        mocker.patch(
-            "hsfs.engine.get_type", return_value="spark"
-        )
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
 
         mock_fs_query = mocker.MagicMock(spec=FsQuery)
         mock_fs_query.query = "SELECT * FROM test"
         mock_fs_query.on_demand_feature_groups = []
         mock_fs_query.hudi_cached_feature_groups = []
 
-        mocker.patch("hsfs.core.query_constructor_api.QueryConstructorApi.construct_query", 
-                     return_value=mock_fs_query)
+        mocker.patch(
+            "hsfs.core.query_constructor_api.QueryConstructorApi.construct_query",
+            return_value=mock_fs_query,
+        )
 
         q = query.Query(
             left_feature_group=TestQuery.fg1,
