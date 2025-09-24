@@ -10,6 +10,7 @@ from typing import Any, Dict
 
 import fsspec.implementations.arrow as pfs
 
+
 hopsfs = pfs.HadoopFileSystem("default", user=os.environ["HADOOP_USER_NAME"])
 import hopsworks
 from hsfs import engine
@@ -379,13 +380,10 @@ def _build_offsets(initial_check_point_string: str):
 
     # Split the input string into the topic and partition-offset pairs
     topic, offsets = initial_check_point_string.split(',', 1)
-    
     # Split the offsets and build a dictionary from them
     offsets_dict = {partition: int(offset) for partition, offset in (pair.split(':') for pair in offsets.split(','))}
-    
     # Create the final dictionary structure
     result = {topic: offsets_dict}
-    
     return result
 
 if __name__ == "__main__":
@@ -462,11 +460,10 @@ if __name__ == "__main__":
 
         success = True
     except Exception as e:
-        print(traceback.format_exc())
+        print(f"Error : {e}", traceback.format_exc())
     finally:
         if spark is not None:
             try:
-                spark.sparkContext._gateway.jvm.System.exit(0)
                 spark.stop()
             except Exception as e:
                 print(f"Error stopping spark session: {e}")
