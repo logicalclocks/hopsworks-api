@@ -187,6 +187,8 @@ class ArrowFlightClient:
 
         self._client = client.get_instance()
         self._variable_api: VariableApi = VariableApi()
+        self._service_discovery_domain = self._variable_api.get_service_discovery_domain()
+
         self._certificates_json: Optional[str] = None
 
         try:
@@ -251,13 +253,12 @@ class ArrowFlightClient:
             )
             host_url = f"grpc+tls://{external_domain}:5005"
         else:
-            service_discovery_domain = self._variable_api.get_service_discovery_domain()
-            if service_discovery_domain == "":
+            if self._service_discovery_domain == "":
                 raise FeatureStoreException(
                     "Client could not get Hopsworks Query Service hostname from service_discovery_domain. "
                     "The variable is either not set or empty in Hopsworks cluster configuration."
                 )
-            host_url = f"grpc+tls://flyingduck.service.{service_discovery_domain}:5005"
+            host_url = f"grpc+tls://flyingduck.service.{self._service_discovery_domain}:5005"
         _logger.debug(f"Connecting to Hopsworks Query Service on host {host_url}")
         return host_url
 
@@ -290,7 +291,7 @@ class ArrowFlightClient:
             tls_root_certs=tls_root_certs,
             cert_chain=cert_chain,
             private_key=private_key,
-            override_hostname="flyingduck.service.consul",
+            override_hostname=f"flyingduck.service.{self._service_discovery_domain}",
             generic_options=[
                 (
                     # https://arrow.apache.org/docs/cpp/flight.html#excessive-traffic
