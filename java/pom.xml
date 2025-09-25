@@ -18,10 +18,10 @@
     <properties>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
-        <guava.version>14.0.1</guava.version>
+        <guava.version>30.1.1-jre</guava.version>
         <httpclient.version>4.5.6</httpclient.version>
         <httpcore.version>4.4.13</httpcore.version>
-        <slf4j.version>1.7.30</slf4j.version>
+        <slf4j.version>2.0.17</slf4j.version>
         <log4j.version>1.2.17</log4j.version>
         <handy.version>2.1.8</handy.version>
         <lombok.version>1.18.36</lombok.version>
@@ -41,6 +41,7 @@
         <mockito.version>4.3.1</mockito.version>
         <avro.version>1.11.4</avro.version>
         <commons-text.version>1.13.1</commons-text.version>
+        <skipHops>true</skipHops>
 
         <artifact.spark.version>spark3.5</artifact.spark.version>
 
@@ -309,6 +310,26 @@
                 <kafka.version>3.4.1</kafka.version>
             </properties>
         </profile>
+        <!-- Needs to be included when running mvn deploy or mvn install -->
+        <profile>
+            <id>with-hops-ee</id>
+            <properties>
+                <skipHops>false</skipHops>
+            </properties>
+            <repositories>
+                <repository>
+                    <id>HopsEE</id>
+                    <name>Hops Enterprise Repository</name>
+                    <url>https://nexus.hops.works/repository/hops-artifacts</url>
+                    <releases>
+                        <enabled>true</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>true</enabled>
+                    </snapshots>
+                </repository>
+            </repositories>
+        </profile>
     </profiles>
 
     <repositories>
@@ -323,6 +344,7 @@
                 <enabled>true</enabled>
             </snapshots>
         </repository>
+        
     </repositories>
 
     <distributionManagement>
