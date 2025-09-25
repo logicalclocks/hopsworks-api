@@ -310,10 +310,17 @@
             </properties>
         </profile>
         <profile>
-            <id>no-hops</id>
-            <properties>
-                <skip.hops.dependency>true</skip.hops.dependency>
-            </properties>
+            <id>with-hops-ee</id>
+            <repositories>
+                <repository>
+                    <id>HopsEE</id>
+                    <name>Hops Enterprise Repository</name>
+                    <url>https://nexus.hops.works/repository/hops-artifacts</url>
+                    <releases>
+                        <enabled>true</enabled>
+                    </releases>
+                </repository>
+            </repositories>
         </profile>
     </profiles>
 
@@ -329,17 +336,7 @@
                 <enabled>true</enabled>
             </snapshots>
         </repository>
-        <repository>
-            <id>HopsEE</id>
-            <name>Hops Enterprise Repository</name>
-            <url>https://nexus.hops.works/repository/hops-artifacts/</url>
-            <releases>
-                <enabled>true</enabled>
-            </releases>
-            <snapshots>
-                <enabled>true</enabled>
-            </snapshots>
-        </repository>
+        
     </repositories>
 
     <distributionManagement>

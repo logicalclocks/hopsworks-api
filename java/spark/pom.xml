@@ -36,6 +36,13 @@
         </dependency>
 
         <dependency>
+            <groupId>io.hops</groupId>
+            <artifactId>hadoop-client</artifactId>
+            <version>3.2.0.17-EE-RC3</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
             <groupId>com.logicalclocks</groupId>
             <artifactId>hsfs</artifactId>
             <version>${project.version}</version>
@@ -161,24 +168,4 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
-
-    <profiles>
-        <profile>
-            <id>include-hops-dependency</id>
-            <activation>
-                <property>
-                    <name>skip.hops.dependency</name>
-                    <value>!true</value>
-                </property>
-            </activation>
-            <dependencies>
-                <dependency>
-                    <groupId>io.hops</groupId>
-                    <artifactId>hadoop-client</artifactId>
-                    <version>3.2.0.17-EE-RC3</version>
-                    <scope>provided</scope>
-                </dependency>
-            </dependencies>
-        </profile>
-    </profiles>
 </project>
