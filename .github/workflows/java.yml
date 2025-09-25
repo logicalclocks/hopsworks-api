@@ -88,6 +88,4 @@ jobs:
 
       - name: Test
         working-directory: ./java
-        env:
-          M2_HOME: ~/.m2
         run: mvn clean test -Pspark-3.5
