@@ -323,6 +323,17 @@
                 <enabled>true</enabled>
             </snapshots>
         </repository>
+        <repository>
+            <id>HopsEE</id>
+            <name>Hops Enterprise Repository</name>
+            <url>https://nexus.hops.works/repository/hops-artifacts</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+        </repository>
     </repositories>
 
     <distributionManagement>
