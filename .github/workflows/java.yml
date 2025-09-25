@@ -29,15 +29,9 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('java/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
-
-      - name: add auth to maven settings
-        run: |
-          mkdir -p ~/.m2
-          echo "<settings><servers><server><id>HopsEE</id><username>${{ vars.NEXUS_HARBOR_USER }}</username><password>${{ secrets.NEXUS_HARBOR_PASSWORD }}</password><configuration></configuration></server></servers></settings>" > ~/.m2/settings.xml
-
       - name: Test
         working-directory: ./java
-        run: mvn clean test -Pci-test
+        run: mvn clean test
 
   unit_tests_local_tz:
     name: Unit Tests (Local TZ)
@@ -97,15 +91,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      - name: add auth to maven settings
-        run: |
-          mkdir -p ~/.m2
-          echo "<settings><servers><server><id>HopsEE</id><username>${{ vars.NEXUS_HARBOR_USER }}</username><password>${{ secrets.NEXUS_HARBOR_PASSWORD }}</password><configuration></configuration></server></servers></settings>" > ~/.m2/settings.xml
-          # Verify that we can access the repository
-          curl -u "${{ vars.NEXUS_HARBOR_USER }}:${{ secrets.NEXUS_HARBOR_PASSWORD }}" "https://nexus.hops.works/repository/hops-artifacts/io/hops/hadoop-client/3.2.0.17-EE-RC3/hadoop-client-3.2.0.17-EE-RC3.pom"
 
       - name: Test
         working-directory: ./java
         env:
           M2_HOME: ~/.m2
-        run: mvn clean test -Pci-test
+        run: mvn clean test -Pspark-3.5
