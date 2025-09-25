@@ -29,24 +29,6 @@
     <artifactId>hsfs-spark-${artifact.spark.version}</artifactId>
 
     <dependencies>
-        <profile>
-        <id>include-hops-dependency</id>
-        <activation>
-            <property>
-                <name>skip.hops.dependency</name>
-                <value>!true</value>
-            </property>
-        </activation>
-        <dependencies>
-            <dependency>
-                <groupId>io.hops</groupId>
-                <artifactId>hadoop-client</artifactId>
-                <version>3.2.0.17-EE-RC3</version>
-                <scope>provided</scope>
-            </dependency>
-        </dependencies>
-        </profile>
-
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
@@ -179,4 +161,24 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <profiles>
+        <profile>
+            <id>include-hops-dependency</id>
+            <activation>
+                <property>
+                    <name>skip.hops.dependency</name>
+                    <value>!true</value>
+                </property>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>io.hops</groupId>
+                    <artifactId>hadoop-client</artifactId>
+                    <version>3.2.0.17-EE-RC3</version>
+                    <scope>provided</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
 </project>
