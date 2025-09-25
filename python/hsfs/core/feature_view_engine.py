@@ -1439,10 +1439,13 @@ class FeatureViewEngine:
                     )
                     for key, fg in [
                         (
-                            "untransformed_features",
+                            constants.FEATURE_LOGGING.UNTRANSFORMED_FEATURES,
                             feature_logging.untransformed_features,
                         ),
-                        ("transformed_features", feature_logging.transformed_features),
+                        (
+                            constants.FEATURE_LOGGING.TRANSFORMED_FEATURES,
+                            feature_logging.transformed_features,
+                        ),
                     ]
                 }
             )
@@ -1640,43 +1643,47 @@ class FeatureViewEngine:
                 transformed_features=(
                     transformed_features,
                     fv._transformed_feature_names,
-                    "transformed_features",
+                    constants.FEATURE_LOGGING.TRANSFORMED_FEATURES,
                 ),
                 untransformed_features=(
                     untransformed_features,
                     fv._untransformed_feature_names,
-                    "untransformed_features",
+                    constants.FEATURE_LOGGING.UNTRANSFORMED_FEATURES,
                 ),
-                predictions=(predictions, list(fv._label_column_names), "predictions"),
+                predictions=(
+                    predictions,
+                    list(fv._label_column_names),
+                    constants.FEATURE_LOGGING.PREDICTIONS,
+                ),
                 serving_keys=(
                     serving_keys,
                     fv._required_serving_key_names,
-                    "serving_keys",
+                    constants.FEATURE_LOGGING.SERVING_KEYS,
                 ),
                 helper_columns=(
                     helper_columns,
                     fv.inference_helper_columns,
-                    "helper_columns",
+                    constants.FEATURE_LOGGING.INFERENCE_HELPER_COLUMNS,
                 ),
                 request_parameters=(
                     request_parameters,
                     fv.request_parameters,
-                    "request_parameters",
+                    constants.FEATURE_LOGGING.REQUEST_PARAMETERS,
                 ),
                 event_time=(
                     event_time,
                     [fv._root_feature_group_event_time_column_name],
-                    "event_time",
+                    constants.FEATURE_LOGGING.EVENT_TIME,
                 ),
                 request_id=(
                     [request_id] if isinstance(request_id, str) else request_id,
-                    ["request_id"],
-                    "request_id",
+                    [constants.FEATURE_LOGGING.REQUEST_ID_COLUMN_NAME],
+                    constants.FEATURE_LOGGING.REQUEST_ID,
                 ),
                 extra_logging_features=(
                     extra_logging_features,
                     fv._extra_logging_column_names,
-                    "extra_logging_features",
+                    constants.FEATURE_LOGGING.EXTRA_LOGGING_FEATURES,
                 ),
                 td_col_name=constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
@@ -1695,43 +1702,47 @@ class FeatureViewEngine:
                 transformed_features=(
                     transformed_features,
                     fv._transformed_feature_names,
-                    "transformed_features",
+                    constants.FEATURE_LOGGING.TRANSFORMED_FEATURES,
                 ),
                 untransformed_features=(
                     untransformed_features,
                     fv._untransformed_feature_names,
-                    "untransformed_features",
+                    constants.FEATURE_LOGGING.UNTRANSFORMED_FEATURES,
                 ),
-                predictions=(predictions, list(fv._label_column_names), "predictions"),
+                predictions=(
+                    predictions,
+                    list(fv._label_column_names),
+                    constants.FEATURE_LOGGING.PREDICTIONS,
+                ),
                 serving_keys=(
                     serving_keys,
                     fv._required_serving_key_names,
-                    "serving_keys",
+                    constants.FEATURE_LOGGING.SERVING_KEYS,
                 ),
                 helper_columns=(
                     helper_columns,
                     fv.inference_helper_columns,
-                    "helper_columns",
+                    constants.FEATURE_LOGGING.INFERENCE_HELPER_COLUMNS,
                 ),
                 request_parameters=(
                     request_parameters,
                     fv.request_parameters,
-                    "request_parameters",
+                    constants.FEATURE_LOGGING.REQUEST_PARAMETERS,
                 ),
                 event_time=(
                     event_time,
                     [fv._root_feature_group_event_time_column_name],
-                    "event_time",
+                    constants.FEATURE_LOGGING.EVENT_TIME,
                 ),
                 request_id=(
                     [request_id] if isinstance(request_id, str) else request_id,
-                    ["request_id"],
-                    "request_id",
+                    [constants.FEATURE_LOGGING.REQUEST_ID_COLUMN_NAME],
+                    constants.FEATURE_LOGGING.REQUEST_ID,
                 ),
                 extra_logging_features=(
                     extra_logging_features,
                     fv._extra_logging_column_names,
-                    "extra_logging_features",
+                    constants.FEATURE_LOGGING.EXTRA_LOGGING_FEATURES,
                 ),
                 td_col_name=constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,

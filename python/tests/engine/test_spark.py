@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import logging
 from unittest.mock import MagicMock, PropertyMock, call
 
 import hopsworks_common
@@ -24,6 +25,7 @@ import numpy
 import pandas as pd
 import pyspark.sql
 import pytest
+from hopsworks_common import constants
 from hsfs import (
     expectation_suite,
     feature,
@@ -44,7 +46,7 @@ from hsfs.hopsworks_udf import udf
 from hsfs.training_dataset_feature import TrainingDatasetFeature
 from hsfs.transformation_function import TransformationType
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import lit
+from pyspark.sql.functions import lit, struct, to_json
 from pyspark.sql.types import (
     ArrayType,
     BinaryType,
@@ -69,6 +71,65 @@ hopsworks_common.connection._hsfs_engine_type = "spark"
 
 
 class TestSpark:
+    @pytest.fixture
+    def logging_features(self):
+        meta_data_logging_columns = [
+            feature.Feature(
+                constants.FEATURE_LOGGING.LOG_ID_COLUMN_NAME,
+                primary=True,
+                type="string",
+            ),
+            feature.Feature(
+                constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
+                type="int",
+            ),
+            feature.Feature(
+                constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME, type="timestamp"
+            ),
+            feature.Feature(constants.FEATURE_LOGGING.MODEL_COLUMN_NAME, type="string"),
+        ]
+
+        logging_features = [
+            # Metdata Columns
+            feature.Feature("primary_key", primary=True, type="bigint"),
+            feature.Feature("event_time", type="timestamp"),
+            feature.Feature("feature_1", type="double"),
+            feature.Feature("feature_2", type="double"),
+            feature.Feature("feature_3", type="int"),
+            feature.Feature(
+                constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + "label", type="string"
+            ),
+            feature.Feature("min_max_scaler_feature_3", type="double"),
+            feature.Feature("extra_1", type="string"),
+            feature.Feature("extra_2", type="int"),
+            feature.Feature("inference_helper_1", type="double"),
+            feature.Feature("rp_1", type="int"),
+            feature.Feature("rp_2", type="int"),
+            feature.Feature(
+                constants.FEATURE_LOGGING.REQUEST_ID_COLUMN_NAME, type="string"
+            ),
+            feature.Feature(
+                constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME, type="string"
+            ),
+        ]
+
+        column_names = {
+            "untransformed_features": ["feature_1", "feature_2", "feature_3"],
+            "transformed_features": [
+                "feature_1",
+                "feature_2",
+                "min_max_scaler_feature_3",
+            ],
+            "predictions": ["label"],
+            "serving_keys": ["primary_key"],
+            "helper_columns": ["inference_helper_1"],
+            "request_parameters": ["rp_1", "rp_2"],
+            "event_time": ["event_time"],
+            "request_id": ["request_id"],
+            "extra_logging_features": ["extra_1", "extra_2"],
+        }
+        yield logging_features, meta_data_logging_columns, column_names
+
     def test_sql(self, mocker):
         # Arrange
         mock_spark_engine_sql_offline = mocker.patch(
@@ -1658,7 +1719,7 @@ class TestSpark:
         data = []
         data.append((b"2121", b"21212121"))
         data.append((b"1212", b"12121212"))
-        pandas_df = pd.DataFrame(data, columns =["key", "value"])
+        pandas_df = pd.DataFrame(data, columns=["key", "value"])
 
         df = spark_engine._spark_session.createDataFrame(pandas_df)
 
@@ -1678,10 +1739,10 @@ class TestSpark:
             features=features,
         )
         fg._subject = {
-            'id': 1025,
-            'subject': 'fg_1',
-            'version': 1,
-            'schema': '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]},{"name":"event_time","type":["null",{"type":"long","logicalType":"timestamp-micros"}]}]}'
+            "id": 1025,
+            "subject": "fg_1",
+            "version": 1,
+            "schema": '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]},{"name":"event_time","type":["null",{"type":"long","logicalType":"timestamp-micros"}]}]}',
         }
 
         # Act
@@ -1691,7 +1752,7 @@ class TestSpark:
         )
 
         # Assert
-        expected_schema = json.loads('''{
+        expected_schema = json.loads("""{
             "fields": [
                 {"metadata": {}, "name": "key", "nullable": true, "type": "binary"},
                 {"metadata": {}, "name": "value", "nullable": false, "type": {
@@ -1705,7 +1766,7 @@ class TestSpark:
                 }}
             ],
             "type": "struct"
-        }''')
+        }""")
 
         actual_schema = json.loads(deserialized_df.schema.json())
         assert actual_schema == expected_schema
@@ -1717,9 +1778,15 @@ class TestSpark:
         now = datetime.datetime.now()
 
         fg_data = []
-        fg_data.append(("ekarson", ["GRAVITY RUSH 2", "KING'S QUEST"], pd.Timestamp(now)))
-        fg_data.append(("ratmilkdrinker", ["NBA 2K", "CALL OF DUTY"], pd.Timestamp(now)))
-        pandas_df = pd.DataFrame(fg_data, columns =["account_id", "last_played_games", "event_time"])
+        fg_data.append(
+            ("ekarson", ["GRAVITY RUSH 2", "KING'S QUEST"], pd.Timestamp(now))
+        )
+        fg_data.append(
+            ("ratmilkdrinker", ["NBA 2K", "CALL OF DUTY"], pd.Timestamp(now))
+        )
+        pandas_df = pd.DataFrame(
+            fg_data, columns=["account_id", "last_played_games", "event_time"]
+        )
 
         df = spark_engine._spark_session.createDataFrame(pandas_df)
 
@@ -1739,10 +1806,10 @@ class TestSpark:
             features=features,
         )
         fg._subject = {
-            'id': 1025,
-            'subject': 'fg_1',
-            'version': 1,
-            'schema': '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]},{"name":"event_time","type":["null",{"type":"long","logicalType":"timestamp-micros"}]}]}'
+            "id": 1025,
+            "subject": "fg_1",
+            "version": 1,
+            "schema": '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]},{"name":"event_time","type":["null",{"type":"long","logicalType":"timestamp-micros"}]}]}',
         }
 
         # Act
@@ -1757,7 +1824,10 @@ class TestSpark:
         )
 
         # Assert
-        assert serialized_df.schema.json() == '{"fields":[{"metadata":{},"name":"key","nullable":false,"type":"binary"},{"metadata":{},"name":"value","nullable":false,"type":"binary"}],"type":"struct"}'
+        assert (
+            serialized_df.schema.json()
+            == '{"fields":[{"metadata":{},"name":"key","nullable":false,"type":"binary"},{"metadata":{},"name":"value","nullable":false,"type":"binary"}],"type":"struct"}'
+        )
         assert df.schema == deserialized_df.schema["value"].dataType
         assert df.collect() == deserialized_df.select("value.*").collect()
 
@@ -5962,3 +6032,1003 @@ class TestSpark:
         # Assert
         assert result.schema == spark_df.schema
         assert result.collect() == []
+
+    def test_get_feature_logging_df_logging_data_no_missing_no_additional_dataframe(
+        self, mocker, logging_features
+    ):
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        spark_engine = spark.Engine()
+
+        logging_features, meta_data_logging_columns, column_names = logging_features
+
+        logging_feature_group_features = meta_data_logging_columns + logging_features
+
+        # Create Spark DataFrame directly using schema
+        schema = StructType(
+            [
+                StructField("primary_key", LongType(), True),
+                StructField("event_time", TimestampType(), True),
+                StructField("feature_1", DoubleType(), True),
+                StructField("feature_2", DoubleType(), True),
+                StructField("feature_3", IntegerType(), True),
+                StructField("label", StringType(), True),
+                StructField("min_max_scaler_feature_3", DoubleType(), True),
+                StructField("rp_1", IntegerType(), True),
+                StructField("rp_2", IntegerType(), True),
+                StructField("extra_1", StringType(), True),
+                StructField("extra_2", IntegerType(), True),
+                StructField("request_id", StringType(), True),
+                StructField("inference_helper_1", DoubleType(), True),
+            ]
+        )
+
+        data = [
+            (
+                1,
+                datetime.datetime(2025, 1, 1, 12, 0, 0),
+                0.25,
+                5.0,
+                100,
+                "A",
+                0.25,
+                1,
+                4,
+                "extra_a",
+                10,
+                "req_1",
+                0.95,
+            ),
+            (
+                2,
+                datetime.datetime(2025, 1, 2, 13, 30, 0),
+                0.75,
+                10.2,
+                200,
+                "B",
+                0.75,
+                2,
+                5,
+                "extra_b",
+                20,
+                "req_2",
+                0.85,
+            ),
+            (
+                3,
+                datetime.datetime(2025, 1, 3, 15, 45, 0),
+                1.1,
+                7.7,
+                300,
+                "A",
+                1.1,
+                3,
+                6,
+                "extra_c",
+                30,
+                "req_3",
+                0.76,
+            ),
+        ]
+
+        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+
+        # Specify column names for each type of data
+        logging_dataframe = spark_engine.get_feature_logging_df(
+            logging_data=spark_df,
+            logging_feature_group_features=logging_feature_group_features,
+            transformed_features=(
+                None,
+                column_names["transformed_features"],
+                constants.FEATURE_LOGGING.TRANSFORMED_FEATURES,
+            ),
+            untransformed_features=(
+                None,
+                column_names["untransformed_features"],
+                constants.FEATURE_LOGGING.UNTRANSFORMED_FEATURES,
+            ),
+            predictions=(
+                None,
+                column_names["predictions"],
+                constants.FEATURE_LOGGING.PREDICTIONS,
+            ),
+            serving_keys=(
+                None,
+                column_names["serving_keys"],
+                constants.FEATURE_LOGGING.SERVING_KEYS,
+            ),
+            helper_columns=(
+                None,
+                column_names["helper_columns"],
+                constants.FEATURE_LOGGING.INFERENCE_HELPER_COLUMNS,
+            ),
+            request_parameters=(
+                None,
+                column_names["request_parameters"],
+                constants.FEATURE_LOGGING.REQUEST_PARAMETERS,
+            ),
+            event_time=(
+                None,
+                column_names["event_time"],
+                constants.FEATURE_LOGGING.EVENT_TIME,
+            ),
+            request_id=(
+                None,
+                column_names["request_id"],
+                constants.FEATURE_LOGGING.REQUEST_ID,
+            ),
+            extra_logging_features=(
+                None,
+                column_names["extra_logging_features"],
+                constants.FEATURE_LOGGING.EXTRA_LOGGING_FEATURES,
+            ),
+            td_col_name=constants.FEATURE_LOGGING.LOG_ID_COLUMN_NAME,
+            time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
+            model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+            training_dataset_version=1,
+            hsml_model="test_model",
+        )
+
+        logging_feature_names = [feature.name for feature in logging_features]
+        expected_columns = [feature.name for feature in logging_feature_group_features]
+        expected_dataframe = spark_df.select("*")
+        expected_dataframe = expected_dataframe.withColumnRenamed(
+            "label", "predicted_label"
+        )
+        expected_dataframe = expected_dataframe.withColumn(
+            constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME,
+            to_json(struct("rp_1", "rp_2")),
+        )
+
+        # Assert expected columns using Spark DataFrame methods
+        assert logging_dataframe.columns == expected_columns
+        assert logging_dataframe.count() == 3
+
+        # Verify specific columns exist and have expected data types
+        assert logging_dataframe.columns == expected_columns
+        assert (
+            logging_dataframe.select(*logging_feature_names).collect()
+            == expected_dataframe.select(*logging_feature_names).collect()
+        )
+
+    def test_get_feature_logging_df_logging_data_no_missing_no_additional_list(
+        self, mocker, logging_features
+    ):
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        spark_engine = spark.Engine()
+
+        logging_features, meta_data_logging_columns, column_names = logging_features
+
+        logging_feature_group_features = meta_data_logging_columns + logging_features
+
+        # Prepare log data as list of lists, this list would include only the logging features (excluding any metadata column and the request_parameters column which is handled separately)
+        logging_features_names = [
+            feature.name
+            for feature in logging_features
+            if feature.name != constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME
+        ]
+        logging_features_names = [
+            name if name != "predicted_label" else "label"
+            for name in logging_features_names
+        ]
+
+        schema = StructType(
+            [
+                StructField("primary_key", LongType(), True),
+                StructField("event_time", TimestampType(), True),
+                StructField("feature_1", DoubleType(), True),
+                StructField("feature_2", DoubleType(), True),
+                StructField("feature_3", IntegerType(), True),
+                StructField("label", StringType(), True),
+                StructField("min_max_scaler_feature_3", DoubleType(), True),
+                StructField("rp_1", IntegerType(), True),
+                StructField("rp_2", IntegerType(), True),
+                StructField("extra_1", StringType(), True),
+                StructField("extra_2", IntegerType(), True),
+                StructField("request_id", StringType(), True),
+                StructField("inference_helper_1", DoubleType(), True),
+            ]
+        )
+
+        log_data_list = [
+            (
+                1,
+                datetime.datetime(2025, 1, 1, 12, 0, 0),
+                0.25,
+                5.0,
+                100,
+                "A",
+                0.25,
+                1,
+                4,
+                "extra_a",
+                10,
+                "req_1",
+                0.95,
+            ),
+            (
+                2,
+                datetime.datetime(2025, 1, 2, 13, 30, 0),
+                0.75,
+                10.2,
+                200,
+                "B",
+                0.75,
+                2,
+                5,
+                "extra_b",
+                20,
+                "req_2",
+                0.85,
+            ),
+            (
+                3,
+                datetime.datetime(2025, 1, 3, 15, 45, 0),
+                1.1,
+                7.7,
+                300,
+                "A",
+                1.1,
+                3,
+                6,
+                "extra_c",
+                30,
+                "req_3",
+                0.76,
+            ),
+        ]
+        logging_features_names = [
+            feature.name
+            for feature in logging_features
+            if feature.name != constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME
+        ]
+        logging_features_names = [
+            name if name != "predicted_label" else "label"
+            for name in logging_features_names
+        ]
+
+        # Select column in the correct order
+        spark_df = spark_engine._spark_session.createDataFrame(log_data_list, schema)
+        log_data_df_list = [
+            list(row) for row in spark_df.select(*logging_features_names).collect()
+        ]
+        print(log_data_df_list, flush=True)
+
+        # Specify column names for each type of data
+        logging_dataframe = spark_engine.get_feature_logging_df(
+            logging_data=log_data_df_list,
+            logging_feature_group_features=logging_feature_group_features,
+            transformed_features=(
+                None,
+                column_names["transformed_features"],
+                constants.FEATURE_LOGGING.TRANSFORMED_FEATURES,
+            ),
+            untransformed_features=(
+                None,
+                column_names["untransformed_features"],
+                constants.FEATURE_LOGGING.UNTRANSFORMED_FEATURES,
+            ),
+            predictions=(
+                None,
+                column_names["predictions"],
+                constants.FEATURE_LOGGING.PREDICTIONS,
+            ),
+            serving_keys=(
+                None,
+                column_names["serving_keys"],
+                constants.FEATURE_LOGGING.SERVING_KEYS,
+            ),
+            helper_columns=(
+                None,
+                column_names["helper_columns"],
+                constants.FEATURE_LOGGING.INFERENCE_HELPER_COLUMNS,
+            ),
+            request_parameters=(
+                None,
+                column_names["request_parameters"],
+                constants.FEATURE_LOGGING.REQUEST_PARAMETERS,
+            ),
+            event_time=(
+                None,
+                column_names["event_time"],
+                constants.FEATURE_LOGGING.EVENT_TIME,
+            ),
+            request_id=(
+                None,
+                column_names["request_id"],
+                constants.FEATURE_LOGGING.REQUEST_ID,
+            ),
+            extra_logging_features=(
+                None,
+                column_names["extra_logging_features"],
+                constants.FEATURE_LOGGING.EXTRA_LOGGING_FEATURES,
+            ),
+            td_col_name=constants.FEATURE_LOGGING.LOG_ID_COLUMN_NAME,
+            time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
+            model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+            training_dataset_version=1,
+            hsml_model="test_model",
+        )
+
+        logging_feature_names = [feature.name for feature in logging_features]
+        expected_columns = [feature.name for feature in logging_feature_group_features]
+        expected_dataframe = spark_df.select("*")
+        expected_dataframe = expected_dataframe.withColumnRenamed(
+            "label", "predicted_label"
+        )
+        expected_dataframe = expected_dataframe.withColumn(
+            constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME,
+            to_json(struct("rp_1", "rp_2")),
+        )
+
+        # Assert expected columns using Spark DataFrame methods
+        assert logging_dataframe.columns == expected_columns
+        assert logging_dataframe.count() == 3
+
+        # Verify specific columns exist and have expected data types
+        assert logging_dataframe.columns == expected_columns
+        assert (
+            logging_dataframe.select(*logging_feature_names).collect()
+            == expected_dataframe.select(*logging_feature_names).collect()
+        )
+
+    def test_get_feature_logging_df_logging_data_no_missing_no_additional_dict(
+        self, mocker, logging_features
+    ):
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        spark_engine = spark.Engine()
+
+        logging_features, meta_data_logging_columns, column_names = logging_features
+
+        logging_feature_group_features = meta_data_logging_columns + logging_features
+
+        # Prepare log data as list of lists, this list would include only the logging features (excluding any metadata column and the request_parameters column which is handled separately)
+        logging_features_names = [
+            feature.name
+            for feature in logging_features
+            if feature.name != constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME
+        ]
+        logging_features_names = [
+            name if name != "predicted_label" else "label"
+            for name in logging_features_names
+        ]
+
+        schema = StructType(
+            [
+                StructField("primary_key", LongType(), True),
+                StructField("event_time", TimestampType(), True),
+                StructField("feature_1", DoubleType(), True),
+                StructField("feature_2", DoubleType(), True),
+                StructField("feature_3", IntegerType(), True),
+                StructField("label", StringType(), True),
+                StructField("min_max_scaler_feature_3", DoubleType(), True),
+                StructField("rp_1", IntegerType(), True),
+                StructField("rp_2", IntegerType(), True),
+                StructField("extra_1", StringType(), True),
+                StructField("extra_2", IntegerType(), True),
+                StructField("request_id", StringType(), True),
+                StructField("inference_helper_1", DoubleType(), True),
+            ]
+        )
+
+        log_data_list = [
+            (
+                1,
+                datetime.datetime(2025, 1, 1, 12, 0, 0),
+                0.25,
+                5.0,
+                100,
+                "A",
+                0.25,
+                1,
+                4,
+                "extra_a",
+                10,
+                "req_1",
+                0.95,
+            ),
+            (
+                2,
+                datetime.datetime(2025, 1, 2, 13, 30, 0),
+                0.75,
+                10.2,
+                200,
+                "B",
+                0.75,
+                2,
+                5,
+                "extra_b",
+                20,
+                "req_2",
+                0.85,
+            ),
+            (
+                3,
+                datetime.datetime(2025, 1, 3, 15, 45, 0),
+                1.1,
+                7.7,
+                300,
+                "A",
+                1.1,
+                3,
+                6,
+                "extra_c",
+                30,
+                "req_3",
+                0.76,
+            ),
+        ]
+        logging_features_names = [
+            feature.name
+            for feature in logging_features
+            if feature.name != constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME
+        ]
+        logging_features_names = [
+            name if name != "predicted_label" else "label"
+            for name in logging_features_names
+        ]
+
+        # Select column in the correct order
+        spark_df = spark_engine._spark_session.createDataFrame(log_data_list, schema)
+        log_data_df_dict = [
+            row.asDict() for row in spark_df.select(*logging_features_names).collect()
+        ]
+
+        # Specify column names for each type of data
+        logging_dataframe = spark_engine.get_feature_logging_df(
+            logging_data=log_data_df_dict,
+            logging_feature_group_features=logging_feature_group_features,
+            transformed_features=(
+                None,
+                column_names["transformed_features"],
+                constants.FEATURE_LOGGING.TRANSFORMED_FEATURES,
+            ),
+            untransformed_features=(
+                None,
+                column_names["untransformed_features"],
+                constants.FEATURE_LOGGING.UNTRANSFORMED_FEATURES,
+            ),
+            predictions=(
+                None,
+                column_names["predictions"],
+                constants.FEATURE_LOGGING.PREDICTIONS,
+            ),
+            serving_keys=(
+                None,
+                column_names["serving_keys"],
+                constants.FEATURE_LOGGING.SERVING_KEYS,
+            ),
+            helper_columns=(
+                None,
+                column_names["helper_columns"],
+                constants.FEATURE_LOGGING.INFERENCE_HELPER_COLUMNS,
+            ),
+            request_parameters=(
+                None,
+                column_names["request_parameters"],
+                constants.FEATURE_LOGGING.REQUEST_PARAMETERS,
+            ),
+            event_time=(
+                None,
+                column_names["event_time"],
+                constants.FEATURE_LOGGING.EVENT_TIME,
+            ),
+            request_id=(
+                None,
+                column_names["request_id"],
+                constants.FEATURE_LOGGING.REQUEST_ID,
+            ),
+            extra_logging_features=(
+                None,
+                column_names["extra_logging_features"],
+                constants.FEATURE_LOGGING.EXTRA_LOGGING_FEATURES,
+            ),
+            td_col_name=constants.FEATURE_LOGGING.LOG_ID_COLUMN_NAME,
+            time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
+            model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+            training_dataset_version=1,
+            hsml_model="test_model",
+        )
+
+        logging_feature_names = [feature.name for feature in logging_features]
+        expected_columns = [feature.name for feature in logging_feature_group_features]
+        expected_dataframe = spark_df.select("*")
+        expected_dataframe = expected_dataframe.withColumnRenamed(
+            "label", "predicted_label"
+        )
+        expected_dataframe = expected_dataframe.withColumn(
+            constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME,
+            to_json(struct("rp_1", "rp_2")),
+        )
+
+        # Assert expected columns using Spark DataFrame methods
+        assert logging_dataframe.columns == expected_columns
+        assert logging_dataframe.count() == 3
+
+        # Verify specific columns exist and have expected data types
+        assert logging_dataframe.columns == expected_columns
+        assert (
+            logging_dataframe.select(*logging_feature_names).collect()
+            == expected_dataframe.select(*logging_feature_names).collect()
+        )
+
+    def test_get_feature_logging_df_logging_data_missing_columns_and_additional_dataframe(
+        self, mocker, caplog, logging_features
+    ):
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        spark_engine = spark.Engine()
+
+        logging_features, meta_data_logging_columns, column_names = logging_features
+
+        logging_feature_group_features = meta_data_logging_columns + logging_features
+
+        # Create Spark DataFrame directly using schema
+        schema = StructType(
+            [
+                StructField("primary_key", LongType(), True),
+                StructField("event_time", TimestampType(), True),
+                StructField("feature_1", DoubleType(), True),
+                StructField("feature_2", DoubleType(), True),
+                StructField("additional_col", IntegerType(), True),
+                StructField("label", StringType(), True),
+                StructField("min_max_scaler_feature_3", DoubleType(), True),
+                StructField("rp_1", IntegerType(), True),
+                StructField("rp_2", IntegerType(), True),
+                StructField("extra_1", StringType(), True),
+                StructField("request_id", StringType(), True),
+                StructField("inference_helper_1", DoubleType(), True),
+            ]
+        )
+
+        data = [
+            (
+                1,
+                datetime.datetime(2025, 1, 1, 12, 0, 0),
+                0.25,
+                5.0,
+                100,
+                "A",
+                0.25,
+                1,
+                4,
+                "extra_a",
+                "req_1",
+                0.95,
+            ),
+            (
+                2,
+                datetime.datetime(2025, 1, 2, 13, 30, 0),
+                0.75,
+                10.2,
+                200,
+                "B",
+                0.75,
+                2,
+                5,
+                "extra_b",
+                "req_2",
+                0.85,
+            ),
+            (
+                3,
+                datetime.datetime(2025, 1, 3, 15, 45, 0),
+                1.1,
+                7.7,
+                300,
+                "A",
+                1.1,
+                3,
+                6,
+                "extra_c",
+                "req_3",
+                0.76,
+            ),
+        ]
+
+        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+
+        caplog.set_level(logging.INFO)
+
+        # Specify column names for each type of data
+        logging_dataframe = spark_engine.get_feature_logging_df(
+            logging_data=spark_df,
+            logging_feature_group_features=logging_feature_group_features,
+            transformed_features=(
+                None,
+                column_names["transformed_features"],
+                constants.FEATURE_LOGGING.TRANSFORMED_FEATURES,
+            ),
+            untransformed_features=(
+                None,
+                column_names["untransformed_features"],
+                constants.FEATURE_LOGGING.UNTRANSFORMED_FEATURES,
+            ),
+            predictions=(
+                None,
+                column_names["predictions"],
+                constants.FEATURE_LOGGING.PREDICTIONS,
+            ),
+            serving_keys=(
+                None,
+                column_names["serving_keys"],
+                constants.FEATURE_LOGGING.SERVING_KEYS,
+            ),
+            helper_columns=(
+                None,
+                column_names["helper_columns"],
+                constants.FEATURE_LOGGING.INFERENCE_HELPER_COLUMNS,
+            ),
+            request_parameters=(
+                None,
+                column_names["request_parameters"],
+                constants.FEATURE_LOGGING.REQUEST_PARAMETERS,
+            ),
+            event_time=(
+                None,
+                column_names["event_time"],
+                constants.FEATURE_LOGGING.EVENT_TIME,
+            ),
+            request_id=(
+                None,
+                column_names["request_id"],
+                constants.FEATURE_LOGGING.REQUEST_ID,
+            ),
+            extra_logging_features=(
+                None,
+                column_names["extra_logging_features"],
+                constants.FEATURE_LOGGING.EXTRA_LOGGING_FEATURES,
+            ),
+            td_col_name=constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
+            time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
+            model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+            training_dataset_version=1,
+            hsml_model="test_model",
+        )
+
+        logging_feature_names = [feature.name for feature in logging_features]
+        missing_features = {
+            col
+            for col in logging_feature_names + column_names["request_parameters"]
+            if col not in spark_df.columns
+            and col != constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME
+        } - {"predicted_label"}
+        additional_features = {
+            col for col in spark_df.columns if col not in logging_feature_names
+        } - {"label"}
+
+        expected_columns = [feature.name for feature in logging_feature_group_features]
+        expected_dataframe = spark_df.select("*")
+        expected_dataframe = expected_dataframe.withColumnRenamed(
+            "label", "predicted_label"
+        )
+        expected_dataframe = expected_dataframe.withColumn("feature_3", lit(None))
+        expected_dataframe = expected_dataframe.withColumn("extra_2", lit(None))
+        expected_dataframe = expected_dataframe.withColumn(
+            constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME,
+            to_json(struct("rp_1", "rp_2")),
+        )
+
+        assert [
+            f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
+            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
+        ] == [rec.message for rec in caplog.records]
+
+        # Assert expected columns using Spark DataFrame methods
+        assert logging_dataframe.columns == expected_columns
+        assert logging_dataframe.count() == 3
+
+        # Verify specific columns exist and have expected data types
+        assert logging_dataframe.columns == expected_columns
+        assert (
+            logging_dataframe.select(*logging_feature_names).collect()
+            == expected_dataframe.select(*logging_feature_names).collect()
+        )
+
+    def test_get_feature_logging_df_logging_data_missing_columns_and_additional_dict(
+        self, mocker, caplog, logging_features
+    ):
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        spark_engine = spark.Engine()
+
+        logging_features, meta_data_logging_columns, column_names = logging_features
+
+        logging_feature_group_features = meta_data_logging_columns + logging_features
+
+        # Create Spark DataFrame directly using schema
+        schema = StructType(
+            [
+                StructField("primary_key", LongType(), True),
+                StructField("event_time", TimestampType(), True),
+                StructField("feature_1", DoubleType(), True),
+                StructField("feature_2", DoubleType(), True),
+                StructField("additional_col", IntegerType(), True),
+                StructField("label", StringType(), True),
+                StructField("min_max_scaler_feature_3", DoubleType(), True),
+                StructField("rp_1", IntegerType(), True),
+                StructField("rp_2", IntegerType(), True),
+                StructField("extra_1", StringType(), True),
+                StructField("request_id", StringType(), True),
+                StructField("inference_helper_1", DoubleType(), True),
+            ]
+        )
+
+        data = [
+            (
+                1,
+                datetime.datetime(2025, 1, 1, 12, 0, 0),
+                0.25,
+                5.0,
+                100,
+                "A",
+                0.25,
+                1,
+                4,
+                "extra_a",
+                "req_1",
+                0.95,
+            ),
+            (
+                2,
+                datetime.datetime(2025, 1, 2, 13, 30, 0),
+                0.75,
+                10.2,
+                200,
+                "B",
+                0.75,
+                2,
+                5,
+                "extra_b",
+                "req_2",
+                0.85,
+            ),
+            (
+                3,
+                datetime.datetime(2025, 1, 3, 15, 45, 0),
+                1.1,
+                7.7,
+                300,
+                "A",
+                1.1,
+                3,
+                6,
+                "extra_c",
+                "req_3",
+                0.76,
+            ),
+        ]
+
+        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+
+        caplog.set_level(logging.INFO)
+
+        # Prepare log data as list of dicts, including the additional column
+        log_data_df_dict = [
+            row.asDict() for row in spark_df.select(*logging_features_names).collect()
+        ]
+
+        # Specify column names for each type of data
+        logging_dataframe = spark_engine.get_feature_logging_df(
+            logging_data=log_data_df_dict,
+            logging_feature_group_features=logging_feature_group_features,
+            transformed_features=(
+                None,
+                column_names["transformed_features"],
+                constants.FEATURE_LOGGING.TRANSFORMED_FEATURES,
+            ),
+            untransformed_features=(
+                None,
+                column_names["untransformed_features"],
+                constants.FEATURE_LOGGING.UNTRANSFORMED_FEATURES,
+            ),
+            predictions=(
+                None,
+                column_names["predictions"],
+                constants.FEATURE_LOGGING.PREDICTIONS,
+            ),
+            serving_keys=(
+                None,
+                column_names["serving_keys"],
+                constants.FEATURE_LOGGING.SERVING_KEYS,
+            ),
+            helper_columns=(
+                None,
+                column_names["helper_columns"],
+                constants.FEATURE_LOGGING.INFERENCE_HELPER_COLUMNS,
+            ),
+            request_parameters=(
+                None,
+                column_names["request_parameters"],
+                constants.FEATURE_LOGGING.REQUEST_PARAMETERS,
+            ),
+            event_time=(
+                None,
+                column_names["event_time"],
+                constants.FEATURE_LOGGING.EVENT_TIME,
+            ),
+            request_id=(
+                None,
+                column_names["request_id"],
+                constants.FEATURE_LOGGING.REQUEST_ID,
+            ),
+            extra_logging_features=(
+                None,
+                column_names["extra_logging_features"],
+                constants.FEATURE_LOGGING.EXTRA_LOGGING_FEATURES,
+            ),
+            td_col_name=constants.FEATURE_LOGGING.LOG_ID_COLUMN_NAME,
+            time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
+            model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+            training_dataset_version=1,
+            hsml_model="test_model",
+        )
+
+        logging_feature_names = [feature.name for feature in logging_features]
+        missing_features = {
+            col
+            for col in logging_feature_names + column_names["request_parameters"]
+            if col not in spark_df.columns
+            and col != constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME
+        } - {"predicted_label"}
+        additional_features = {
+            col for col in spark_df.columns if col not in logging_feature_names
+        } - {"label"}
+
+        expected_columns = [feature.name for feature in logging_feature_group_features]
+        expected_dataframe = spark_df.select("*")
+        expected_dataframe = expected_dataframe.withColumnRenamed(
+            "label", "predicted_label"
+        )
+        expected_dataframe = expected_dataframe.withColumn("feature_3", lit(None))
+        expected_dataframe = expected_dataframe.withColumn("extra_2", lit(None))
+        expected_dataframe = expected_dataframe.withColumn(
+            constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME,
+            to_json(struct("rp_1", "rp_2")),
+        )
+
+        assert [
+            f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
+            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
+        ] == [rec.message for rec in caplog.records]
+
+        # Assert expected columns using Spark DataFrame methods
+        assert logging_dataframe.columns == expected_columns
+        assert logging_dataframe.count() == 3
+
+        # Verify specific columns exist and have expected data types
+        assert logging_dataframe.columns == expected_columns
+        assert (
+            logging_dataframe.select(*logging_feature_names).collect()
+            == expected_dataframe.select(*logging_feature_names).collect()
+        )
+
+    def test_get_feature_logging_df_logging_data_missing_columns_and_additional_list(
+        self, mocker, caplog, logging_features
+    ):
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        spark_engine = spark.Engine()
+
+        logging_features, meta_data_logging_columns, column_names = logging_features
+
+        logging_feature_group_features = meta_data_logging_columns + logging_features
+
+        log_data_df = pd.DataFrame(
+            {
+                "primary_key": [1, 2, 3],
+                "event_time": pd.to_datetime(
+                    [
+                        "2025-01-01 12:00:00",
+                        "2025-01-02 13:30:00",
+                        "2025-01-03 15:45:00",
+                    ]
+                ),
+                "feature_1": [0.25, 0.75, 1.1],
+                "feature_2": [5.0, 10.2, 7.7],
+                "feature_3": [100, 200, 300],
+                "label": ["A", "B", "A"],
+                "min_max_scaler_feature_3": [0.25, 0.75, 1.1],
+                "rp_1": [1, 2, 3],
+                "rp_2": [4, 5, 6],
+                "extra_1": ["extra_a", "extra_b", "extra_c"],
+                "extra_2": [10, 20, 30],
+                "request_id": ["req_1", "req_2", "req_3"],
+                # Missing inference_helper_1 column
+            }
+        )
+
+        # Create feature names with additional column for the list
+        logging_features_names = [
+            feature.name
+            for feature in logging_features
+            if feature.name != constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME
+        ]
+        logging_features_names = [
+            name if name != "predicted_label" else "label"
+            for name in logging_features_names
+        ]
+        # Filter to available features and add extra feature to simulate additional column scenario
+        available_features = [
+            name for name in logging_features_names if name in log_data_df.columns
+        ]
+        available_features.append(
+            "inference_helper_1"
+        )  # Add missing column to list to test
+
+        # Create list with None for missing column
+        log_data_list = []
+        for _, row in log_data_df.iterrows():
+            row_list = []
+            for feature_name in available_features:
+                if feature_name in log_data_df.columns:
+                    row_list.append(row[feature_name])
+                else:
+                    row_list.append(None)  # Missing column
+            log_data_list.append(row_list)
+
+        # Specify column names for each type of data
+        logging_dataframe = spark_engine.get_feature_logging_df(
+            logging_data=log_data_list,
+            logging_feature_group_features=logging_feature_group_features,
+            transformed_features=(
+                None,
+                column_names["transformed_features"],
+                constants.FEATURE_LOGGING.TRANSFORMED_FEATURES,
+            ),
+            untransformed_features=(
+                None,
+                column_names["untransformed_features"],
+                constants.FEATURE_LOGGING.UNTRANSFORMED_FEATURES,
+            ),
+            predictions=(
+                None,
+                column_names["predictions"],
+                constants.FEATURE_LOGGING.PREDICTIONS,
+            ),
+            serving_keys=(
+                None,
+                column_names["serving_keys"],
+                constants.FEATURE_LOGGING.SERVING_KEYS,
+            ),
+            helper_columns=(
+                None,
+                column_names["helper_columns"],
+                constants.FEATURE_LOGGING.INFERENCE_HELPER_COLUMNS,
+            ),
+            request_parameters=(
+                None,
+                column_names["request_parameters"],
+                constants.FEATURE_LOGGING.REQUEST_PARAMETERS,
+            ),
+            event_time=(
+                None,
+                column_names["event_time"],
+                constants.FEATURE_LOGGING.EVENT_TIME,
+            ),
+            request_id=(
+                None,
+                column_names["request_id"],
+                constants.FEATURE_LOGGING.REQUEST_ID,
+            ),
+            extra_logging_features=(
+                None,
+                column_names["extra_logging_features"],
+                constants.FEATURE_LOGGING.EXTRA_LOGGING_FEATURES,
+            ),
+            td_col_name=constants.FEATURE_LOGGING.LOG_ID_COLUMN_NAME,
+            time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
+            model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+            training_dataset_version=1,
+            hsml_model="test_model",
+        )
+
+        expected_columns = [feature.name for feature in logging_feature_group_features]
+
+        # Convert Spark DataFrame to pandas for comparison
+        logging_dataframe_pd = logging_dataframe.toPandas()
+
+        # Assert expected columns
+        assert all(logging_dataframe_pd.columns == expected_columns)
