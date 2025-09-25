@@ -335,7 +335,9 @@ class Engine:
 
     def convert_list_to_spark_dataframe(self, dataframe, column_names=None):
         if HAS_NUMPY:
-            return self.convert_numpy_to_spark_dataframe(np.array(dataframe))
+            return self.convert_numpy_to_spark_dataframe(
+                np.array(dataframe), column_names=column_names
+            )
         try:
             dataframe[0][0]
         except TypeError:
@@ -352,10 +354,17 @@ class Engine:
                 "Cannot convert a list that has more than two dimensions to a dataframe."
             ) from None
         num_cols = len(dataframe[0])
+        if column_names and num_cols != len(column_names):
+            raise ValueError(
+                "The number of column names provided does not match the number of columns in the dataframe. "
+                "Number of columns in dataframe: {}. Number of column names provided: {}.".format(
+                    num_cols, len(column_names)
+                )
+            )
         if HAS_PANDAS:
             dataframe_dict = {}
             for n_col in range(num_cols):
-                c = "col_" + str(n_col)
+                c = "col_" + str(n_col) if not column_names else column_names[n_col]
                 dataframe_dict[c] = [dataframe[i][n_col] for i in range(len(dataframe))]
             return self.convert_pandas_to_spark_dataframe(pd.DataFrame(dataframe_dict))
         for i in range(len(dataframe)):
@@ -372,17 +381,25 @@ class Engine:
         )
 
     def convert_numpy_to_spark_dataframe(self, dataframe, column_names=None):
-        if dataframe.ndim != 2:
+        is_list_of_dict = all(isinstance(row, dict) for row in dataframe)
+        if dataframe.ndim != 2 and not is_list_of_dict:
             raise TypeError(
                 "Cannot convert numpy array that do not have two dimensions to a dataframe. "
                 "The number of dimensions are: {}".format(dataframe.ndim)
             )
-        num_cols = dataframe.shape[1]
+        num_cols = dataframe.shape[1] if not is_list_of_dict else len(dataframe[0])
         if HAS_PANDAS:
             dataframe_dict = {}
-            for n_col in range(num_cols):
-                c = "col_" + str(n_col) if column_names is None else column_names[n_col]
-                dataframe_dict[c] = dataframe[:, n_col]
+            if not is_list_of_dict:
+                for n_col in range(num_cols):
+                    c = (
+                        "col_" + str(n_col)
+                        if column_names is None
+                        else column_names[n_col]
+                    )
+                    dataframe_dict[c] = dataframe[:, n_col]
+            else:
+                dataframe_dict = dataframe.tolist()
             return self.convert_pandas_to_spark_dataframe(pd.DataFrame(dataframe_dict))
         # convert timestamps to current timezone
         for n_col in range(num_cols):
@@ -417,6 +434,8 @@ class Engine:
                 dataframe_copy[c] = dataframe_copy[c].dt.tz_localize(
                     str(local_tz), ambiguous="infer", nonexistent="shift_forward"
                 )
+        print(dataframe_copy, flush=True)
+        print(dataframe_copy.columns)
         return self._spark_session.createDataFrame(dataframe_copy)
 
     def save_dataframe(
@@ -1892,10 +1911,21 @@ class Engine:
         logging_feature_group_feature_names = [
             feature.name for feature in logging_feature_group_features
         ]
+        logging_meta_data_columns = [
+            constants.FEATURE_LOGGING.LOG_ID_COLUMN_NAME,
+            constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
+            constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
+            constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+            constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME,
+        ]
+        logging_features = [
+            feature_name
+            for feature_name in logging_feature_group_feature_names
+            if feature_name not in logging_meta_data_columns
+        ]
+
         logging_df = (
-            self.convert_to_default_dataframe(
-                logging_data, logging_feature_group_feature_names
-            )
+            self.convert_to_default_dataframe(logging_data, logging_features)
             if logging_data is not None
             else None
         )
@@ -1973,13 +2003,20 @@ class Engine:
         # Creating a json column for request parameters
         request_parameter_data, request_parameter_columns, _ = request_parameters
         if request_parameter_columns:
-            request_parameter_data = self.convert_to_default_dataframe(
-                request_parameter_data, request_parameter_columns
+            # Request parameters explicitly passed by the user has the highest priority.
+            request_parameter_data = (
+                self.convert_to_default_dataframe(
+                    request_parameter_data, request_parameter_columns
+                )
+                if request_parameter_data is not None
+                else None
             )
-            request_parameter_data = request_parameter_data.withColumn(
-                TEMP_JOIN_KEY,
-                row_number().over(Window.orderBy(monotonically_increasing_id())),
-            )
+
+            if request_parameter_data is not None:
+                request_parameter_data = request_parameter_data.withColumn(
+                    TEMP_JOIN_KEY,
+                    row_number().over(Window.orderBy(monotonically_increasing_id())),
+                )
 
             if (
                 constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME
@@ -1993,12 +2030,16 @@ class Engine:
                     if feature in logging_df.columns
                 ]
 
-                user_passed_request_parameters = [
-                    feature
-                    for feature in request_parameter_data.columns
-                    if feature not in avaiable_request_parameters
-                    and feature != TEMP_JOIN_KEY
-                ]
+                user_passed_request_parameters = (
+                    [
+                        feature
+                        for feature in request_parameter_data.columns
+                        if feature not in avaiable_request_parameters
+                        and feature != TEMP_JOIN_KEY
+                    ]
+                    if request_parameter_data is not None
+                    else []
+                )
 
                 if user_passed_request_parameters:
                     logging_df = logging_df.join(
@@ -2058,14 +2099,15 @@ class Engine:
             - set(logging_feature_group_feature_names)
             - set(request_parameter_columns)
         )
+        print(missing_logging_features, flush=True)
 
         if additional_logging_features:
             _logger.info(
-                f"The following columns : `{'`, `'.join(additional_logging_features)}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored."
+                f"The following columns : `{'`, `'.join(sorted(additional_logging_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored."
             )
         if missing_logging_features:
             _logger.info(
-                f"The following columns : `{'`, `'.join(missing_logging_features)}` are missing in the logged dataframe. Setting them to None."
+                f"The following columns : `{'`, `'.join(sorted(missing_logging_features))}` are missing in the logged dataframe. Setting them to None."
             )
 
         # Cast all features to their respective offline type before writing.
