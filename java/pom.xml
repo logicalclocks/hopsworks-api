@@ -309,6 +309,18 @@
                 <kafka.version>3.4.1</kafka.version>
             </properties>
         </profile>
+        <profile>
+            <id>no-hops</id>
+            <dependencies>
+                <dependency>
+                    <groupId>io.hops</groupId>
+                    <artifactId>hadoop-client</artifactId>
+                    <version>3.2.0.17-EE-RC3</version>
+                    <scope>provided</scope>
+                    <optional>true</optional>
+                </dependency>
+            </dependencies>
+        </profile>
     </profiles>
 
     <repositories>
@@ -326,7 +338,7 @@
         <repository>
             <id>HopsEE</id>
             <name>Hops Enterprise Repository</name>
-            <url>https://nexus.hops.works/repository/hops-artifacts</url>
+            <url>https://nexus.hops.works/repository/hops-artifacts/</url>
             <releases>
                 <enabled>true</enabled>
             </releases>
