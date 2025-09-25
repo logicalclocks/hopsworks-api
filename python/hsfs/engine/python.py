@@ -39,6 +39,7 @@ from typing import (
     Union,
 )
 
+from hopsworks_common import constants
 from hsfs.core.type_systems import (
     cast_column_to_offline_type,
     cast_column_to_online_type,
@@ -1875,7 +1876,9 @@ class Engine:
             ],
             model_col_name: [hsml_model for _ in range(size)],
             time_col_name: pd.Series([now for _ in range(size)]),
-            "log_id": [str(uuid.uuid4()) for _ in range(size)],
+            constants.FEATURE_LOGGING.LOG_ID_COLUMN_NAME: [
+                str(uuid.uuid4()) for _ in range(size)
+            ],
         }
 
         if not batch:
@@ -2044,13 +2047,25 @@ class Engine:
         logging_feature_group_feature_names = [
             feature.name for feature in logging_feature_group_features
         ]
+        logging_meta_data_columns = [
+            constants.FEATURE_LOGGING.LOG_ID_COLUMN_NAME,
+            constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
+            constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
+            constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+            constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME,
+        ]
         try:
+            logging_features = [
+                feature_name
+                for feature_name in logging_feature_group_feature_names
+                if feature_name not in logging_meta_data_columns
+            ]
             logging_df = Engine._convert_feature_log_to_df(
-                logging_data, logging_feature_group_feature_names
+                logging_data, logging_features
             )
         except AssertionError as e:
             raise FeatureStoreException(
-                f"Error logging data `logging_data` do not have all required features. Please check the `logging_data` to ensure that it has the following features : {logging_feature_group_feature_names}."
+                f"Error logging data `{constants.FEATURE_LOGGING.LOGGING_DATA}` do not have all required features. Please check the `{constants.FEATURE_LOGGING.LOGGING_DATA}` to ensure that it has the following features : {logging_features}."
             ) from e
 
         # Iterate through all logging components validate them and collect them into a single dataframe.
@@ -2095,6 +2110,10 @@ class Engine:
                 for col in df.columns:
                     if col not in logging_df.columns:
                         logging_df[col] = df[col]
+                    elif not df[col].isna().all():
+                        # If the column already exists in the logging dataframe and the new column has some non-null values, we overwrite the existing column.
+                        # Higher precedence is given if the user explicitly passed the logging component.
+                        logging_df[col] = df[col]
 
         # Rename prediction columns
         _, predictions_feature_names, _ = predictions
@@ -2102,45 +2121,51 @@ class Engine:
             for feature_name in predictions_feature_names:
                 logging_df = logging_df.rename(
                     columns={
-                        feature_name: FEATURE_LOGGING.PREFIX_PREDICTIONS + feature_name
+                        feature_name: constants.FEATURE_LOGGING.PREFIX_PREDICTIONS
+                        + feature_name
                     }
                 )
 
         # Creating a json column for request parameters
         request_parameter_data, request_parameter_columns, _ = request_parameters
-        request_parameter_data = Engine._convert_feature_log_to_df(
-            request_parameter_data, request_parameter_columns
-        )
+        missing_request_parameter_columns = set()
         if request_parameter_columns:
-            # If user explicitly passes request paramter column in the logging dataframe we do not create a json column for request parameters.
-            # Else we try to extract the request parameters from the combined logging dataframe and create a json column for it.
-            if FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME not in logging_df.columns:
-                avaiable_request_parameters = [
-                    feature
-                    for feature in request_parameter_columns
-                    if feature in logging_df.columns
-                ]
+            if (
+                constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME
+                not in logging_df.columns
+            ):
+                request_parameter_data = Engine._convert_feature_log_to_df(
+                    request_parameter_data, request_parameter_columns
+                )
 
-                request_parameter = logging_df[avaiable_request_parameters]
+                # If there are any request parameter columns that are not part of the request parameter data but are present in the logging dataframe, we add them to the request parameter data.
+                for col in request_parameter_columns:
+                    if (
+                        request_parameter_data.empty
+                        or col not in request_parameter_data.columns
+                        or request_parameter_data[col].isna().all()
+                    ):
+                        if col in logging_df.columns:
+                            request_parameter_data[col] = logging_df[col]
+                        else:
+                            request_parameter_data[col] = None
+                            missing_request_parameter_columns.add(col)
 
-                # Always add any request parameters passed by users in the loggged request_parameter json.
-                for col in request_parameter_data.columns:
-                    if col not in request_parameter.columns:
-                        request_parameter[col] = request_parameter_data[col]
-
-                logging_df[FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME] = (
-                    FEATURE_LOGGING.EMPTY_REQUEST_PARAMETER_COLUMN_VALUE
-                    if request_parameter.empty
-                    else request_parameter.apply(
+                logging_df[constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME] = (
+                    constants.FEATURE_LOGGING.EMPTY_REQUEST_PARAMETER_COLUMN_VALUE
+                    if request_parameter_data.empty
+                    else request_parameter_data.apply(
                         lambda x: json.dumps(x.to_dict()), axis=1
                     )
                 )
 
+                # Drop any request parameter columns that are not explicitly part of the logging feature group so that they are not logged.
                 logging_df.drop(
                     [
                         feature
-                        for feature in avaiable_request_parameters
-                        if feature not in logging_feature_group_feature_names
+                        for feature in request_parameter_data.columns
+                        if feature in logging_df
+                        and feature not in logging_feature_group_feature_names
                     ],
                     axis=1,
                     inplace=True,
@@ -2161,16 +2186,18 @@ class Engine:
 
         # Find any missing columns in the logging dataframe and set them to None
         # Find any additional columns in the logging dataframe that are not in the logging feature group and ignore them.
-        missing_logging_features = set(logging_feature_group_feature_names).difference(
-            set(logging_df.columns)
-        ) - set(request_parameter_columns)
+        missing_logging_features = (
+            set(logging_feature_group_feature_names)
+            .difference(set(logging_df.columns))
+            .union(missing_request_parameter_columns)
+        )
         additional_logging_features = set(logging_df.columns).difference(
             set(logging_feature_group_feature_names)
         )
 
         if additional_logging_features:
             _logger.info(
-                f"The following columns : `{'`, `'.join(additional_logging_features)}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored."
+                f"The following columns : `{'`, `'.join(sorted(additional_logging_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored."
             )
 
         # Cast columns to the correct types
@@ -2182,7 +2209,7 @@ class Engine:
 
         if missing_logging_features:
             _logger.info(
-                f"The following columns : `{'`, `'.join(missing_logging_features)}` are missing in the logged dataframe. Setting them to None."
+                f"The following columns : `{'`, `'.join(sorted(missing_logging_features))}` are missing in the logged dataframe. Setting them to None."
             )
             # Set missing columns to None
             for col in missing_logging_features:
@@ -2357,7 +2384,19 @@ class Engine:
         logging_feature_group_feature_names = [
             feature.name for feature in logging_feature_group_features
         ]
-
+        logging_meta_data_columns = [
+            constants.FEATURE_LOGGING.LOG_ID_COLUMN_NAME,
+            constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
+            constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
+            constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+            constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME,
+        ]
+        logging_features = [
+            feature_name
+            for feature_name in logging_feature_group_feature_names
+            if feature_name not in logging_meta_data_columns
+        ]
+        _, label_columns, _ = predictions
         # If any of the logging components is a dataframe, we use the get_feature_logging_df function to get a dataframe and then convert it to a list of dictionaries.
         if any(
             (HAS_PANDAS and isinstance(data, pd.DataFrame))
@@ -2397,7 +2436,7 @@ class Engine:
         log_vectors: List[Dict[Any, str]] = None
         all_missing_columns = set()
         for data, feature_names, log_component_name in [
-            (logging_data, logging_feature_group_feature_names, "logging_data"),
+            (logging_data, logging_features, constants.FEATURE_LOGGING.LOGGING_DATA),
             transformed_features,
             untransformed_features,
             predictions,
@@ -2409,6 +2448,11 @@ class Engine:
             request_id,
         ]:
             if not data:
+                if log_component_name == constants.FEATURE_LOGGING.PREDICTIONS:
+                    feature_names = [
+                        constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + name
+                        for name in feature_names
+                    ]
                 all_missing_columns.update(set(feature_names))
                 continue
             try:
@@ -2429,9 +2473,22 @@ class Engine:
                 else:
                     # If all elements in the row are dictionary, then we check if all required features are present in each row and set the missing features to None.
                     for row in data:
-                        missing_columns = set(feature_names).difference(set(row.keys()))
+                        column_names = (
+                            set(row.keys())
+                            if not log_component_name
+                            == constants.FEATURE_LOGGING.LOGGING_DATA
+                            else {
+                                col
+                                if col not in label_columns
+                                else constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + col
+                                for col in row.keys()
+                            }
+                        )
+                        missing_columns = set(feature_names).difference(
+                            set(column_names)
+                        )
                         all_missing_columns.update(missing_columns)
-                        additional_logging_features = set(row.keys()).difference(
+                        additional_logging_features = set(column_names).difference(
                             (feature_names)
                         )
                         if missing_columns:
@@ -2444,8 +2501,12 @@ class Engine:
                             _logger.info(
                                 f"The following columns : `{'`, `'.join(additional_logging_features)}` are additional columns the logging data provided `{log_component_name}` and is not present in the logging feature groups. They will be ignored."
                             )
-                            for col in additional_logging_features:
-                                row.pop(col)
+                            if (
+                                log_component_name
+                                != constants.FEATURE_LOGGING.REQUEST_PARAMETERS
+                            ):  # We do not remove additional request parameter columns here as they are handled later.
+                                for col in additional_logging_features:
+                                    row.pop(col)
 
             except AssertionError as e:
                 raise FeatureStoreException(
@@ -2483,47 +2544,49 @@ class Engine:
         if predictions_feature_names:
             for log_vector in log_vectors:
                 for feature_name in predictions_feature_names:
-                    log_vector[FEATURE_LOGGING.PREFIX_PREDICTIONS + feature_name] = (
-                        log_vector.pop(feature_name)
-                    )
+                    if feature_name in log_vector:
+                        log_vector[
+                            constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + feature_name
+                        ] = log_vector.pop(feature_name)
+                    print(log_vector, flush=True)
 
         # Create a json column for request parameters
         request_parameter_data, request_parameter_names, _ = request_parameters
         if request_parameter_names:
-            request_parameter_data = [
-                dict(zip(request_parameter_names, row))
-                if not isinstance(row, dict)
-                else row
-                for row in request_parameter_data
-            ]
-
-            for log_vector, passed_rp_data in zip(log_vectors, request_parameter_data):
-                avaiable_request_parameters = [
-                    feature
-                    for feature in request_parameter_names
-                    if feature in log_vector
+            # Get any request parameters that the user passed explicitly.
+            if request_parameter_data is not None:
+                request_parameter_data = [
+                    dict(zip(request_parameter_names, row))
+                    if not isinstance(row, dict)
+                    else row
+                    for row in request_parameter_data
                 ]
-                if (
-                    FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME not in log_vector
-                    and (avaiable_request_parameters or passed_rp_data)
-                ):
-                    log_request_parameters = {
-                        k: log_vector[k] for k in avaiable_request_parameters
-                    }
-                    # Always add any request parameters passed by users in the loggged request_parameter json.
-                    for k in passed_rp_data:
-                        if k not in log_request_parameters:
-                            log_request_parameters[k] = passed_rp_data[k]
-                    log_vector[FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME] = (
-                        json.dumps(log_request_parameters)
-                    )
-                    for feature in avaiable_request_parameters:
-                        if feature not in logging_feature_group_feature_names:
-                            _ = log_vector.pop(feature)
-                else:
-                    log_vector[FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME] = (
-                        FEATURE_LOGGING.EMPTY_REQUEST_PARAMETER_COLUMN_VALUE
-                    )
+            else:
+                request_parameter_data = [dict() for _ in range(len(log_vectors))]
+
+            # Iterate through the log vectors and try to parse request parameters from the log vector if they are not explicitly passed by the user.
+            for log_vector, passed_rp_data in zip(log_vectors, request_parameter_data):
+                for col in request_parameter_names:
+                    if col not in passed_rp_data and col in log_vector:
+                        passed_rp_data[col] = log_vector[col]
+                        if col not in logging_feature_group_feature_names:
+                            # If the request parameter column is not part of the logging feature group, we remove it from the log vector so that it is not logged as a separate column.
+                            log_vector.pop(col)
+
+            if (
+                constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME
+                not in log_vector
+                and request_parameter_data
+            ):
+                for row in request_parameter_data:
+                    if row:
+                        row[
+                            constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME
+                        ] = json.dumps(row)
+                    else:
+                        row[
+                            constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME
+                        ] = constants.FEATURE_LOGGING.EMPTY_REQUEST_PARAMETER_COLUMN_VALUE
 
         # get metadata
         for row in log_vectors:
