@@ -311,15 +311,9 @@
         </profile>
         <profile>
             <id>no-hops</id>
-            <dependencies>
-                <dependency>
-                    <groupId>io.hops</groupId>
-                    <artifactId>hadoop-client</artifactId>
-                    <version>3.2.0.17-EE-RC3</version>
-                    <scope>provided</scope>
-                    <optional>true</optional>
-                </dependency>
-            </dependencies>
+            <properties>
+                <skip.hops.dependency>true</skip.hops.dependency>
+            </properties>
         </profile>
     </profiles>
 
