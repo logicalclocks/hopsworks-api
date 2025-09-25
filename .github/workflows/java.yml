@@ -37,7 +37,7 @@ jobs:
 
       - name: Test
         working-directory: ./java
-        run: mvn -s ~/.m2/settings.xml clean test
+        run: mvn clean test -Pci-test
 
   unit_tests_local_tz:
     name: Unit Tests (Local TZ)
@@ -73,7 +73,7 @@ jobs:
 
       - name: Test
         working-directory: ./java
-        run: mvn -s ~/.m2/settings.xml clean test
+        run: mvn clean test -Pci-test
 
   unit_tests_spark35:
     name: Unit Tests
@@ -113,4 +113,4 @@ jobs:
         working-directory: ./java
         env:
           M2_HOME: ~/.m2
-        run: mvn -s ~/.m2/settings.xml clean test -Pspark-3.5 -U
+        run: mvn clean test -Pci-test

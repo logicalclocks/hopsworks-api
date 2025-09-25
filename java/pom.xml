@@ -309,6 +309,20 @@
                 <kafka.version>3.4.1</kafka.version>
             </properties>
         </profile>
+        <profiles>
+    <profile>
+        <id>ci-test</id>
+        <repositories>
+            <!-- Only include Hops (Archiva), exclude HopsEE -->
+            <repository>
+                <id>Hops</id>
+                <name>Hops Repo</name>
+                <url>https://archiva.hops.works/repository/Hops/</url>
+                <releases><enabled>true</enabled></releases>
+                <snapshots><enabled>true</enabled></snapshots>
+            </repository>
+        </repositories>
+    </profile>
     </profiles>
 
     <repositories>
