@@ -326,7 +326,7 @@
         <repository>
             <id>HopsEE</id>
             <name>HopsEE Repo</name>
-            <url>https://nexus.hops.works/repository/hops-artifacts/</url>
+            <url>https://nexus.hops.works/repository/hops-artifacts</url>
             <releases>
                 <enabled>true</enabled>
             </releases>

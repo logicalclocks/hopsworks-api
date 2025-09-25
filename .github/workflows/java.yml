@@ -106,6 +106,8 @@ jobs:
         run: |
           mkdir -p ~/.m2
           echo "<settings><servers><server><id>HopsEE</id><username>${{ vars.NEXUS_HARBOR_USER }}</username><password>${{ secrets.NEXUS_HARBOR_PASSWORD }}</password><configuration></configuration></server></servers></settings>" > ~/.m2/settings.xml
+          # Verify that we can access the repository
+          curl -u "${{ vars.NEXUS_HARBOR_USER }}:${{ secrets.NEXUS_HARBOR_PASSWORD }}" "https://nexus.hops.works/repository/hops-artifacts/io/hops/hadoop-client/3.2.0.17-EE-RC3/hadoop-client-3.2.0.17-EE-RC3.pom"
 
       - name: Test
         working-directory: ./java
