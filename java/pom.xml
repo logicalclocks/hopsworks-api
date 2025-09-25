@@ -310,6 +310,7 @@
                 <kafka.version>3.4.1</kafka.version>
             </properties>
         </profile>
+        <!-- Needs to be included when running mvn deploy or mvn install -->
         <profile>
             <id>with-hops-ee</id>
             <properties>
