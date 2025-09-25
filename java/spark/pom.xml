@@ -171,21 +171,16 @@
     </dependencies>
 
     <profiles>
-    <profile>
-        <id>include-hops</id>
-        <activation>
-            <property>
-                <name>!skipHops</name>
-            </property>
-        </activation>
-        <dependencies>
-            <dependency>
-                <groupId>io.hops</groupId>
-                <artifactId>hadoop-client</artifactId>
-                <version>3.2.0.17-EE-RC3</version>
-                <scope>provided</scope>
-            </dependency>
-        </dependencies>
-    </profile>
+        <profile>
+            <id>with-hops-ee</id>
+            <dependencies>
+                <dependency>
+                    <groupId>io.hops</groupId>
+                    <artifactId>hadoop-client</artifactId>
+                    <version>3.2.0.17-EE-RC3</version>
+                    <scope>provided</scope>
+                </dependency>
+            </dependencies>
+        </profile>
     </profiles>
 </project>

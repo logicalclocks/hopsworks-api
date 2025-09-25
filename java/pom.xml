@@ -41,6 +41,7 @@
         <mockito.version>4.3.1</mockito.version>
         <avro.version>1.11.4</avro.version>
         <commons-text.version>1.13.1</commons-text.version>
+        <skipHops>true</skipHops>
 
         <artifact.spark.version>spark3.5</artifact.spark.version>
 
@@ -311,6 +312,9 @@
         </profile>
         <profile>
             <id>with-hops-ee</id>
+            <properties>
+                <skipHops>false</skipHops>
+            </properties>
             <repositories>
                 <repository>
                     <id>HopsEE</id>
