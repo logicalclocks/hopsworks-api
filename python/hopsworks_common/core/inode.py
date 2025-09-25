@@ -29,7 +29,13 @@ class Inode:
         tags: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> None:
-        self._path = attributes["path"]
+        self._name = attributes.get("name", None)
+        self._dir = attributes.get("dir", False)
+        self._owner = attributes.get("owner", None)
+        self._path = attributes.get("path", None)
+        self._permission = attributes.get("permission", None)
+        self._modification_time = attributes.get("modification_time", None)
+        self._under_construction = attributes.get("under_construction", None)
 
     @classmethod
     def from_response_json(cls, json_dict: Dict[str, Any]) -> List[Inode]:
@@ -39,5 +45,29 @@ class Inode:
         return [cls(**inode) for inode in json_decamelized]
 
     @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def dir(self) -> str:
+        return self._dir
+
+    @property
+    def owner(self) -> str:
+        return self._owner
+
+    @property
     def path(self) -> str:
         return self._path
+
+    @property
+    def permission(self) -> str:
+        return self._permission
+
+    @property
+    def modification_time(self) -> str:
+        return self._modification_time
+
+    @property
+    def under_construction(self) -> str:
+        return self._under_construction

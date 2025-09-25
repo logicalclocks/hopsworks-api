@@ -107,7 +107,7 @@ class TestArrowFlightClient:
         inode_path = mocker.MagicMock()
         inode_path.path = "/path/test.parquet"
         mocker.patch(
-            "hsfs.core.dataset_api.DatasetApi.list_files",
+            "hsfs.core.dataset_api.DatasetApi._list_dataset_path",
             return_value=(1, [inode_path]),
         )
         mocker.patch("hsfs.engine.python.Engine.split_labels", return_value=None)
