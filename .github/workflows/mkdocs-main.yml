@@ -39,9 +39,7 @@ jobs:
       - name: add auth to maven settings
         run: |
           mkdir -p ~/.m2
-          echo "<settings><servers>" > ~/.m2/settings.xml
-          echo "<server><id>HopsEE</id><username>${{ vars.NEXUS_HARBOR_USER }}</username><password>${{ secrets.NEXUS_HARBOR_PASSWORD }}</password></server>" >> ~/.m2/settings.xml
-          echo "</servers></settings>" >> ~/.m2/settings.xml
+          echo "<settings><servers><server><id>HopsEE</id><username>${{ vars.NEXUS_HARBOR_USER }}</username><password>${{ secrets.NEXUS_HARBOR_PASSWORD }}</password><configuration></configuration></server></servers></settings>" > ~/.m2/settings.xml
 
       - name: Set up JDK 8
         uses: actions/setup-java@v5
