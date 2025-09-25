@@ -111,4 +111,6 @@ jobs:
 
       - name: Test
         working-directory: ./java
-        run: mvn -s ~/.m2/settings.xml clean test -Pspark-3.5
+        env:
+          M2_HOME: ~/.m2
+        run: mvn -s ~/.m2/settings.xml clean test -Pspark-3.5 -U
