@@ -54,6 +54,7 @@ nav:
         - Split Statistics: generated/api/split_statistics_api.md
         - Statistics: generated/api/statistics_api.md
       - Storage Connector: generated/api/storage_connector_api.md
+      - Data Source: generated/api/data_source_api.md
       - TrainingDataset: generated/api/training_dataset_api.md
       - Transformation Functions:
         - HopsworksUDF: generated/api/hopsworks_udf.md

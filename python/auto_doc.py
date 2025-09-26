@@ -380,6 +380,19 @@ PAGES = {
             "hsfs.storage_connector.KafkaConnector"
         ),
     },
+    "api/data_source_api.md": {
+        "ds_get": [
+            "hsfs.feature_store.FeatureStore.get_data_source",
+            "hsfs.feature_store.FeatureStore.get_online_data_source",
+        ],
+        "data_source_properties": keras_autodoc.get_properties(
+            "hsfs.core.data_source.DataSource"
+        ),
+        "data_source_methods": keras_autodoc.get_methods(
+            "hsfs.core.data_source.DataSource",
+            exclude=EXCLUDE_METHODS,
+        ),
+    },
     "api/statistics_config_api.md": {
         "statistics_config": ["hsfs.statistics_config.StatisticsConfig"],
         "statistics_config_properties": keras_autodoc.get_properties(
