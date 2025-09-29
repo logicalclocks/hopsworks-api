@@ -55,6 +55,7 @@ import pyarrow as pa
 from botocore.response import StreamingBody
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.core import inode
 from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
 from hopsworks_common.decorators import uses_great_expectations, uses_polars
 from hsfs import (
@@ -342,12 +343,12 @@ class Engine:
             read_options = {}
 
         while offset < total_count:
-            total_count, inode_list = self._dataset_api.list_files(
-                location, offset, 100
+            total_count, inode_list = self._dataset_api._list_dataset_path(
+                location, inode.Inode, offset=offset, limit=100
             )
 
-            for inode in inode_list:
-                if not self._is_metadata_file(inode.path):
+            for inode_entry in inode_list:
+                if not self._is_metadata_file(inode_entry.path):
                     from hsfs.core import arrow_flight_client
 
                     if arrow_flight_client.is_data_format_supported(
@@ -355,12 +356,12 @@ class Engine:
                     ):
                         arrow_flight_config = read_options.get("arrow_flight_config")
                         df = arrow_flight_client.get_instance().read_path(
-                            inode.path,
+                            inode_entry.path,
                             arrow_flight_config,
                             dataframe_type=dataframe_type,
                         )
                     else:
-                        content_stream = self._dataset_api.read_content(inode.path)
+                        content_stream = self._dataset_api.read_content(inode_entry.path)
                         if dataframe_type.lower() == "polars":
                             df = self._read_polars(
                                 data_format, BytesIO(content_stream.content)
