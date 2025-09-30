@@ -47,6 +47,7 @@ from hopsworks_common.core.constants import (
 )
 from hsfs import (
     feature_view,
+    feature_group,
     training_dataset,
     transformation_function,
 )
@@ -1931,6 +1932,7 @@ class VectorServer:
         """True if all feature groups in the feature view are online."""
         if self.__all_feature_groups_online is None:
             self.__all_feature_groups_online = all(
-                fg.online_enabled for fg in self._parent_feature_groups
+                fg.online_enabled
+                for fg in self._parent_feature_groups if fg.id not in self._skip_fg_ids
             )
         return self.__all_feature_groups_online
