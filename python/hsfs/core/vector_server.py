@@ -47,7 +47,6 @@ from hopsworks_common.core.constants import (
 )
 from hsfs import (
     feature_view,
-    feature_group,
     training_dataset,
     transformation_function,
 )

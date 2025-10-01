@@ -4247,7 +4247,7 @@ class FeatureView:
         if self.logging_enabled and self._feature_logging is None:
             self._feature_logging = self._feature_view_engine.get_feature_logging(self)
         return self._feature_logging
-    
+
     def _get_spine_fg_ids(self) -> List[feature_group.SpineGroup]:
         return [fg.id for fg in self.query.featuregroups if isinstance(fg, feature_group.SpineGroup)]
 
