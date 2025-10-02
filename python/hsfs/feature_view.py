@@ -4248,6 +4248,13 @@ class FeatureView:
             self._feature_logging = self._feature_view_engine.get_feature_logging(self)
         return self._feature_logging
 
+    def _get_spine_fg_ids(self) -> List[feature_group.SpineGroup]:
+        return [fg.id for fg in self.query.featuregroups if isinstance(fg, feature_group.SpineGroup)]
+
+    def _get_skip_fg_ids(self) -> Set[int]:
+        embedding_fg_ids = [fg.id for fg in self._get_embedding_fgs()]
+        return set(embedding_fg_ids + self._get_spine_fg_ids())
+
     @property
     def _vector_server(self) -> vector_server.VectorServer:
         if not self.__vector_server:
@@ -4255,7 +4262,7 @@ class FeatureView:
                 feature_store_id=self._featurestore_id,
                 features=self._features,
                 serving_keys=self._serving_keys,
-                skip_fg_ids=set([fg.id for fg in self._get_embedding_fgs()]),
+                skip_fg_ids=self._get_skip_fg_ids(),
                 feature_view_name=self._name,
                 feature_view_version=self._version,
                 feature_store_name=self._feature_store_name,
@@ -4269,7 +4276,7 @@ class FeatureView:
                 feature_store_id=self._featurestore_id,
                 features=self._features,
                 serving_keys=self._serving_keys,
-                skip_fg_ids=set([fg.id for fg in self._get_embedding_fgs()]),
+                skip_fg_ids=self._get_skip_fg_ids(),
                 feature_view_name=self._name,
                 feature_view_version=self._version,
                 feature_store_name=self._feature_store_name,
