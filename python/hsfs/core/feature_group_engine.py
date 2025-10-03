@@ -284,13 +284,15 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         return commit_details
 
     @staticmethod
-    def commit_delete(feature_group, delete_df, write_options):
+    def _get_spark_session_and_context():
         if isinstance(engine.get_instance(), engine.spark.Engine):
-            spark_session = engine.get_instance()._spark_session
-            spark_context = engine.get_instance()._spark_context
+            return engine.get_instance()._spark_session, engine.get_instance()._spark_context
         else:
-            spark_session = None
-            spark_context = None
+            return None, None
+
+    @staticmethod
+    def commit_delete(feature_group, delete_df, write_options):
+        spark_session, spark_context = FeatureGroupEngine._get_spark_session_and_context()
         if feature_group.time_travel_format == "DELTA":
             delta_engine_instance = delta_engine.DeltaEngine(
                 feature_group.feature_store_id,
@@ -305,20 +307,15 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_group.feature_store_id,
                 feature_group.feature_store_name,
                 feature_group,
-                engine.get_instance()._spark_context,
-                engine.get_instance()._spark_session,
+                spark_context,
+                spark_session,
             )
             return hudi_engine_instance.delete_record(delete_df, write_options)
 
     @staticmethod
     def delta_vacuum(feature_group, retention_hours):
         if feature_group.time_travel_format == "DELTA":
-            if isinstance(engine.get_instance(), engine.spark.Engine):
-                spark_session = engine.get_instance()._spark_session
-                spark_context = engine.get_instance()._spark_context
-            else:
-                spark_session = None
-                spark_context = None
+            spark_session, spark_context = FeatureGroupEngine._get_spark_session_and_context()
 
             delta_engine_instance = delta_engine.DeltaEngine(
                 feature_group.feature_store_id,
