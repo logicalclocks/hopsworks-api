@@ -538,7 +538,7 @@ class GitApi:
             "repository",
             str(repo_id),
             "branch",
-            quote(branch),
+            quote(branch, safe=""),
             "commit",
         ]
 
