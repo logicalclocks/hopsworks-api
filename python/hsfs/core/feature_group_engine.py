@@ -284,14 +284,22 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         return commit_details
 
     @staticmethod
+    def _get_spark_session_and_context():
+        if isinstance(engine.get_instance(), engine.spark.Engine):
+            return engine.get_instance()._spark_session, engine.get_instance()._spark_context
+        else:
+            return None, None
+
+    @staticmethod
     def commit_delete(feature_group, delete_df, write_options):
+        spark_session, spark_context = FeatureGroupEngine._get_spark_session_and_context()
         if feature_group.time_travel_format == "DELTA":
             delta_engine_instance = delta_engine.DeltaEngine(
                 feature_group.feature_store_id,
                 feature_group.feature_store_name,
                 feature_group,
-                engine.get_instance()._spark_session,
-                engine.get_instance()._spark_context,
+                spark_session,
+                spark_context,
             )
             return delta_engine_instance.delete_record(delete_df)
         else:
@@ -299,22 +307,22 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_group.feature_store_id,
                 feature_group.feature_store_name,
                 feature_group,
-                engine.get_instance()._spark_context,
-                engine.get_instance()._spark_session,
+                spark_context,
+                spark_session,
             )
             return hudi_engine_instance.delete_record(delete_df, write_options)
 
     @staticmethod
     def delta_vacuum(feature_group, retention_hours):
         if feature_group.time_travel_format == "DELTA":
-            # TODO: This should change, DeltaEngine and HudiEngine always assumes spark client!
-            # Cannot properly manage what should happen when using python.
+            spark_session, spark_context = FeatureGroupEngine._get_spark_session_and_context()
+
             delta_engine_instance = delta_engine.DeltaEngine(
                 feature_group.feature_store_id,
                 feature_group.feature_store_name,
                 feature_group,
-                engine.get_instance()._spark_session,
-                engine.get_instance()._spark_context,
+                spark_session,
+                spark_context,
             )
             return delta_engine_instance.vacuum(retention_hours)
         else:

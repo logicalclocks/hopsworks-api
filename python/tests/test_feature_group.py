@@ -1161,3 +1161,40 @@ class TestExternalFeatureGroup:
         assert new_fg.features[0].name == "primarykey"
         assert new_fg.features[1].name == "event_time"
         assert new_fg.features[2].name == "feat"
+
+
+@pytest.mark.parametrize(
+    "engine_type,time_travel_format,online_enabled,expected_format,expected_stream",
+    [
+        ("python", None, True, "HUDI", True),
+        ("python", None, False, "DELTA", False),
+        ("spark", None, True, "HUDI", False),
+        ("spark", None, False, "HUDI", False),
+        ("python", "HUDI", True, "HUDI", True),
+        ("python", "HUDI", False, "HUDI", True),
+        ("spark", "HUDI", True, "HUDI", False),
+        ("spark", "HUDI", False, "HUDI", False),
+        ("python", "DELTA", True, "DELTA", True),
+        ("python", "DELTA", False, "DELTA", False),
+        ("spark", "DELTA", True, "DELTA", False),
+        ("spark", "DELTA", False, "DELTA", False),
+    ],
+)
+def test_init_time_travel_and_stream(
+    engine_type, time_travel_format, online_enabled, expected_format, expected_stream
+):
+    with mock.patch("hsfs.engine.get_type", return_value=engine_type):
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=1,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            online_enabled=online_enabled,
+            time_travel_format=time_travel_format,
+            stream=False,
+        )
+
+        assert fg.time_travel_format == expected_format
+        assert fg.stream is expected_stream

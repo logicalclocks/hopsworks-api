@@ -1453,6 +1453,7 @@ class TestPython:
         mock_python_engine_legacy_save_dataframe = mocker.patch(
             "hsfs.engine.python.Engine.legacy_save_dataframe"
         )
+        mocker.patch("hsfs.engine.get_type")
 
         python_engine = python.Engine()
 
@@ -1518,6 +1519,63 @@ class TestPython:
         # Assert
         assert mock_python_engine_write_dataframe_kafka.call_count == 1
         assert mock_python_engine_legacy_save_dataframe.call_count == 0
+
+    def test_save_dataframe_delta_time_travel_format(self, mocker):
+        # Arrange
+        mock_python_engine_write_dataframe_kafka = mocker.patch(
+            "hsfs.engine.python.Engine._write_dataframe_kafka"
+        )
+        mock_python_engine_legacy_save_dataframe = mocker.patch(
+            "hsfs.engine.python.Engine.legacy_save_dataframe"
+        )
+        mock_delta_engine = mocker.patch("hsfs.core.delta_engine.DeltaEngine")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        python_engine = python.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            stream=False,
+            time_travel_format="DELTA",
+        )
+
+        test_dataframe = pd.DataFrame({"col1": [1, 2, 3], "col2": [4, 5, 6]})
+
+        # Act
+        python_engine.save_dataframe(
+            feature_group=fg,
+            dataframe=test_dataframe,
+            operation="insert",
+            online_enabled=False,
+            storage="offline",
+            offline_write_options={},
+            online_write_options={},
+            validation_id=None,
+        )
+
+        # Assert
+        assert mock_python_engine_write_dataframe_kafka.call_count == 0
+        assert mock_python_engine_legacy_save_dataframe.call_count == 0
+        assert mock_delta_engine.call_count == 1
+
+        # Verify DeltaEngine was called with correct parameters
+        mock_delta_engine.assert_called_once_with(
+            fg.feature_store_id,
+            fg.feature_store_name,
+            fg,
+            None,
+            None,
+        )
+
+        # Verify save_delta_fg was called with correct parameters
+        mock_delta_engine.return_value.save_delta_fg.assert_called_once_with(
+            test_dataframe, {}, None
+        )
 
     def test_legacy_save_dataframe(self, mocker):
         # Arrange

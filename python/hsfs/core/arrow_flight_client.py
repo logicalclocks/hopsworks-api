@@ -113,7 +113,7 @@ def is_data_format_supported(data_format: str, read_options: Optional[Dict[str, 
 def _is_query_supported_rec(query: query.Query):
     hudi_no_time_travel = (
         isinstance(query._left_feature_group, feature_group.FeatureGroup)
-        and query._left_feature_group.time_travel_format == "HUDI"
+        and query._left_feature_group.time_travel_format in ["HUDI", "DELTA"]
         and (
             query._left_feature_group_start_time is None
             or query._left_feature_group_start_time == 0
@@ -626,8 +626,12 @@ def _serialize_featuregroup_connector(fg, query, on_demand_fg_aliases):
                     )
     elif fg.time_travel_format == "DELTA":
         connector["time_travel_type"] = "delta"
-        connector["type"] = fg.storage_connector.type
-        connector["options"] = _get_connector_options(fg)
+        if fg.storage_connector:
+            connector["type"] = fg.storage_connector.type
+            connector["options"] = _get_connector_options(fg)
+        else:
+            connector["type"] = ""
+            connector["options"] = {}
         connector["query"] = ""
         if query._left_feature_group == fg:
             connector["filters"] = _serialize_filter_expression(
