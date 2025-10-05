@@ -9175,7 +9175,7 @@ class TestPython:
 
         caplog.set_level(logging.INFO)
 
-        logging_dataframe = python_engine.get_feature_logging_df(
+        _ = python_engine.get_feature_logging_df(
             logging_data=log_data,
             logging_feature_group_features=logging_feature_group_features,
             transformed_features=(
@@ -9229,28 +9229,6 @@ class TestPython:
             training_dataset_version=1,
             hsml_model="test_model",
         )
-
-        expected_columns = [feature.name for feature in logging_feature_group_features]
-        logging_feature_names = [feature.name for feature in logging_features]
-
-        user_provided_columns = {
-            col
-            if col != "label"
-            else constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + "label"
-            for col in set(log_data.columns).union(set(predictions_df.columns))
-        }
-
-        missing_features = {
-            col
-            for col in logging_feature_names
-            if col not in user_provided_columns
-            and (col != constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME)
-        }
-        additional_features = {
-            col
-            for col in user_provided_columns
-            if col not in logging_feature_names and col != "label"
-        }
 
         # Prepare expected dataframe.
         # Convert request_parameters to JSON strings and rename prediction columns.
@@ -9327,7 +9305,7 @@ class TestPython:
                     constants.FEATURE_LOGGING.PREDICTIONS,
                 ),
                 serving_keys=(
-                    pandas_serving_keys_df,
+                    serving_keys_df,
                     column_names["serving_keys"],
                     constants.FEATURE_LOGGING.SERVING_KEYS,
                 ),
@@ -9669,7 +9647,7 @@ class TestPython:
                     constants.FEATURE_LOGGING.PREDICTIONS,
                 ),
                 serving_keys=(
-                    pandas_serving_keys_df,
+                    serving_keys_df,
                     column_names["serving_keys"],
                     constants.FEATURE_LOGGING.SERVING_KEYS,
                 ),
@@ -10946,7 +10924,7 @@ class TestPython:
         inference_helper_list = inference_helper_df.values.tolist()
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
-            logging_dataframe = python_engine.get_feature_logging_df(
+            _ = python_engine.get_feature_logging_df(
                 logging_data=None,
                 logging_feature_group_features=logging_feature_group_features,
                 transformed_features=(
@@ -12259,7 +12237,7 @@ class TestPython:
                     constants.FEATURE_LOGGING.INFERENCE_HELPER_COLUMNS,
                 ),
                 request_parameters=(
-                    pandas_request_parameters_df,
+                    request_parameters_df,
                     column_names["request_parameters"],
                     constants.FEATURE_LOGGING.REQUEST_PARAMETERS,
                 ),
@@ -15481,7 +15459,7 @@ class TestPython:
             "hsml_model": "test_model",
         }
 
-        logging_dataframe = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine.get_feature_logging_list(**log_data_args)
 
         # If any of the inputs is a dataframe, `get_feature_logging_df` should be a dataframe
         assert python_engine.get_feature_logging_df.call_count == 1
@@ -15709,7 +15687,7 @@ class TestPython:
         }
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
-            logging_list = python_engine.get_feature_logging_list(**log_data_args)
+            _ = python_engine.get_feature_logging_list(**log_data_args)
 
         assert (
             str(exp.value)
@@ -15912,7 +15890,7 @@ class TestPython:
             "hsml_model": "test_model",
         }
 
-        logging_dataframe = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine.get_feature_logging_list(**log_data_args)
 
         # If any of the inputs is a dataframe, `get_feature_logging_df` should be a dataframe
         assert python_engine.get_feature_logging_df.call_count == 1
@@ -16122,7 +16100,7 @@ class TestPython:
         }
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
-            logging_list = python_engine.get_feature_logging_list(**log_data_args)
+            _ = python_engine.get_feature_logging_list(**log_data_args)
 
         assert (
             str(exp.value)
@@ -16320,7 +16298,7 @@ class TestPython:
             "hsml_model": "test_model",
         }
 
-        logging_dataframe = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine.get_feature_logging_list(**log_data_args)
 
         # If any of the inputs is a dataframe, `get_feature_logging_df` should be a dataframe
         assert python_engine.get_feature_logging_df.call_count == 1
@@ -16725,7 +16703,7 @@ class TestPython:
             "hsml_model": "test_model",
         }
 
-        logging_dataframe = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine.get_feature_logging_list(**log_data_args)
 
         # If any of the inputs is a dataframe, `get_feature_logging_df` should be a dataframe
         assert python_engine.get_feature_logging_df.call_count == 1
@@ -16926,7 +16904,7 @@ class TestPython:
         }
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
-            logging_list = python_engine.get_feature_logging_list(**log_data_args)
+            _ = python_engine.get_feature_logging_list(**log_data_args)
         assert (
             str(exp.value)
             == f"Error logging data `{constants.FEATURE_LOGGING.PREDICTIONS}` do not have all required features. Please check the `{constants.FEATURE_LOGGING.PREDICTIONS}` to ensure that it has the following features : {column_names['predictions']}."
@@ -17121,7 +17099,7 @@ class TestPython:
             "hsml_model": "test_model",
         }
 
-        logging_dataframe = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine.get_feature_logging_list(**log_data_args)
 
         # If any of the inputs is a dataframe, `get_feature_logging_df` should be a dataframe
         assert python_engine.get_feature_logging_df.call_count == 1
@@ -17322,7 +17300,7 @@ class TestPython:
         }
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
-            logging_list = python_engine.get_feature_logging_list(**log_data_args)
+            _ = python_engine.get_feature_logging_list(**log_data_args)
 
         assert (
             str(exp.value)
@@ -17517,7 +17495,7 @@ class TestPython:
             "hsml_model": "test_model",
         }
 
-        logging_dataframe = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine.get_feature_logging_list(**log_data_args)
 
         # If any of the inputs is a dataframe, `get_feature_logging_df` should be a dataframe
         assert python_engine.get_feature_logging_df.call_count == 1
@@ -17718,7 +17696,7 @@ class TestPython:
         }
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
-            logging_list = python_engine.get_feature_logging_list(**log_data_args)
+            _ = python_engine.get_feature_logging_list(**log_data_args)
         assert (
             str(exp.value)
             == f"Error logging data `{constants.FEATURE_LOGGING.INFERENCE_HELPER_COLUMNS}` do not have all required features. Please check the `{constants.FEATURE_LOGGING.INFERENCE_HELPER_COLUMNS}` to ensure that it has the following features : {column_names['helper_columns']}."
@@ -17913,7 +17891,7 @@ class TestPython:
             "hsml_model": "test_model",
         }
 
-        logging_dataframe = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine.get_feature_logging_list(**log_data_args)
 
         # If any of the inputs is a dataframe, `get_feature_logging_df` should be a dataframe
         assert python_engine.get_feature_logging_df.call_count == 1
@@ -18319,7 +18297,7 @@ class TestPython:
             "hsml_model": "test_model",
         }
 
-        logging_dataframe = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine.get_feature_logging_list(**log_data_args)
 
         # If any of the inputs is a dataframe, `get_feature_logging_df` should be a dataframe
         assert python_engine.get_feature_logging_df.call_count == 1
@@ -18632,7 +18610,7 @@ class TestPython:
             "hsml_model": "test_model",
         }
 
-        logging_dataframe = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine.get_feature_logging_list(**log_data_args)
 
         # If any of the inputs is a dataframe, `get_feature_logging_df` should be a dataframe
         assert python_engine.get_feature_logging_df.call_count == 1
@@ -18934,7 +18912,7 @@ class TestPython:
             "hsml_model": "test_model",
         }
 
-        logging_dataframe = python_engine.get_feature_logging_list(**log_data_args)
+        _ = python_engine.get_feature_logging_list(**log_data_args)
 
         # If any of the inputs is a dataframe, `get_feature_logging_df` should be a dataframe
         assert python_engine.get_feature_logging_df.call_count == 1
@@ -19135,7 +19113,7 @@ class TestPython:
         }
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
-            logging_list = python_engine.get_feature_logging_list(**log_data_args)
+            _ = python_engine.get_feature_logging_list(**log_data_args)
 
         assert (
             str(exp.value)
