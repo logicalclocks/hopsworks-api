@@ -7487,7 +7487,7 @@ class TestSpark:
                 column_names["extra_logging_features"],
                 constants.FEATURE_LOGGING.EXTRA_LOGGING_FEATURES,
             ),
-            td_col_name=constants.FEATURE_LOGGING.LOG_ID_COLUMN_NAME,
+            td_col_name=constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
@@ -7641,12 +7641,13 @@ class TestSpark:
         expected_dataframe = expected_dataframe.withColumnRenamed(
             "label", "predicted_label"
         )
-        expected_dataframe = expected_dataframe.withColumn("feature_3", lit(None))
-        expected_dataframe = expected_dataframe.withColumn("extra_2", lit(None))
         expected_dataframe = expected_dataframe.withColumn(
-            constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME,
-            to_json(struct("rp_1", "rp_2")),
+            constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME, lit("{}")
         )
+
+        for col in logging_feature_names:
+            if col not in expected_dataframe.columns:
+                expected_dataframe = expected_dataframe.withColumn(col, lit(None))
 
         assert [
             f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
