@@ -1908,6 +1908,11 @@ class FeatureGroupBase:
         self._feature_store = feature_store
 
     @property
+    def id(self) -> Optional[int]:
+        """Feature group id."""
+        return self._id
+
+    @property
     def name(self) -> Optional[str]:
         """Name of the feature group."""
         return self._name
@@ -4584,7 +4589,8 @@ class SpineGroup(FeatureGroupBase):
                 great_expectations.core.ExpectationSuite,
             ]
         ] = None,
-        online_enabled: bool = False,
+        # spine groups are online enabled by default such that feature_view.get_feature_vector can be used
+        online_enabled: bool = True,
         href: Optional[str] = None,
         online_topic_name: Optional[str] = None,
         topic_name: Optional[str] = None,
@@ -4773,4 +4779,5 @@ class SpineGroup(FeatureGroupBase):
             "spine": True,
             "topicName": self.topic_name,
             "deprecated": self.deprecated,
+            "onlineEnabled": self._online_enabled,
         }
