@@ -57,7 +57,6 @@ from botocore.response import StreamingBody
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import inode
-from hopsworks_common.constants import FEATURE_LOGGING
 from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
 from hopsworks_common.core.type_systems import create_extended_type
 from hopsworks_common.decorators import uses_great_expectations, uses_polars
@@ -467,7 +466,9 @@ class Engine:
                             dataframe_type=dataframe_type,
                         )
                     else:
-                        content_stream = self._dataset_api.read_content(inode_entry.path)
+                        content_stream = self._dataset_api.read_content(
+                            inode_entry.path
+                        )
                         if dataframe_type.lower() == "polars":
                             df = self._read_polars(
                                 data_format, BytesIO(content_stream.content)
