@@ -269,7 +269,8 @@ class FEATURE_LOGGING:
     LOG_ID_COLUMN_NAME = "log_id"
     TRAINING_DATASET_VERSION_COLUMN_NAME = "td_version"
     LOG_TIME_COLUMN_NAME = "log_time"
-    MODEL_COLUMN_NAME = "hopsworks_model"
+    MODEL_COLUMN_NAME = "model_name"
+    MODEL_VERSION_COLUMN_NAME = "model_version"
     REQUEST_ID_COLUMN_NAME = "request_id"
     REQUEST_PARAMETERS_COLUMN_NAME = "request_parameters"
 

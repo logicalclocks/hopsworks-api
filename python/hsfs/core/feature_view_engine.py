@@ -1635,6 +1635,16 @@ class FeatureViewEngine:
         logging_feature_group_features = [
             feature for feature in logging_feature_group.features
         ]
+        model_name = (
+            model_name if model_name else hsml_model.name if hsml_model else None
+        )
+        model_version = (
+            model_version
+            if model_version
+            else hsml_model.version
+            if hsml_model
+            else None
+        )
 
         if return_list:
             return engine.get_instance().get_feature_logging_list(
@@ -1689,11 +1699,8 @@ class FeatureViewEngine:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=training_dataset_version,
-                hsml_model=self.get_hsml_model_value(
-                    hsml_model, model_name, model_version
-                )
-                if hsml_model
-                else None,
+                model_name=model_name,
+                model_version=model_version,
             )
         else:
             return engine.get_instance().get_feature_logging_df(
@@ -1748,9 +1755,8 @@ class FeatureViewEngine:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=training_dataset_version,
-                hsml_model=self.get_hsml_model_value(hsml_model)
-                if hsml_model
-                else None,
+                model_name=model_name,
+                model_version=model_version,
             )
 
     def read_feature_logs(

@@ -1861,7 +1861,8 @@ class Engine:
         time_col_name: Optional[str] = None,
         model_col_name: Optional[str] = None,
         training_dataset_version: Optional[int] = None,
-        hsml_model: str = None,
+        model_name: Optional[str] = None,
+        model_version: Optional[int] = None,
     ):
         batch = True
         if size is None:
@@ -1874,7 +1875,10 @@ class Engine:
                 training_dataset_version if training_dataset_version else pd.NA
                 for _ in range(size)
             ],
-            model_col_name: [hsml_model for _ in range(size)],
+            model_col_name: [model_name for _ in range(size)],
+            constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME: [
+                model_version for _ in range(size)
+            ],
             time_col_name: pd.Series([now for _ in range(size)]),
             constants.FEATURE_LOGGING.LOG_ID_COLUMN_NAME: [
                 str(uuid.uuid4()) for _ in range(size)
@@ -2017,7 +2021,8 @@ class Engine:
         time_col_name: Optional[str] = None,
         model_col_name: Optional[str] = None,
         training_dataset_version: Optional[int] = None,
-        hsml_model: str = None,
+        model_name: Optional[str] = None,
+        model_version: Optional[int] = None,
     ) -> pd.DataFrame:
         """
         Function that combines all the logging components into a single pandas dataframe that can be logged to the feature store.
@@ -2052,6 +2057,7 @@ class Engine:
             constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
             constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+            constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME,
             constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME,
         ]
         try:
@@ -2178,7 +2184,8 @@ class Engine:
             time_col_name=time_col_name,
             model_col_name=model_col_name,
             training_dataset_version=training_dataset_version,
-            hsml_model=hsml_model,
+            model_name=model_name,
+            model_version=model_version,
         )
 
         for k, v in logging_metadata.items():
@@ -2356,7 +2363,8 @@ class Engine:
         time_col_name: Optional[str] = None,
         model_col_name: Optional[str] = None,
         training_dataset_version: Optional[int] = None,
-        hsml_model: str = None,
+        model_name: Optional[str] = None,
+        model_version: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """
         Function that combines all the logging components into a single list of dictionaries that can be logged to send to the inference logger side cart for writing to the feature store.
@@ -2377,7 +2385,8 @@ class Engine:
             time_col_name : Name of the event time column.
             model_col_name : Name of the model column.
             training_dataset_version : Version of the training dataset.
-            hsml_model : Name of the model.
+            model_name : Name of the model.
+            model_version : Version of the model.
         # Returns:
             `List[Dict[str, Any]]`: A list of dictionaries with all the logging components
         """
@@ -2389,6 +2398,7 @@ class Engine:
             constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
             constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+            constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME,
             constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME,
         ]
         logging_features = [
@@ -2430,7 +2440,8 @@ class Engine:
                 time_col_name=time_col_name,
                 model_col_name=model_col_name,
                 training_dataset_version=training_dataset_version,
-                hsml_model=hsml_model,
+                model_name=model_name,
+                model_version=model_version,
             ).to_dict(orient="records")
 
         log_vectors: List[Dict[Any, str]] = None
@@ -2596,7 +2607,8 @@ class Engine:
                     time_col_name=time_col_name,
                     model_col_name=model_col_name,
                     training_dataset_version=training_dataset_version,
-                    hsml_model=hsml_model,
+                    model_name=model_name,
+                    model_version=model_version,
                 )
             )
 
