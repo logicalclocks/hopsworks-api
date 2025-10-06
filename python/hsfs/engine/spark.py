@@ -1907,7 +1907,8 @@ class Engine:
         time_col_name: Optional[str] = None,
         model_col_name: Optional[str] = None,
         training_dataset_version: Optional[int] = None,
-        hsml_model: str = None,
+        model_name: Optional[str] = None,
+        model_version: Optional[int] = None,
     ) -> "pyspark.sql.DataFrame":
         """
         Function that combines all the logging data into a single dataframe that can be written to the logging feature group.
@@ -1941,6 +1942,7 @@ class Engine:
             constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
             constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+            constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME,
             constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME,
         ]
         logging_features = [
@@ -2099,7 +2101,11 @@ class Engine:
             td_col_name, lit(training_dataset_version).cast(LongType())
         )
         logging_df = logging_df.withColumn(
-            model_col_name, lit(hsml_model).cast(StringType())
+            model_col_name, lit(model_name).cast(StringType())
+        )
+        logging_df = logging_df.withColumn(
+            constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME,
+            lit(model_version).cast(StringType()),
         )
         now = datetime.now()
         logging_df = logging_df.withColumn(

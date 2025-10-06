@@ -71,6 +71,9 @@ class TestPython:
                 constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME, type="timestamp"
             ),
             feature.Feature(constants.FEATURE_LOGGING.MODEL_COLUMN_NAME, type="string"),
+            feature.Feature(
+                constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME, type="int"
+            ),
         ]
 
         logging_features = [
@@ -4887,7 +4890,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # Prepare expected dataframe.
@@ -5019,7 +5022,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Prepare expected dataframe.
@@ -5146,7 +5149,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Prepare expected dataframe.
@@ -5262,7 +5265,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             assert [
@@ -5404,7 +5407,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
         assert (
             str(exp.value)
@@ -5499,7 +5502,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         assert [
@@ -5641,7 +5644,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             assert [
@@ -5747,7 +5750,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         assert [
@@ -5869,7 +5872,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
         assert (
@@ -5955,7 +5958,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             expected_columns = [
@@ -6074,7 +6077,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         expected_columns = [feature.name for feature in logging_feature_group_features]
@@ -6185,7 +6188,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         expected_columns = [feature.name for feature in logging_feature_group_features]
@@ -6300,7 +6303,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             expected_columns = [
@@ -6426,7 +6429,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         expected_columns = [feature.name for feature in logging_feature_group_features]
@@ -6545,7 +6548,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
         assert (
@@ -6698,7 +6701,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # Assert expected columns and values
@@ -6805,7 +6808,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         expected_columns = [feature.name for feature in logging_feature_group_features]
@@ -6957,7 +6960,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         expected_columns = [feature.name for feature in logging_feature_group_features]
@@ -7112,7 +7115,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # Assert log message for missing columns
@@ -7204,7 +7207,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         expected_columns = [feature.name for feature in logging_feature_group_features]
@@ -7316,7 +7319,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         expected_columns = [feature.name for feature in logging_feature_group_features]
@@ -7459,7 +7462,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # Assert log message for missing columns
@@ -7580,7 +7583,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert log message for missing columns
@@ -7668,7 +7671,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
         assert (
@@ -7822,7 +7825,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # Assert expected columns and values
@@ -7970,7 +7973,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert expected columns and values
@@ -8118,7 +8121,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert expected columns and values
@@ -8223,7 +8226,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # Assert log message for missing columns
@@ -8310,7 +8313,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         expected_columns = [feature.name for feature in logging_feature_group_features]
@@ -8419,7 +8422,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         expected_columns = [feature.name for feature in logging_feature_group_features]
@@ -8581,7 +8584,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # Assert log message for missing columns
@@ -8688,7 +8691,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         expected_columns = [feature.name for feature in logging_feature_group_features]
@@ -8830,7 +8833,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
         assert (
@@ -8975,7 +8978,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # Assert expected columns and values
@@ -9080,7 +9083,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         expected_columns = [feature.name for feature in logging_feature_group_features]
@@ -9227,7 +9230,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Prepare expected dataframe.
@@ -9338,7 +9341,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # Assert log message for missing columns
@@ -9448,7 +9451,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert log message for missing columns
@@ -9557,7 +9560,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert log message for missing columns
@@ -9680,7 +9683,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # Assert log message for missing columns
@@ -9775,7 +9778,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         expected_columns = [feature.name for feature in logging_feature_group_features]
@@ -9891,7 +9894,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
         assert (
@@ -10036,7 +10039,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # Assert expected columns and values
@@ -10183,7 +10186,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert expected columns and values
@@ -10330,7 +10333,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert expected columns and values
@@ -10436,7 +10439,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # Assert log message for missing columns
@@ -10544,7 +10547,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert log message for missing columns
@@ -10651,7 +10654,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert log message for missing columns
@@ -10771,7 +10774,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # Assert log message for missing columns
@@ -10889,7 +10892,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert log message for missing columns
@@ -10976,7 +10979,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
         assert (
             str(exp.value)
@@ -11126,7 +11129,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # Assert expected columns and values
@@ -11278,7 +11281,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert expected columns and values
@@ -11428,7 +11431,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert expected columns and values
@@ -11539,7 +11542,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # Assert log message for missing columns
@@ -11652,7 +11655,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert log message for missing columns
@@ -11764,7 +11767,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert log message for missing columns
@@ -11894,7 +11897,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # There will not be any log messages for additional columns since all columns provided as request_parameters are logged as a single JSON column.
@@ -12022,7 +12025,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # There will not be any log messages for additional columns since all columns provided as request_parameters are logged as a single JSON column.
@@ -12109,7 +12112,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
         assert (
             str(exp.value)
@@ -12260,7 +12263,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # Assert expected columns and values
@@ -12410,7 +12413,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert expected columns and values
@@ -12560,7 +12563,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert expected columns and values
@@ -12668,7 +12671,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # Assert expected columns and values
@@ -12776,7 +12779,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert expected columns and values
@@ -12884,7 +12887,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert expected columns and values
@@ -13042,7 +13045,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # Assert expected columns and values
@@ -13200,7 +13203,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert expected columns and values
@@ -13358,7 +13361,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert expected columns and values
@@ -13466,7 +13469,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # Assert expected columns and values
@@ -13573,7 +13576,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert expected columns and values
@@ -13680,7 +13683,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert expected columns and values
@@ -13836,7 +13839,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # Assert expected columns and values
@@ -13991,7 +13994,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert expected columns and values
@@ -14146,7 +14149,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert expected columns and values
@@ -14255,7 +14258,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # Assert log message for missing columns
@@ -14366,7 +14369,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert log message for missing columns
@@ -14474,7 +14477,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert log message for missing columns
@@ -14594,7 +14597,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # Assert log message for missing columns
@@ -14712,7 +14715,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert log message for missing columns
@@ -14799,7 +14802,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
         assert (
             str(exp.value)
@@ -14950,7 +14953,7 @@ class TestPython:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
             # Assert expected columns and values
@@ -15102,7 +15105,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert expected columns and values
@@ -15252,7 +15255,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         # Assert expected columns and values
@@ -15328,7 +15331,7 @@ class TestPython:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         expected_columns = [feature.name for feature in logging_feature_group_features]
@@ -15456,7 +15459,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         _ = python_engine.get_feature_logging_list(**log_data_args)
@@ -15566,7 +15569,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         logging_list = python_engine.get_feature_logging_list(**log_data_args)
@@ -15683,7 +15686,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
@@ -15791,7 +15794,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         logging_list = python_engine.get_feature_logging_list(**log_data_args)
@@ -15887,7 +15890,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         _ = python_engine.get_feature_logging_list(**log_data_args)
@@ -15983,7 +15986,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         logging_list = python_engine.get_feature_logging_list(**log_data_args)
@@ -16096,7 +16099,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
@@ -16192,7 +16195,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         logging_list = python_engine.get_feature_logging_list(**log_data_args)
@@ -16295,7 +16298,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         _ = python_engine.get_feature_logging_list(**log_data_args)
@@ -16391,7 +16394,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         logging_list = python_engine.get_feature_logging_list(**log_data_args)
@@ -16504,7 +16507,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
@@ -16597,7 +16600,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         logging_list = python_engine.get_feature_logging_list(**log_data_args)
@@ -16700,7 +16703,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         _ = python_engine.get_feature_logging_list(**log_data_args)
@@ -16785,7 +16788,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         logging_list = python_engine.get_feature_logging_list(**log_data_args)
@@ -16900,7 +16903,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
@@ -16984,7 +16987,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         logging_list = python_engine.get_feature_logging_list(**log_data_args)
@@ -17096,7 +17099,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         _ = python_engine.get_feature_logging_list(**log_data_args)
@@ -17182,7 +17185,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         logging_list = python_engine.get_feature_logging_list(**log_data_args)
@@ -17296,7 +17299,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
@@ -17380,7 +17383,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         logging_list = python_engine.get_feature_logging_list(**log_data_args)
@@ -17492,7 +17495,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         _ = python_engine.get_feature_logging_list(**log_data_args)
@@ -17578,7 +17581,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         logging_list = python_engine.get_feature_logging_list(**log_data_args)
@@ -17692,7 +17695,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
@@ -17775,7 +17778,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         logging_list = python_engine.get_feature_logging_list(**log_data_args)
@@ -17888,7 +17891,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         _ = python_engine.get_feature_logging_list(**log_data_args)
@@ -17977,7 +17980,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         logging_list = python_engine.get_feature_logging_list(**log_data_args)
@@ -18090,7 +18093,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
         with pytest.raises(exceptions.FeatureStoreException) as exp:
             _ = python_engine.get_feature_logging_list(**log_data_args)
@@ -18178,7 +18181,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         logging_list = python_engine.get_feature_logging_list(**log_data_args)
@@ -18294,7 +18297,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         _ = python_engine.get_feature_logging_list(**log_data_args)
@@ -18384,7 +18387,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         logging_list = python_engine.get_feature_logging_list(**log_data_args)
@@ -18498,7 +18501,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         logging_list = python_engine.get_feature_logging_list(**log_data_args)
@@ -18607,7 +18610,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         _ = python_engine.get_feature_logging_list(**log_data_args)
@@ -18690,7 +18693,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         logging_list = python_engine.get_feature_logging_list(**log_data_args)
@@ -18799,7 +18802,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         logging_list = python_engine.get_feature_logging_list(**log_data_args)
@@ -18909,7 +18912,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         _ = python_engine.get_feature_logging_list(**log_data_args)
@@ -18999,7 +19002,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         logging_list = python_engine.get_feature_logging_list(**log_data_args)
@@ -19109,7 +19112,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         with pytest.raises(exceptions.FeatureStoreException) as exp:
@@ -19197,7 +19200,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         logging_list = python_engine.get_feature_logging_list(**log_data_args)
@@ -19413,7 +19416,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         logging_list = python_engine.get_feature_logging_list(**log_data_args)
@@ -19639,7 +19642,7 @@ class TestPython:
             "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             "training_dataset_version": 1,
-            "hsml_model": "test_model",
+            "model_name": "test_model",
         }
 
         logging_list = python_engine.get_feature_logging_list(**log_data_args)

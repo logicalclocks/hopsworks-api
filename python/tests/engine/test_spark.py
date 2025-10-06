@@ -88,6 +88,9 @@ class TestSpark:
                 constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME, type="timestamp"
             ),
             feature.Feature(constants.FEATURE_LOGGING.MODEL_COLUMN_NAME, type="string"),
+            feature.Feature(
+                constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME, type="int"
+            ),
         ]
 
         logging_features = [
@@ -6153,7 +6156,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -6335,7 +6338,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -6516,7 +6519,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -6672,7 +6675,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -6865,7 +6868,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -7065,7 +7068,7 @@ class TestSpark:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
         assert (
@@ -7168,7 +7171,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -7330,7 +7333,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -7491,7 +7494,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -7622,7 +7625,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -7773,7 +7776,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -7929,7 +7932,7 @@ class TestSpark:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
         assert (
@@ -8032,7 +8035,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -8192,7 +8195,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -8351,7 +8354,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -8482,7 +8485,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -8633,7 +8636,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -8789,7 +8792,7 @@ class TestSpark:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
         assert (
@@ -8878,7 +8881,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -9027,7 +9030,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -9171,7 +9174,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -9321,7 +9324,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -9479,7 +9482,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -9633,7 +9636,7 @@ class TestSpark:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
         assert (
@@ -9722,7 +9725,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -9851,7 +9854,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -9986,7 +9989,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -10116,7 +10119,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -10253,7 +10256,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -10389,7 +10392,7 @@ class TestSpark:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
         assert (
@@ -10478,7 +10481,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -10607,7 +10610,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -10742,7 +10745,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -10870,7 +10873,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -11007,7 +11010,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -11138,7 +11141,7 @@ class TestSpark:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
         assert (
@@ -11228,7 +11231,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -11357,7 +11360,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -11495,7 +11498,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -11619,7 +11622,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -11754,7 +11757,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -11882,7 +11885,7 @@ class TestSpark:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
         assert (
@@ -11971,7 +11974,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -12099,7 +12102,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -12236,7 +12239,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -12357,7 +12360,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -12485,7 +12488,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -12622,7 +12625,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -12744,7 +12747,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -12870,7 +12873,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -13006,7 +13009,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -13132,7 +13135,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -13263,7 +13266,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         logging_feature_names = [feature.name for feature in logging_features]
@@ -13387,7 +13390,7 @@ class TestSpark:
                 time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
                 model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
                 training_dataset_version=1,
-                hsml_model="test_model",
+                model_name="test_model",
             )
 
         assert (
@@ -13685,7 +13688,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         spark_df = spark_df.withColumn("row_id_temp", monotonically_increasing_id())
@@ -14047,7 +14050,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         spark_df = spark_df.withColumn("row_id_temp", monotonically_increasing_id())
@@ -14404,7 +14407,7 @@ class TestSpark:
             time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
             model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
             training_dataset_version=1,
-            hsml_model="test_model",
+            model_name="test_model",
         )
 
         spark_df = spark_df.withColumn("row_id_temp", monotonically_increasing_id())
