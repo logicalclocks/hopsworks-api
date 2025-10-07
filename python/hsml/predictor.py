@@ -19,7 +19,6 @@ from typing import Optional, Union
 import humps
 from hopsworks_common import client, util
 from hopsworks_common.constants import (
-    ARTIFACT_VERSION,
     INFERENCE_ENDPOINTS,
     MODEL,
     MODEL_SERVING,
@@ -42,12 +41,11 @@ class Predictor(DeployableComponent):
     def __init__(
         self,
         name: str,
-        model_name: str,
-        model_path: str,
-        model_version: int,
-        model_framework: str,  # MODEL.FRAMEWORK
-        artifact_version: Union[int, str],
         model_server: str,
+        model_name: str = None,
+        model_path: str = None,
+        model_version: int = None,
+        model_framework: str = None,  # MODEL.FRAMEWORK
         serving_tool: Optional[str] = None,
         script_file: Optional[str] = None,
         config_file: Optional[str] = None,
@@ -60,6 +58,7 @@ class Predictor(DeployableComponent):
         ] = None,  # base
         transformer: Optional[Union[Transformer, dict, Default]] = None,
         id: Optional[int] = None,
+        version: Optional[int] = None,
         description: Optional[str] = None,
         created_at: Optional[str] = None,
         creator: Optional[str] = None,
@@ -87,11 +86,11 @@ class Predictor(DeployableComponent):
         self._model_path = model_path
         self._model_version = model_version
         self._model_framework = model_framework
-        self._artifact_version = artifact_version
         self._serving_tool = serving_tool
         self._model_server = model_server
         self._config_file = config_file
         self._id = id
+        self._version = version
         self._description = description
         self._created_at = created_at
         self._creator = creator
@@ -104,6 +103,7 @@ class Predictor(DeployableComponent):
         self._api_protocol = api_protocol
         self._environment = environment
         self._project_namespace = project_namespace
+        self._project_name = None
 
     def deploy(self):
         """Create a deployment for this predictor and persists it in the Model Serving.
@@ -228,6 +228,13 @@ class Predictor(DeployableComponent):
         return util.get_predictor_for_model(model=model, **kwargs)
 
     @classmethod
+    def for_server(cls, name: str, script_file: str, **kwargs):
+        # get predictor for a HTTP server without model
+        return util.get_predictor_for_server(
+            name=name, script_file=script_file, **kwargs
+        )
+
+    @classmethod
     def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
         if isinstance(json_decamelized, list):
@@ -256,18 +263,25 @@ class Predictor(DeployableComponent):
         kwargs["description"] = util.extract_field_from_json(
             json_decamelized, "description"
         )
+        kwargs["version"] = json_decamelized.pop("version")
+        with_model = "model_version" in json_decamelized
         kwargs["model_name"] = util.extract_field_from_json(
-            json_decamelized, "model_name", default=kwargs["name"]
+            json_decamelized,
+            "model_name",
+            default=(kwargs["name"] if with_model else None),
         )
-        kwargs["model_path"] = json_decamelized.pop("model_path")
-        kwargs["model_version"] = json_decamelized.pop("model_version")
+        kwargs["model_version"] = util.extract_field_from_json(
+            json_decamelized, "model_version"
+        )
+        kwargs["model_path"] = util.extract_field_from_json(
+            json_decamelized, "model_path"
+        )
         kwargs["model_framework"] = (
             json_decamelized.pop("model_framework")
             if "model_framework" in json_decamelized
-            else MODEL.FRAMEWORK_SKLEARN  # backward compatibility
-        )
-        kwargs["artifact_version"] = util.extract_field_from_json(
-            json_decamelized, "artifact_version"
+            else (
+                MODEL.FRAMEWORK_SKLEARN if with_model else None
+            )  # backward compatibility
         )
         kwargs["model_server"] = json_decamelized.pop("model_server")
         kwargs["serving_tool"] = json_decamelized.pop("serving_tool")
@@ -305,11 +319,7 @@ class Predictor(DeployableComponent):
             "id": self._id,
             "name": self._name,
             "description": self._description,
-            "modelName": self._model_name,
-            "modelPath": self._model_path,
-            "modelVersion": self._model_version,
-            "modelFramework": self._model_framework,
-            "artifactVersion": self._artifact_version,
+            "version": self._version,
             "created": self._created_at,
             "creator": self._creator,
             "modelServer": self._model_server,
@@ -319,6 +329,14 @@ class Predictor(DeployableComponent):
             "apiProtocol": self._api_protocol,
             "projectNamespace": self._project_namespace,
         }
+        if self.model_name is not None:
+            json = {**json, **{"modelName": self._model_name}}
+        if self.model_path is not None:
+            json = {**json, **{"modelPath": self._model_path}}
+        if self.model_version is not None:
+            json = {**json, **{"modelVersion": self._model_version}}
+        if self.model_framework is not None:
+            json = {**json, **{"modelFramework": self._model_framework}}
         if self.environment is not None:
             json = {**json, **{"environmentDTO": {"name": self._environment}}}
         if self._resources is not None:
@@ -344,6 +362,11 @@ class Predictor(DeployableComponent):
     @name.setter
     def name(self, name: str):
         self._name = name
+
+    @property
+    def version(self):
+        """Version of the predictor."""
+        return self._version
 
     @property
     def description(self):
@@ -393,34 +416,26 @@ class Predictor(DeployableComponent):
 
     @property
     def artifact_version(self):
-        """Artifact version deployed by the predictor."""
-        return self._artifact_version
+        """Artifact version deployed by the predictor.
+
+        !!! warning "Deprecated"
+            Artifact versions are deprecated in favor of deployment versions.
+        """
+        return self._version
 
     @artifact_version.setter
     def artifact_version(self, artifact_version: Union[int, str]):
-        self._artifact_version = artifact_version
+        pass  # do nothing, kept for backward compatibility
 
     @property
     def artifact_files_path(self):
-        return "{}/{}/{}/{}".format(
-            self._model_path,
-            str(self._model_version),
-            MODEL_SERVING.ARTIFACTS_DIR_NAME,
-            str(self._artifact_version),
-        )
-
-    @property
-    def artifact_path(self):
-        """Path of the model artifact deployed by the predictor. Resolves to /Projects/{project_name}/Models/{name}/{version}/Artifacts/{artifact_version}/{name}_{version}_{artifact_version}.zip"""
-        # TODO: Deprecated
-        artifact_name = "{}_{}_{}.zip".format(
-            self._model_name, str(self._model_version), str(self._artifact_version)
-        )
-        return "{}/{}/Artifacts/{}/{}".format(
-            self._model_path,
-            str(self._model_version),
-            str(self._artifact_version),
-            artifact_name,
+        # "/Projects/{project_name}/Deployments/{name}/{version}"
+        return "{}/{}/{}/{}/{}".format(
+            "/Projects",
+            self._project_name,
+            MODEL_SERVING.DEPLOYMENTS_DATASET,
+            str(self._name),
+            str(self._version),
         )
 
     @property
@@ -445,7 +460,6 @@ class Predictor(DeployableComponent):
     @script_file.setter
     def script_file(self, script_file: str):
         self._script_file = script_file
-        self._artifact_version = ARTIFACT_VERSION.CREATE
 
     @property
     def config_file(self):
@@ -458,7 +472,6 @@ class Predictor(DeployableComponent):
     @config_file.setter
     def config_file(self, config_file: str):
         self._config_file = config_file
-        self._artifact_version = ARTIFACT_VERSION.CREATE
 
     @property
     def inference_logger(self):
@@ -522,6 +535,15 @@ class Predictor(DeployableComponent):
     @project_namespace.setter
     def project_namespace(self, project_namespace):
         self._project_namespace = project_namespace
+
+    @property
+    def project_name(self):
+        """Name of the project the deployment belongs to."""
+        return self._project_name
+
+    @project_name.setter
+    def project_name(self, project_name: str):
+        self._project_name = project_name
 
     def __repr__(self):
         desc = (
