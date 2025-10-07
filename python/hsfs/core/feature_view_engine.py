@@ -1798,7 +1798,9 @@ class FeatureViewEngine:
             query = query.filter(
                 self._convert_to_log_fg_filter(fg, fv, filter, fv_feat_name_map)
             )
-        return engine.get_instance().read_feature_log(query, self._LOG_TIME)
+        return engine.get_instance().read_feature_log(
+            query, constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME
+        )
 
     @staticmethod
     def get_hsml_model_value(hsml_model, model_name=None, model_version=None):
