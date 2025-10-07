@@ -1809,9 +1809,8 @@ class Engine:
         if feature_log is None and cols:
             return pd.DataFrame(columns=cols)
         if not (
-            isinstance(
-                feature_log, (list, pd.DataFrame, pl.DataFrame, pd.Series, pl.Series)
-            )
+            isinstance(feature_log, (list, pd.DataFrame, pd.Series))
+            or (HAS_POLARS and isinstance(feature_log, (pl.DataFrame, pl.Series)))
             or (HAS_NUMPY and isinstance(feature_log, np.ndarray))
         ):
             raise ValueError(f"Type '{type(feature_log)}' not accepted")
@@ -1823,11 +1822,11 @@ class Engine:
             Engine._validate_logging_list(feature_log, cols)
             return pd.DataFrame(feature_log, columns=cols)
         else:
-            if isinstance(feature_log, pl.DataFrame):
+            if HAS_POLARS and isinstance(feature_log, pl.DataFrame):
                 return feature_log.clone().to_pandas()
             elif isinstance(feature_log, pd.DataFrame):
                 return feature_log.copy(deep=False).reset_index(drop=True)
-            elif isinstance(feature_log, pl.Series):
+            elif HAS_POLARS and isinstance(feature_log, pl.Series):
                 return feature_log.to_frame().to_pandas().reset_index(drop=True)
             elif isinstance(feature_log, pd.Series):
                 return feature_log.to_frame().reset_index(drop=True)
@@ -2061,19 +2060,22 @@ class Engine:
             constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME,
             constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME,
         ]
-        try:
-            logging_features = [
-                feature_name
-                for feature_name in logging_feature_group_feature_names
-                if feature_name not in logging_meta_data_columns
-            ]
-            logging_df = Engine._convert_feature_log_to_df(
-                logging_data, logging_features
-            )
-        except AssertionError as e:
-            raise FeatureStoreException(
-                f"Error logging data `{constants.FEATURE_LOGGING.LOGGING_DATA}` do not have all required features. Please check the `{constants.FEATURE_LOGGING.LOGGING_DATA}` to ensure that it has the following features : {logging_features}."
-            ) from e
+        if logging_data is not None:
+            try:
+                logging_features = [
+                    feature_name
+                    for feature_name in logging_feature_group_feature_names
+                    if feature_name not in logging_meta_data_columns
+                ]
+                logging_df = Engine._convert_feature_log_to_df(
+                    logging_data, logging_features
+                )
+            except AssertionError as e:
+                raise FeatureStoreException(
+                    f"Error logging data `{constants.FEATURE_LOGGING.LOGGING_DATA}` do not have all required features. Please check the `{constants.FEATURE_LOGGING.LOGGING_DATA}` to ensure that it has the following features : {logging_features}."
+                ) from e
+        else:
+            logging_df = None
 
         # Iterate through all logging components validate them and collect them into a single dataframe.
         for data, feature_names, log_component_name in [
