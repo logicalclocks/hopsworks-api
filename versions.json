@@ -1,9 +1,15 @@
 [
   {
+    "version": "4.5.0-RC6",
+    "title": "4.5.0-RC6",
+    "aliases": [
+      "4.5"
+    ]
+  },
+  {
     "version": "4.5.0-RC5",
     "title": "4.5.0-RC5",
     "aliases": [
-      "4.5",
       "latest"
     ]
   },
