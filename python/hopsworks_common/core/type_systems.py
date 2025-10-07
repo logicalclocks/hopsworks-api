@@ -218,7 +218,12 @@ def cast_pandas_column_to_offline_type(
     ):
         return feature_column.apply(
             lambda x: (ast.literal_eval(x) if isinstance(x, str) else x)
-            if (x is not None and not pd.isnull(x) and x != "")
+            if (
+                not isinstance(x, (list, dict, np.ndarray))
+                and x is not None
+                and not pd.isnull(x)
+                and x != ""
+            )
             else None
         )
     elif offline_type == "string":
