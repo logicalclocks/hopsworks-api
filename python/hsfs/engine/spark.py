@@ -381,7 +381,11 @@ class Engine:
         )
 
     def convert_numpy_to_spark_dataframe(self, dataframe, column_names=None):
-        is_list_of_dict = all(isinstance(row, dict) for row in dataframe)
+        is_list_of_dict = (
+            all(isinstance(row, dict) for row in dataframe)
+            if len(dataframe) > 0
+            else False
+        )
         if dataframe.ndim != 2 and not is_list_of_dict:
             raise TypeError(
                 "Cannot convert numpy array that do not have two dimensions to a dataframe. "
