@@ -1877,7 +1877,7 @@ class Engine:
             ],
             model_col_name: [model_name for _ in range(size)],
             constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME: [
-                model_version for _ in range(size)
+                str(model_version) for _ in range(size)
             ],
             time_col_name: pd.Series([now for _ in range(size)]),
             constants.FEATURE_LOGGING.LOG_ID_COLUMN_NAME: [
