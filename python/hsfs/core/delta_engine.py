@@ -15,10 +15,25 @@
 #
 from __future__ import annotations
 
+import os
+from urllib.parse import urlparse
+
+from hopsworks.core import project_api
+from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import feature_group_commit, util
-from hsfs.core import feature_group_api
+from hsfs.core import feature_group_api, variable_api
 
+
+try:
+    import pandas as pd
+    import polars as pl
+    import pyarrow as pa
+    from deltalake import DeltaTable as DeltaRsTable
+    from deltalake import write_deltalake as deltars_write
+    from deltalake.exceptions import TableNotFoundError
+except ImportError:
+    pass
 
 try:
     from delta.tables import DeltaTable
@@ -45,9 +60,15 @@ class DeltaEngine:
         self._feature_store_name = feature_store_name
 
         self._feature_group_api = feature_group_api.FeatureGroupApi()
+        self._variable_api = variable_api.VariableApi()
+        self._project_api = project_api.ProjectApi()
+        self._setup_delta_rs()
 
     def save_delta_fg(self, dataset, write_options, validation_id=None):
-        fg_commit = self._write_delta_dataset(dataset, write_options)
+        if self._spark_session is not None:
+            fg_commit = self._write_delta_dataset(dataset, write_options)
+        else:
+            fg_commit = self._write_delta_rs_dataset(dataset)
         fg_commit.validation_id = validation_id
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
@@ -85,15 +106,23 @@ class DeltaEngine:
         return delta_options
 
     def delete_record(self, delete_df):
-        location = self._feature_group.prepare_spark_location()
+        if self._spark_session is not None:
+            location = self._feature_group.prepare_spark_location()
+            fg_source_table = DeltaTable.forPath(self._spark_session, location)
+            is_delta_table = DeltaTable.isDeltaTable(self._spark_session, location)
+        else:
+            location = self._feature_group.location.replace("hopsfs", "hdfs")
+            try:
+                fg_source_table = DeltaRsTable(location)
+                is_delta_table = True
+            except TableNotFoundError:
+                is_delta_table = False
 
-        if not DeltaTable.isDeltaTable(self._spark_session, location):
+        if not is_delta_table:
             raise FeatureStoreException(
-                f"This is no data available in Feature group {self._feature_group.name}, or it not DELTA enabled "
+                f"Feature group {self._feature_group.name} is not DELTA enabled "
             )
         else:
-            fg_source_table = DeltaTable.forPath(self._spark_session, location)
-
             source_alias = (
                 f"{self._feature_group.name}_{self._feature_group.version}_source"
             )
@@ -102,16 +131,25 @@ class DeltaEngine:
             )
             merge_query_str = self._generate_merge_query(source_alias, updates_alias)
 
-            fg_source_table.alias(source_alias).merge(
-                delete_df.alias(updates_alias), merge_query_str
-            ).whenMatchedDelete().execute()
-
-        fg_commit = self._get_last_commit_metadata(self._spark_session, location)
+            if self._spark_session is not None:
+                fg_source_table.alias(source_alias).merge(
+                    delete_df.alias(updates_alias), merge_query_str
+                ).whenMatchedDelete().execute()
+                fg_commit = self._get_last_commit_metadata(
+                    self._spark_session, location
+                )
+            else:
+                fg_source_table.merge(
+                    source=delete_df,
+                    predicate=merge_query_str,
+                    source_alias=updates_alias,
+                    target_alias=source_alias,
+                ).when_matched_delete().execute()
+                fg_commit = self._get_last_commit_metadata_delta_rs(location)
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
     def _write_delta_dataset(self, dataset, write_options):
         location = self._feature_group.prepare_spark_location()
-
         if write_options is None:
             write_options = {}
 
@@ -144,6 +182,112 @@ class DeltaEngine:
 
         return self._get_last_commit_metadata(self._spark_session, location)
 
+    def _setup_delta_rs(self):
+        _client = client.get_instance()
+        if _client._is_external():
+            os.environ["PEMS_DIR"] = _client.get_certs_folder()
+            try:
+                os.environ["HOPSFS_CLOUD_DATANODE_HOSTNAME_OVERRIDE"] = self._variable_api.get_loadbalancer_external_domain("datanode")
+            except FeatureStoreException as e:
+                raise FeatureStoreException("Failed to write to delta table in external cluster. Make sure datanode load balancer has been setup on the cluster.") from e
+
+            user_name = self._project_api.get_user_info().get("username", None)
+            if not user_name:
+                raise FeatureStoreException("Failed to write to delta table in external cluster. Cannot get user name for project.")
+            else:
+                os.environ["LIBHDFS_DEFAULT_USER"] = _client.project_name + "__" + user_name
+
+    def _get_delta_rs_location(self):
+        _client = client.get_instance()
+        if _client._is_external():
+            location = self._feature_group.location.replace("hopsfs", "hdfs")
+            parsed_url = urlparse(location)
+            try:
+                return f"hdfs://{self._variable_api.get_loadbalancer_external_domain('namenode')}:{parsed_url.port}" + parsed_url.path
+            except FeatureStoreException as e:
+                raise FeatureStoreException("Failed to write to delta table. Make sure namenode load balancer has been setup on the cluster.") from e
+        else:
+            return self._feature_group.location
+
+    def _write_delta_rs_dataset(self, dataset):
+        location = self._get_delta_rs_location()
+        if isinstance(dataset, pl.DataFrame):
+            dataset = dataset.to_arrow()
+        else:
+            dataset = self._prepare_df_for_delta(dataset)
+
+        try:
+            fg_source_table = DeltaRsTable(location)
+            is_delta_table = True
+        except TableNotFoundError:
+            is_delta_table = False
+
+        if not is_delta_table:
+            deltars_write(
+                location, dataset, partition_by=self._feature_group.partition_key
+            )
+        else:
+            source_alias = (
+                f"{self._feature_group.name}_{self._feature_group.version}_source"
+            )
+            updates_alias = (
+                f"{self._feature_group.name}_{self._feature_group.version}_updates"
+            )
+            merge_query_str = self._generate_merge_query(source_alias, updates_alias)
+
+            (
+                fg_source_table.merge(
+                    source=dataset,
+                    predicate=merge_query_str,
+                    source_alias=updates_alias,
+                    target_alias=source_alias,
+                )
+                .when_matched_update_all()
+                .when_not_matched_insert_all()
+                .execute()
+            )
+        return self._get_last_commit_metadata_delta_rs(location)
+
+    @staticmethod
+    def _prepare_df_for_delta(df, timestamp_precision="us"):
+        """
+        Prepares a pandas DataFrame for Delta Lake operations by fixing timestamp columns.
+
+        Parameters:
+        -----------
+        df : pandas.DataFrame
+            DataFrame to prepare
+        timestamp_precision : str, default='us'
+            Precision for timestamps (ns, us, ms, s)
+
+        Returns:
+        --------
+        pyarrow.Table
+            PyArrow table ready for Delta Lake
+        """
+        # Process timestamp columns
+        df_copy = df.copy()
+        for col in df_copy.select_dtypes(include=["datetime64"]).columns:
+            # For timezone-aware timestamps, convert to UTC and remove timezone info
+            if hasattr(df_copy[col].dtype, "tz") and df_copy[col].dtype.tz is not None:
+                df_copy[col] = df_copy[col].dt.tz_convert("UTC").dt.tz_localize(None)
+
+        # Convert to basic PyArrow table first
+        table = pa.Table.from_pandas(df_copy, preserve_index=False)
+
+        # Cast timestamp columns to the specified precision
+        new_cols = []
+        for i, field in enumerate(table.schema):
+            col = table.column(i)
+            if pa.types.is_timestamp(field.type):
+                # Cast to specified precision
+                new_cols.append(col.cast(pa.timestamp(timestamp_precision)))
+            else:
+                new_cols.append(col)
+
+        # Create new table with modified columns
+        return pa.Table.from_arrays(new_cols, names=table.column_names)
+
     def vacuum(self, retention_hours: int):
         location = self._feature_group.prepare_spark_location()
         retention = (
@@ -167,6 +311,51 @@ class DeltaEngine:
             merge_query_list.append(f"{source_alias}.{pk} == {updates_alias}.{pk}")
         megrge_query_str = " AND ".join(merge_query_list)
         return megrge_query_str
+
+    @staticmethod
+    def _get_last_commit_metadata_delta_rs(base_path):
+        fg_source_table = DeltaRsTable(base_path)
+
+        last_commit = fg_source_table.history()[0]
+        version = last_commit["version"]
+        commit_timestamp = util.convert_event_time_to_timestamp(
+            last_commit["timestamp"]
+        )
+        commit_date_string = util.get_hudi_datestr_from_timestamp(commit_timestamp)
+        operation_metrics = last_commit["operationMetrics"]
+
+        # Get info about the oldest remaining commit
+        oldest_commit = (
+            pd.DataFrame(fg_source_table.history())
+            .sort_values("version")
+            .iloc[0]
+            .to_dict()
+        )
+        oldest_commit_timestamp = util.convert_event_time_to_timestamp(
+            oldest_commit["timestamp"]
+        )
+        if version == 0:
+            fg_commit = feature_group_commit.FeatureGroupCommit(
+                commitid=None,
+                commit_date_string=commit_date_string,
+                commit_time=commit_timestamp,
+                rows_inserted=operation_metrics["num_added_rows"],
+                rows_updated=0,
+                rows_deleted=0,
+                last_active_commit_time=oldest_commit_timestamp,
+            )
+        else:
+            fg_commit = feature_group_commit.FeatureGroupCommit(
+                commitid=None,
+                commit_date_string=commit_date_string,
+                commit_time=commit_timestamp,
+                rows_inserted=operation_metrics["num_target_rows_inserted"],
+                rows_updated=operation_metrics["num_target_rows_updated"],
+                rows_deleted=operation_metrics["num_target_rows_deleted"],
+                last_active_commit_time=oldest_commit_timestamp,
+            )
+
+        return fg_commit
 
     @staticmethod
     def _get_last_commit_metadata(spark_context, base_path):
