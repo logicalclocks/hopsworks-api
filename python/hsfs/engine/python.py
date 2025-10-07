@@ -2092,7 +2092,7 @@ class Engine:
             try:
                 df = (
                     Engine._convert_feature_log_to_df(data, feature_names)
-                    if data is not None or feature_names is not None
+                    if data is not None or feature_names
                     else None
                 )
             except AssertionError as e:
@@ -2102,7 +2102,7 @@ class Engine:
 
             if df is None or df.empty:
                 continue
-            elif logging_df.empty:
+            elif logging_df is None or logging_df.empty:
                 logging_df = df
             # If one of the logging components has only one row and the other has multiple rows, we repeat the single row to match the length of the other component.
             elif len(df) == 1 and len(logging_df) > 1:
