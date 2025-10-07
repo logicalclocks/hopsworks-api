@@ -29,7 +29,7 @@ from hopsworks_common.constants import (
     PREDICTOR_STATE,
 )
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
-from hopsworks_common.core import dataset_api
+from hopsworks_common.core import dataset_api, inode
 from hsml.core import serving_api
 from hsml.engine import local_engine
 from tqdm.auto import tqdm
@@ -316,15 +316,12 @@ class ServingEngine:
         n_files,
     ):
         """Download model files from a model path in hdfs, recursively"""
-
-        for entry in self._dataset_api.list(from_hdfs_path, sort_by="NAME:desc")[
-            "items"
-        ]:
-            path_attr = entry["attributes"]
-            path = path_attr["path"]
-            basename = os.path.basename(path)
-
-            if path_attr.get("dir", False):
+        count, items = self._dataset_api._list_dataset_path(
+            from_hdfs_path, inode.Inode, sort_by="NAME:desc"
+        )
+        for entry in items:
+            basename = os.path.basename(entry.path)
+            if entry.dir:
                 # otherwise, make a recursive call for the folder
                 if (
                     basename == MODEL_SERVING.ARTIFACTS_DIR_NAME
@@ -333,7 +330,7 @@ class ServingEngine:
                 local_folder_path = os.path.join(to_local_path, basename)
                 os.mkdir(local_folder_path)
                 n_dirs, n_files = self._download_files_from_hopsfs_recursive(
-                    from_hdfs_path=path,
+                    from_hdfs_path=entry.path,
                     to_local_path=local_folder_path,
                     update_download_progress=update_download_progress,
                     n_dirs=n_dirs,
@@ -344,7 +341,7 @@ class ServingEngine:
             else:
                 # if it's a file, download it
                 local_file_path = os.path.join(to_local_path, basename)
-                self._engine.download(path, local_file_path)
+                self._engine.download(entry.path, local_file_path)
                 n_files += 1
                 update_download_progress(n_dirs=n_dirs, n_files=n_files)
 

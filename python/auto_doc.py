@@ -152,8 +152,6 @@ PAGES = {
                 "delete",
                 "path_exists",
                 "rm",
-                "list",
-                "list_files",
             ],
         ),
     },
