@@ -55,7 +55,9 @@ class DeltaEngine:
     ):
         self._feature_group = feature_group
         self._spark_context = spark_context
-        self._spark_session.conf.set("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+        if self._spark_context:
+            self._spark_session.conf.set("spark.sql.catalog.spark_catalog", 
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog")
         self._spark_session = spark_session
         self._feature_store_id = feature_store_id
         self._feature_store_name = feature_store_name
