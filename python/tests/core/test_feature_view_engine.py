@@ -3040,7 +3040,8 @@ class TestFeatureViewEngine:
 
         # Verify other parameters
         assert call_args[1]["training_dataset_version"] == training_dataset_version
-        assert call_args[1]["hsml_model"] == "test_model_1"
+        assert call_args[1]["model_name"] == "test_model"
+        assert call_args[1]["model_version"] == 1
 
     def test_get_feature_logging_data_logging_metadata(self, mocker):
         # Arrange
@@ -3271,7 +3272,8 @@ class TestFeatureViewEngine:
 
         # Verify other parameters
         assert call_args[1]["training_dataset_version"] == training_dataset_version
-        assert call_args[1]["hsml_model"] == "test_model_1"
+        assert call_args[1]["model_name"] == "test_model"
+        assert call_args[1]["model_version"] == 1
 
     def test_get_feature_logging_data_logging_override(self, mocker):
         # Arrange
@@ -3538,7 +3540,8 @@ class TestFeatureViewEngine:
 
         # Verify other parameters
         assert call_args[1]["training_dataset_version"] == training_dataset_version
-        assert call_args[1]["hsml_model"] == "test_model_1"
+        assert call_args[1]["model_name"] == "test_model"
+        assert call_args[1]["model_version"] == 1
 
     def test_get_feature_logging_data_return_list(self, mocker):
         # Arrange
@@ -3841,7 +3844,8 @@ class TestFeatureViewEngine:
         assert call_args[1]["event_time"][0] is logging_metadata.event_time
         assert call_args[1]["request_id"][0] == request_id_data
         assert call_args[1]["extra_logging_features"][0] is extra_logging_data
-        assert call_args[1]["hsml_model"] == "test_model_1"
+        assert call_args[1]["model_name"] == "test_model"
+        assert call_args[1]["model_version"] == 1
 
     def test_get_feature_logging_data_return_list_logging_metadata_override(
         self, mocker
@@ -4073,4 +4077,5 @@ class TestFeatureViewEngine:
         assert call_args[1]["event_time"][0] is event_time
         assert call_args[1]["request_id"][0] == request_id_data
         assert call_args[1]["extra_logging_features"][0] is extra_logging_data
-        assert call_args[1]["hsml_model"] == "test_model_1"
+        assert call_args[1]["model_name"] == "test_model"
+        assert call_args[1]["model_version"] == 1
