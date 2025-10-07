@@ -26,7 +26,6 @@ from hsfs.core import feature_group_api, variable_api
 
 
 try:
-    import pandas as pd
     import polars as pl
     import pyarrow as pa
     from deltalake import DeltaTable as DeltaRsTable
