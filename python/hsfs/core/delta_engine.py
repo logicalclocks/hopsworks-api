@@ -199,8 +199,9 @@ class DeltaEngine:
 
     def _get_delta_rs_location(self):
         _client = client.get_instance()
+        location = self._feature_group.location.replace("hopsfs:/", "hdfs:/")  # deltars requires hdfs scheme
+
         if _client._is_external():
-            location = self._feature_group.location.replace("hopsfs", "hdfs")
             parsed_url = urlparse(location)
             try:
                 return f"hdfs://{self._variable_api.get_loadbalancer_external_domain('namenode')}:{parsed_url.port}" + parsed_url.path
