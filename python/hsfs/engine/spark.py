@@ -1989,7 +1989,7 @@ class Engine:
             try:
                 df = (
                     self.convert_to_default_dataframe(data, feature_names)
-                    if data is not None or feature_names is not None
+                    if data is not None or feature_names
                     else None
                 )
             except AssertionError as e:
