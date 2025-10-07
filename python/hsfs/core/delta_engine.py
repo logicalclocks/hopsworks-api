@@ -55,6 +55,9 @@ class DeltaEngine:
     ):
         self._feature_group = feature_group
         self._spark_context = spark_context
+        if self._spark_context:
+            self._spark_session.conf.set("spark.sql.catalog.spark_catalog",
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog")
         self._spark_session = spark_session
         self._feature_store_id = feature_store_id
         self._feature_store_name = feature_store_name
@@ -199,8 +202,9 @@ class DeltaEngine:
 
     def _get_delta_rs_location(self):
         _client = client.get_instance()
+        location = self._feature_group.location.replace("hopsfs:/", "hdfs:/")  # deltars requires hdfs scheme
+
         if _client._is_external():
-            location = self._feature_group.location.replace("hopsfs", "hdfs")
             parsed_url = urlparse(location)
             try:
                 return f"hdfs://{self._variable_api.get_loadbalancer_external_domain('namenode')}:{parsed_url.port}" + parsed_url.path
