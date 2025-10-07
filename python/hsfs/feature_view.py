@@ -4559,7 +4559,11 @@ class FeatureView:
         return self._feature_logging
 
     def _get_spine_fg_ids(self) -> List[feature_group.SpineGroup]:
-        return [fg.id for fg in self.query.featuregroups if isinstance(fg, feature_group.SpineGroup)]
+        return [
+            fg.id
+            for fg in self.query.featuregroups
+            if isinstance(fg, feature_group.SpineGroup)
+        ]
 
     def _get_skip_fg_ids(self) -> Set[int]:
         embedding_fg_ids = [fg.id for fg in self._get_embedding_fgs()]
@@ -4666,7 +4670,9 @@ class FeatureView:
     def _extra_logging_column_names(self) -> List[str]:
         """Get extra logging column names used for feature logging."""
         if self.__extra_logging_column_names is None:
-            self.__extra_logging_column_names = [
-                f.name for f in self.feature_logging.extra_logging_columns
-            ]
+            self.__extra_logging_column_names = (
+                [f.name for f in self.feature_logging.extra_logging_columns]
+                if self.feature_logging.extra_logging_columns
+                else []
+            )
         return self.__extra_logging_column_names

@@ -1954,23 +1954,24 @@ class Engine:
             for feature_name in logging_feature_group_feature_names
             if feature_name not in logging_meta_data_columns
         ]
+        if logging_data is not None:
+            try:
+                logging_df = (
+                    self.convert_to_default_dataframe(logging_data, logging_features)
+                    if logging_data is not None
+                    else None
+                )
+            except AssertionError as e:
+                raise FeatureStoreException(
+                    f"Error logging data `{constants.FEATURE_LOGGING.LOGGING_DATA}` do not have all required features. Please check the `{constants.FEATURE_LOGGING.LOGGING_DATA}` to ensure that it has the following features : {logging_features}."
+                ) from e
 
-        try:
-            logging_df = (
-                self.convert_to_default_dataframe(logging_data, logging_features)
-                if logging_data is not None
-                else None
-            )
-        except AssertionError as e:
-            raise FeatureStoreException(
-                f"Error logging data `{constants.FEATURE_LOGGING.LOGGING_DATA}` do not have all required features. Please check the `{constants.FEATURE_LOGGING.LOGGING_DATA}` to ensure that it has the following features : {logging_features}."
-            ) from e
-
-        if logging_df:
             logging_df = logging_df.withColumn(
                 TEMP_JOIN_KEY,
                 row_number().over(Window.orderBy(monotonically_increasing_id())),
             )
+        else:
+            logging_df = None
         user_passed_request_parameters = []
         for data, feature_names, log_component_name in [
             transformed_features,
