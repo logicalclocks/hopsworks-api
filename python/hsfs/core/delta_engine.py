@@ -316,85 +316,80 @@ class DeltaEngine:
     def _get_last_commit_metadata_delta_rs(base_path):
         fg_source_table = DeltaRsTable(base_path)
 
-        last_commit = fg_source_table.history()[0]
-        version = last_commit["version"]
-        commit_timestamp = util.convert_event_time_to_timestamp(
-            last_commit["timestamp"]
-        )
-        commit_date_string = util.get_hudi_datestr_from_timestamp(commit_timestamp)
-        operation_metrics = last_commit["operationMetrics"]
+        # Get full history as a list of dicts
+        history = fg_source_table.history()
+        if not history:
+            return None  # No commits found
 
-        # Get info about the oldest remaining commit
-        oldest_commit = (
-            pd.DataFrame(fg_source_table.history())
-            .sort_values("version")
-            .iloc[0]
-            .to_dict()
-        )
-        oldest_commit_timestamp = util.convert_event_time_to_timestamp(
-            oldest_commit["timestamp"]
-        )
-        if version == 0:
-            fg_commit = feature_group_commit.FeatureGroupCommit(
-                commitid=None,
-                commit_date_string=commit_date_string,
-                commit_time=commit_timestamp,
-                rows_inserted=operation_metrics["num_added_rows"],
-                rows_updated=0,
-                rows_deleted=0,
-                last_active_commit_time=oldest_commit_timestamp,
-            )
-        else:
-            fg_commit = feature_group_commit.FeatureGroupCommit(
-                commitid=None,
-                commit_date_string=commit_date_string,
-                commit_time=commit_timestamp,
-                rows_inserted=operation_metrics["num_target_rows_inserted"],
-                rows_updated=operation_metrics["num_target_rows_updated"],
-                rows_deleted=operation_metrics["num_target_rows_deleted"],
-                last_active_commit_time=oldest_commit_timestamp,
-            )
+        # Filter for data-changing operations
+        data_ops = ["MERGE", "WRITE"]
+        filtered_history = [c for c in history if c["operation"] in data_ops]
 
-        return fg_commit
+        if not filtered_history:
+            return None  # No relevant commits
+
+        # Latest commit (highest version)
+        last_commit = max(filtered_history, key=lambda c: c["version"])
+
+        # Oldest commit (lowest version among filtered data-changing commits)
+        oldest_commit = min(filtered_history, key=lambda c: c["version"])
+
+        return DeltaEngine._get_delta_feature_group_commit(last_commit, oldest_commit)
 
     @staticmethod
     def _get_last_commit_metadata(spark_context, base_path):
         fg_source_table = DeltaTable.forPath(spark_context, base_path)
 
+        # Get full history as a Spark DataFrame
+        history = fg_source_table.history()
+
+        # Filter for data-changing operations
+        filtered_history = history.filter(history["operation"].isin(["MERGE", "WRITE"]))
+
         # Get info about the latest commit
-        last_commit = fg_source_table.history(1).first().asDict()
-        version = last_commit["version"]
+        last_commit = filtered_history.orderBy("version", ascending=False).first().asDict()
+
+        # Get info about the oldest remaining commit
+        oldest_commit = filtered_history.orderBy("version", ascending=True).first().asDict()
+
+        return DeltaEngine._get_delta_feature_group_commit(last_commit, oldest_commit)
+
+    @staticmethod
+    def _get_delta_feature_group_commit(last_commit, oldest_commit):
+        # Extract info about the latest commit
+        operation = last_commit["operation"]
         commit_timestamp = util.convert_event_time_to_timestamp(
             last_commit["timestamp"]
         )
         commit_date_string = util.get_hudi_datestr_from_timestamp(commit_timestamp)
         operation_metrics = last_commit["operationMetrics"]
 
-        # Get info about the oldest remaining commit
-        oldest_commit = fg_source_table.history().orderBy("version").first().asDict()
+        # Extract info about the oldest remaining commit
         oldest_commit_timestamp = util.convert_event_time_to_timestamp(
             oldest_commit["timestamp"]
         )
 
-        if version == 0:
-            fg_commit = feature_group_commit.FeatureGroupCommit(
-                commitid=None,
-                commit_date_string=commit_date_string,
-                commit_time=commit_timestamp,
-                rows_inserted=operation_metrics["numOutputRows"],
-                rows_updated=0,
-                rows_deleted=0,
-                last_active_commit_time=oldest_commit_timestamp,
-            )
-        else:
-            fg_commit = feature_group_commit.FeatureGroupCommit(
-                commitid=None,
-                commit_date_string=commit_date_string,
-                commit_time=commit_timestamp,
-                rows_inserted=operation_metrics["numTargetRowsInserted"],
-                rows_updated=operation_metrics["numTargetRowsUpdated"],
-                rows_deleted=operation_metrics["numTargetRowsDeleted"],
-                last_active_commit_time=oldest_commit_timestamp,
-            )
+        # Default all to zero
+        rows_inserted = 0
+        rows_updated = 0
+        rows_deleted = 0
+
+        # Depending on operation, set the relevant metrics
+        if operation == "WRITE":
+            rows_inserted = operation_metrics.get("numOutputRows", 0)
+        elif operation == "MERGE":
+            rows_inserted = operation_metrics.get("numTargetRowsInserted", 0)
+            rows_updated = operation_metrics.get("numTargetRowsUpdated", 0)
+            rows_deleted = operation_metrics.get("numTargetRowsDeleted", 0)
+
+        fg_commit = feature_group_commit.FeatureGroupCommit(
+            commitid=None,
+            commit_date_string=commit_date_string,
+            commit_time=commit_timestamp,
+            rows_inserted=rows_inserted,
+            rows_updated=rows_updated,
+            rows_deleted=rows_deleted,
+            last_active_commit_time=oldest_commit_timestamp,
+        )
 
         return fg_commit
