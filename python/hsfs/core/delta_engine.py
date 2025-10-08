@@ -137,9 +137,6 @@ class DeltaEngine:
                 fg_source_table.alias(source_alias).merge(
                     delete_df.alias(updates_alias), merge_query_str
                 ).whenMatchedDelete().execute()
-                fg_commit = self._get_last_commit_metadata(
-                    self._spark_session, location
-                )
             else:
                 fg_source_table.merge(
                     source=delete_df,
@@ -147,7 +144,7 @@ class DeltaEngine:
                     source_alias=updates_alias,
                     target_alias=source_alias,
                 ).when_matched_delete().execute()
-                fg_commit = self._get_last_commit_metadata_delta_rs(location)
+            fg_commit = self._get_last_commit_metadata(self._spark_session, location)
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
     def _write_delta_dataset(self, dataset, write_options):
@@ -249,7 +246,7 @@ class DeltaEngine:
                 .when_not_matched_insert_all()
                 .execute()
             )
-        return self._get_last_commit_metadata_delta_rs(location)
+        return self._get_last_commit_metadata(self._spark_session, location)
 
     @staticmethod
     def _prepare_df_for_delta(df, timestamp_precision="us"):
@@ -316,44 +313,35 @@ class DeltaEngine:
         return megrge_query_str
 
     @staticmethod
-    def _get_last_commit_metadata_delta_rs(base_path):
-        fg_source_table = DeltaRsTable(base_path)
-
-        # Get full history as a list of dicts
-        history = fg_source_table.history()
-        if not history:
-            return None  # No commits found
-
-        # Filter for data-changing operations
-        data_ops = ["MERGE", "WRITE"]
-        filtered_history = [c for c in history if c["operation"] in data_ops]
-
-        if not filtered_history:
-            return None  # No relevant commits
-
-        # Latest commit (highest version)
-        last_commit = max(filtered_history, key=lambda c: c["version"])
-
-        # Oldest commit (lowest version among filtered data-changing commits)
-        oldest_commit = min(filtered_history, key=lambda c: c["version"])
-
-        return DeltaEngine._get_delta_feature_group_commit(last_commit, oldest_commit)
-
-    @staticmethod
     def _get_last_commit_metadata(spark_context, base_path):
-        fg_source_table = DeltaTable.forPath(spark_context, base_path)
+        """
+        Retrieve oldest and last data-changing commits (MERGE/WRITE) from a Delta table.
+        Uses shared filtering logic for both Spark and delta-rs.
+        """
+        data_ops = ["MERGE", "WRITE"]
 
-        # Get full history as a Spark DataFrame
-        history = fg_source_table.history()
+        # --- Get commit history ---
+        if spark_context is not None:
+            # Spark DeltaTable (returns Spark DataFrame)
+            fg_source_table = DeltaTable.forPath(spark_context, base_path)
+            history = fg_source_table.history()
+            history_records = [r.asDict() for r in history.collect()]
+        else:
+            # delta-rs DeltaTable (returns list[dict])
+            fg_source_table = DeltaRsTable(base_path)
+            history_records = fg_source_table.history()
 
-        # Filter for data-changing operations
-        filtered_history = history.filter(history["operation"].isin(["MERGE", "WRITE"]))
+        if not history_records:
+            return None
 
-        # Get info about the latest commit
-        last_commit = filtered_history.orderBy("version", ascending=False).first().asDict()
+        # --- Shared logic below ---
+        filtered = [c for c in history_records if c.get("operation") in data_ops]
+        if not filtered:
+            return None
 
-        # Get info about the oldest remaining commit
-        oldest_commit = filtered_history.orderBy("version", ascending=True).first().asDict()
+        # oldest = smallest version, latest = largest version
+        oldest_commit = min(filtered, key=lambda c: c["version"])
+        last_commit = max(filtered, key=lambda c: c["version"])
 
         return DeltaEngine._get_delta_feature_group_commit(last_commit, oldest_commit)
 
