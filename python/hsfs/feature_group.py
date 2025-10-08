@@ -3729,32 +3729,6 @@ class FeatureGroup(FeatureGroupBase):
         """
         self._feature_group_engine.delta_vacuum(self, retention_hours)
 
-    def update_table_schema(self):
-        """
-        Run a PySpark action to reconcile the schema of this feature group with the underlying storage.
-
-        This method triggers a schema update job in Hopsworks when using python client, ensuring that
-        the feature group schema in the metadata service matches the schema in the actual storage.
-        This is useful if there was an issue after appening new features.
-
-        !!! example
-            ```python
-            # connect to the Feature Store
-            fs = ...
-
-            # get the Feature Group instance
-            fg = fs.get_or_create_feature_group(...)
-
-            # update the table schema and wait for completion
-            fg.update_table_schema()
-            ```
-
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request.
-            `hopsworks.client.exceptions.FeatureStoreException`: If the schema update job fails.
-        """
-        engine.get_instance().update_table_schema(self)
-
     def as_of(
         self,
         wallclock_time: Optional[Union[str, int, datetime, date]] = None,
