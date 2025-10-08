@@ -25,20 +25,9 @@ from hsfs import feature_group_commit, util
 from hsfs.core import feature_group_api, variable_api
 
 
-try:
-    import pandas as pd
-    import polars as pl
-    import pyarrow as pa
-    from deltalake import DeltaTable as DeltaRsTable
-    from deltalake import write_deltalake as deltars_write
-    from deltalake.exceptions import TableNotFoundError
-except ImportError:
-    pass
-
-try:
-    from delta.tables import DeltaTable
-except ImportError:
-    pass
+# Note: Avoid importing optional Delta dependencies at module import time.
+# They are imported on-demand inside methods to provide friendly errors only
+# when the functionality is used.
 
 
 class DeltaEngine:
@@ -110,11 +99,26 @@ class DeltaEngine:
 
     def delete_record(self, delete_df):
         if self._spark_session is not None:
+            try:
+                from delta.tables import DeltaTable
+            except ImportError as e:
+                raise ImportError(
+                    "Delta Lake (delta-spark) is required for Spark operations. "
+                    "Install 'delta-spark' or include it in your environment."
+                ) from e
             location = self._feature_group.prepare_spark_location()
             fg_source_table = DeltaTable.forPath(self._spark_session, location)
             is_delta_table = DeltaTable.isDeltaTable(self._spark_session, location)
         else:
             location = self._feature_group.location.replace("hopsfs", "hdfs")
+            try:
+                from deltalake import DeltaTable as DeltaRsTable
+                from deltalake.exceptions import TableNotFoundError
+            except ImportError as e:
+                raise ImportError(
+                    "Delta Lake (deltalake) is required for non-Spark operations. "
+                    "Install 'hops-deltalake' to enable Delta RS features."
+                ) from e
             try:
                 fg_source_table = DeltaRsTable(location)
                 is_delta_table = True
@@ -152,6 +156,13 @@ class DeltaEngine:
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
     def _write_delta_dataset(self, dataset, write_options):
+        try:
+            from delta.tables import DeltaTable
+        except ImportError as e:
+            raise ImportError(
+                "Delta Lake (delta-spark) is required for Spark operations. "
+                "Install 'delta-spark' or include it in your environment."
+            ) from e
         location = self._feature_group.prepare_spark_location()
         if write_options is None:
             write_options = {}
@@ -214,6 +225,17 @@ class DeltaEngine:
             return location
 
     def _write_delta_rs_dataset(self, dataset):
+        try:
+            import polars as pl
+            import pyarrow as pa  # noqa: F401  # used indirectly via _prepare_df_for_delta
+            from deltalake import DeltaTable as DeltaRsTable
+            from deltalake import write_deltalake as deltars_write
+            from deltalake.exceptions import TableNotFoundError
+        except ImportError as e:
+            raise ImportError(
+                "Delta Lake (deltalake) and its dependencies are required for non-Spark operations. "
+                "Install 'hops-deltalake' to enable Delta RS features."
+            ) from e
         location = self._get_delta_rs_location()
         if isinstance(dataset, pl.DataFrame):
             dataset = dataset.to_arrow()
@@ -254,6 +276,13 @@ class DeltaEngine:
 
     @staticmethod
     def _prepare_df_for_delta(df, timestamp_precision="us"):
+        try:
+            import pandas as pd
+            import pyarrow as pa
+        except ImportError as e:
+            raise ImportError(
+                "pandas and pyarrow are required to prepare data for Delta operations."
+            ) from e
         """
         Prepares a pandas DataFrame for Delta Lake operations by fixing timestamp columns.
 
@@ -318,6 +347,13 @@ class DeltaEngine:
 
     @staticmethod
     def _get_last_commit_metadata_delta_rs(base_path):
+        try:
+            from deltalake import DeltaTable as DeltaRsTable
+        except ImportError as e:
+            raise ImportError(
+                "Delta Lake (deltalake) is required to read commit metadata. "
+                "Install 'hops-deltalake' to enable Delta RS features."
+            ) from e
         fg_source_table = DeltaRsTable(base_path)
 
         last_commit = fg_source_table.history()[0]
@@ -329,6 +365,12 @@ class DeltaEngine:
         operation_metrics = last_commit["operationMetrics"]
 
         # Get info about the oldest remaining commit
+        try:
+            import pandas as pd
+        except ImportError as e:
+            raise ImportError(
+                "pandas is required to process Delta commit history."
+            ) from e
         oldest_commit = (
             pd.DataFrame(fg_source_table.history())
             .sort_values("version")
@@ -363,6 +405,13 @@ class DeltaEngine:
 
     @staticmethod
     def _get_last_commit_metadata(spark_context, base_path):
+        try:
+            from delta.tables import DeltaTable
+        except ImportError as e:
+            raise ImportError(
+                "Delta Lake (delta-spark) is required to read commit metadata. "
+                "Install 'delta-spark' or include it in your environment."
+            ) from e
         fg_source_table = DeltaTable.forPath(spark_context, base_path)
 
         # Get info about the latest commit
