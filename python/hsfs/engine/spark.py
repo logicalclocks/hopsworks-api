@@ -133,8 +133,6 @@ class Engine:
         self._spark_session.conf.set("hive.exec.dynamic.partition.mode", "nonstrict")
         self._spark_session.conf.set("spark.sql.hive.convertMetastoreParquet", "false")
         self._spark_session.conf.set("spark.sql.session.timeZone", "UTC")
-        self._spark_session.conf.set("spark.sql.catalog.spark_catalog",
-                                     "org.apache.spark.sql.delta.catalog.DeltaCatalog")
         self._dataset_api = dataset_api.DatasetApi()
 
     def sql(
