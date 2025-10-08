@@ -134,6 +134,8 @@ class Engine:
         self._spark_session.conf.set("hive.exec.dynamic.partition.mode", "nonstrict")
         self._spark_session.conf.set("spark.sql.hive.convertMetastoreParquet", "false")
         self._spark_session.conf.set("spark.sql.session.timeZone", "UTC")
+        self._spark_session.conf.set("spark.sql.catalog.spark_catalog",
+                                     "org.apache.spark.sql.delta.catalog.DeltaCatalog")
         self._dataset_api = dataset_api.DatasetApi()
 
     def sql(
@@ -223,8 +225,6 @@ class Engine:
             read_options,
         )
 
-        self.reconcile_schema(hudi_fg_alias, read_options, hudi_engine_instance)
-
     def register_delta_temporary_table(
         self, delta_fg_alias, feature_store_id, feature_store_name, read_options
     ):
@@ -240,28 +240,6 @@ class Engine:
             delta_fg_alias,
             read_options,
         )
-
-        self.reconcile_schema(delta_fg_alias, read_options, delta_engine_instance)
-
-    def reconcile_schema(self, fg_alias, read_options, engine_instance):
-        if sorted(self._spark_session.table(fg_alias.alias).columns) != sorted(
-            [feature.name for feature in fg_alias.feature_group._features]
-            + hudi_engine.HudiEngine.HUDI_SPEC_FEATURE_NAMES
-            if fg_alias.feature_group.time_travel_format == "HUDI"
-            else []
-        ):
-            full_fg = feature_group_api.FeatureGroupApi().get(
-                feature_store_id=fg_alias.feature_group._feature_store_id,
-                name=fg_alias.feature_group.name,
-                version=fg_alias.feature_group.version,
-            )
-
-            self.update_table_schema(full_fg)
-
-            engine_instance.register_temporary_table(
-                fg_alias,
-                read_options,
-            )
 
     def _return_dataframe_type(self, dataframe, dataframe_type):
         if dataframe_type.lower() in ["default", "spark"]:
