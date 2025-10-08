@@ -14,8 +14,9 @@
 #   limitations under the License.
 #
 
-from hsfs.core import delta_engine
 from hsfs import feature_group_commit
+from hsfs.core import delta_engine
+
 
 class TestDeltaEngine:
     def test_get_last_commit_metadata_spark(self, mocker):
@@ -198,7 +199,7 @@ class TestDeltaEngine:
         assert fg_commit.rows_updated == 0
         assert fg_commit.rows_deleted == 0
         assert fg_commit.last_active_commit_time == "2024-01-01T08:00:00Z"
-    
+
     def test_get_delta_feature_group_commit_other(self, mocker):
         # Arrange
         last_commit = {
