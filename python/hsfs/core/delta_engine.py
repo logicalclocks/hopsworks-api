@@ -211,7 +211,7 @@ class DeltaEngine:
             except FeatureStoreException as e:
                 raise FeatureStoreException("Failed to write to delta table. Make sure namenode load balancer has been setup on the cluster.") from e
         else:
-            return self._feature_group.location
+            return location
 
     def _write_delta_rs_dataset(self, dataset):
         location = self._get_delta_rs_location()
