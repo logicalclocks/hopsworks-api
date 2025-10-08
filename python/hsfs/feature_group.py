@@ -3746,7 +3746,7 @@ class FeatureGroup(FeatureGroupBase):
             fg = fs.get_or_create_feature_group(...)
 
             # update the table schema and wait for completion
-            fg.update_table_schema(wait=True)
+            fg.update_table_schema()
             ```
 
         # Raises
