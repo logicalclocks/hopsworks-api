@@ -134,6 +134,77 @@ class TestSpark:
         }
         yield logging_features, meta_data_logging_columns, column_names
 
+    @pytest.fixture
+    def logging_test_dataframe(self):
+        # Create Spark DataFrame directly using schema
+        schema = StructType(
+            [
+                StructField("primary_key", LongType(), True),
+                StructField("event_time", TimestampType(), True),
+                StructField("feature_1", DoubleType(), True),
+                StructField("feature_2", DoubleType(), True),
+                StructField("feature_3", IntegerType(), True),
+                StructField("label", StringType(), True),
+                StructField("min_max_scaler_feature_3", DoubleType(), True),
+                StructField("rp_1", IntegerType(), True),
+                StructField("rp_2", IntegerType(), True),
+                StructField("extra_1", StringType(), True),
+                StructField("extra_2", IntegerType(), True),
+                StructField("request_id", StringType(), True),
+                StructField("inference_helper_1", DoubleType(), True),
+            ]
+        )
+
+        log_data_list = [
+            (
+                1,
+                datetime.datetime(2025, 1, 1, 12, 0, 0),
+                0.25,
+                5.0,
+                100,
+                "A",
+                0.25,
+                1,
+                4,
+                "extra_a",
+                10,
+                "req_1",
+                0.95,
+            ),
+            (
+                2,
+                datetime.datetime(2025, 1, 2, 13, 30, 0),
+                0.75,
+                10.2,
+                200,
+                "B",
+                0.75,
+                2,
+                5,
+                "extra_b",
+                20,
+                "req_2",
+                0.85,
+            ),
+            (
+                3,
+                datetime.datetime(2025, 1, 3, 15, 45, 0),
+                1.1,
+                7.7,
+                300,
+                "A",
+                1.1,
+                3,
+                6,
+                "extra_c",
+                30,
+                "req_3",
+                0.76,
+            ),
+        ]
+
+        return spark.Engine()._spark_session.createDataFrame(log_data_list, schema)
+
     def test_sql(self, mocker):
         # Arrange
         mock_spark_engine_sql_offline = mocker.patch(
@@ -6052,7 +6123,7 @@ class TestSpark:
         assert result.collect() == []
 
     def test_get_feature_logging_df_logging_data_no_missing_no_additional_dataframe(
-        self, mocker, logging_features
+        self, mocker, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -6062,78 +6133,9 @@ class TestSpark:
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
-        # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("primary_key", LongType(), True),
-                StructField("event_time", TimestampType(), True),
-                StructField("feature_1", DoubleType(), True),
-                StructField("feature_2", DoubleType(), True),
-                StructField("feature_3", IntegerType(), True),
-                StructField("label", StringType(), True),
-                StructField("min_max_scaler_feature_3", DoubleType(), True),
-                StructField("rp_1", IntegerType(), True),
-                StructField("rp_2", IntegerType(), True),
-                StructField("extra_1", StringType(), True),
-                StructField("extra_2", IntegerType(), True),
-                StructField("request_id", StringType(), True),
-                StructField("inference_helper_1", DoubleType(), True),
-            ]
-        )
-
-        data = [
-            (
-                1,
-                datetime.datetime(2025, 1, 1, 12, 0, 0),
-                0.25,
-                5.0,
-                100,
-                "A",
-                0.25,
-                1,
-                4,
-                "extra_a",
-                10,
-                "req_1",
-                0.95,
-            ),
-            (
-                2,
-                datetime.datetime(2025, 1, 2, 13, 30, 0),
-                0.75,
-                10.2,
-                200,
-                "B",
-                0.75,
-                2,
-                5,
-                "extra_b",
-                20,
-                "req_2",
-                0.85,
-            ),
-            (
-                3,
-                datetime.datetime(2025, 1, 3, 15, 45, 0),
-                1.1,
-                7.7,
-                300,
-                "A",
-                1.1,
-                3,
-                6,
-                "extra_c",
-                30,
-                "req_3",
-                0.76,
-            ),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
-
         # Specify column names for each type of data
         logging_dataframe = spark_engine.get_feature_logging_df(
-            logging_data=spark_df,
+            logging_data=logging_test_dataframe,
             logging_feature_group_features=logging_feature_group_features,
             transformed_features=(
                 None,
@@ -6189,7 +6191,7 @@ class TestSpark:
 
         logging_feature_names = [feature.name for feature in logging_features]
         expected_columns = [feature.name for feature in logging_feature_group_features]
-        expected_dataframe = spark_df.select("*")
+        expected_dataframe = logging_test_dataframe.select("*")
         expected_dataframe = expected_dataframe.withColumnRenamed(
             "label", "predicted_label"
         )
@@ -6210,7 +6212,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_logging_data_no_missing_no_additional_list(
-        self, mocker, logging_features
+        self, mocker, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -6231,71 +6233,6 @@ class TestSpark:
             for name in logging_features_names
         ]
 
-        schema = StructType(
-            [
-                StructField("primary_key", LongType(), True),
-                StructField("event_time", TimestampType(), True),
-                StructField("feature_1", DoubleType(), True),
-                StructField("feature_2", DoubleType(), True),
-                StructField("feature_3", IntegerType(), True),
-                StructField("label", StringType(), True),
-                StructField("min_max_scaler_feature_3", DoubleType(), True),
-                StructField("rp_1", IntegerType(), True),
-                StructField("rp_2", IntegerType(), True),
-                StructField("extra_1", StringType(), True),
-                StructField("extra_2", IntegerType(), True),
-                StructField("request_id", StringType(), True),
-                StructField("inference_helper_1", DoubleType(), True),
-            ]
-        )
-
-        log_data_list = [
-            (
-                1,
-                datetime.datetime(2025, 1, 1, 12, 0, 0),
-                0.25,
-                5.0,
-                100,
-                "A",
-                0.25,
-                1,
-                4,
-                "extra_a",
-                10,
-                "req_1",
-                0.95,
-            ),
-            (
-                2,
-                datetime.datetime(2025, 1, 2, 13, 30, 0),
-                0.75,
-                10.2,
-                200,
-                "B",
-                0.75,
-                2,
-                5,
-                "extra_b",
-                20,
-                "req_2",
-                0.85,
-            ),
-            (
-                3,
-                datetime.datetime(2025, 1, 3, 15, 45, 0),
-                1.1,
-                7.7,
-                300,
-                "A",
-                1.1,
-                3,
-                6,
-                "extra_c",
-                30,
-                "req_3",
-                0.76,
-            ),
-        ]
         logging_features_names = [
             feature.name
             for feature in logging_features
@@ -6307,11 +6244,10 @@ class TestSpark:
         ]
 
         # Select column in the correct order
-        spark_df = spark_engine._spark_session.createDataFrame(log_data_list, schema)
         log_data_df_list = [
-            list(row) for row in spark_df.select(*logging_features_names).collect()
+            list(row)
+            for row in logging_test_dataframe.select(*logging_features_names).collect()
         ]
-        print(log_data_df_list, flush=True)
 
         # Specify column names for each type of data
         logging_dataframe = spark_engine.get_feature_logging_df(
@@ -6371,7 +6307,7 @@ class TestSpark:
 
         logging_feature_names = [feature.name for feature in logging_features]
         expected_columns = [feature.name for feature in logging_feature_group_features]
-        expected_dataframe = spark_df.select("*")
+        expected_dataframe = logging_test_dataframe.select("*")
         expected_dataframe = expected_dataframe.withColumnRenamed(
             "label", "predicted_label"
         )
@@ -6392,7 +6328,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_logging_data_no_missing_no_additional_dict(
-        self, mocker, logging_features
+        self, mocker, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -6413,71 +6349,6 @@ class TestSpark:
             for name in logging_features_names
         ]
 
-        schema = StructType(
-            [
-                StructField("primary_key", LongType(), True),
-                StructField("event_time", TimestampType(), True),
-                StructField("feature_1", DoubleType(), True),
-                StructField("feature_2", DoubleType(), True),
-                StructField("feature_3", IntegerType(), True),
-                StructField("label", StringType(), True),
-                StructField("min_max_scaler_feature_3", DoubleType(), True),
-                StructField("rp_1", IntegerType(), True),
-                StructField("rp_2", IntegerType(), True),
-                StructField("extra_1", StringType(), True),
-                StructField("extra_2", IntegerType(), True),
-                StructField("request_id", StringType(), True),
-                StructField("inference_helper_1", DoubleType(), True),
-            ]
-        )
-
-        log_data_list = [
-            (
-                1,
-                datetime.datetime(2025, 1, 1, 12, 0, 0),
-                0.25,
-                5.0,
-                100,
-                "A",
-                0.25,
-                1,
-                4,
-                "extra_a",
-                10,
-                "req_1",
-                0.95,
-            ),
-            (
-                2,
-                datetime.datetime(2025, 1, 2, 13, 30, 0),
-                0.75,
-                10.2,
-                200,
-                "B",
-                0.75,
-                2,
-                5,
-                "extra_b",
-                20,
-                "req_2",
-                0.85,
-            ),
-            (
-                3,
-                datetime.datetime(2025, 1, 3, 15, 45, 0),
-                1.1,
-                7.7,
-                300,
-                "A",
-                1.1,
-                3,
-                6,
-                "extra_c",
-                30,
-                "req_3",
-                0.76,
-            ),
-        ]
         logging_features_names = [
             feature.name
             for feature in logging_features
@@ -6489,9 +6360,9 @@ class TestSpark:
         ]
 
         # Select column in the correct order
-        spark_df = spark_engine._spark_session.createDataFrame(log_data_list, schema)
         log_data_df_dict = [
-            row.asDict() for row in spark_df.select(*logging_features_names).collect()
+            row.asDict()
+            for row in logging_test_dataframe.select(*logging_features_names).collect()
         ]
 
         # Specify column names for each type of data
@@ -6552,7 +6423,7 @@ class TestSpark:
 
         logging_feature_names = [feature.name for feature in logging_features]
         expected_columns = [feature.name for feature in logging_feature_group_features]
-        expected_dataframe = spark_df.select("*")
+        expected_dataframe = logging_test_dataframe.select("*")
         expected_dataframe = expected_dataframe.withColumnRenamed(
             "label", "predicted_label"
         )
@@ -6573,7 +6444,10 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_logging_data_missing_columns_and_additional_dataframe(
-        self, mocker, caplog, logging_features
+        self,
+        mocker,
+        caplog,
+        logging_features,
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -7105,7 +6979,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_untransformed_features_no_missing_no_additional_dataframe(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -7115,34 +6989,9 @@ class TestSpark:
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
-        # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("feature_1", DoubleType(), True),
-                StructField("feature_2", DoubleType(), True),
-                StructField("feature_3", IntegerType(), True),
-            ]
+        spark_df = logging_test_dataframe.select(
+            *column_names["untransformed_features"]
         )
-
-        data = [
-            (
-                0.25,
-                5.0,
-                100,
-            ),
-            (
-                0.75,
-                10.2,
-                200,
-            ),
-            (
-                1.1,
-                7.7,
-                300,
-            ),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
 
         caplog.set_level(logging.INFO)
 
@@ -7241,7 +7090,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_untransformed_features_no_missing_no_additional_list(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -7262,31 +7111,6 @@ class TestSpark:
             for name in logging_features_names
         ]
 
-        schema = StructType(
-            [
-                StructField("feature_1", DoubleType(), True),
-                StructField("feature_2", DoubleType(), True),
-                StructField("feature_3", IntegerType(), True),
-            ]
-        )
-
-        log_data_list = [
-            (
-                0.25,
-                5.0,
-                100,
-            ),
-            (
-                0.75,
-                10.2,
-                200,
-            ),
-            (
-                1.1,
-                7.7,
-                300,
-            ),
-        ]
         logging_features_names = [
             feature.name
             for feature in logging_features
@@ -7298,7 +7122,9 @@ class TestSpark:
         ]
 
         # Select column in the correct order
-        spark_df = spark_engine._spark_session.createDataFrame(log_data_list, schema)
+        spark_df = logging_test_dataframe.select(
+            *column_names["untransformed_features"]
+        )
         untransformed_features_data = [
             list(row)
             for row in spark_df.select(
@@ -7402,7 +7228,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_untransformed_features_no_missing_no_additional_dict(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -7423,31 +7249,6 @@ class TestSpark:
             for name in logging_features_names
         ]
 
-        schema = StructType(
-            [
-                StructField("feature_1", DoubleType(), True),
-                StructField("feature_2", DoubleType(), True),
-                StructField("feature_3", IntegerType(), True),
-            ]
-        )
-
-        log_data_list = [
-            (
-                0.25,
-                5.0,
-                100,
-            ),
-            (
-                0.75,
-                10.2,
-                200,
-            ),
-            (
-                1.1,
-                7.7,
-                300,
-            ),
-        ]
         logging_features_names = [
             feature.name
             for feature in logging_features
@@ -7459,7 +7260,9 @@ class TestSpark:
         ]
 
         # Select column in the correct order
-        spark_df = spark_engine._spark_session.createDataFrame(log_data_list, schema)
+        spark_df = logging_test_dataframe.select(
+            *column_names["untransformed_features"]
+        )
         untransformed_features_dict = [
             row.asDict()
             for row in spark_df.select(
@@ -7969,7 +7772,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_transformed_features_no_missing_no_additional_dataframe(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -7979,34 +7782,7 @@ class TestSpark:
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
-        # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("feature_1", DoubleType(), True),
-                StructField("feature_2", DoubleType(), True),
-                StructField("min_max_scaler_feature_3", DoubleType(), True),
-            ]
-        )
-
-        data = [
-            (
-                0.25,
-                5.0,
-                0.25,
-            ),
-            (
-                0.75,
-                10.2,
-                0.75,
-            ),
-            (
-                1.1,
-                7.7,
-                0.25,
-            ),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+        spark_df = logging_test_dataframe.select(*column_names["transformed_features"])
 
         caplog.set_level(logging.INFO)
 
@@ -8105,7 +7881,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_transformed_features_no_missing_no_additional_list(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -8126,31 +7902,6 @@ class TestSpark:
             for name in logging_features_names
         ]
 
-        schema = StructType(
-            [
-                StructField("feature_1", DoubleType(), True),
-                StructField("feature_2", DoubleType(), True),
-                StructField("min_max_scaler_feature_3", DoubleType(), True),
-            ]
-        )
-
-        data = [
-            (
-                0.25,
-                5.0,
-                0.25,
-            ),
-            (
-                0.75,
-                10.2,
-                0.75,
-            ),
-            (
-                1.1,
-                7.7,
-                0.25,
-            ),
-        ]
         logging_features_names = [
             feature.name
             for feature in logging_features
@@ -8162,7 +7913,7 @@ class TestSpark:
         ]
 
         # Select column in the correct order
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+        spark_df = logging_test_dataframe.select(*column_names["transformed_features"])
         transformed_features_data = [
             list(row)
             for row in spark_df.select(*column_names["transformed_features"]).collect()
@@ -8264,7 +8015,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_transformed_features_no_missing_no_additional_dict(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -8284,32 +8035,6 @@ class TestSpark:
             name if name != "predicted_label" else "label"
             for name in logging_features_names
         ]
-
-        schema = StructType(
-            [
-                StructField("feature_1", DoubleType(), True),
-                StructField("feature_2", DoubleType(), True),
-                StructField("min_max_scaler_feature_3", DoubleType(), True),
-            ]
-        )
-
-        data = [
-            (
-                0.25,
-                5.0,
-                0.25,
-            ),
-            (
-                0.75,
-                10.2,
-                0.75,
-            ),
-            (
-                1.1,
-                7.7,
-                0.25,
-            ),
-        ]
         logging_features_names = [
             feature.name
             for feature in logging_features
@@ -8321,7 +8046,7 @@ class TestSpark:
         ]
 
         # Select column in the correct order
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+        spark_df = logging_test_dataframe.select(*column_names["transformed_features"])
         transformed_features_dict = [
             row.asDict()
             for row in spark_df.select(*column_names["transformed_features"]).collect()
@@ -8829,7 +8554,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_predictions_no_missing_no_additional_dataframe(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -8840,19 +8565,7 @@ class TestSpark:
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
         # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("label", StringType(), True),
-            ]
-        )
-
-        data = [
-            ("A",),
-            ("B",),
-            ("C",),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+        spark_df = logging_test_dataframe.select(*column_names["predictions"])
 
         caplog.set_level(logging.INFO)
 
@@ -8956,7 +8669,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_predictions_no_missing_no_additional_list(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -8978,17 +8691,6 @@ class TestSpark:
         ]
 
         # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("label", StringType(), True),
-            ]
-        )
-
-        data = [
-            ("A",),
-            ("B",),
-            ("C",),
-        ]
         logging_features_names = [
             feature.name
             for feature in logging_features
@@ -9000,7 +8702,7 @@ class TestSpark:
         ]
 
         # Select column in the correct order
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+        spark_df = logging_test_dataframe.select(*column_names["predictions"])
         predictions_data = [list(row) for row in spark_df.select("*").collect()]
 
         caplog.set_level(logging.INFO)
@@ -9100,7 +8802,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_predictions_no_missing_no_additional_dict(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -9121,17 +8823,6 @@ class TestSpark:
             for name in logging_features_names
         ]
 
-        schema = StructType(
-            [
-                StructField("label", StringType(), True),
-            ]
-        )
-
-        data = [
-            ("A",),
-            ("B",),
-            ("C",),
-        ]
         logging_features_names = [
             feature.name
             for feature in logging_features
@@ -9143,9 +8834,8 @@ class TestSpark:
         ]
 
         # Select column in the correct order
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+        spark_df = logging_test_dataframe.select(*column_names["predictions"])
         prediction_dict = [row.asDict() for row in spark_df.select("*").collect()]
-        print(prediction_dict, flush=True)
 
         caplog.set_level(logging.INFO)
 
@@ -9673,7 +9363,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_serving_keys_no_missing_no_additional_dataframe(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -9684,19 +9374,7 @@ class TestSpark:
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
         # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("primary_key", IntegerType(), True),
-            ]
-        )
-
-        data = [
-            (1,),
-            (2,),
-            (3,),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+        spark_df = logging_test_dataframe.select(*column_names["serving_keys"])
 
         caplog.set_level(logging.INFO)
 
@@ -9923,7 +9601,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_serving_keys_no_missing_no_additional_dict(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -9933,20 +9611,7 @@ class TestSpark:
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
-        # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("primary_key", IntegerType(), True),
-            ]
-        )
-
-        data = [
-            (1,),
-            (2,),
-            (3,),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+        spark_df = logging_test_dataframe.select(*column_names["serving_keys"])
 
         # Select column in the correct order
         logging_features_names = [
@@ -9958,7 +9623,6 @@ class TestSpark:
             name if name != "predicted_label" else "label"
             for name in logging_features_names
         ]
-
         # Select column in the correct order
         serving_key_data = [row.asDict() for row in spark_df.select("*").collect()]
 
@@ -10429,7 +10093,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_inference_helpers_no_missing_no_additional_dataframe(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -10439,20 +10103,7 @@ class TestSpark:
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
-        # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("inference_helper_1", DoubleType(), True),
-            ]
-        )
-
-        data = [
-            (1.1,),
-            (2.0,),
-            (3.0,),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+        spark_df = logging_test_dataframe.select(*column_names["helper_columns"])
 
         caplog.set_level(logging.INFO)
 
@@ -10555,7 +10206,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_inference_helper_no_missing_no_additional_list(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -10565,20 +10216,7 @@ class TestSpark:
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
-        # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("inference_helper_1", DoubleType(), True),
-            ]
-        )
-
-        data = [
-            (1.1,),
-            (2.0,),
-            (3.0,),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+        spark_df = logging_test_dataframe.select(*column_names["helper_columns"])
 
         # Select column in the correct order
         inference_helper_list = [list(row) for row in spark_df.select("*").collect()]
@@ -10679,7 +10317,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_inference_helper_no_missing_no_additional_dict(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -10690,19 +10328,7 @@ class TestSpark:
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
         # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("inference_helper_1", DoubleType(), True),
-            ]
-        )
-
-        data = [
-            (1.1,),
-            (2.0,),
-            (3.0,),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+        spark_df = logging_test_dataframe.select(*column_names["helper_columns"])
 
         # Select column in the correct order
         logging_features_names = [
@@ -11178,7 +10804,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_extra_log_columns_no_missing_no_additional_dataframe(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -11188,21 +10814,9 @@ class TestSpark:
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
-        # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("extra_1", StringType(), True),
-                StructField("extra_2", IntegerType(), True),
-            ]
+        spark_df = logging_test_dataframe.select(
+            *column_names["extra_logging_features"]
         )
-
-        data = [
-            ("extra_1_value", 1),
-            ("extra_2_value", 2),
-            ("extra_3_value", 3),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
 
         caplog.set_level(logging.INFO)
 
@@ -11305,7 +10919,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_extra_log_columns_no_missing_no_additional_list(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -11315,21 +10929,9 @@ class TestSpark:
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
-        # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("extra_1", StringType(), True),
-                StructField("extra_2", IntegerType(), True),
-            ]
+        spark_df = logging_test_dataframe.select(
+            *column_names["extra_logging_features"]
         )
-
-        data = [
-            ("extra_1_value", 1),
-            ("extra_2_value", 2),
-            ("extra_3_value", 3),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
 
         # Select column in the correct order
         extra_logging_data = [list(row) for row in spark_df.select("*").collect()]
@@ -11431,7 +11033,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_extra_log_columns_no_missing_no_additional_dict(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -11442,20 +11044,9 @@ class TestSpark:
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
         # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("extra_1", StringType(), True),
-                StructField("extra_2", IntegerType(), True),
-            ]
+        spark_df = logging_test_dataframe.select(
+            *column_names["extra_logging_features"]
         )
-
-        data = [
-            ("extra_1_value", 1),
-            ("extra_2_value", 2),
-            ("extra_3_value", 3),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
 
         # Select column in the correct order
         logging_features_names = [
@@ -11922,7 +11513,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_event_time_no_missing_no_additional_dataframe(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -11932,20 +11523,7 @@ class TestSpark:
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
-        # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("event_time", TimestampType(), True),
-            ]
-        )
-
-        data = [
-            (datetime.datetime(2025, 1, 1, 12, 0, 0),),
-            (datetime.datetime(2025, 1, 1, 12, 0, 0),),
-            (datetime.datetime(2025, 1, 1, 12, 0, 0),),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+        spark_df = logging_test_dataframe.select(*column_names["event_time"])
 
         caplog.set_level(logging.INFO)
 
@@ -12048,7 +11626,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_event_time_no_missing_no_additional_list(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -12059,19 +11637,7 @@ class TestSpark:
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
         # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("event_time", TimestampType(), True),
-            ]
-        )
-
-        data = [
-            (datetime.datetime(2025, 1, 1, 12, 0, 0),),
-            (datetime.datetime(2025, 1, 1, 12, 0, 0),),
-            (datetime.datetime(2025, 1, 1, 12, 0, 0),),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+        spark_df = logging_test_dataframe.select(*column_names["event_time"])
 
         # Select column in the correct order
         event_time_data = [list(row) for row in spark_df.select("*").collect()]
@@ -12173,7 +11739,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_event_time_no_missing_no_additional_dict(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -12183,20 +11749,7 @@ class TestSpark:
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
-        # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("event_time", TimestampType(), True),
-            ]
-        )
-
-        data = [
-            (datetime.datetime(2025, 1, 1, 12, 0, 0),),
-            (datetime.datetime(2025, 1, 1, 12, 0, 0),),
-            (datetime.datetime(2025, 1, 1, 12, 0, 0),),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+        spark_df = logging_test_dataframe.select(*column_names["event_time"])
 
         # Select column in the correct order
         logging_features_names = [
@@ -12308,7 +11861,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_request_id_no_missing_no_additional_dataframe(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -12319,19 +11872,7 @@ class TestSpark:
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
         # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("request_id", StringType(), True),
-            ]
-        )
-
-        data = [
-            ("request_1",),
-            ("request_2",),
-            ("request_3",),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+        spark_df = logging_test_dataframe.select(*column_names["request_id"])
 
         caplog.set_level(logging.INFO)
 
@@ -12434,7 +11975,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_request_id_no_missing_no_additional_list(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -12444,20 +11985,7 @@ class TestSpark:
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
-        # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("request_id", StringType(), True),
-            ]
-        )
-
-        data = [
-            ("request_1",),
-            ("request_2",),
-            ("request_3",),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+        spark_df = logging_test_dataframe.select(*column_names["request_id"])
 
         # Select column in the correct order
         request_id_data = [list(row) for row in spark_df.select("*").collect()]
@@ -12559,7 +12087,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_request_id_no_missing_no_additional_dict(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -12569,20 +12097,7 @@ class TestSpark:
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
-        # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("request_id", StringType(), True),
-            ]
-        )
-
-        data = [
-            ("request_1",),
-            ("request_2",),
-            ("request_3",),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+        spark_df = logging_test_dataframe.select(*column_names["request_id"])
 
         # Select column in the correct order
         logging_features_names = [
@@ -12694,7 +12209,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_request_parameters_no_missing_no_additional_dataframe(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -12704,21 +12219,7 @@ class TestSpark:
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
-        # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("rp_1", IntegerType(), True),
-                StructField("rp_2", IntegerType(), True),
-            ]
-        )
-
-        data = [
-            (1, 2),
-            (2, 3),
-            (3, 4),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+        spark_df = logging_test_dataframe.select(*column_names["request_parameters"])
 
         caplog.set_level(logging.INFO)
 
@@ -12817,7 +12318,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_request_parameters_no_missing_no_additional_list(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -12827,21 +12328,7 @@ class TestSpark:
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
-        # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("rp_1", IntegerType(), True),
-                StructField("rp_2", IntegerType(), True),
-            ]
-        )
-
-        data = [
-            (1, 2),
-            (2, 3),
-            (3, 4),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+        spark_df = logging_test_dataframe.select(*column_names["request_parameters"])
 
         # Select column in the correct order
         request_parameter_data = [list(row) for row in spark_df.select("*").collect()]
@@ -12942,7 +12429,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_request_parameters_no_missing_no_additional_dict(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -12953,20 +12440,7 @@ class TestSpark:
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
         # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("rp_1", IntegerType(), True),
-                StructField("rp_2", IntegerType(), True),
-            ]
-        )
-
-        data = [
-            (1, 2),
-            (2, 3),
-            (3, 4),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+        spark_df = logging_test_dataframe.select(*column_names["request_parameters"])
 
         # Select column in the correct order
         logging_features_names = [
@@ -13427,7 +12901,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_logging_data_override_dataframe(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -13437,74 +12911,7 @@ class TestSpark:
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
-        # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("primary_key", LongType(), True),
-                StructField("event_time", TimestampType(), True),
-                StructField("feature_1", DoubleType(), True),
-                StructField("feature_2", DoubleType(), True),
-                StructField("feature_3", IntegerType(), True),
-                StructField("label", StringType(), True),
-                StructField("min_max_scaler_feature_3", DoubleType(), True),
-                StructField("rp_1", IntegerType(), True),
-                StructField("rp_2", IntegerType(), True),
-                StructField("extra_1", StringType(), True),
-                StructField("extra_2", IntegerType(), True),
-                StructField("request_id", StringType(), True),
-                StructField("inference_helper_1", DoubleType(), True),
-            ]
-        )
-
-        data = [
-            (
-                1,
-                datetime.datetime(2025, 1, 1, 12, 0, 0),
-                0.25,
-                5.0,
-                100,
-                "A",
-                0.25,
-                1,
-                4,
-                "extra_a",
-                10,
-                "req_1",
-                0.95,
-            ),
-            (
-                2,
-                datetime.datetime(2025, 1, 2, 13, 30, 0),
-                0.75,
-                10.2,
-                200,
-                "B",
-                0.75,
-                2,
-                5,
-                "extra_b",
-                20,
-                "req_2",
-                0.85,
-            ),
-            (
-                3,
-                datetime.datetime(2025, 1, 3, 15, 45, 0),
-                1.1,
-                7.7,
-                300,
-                "A",
-                1.1,
-                3,
-                6,
-                "extra_c",
-                30,
-                "req_3",
-                0.76,
-            ),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+        spark_df = logging_test_dataframe.select("*")
 
         untransformed_feature_data = [
             (
@@ -13765,7 +13172,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_logging_data_override_dict(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -13775,74 +13182,7 @@ class TestSpark:
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
-        # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("primary_key", LongType(), True),
-                StructField("event_time", TimestampType(), True),
-                StructField("feature_1", DoubleType(), True),
-                StructField("feature_2", DoubleType(), True),
-                StructField("feature_3", IntegerType(), True),
-                StructField("label", StringType(), True),
-                StructField("min_max_scaler_feature_3", DoubleType(), True),
-                StructField("rp_1", IntegerType(), True),
-                StructField("rp_2", IntegerType(), True),
-                StructField("extra_1", StringType(), True),
-                StructField("extra_2", IntegerType(), True),
-                StructField("request_id", StringType(), True),
-                StructField("inference_helper_1", DoubleType(), True),
-            ]
-        )
-
-        data = [
-            (
-                1,
-                datetime.datetime(2025, 1, 1, 12, 0, 0),
-                0.25,
-                5.0,
-                100,
-                "A",
-                0.25,
-                1,
-                4,
-                "extra_a",
-                10,
-                "req_1",
-                0.95,
-            ),
-            (
-                2,
-                datetime.datetime(2025, 1, 2, 13, 30, 0),
-                0.75,
-                10.2,
-                200,
-                "B",
-                0.75,
-                2,
-                5,
-                "extra_b",
-                20,
-                "req_2",
-                0.85,
-            ),
-            (
-                3,
-                datetime.datetime(2025, 1, 3, 15, 45, 0),
-                1.1,
-                7.7,
-                300,
-                "A",
-                1.1,
-                3,
-                6,
-                "extra_c",
-                30,
-                "req_3",
-                0.76,
-            ),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+        spark_df = logging_test_dataframe.select("*")
         spark_df_dict = [row.asDict() for row in spark_df.select("*").collect()]
 
         untransformed_feature_data = [
@@ -14127,7 +13467,7 @@ class TestSpark:
         )
 
     def test_get_feature_logging_df_logging_data_override_list(
-        self, mocker, caplog, logging_features
+        self, mocker, caplog, logging_features, logging_test_dataframe
     ):
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -14137,74 +13477,7 @@ class TestSpark:
 
         logging_feature_group_features = meta_data_logging_columns + logging_features
 
-        # Create Spark DataFrame directly using schema
-        schema = StructType(
-            [
-                StructField("primary_key", LongType(), True),
-                StructField("event_time", TimestampType(), True),
-                StructField("feature_1", DoubleType(), True),
-                StructField("feature_2", DoubleType(), True),
-                StructField("feature_3", IntegerType(), True),
-                StructField("label", StringType(), True),
-                StructField("min_max_scaler_feature_3", DoubleType(), True),
-                StructField("rp_1", IntegerType(), True),
-                StructField("rp_2", IntegerType(), True),
-                StructField("extra_1", StringType(), True),
-                StructField("extra_2", IntegerType(), True),
-                StructField("request_id", StringType(), True),
-                StructField("inference_helper_1", DoubleType(), True),
-            ]
-        )
-
-        data = [
-            (
-                1,
-                datetime.datetime(2025, 1, 1, 12, 0, 0),
-                0.25,
-                5.0,
-                100,
-                "A",
-                0.25,
-                1,
-                4,
-                "extra_a",
-                10,
-                "req_1",
-                0.95,
-            ),
-            (
-                2,
-                datetime.datetime(2025, 1, 2, 13, 30, 0),
-                0.75,
-                10.2,
-                200,
-                "B",
-                0.75,
-                2,
-                5,
-                "extra_b",
-                20,
-                "req_2",
-                0.85,
-            ),
-            (
-                3,
-                datetime.datetime(2025, 1, 3, 15, 45, 0),
-                1.1,
-                7.7,
-                300,
-                "A",
-                1.1,
-                3,
-                6,
-                "extra_c",
-                30,
-                "req_3",
-                0.76,
-            ),
-        ]
-
-        spark_df = spark_engine._spark_session.createDataFrame(data, schema)
+        spark_df = logging_test_dataframe.select("*")
 
         untransformed_feature_data = [
             (
