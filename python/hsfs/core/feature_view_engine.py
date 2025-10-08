@@ -950,7 +950,7 @@ class FeatureViewEngine:
             training_dataset_version=training_dataset_version,
             spine=spine,
         ).read(read_options=read_options, dataframe_type=dataframe_type)
-        if transformation_functions and (transformed or logging_data):
+        if (transformation_functions and transformed) or logging_data:
             transformed_dataframe = (
                 engine.get_instance()._apply_transformation_function(
                     transformation_functions,
@@ -961,7 +961,11 @@ class FeatureViewEngine:
         else:
             transformed_dataframe = None
 
-        batch_dataframe = transformed_dataframe if transformed else feature_dataframe
+        batch_dataframe = (
+            transformed_dataframe
+            if (transformation_functions and transformed)
+            else feature_dataframe
+        )
 
         if logging_data:
             batch_dataframe = engine.get_instance().extract_logging_metadata(
