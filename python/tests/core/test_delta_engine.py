@@ -14,19 +14,14 @@
 #   limitations under the License.
 #
 
+import importlib.util
+
 import pytest
 from hsfs import feature_group_commit
 from hsfs.core import delta_engine
 
 
-try:
-    from deltalake import DeltaTable as DeltaRsTable
-    has_delta_rs_table = True
-except ImportError:
-    has_delta_rs_table = False
-
-
-@pytest.mark.skipif(not has_delta_rs_table, reason="DeltaRsTable not available")
+@pytest.mark.skipif(not importlib.util.find_spec("deltalake"), reason="DeltaRsTable not available")
 class TestDeltaEngine:
     def test_get_last_commit_metadata_spark(self, mocker):
         # Arrange
