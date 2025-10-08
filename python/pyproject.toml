@@ -83,7 +83,8 @@ dev-no-opt = [
     "pyspark==3.5.5",
     "moto[s3]==5.0.0",
     "typeguard==4.2.1",
-    "delta-spark==3.3.1"
+    "delta-spark==3.3.1",
+    "hops-deltalake"
 ]
 dev-pandas1 = [
     "hopsworks[python]",
@@ -94,7 +95,8 @@ dev-pandas1 = [
     "moto[s3]==5.0.0",
     "pandas<=1.5.3",
     "sqlalchemy<=1.4.48",
-    "delta-spark==3.3.1"
+    "delta-spark==3.3.1",
+    "hops-deltalake"
 ]
 dev = ["hopsworks[dev-no-opt,great-expectations,polars]"]
 polars=[
