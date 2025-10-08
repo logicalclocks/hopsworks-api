@@ -1768,7 +1768,17 @@ class FeatureViewEngine:
         transformed: Optional[bool] = False,
         training_dataset_version=None,
         hsml_model=None,
+        hopsworks_model: Optional[str] = None,
+        model_name: Optional[str] = None,
+        model_version: Optional[int] = None,
     ):
+        if hsml_model is not None:
+            warnings.warn(
+                "The `hsml_model` parameter is deprecated and will be removed in a future release. Please use `hopsworks_model` or `model_name` and `model_version` instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            hopsworks_model = hsml_model if hopsworks_model is None else hopsworks_model
         fg = self._get_logging_fg(fv, transformed)
         fv_feat_name_map = self._get_fv_feature_name_map(fv)
         query = fg.select_all()
@@ -1789,10 +1799,26 @@ class FeatureViewEngine:
                 )
                 == training_dataset_version
             )
-        if hsml_model:
+        if hopsworks_model:
+            query = query.filter(
+                (
+                    fg.get_feature(constants.FEATURE_LOGGING.MODEL_COLUMN_NAME)
+                    == hopsworks_model.name
+                )
+                and (
+                    fg.get_feature(constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME)
+                    == hopsworks_model.version
+                )
+            )
+        if model_name:
             query = query.filter(
                 fg.get_feature(constants.FEATURE_LOGGING.MODEL_COLUMN_NAME)
-                == self.get_hsml_model_value(hsml_model)
+                == model_name
+            )
+        if model_version:
+            query = query.filter(
+                fg.get_feature(constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME)
+                == model_version
             )
         if filter:
             query = query.filter(
