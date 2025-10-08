@@ -4136,6 +4136,8 @@ class FeatureView:
         transformed: Optional[bool] = False,
         training_dataset_version: Optional[int] = None,
         model: Model = None,
+        model_name: Optional[str] = None,
+        model_version: Optional[int] = None,
     ) -> Union[
         TypeVar("pyspark.sql.DataFrame"),
         pd.DataFrame,
@@ -4152,6 +4154,8 @@ class FeatureView:
             transformed: Whether to include transformed logs. Defaults to False.
             training_dataset_version: Version of the training dataset. Defaults to None.
             model: HSML model associated with the log. Defaults to None.
+            model_name: `Optional[str]`. Name of the model to filter the log entries. If `model` is provided, this parameter will be ignored.
+            model_version: `Optional[int]`. Version of the model to filter the log entries. If `model` is provided, this parameter will be ignored.
 
         # Example
             ```python
@@ -4184,6 +4188,8 @@ class FeatureView:
             transformed,
             training_dataset_version,
             model,
+            model_name,
+            model_version,
         )
 
     def pause_logging(self) -> None:
