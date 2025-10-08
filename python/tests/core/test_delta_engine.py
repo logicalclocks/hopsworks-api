@@ -21,7 +21,10 @@ from hsfs import feature_group_commit
 from hsfs.core import delta_engine
 
 
-@pytest.mark.skipif(not importlib.util.find_spec("deltalake"), reason="DeltaRsTable not available")
+deltalake_spec = importlib.util.find_spec("deltalake")
+skip_deltars_tests = deltalake_spec is None
+
+@pytest.mark.skipif(skip_deltars_tests, reason="DeltaRsTable not available")
 class TestDeltaEngine:
     def test_get_last_commit_metadata_spark(self, mocker):
         # Arrange
