@@ -14,15 +14,17 @@
 #   limitations under the License.
 #
 
-import importlib.util
+import importlib
 
 import pytest
 from hsfs import feature_group_commit
 from hsfs.core import delta_engine
 
 
-deltalake_spec = importlib.util.find_spec("deltalake")
-skip_deltars_tests = deltalake_spec is None
+# Skip the whole test class if DeltaRsTable is not available
+skip_deltars_tests = not hasattr(
+    importlib.import_module("hsfs.core.delta_engine"), "DeltaRsTable"
+)
 
 @pytest.mark.skipif(skip_deltars_tests, reason="DeltaRsTable not available")
 class TestDeltaEngine:
