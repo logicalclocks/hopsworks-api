@@ -15,6 +15,7 @@
 #
 import os
 import sys
+import types
 from unittest import mock
 
 import pytest
@@ -528,14 +529,15 @@ class TestDeltaEngine:
             {"version": 3, "operation": "OPTIMIZE", "timestamp": "2024-01-03T00:00:00Z"},
         ]
 
-        # Create the mock DeltaRsTable
+        # Fake the deltalake module
+        fake_deltalake = types.SimpleNamespace(DeltaTable=mocker.MagicMock())
+        sys.modules["deltalake"] = fake_deltalake
+
         mock_delta_rs_table = mocker.MagicMock()
         mock_delta_rs_table.history.return_value = mock_history_data
+        fake_deltalake.DeltaTable.return_value = mock_delta_rs_table
 
         mocker_get_delta_feature_group_commit = mocker.patch("hsfs.core.delta_engine.DeltaEngine._get_delta_feature_group_commit", return_value="result")
-
-        # Patch DeltaRsTable so that it returns the mock
-        mocker.patch("deltalake.DeltaTable", return_value=mock_delta_rs_table)
 
         # Act
         result = DeltaEngine._get_last_commit_metadata(None, "s3://some/path")
@@ -549,14 +551,15 @@ class TestDeltaEngine:
         # Arrange
         mock_history_data = []
 
-        # Create the mock DeltaRsTable
+        # Fake the deltalake module
+        fake_deltalake = types.SimpleNamespace(DeltaTable=mocker.MagicMock())
+        sys.modules["deltalake"] = fake_deltalake
+
         mock_delta_rs_table = mocker.MagicMock()
         mock_delta_rs_table.history.return_value = mock_history_data
+        fake_deltalake.DeltaTable.return_value = mock_delta_rs_table
 
         mocker_get_delta_feature_group_commit = mocker.patch("hsfs.core.delta_engine.DeltaEngine._get_delta_feature_group_commit", return_value="result")
-
-        # Patch DeltaRsTable so that it returns the mock
-        mocker.patch("deltalake.DeltaTable", return_value=mock_delta_rs_table)
 
         # Act
         result = DeltaEngine._get_last_commit_metadata(None, "s3://some/path")
@@ -571,14 +574,15 @@ class TestDeltaEngine:
             {"version": 1, "operation": "WRITE", "timestamp": "2024-01-01T00:00:00Z"},
         ]
 
-        # Create the mock DeltaRsTable
+        # Fake the deltalake module
+        fake_deltalake = types.SimpleNamespace(DeltaTable=mocker.MagicMock())
+        sys.modules["deltalake"] = fake_deltalake
+
         mock_delta_rs_table = mocker.MagicMock()
         mock_delta_rs_table.history.return_value = mock_history_data
+        fake_deltalake.DeltaTable.return_value = mock_delta_rs_table
 
         mocker_get_delta_feature_group_commit = mocker.patch("hsfs.core.delta_engine.DeltaEngine._get_delta_feature_group_commit", return_value="result")
-
-        # Patch DeltaRsTable so that it returns the mock
-        mocker.patch("deltalake.DeltaTable", return_value=mock_delta_rs_table)
 
         # Act
         result = DeltaEngine._get_last_commit_metadata(None, "s3://some/path")
@@ -594,14 +598,15 @@ class TestDeltaEngine:
             {"version": 1, "operation": "OPTIMIZE", "timestamp": "2024-01-01T00:00:00Z"},
         ]
 
-        # Create the mock DeltaRsTable
+        # Fake the deltalake module
+        fake_deltalake = types.SimpleNamespace(DeltaTable=mocker.MagicMock())
+        sys.modules["deltalake"] = fake_deltalake
+
         mock_delta_rs_table = mocker.MagicMock()
         mock_delta_rs_table.history.return_value = mock_history_data
+        fake_deltalake.DeltaTable.return_value = mock_delta_rs_table
 
         mocker_get_delta_feature_group_commit = mocker.patch("hsfs.core.delta_engine.DeltaEngine._get_delta_feature_group_commit", return_value="result")
-
-        # Patch DeltaRsTable so that it returns the mock
-        mocker.patch("deltalake.DeltaTable", return_value=mock_delta_rs_table)
 
         # Act
         result = DeltaEngine._get_last_commit_metadata(None, "s3://some/path")
