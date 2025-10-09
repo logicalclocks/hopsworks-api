@@ -20,6 +20,7 @@ from unittest import mock
 import pytest
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs.core.delta_engine import DeltaEngine
+from hsfs.feature_group_commit import FeatureGroupCommit
 
 
 def _make_fg(location: str):
@@ -484,7 +485,7 @@ class TestDeltaEngine:
 
         # Act & Assert
         with pytest.raises(ImportError) as e:
-            DeltaEngine._get_last_commit_metadata_delta_rs(base_path="/p")
+            DeltaEngine._get_last_commit_metadata(None, "s3://some/path")
         assert "hops-deltalake" in str(e.value)
 
     def test_get_last_commit_metadata_spark(self, mocker):
@@ -509,11 +510,10 @@ class TestDeltaEngine:
         mocker_get_delta_feature_group_commit = mocker.patch("hsfs.core.delta_engine.DeltaEngine._get_delta_feature_group_commit", return_value="result")
 
         # Patch DeltaTable
-        mocker_delta_table = mocker.patch("hsfs.core.delta_engine.DeltaTable", return_value=mock_delta_table)
-        mocker_delta_table.forPath.return_value = mock_delta_table
+        mocker.patch("delta.tables.DeltaTable.forPath", return_value=mock_delta_table)
 
         # Act
-        result = delta_engine.DeltaEngine._get_last_commit_metadata(mocker.MagicMock(), "s3://some/path")
+        result = DeltaEngine._get_last_commit_metadata(mocker.MagicMock(), "s3://some/path")
 
         # Assert
         assert result == "result"
@@ -535,10 +535,10 @@ class TestDeltaEngine:
         mocker_get_delta_feature_group_commit = mocker.patch("hsfs.core.delta_engine.DeltaEngine._get_delta_feature_group_commit", return_value="result")
 
         # Patch DeltaRsTable so that it returns the mock
-        mocker.patch("hsfs.core.delta_engine.DeltaRsTable", return_value=mock_delta_rs_table)
+        mocker.patch("deltalake.DeltaTable", return_value=mock_delta_rs_table)
 
         # Act
-        result = delta_engine.DeltaEngine._get_last_commit_metadata(None, "s3://some/path")
+        result = DeltaEngine._get_last_commit_metadata(None, "s3://some/path")
 
         # Assert
         assert result == "result"
@@ -556,10 +556,10 @@ class TestDeltaEngine:
         mocker_get_delta_feature_group_commit = mocker.patch("hsfs.core.delta_engine.DeltaEngine._get_delta_feature_group_commit", return_value="result")
 
         # Patch DeltaRsTable so that it returns the mock
-        mocker.patch("hsfs.core.delta_engine.DeltaRsTable", return_value=mock_delta_rs_table)
+        mocker.patch("deltalake.DeltaTable", return_value=mock_delta_rs_table)
 
         # Act
-        result = delta_engine.DeltaEngine._get_last_commit_metadata(None, "s3://some/path")
+        result = DeltaEngine._get_last_commit_metadata(None, "s3://some/path")
 
         # Assert
         assert result is None
@@ -578,10 +578,10 @@ class TestDeltaEngine:
         mocker_get_delta_feature_group_commit = mocker.patch("hsfs.core.delta_engine.DeltaEngine._get_delta_feature_group_commit", return_value="result")
 
         # Patch DeltaRsTable so that it returns the mock
-        mocker.patch("hsfs.core.delta_engine.DeltaRsTable", return_value=mock_delta_rs_table)
+        mocker.patch("deltalake.DeltaTable", return_value=mock_delta_rs_table)
 
         # Act
-        result = delta_engine.DeltaEngine._get_last_commit_metadata(None, "s3://some/path")
+        result = DeltaEngine._get_last_commit_metadata(None, "s3://some/path")
 
         # Assert
         assert result == "result"
@@ -601,10 +601,10 @@ class TestDeltaEngine:
         mocker_get_delta_feature_group_commit = mocker.patch("hsfs.core.delta_engine.DeltaEngine._get_delta_feature_group_commit", return_value="result")
 
         # Patch DeltaRsTable so that it returns the mock
-        mocker.patch("hsfs.core.delta_engine.DeltaRsTable", return_value=mock_delta_rs_table)
+        mocker.patch("deltalake.DeltaTable", return_value=mock_delta_rs_table)
 
         # Act
-        result = delta_engine.DeltaEngine._get_last_commit_metadata(None, "s3://some/path")
+        result = DeltaEngine._get_last_commit_metadata(None, "s3://some/path")
 
         # Assert
         assert result is None
@@ -629,10 +629,10 @@ class TestDeltaEngine:
         mocker.patch("hsfs.core.delta_engine.util.get_hudi_datestr_from_timestamp", side_effect = lambda ts: f"date-{ts}")
 
         # Act
-        fg_commit = delta_engine.DeltaEngine._get_delta_feature_group_commit(last_commit, oldest_commit)
+        fg_commit = DeltaEngine._get_delta_feature_group_commit(last_commit, oldest_commit)
 
         # Assert
-        assert isinstance(fg_commit, feature_group_commit.FeatureGroupCommit)
+        assert isinstance(fg_commit, FeatureGroupCommit)
         assert fg_commit.commit_time == "2024-01-02T12:00:00Z"
         assert fg_commit.commit_date_string == "date-2024-01-02T12:00:00Z"
         assert fg_commit.rows_inserted == 10
@@ -657,10 +657,10 @@ class TestDeltaEngine:
         mocker.patch("hsfs.core.delta_engine.util.get_hudi_datestr_from_timestamp", side_effect = lambda ts: f"date-{ts}")
 
         # Act
-        fg_commit = delta_engine.DeltaEngine._get_delta_feature_group_commit(last_commit, oldest_commit)
+        fg_commit = DeltaEngine._get_delta_feature_group_commit(last_commit, oldest_commit)
 
         # Assert
-        assert isinstance(fg_commit, feature_group_commit.FeatureGroupCommit)
+        assert isinstance(fg_commit, FeatureGroupCommit)
         assert fg_commit.commit_time == "2024-01-02T12:00:00Z"
         assert fg_commit.commit_date_string == "date-2024-01-02T12:00:00Z"
         assert fg_commit.rows_inserted == 10
@@ -684,10 +684,10 @@ class TestDeltaEngine:
         mocker.patch("hsfs.core.delta_engine.util.get_hudi_datestr_from_timestamp", side_effect = lambda ts: f"date-{ts}")
 
         # Act
-        fg_commit = delta_engine.DeltaEngine._get_delta_feature_group_commit(last_commit, oldest_commit)
+        fg_commit = DeltaEngine._get_delta_feature_group_commit(last_commit, oldest_commit)
 
         # Assert
-        assert isinstance(fg_commit, feature_group_commit.FeatureGroupCommit)
+        assert isinstance(fg_commit, FeatureGroupCommit)
         assert fg_commit.commit_time == "2024-01-02T12:00:00Z"
         assert fg_commit.commit_date_string == "date-2024-01-02T12:00:00Z"
         assert fg_commit.rows_inserted == 0

@@ -351,6 +351,13 @@ class DeltaEngine:
 
         # --- Get commit history ---
         if spark_context is not None:
+            try:
+                from delta.tables import DeltaTable
+            except ImportError as e:
+                raise ImportError(
+                    "Delta Lake (delta-spark) is required to read commit metadata. "
+                    "Install 'delta-spark' or include it in your environment."
+                ) from e
             # Spark DeltaTable (returns Spark DataFrame)
             fg_source_table = DeltaTable.forPath(spark_context, base_path)
             history = fg_source_table.history()
