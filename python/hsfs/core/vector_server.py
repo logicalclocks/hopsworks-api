@@ -1405,11 +1405,13 @@ class VectorServer:
         return row_dict
 
     def build_complex_feature_decoders(self) -> Dict[str, Callable]:
-        """Build a dictionary of functions to deserialize or convert feature values.
+        """Build decoders for complex features.
 
-        Handles:
-            - deserialization of complex features from the online feature store
-            - conversion of string or int timestamps to datetime objects
+        Decodes feature values for features marked as complex (e.g., structs, arrays, maps)
+        that are stored in the online store as Avro-encoded payloads (bytes or base64 strings).
+        Values already provided as native Python objects (e.g., via passed_features or REST)
+        are returned unchanged. Embedding vectors are already deserialized, but complex features
+        stored in OpenSearch must be deserialized here. Timestamp conversion is handled separately.
         """
         if not HAS_AVRO:
             raise ModuleNotFoundError(avro_not_installed_message)
