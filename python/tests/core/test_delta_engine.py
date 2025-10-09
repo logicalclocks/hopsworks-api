@@ -79,7 +79,7 @@ class TestDeltaEngine:
         fg = _make_fg("hopsfs://nn:8020/projects/p1")
 
         # Act
-        engine = DeltaEngine(
+        DeltaEngine(
             feature_store_id=1,
             feature_store_name="fs",
             feature_group=fg,
