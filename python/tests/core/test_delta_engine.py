@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 import os
+import sys
 from unittest import mock
 
 import pytest
@@ -69,6 +70,38 @@ def _patch_client(mocker, is_external: bool, project_name: str = "proj", certs: 
     client.get_certs_folder.return_value = certs
     mocker.patch("hopsworks_common.client.get_instance", return_value=client)
     return client
+
+
+def _force_missing_delta_spark(monkeypatch):
+    import builtins
+
+    original_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "delta.tables":
+            raise ImportError("missing delta-spark")
+        return original_import(name, *args, **kwargs)
+
+    for mod in ("delta", "delta.tables"):
+        if mod in sys.modules:
+            monkeypatch.delitem(sys.modules, mod, raising=False)
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+
+def _force_missing_deltalake(monkeypatch):
+    import builtins
+
+    original_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name.startswith("deltalake"):
+            raise ImportError("missing deltalake")
+        return original_import(name, *args, **kwargs)
+
+    for mod in ("deltalake", "deltalake.exceptions"):
+        if mod in sys.modules:
+            monkeypatch.delitem(sys.modules, mod, raising=False)
+    monkeypatch.setattr(builtins, "__import__", fake_import)
 
 
 class TestDeltaEngine:
@@ -352,46 +385,52 @@ class TestDeltaEngine:
         assert mock_commit.called
         assert result == mock_commit.return_value
 
-    def test_delete_record_importerror_spark_delta_spark_missing(self, mocker):
+    def test_delete_record_importerror_spark_delta_spark_missing(self, mocker, monkeypatch):
         # Arrange
         _patch_client(mocker, is_external=False)
         spark = mock.Mock()
         fg = _make_fg("hopsfs://nn:8020/p")
         engine = DeltaEngine(1, "fs", fg, spark, None)
+        _force_missing_delta_spark(monkeypatch)
 
         # Act & Assert
         with pytest.raises(ImportError) as e:
             engine.delete_record(delete_df=mock.Mock())
         assert "delta-spark" in str(e.value)
 
-    def test_delete_record_importerror_rs_deltalake_missing(self, mocker):
+    def test_delete_record_importerror_rs_deltalake_missing(self, mocker, monkeypatch):
         # Arrange
         _patch_client(mocker, is_external=False)
         fg = _make_fg("hopsfs://nn:8020/p")
         engine = DeltaEngine(1, "fs", fg, None, None)
+
+        _force_missing_deltalake(monkeypatch)
 
         # Act & Assert
         with pytest.raises(ImportError) as e:
             engine.delete_record(delete_df=mock.Mock())
         assert "hops-deltalake" in str(e.value)
 
-    def test_write_delta_dataset_importerror_missing_delta_spark(self, mocker):
+    def test_write_delta_dataset_importerror_missing_delta_spark(self, mocker, monkeypatch):
         # Arrange
         _patch_client(mocker, is_external=False)
         spark = mock.Mock()
         fg = _make_fg("hopsfs://nn:8020/p")
         engine = DeltaEngine(1, "fs", fg, spark, None)
+        _force_missing_delta_spark(monkeypatch)
 
         # Act & Assert
         with pytest.raises(ImportError) as e:
             engine._write_delta_dataset(dataset=mock.Mock(), write_options=None)
         assert "delta-spark" in str(e.value)
 
-    def test_write_delta_rs_dataset_importerror_missing_deltalake(self, mocker):
+    def test_write_delta_rs_dataset_importerror_missing_deltalake(self, mocker, monkeypatch):
         # Arrange
         _patch_client(mocker, is_external=False)
         fg = _make_fg("hopsfs://nn:8020/p")
         engine = DeltaEngine(1, "fs", fg, None, None)
+
+        _force_missing_deltalake(monkeypatch)
 
         # Act & Assert
         with pytest.raises(ImportError) as e:
@@ -430,13 +469,19 @@ class TestDeltaEngine:
         spark.sql.assert_called_once()
         assert "VACUUM '/loc' RETAIN 24 HOURS" in spark.sql.call_args[0][0]
 
-    def test_get_last_commit_metadata_importerror_spark(self):
+    def test_get_last_commit_metadata_importerror_spark(self, monkeypatch):
+        # Arrange
+        _force_missing_delta_spark(monkeypatch)
+
         # Act & Assert
         with pytest.raises(ImportError) as e:
             DeltaEngine._get_last_commit_metadata(spark_context=mock.Mock(), base_path="/p")
         assert "delta-spark" in str(e.value)
 
-    def test_get_last_commit_metadata_delta_rs_importerror(self):
+    def test_get_last_commit_metadata_delta_rs_importerror(self, monkeypatch):
+        # Arrange
+        _force_missing_deltalake(monkeypatch)
+
         # Act & Assert
         with pytest.raises(ImportError) as e:
             DeltaEngine._get_last_commit_metadata_delta_rs(base_path="/p")
