@@ -102,6 +102,7 @@ class VectorServer:
         features: Optional[List[tdf_mod.TrainingDatasetFeature]] = None,
         serving_keys: Optional[List[sk_mod.ServingKey]] = None,
         skip_fg_ids: Optional[Set[int]] = None,
+        skip_feature_decoding_fg_ids: Optional[Set[int]] = None,
         feature_store_name: Optional[str] = None,
         feature_view_name: Optional[str] = None,
         feature_view_version: Optional[int] = None,
@@ -178,6 +179,7 @@ class VectorServer:
         self.__all_features_on_demand: Optional[bool] = None
         self.__all_feature_groups_online: Optional[bool] = None
         self._feature_view_logging_enabled: bool = False
+        self._skip_feature_decoding_fg_ids = skip_feature_decoding_fg_ids or set()
 
     def init_serving(
         self,
@@ -1518,11 +1520,13 @@ class VectorServer:
         return row_dict
 
     def build_complex_feature_decoders(self) -> Dict[str, Callable]:
-        """Build a dictionary of functions to deserialize or convert feature values.
+        """Build decoders for complex features.
 
-        Handles:
-            - deserialization of complex features from the online feature store
-            - conversion of string or int timestamps to datetime objects
+        Decodes feature values for features marked as complex (e.g., structs, arrays, maps)
+        that are stored in the online store as Avro-encoded payloads (bytes or base64 strings).
+        Values already provided as native Python objects (e.g., via passed_features or REST)
+        are returned unchanged. Embedding vectors are already deserialized, but complex features
+        stored in OpenSearch must be deserialized here. Timestamp conversion is handled separately.
         """
         if not HAS_AVRO:
             raise ModuleNotFoundError(avro_not_installed_message)
@@ -1536,7 +1540,7 @@ class VectorServer:
                 )
             )
             for f in self._features
-            if f.is_complex()
+            if f.is_complex() and f.feature_group.id not in self._skip_feature_decoding_fg_ids
         }
 
         if len(complex_feature_schemas) == 0:
