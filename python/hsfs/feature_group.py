@@ -2691,7 +2691,9 @@ class FeatureGroup(FeatureGroupBase):
 
         else:
             # Set time travel format and streaming based on engine type and online status
-            self._init_time_travel_and_stream(time_travel_format, online_enabled)
+            self._init_time_travel_and_stream(
+                time_travel_format, online_enabled, data_source, storage_connector, self._event_time is not None
+            )
 
             self.primary_key = primary_key
             self.foreign_key = foreign_key
@@ -2752,36 +2754,66 @@ class FeatureGroup(FeatureGroupBase):
             )
 
     def _init_time_travel_and_stream(
-        self, time_travel_format: Optional[str], online_enabled: bool
+        self, 
+        time_travel_format: Optional[str], 
+        online_enabled: bool, 
+        data_source: Optional[ds.DataSource], 
+        storage_connector: Optional[sc.StorageConnector],
+        event_time_available: bool,
     ) -> None:
         """Initialize `self._time_travel_format` and `self._stream` for new objects.
 
-        Behavior mirrors the previous inline logic and depends on engine type,
-        provided `time_travel_format`, and `online_enabled`.
+        Extracted into testable helpers to simplify unit testing.
         """
-        if time_travel_format is None:
-            if engine.get_type() == "python":
-                if online_enabled:
-                    self._time_travel_format = "HUDI"
-                    self._stream = True
-                else:
-                    self._time_travel_format = "DELTA"
-            else:
-                self._time_travel_format = "HUDI"
+        is_hopsfs = FeatureGroup._is_hopsfs_storage(storage_connector, data_source)
+        self._time_travel_format, self._stream = self._resolve_time_travel_and_stream(
+            stream=self._stream,
+            time_travel_format=time_travel_format,
+            online_enabled=online_enabled,
+            is_hopsfs=is_hopsfs,
+            event_time_available=event_time_available,
+        )
 
-        elif time_travel_format == "HUDI":
-            self._time_travel_format = "HUDI"
-            if engine.get_type() == "python":
-                self._stream = True
+    @staticmethod
+    def _is_hopsfs_storage(
+        storage_connector: Optional[sc.StorageConnector],
+        data_source: Optional[ds.DataSource],
+    ) -> bool:
+        """Return True if storage is HopsFS and no external data source is set."""
+        return (
+            (storage_connector is None
+             or (storage_connector is not None and storage_connector.type == sc.StorageConnector.HOPSFS))
+            and data_source is None
+        )
 
-        elif time_travel_format == "DELTA":
-            self._time_travel_format = "DELTA"
-            if online_enabled and engine.get_type() == "python":
-                self._stream = True
+    def _resolve_time_travel_and_stream(
+        self,
+        stream: bool,
+        time_travel_format: Optional[str],
+        online_enabled: bool,
+        is_hopsfs: bool,
+        event_time_available: bool,
+    ):
+        """Resolve (time_travel_format, stream) by delegating to the active engine."""
 
+        if engine.get_type() == "python":
+            engine_cls = engine.python.Engine
         else:
-            self._time_travel_format = time_travel_format
+            engine_cls = engine.spark.Engine
 
+        time_travel_format = engine_cls.resolve_time_travel_format(
+            time_travel_format=time_travel_format,
+            online_enabled=online_enabled,
+            is_hopsfs=is_hopsfs,
+            event_time_available=event_time_available,
+        )
+        resolved_stream = engine_cls.resolve_stream(
+            time_travel_format=time_travel_format,
+            is_hopsfs=is_hopsfs,
+        )
+
+        return time_travel_format, stream if resolved_stream is None else resolved_stream
+        
     @staticmethod
     def _sort_transformation_functions(
         transformation_functions: List[TransformationFunction],

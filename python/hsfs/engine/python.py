@@ -804,6 +804,36 @@ class Engine:
             + "supported in Python environment. Use HSFS Query object instead."
         )
 
+    @staticmethod
+    def resolve_stream(
+        time_travel_format: str,
+        is_hopsfs: bool,
+        *args,
+        **kwargs,
+    ) -> Optional[bool]:
+        # Python engine streams True if not HopsFS or DELTA
+        if is_hopsfs and time_travel_format == "DELTA":
+            return False
+        return True 
+
+    @staticmethod
+    def resolve_time_travel_format(
+        time_travel_format: Optional[str],
+        online_enabled: bool,
+        is_hopsfs: bool,
+        *args,
+        **kwargs,
+    ) -> Optional[str]:
+        """Resolve only the time travel format string."""
+        fmt = time_travel_format.upper() if time_travel_format is not None else None
+        if fmt is None:
+            if is_hopsfs and not online_enabled:
+                return "DELTA"
+            else:
+                return "HUDI"
+        else:
+            return fmt
+
     def save_dataframe(
         self,
         feature_group: FeatureGroup,

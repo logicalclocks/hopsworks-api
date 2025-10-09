@@ -122,6 +122,68 @@ class TestSpark:
         assert connector.read.call_count == 1
         assert mock_spark_engine_return_dataframe_type.call_count == 1
 
+
+    @pytest.mark.parametrize(
+        "time_travel_format,online_enabled,is_hopsfs,event_time_available,expected",
+        [
+            # fmt=None cases (controlled by flags)
+            (None, False, True, True, "DELTA"),    # HopsFS & offline -> DELTA
+            (None, False, True, False, None),       # No event time -> None
+            (None, False, False, True, "HUDI"),    # Non-HopsFS -> HUDI
+            (None, False, False, False, None),      # No event time -> None
+            (None, True, True, True, "HUDI"),      # Online -> HUDI
+            (None, True, True, False, None),        # No event time -> None
+            (None, True, False, True, "HUDI"),     # Online -> HUDI
+            (None, True, False, False, None),       # No event time -> None
+
+            # fmt=HUDI passthrough
+            ("HUDI", False, True, True, "HUDI"),
+            ("HUDI", False, True, False, "HUDI"),
+            ("HUDI", False, False, True, "HUDI"),
+            ("HUDI", False, False, False, "HUDI"),
+            ("HUDI", True, True, True, "HUDI"),
+            ("HUDI", True, True, False, "HUDI"),
+            ("HUDI", True, False, True, "HUDI"),
+            ("HUDI", True, False, False, "HUDI"),
+
+            # fmt=DELTA passthrough
+            ("DELTA", False, True, True, "DELTA"),
+            ("DELTA", False, True, False, "DELTA"),
+            ("DELTA", False, False, True, "DELTA"),
+            ("DELTA", False, False, False, "DELTA"),
+            ("DELTA", True, True, True, "DELTA"),
+            ("DELTA", True, True, False, "DELTA"),
+            ("DELTA", True, False, True, "DELTA"),
+            ("DELTA", True, False, False, "DELTA"),
+        ],
+    )
+    def test_resolve_time_travel_format(
+        self, time_travel_format, online_enabled, is_hopsfs, event_time_available, expected
+    ):
+        result = spark.Engine.resolve_time_travel_format(
+            time_travel_format=time_travel_format,
+            online_enabled=online_enabled,
+            is_hopsfs=is_hopsfs,
+            event_time_available=event_time_available,
+        )
+        assert result == expected
+
+    @pytest.mark.parametrize(
+        "time_travel_format,is_hopsfs,expected",
+        [
+            ("DELTA", True, None),
+            ("DELTA", False, None),
+            ("HUDI", True, None),
+            ("HUDI", False, None),
+        ],
+    )
+    def test_resolve_stream(self, time_travel_format, is_hopsfs, expected):
+        result = spark.Engine.resolve_stream(
+            time_travel_format=time_travel_format,
+            is_hopsfs=is_hopsfs,
+        )
+        assert result is expected
+
     def test_sql_offline(self, mocker):
         # Arrange
         mock_sql = MagicMock()

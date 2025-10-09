@@ -502,6 +502,31 @@ class Engine:
 
         return query
 
+    @staticmethod
+    def resolve_stream(
+        *args,
+        **kwargs,
+    ) -> Optional[bool]:
+        return None
+
+    @staticmethod
+    def resolve_time_travel_format(
+        time_travel_format: Optional[str],
+        online_enabled: bool,
+        is_hopsfs: bool,
+        event_time_available: bool,
+        *args,
+        **kwargs,
+    ) -> str:
+        """Resolve only the time travel format string."""
+        fmt = time_travel_format.upper() if time_travel_format is not None else None
+        if fmt is None and event_time_available:
+            if is_hopsfs and not online_enabled:
+                return "DELTA"
+            else:
+                return "HUDI"
+        return fmt    
+
     def _save_offline_dataframe(
         self,
         feature_group,
@@ -656,6 +681,23 @@ class Engine:
         updated_value_col = struct(*new_value_fields).alias(serialized_column)
 
         return decoded_dataframe.select(*[col(c) for c in decoded_dataframe.columns if c != serialized_column], updated_value_col)
+
+    @staticmethod
+    def resolve_time_travel_and_stream(
+        time_travel_format: Optional[str],
+        online_enabled: bool,
+        is_hopsfs: bool,
+    ) -> Tuple[str, Optional[bool]]:
+        fmt = time_travel_format.upper() if time_travel_format is not None else None
+        if fmt is None:
+            return "HUDI", False
+        if fmt == "HUDI":
+            return "HUDI", False
+        if fmt == "DELTA":
+            if not is_hopsfs:
+                return "DELTA", True
+            return "DELTA", False
+        return fmt, None
 
     def get_training_data(
         self,

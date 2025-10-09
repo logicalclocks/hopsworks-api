@@ -94,6 +94,55 @@ class TestPython:
         assert mock_python_engine_sql_offline.call_count == 0
         assert mock_python_engine_jdbc.call_count == 1
 
+
+    @pytest.mark.parametrize(
+        "time_travel_format,online_enabled,is_hopsfs,expected",
+        [
+            # time_travel_format=None cases (resolved by flags)
+            (None, False, True, "DELTA"),   # HopsFS & offline -> DELTA
+            (None, False, False, "HUDI"),   # Non-HopsFS -> HUDI
+            (None, True, True, "HUDI"),     # Online -> HUDI
+            (None, True, False, "HUDI"),    # Online -> HUDI
+
+            # time_travel_format="HUDI" cases (passthrough)
+            ("HUDI", False, True, "HUDI"),
+            ("HUDI", False, False, "HUDI"),
+            ("HUDI", True, True, "HUDI"),
+            ("HUDI", True, False, "HUDI"),
+
+            # time_travel_format="DELTA" cases (passthrough)
+            ("DELTA", False, True, "DELTA"),
+            ("DELTA", False, False, "DELTA"),
+            ("DELTA", True, True, "DELTA"),
+            ("DELTA", True, False, "DELTA"),
+        ],
+    )
+    def test_resolve_time_travel_format(
+        self, time_travel_format, online_enabled, is_hopsfs, expected
+    ):
+        result = python.Engine.resolve_time_travel_format(
+            time_travel_format=time_travel_format,
+            online_enabled=online_enabled,
+            is_hopsfs=is_hopsfs,
+        )
+        assert result == expected
+
+    @pytest.mark.parametrize(
+        "time_travel_format,is_hopsfs,expected",
+        [
+            ("DELTA", True, False),
+            ("DELTA", False, True),
+            ("HUDI", True, True),
+            ("HUDI", False, True),
+        ],
+    )
+    def test_resolve_stream(self, time_travel_format, is_hopsfs, expected):
+        result = python.Engine.resolve_stream(
+            time_travel_format=time_travel_format,
+            is_hopsfs=is_hopsfs,
+        )
+        assert result is expected
+
     def test_jdbc(self, mocker):
         # Arrange
         mock_util_create_mysql_engine = mocker.patch(
