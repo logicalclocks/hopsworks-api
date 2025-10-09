@@ -6193,8 +6193,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_logging_data_no_missing_no_additional_list(
@@ -6309,8 +6313,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_logging_data_no_missing_no_additional_dict(
@@ -6425,8 +6433,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_logging_data_missing_columns_and_additional_dataframe(
@@ -6601,8 +6613,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_logging_data_missing_columns_and_additional_dict(
@@ -6794,8 +6810,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_logging_data_missing_columns_and_additional_list(
@@ -7071,8 +7091,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_untransformed_features_no_missing_no_additional_list(
@@ -7209,8 +7233,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_untransformed_features_no_missing_no_additional_dict(
@@ -7347,8 +7375,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_untransformed_features_missing_columns_and_additional_dataframe(
@@ -7481,8 +7513,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_untransformed_features_missing_columns_and_additional_dict(
@@ -7632,8 +7668,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_untransformed_features_missing_columns_and_additional_list(
@@ -7862,8 +7902,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_transformed_features_no_missing_no_additional_list(
@@ -7996,8 +8040,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_transformed_features_no_missing_no_additional_dict(
@@ -8129,8 +8177,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_transformed_features_missing_columns_and_additional_dataframe(
@@ -8263,8 +8315,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_transformed_features_missing_columns_and_additional_dict(
@@ -8414,8 +8470,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_transformed_features_missing_columns_and_additional_list(
@@ -8650,8 +8710,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_predictions_no_missing_no_additional_list(
@@ -8783,8 +8847,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_predictions_no_missing_no_additional_dict(
@@ -8915,8 +8983,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_predictions_missing_columns_and_additional_dataframe(
@@ -9068,8 +9140,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_predictions_missing_columns_and_additional_dict(
@@ -9226,8 +9302,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_predictions_missing_columns_and_additional_list(
@@ -9458,8 +9538,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_serving_keys_no_missing_no_additional_list(
@@ -9582,8 +9666,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_serving_keys_no_missing_no_additional_dict(
@@ -9703,8 +9791,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_serving_keys_missing_columns_and_additional_dataframe(
@@ -9837,8 +9929,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key1")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key1")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_serving_keys_missing_columns_and_additional_dict(
@@ -9974,8 +10070,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key1")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key1")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_serving_key_missing_columns_and_additional_list(
@@ -10187,8 +10287,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_inference_helper_no_missing_no_additional_list(
@@ -10298,8 +10402,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_inference_helper_no_missing_no_additional_dict(
@@ -10421,8 +10529,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_inference_helpers_missing_columns_and_additional_dataframe(
@@ -10553,8 +10665,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_inference_helpers_missing_columns_and_additional_dict(
@@ -10690,8 +10806,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_inference_helpers_missing_columns_and_additional_list(
@@ -10900,8 +11020,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_extra_log_columns_no_missing_no_additional_list(
@@ -11014,8 +11138,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_extra_log_columns_no_missing_no_additional_dict(
@@ -11139,8 +11267,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_extra_log_missing_columns_and_additional_dataframe(
@@ -11267,8 +11399,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_extra_log_missing_columns_and_additional_dict(
@@ -11402,8 +11538,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_extra_log_missing_columns_and_additional_list(
@@ -11607,8 +11747,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_event_time_no_missing_no_additional_list(
@@ -11720,8 +11864,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_event_time_no_missing_no_additional_dict(
@@ -11842,8 +11990,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_request_id_no_missing_no_additional_dataframe(
@@ -11956,8 +12108,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_request_id_no_missing_no_additional_list(
@@ -12068,8 +12224,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_request_id_no_missing_no_additional_dict(
@@ -12190,8 +12350,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_request_parameters_no_missing_no_additional_dataframe(
@@ -12299,8 +12463,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_request_parameters_no_missing_no_additional_list(
@@ -12410,8 +12578,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_request_parameters_no_missing_no_additional_dict(
@@ -12533,8 +12705,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_request_parameters_missing_columns_and_additional_dataframe(
@@ -12659,8 +12835,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_request_parameters_missing_columns_and_additional_dict(
@@ -12790,8 +12970,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_request_parameters_missing_columns_and_additional_list(
@@ -13153,8 +13337,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_logging_data_override_dict(
@@ -13448,8 +13636,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_get_feature_logging_df_logging_data_override_list(
@@ -13738,8 +13930,12 @@ class TestSpark:
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
         assert (
-            logging_dataframe.select(*logging_feature_names).collect()
-            == expected_dataframe.select(*logging_feature_names).collect()
+            logging_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
+            == expected_dataframe.sort("primary_key")
+            .select(*logging_feature_names)
+            .collect()
         )
 
     def test_extract_logging_metadata_all_columns_and_drop_none(self, mocker):
