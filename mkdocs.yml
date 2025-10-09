@@ -30,6 +30,7 @@ nav:
       - OpenSearch: generated/api/opensearch.md
       - Projects: generated/api/projects.md
       - Secrets: generated/api/secrets.md
+      - Search: generated/api/search.md
     - Feature Store API:
       - Embedding:
         - EmbeddingFeature: generated/api/embedding_feature_api.md

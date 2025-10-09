@@ -108,7 +108,6 @@ if HAS_NUMPY:
 if HAS_POLARS:
     import polars as pl
 
-
 _logger = logging.getLogger(__name__)
 
 
@@ -1948,6 +1947,11 @@ class FeatureGroupBase:
         self._feature_store = feature_store
 
     @property
+    def id(self) -> Optional[int]:
+        """Feature group id."""
+        return self._id
+
+    @property
     def name(self) -> Optional[str]:
         """Name of the feature group."""
         return self._name
@@ -2684,10 +2688,8 @@ class FeatureGroup(FeatureGroupBase):
             self._offline_backfill_every_hr = None
 
         else:
-            # initialized by user
-            # for python engine we always use stream feature group
-            if engine.get_type() == "python":
-                self._stream = True
+            # Set time travel format and streaming based on engine type and online status
+            self._init_time_travel_and_stream(time_travel_format, online_enabled)
 
             self.primary_key = primary_key
             self.foreign_key = foreign_key
@@ -2746,6 +2748,37 @@ class FeatureGroup(FeatureGroupBase):
                     self._transformation_functions
                 )
             )
+
+    def _init_time_travel_and_stream(
+        self, time_travel_format: Optional[str], online_enabled: bool
+    ) -> None:
+        """Initialize `self._time_travel_format` and `self._stream` for new objects.
+
+        Behavior mirrors the previous inline logic and depends on engine type,
+        provided `time_travel_format`, and `online_enabled`.
+        """
+        if time_travel_format is None:
+            if engine.get_type() == "python":
+                if online_enabled:
+                    self._time_travel_format = "HUDI"
+                    self._stream = True
+                else:
+                    self._time_travel_format = "DELTA"
+            else:
+                self._time_travel_format = "HUDI"
+
+        elif time_travel_format == "HUDI":
+            self._time_travel_format = "HUDI"
+            if engine.get_type() == "python":
+                self._stream = True
+
+        elif time_travel_format == "DELTA":
+            self._time_travel_format = "DELTA"
+            if online_enabled and engine.get_type() == "python":
+                self._stream = True
+
+        else:
+            self._time_travel_format = time_travel_format
 
     @staticmethod
     def _sort_transformation_functions(
@@ -4763,7 +4796,8 @@ class SpineGroup(FeatureGroupBase):
                 great_expectations.core.ExpectationSuite,
             ]
         ] = None,
-        online_enabled: bool = False,
+        # spine groups are online enabled by default such that feature_view.get_feature_vector can be used
+        online_enabled: bool = True,
         href: Optional[str] = None,
         online_topic_name: Optional[str] = None,
         topic_name: Optional[str] = None,
@@ -4954,4 +4988,5 @@ class SpineGroup(FeatureGroupBase):
             "spine": True,
             "topicName": self.topic_name,
             "deprecated": self.deprecated,
+            "onlineEnabled": self._online_enabled,
         }

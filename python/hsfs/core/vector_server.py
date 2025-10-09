@@ -1038,9 +1038,7 @@ class VectorServer:
             elif batch:
                 return pd.DataFrame(feature_vectorz, columns=column_names)
             else:
-                pandas_df = pd.DataFrame(feature_vectorz).transpose()
-                pandas_df.columns = column_names
-                return pandas_df
+                return pd.DataFrame([feature_vectorz], columns=column_names)
         elif return_type.lower() == "polars":
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("Returning feature vector as polars dataframe")
@@ -1933,6 +1931,7 @@ class VectorServer:
         """True if all feature groups in the feature view are online."""
         if self.__all_feature_groups_online is None:
             self.__all_feature_groups_online = all(
-                fg.online_enabled for fg in self._parent_feature_groups
+                fg.online_enabled
+                for fg in self._parent_feature_groups if fg.id not in self._skip_fg_ids
             )
         return self.__all_feature_groups_online

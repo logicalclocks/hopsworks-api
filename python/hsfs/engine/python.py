@@ -55,9 +55,11 @@ import pyarrow as pa
 from botocore.response import StreamingBody
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.core import inode
 from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
 from hopsworks_common.decorators import uses_great_expectations, uses_polars
 from hsfs import (
+    engine,
     feature,
     feature_view,
     transformation_function,
@@ -67,6 +69,7 @@ from hsfs import storage_connector as sc
 from hsfs.constructor import query
 from hsfs.core import (
     dataset_api,
+    delta_engine,
     feature_group_api,
     feature_view_api,
     ingestion_job_conf,
@@ -342,12 +345,12 @@ class Engine:
             read_options = {}
 
         while offset < total_count:
-            total_count, inode_list = self._dataset_api.list_files(
-                location, offset, 100
+            total_count, inode_list = self._dataset_api._list_dataset_path(
+                location, inode.Inode, offset=offset, limit=100
             )
 
-            for inode in inode_list:
-                if not self._is_metadata_file(inode.path):
+            for inode_entry in inode_list:
+                if not self._is_metadata_file(inode_entry.path):
                     from hsfs.core import arrow_flight_client
 
                     if arrow_flight_client.is_data_format_supported(
@@ -355,12 +358,12 @@ class Engine:
                     ):
                         arrow_flight_config = read_options.get("arrow_flight_config")
                         df = arrow_flight_client.get_instance().read_path(
-                            inode.path,
+                            inode_entry.path,
                             arrow_flight_config,
                             dataframe_type=dataframe_type,
                         )
                     else:
-                        content_stream = self._dataset_api.read_content(inode.path)
+                        content_stream = self._dataset_api.read_content(inode_entry.path)
                         if dataframe_type.lower() == "polars":
                             df = self._read_polars(
                                 data_format, BytesIO(content_stream.content)
@@ -819,6 +822,16 @@ class Engine:
             return self._write_dataframe_kafka(
                 feature_group, dataframe, offline_write_options
             )
+        elif engine.get_type() == "python":
+            if feature_group.time_travel_format == "DELTA":
+                delta_engine_instance = delta_engine.DeltaEngine(
+                    feature_group.feature_store_id,
+                    feature_group.feature_store_name,
+                    feature_group,
+                    None,
+                    None,
+                )
+                delta_engine_instance.save_delta_fg(dataframe, {}, validation_id)
         else:
             # for backwards compatibility
             return self.legacy_save_dataframe(

@@ -15,8 +15,12 @@
 #
 from __future__ import annotations
 
+import copy
+import os
+from urllib.parse import unquote, urlsplit
+
 from hsfs import feature_group_commit, util
-from hsfs.core import feature_group_api
+from hsfs.core import dataset_api, feature_group_api
 
 
 class HudiEngine:
@@ -28,13 +32,15 @@ class HudiEngine:
         "_hoodie_commit_seqno",
     ]
 
+    HUDI_BASE_PATH = "hoodie.base.path"
     HUDI_SPARK_FORMAT = "org.apache.hudi"
     HUDI_TABLE_NAME = "hoodie.table.name"
+    HUDI_TABLE_TYPE = "hoodie.datasource.write.table.type"
     HUDI_TABLE_STORAGE_TYPE = "hoodie.datasource.write.storage.type"
     HUDI_TABLE_OPERATION = "hoodie.datasource.write.operation"
-    HUDI_RECORD_KEY = "hoodie.datasource.write.recordkey.field"
+    HUDI_WRITE_RECORD_KEY = "hoodie.datasource.write.recordkey.field"
     HUDI_PARTITION_FIELD = "hoodie.datasource.write.partitionpath.field"
-    HUDI_PRECOMBINE_FIELD = "hoodie.datasource.write.precombine.field"
+    HUDI_WRITE_PRECOMBINE_FIELD = "hoodie.datasource.write.precombine.field"
 
     HUDI_HIVE_SYNC_ENABLE = "hoodie.datasource.hive_sync.enable"
     HUDI_HIVE_SYNC_TABLE = "hoodie.datasource.hive_sync.table"
@@ -74,6 +80,16 @@ class HudiEngine:
         "hoodie.upsert.shuffle.parallelism": "5",
     }
 
+    HUDI_TABLE_RECORD_KEY_FIELD = "hoodie.table.recordkey.fields"
+    HUDI_TABLE_PARTITION_KEY_FIELDS = "hoodie.table.partition.fields"
+    HUDI_TABLE_KEY_GENERATOR_CLASS = "hoodie.table.keygenerator.class"
+    HUDI_TABLE_PRECOMBINE_FIELD = "hoodie.table.precombine.field"
+    HUDI_TABLE_BASE_FILE_FORMAT = "hoodie.table.base.file.format"
+    HUDI_HIVE_SYNC_USE_JDBC = "hoodie.datasource.hive_sync.use_jdbc"
+    HUDI_HIVE_SYNC_AUTO_CREATE_DATABASE = (
+        "hoodie.datasource.hive_sync.auto_create_database"
+    )
+
     def __init__(
         self,
         feature_store_id,
@@ -89,6 +105,7 @@ class HudiEngine:
         self._feature_store_name = feature_store_name
 
         self._feature_group_api = feature_group_api.FeatureGroupApi()
+        self._dataset_api = dataset_api.DatasetApi()
 
     def save_hudi_fg(
         self, dataset, save_mode, operation, write_options, validation_id=None
@@ -119,6 +136,7 @@ class HudiEngine:
         location = self._feature_group.prepare_spark_location()
 
         hudi_options = self._setup_hudi_write_opts(operation, write_options)
+        self._migrate_table(self._spark_context, hudi_options, location)
         dataset.write.format(HudiEngine.HUDI_SPARK_FORMAT).options(**hudi_options).mode(
             save_mode
         ).save(location)
@@ -126,7 +144,6 @@ class HudiEngine:
         feature_group_commit = self._get_last_commit_metadata(
             self._spark_context, location
         )
-
         return feature_group_commit
 
     def _setup_hudi_write_opts(self, operation, write_options):
@@ -159,13 +176,21 @@ class HudiEngine:
 
         hudi_options = {
             self.HUDI_KEY_GENERATOR_OPT_KEY: self.HUDI_COMPLEX_KEY_GENERATOR_OPT_VAL,
-            self.HUDI_PRECOMBINE_FIELD: pre_combine_key,
-            self.HUDI_RECORD_KEY: primary_key,
+            self.HUDI_TABLE_KEY_GENERATOR_CLASS: self.HUDI_COMPLEX_KEY_GENERATOR_OPT_VAL,
+            self.HUDI_WRITE_PRECOMBINE_FIELD: pre_combine_key,
+            self.HUDI_TABLE_PRECOMBINE_FIELD: pre_combine_key,
+            self.HUDI_WRITE_RECORD_KEY: primary_key,
+            self.HUDI_TABLE_RECORD_KEY_FIELD: primary_key,
             self.HUDI_PARTITION_FIELD: partition_path,
+            self.HUDI_TABLE_PARTITION_KEY_FIELDS: partition_path,
             self.HUDI_TABLE_NAME: table_name,
-            self.HIVE_PARTITION_EXTRACTOR_CLASS_OPT_KEY: self.DEFAULT_HIVE_PARTITION_EXTRACTOR_CLASS_OPT_VAL
-            if len(partition_key) >= 1
-            else self.HIVE_NON_PARTITION_EXTRACTOR_CLASS_OPT_VAL,
+            self.HUDI_TABLE_TYPE: self.HUDI_COPY_ON_WRITE,
+            self.HUDI_TABLE_STORAGE_TYPE: self.HUDI_COPY_ON_WRITE,
+            self.HIVE_PARTITION_EXTRACTOR_CLASS_OPT_KEY: (
+                self.DEFAULT_HIVE_PARTITION_EXTRACTOR_CLASS_OPT_VAL
+                if len(partition_key) >= 1
+                else self.HIVE_NON_PARTITION_EXTRACTOR_CLASS_OPT_VAL
+            ),
             self.HUDI_HIVE_SYNC_ENABLE: str(hive_sync).lower(),
             self.HUDI_HIVE_SYNC_MODE: self.HUDI_HIVE_SYNC_MODE_VAL,
             self.HUDI_HIVE_SYNC_DB: self._feature_store_name,
@@ -173,6 +198,9 @@ class HudiEngine:
             self.HUDI_HIVE_SYNC_PARTITION_FIELDS: partition_key,
             self.HUDI_TABLE_OPERATION: operation,
             self.HUDI_HIVE_SYNC_SUPPORT_TIMESTAMP: "true",
+            self.HUDI_TABLE_BASE_FILE_FORMAT: "PARQUET",
+            self.HUDI_HIVE_SYNC_USE_JDBC: "false",
+            self.HUDI_HIVE_SYNC_AUTO_CREATE_DATABASE: "false",
         }
         hudi_options.update(HudiEngine.HUDI_DEFAULT_PARALLELISM)
 
@@ -180,6 +208,19 @@ class HudiEngine:
             hudi_options.update(write_options)
 
         return hudi_options
+
+    def _migrate_table(self, spark_context, write_options, base_path):
+        if spark_context is None:
+            return
+        # check if the table is already a hudi table. If not, skip migration
+        metadata_path = os.path.join(unquote(urlsplit(base_path).path), ".hoodie")
+        if not self._dataset_api.exists(metadata_path):
+            return
+        write_options = copy.deepcopy(write_options)
+        write_options[self.HUDI_BASE_PATH] = base_path
+        spark_context._jvm.com.logicalclocks.hsfs.spark.engine.hudi.TableMigrateUtils().migrateTable(
+            write_options, spark_context._jsc
+        )
 
     def _setup_hudi_read_opts(self, hudi_fg_alias, read_options):
         if hudi_fg_alias.left_feature_group_end_timestamp is None and (
@@ -245,27 +286,27 @@ class HudiEngine:
             hopsfs_conf, base_path
         )
 
-        commits_to_return = commit_timeline.getInstantDetails(
-            commit_timeline.lastInstant().get()
-        ).get()
-        commit_metadata = spark_context._jvm.org.apache.hudi.common.model.HoodieCommitMetadata.fromBytes(
-            commits_to_return,
-            spark_context._jvm.org.apache.hudi.common.model.HoodieCommitMetadata().getClass(),
+        latest_commit = spark_context._jvm.org.apache.hudi.HoodieDataSourceHelpers.latestCompletedCommit(
+            hopsfs_conf, base_path
         )
+        commit_metadata = spark_context._jvm.org.apache.hudi.common.table.timeline.TimelineUtils.getCommitMetadata(
+            latest_commit, commit_timeline
+        )
+
         table_size = spark_context._jvm.com.logicalclocks.hsfs.spark.engine.hudi.HudiEngine.getInstance().getHudiTableSize(
             spark_context._jsc, base_path
         )
         return feature_group_commit.FeatureGroupCommit(
             commitid=None,
-            commit_date_string=commit_timeline.lastInstant().get().getTimestamp(),
+            commit_date_string=latest_commit.getCompletionTime(),
             commit_time=util.get_timestamp_from_date_string(
-                commit_timeline.lastInstant().get().getTimestamp()
+                latest_commit.getCompletionTime()
             ),
             rows_inserted=commit_metadata.fetchTotalInsertRecordsWritten(),
             rows_updated=commit_metadata.fetchTotalUpdateRecordsWritten(),
             rows_deleted=commit_metadata.getTotalRecordsDeleted(),
             last_active_commit_time=util.get_timestamp_from_date_string(
-                commit_timeline.firstInstant().get().getTimestamp()
+                latest_commit.getCompletionTime()
             ),
             table_size=table_size,
         )

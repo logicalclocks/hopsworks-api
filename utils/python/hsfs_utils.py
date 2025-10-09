@@ -1,27 +1,30 @@
 from __future__ import annotations
 
-import sys
-import os
 import argparse
 import json
+import os
+import sys
+import traceback
 from datetime import datetime
 from typing import Any, Dict
-import traceback
 
 import fsspec.implementations.arrow as pfs
 
+
 hopsfs = pfs.HadoopFileSystem("default", user=os.environ["HADOOP_USER_NAME"])
-from pyspark.sql import SparkSession
-from pyspark.sql.types import StructField, StructType, _parse_datatype_string
-from pyspark.sql.functions import col, max, expr, row_number
-from pyspark.sql.window import Window
-
 import hopsworks
-
 from hsfs import engine
 from hsfs.constructor import query
+from hsfs.core import (
+    feature_monitoring_config_engine,
+    feature_view_engine,
+    kafka_engine,
+)
 from hsfs.statistics_config import StatisticsConfig
-from hsfs.core import feature_monitoring_config_engine, feature_view_engine, kafka_engine
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, expr, max, row_number
+from pyspark.sql.types import StructField, StructType, _parse_datatype_string
+from pyspark.sql.window import Window
 
 
 def read_job_conf(path: str) -> Dict[Any, Any]:
@@ -377,13 +380,10 @@ def _build_offsets(initial_check_point_string: str):
 
     # Split the input string into the topic and partition-offset pairs
     topic, offsets = initial_check_point_string.split(',', 1)
-    
     # Split the offsets and build a dictionary from them
     offsets_dict = {partition: int(offset) for partition, offset in (pair.split(':') for pair in offsets.split(','))}
-    
     # Create the final dictionary structure
     result = {topic: offsets_dict}
-    
     return result
 
 if __name__ == "__main__":
@@ -459,9 +459,8 @@ if __name__ == "__main__":
             update_table_schema_fg(spark, job_conf)
 
         success = True
-    except Exception:
-        # Printing stack trace of exception so that logs are not lost.
-        print(traceback.format_exc())
+    except Exception as e:
+        print(f"Error : {e}", traceback.format_exc())
     finally:
         if spark is not None:
             try:
@@ -470,5 +469,4 @@ if __name__ == "__main__":
                 print(f"Error stopping spark session: {e}")
         if not success:
             sys.exit(1)
-
     sys.exit(0)
