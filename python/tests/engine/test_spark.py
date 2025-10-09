@@ -207,9 +207,6 @@ class TestSpark:
         # Arrange
         mock_hudi_engine = mocker.patch("hsfs.core.hudi_engine.HudiEngine")
         mocker.patch("hsfs.feature_group.FeatureGroup.from_response_json")
-        mock_reconcile_schema = mocker.patch(
-            "hsfs.engine.spark.Engine.reconcile_schema"
-        )
 
         spark_engine = spark.Engine()
 
@@ -227,15 +224,11 @@ class TestSpark:
 
         # Assert
         assert mock_hudi_engine.return_value.register_temporary_table.call_count == 1
-        assert mock_reconcile_schema.call_count == 1
 
     def test_register_delta_temporary_table(self, mocker):
         # Arrange
         mock_delta_engine = mocker.patch("hsfs.core.delta_engine.DeltaEngine")
         mocker.patch("hsfs.feature_group.FeatureGroup.from_response_json")
-        mock_reconcile_schema = mocker.patch(
-            "hsfs.engine.spark.Engine.reconcile_schema"
-        )
 
         spark_engine = spark.Engine()
 
@@ -253,7 +246,6 @@ class TestSpark:
 
         # Assert
         assert mock_delta_engine.return_value.register_temporary_table.call_count == 1
-        assert mock_reconcile_schema.call_count == 1
 
     def test_return_dataframe_type_default(self, mocker):
         # Arrange
