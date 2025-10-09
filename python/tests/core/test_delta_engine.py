@@ -17,7 +17,6 @@ import os
 from unittest import mock
 
 import pytest
-
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs.core.delta_engine import DeltaEngine
 
@@ -63,7 +62,7 @@ def _patch_apis(
     return var_api, proj_api
 
 
-def _patch_client(mocker, is_external: bool, project_name: str = "proj", certs: str = "/pems"): 
+def _patch_client(mocker, is_external: bool, project_name: str = "proj", certs: str = "/pems"):
     client = mocker.Mock()
     client._is_external.return_value = is_external
     client.project_name = project_name
