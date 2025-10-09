@@ -277,7 +277,6 @@ class DeltaEngine:
     @staticmethod
     def _prepare_df_for_delta(df, timestamp_precision="us"):
         try:
-            import pandas as pd
             import pyarrow as pa
         except ImportError as e:
             raise ImportError(

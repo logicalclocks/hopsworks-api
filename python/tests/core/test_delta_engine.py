@@ -1,3 +1,18 @@
+#
+#   Copyright 2025 Hopsworks AB
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+#
 import os
 from unittest import mock
 
@@ -57,7 +72,7 @@ def _patch_client(mocker, is_external: bool, project_name: str = "proj", certs: 
     return client
 
 
-class TestDeltaEngineSetupAndLocation:
+class TestDeltaEngine:
     def test_setup_delta_rs_internal_noop(self, mocker, monkeypatch):
         _patch_client(mocker, is_external=False)
         var_api, proj_api = _patch_apis(mocker, lb_domain="dn.example.com", username="u")
@@ -159,7 +174,7 @@ class TestDeltaEngineSetupAndLocation:
             engine._get_delta_rs_location()
         assert "namenode load balancer" in str(e.value)
 
-    def test_setup_delta_read_opts_variants(self, mocker):
+    def test_setup_delta_read_opts_snapshot_query(self, mocker):
         _patch_client(mocker, is_external=False)
         fg = _make_fg("hopsfs://nn:8020/p")
         engine = DeltaEngine(1, "fs", fg, None, None)
@@ -169,6 +184,12 @@ class TestDeltaEngineSetupAndLocation:
         alias.left_feature_group_start_timestamp = None
         assert engine._setup_delta_read_opts(alias, None) == {}
 
+    def test_setup_delta_read_opts_time_travel_query(self, mocker):
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        alias = mock.Mock()
         alias.left_feature_group_end_timestamp = 1234567890
         alias.left_feature_group_start_timestamp = None
         mocker.patch("hsfs.util.get_delta_datestr_from_timestamp", return_value="t")
@@ -176,13 +197,51 @@ class TestDeltaEngineSetupAndLocation:
             engine.DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT: "t"
         }
 
-        # merging read_options
+    def test_setup_delta_read_opts_merges_options(self, mocker):
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        alias = mock.Mock()
+        alias.left_feature_group_end_timestamp = 1234567890
+        alias.left_feature_group_start_timestamp = None
+        mocker.patch("hsfs.util.get_delta_datestr_from_timestamp", return_value="t")
+        
         opts = engine._setup_delta_read_opts(alias, {"k": "v"})
         assert opts[engine.DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT] == "t"
         assert opts["k"] == "v"
 
-    def test_generate_merge_query_combines_keys(self, mocker):
-        # No engine init needed for _generate_merge_query behavior that depends only on fg
+    def test_generate_merge_query_primary_key_only(self, mocker):
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.primary_key = ["id"]
+        fg.partition_key = []
+        fg.event_time = None
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        q = engine._generate_merge_query("s", "u")
+        assert q == "s.id == u.id"
+
+    def test_generate_merge_query_with_event_time(self, mocker):
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.primary_key = ["id"]
+        fg.partition_key = []
+        fg.event_time = "ts"
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        q = engine._generate_merge_query("s", "u")
+        assert q == "s.id == u.id AND s.ts == u.ts"
+
+    def test_generate_merge_query_with_partition_keys(self, mocker):
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.primary_key = ["id"]
+        fg.partition_key = ["p1", "p2"]
+        fg.event_time = None
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        q = engine._generate_merge_query("s", "u")
+        assert q == "s.id == u.id AND s.p1 == u.p1 AND s.p2 == u.p2"
+
+    def test_generate_merge_query_all_key_types(self, mocker):
         _patch_client(mocker, is_external=False)
         fg = _make_fg("hopsfs://nn:8020/p")
         fg.primary_key = ["id"]
@@ -267,7 +326,7 @@ class TestDeltaEngineSetupAndLocation:
         original_import = builtins.__import__
 
         def fake_import(name, *args, **kwargs):
-            if name in ("pandas", "pyarrow"):
+            if name in ("pyarrow",):
                 raise ImportError("missing")
             return original_import(name, *args, **kwargs)
 
