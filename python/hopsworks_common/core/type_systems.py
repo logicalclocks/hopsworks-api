@@ -279,10 +279,7 @@ def cast_column_to_offline_type(
     feature_column: Union[pd.Series, pl.Series], offline_type: str
 ) -> pd.Series:
     if isinstance(feature_column, pd.Series):
-        print("Value being casted:", feature_column)
-        col = cast_pandas_column_to_offline_type(feature_column, offline_type.lower())
-        print("Casted value:", col)
-        return col
+        return cast_pandas_column_to_offline_type(feature_column, offline_type.lower())
     elif HAS_POLARS and isinstance(feature_column, pl.Series):
         return cast_polars_column_to_offline_type(feature_column, offline_type.lower())
 
