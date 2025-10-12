@@ -219,9 +219,12 @@ def cast_pandas_column_to_offline_type(
         return feature_column.apply(
             lambda x: (ast.literal_eval(x) if isinstance(x, str) else x)
             if (
-                not isinstance(x, (list, dict, np.ndarray))
-                and x is not None
-                and not pd.isnull(x)
+                x is not None
+                and (
+                    not pd.isnull(x)
+                    if not isinstance(x, (list, dict, np.ndarray))
+                    else True
+                )
                 and x != ""
             )
             else None
@@ -276,7 +279,10 @@ def cast_column_to_offline_type(
     feature_column: Union[pd.Series, pl.Series], offline_type: str
 ) -> pd.Series:
     if isinstance(feature_column, pd.Series):
-        return cast_pandas_column_to_offline_type(feature_column, offline_type.lower())
+        print("Value being casted:", feature_column)
+        col = cast_pandas_column_to_offline_type(feature_column, offline_type.lower())
+        print("Casted value:", col)
+        return col
     elif HAS_POLARS and isinstance(feature_column, pl.Series):
         return cast_polars_column_to_offline_type(feature_column, offline_type.lower())
 
