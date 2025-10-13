@@ -142,9 +142,6 @@ class DeltaEngine:
                 fg_source_table.alias(source_alias).merge(
                     delete_df.alias(updates_alias), merge_query_str
                 ).whenMatchedDelete().execute()
-                fg_commit = self._get_last_commit_metadata(
-                    self._spark_session, location
-                )
             else:
                 fg_source_table.merge(
                     source=delete_df,
@@ -152,7 +149,7 @@ class DeltaEngine:
                     source_alias=updates_alias,
                     target_alias=source_alias,
                 ).when_matched_delete().execute()
-                fg_commit = self._get_last_commit_metadata_delta_rs(location)
+            fg_commit = self._get_last_commit_metadata(self._spark_session, location)
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
     def _write_delta_dataset(self, dataset, write_options):
@@ -272,7 +269,7 @@ class DeltaEngine:
                 .when_not_matched_insert_all()
                 .execute()
             )
-        return self._get_last_commit_metadata_delta_rs(location)
+        return self._get_last_commit_metadata(self._spark_session, location)
 
     @staticmethod
     def _prepare_df_for_delta(df, timestamp_precision="us"):
@@ -345,108 +342,88 @@ class DeltaEngine:
         return megrge_query_str
 
     @staticmethod
-    def _get_last_commit_metadata_delta_rs(base_path):
-        try:
-            from deltalake import DeltaTable as DeltaRsTable
-        except ImportError as e:
-            raise ImportError(
-                "Delta Lake (deltalake) is required to read commit metadata. "
-                "Install 'hops-deltalake' to enable Delta RS features."
-            ) from e
-        fg_source_table = DeltaRsTable(base_path)
+    def _get_last_commit_metadata(spark_context, base_path):
+        """
+        Retrieve oldest and last data-changing commits (MERGE/WRITE) from a Delta table.
+        Uses shared filtering logic for both Spark and delta-rs.
+        """
+        data_ops = ["MERGE", "WRITE"]
 
-        last_commit = fg_source_table.history()[0]
-        version = last_commit["version"]
-        commit_timestamp = util.convert_event_time_to_timestamp(
-            last_commit["timestamp"]
-        )
-        commit_date_string = util.get_hudi_datestr_from_timestamp(commit_timestamp)
-        operation_metrics = last_commit["operationMetrics"]
-
-        # Get info about the oldest remaining commit
-        try:
-            import pandas as pd
-        except ImportError as e:
-            raise ImportError(
-                "pandas is required to process Delta commit history."
-            ) from e
-        oldest_commit = (
-            pd.DataFrame(fg_source_table.history())
-            .sort_values("version")
-            .iloc[0]
-            .to_dict()
-        )
-        oldest_commit_timestamp = util.convert_event_time_to_timestamp(
-            oldest_commit["timestamp"]
-        )
-        if version == 0:
-            fg_commit = feature_group_commit.FeatureGroupCommit(
-                commitid=None,
-                commit_date_string=commit_date_string,
-                commit_time=commit_timestamp,
-                rows_inserted=operation_metrics["num_added_rows"],
-                rows_updated=0,
-                rows_deleted=0,
-                last_active_commit_time=oldest_commit_timestamp,
-            )
+        # --- Get commit history ---
+        if spark_context is not None:
+            try:
+                from delta.tables import DeltaTable
+            except ImportError as e:
+                raise ImportError(
+                    "Delta Lake (delta-spark) is required to read commit metadata. "
+                    "Install 'delta-spark' or include it in your environment."
+                ) from e
+            # Spark DeltaTable (returns Spark DataFrame)
+            fg_source_table = DeltaTable.forPath(spark_context, base_path)
+            history = fg_source_table.history()
+            history_records = [r.asDict() for r in history.collect()]
         else:
-            fg_commit = feature_group_commit.FeatureGroupCommit(
-                commitid=None,
-                commit_date_string=commit_date_string,
-                commit_time=commit_timestamp,
-                rows_inserted=operation_metrics["num_target_rows_inserted"],
-                rows_updated=operation_metrics["num_target_rows_updated"],
-                rows_deleted=operation_metrics["num_target_rows_deleted"],
-                last_active_commit_time=oldest_commit_timestamp,
-            )
+            try:
+                from deltalake import DeltaTable as DeltaRsTable
+            except ImportError as e:
+                raise ImportError(
+                    "Delta Lake (deltalake) is required to read commit metadata. "
+                    "Install 'hops-deltalake' to enable Delta RS features."
+                ) from e
+            # delta-rs DeltaTable (returns list[dict])
+            fg_source_table = DeltaRsTable(base_path)
+            history_records = fg_source_table.history()
 
-        return fg_commit
+        if not history_records:
+            return None
+
+        # --- Shared logic below ---
+        filtered = [c for c in history_records if c.get("operation") in data_ops]
+        if not filtered:
+            return None
+
+        # oldest = smallest version, latest = largest version
+        oldest_commit = min(filtered, key=lambda c: c["version"])
+        last_commit = max(filtered, key=lambda c: c["version"])
+
+        return DeltaEngine._get_delta_feature_group_commit(last_commit, oldest_commit)
 
     @staticmethod
-    def _get_last_commit_metadata(spark_context, base_path):
-        try:
-            from delta.tables import DeltaTable
-        except ImportError as e:
-            raise ImportError(
-                "Delta Lake (delta-spark) is required to read commit metadata. "
-                "Install 'delta-spark' or include it in your environment."
-            ) from e
-        fg_source_table = DeltaTable.forPath(spark_context, base_path)
-
-        # Get info about the latest commit
-        last_commit = fg_source_table.history(1).first().asDict()
-        version = last_commit["version"]
+    def _get_delta_feature_group_commit(last_commit, oldest_commit):
+        # Extract info about the latest commit
+        operation = last_commit["operation"]
         commit_timestamp = util.convert_event_time_to_timestamp(
             last_commit["timestamp"]
         )
         commit_date_string = util.get_hudi_datestr_from_timestamp(commit_timestamp)
         operation_metrics = last_commit["operationMetrics"]
 
-        # Get info about the oldest remaining commit
-        oldest_commit = fg_source_table.history().orderBy("version").first().asDict()
+        # Extract info about the oldest remaining commit
         oldest_commit_timestamp = util.convert_event_time_to_timestamp(
             oldest_commit["timestamp"]
         )
 
-        if version == 0:
-            fg_commit = feature_group_commit.FeatureGroupCommit(
-                commitid=None,
-                commit_date_string=commit_date_string,
-                commit_time=commit_timestamp,
-                rows_inserted=operation_metrics["numOutputRows"],
-                rows_updated=0,
-                rows_deleted=0,
-                last_active_commit_time=oldest_commit_timestamp,
-            )
-        else:
-            fg_commit = feature_group_commit.FeatureGroupCommit(
-                commitid=None,
-                commit_date_string=commit_date_string,
-                commit_time=commit_timestamp,
-                rows_inserted=operation_metrics["numTargetRowsInserted"],
-                rows_updated=operation_metrics["numTargetRowsUpdated"],
-                rows_deleted=operation_metrics["numTargetRowsDeleted"],
-                last_active_commit_time=oldest_commit_timestamp,
-            )
+        # Default all to zero
+        rows_inserted = 0
+        rows_updated = 0
+        rows_deleted = 0
+
+        # Depending on operation, set the relevant metrics
+        if operation == "WRITE":
+            rows_inserted = operation_metrics.get("numOutputRows", 0)
+        elif operation == "MERGE":
+            rows_inserted = operation_metrics.get("numTargetRowsInserted", 0)
+            rows_updated = operation_metrics.get("numTargetRowsUpdated", 0)
+            rows_deleted = operation_metrics.get("numTargetRowsDeleted", 0)
+
+        fg_commit = feature_group_commit.FeatureGroupCommit(
+            commitid=None,
+            commit_date_string=commit_date_string,
+            commit_time=commit_timestamp,
+            rows_inserted=rows_inserted,
+            rows_updated=rows_updated,
+            rows_deleted=rows_deleted,
+            last_active_commit_time=oldest_commit_timestamp,
+        )
 
         return fg_commit
