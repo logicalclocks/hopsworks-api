@@ -128,18 +128,25 @@ class TestPython:
         assert result == expected
 
     @pytest.mark.parametrize(
-        "time_travel_format,is_hopsfs,expected",
+        "time_travel_format,is_hopsfs,online_enabled,expected",
         [
-            ("DELTA", True, False),
-            ("DELTA", False, True),
-            ("HUDI", True, True),
-            ("HUDI", False, True),
+            # DELTA streams only when not HopsFS
+            ("DELTA", True, False, False),
+            ("DELTA", True, True, True),
+            ("DELTA", False, False, True),
+            ("DELTA", False, True, True),
+            # HUDI always streams
+            ("HUDI", True, False, True),
+            ("HUDI", True, True, True),
+            ("HUDI", False, False, True),
+            ("HUDI", False, True, True),
         ],
     )
-    def test_resolve_stream(self, time_travel_format, is_hopsfs, expected):
+    def test_resolve_stream(self, time_travel_format, is_hopsfs, online_enabled, expected):
         result = python.Engine.resolve_stream(
             time_travel_format=time_travel_format,
             is_hopsfs=is_hopsfs,
+            online_enabled=online_enabled,
         )
         assert result is expected
 

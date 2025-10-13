@@ -2765,7 +2765,7 @@ class FeatureGroup(FeatureGroupBase):
 
         Extracted into testable helpers to simplify unit testing.
         """
-        is_hopsfs = FeatureGroup._is_hopsfs_storage(storage_connector, data_source)
+        is_hopsfs = FeatureGroup._is_hopsfs_storage(storage_connector)
         self._time_travel_format, self._stream = self._resolve_time_travel_and_stream(
             stream=self._stream,
             time_travel_format=time_travel_format,
@@ -2777,13 +2777,11 @@ class FeatureGroup(FeatureGroupBase):
     @staticmethod
     def _is_hopsfs_storage(
         storage_connector: Optional[sc.StorageConnector],
-        data_source: Optional[ds.DataSource],
     ) -> bool:
-        """Return True if storage is HopsFS and no external data source is set."""
+        """Return True if storage is HopsFS."""
         return (
-            (storage_connector is None
-             or (storage_connector is not None and storage_connector.type == sc.StorageConnector.HOPSFS))
-            and data_source is None
+            storage_connector is None
+             or (storage_connector is not None and storage_connector.type == sc.StorageConnector.HOPSFS)
         )
 
     def _resolve_time_travel_and_stream(
@@ -2810,6 +2808,7 @@ class FeatureGroup(FeatureGroupBase):
         resolved_stream = engine_cls.resolve_stream(
             time_travel_format=time_travel_format,
             is_hopsfs=is_hopsfs,
+            online_enabled=online_enabled,
         )
 
         return time_travel_format, stream if resolved_stream is None else resolved_stream

@@ -848,6 +848,82 @@ class TestFeatureGroup:
         )
         mock_compute_statistics.assert_called_once()
 
+    @pytest.mark.parametrize(
+        "storage_connector_obj,expected",
+        [
+            (None, True),  # default HopsFS
+            (type("C", (), {"type": storage_connector.StorageConnector.HOPSFS}), True),  # explicit HopsFS connector
+            (storage_connector.S3Connector(id=1, name="s3", featurestore_id=1), False),  # non-HopsFS connector
+        ],
+    )
+    def test_is_hopsfs_storage(storage_connector_obj, expected):
+        assert (
+            feature_group.FeatureGroup._is_hopsfs_storage(storage_connector_obj)
+            is expected
+        )
+
+
+    @pytest.mark.parametrize(
+        "input_stream,input_format,expected_stream,expected_fmt",
+        [
+            (True,  "HUDI",  True,  "HUDI"),
+            (True,  "DELTA", True,  "DELTA"),
+            (True,  None,    True,  "HUDI"),
+            (False, "HUDI",  False, "HUDI"),
+            (False, "DELTA", False, "DELTA"),
+            (False, None,    False, "HUDI"),
+        ],
+    )
+    def test_resolve_time_travel_and_stream_python_permutations(monkeypatch, input_stream, input_format, expected_stream, expected_fmt):
+        # Arrange: ensure code path selects Python Engine class and stub its static methods
+        monkeypatch.setattr("hsfs.engine.get_type", lambda: "python")
+        monkeypatch.setattr(python.Engine, "resolve_time_travel_format", staticmethod(lambda **_: expected_fmt))
+        monkeypatch.setattr(python.Engine, "resolve_stream", staticmethod(lambda **_: expected_stream))
+
+        # Act
+        fmt, stream = test_feature_group._resolve_time_travel_and_stream(
+            stream=input_stream,
+            time_travel_format=input_format,
+            online_enabled=False,
+            is_hopsfs=True,
+            event_time_available=True,
+        )
+
+        # Assert: passthrough of input stream, resolved format from engine
+        assert fmt == expected_fmt
+        assert stream is expected_stream
+
+
+    @pytest.mark.parametrize(
+        "input_stream,input_format,expected_stream,expected_fmt",
+        [
+            (True,  "HUDI",  True,  "HUDI"),
+            (True,  "DELTA", True,  "DELTA"),
+            (True,  None,    True,  "HUDI"),
+            (False, "HUDI",  False, "HUDI"),
+            (False, "DELTA", False, "DELTA"),
+            (False, None,    False, "HUDI"),
+        ],
+    )
+    def test_resolve_time_travel_and_stream_spark_permutations(monkeypatch, input_stream, input_format, expected_stream, expected_fmt):
+        # Arrange: ensure code path selects Spark Engine class and stub its static methods
+        monkeypatch.setattr("hsfs.engine.get_type", lambda: "spark")
+        monkeypatch.setattr(spark.Engine, "resolve_time_travel_format", staticmethod(lambda **_: expected_fmt))
+        monkeypatch.setattr(spark.Engine, "resolve_stream", staticmethod(lambda **_: expected_stream))
+
+        # Act
+        fmt, stream = test_feature_group._resolve_time_travel_and_stream(
+            stream=input_stream,
+            time_travel_format=input_format,
+            online_enabled=False,
+            is_hopsfs=True,
+            event_time_available=True,
+        )
+
+        # Assert: passthrough of input stream, resolved format from engine
+        assert fmt == expected_fmt
+        assert stream is expected_stream
+
 
 class TestExternalFeatureGroup:
     def test_from_response_json(self, backend_fixtures):
@@ -1193,82 +1269,3 @@ class TestExternalFeatureGroup:
         assert new_fg.features[0].name == "primarykey"
         assert new_fg.features[1].name == "event_time"
         assert new_fg.features[2].name == "feat"
-
-
-@pytest.mark.parametrize(
-    "storage_connector_obj,data_source_obj,expected",
-    [
-        (None, None, True),  # default HopsFS
-        (type("C", (), {"type": storage_connector.StorageConnector.HOPSFS})(), None, True),  # explicit HopsFS connector
-        (storage_connector.S3Connector(id=1, name="s3", featurestore_id=1), None, False),  # non-HopsFS connector
-        (None, object(), False),  # any data_source present => not HopsFS
-        (type("C", (), {"type": storage_connector.StorageConnector.HOPSFS})(), object(), False),  # HopsFS + data_source => not HopsFS
-    ],
-)
-def test_is_hopsfs_storage(storage_connector_obj, data_source_obj, expected):
-    assert (
-        feature_group.FeatureGroup._is_hopsfs_storage(storage_connector_obj, data_source_obj)
-        is expected
-    )
-
-
-@pytest.mark.parametrize(
-    "input_stream,input_format,expected_stream,expected_fmt",
-    [
-        (True,  "HUDI",  True,  "HUDI"),
-        (True,  "DELTA", True,  "DELTA"),
-        (True,  None,    True,  "HUDI"),
-        (False, "HUDI",  False, "HUDI"),
-        (False, "DELTA", False, "DELTA"),
-        (False, None,    False, "HUDI"),
-    ],
-)
-def test_resolve_time_travel_and_stream_python_permutations(monkeypatch, input_stream, input_format, expected_stream, expected_fmt):
-    # Arrange: ensure code path selects Python Engine class and stub its static methods
-    monkeypatch.setattr("hsfs.engine.get_type", lambda: "python")
-    monkeypatch.setattr(python.Engine, "resolve_time_travel_format", staticmethod(lambda **_: expected_fmt))
-    monkeypatch.setattr(python.Engine, "resolve_stream", staticmethod(lambda **_: expected_stream))
-
-    # Act
-    fmt, stream = test_feature_group._resolve_time_travel_and_stream(
-        stream=input_stream,
-        time_travel_format=input_format,
-        online_enabled=False,
-        is_hopsfs=True,
-        event_time_available=True,
-    )
-
-    # Assert: passthrough of input stream, resolved format from engine
-    assert fmt == expected_fmt
-    assert stream is expected_stream
-
-
-@pytest.mark.parametrize(
-    "input_stream,input_format,expected_stream,expected_fmt",
-    [
-        (True,  "HUDI",  True,  "HUDI"),
-        (True,  "DELTA", True,  "DELTA"),
-        (True,  None,    True,  "HUDI"),
-        (False, "HUDI",  False, "HUDI"),
-        (False, "DELTA", False, "DELTA"),
-        (False, None,    False, "HUDI"),
-    ],
-)
-def test_resolve_time_travel_and_stream_spark_permutations(monkeypatch, input_stream, input_format, expected_stream, expected_fmt):
-    # Arrange: ensure code path selects Spark Engine class and stub its static methods
-    monkeypatch.setattr("hsfs.engine.get_type", lambda: "spark")
-    monkeypatch.setattr(spark.Engine, "resolve_time_travel_format", staticmethod(lambda **_: expected_fmt))
-    monkeypatch.setattr(spark.Engine, "resolve_stream", staticmethod(lambda **_: expected_stream))
-
-    # Act
-    fmt, stream = test_feature_group._resolve_time_travel_and_stream(
-        stream=input_stream,
-        time_travel_format=input_format,
-        online_enabled=False,
-        is_hopsfs=True,
-        event_time_available=True,
-    )
-
-    # Assert: passthrough of input stream, resolved format from engine
-    assert fmt == expected_fmt
-    assert stream is expected_stream

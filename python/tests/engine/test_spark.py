@@ -169,18 +169,24 @@ class TestSpark:
         assert result == expected
 
     @pytest.mark.parametrize(
-        "time_travel_format,is_hopsfs,expected",
+        "time_travel_format,is_hopsfs,online_enabled,expected",
         [
-            ("DELTA", True, None),
-            ("DELTA", False, None),
-            ("HUDI", True, None),
-            ("HUDI", False, None),
+            # expected is always None for Spark (engine decides at runtime)
+            ("DELTA", True, False, None),
+            ("DELTA", True, True, None),
+            ("DELTA", False, False, None),
+            ("DELTA", False, True, None),
+            ("HUDI", True, False, None),
+            ("HUDI", True, True, None),
+            ("HUDI", False, False, None),
+            ("HUDI", False, True, None),
         ],
     )
-    def test_resolve_stream(self, time_travel_format, is_hopsfs, expected):
+    def test_resolve_stream(self, time_travel_format, is_hopsfs, online_enabled, expected):
         result = spark.Engine.resolve_stream(
             time_travel_format=time_travel_format,
             is_hopsfs=is_hopsfs,
+            online_enabled=online_enabled,
         )
         assert result is expected
 

@@ -808,11 +808,11 @@ class Engine:
     def resolve_stream(
         time_travel_format: str,
         is_hopsfs: bool,
+        online_enabled: bool,
         *args,
         **kwargs,
     ) -> Optional[bool]:
-        # Python engine streams True if not HopsFS or DELTA
-        if is_hopsfs and time_travel_format == "DELTA":
+        if is_hopsfs and time_travel_format == "DELTA" and not online_enabled:
             return False
         return True
 
