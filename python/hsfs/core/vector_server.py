@@ -487,7 +487,6 @@ class VectorServer:
             transformation_context=transformation_context,
             logging_meta_data=logging_meta_data,
         )
-
         if logging_meta_data is not None:
             logging_meta_data.serving_keys.append(entry)
             logging_meta_data.request_parameters.append(request_parameters_copy or {})
@@ -771,9 +770,9 @@ class VectorServer:
                 " or provide the feature as passed_feature. "
                 f"2. Required entries [{', '.join(self.required_serving_keys)}] are not provided."
             )
-        feature_dict, encoded_feature_dict = {}, {}
         if len(self.return_feature_value_handlers) > 0:
             self.apply_return_value_handlers(result_dict, client=client)
+        feature_dict, encoded_feature_dict = result_dict, result_dict
         if (
             len(self.model_dependent_transformation_functions) > 0
             or len(self.on_demand_transformation_functions) > 0
