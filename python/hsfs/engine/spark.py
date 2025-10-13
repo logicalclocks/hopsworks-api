@@ -525,7 +525,7 @@ class Engine:
                 return "DELTA"
             else:
                 return "HUDI"
-        return fmt    
+        return fmt
 
     def _save_offline_dataframe(
         self,

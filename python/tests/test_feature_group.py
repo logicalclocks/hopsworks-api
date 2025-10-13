@@ -34,7 +34,6 @@ from hsfs.client.exceptions import FeatureStoreException, RestAPIError
 from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
 from hsfs.engine import python, spark
 from hsfs.transformation_function import TransformationType
-import hopsworks_common.connection as conn
 
 
 with mock.patch("hopsworks_common.client.get_instance"):
@@ -1260,7 +1259,7 @@ def test_resolve_time_travel_and_stream_spark_permutations(monkeypatch, input_st
     monkeypatch.setattr("hsfs.engine.get_type", lambda: "spark")
     monkeypatch.setattr(spark.Engine, "resolve_time_travel_format", staticmethod(lambda **_: expected_fmt))
     monkeypatch.setattr(spark.Engine, "resolve_stream", staticmethod(lambda **_: expected_stream))
-    
+
     # Act
     fmt, stream = test_feature_group._resolve_time_travel_and_stream(
         stream=input_stream,

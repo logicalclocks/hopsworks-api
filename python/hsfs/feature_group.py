@@ -2754,10 +2754,10 @@ class FeatureGroup(FeatureGroupBase):
             )
 
     def _init_time_travel_and_stream(
-        self, 
-        time_travel_format: Optional[str], 
-        online_enabled: bool, 
-        data_source: Optional[ds.DataSource], 
+        self,
+        time_travel_format: Optional[str],
+        online_enabled: bool,
+        data_source: Optional[ds.DataSource],
         storage_connector: Optional[sc.StorageConnector],
         event_time_available: bool,
     ) -> None:
@@ -2813,7 +2813,7 @@ class FeatureGroup(FeatureGroupBase):
         )
 
         return time_travel_format, stream if resolved_stream is None else resolved_stream
-        
+
     @staticmethod
     def _sort_transformation_functions(
         transformation_functions: List[TransformationFunction],

@@ -814,7 +814,7 @@ class Engine:
         # Python engine streams True if not HopsFS or DELTA
         if is_hopsfs and time_travel_format == "DELTA":
             return False
-        return True 
+        return True
 
     @staticmethod
     def resolve_time_travel_format(
