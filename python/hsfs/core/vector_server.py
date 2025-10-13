@@ -770,7 +770,7 @@ class VectorServer:
                 " or provide the feature as passed_feature. "
                 f"2. Required entries [{', '.join(self.required_serving_keys)}] are not provided."
             )
-
+        feature_dict, encoded_feature_dict = {}, {}
         if len(self.return_feature_value_handlers) > 0:
             self.apply_return_value_handlers(result_dict, client=client)
         if (
@@ -2039,6 +2039,7 @@ class VectorServer:
         if self.__all_feature_groups_online is None:
             self.__all_feature_groups_online = all(
                 fg.online_enabled
-                for fg in self._parent_feature_groups if fg.id not in self._skip_fg_ids
+                for fg in self._parent_feature_groups
+                if fg.id not in self._skip_fg_ids
             )
         return self.__all_feature_groups_online
