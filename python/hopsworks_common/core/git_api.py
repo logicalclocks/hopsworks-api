@@ -17,6 +17,7 @@
 import json
 import logging
 from typing import List, Optional, Union
+from urllib.parse import quote
 
 from hopsworks_common import (
     client,
@@ -537,7 +538,7 @@ class GitApi:
             "repository",
             str(repo_id),
             "branch",
-            branch,
+            quote(branch, safe=""),
             "commit",
         ]
 
