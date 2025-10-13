@@ -2109,7 +2109,9 @@ class Engine:
                 for col in df.columns:
                     if col not in logging_df.columns:
                         logging_df[col] = (
-                            df[col].loc[df.index.repeat(len(logging_df))].reset_index()
+                            df[col]
+                            .loc[df.index.repeat(len(logging_df))]
+                            .reset_index(drop=True)
                         )
             elif len(df) != len(logging_df):
                 raise FeatureStoreException(
@@ -2562,7 +2564,6 @@ class Engine:
                         log_vector[
                             constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + feature_name
                         ] = log_vector.pop(feature_name)
-                    print(log_vector, flush=True)
 
         # Create a json column for request parameters
         request_parameter_data, request_parameter_names, _ = request_parameters
@@ -2587,20 +2588,18 @@ class Engine:
                             # If the request parameter column is not part of the logging feature group, we remove it from the log vector so that it is not logged as a separate column.
                             log_vector.pop(col)
 
-            if (
-                constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME
-                not in log_vector
-                and request_parameter_data
-            ):
-                for row in request_parameter_data:
-                    if row:
-                        row[
-                            constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME
-                        ] = json.dumps(row)
-                    else:
-                        row[
-                            constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME
-                        ] = constants.FEATURE_LOGGING.EMPTY_REQUEST_PARAMETER_COLUMN_VALUE
+                if (
+                    constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME
+                    not in log_vector
+                    and passed_rp_data
+                ):
+                    log_vector[
+                        constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME
+                    ] = json.dumps(passed_rp_data)
+                else:
+                    log_vector[
+                        constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME
+                    ] = constants.FEATURE_LOGGING.EMPTY_REQUEST_PARAMETER_COLUMN_VALUE
 
         # get metadata
         for row in log_vectors:
