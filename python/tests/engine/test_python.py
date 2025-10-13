@@ -11829,11 +11829,8 @@ class TestPython:
         expected_log_data = untransformed_features_df.copy()
         for col in missing_columns:
             expected_log_data[col] = None
-        expected_log_data["request_parameters"] = expected_log_data.apply(
-            lambda row: json.dumps(
-                {k: row[k] for k in column_names["request_parameters"]}
-            ),
-            axis=1,
+        expected_log_data["request_parameters"] = (
+            constants.FEATURE_LOGGING.EMPTY_REQUEST_PARAMETER_COLUMN_VALUE
         )
         expected_log_data = expected_log_data.rename(
             columns={"label": constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + "label"}
@@ -12029,11 +12026,8 @@ class TestPython:
         expected_log_data = untransformed_features_df.copy()
         for col in missing_columns:
             expected_log_data[col] = None
-        expected_log_data["request_parameters"] = expected_log_data.apply(
-            lambda row: json.dumps(
-                {k: row[k] for k in column_names["request_parameters"]}
-            ),
-            axis=1,
+        expected_log_data["request_parameters"] = (
+            constants.FEATURE_LOGGING.EMPTY_REQUEST_PARAMETER_COLUMN_VALUE
         )
         expected_log_data = expected_log_data.rename(
             columns={"label": constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + "label"}
@@ -12419,11 +12413,8 @@ class TestPython:
         expected_log_data = transformed_features_df.copy()
         for col in missing_columns:
             expected_log_data[col] = None
-        expected_log_data["request_parameters"] = expected_log_data.apply(
-            lambda row: json.dumps(
-                {k: row[k] for k in column_names["request_parameters"]}
-            ),
-            axis=1,
+        expected_log_data["request_parameters"] = (
+            constants.FEATURE_LOGGING.EMPTY_REQUEST_PARAMETER_COLUMN_VALUE
         )
         expected_log_data = expected_log_data.rename(
             columns={"label": constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + "label"}
@@ -12610,11 +12601,8 @@ class TestPython:
         for col in missing_columns:
             expected_log_data[col] = None
 
-        expected_log_data["request_parameters"] = expected_log_data.apply(
-            lambda row: json.dumps(
-                {k: row[k] for k in column_names["request_parameters"]}
-            ),
-            axis=1,
+        expected_log_data["request_parameters"] = (
+            constants.FEATURE_LOGGING.EMPTY_REQUEST_PARAMETER_COLUMN_VALUE
         )
         expected_log_data = expected_log_data.rename(
             columns={"label": constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + "label"}
@@ -12807,11 +12795,8 @@ class TestPython:
         for col in missing_columns:
             expected_log_data[col] = None
 
-        expected_log_data["request_parameters"] = expected_log_data.apply(
-            lambda row: json.dumps(
-                {k: row[k] for k in column_names["request_parameters"]}
-            ),
-            axis=1,
+        expected_log_data["request_parameters"] = (
+            constants.FEATURE_LOGGING.EMPTY_REQUEST_PARAMETER_COLUMN_VALUE
         )
         expected_log_data = expected_log_data.rename(
             columns={"label": constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + "label"}
@@ -12999,11 +12984,8 @@ class TestPython:
         for col in missing_columns:
             expected_log_data[col] = None
 
-        expected_log_data["request_parameters"] = expected_log_data.apply(
-            lambda row: json.dumps(
-                {k: row[k] for k in column_names["request_parameters"]}
-            ),
-            axis=1,
+        expected_log_data["request_parameters"] = (
+            constants.FEATURE_LOGGING.EMPTY_REQUEST_PARAMETER_COLUMN_VALUE
         )
         expected_log_data = expected_log_data.rename(
             columns={"label": constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + "label"}
@@ -13195,11 +13177,8 @@ class TestPython:
         for col in missing_columns:
             expected_log_data[col] = None
 
-        expected_log_data["request_parameters"] = expected_log_data.apply(
-            lambda row: json.dumps(
-                {k: row[k] for k in column_names["request_parameters"]}
-            ),
-            axis=1,
+        expected_log_data["request_parameters"] = (
+            constants.FEATURE_LOGGING.EMPTY_REQUEST_PARAMETER_COLUMN_VALUE
         )
         expected_log_data = expected_log_data.rename(
             columns={"label": constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + "label"}

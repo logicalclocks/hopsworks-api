@@ -19,6 +19,7 @@ import itertools
 import logging
 import warnings
 from base64 import b64decode
+from copy import deepcopy
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import (
@@ -561,7 +562,7 @@ class VectorServer:
         )
 
         request_parameters_copy = (
-            request_parameters.copy() if request_parameters else None
+            deepcopy(request_parameters) if request_parameters else None
         )
         # Adding values in entry to request_parameters if it is not explicitly mentioned so that on-demand feature can be computed using the values in entry if they are not present in retrieved feature vector.
         if request_parameters and entries:
@@ -1128,7 +1129,7 @@ class VectorServer:
             elif batch:
                 feature_vector = pd.DataFrame(feature_vectorz, columns=column_names)
             else:
-                return pd.DataFrame([feature_vectorz], columns=column_names)
+                feature_vector = pd.DataFrame([feature_vectorz], columns=column_names)
         elif return_type.lower() == "polars":
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("Returning feature vector as polars dataframe")
