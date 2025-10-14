@@ -259,13 +259,19 @@ class StorageConnector(ABC):
                     "Database name is required for this connector type. "
                     "Please provide a database name."
                 )
-        return self._data_source_api.get_tables(self._featurestore_id, self._name, database)
+        return self._data_source_api.get_tables(
+            self._featurestore_id, self._name, database
+        )
 
     def get_data(self, data_source: ds.DataSource):
-        return self._data_source_api.get_data(self._featurestore_id, self._name, data_source)
+        return self._data_source_api.get_data(
+            self._featurestore_id, self._name, data_source
+        )
 
     def get_metadata(self, data_source: ds.DataSource):
-        return self._data_source_api.get_metadata(self._featurestore_id, self._name, data_source)
+        return self._data_source_api.get_metadata(
+            self._featurestore_id, self._name, data_source
+        )
 
 
 class HopsFSConnector(StorageConnector):
@@ -385,6 +391,10 @@ class S3Connector(StorageConnector):
 
     @property
     def arguments(self) -> Optional[Dict[str, Any]]:
+        """Additional spark options for the S3 connector, passed as a dictionary.
+        These are set using the `Spark Options` field in the UI when creating the connector.
+        Example: `{"fs.s3a.endpoint": "s3.eu-west-1.amazonaws.com", "fs.s3a.path.style.access": "true"}`
+        """
         return self._arguments
 
     def spark_options(self) -> Dict[str, str]:
@@ -1254,13 +1264,9 @@ class KafkaConnector(StorageConnector):
         # this option is not set and so the `not self._external_kafka` would return true
         # overwriting the user specified certificates
         if self._external_kafka is False:
-            ssl_truststore_location = (
-                client.get_instance()._get_jks_trust_store_path()
-            )
+            ssl_truststore_location = client.get_instance()._get_jks_trust_store_path()
             ssl_truststore_password = client.get_instance()._cert_key
-            ssl_keystore_location = (
-                client.get_instance()._get_jks_key_store_path()
-            )
+            ssl_keystore_location = client.get_instance()._get_jks_key_store_path()
             ssl_keystore_password = client.get_instance()._cert_key
             ssl_key_password = client.get_instance()._cert_key
         else:
@@ -1391,7 +1397,6 @@ class KafkaConnector(StorageConnector):
         """
         from packaging import version
 
-
         kafka_client_supports_pem = version.parse(
             engine.get_instance().get_spark_version()
         ) >= version.parse("3.2.0")
@@ -1401,13 +1406,17 @@ class KafkaConnector(StorageConnector):
         # Only distribute the files if the Kafka client does not support being configured with PEM content
         kafka_options = self.kafka_options(distribute=not kafka_client_supports_pem)
         for key, value in kafka_options.items():
-            if key in [
-                "ssl.truststore.location",
-                "ssl.truststore.password",
-                "ssl.keystore.location",
-                "ssl.keystore.password",
-                "ssl.key.password",
-            ] and kafka_client_supports_pem:
+            if (
+                key
+                in [
+                    "ssl.truststore.location",
+                    "ssl.truststore.password",
+                    "ssl.keystore.location",
+                    "ssl.keystore.password",
+                    "ssl.key.password",
+                ]
+                and kafka_client_supports_pem
+            ):
                 if not pem_files_assigned:
                     # We can only use this in the newer version of Spark which depend on Kafka > 2.7.0
                     # Kafka 2.7.0 adds support for providing the SSL credentials as PEM objects.
@@ -1839,6 +1848,7 @@ class BigQueryConnector(StorageConnector):
             self, self.BIGQUERY_FORMAT, options, path, dataframe_type
         )
 
+
 class RdsConnector(StorageConnector):
     type = StorageConnector.RDS
     JDBC_FORMAT = "jdbc"
@@ -1898,9 +1908,9 @@ class RdsConnector(StorageConnector):
         arguments.
         """
         return {
-            "user":  self.user,
-            "password":  self.password,
-            "driver":  "org.postgresql.Driver"
+            "user": self.user,
+            "password": self.password,
+            "driver": "org.postgresql.Driver",
         }
 
     def connector_options(self) -> Dict[str, Any]:
