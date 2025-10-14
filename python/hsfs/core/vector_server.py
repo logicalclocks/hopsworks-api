@@ -1427,7 +1427,7 @@ class VectorServer:
                 )
             )
             for f in self._features
-            if f.is_complex() and f.feature_group_id not in self._skip_feature_decoding_fg_ids
+            if f.is_complex() and f.feature_group.id not in self._skip_feature_decoding_fg_ids
         }
 
         if len(complex_feature_schemas) == 0:
