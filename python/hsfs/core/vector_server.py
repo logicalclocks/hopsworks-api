@@ -99,6 +99,7 @@ class VectorServer:
         features: Optional[List[tdf_mod.TrainingDatasetFeature]] = None,
         serving_keys: Optional[List[sk_mod.ServingKey]] = None,
         skip_fg_ids: Optional[Set[int]] = None,
+        skip_feature_decoding_fg_ids: Optional[Set[int]] = None,
         feature_store_name: Optional[str] = None,
         feature_view_name: Optional[str] = None,
         feature_view_version: Optional[int] = None,
@@ -166,6 +167,7 @@ class VectorServer:
         self._parent_feature_groups: List[FeatureGroup] = []
         self.__all_features_on_demand: Optional[bool] = None
         self.__all_feature_groups_online: Optional[bool] = None
+        self._skip_feature_decoding_fg_ids = skip_feature_decoding_fg_ids or set()
 
     def init_serving(
         self,
@@ -1425,7 +1427,7 @@ class VectorServer:
                 )
             )
             for f in self._features
-            if f.is_complex()
+            if f.is_complex() and f.feature_group_id not in self._skip_feature_decoding_fg_ids
         }
 
         if len(complex_feature_schemas) == 0:
