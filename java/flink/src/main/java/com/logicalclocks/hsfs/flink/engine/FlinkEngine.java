@@ -30,11 +30,9 @@ import com.logicalclocks.hsfs.metadata.HopsworksClient;
 import com.logicalclocks.hsfs.metadata.HopsworksExternalClient;
 import com.logicalclocks.hsfs.metadata.HopsworksInternalClient;
 import com.logicalclocks.hsfs.metadata.StorageConnectorApi;
-import com.twitter.chill.Base64;
 import lombok.Getter;
 
 import org.apache.avro.generic.GenericRecord;
-import org.apache.flink.connector.base.DeliveryGuarantee;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.formats.avro.typeutils.GenericRecordAvroTypeInfo;
@@ -47,15 +45,18 @@ import org.apache.kafka.common.config.SslConfigs;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateEncodingException;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.stream.Collectors;
 
 public class FlinkEngine extends EngineBase {
   private static FlinkEngine INSTANCE = null;
@@ -79,23 +80,32 @@ public class FlinkEngine extends EngineBase {
   public DataStreamSink<?> writeDataStream(StreamFeatureGroup streamFeatureGroup, DataStream<?> dataStream,
                                            Map<String, String> writeOptions) throws FeatureStoreException, IOException {
 
-    DataStream<Object> genericDataStream = (DataStream<Object>) dataStream;
     Properties properties = new Properties();
     properties.putAll(getKafkaConfig(streamFeatureGroup, writeOptions));
 
+    KafkaRecordSerializer serializer = new KafkaRecordSerializer(streamFeatureGroup);
+
+    // Generate transaction id from the kafka headers (unique for all ingestions)
+    String transactionalId = serializer.headerMap.entrySet().stream()
+        .map(e -> new String(e.getValue(), StandardCharsets.UTF_8))
+        .collect(Collectors.joining("_"));
+
+    // MUST setTransactionalIdPrefix when DeliveryGuarantee is not AT_LEAST_ONCE and it must be unique per sink 
     KafkaSink<GenericRecord> sink = KafkaSink.<GenericRecord>builder()
             .setBootstrapServers(properties.getProperty("bootstrap.servers"))
             .setKafkaProducerConfig(properties)
-            .setRecordSerializer(new KafkaRecordSerializer(streamFeatureGroup))
-            .setDeliverGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
+            .setRecordSerializer(serializer)
+            .setTransactionalIdPrefix(transactionalId)
             .build();
     Map<String, String> complexFeatureSchemas = new HashMap<>();
     for (String featureName : streamFeatureGroup.getComplexFeatures()) {
       complexFeatureSchemas.put(featureName, streamFeatureGroup.getFeatureAvroSchema(featureName));
     }
 
+    DataStream<Object> genericDataStream = (DataStream<Object>) dataStream;
     DataStream<GenericRecord> avroRecordDataStream =
-            genericDataStream.map(new PojoToAvroRecord(
+            genericDataStream
+                    .map(new PojoToAvroRecord<Object>(
                             streamFeatureGroup.getAvroSchema(),
                             streamFeatureGroup.getEncodedAvroSchema(),
                             complexFeatureSchemas))
@@ -191,7 +201,7 @@ public class FlinkEngine extends EngineBase {
           throws KeyStoreException, UnrecoverableKeyException, NoSuchAlgorithmException {
     String keyAlias = keyStore.aliases().nextElement();
     return "-----BEGIN PRIVATE KEY-----\n"
-            + Base64.encodeBytes(keyStore.getKey(keyAlias, password.toCharArray()).getEncoded())
+            + Base64.getEncoder().encodeToString(keyStore.getKey(keyAlias, password.toCharArray()).getEncoded())
             + "\n-----END PRIVATE KEY-----";
   }
 
@@ -202,7 +212,7 @@ public class FlinkEngine extends EngineBase {
     StringBuilder certificateChainBuilder = new StringBuilder();
     for (Certificate certificate : certificateChain) {
       certificateChainBuilder.append("-----BEGIN CERTIFICATE-----\n")
-              .append(Base64.encodeBytes(certificate.getEncoded()))
+              .append(Base64.getEncoder().encodeToString(certificate.getEncoded()))
               .append("\n-----END CERTIFICATE-----\n");
     }
 
@@ -212,7 +222,7 @@ public class FlinkEngine extends EngineBase {
   private String getRootCA(KeyStore trustStore) throws KeyStoreException, CertificateEncodingException {
     String rootCaAlias = trustStore.aliases().nextElement();
     return "-----BEGIN CERTIFICATE-----\n"
-            + Base64.encodeBytes(trustStore.getCertificate(rootCaAlias).getEncoded())
+            + Base64.getEncoder().encodeToString(trustStore.getCertificate(rootCaAlias).getEncoded())
             + "\n-----END CERTIFICATE-----";
   }
 
