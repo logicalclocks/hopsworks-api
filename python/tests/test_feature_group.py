@@ -444,12 +444,18 @@ class TestFeatureGroup:
             primary_key=[],
             foreign_key=[],
             partition_key=[],
-            online_config={'table_space': 'tt', 'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
+            online_config={
+                "table_space": "tt",
+                "online_comments": ["NDB_TABLE=READ_BACKUP=1"],
+            },
         )
 
         # Assert
         assert variable_api_mock.call_count == 0
-        assert fg._online_config.to_dict() == {'onlineComments': ['NDB_TABLE=READ_BACKUP=1'], 'tableSpace': 'tt'}
+        assert fg._online_config.to_dict() == {
+            "onlineComments": ["NDB_TABLE=READ_BACKUP=1"],
+            "tableSpace": "tt",
+        }
 
     def test_feature_group_online_disk_true(self, mocker):
         # Arrange
@@ -471,7 +477,10 @@ class TestFeatureGroup:
 
         # Assert
         assert variable_api_mock.call_count == 1
-        assert fg._online_config.to_dict() == {'onlineComments': None, 'tableSpace': 'ts_1'}
+        assert fg._online_config.to_dict() == {
+            "onlineComments": None,
+            "tableSpace": "ts_1",
+        }
 
     def test_feature_group_online_disk_true_override_online_config(self, mocker):
         # Arrange
@@ -489,12 +498,18 @@ class TestFeatureGroup:
             foreign_key=[],
             partition_key=[],
             online_disk=True,
-            online_config={'table_space': '', 'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
+            online_config={
+                "table_space": "",
+                "online_comments": ["NDB_TABLE=READ_BACKUP=1"],
+            },
         )
 
         # Assert
         assert variable_api_mock.call_count == 1
-        assert fg._online_config.to_dict() == {'onlineComments': ['NDB_TABLE=READ_BACKUP=1'], 'tableSpace': 'ts_1'}
+        assert fg._online_config.to_dict() == {
+            "onlineComments": ["NDB_TABLE=READ_BACKUP=1"],
+            "tableSpace": "ts_1",
+        }
 
     def test_feature_group_online_disk_false(self, mocker):
         # Arrange
@@ -516,7 +531,7 @@ class TestFeatureGroup:
 
         # Assert
         assert variable_api_mock.call_count == 0
-        assert fg._online_config.to_dict() == {'onlineComments': None, 'tableSpace': ''}
+        assert fg._online_config.to_dict() == {"onlineComments": None, "tableSpace": ""}
 
     def test_feature_group_online_disk_false_override_online_config(self, mocker):
         # Arrange
@@ -534,12 +549,18 @@ class TestFeatureGroup:
             foreign_key=[],
             partition_key=[],
             online_disk=False,
-            online_config={'table_space': 'ts_1', 'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
+            online_config={
+                "table_space": "ts_1",
+                "online_comments": ["NDB_TABLE=READ_BACKUP=1"],
+            },
         )
 
         # Assert
         assert variable_api_mock.call_count == 0
-        assert fg._online_config.to_dict() == {'onlineComments': ['NDB_TABLE=READ_BACKUP=1'], 'tableSpace': ''}
+        assert fg._online_config.to_dict() == {
+            "onlineComments": ["NDB_TABLE=READ_BACKUP=1"],
+            "tableSpace": "",
+        }
 
     def test_materialization_job_retry_success(self, mocker):
         # Arrange
@@ -755,6 +776,10 @@ class TestFeatureGroup:
             "hsfs.core.feature_group_engine.FeatureGroupEngine.insert",
             return_value=(None, None),
         )
+        mock_compute_statistics = mocker.patch(
+            "hsfs.core.feature_group.FeatureGroupBase.compute_statistics",
+            return_value=None,
+        )
 
         fg = feature_group.FeatureGroup(
             name="test_fg",
@@ -778,6 +803,7 @@ class TestFeatureGroup:
             transformation_context=None,
             transform=True,
         )
+        mock_compute_statistics.assert_called_once()
 
     def test_save_report_default_overwritable(self, mocker, dataframe_fixture_basic):
         engine = python.Engine()
@@ -790,6 +816,10 @@ class TestFeatureGroup:
         mock_insert = mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine.insert",
             return_value=(None, None),
+        )
+        mock_compute_statistics = mocker.patch(
+            "hsfs.core.feature_group.FeatureGroupBase.compute_statistics",
+            return_value=None,
         )
 
         fg = feature_group.FeatureGroup(
@@ -815,6 +845,7 @@ class TestFeatureGroup:
             transformation_context=None,
             transform=True,
         )
+        mock_compute_statistics.assert_called_once()
 
 
 class TestExternalFeatureGroup:
