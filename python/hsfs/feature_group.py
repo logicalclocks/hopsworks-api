@@ -214,7 +214,9 @@ class FeatureGroupBase:
                 self._online_config = OnlineConfig()
 
             if online_disk:
-                self._online_config.table_space = self._variable_api.get_featurestore_online_tablespace()
+                self._online_config.table_space = (
+                    self._variable_api.get_featurestore_online_tablespace()
+                )
             else:
                 # An empty string is interpreted as don't set table space, while None uses the cluster default
                 self._online_config.table_space = ""
@@ -3364,9 +3366,12 @@ class FeatureGroup(FeatureGroupBase):
             transform=transform,
         )
 
-        if engine.get_type().startswith("spark") and not self.stream:
-            # Also, only compute statistics if stream is False.
-            # if True, the backfill job has not been triggered and the data has not been inserted (it's in Kafka)
+        if (engine.get_type().startswith("spark") and not self.stream) or (
+            engine.get_type() == "python" and not self.stream
+        ):
+            # Compute stats in client if there is no backfill job:
+            # - spark engine: always compute in client
+            # - python engine: only compute if FG is offline only (no backfill job)
             self.compute_statistics()
 
         return (
