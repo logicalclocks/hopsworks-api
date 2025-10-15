@@ -94,62 +94,6 @@ class TestPython:
         assert mock_python_engine_sql_offline.call_count == 0
         assert mock_python_engine_jdbc.call_count == 1
 
-
-    @pytest.mark.parametrize(
-        "time_travel_format,online_enabled,is_hopsfs,expected",
-        [
-            # time_travel_format=None cases (resolved by flags)
-            (None, False, True, "DELTA"),   # HopsFS & offline -> DELTA
-            (None, False, False, "HUDI"),   # Non-HopsFS -> HUDI
-            (None, True, True, "HUDI"),     # Online -> HUDI
-            (None, True, False, "HUDI"),    # Online -> HUDI
-
-            # time_travel_format="HUDI" cases (passthrough)
-            ("HUDI", False, True, "HUDI"),
-            ("HUDI", False, False, "HUDI"),
-            ("HUDI", True, True, "HUDI"),
-            ("HUDI", True, False, "HUDI"),
-
-            # time_travel_format="DELTA" cases (passthrough)
-            ("DELTA", False, True, "DELTA"),
-            ("DELTA", False, False, "DELTA"),
-            ("DELTA", True, True, "DELTA"),
-            ("DELTA", True, False, "DELTA"),
-        ],
-    )
-    def test_resolve_time_travel_format(
-        self, time_travel_format, online_enabled, is_hopsfs, expected
-    ):
-        result = python.Engine.resolve_time_travel_format(
-            time_travel_format=time_travel_format,
-            online_enabled=online_enabled,
-            is_hopsfs=is_hopsfs,
-        )
-        assert result == expected
-
-    @pytest.mark.parametrize(
-        "time_travel_format,is_hopsfs,online_enabled,expected",
-        [
-            # DELTA streams only when not HopsFS
-            ("DELTA", True, False, False),
-            ("DELTA", True, True, True),
-            ("DELTA", False, False, True),
-            ("DELTA", False, True, True),
-            # HUDI always streams
-            ("HUDI", True, False, True),
-            ("HUDI", True, True, True),
-            ("HUDI", False, False, True),
-            ("HUDI", False, True, True),
-        ],
-    )
-    def test_resolve_stream(self, time_travel_format, is_hopsfs, online_enabled, expected):
-        result = python.Engine.resolve_stream(
-            time_travel_format=time_travel_format,
-            is_hopsfs=is_hopsfs,
-            online_enabled=online_enabled,
-        )
-        assert result is expected
-
     def test_jdbc(self, mocker):
         # Arrange
         mock_util_create_mysql_engine = mocker.patch(
@@ -292,11 +236,13 @@ class TestPython:
         python_engine = python.Engine()
 
         connector = storage_connector.S3Connector(
-            id=1, name="test_connector", featurestore_id=1,
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
             arguments=[{"name": "fs.s3a.endpoint", "value": "http://localhost:9000"}],
             access_key="test_access_key",
             secret_key="test_secret_key",
-            region="eu-north-1"
+            region="eu-north-1",
         )
 
         # Act
@@ -311,9 +257,9 @@ class TestPython:
         # Assert
         assert mock_boto_3.call_count == 1
         assert "endpoint_url" in mock_boto_3.call_args[1]
-        assert mock_boto_3.call_args[1]['endpoint_url'] == "http://localhost:9000"
+        assert mock_boto_3.call_args[1]["endpoint_url"] == "http://localhost:9000"
         assert "region_name" in mock_boto_3.call_args[1]
-        assert mock_boto_3.call_args[1]['region_name'] == "eu-north-1"
+        assert mock_boto_3.call_args[1]["region_name"] == "eu-north-1"
 
     def test_read_hopsfs_connector_empty_dataframe(self, mocker):
         # Arrange

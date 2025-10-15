@@ -2692,7 +2692,11 @@ class FeatureGroup(FeatureGroupBase):
         else:
             # Set time travel format and streaming based on engine type and online status
             self._init_time_travel_and_stream(
-                time_travel_format, online_enabled, data_source, storage_connector, self._event_time is not None
+                time_travel_format,
+                online_enabled,
+                data_source,
+                storage_connector,
+                self._event_time is not None,
             )
 
             self.primary_key = primary_key
@@ -2779,9 +2783,9 @@ class FeatureGroup(FeatureGroupBase):
         storage_connector: Optional[sc.StorageConnector],
     ) -> bool:
         """Return True if storage is HopsFS."""
-        return (
-            storage_connector is None
-             or (storage_connector is not None and storage_connector.type == sc.StorageConnector.HOPSFS)
+        return storage_connector is None or (
+            storage_connector is not None
+            and storage_connector.type == sc.StorageConnector.HOPSFS
         )
 
     def _resolve_time_travel_and_stream(
@@ -2795,23 +2799,74 @@ class FeatureGroup(FeatureGroupBase):
         """Resolve (time_travel_format, stream) by delegating to the active engine."""
 
         if engine.get_type() == "python":
-            engine_cls = engine.python.Engine
+            time_travel_format = FeatureGroup.resolve_time_travel_format_python(
+                time_travel_format=time_travel_format,
+                online_enabled=online_enabled,
+                is_hopsfs=is_hopsfs,
+                event_time_available=event_time_available,
+            )
+            resolved_stream = FeatureGroup.resolve_stream_python(
+                time_travel_format=time_travel_format,
+                is_hopsfs=is_hopsfs,
+                online_enabled=online_enabled,
+            )
+            return time_travel_format, resolved_stream
         else:
-            engine_cls = engine.spark.Engine
+            time_travel_format = FeatureGroup.resolve_time_travel_format_spark(
+                time_travel_format=time_travel_format,
+                online_enabled=online_enabled,
+                is_hopsfs=is_hopsfs,
+                event_time_available=event_time_available,
+            )
+            return time_travel_format, stream
 
-        time_travel_format = engine_cls.resolve_time_travel_format(
-            time_travel_format=time_travel_format,
-            online_enabled=online_enabled,
-            is_hopsfs=is_hopsfs,
-            event_time_available=event_time_available,
-        )
-        resolved_stream = engine_cls.resolve_stream(
-            time_travel_format=time_travel_format,
-            is_hopsfs=is_hopsfs,
-            online_enabled=online_enabled,
-        )
+    @staticmethod
+    def resolve_stream_python(
+        time_travel_format: str,
+        is_hopsfs: bool,
+        online_enabled: bool,
+        *args,
+        **kwargs,
+    ) -> Optional[bool]:
+        if is_hopsfs and time_travel_format == "DELTA" and not online_enabled:
+            return False
+        return True
 
-        return time_travel_format, stream if resolved_stream is None else resolved_stream
+    @staticmethod
+    def resolve_time_travel_format_python(
+        time_travel_format: Optional[str],
+        online_enabled: bool,
+        is_hopsfs: bool,
+        *args,
+        **kwargs,
+    ) -> Optional[str]:
+        """Resolve only the time travel format string."""
+        fmt = time_travel_format.upper() if time_travel_format is not None else None
+        if fmt is None:
+            if is_hopsfs and not online_enabled:
+                return "DELTA"
+            else:
+                return "HUDI"
+        else:
+            return fmt
+
+    @staticmethod
+    def resolve_time_travel_format_spark(
+        time_travel_format: Optional[str],
+        online_enabled: bool,
+        is_hopsfs: bool,
+        event_time_available: bool,
+        *args,
+        **kwargs,
+    ) -> str:
+        """Resolve only the time travel format string."""
+        fmt = time_travel_format.upper() if time_travel_format is not None else None
+        if fmt is None and event_time_available:
+            if is_hopsfs and not online_enabled:
+                return "DELTA"
+            else:
+                return "HUDI"
+        return fmt
 
     @staticmethod
     def _sort_transformation_functions(

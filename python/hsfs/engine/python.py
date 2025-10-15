@@ -363,7 +363,9 @@ class Engine:
                             dataframe_type=dataframe_type,
                         )
                     else:
-                        content_stream = self._dataset_api.read_content(inode_entry.path)
+                        content_stream = self._dataset_api.read_content(
+                            inode_entry.path
+                        )
                         if dataframe_type.lower() == "polars":
                             df = self._read_polars(
                                 data_format, BytesIO(content_stream.content)
@@ -406,7 +408,7 @@ class Engine:
                 aws_access_key_id=storage_connector.access_key,
                 aws_secret_access_key=storage_connector.secret_key,
                 endpoint_url=storage_connector.arguments.get("fs.s3a.endpoint"),
-                region_name=storage_connector.region
+                region_name=storage_connector.region,
             )
 
         df_list = []
@@ -803,36 +805,6 @@ class Engine:
             "Training dataset creation from Dataframes is not "
             + "supported in Python environment. Use HSFS Query object instead."
         )
-
-    @staticmethod
-    def resolve_stream(
-        time_travel_format: str,
-        is_hopsfs: bool,
-        online_enabled: bool,
-        *args,
-        **kwargs,
-    ) -> Optional[bool]:
-        if is_hopsfs and time_travel_format == "DELTA" and not online_enabled:
-            return False
-        return True
-
-    @staticmethod
-    def resolve_time_travel_format(
-        time_travel_format: Optional[str],
-        online_enabled: bool,
-        is_hopsfs: bool,
-        *args,
-        **kwargs,
-    ) -> Optional[str]:
-        """Resolve only the time travel format string."""
-        fmt = time_travel_format.upper() if time_travel_format is not None else None
-        if fmt is None:
-            if is_hopsfs and not online_enabled:
-                return "DELTA"
-            else:
-                return "HUDI"
-        else:
-            return fmt
 
     def save_dataframe(
         self,
@@ -1726,9 +1698,9 @@ class Engine:
             provided_len = len(feature_log[0])
         else:
             provided_len = 1
-        assert provided_len == len(
-            cols
-        ), f"Expecting {len(cols)} features/labels but {provided_len} provided."
+        assert provided_len == len(cols), (
+            f"Expecting {len(cols)} features/labels but {provided_len} provided."
+        )
 
     @staticmethod
     def get_logging_metadata(
