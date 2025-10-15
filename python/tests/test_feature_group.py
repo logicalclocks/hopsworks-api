@@ -885,7 +885,7 @@ class TestFeatureGroup:
         monkeypatch.setattr("hsfs.engine.get_type", lambda: "python")
         monkeypatch.setattr(
             feature_group.FeatureGroup,
-            "resolve_time_travel_format_python",
+            "resolve_time_travel_format",
             staticmethod(lambda **_: expected_fmt),
         )
         monkeypatch.setattr(
@@ -900,7 +900,6 @@ class TestFeatureGroup:
             time_travel_format=input_format,
             online_enabled=False,
             is_hopsfs=True,
-            event_time_available=True,
         )
 
         # Assert: passthrough of input stream, resolved format from engine
@@ -925,7 +924,7 @@ class TestFeatureGroup:
         monkeypatch.setattr("hsfs.engine.get_type", lambda: "spark")
         monkeypatch.setattr(
             feature_group.FeatureGroup,
-            "resolve_time_travel_format_spark",
+            "resolve_time_travel_format",
             staticmethod(lambda **_: expected_fmt),
         )
 
@@ -935,60 +934,11 @@ class TestFeatureGroup:
             time_travel_format=input_format,
             online_enabled=False,
             is_hopsfs=True,
-            event_time_available=True,
         )
 
         # Assert: passthrough of input stream, resolved format from engine
         assert fmt == expected_fmt
         assert stream is expected_stream
-
-    @pytest.mark.parametrize(
-        "time_travel_format,online_enabled,is_hopsfs,event_time_available,expected",
-        [
-            # fmt=None cases (controlled by flags)
-            (None, False, True, True, "DELTA"),  # HopsFS & offline -> DELTA
-            (None, False, True, False, None),  # No event time -> None
-            (None, False, False, True, "HUDI"),  # Non-HopsFS -> HUDI
-            (None, False, False, False, None),  # No event time -> None
-            (None, True, True, True, "HUDI"),  # Online -> HUDI
-            (None, True, True, False, None),  # No event time -> None
-            (None, True, False, True, "HUDI"),  # Online -> HUDI
-            (None, True, False, False, None),  # No event time -> None
-            # fmt=HUDI passthrough
-            ("HUDI", False, True, True, "HUDI"),
-            ("HUDI", False, True, False, "HUDI"),
-            ("HUDI", False, False, True, "HUDI"),
-            ("HUDI", False, False, False, "HUDI"),
-            ("HUDI", True, True, True, "HUDI"),
-            ("HUDI", True, True, False, "HUDI"),
-            ("HUDI", True, False, True, "HUDI"),
-            ("HUDI", True, False, False, "HUDI"),
-            # fmt=DELTA passthrough
-            ("DELTA", False, True, True, "DELTA"),
-            ("DELTA", False, True, False, "DELTA"),
-            ("DELTA", False, False, True, "DELTA"),
-            ("DELTA", False, False, False, "DELTA"),
-            ("DELTA", True, True, True, "DELTA"),
-            ("DELTA", True, True, False, "DELTA"),
-            ("DELTA", True, False, True, "DELTA"),
-            ("DELTA", True, False, False, "DELTA"),
-        ],
-    )
-    def test_resolve_time_travel_format_spark(
-        self,
-        time_travel_format,
-        online_enabled,
-        is_hopsfs,
-        event_time_available,
-        expected,
-    ):
-        result = feature_group.FeatureGroup.resolve_time_travel_format_spark(
-            time_travel_format=time_travel_format,
-            online_enabled=online_enabled,
-            is_hopsfs=is_hopsfs,
-            event_time_available=event_time_available,
-        )
-        assert result == expected
 
     @pytest.mark.parametrize(
         "time_travel_format,online_enabled,is_hopsfs,expected",
@@ -1010,10 +960,10 @@ class TestFeatureGroup:
             ("DELTA", True, False, "DELTA"),
         ],
     )
-    def test_resolve_time_travel_format_python(
+    def test_resolve_time_travel_format(
         self, time_travel_format, online_enabled, is_hopsfs, expected
     ):
-        result = feature_group.FeatureGroup.resolve_time_travel_format_python(
+        result = feature_group.FeatureGroup.resolve_time_travel_format(
             time_travel_format=time_travel_format,
             online_enabled=online_enabled,
             is_hopsfs=is_hopsfs,

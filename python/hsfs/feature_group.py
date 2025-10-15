@@ -2694,9 +2694,7 @@ class FeatureGroup(FeatureGroupBase):
             self._init_time_travel_and_stream(
                 time_travel_format,
                 online_enabled,
-                data_source,
                 storage_connector,
-                self._event_time is not None,
             )
 
             self.primary_key = primary_key
@@ -2761,9 +2759,7 @@ class FeatureGroup(FeatureGroupBase):
         self,
         time_travel_format: Optional[str],
         online_enabled: bool,
-        data_source: Optional[ds.DataSource],
         storage_connector: Optional[sc.StorageConnector],
-        event_time_available: bool,
     ) -> None:
         """Initialize `self._time_travel_format` and `self._stream` for new objects.
 
@@ -2775,7 +2771,6 @@ class FeatureGroup(FeatureGroupBase):
             time_travel_format=time_travel_format,
             online_enabled=online_enabled,
             is_hopsfs=is_hopsfs,
-            event_time_available=event_time_available,
         )
 
     @staticmethod
@@ -2794,31 +2789,22 @@ class FeatureGroup(FeatureGroupBase):
         time_travel_format: Optional[str],
         online_enabled: bool,
         is_hopsfs: bool,
-        event_time_available: bool,
     ):
         """Resolve (time_travel_format, stream) by delegating to the active engine."""
-
+        resolved_time_travel_format = FeatureGroup.resolve_time_travel_format(
+            time_travel_format=time_travel_format,
+            online_enabled=online_enabled,
+            is_hopsfs=is_hopsfs,
+        )
         if engine.get_type() == "python":
-            time_travel_format = FeatureGroup.resolve_time_travel_format_python(
-                time_travel_format=time_travel_format,
-                online_enabled=online_enabled,
-                is_hopsfs=is_hopsfs,
-                event_time_available=event_time_available,
-            )
             resolved_stream = FeatureGroup.resolve_stream_python(
                 time_travel_format=time_travel_format,
                 is_hopsfs=is_hopsfs,
                 online_enabled=online_enabled,
             )
-            return time_travel_format, resolved_stream
+            return resolved_time_travel_format, resolved_stream
         else:
-            time_travel_format = FeatureGroup.resolve_time_travel_format_spark(
-                time_travel_format=time_travel_format,
-                online_enabled=online_enabled,
-                is_hopsfs=is_hopsfs,
-                event_time_available=event_time_available,
-            )
-            return time_travel_format, stream
+            return resolved_time_travel_format, stream
 
     @staticmethod
     def resolve_stream_python(
@@ -2833,35 +2819,16 @@ class FeatureGroup(FeatureGroupBase):
         return True
 
     @staticmethod
-    def resolve_time_travel_format_python(
+    def resolve_time_travel_format(
         time_travel_format: Optional[str],
         online_enabled: bool,
         is_hopsfs: bool,
-        *args,
-        **kwargs,
-    ) -> Optional[str]:
-        """Resolve only the time travel format string."""
-        fmt = time_travel_format.upper() if time_travel_format is not None else None
-        if fmt is None:
-            if is_hopsfs and not online_enabled:
-                return "DELTA"
-            else:
-                return "HUDI"
-        else:
-            return fmt
-
-    @staticmethod
-    def resolve_time_travel_format_spark(
-        time_travel_format: Optional[str],
-        online_enabled: bool,
-        is_hopsfs: bool,
-        event_time_available: bool,
         *args,
         **kwargs,
     ) -> str:
         """Resolve only the time travel format string."""
         fmt = time_travel_format.upper() if time_travel_format is not None else None
-        if fmt is None and event_time_available:
+        if fmt is None:
             if is_hopsfs and not online_enabled:
                 return "DELTA"
             else:
