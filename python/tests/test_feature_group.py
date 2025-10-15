@@ -777,7 +777,7 @@ class TestFeatureGroup:
             return_value=(None, None),
         )
         mock_compute_statistics = mocker.patch(
-            "hsfs.core.feature_group.FeatureGroupBase.compute_statistics",
+            "hsfs.feature_group.FeatureGroupBase.compute_statistics",
             return_value=None,
         )
 
@@ -818,7 +818,7 @@ class TestFeatureGroup:
             return_value=(None, None),
         )
         mock_compute_statistics = mocker.patch(
-            "hsfs.core.feature_group.FeatureGroupBase.compute_statistics",
+            "hsfs.feature_group.FeatureGroupBase.compute_statistics",
             return_value=None,
         )
 
