@@ -236,13 +236,11 @@ class TestPython:
         python_engine = python.Engine()
 
         connector = storage_connector.S3Connector(
-            id=1,
-            name="test_connector",
-            featurestore_id=1,
+            id=1, name="test_connector", featurestore_id=1,
             arguments=[{"name": "fs.s3a.endpoint", "value": "http://localhost:9000"}],
             access_key="test_access_key",
             secret_key="test_secret_key",
-            region="eu-north-1",
+            region="eu-north-1"
         )
 
         # Act
@@ -257,9 +255,9 @@ class TestPython:
         # Assert
         assert mock_boto_3.call_count == 1
         assert "endpoint_url" in mock_boto_3.call_args[1]
-        assert mock_boto_3.call_args[1]["endpoint_url"] == "http://localhost:9000"
+        assert mock_boto_3.call_args[1]['endpoint_url'] == "http://localhost:9000"
         assert "region_name" in mock_boto_3.call_args[1]
-        assert mock_boto_3.call_args[1]["region_name"] == "eu-north-1"
+        assert mock_boto_3.call_args[1]['region_name'] == "eu-north-1"
 
     def test_read_hopsfs_connector_empty_dataframe(self, mocker):
         # Arrange

@@ -363,9 +363,7 @@ class Engine:
                             dataframe_type=dataframe_type,
                         )
                     else:
-                        content_stream = self._dataset_api.read_content(
-                            inode_entry.path
-                        )
+                        content_stream = self._dataset_api.read_content(inode_entry.path)
                         if dataframe_type.lower() == "polars":
                             df = self._read_polars(
                                 data_format, BytesIO(content_stream.content)
@@ -408,7 +406,7 @@ class Engine:
                 aws_access_key_id=storage_connector.access_key,
                 aws_secret_access_key=storage_connector.secret_key,
                 endpoint_url=storage_connector.arguments.get("fs.s3a.endpoint"),
-                region_name=storage_connector.region,
+                region_name=storage_connector.region
             )
 
         df_list = []
@@ -1698,9 +1696,9 @@ class Engine:
             provided_len = len(feature_log[0])
         else:
             provided_len = 1
-        assert provided_len == len(cols), (
-            f"Expecting {len(cols)} features/labels but {provided_len} provided."
-        )
+        assert provided_len == len(
+            cols
+        ), f"Expecting {len(cols)} features/labels but {provided_len} provided."
 
     @staticmethod
     def get_logging_metadata(

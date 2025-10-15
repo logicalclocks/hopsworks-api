@@ -631,8 +631,7 @@ class Engine:
         Step 1: Deserializes 'value' column from binary using avro schema.
         """
         decoded_dataframe = dataframe.withColumn(
-            serialized_column,
-            from_avro(serialized_column, feature_group._get_encoded_avro_schema()),
+            serialized_column, from_avro(serialized_column, feature_group._get_encoded_avro_schema())
         )
 
         """
@@ -645,12 +644,10 @@ class Engine:
                 # re-apply from_avro on the nested field
                 decoded_field = from_avro(
                     col(f"{serialized_column}.{field_name}"),
-                    feature_group._get_feature_avro_schema(field_name),
+                    feature_group._get_feature_avro_schema(field_name)
                 ).alias(field_name)
             else:
-                decoded_field = col(f"{serialized_column}.{field_name}").alias(
-                    field_name
-                )
+                decoded_field = col(f"{serialized_column}.{field_name}").alias(field_name)
             new_value_fields.append(decoded_field)
 
         """
@@ -658,10 +655,7 @@ class Engine:
         """
         updated_value_col = struct(*new_value_fields).alias(serialized_column)
 
-        return decoded_dataframe.select(
-            *[col(c) for c in decoded_dataframe.columns if c != serialized_column],
-            updated_value_col,
-        )
+        return decoded_dataframe.select(*[col(c) for c in decoded_dataframe.columns if c != serialized_column], updated_value_col)
 
     def get_training_data(
         self,

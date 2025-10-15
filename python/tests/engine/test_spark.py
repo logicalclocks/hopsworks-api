@@ -129,7 +129,7 @@ class TestSpark:
             pyspark.sql.SparkSession,
             "sql",
             new_callable=PropertyMock,
-            return_value=mock_sql,
+            return_value=mock_sql
         )
 
         spark_engine = spark.Engine()
@@ -167,7 +167,7 @@ class TestSpark:
             pyspark.sql.SparkSession,
             "sparkContext",
             new_callable=PropertyMock,
-            return_value=mock_spark_context,
+            return_value=mock_spark_context
         )
 
         spark_engine = spark.Engine()
@@ -1658,7 +1658,7 @@ class TestSpark:
         data = []
         data.append((b"2121", b"21212121"))
         data.append((b"1212", b"12121212"))
-        pandas_df = pd.DataFrame(data, columns=["key", "value"])
+        pandas_df = pd.DataFrame(data, columns =["key", "value"])
 
         df = spark_engine._spark_session.createDataFrame(pandas_df)
 
@@ -1678,10 +1678,10 @@ class TestSpark:
             features=features,
         )
         fg._subject = {
-            "id": 1025,
-            "subject": "fg_1",
-            "version": 1,
-            "schema": '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]},{"name":"event_time","type":["null",{"type":"long","logicalType":"timestamp-micros"}]}]}',
+            'id': 1025,
+            'subject': 'fg_1',
+            'version': 1,
+            'schema': '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]},{"name":"event_time","type":["null",{"type":"long","logicalType":"timestamp-micros"}]}]}'
         }
 
         # Act
@@ -1691,7 +1691,7 @@ class TestSpark:
         )
 
         # Assert
-        expected_schema = json.loads("""{
+        expected_schema = json.loads('''{
             "fields": [
                 {"metadata": {}, "name": "key", "nullable": true, "type": "binary"},
                 {"metadata": {}, "name": "value", "nullable": false, "type": {
@@ -1705,7 +1705,7 @@ class TestSpark:
                 }}
             ],
             "type": "struct"
-        }""")
+        }''')
 
         actual_schema = json.loads(deserialized_df.schema.json())
         assert actual_schema == expected_schema
@@ -1717,15 +1717,9 @@ class TestSpark:
         now = datetime.datetime.now()
 
         fg_data = []
-        fg_data.append(
-            ("ekarson", ["GRAVITY RUSH 2", "KING'S QUEST"], pd.Timestamp(now))
-        )
-        fg_data.append(
-            ("ratmilkdrinker", ["NBA 2K", "CALL OF DUTY"], pd.Timestamp(now))
-        )
-        pandas_df = pd.DataFrame(
-            fg_data, columns=["account_id", "last_played_games", "event_time"]
-        )
+        fg_data.append(("ekarson", ["GRAVITY RUSH 2", "KING'S QUEST"], pd.Timestamp(now)))
+        fg_data.append(("ratmilkdrinker", ["NBA 2K", "CALL OF DUTY"], pd.Timestamp(now)))
+        pandas_df = pd.DataFrame(fg_data, columns =["account_id", "last_played_games", "event_time"])
 
         df = spark_engine._spark_session.createDataFrame(pandas_df)
 
@@ -1745,10 +1739,10 @@ class TestSpark:
             features=features,
         )
         fg._subject = {
-            "id": 1025,
-            "subject": "fg_1",
-            "version": 1,
-            "schema": '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]},{"name":"event_time","type":["null",{"type":"long","logicalType":"timestamp-micros"}]}]}',
+            'id': 1025,
+            'subject': 'fg_1',
+            'version': 1,
+            'schema': '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]},{"name":"event_time","type":["null",{"type":"long","logicalType":"timestamp-micros"}]}]}'
         }
 
         # Act
@@ -1763,10 +1757,7 @@ class TestSpark:
         )
 
         # Assert
-        assert (
-            serialized_df.schema.json()
-            == '{"fields":[{"metadata":{},"name":"key","nullable":false,"type":"binary"},{"metadata":{},"name":"value","nullable":false,"type":"binary"}],"type":"struct"}'
-        )
+        assert serialized_df.schema.json() == '{"fields":[{"metadata":{},"name":"key","nullable":false,"type":"binary"},{"metadata":{},"name":"value","nullable":false,"type":"binary"}],"type":"struct"}'
         assert df.schema == deserialized_df.schema["value"].dataType
         assert df.collect() == deserialized_df.select("value.*").collect()
 
@@ -3065,7 +3056,7 @@ class TestSpark:
             pyspark.sql.SparkSession,
             "read",
             new_callable=PropertyMock,
-            return_value=mock_read,
+            return_value=mock_read
         )
 
         mock_spark_engine_setup_storage_connector = mocker.patch(
@@ -3101,7 +3092,7 @@ class TestSpark:
             pyspark.sql.SparkSession,
             "read",
             new_callable=PropertyMock,
-            return_value=mock_read,
+            return_value=mock_read
         )
 
         mock_spark_engine_setup_storage_connector = mocker.patch(
@@ -3125,9 +3116,7 @@ class TestSpark:
         mock_read.format.return_value.options.assert_called_once_with(header="true")
         mock_read.format.return_value.options.return_value.load.assert_called_once()
         mock_spark_engine_setup_storage_connector.assert_called_once()
-        mock_spark_engine_setup_storage_connector.assert_called_once_with(
-            None, "test_location"
-        )
+        mock_spark_engine_setup_storage_connector.assert_called_once_with(None, "test_location")
 
     def test_read_location_format_parquet(self, mocker):
         # Arrange
@@ -3139,7 +3128,7 @@ class TestSpark:
             pyspark.sql.SparkSession,
             "read",
             new_callable=PropertyMock,
-            return_value=mock_read,
+            return_value=mock_read
         )
 
         mock_spark_engine_setup_storage_connector = mocker.patch(
@@ -3163,9 +3152,7 @@ class TestSpark:
         mock_read.format.return_value.options.assert_called_once_with(header="true")
         mock_read.format.return_value.options.return_value.load.assert_called_once()
         mock_spark_engine_setup_storage_connector.assert_called_once()
-        mock_spark_engine_setup_storage_connector.assert_called_once_with(
-            None, "test_location"
-        )
+        mock_spark_engine_setup_storage_connector.assert_called_once_with(None, "test_location")
 
     def test_read_location_format_hudi(self, mocker):
         # Arrange
@@ -3177,7 +3164,7 @@ class TestSpark:
             pyspark.sql.SparkSession,
             "read",
             new_callable=PropertyMock,
-            return_value=mock_read,
+            return_value=mock_read
         )
 
         mock_spark_engine_setup_storage_connector = mocker.patch(
@@ -3201,9 +3188,7 @@ class TestSpark:
         mock_read.format.return_value.options.assert_called_once_with(header="true")
         mock_read.format.return_value.options.return_value.load.assert_called_once()
         mock_spark_engine_setup_storage_connector.assert_called_once()
-        mock_spark_engine_setup_storage_connector.assert_called_once_with(
-            None, "test_location"
-        )
+        mock_spark_engine_setup_storage_connector.assert_called_once_with(None, "test_location")
 
     def test_read_location_format_orc(self, mocker):
         # Arrange
@@ -3215,7 +3200,7 @@ class TestSpark:
             pyspark.sql.SparkSession,
             "read",
             new_callable=PropertyMock,
-            return_value=mock_read,
+            return_value=mock_read
         )
 
         mock_spark_engine_setup_storage_connector = mocker.patch(
@@ -3239,9 +3224,7 @@ class TestSpark:
         mock_read.format.return_value.options.assert_called_once_with(header="true")
         mock_read.format.return_value.options.return_value.load.assert_called_once()
         mock_spark_engine_setup_storage_connector.assert_called_once()
-        mock_spark_engine_setup_storage_connector.assert_called_once_with(
-            None, "test_location"
-        )
+        mock_spark_engine_setup_storage_connector.assert_called_once_with(None, "test_location")
 
     def test_read_location_format_bigquery(self, mocker):
         # Arrange
@@ -3253,7 +3236,7 @@ class TestSpark:
             pyspark.sql.SparkSession,
             "read",
             new_callable=PropertyMock,
-            return_value=mock_read,
+            return_value=mock_read
         )
 
         mock_spark_engine_setup_storage_connector = mocker.patch(
@@ -3277,9 +3260,7 @@ class TestSpark:
         mock_read.format.return_value.options.assert_called_once_with(header="true")
         mock_read.format.return_value.options.return_value.load.assert_called_once()
         mock_spark_engine_setup_storage_connector.assert_called_once()
-        mock_spark_engine_setup_storage_connector.assert_called_once_with(
-            None, "test_location"
-        )
+        mock_spark_engine_setup_storage_connector.assert_called_once_with(None, "test_location")
 
     def test_read_location_format_csv(self, mocker):
         # Arrange
@@ -3291,7 +3272,7 @@ class TestSpark:
             pyspark.sql.SparkSession,
             "read",
             new_callable=PropertyMock,
-            return_value=mock_read,
+            return_value=mock_read
         )
 
         mock_spark_engine_setup_storage_connector = mocker.patch(
@@ -3315,9 +3296,7 @@ class TestSpark:
         mock_read.format.return_value.options.assert_called_once_with(header="true")
         mock_read.format.return_value.options.return_value.load.assert_called_once()
         mock_spark_engine_setup_storage_connector.assert_called_once()
-        mock_spark_engine_setup_storage_connector.assert_called_once_with(
-            None, "test_location/**"
-        )
+        mock_spark_engine_setup_storage_connector.assert_called_once_with(None, "test_location/**")
 
     def test_read_location_format_tsv(self, mocker):
         # Arrange
@@ -3329,7 +3308,7 @@ class TestSpark:
             pyspark.sql.SparkSession,
             "read",
             new_callable=PropertyMock,
-            return_value=mock_read,
+            return_value=mock_read
         )
 
         # Patch Engine.setup_storage_connector as before
@@ -3354,9 +3333,7 @@ class TestSpark:
         mock_read.format.return_value.options.assert_called_once_with(header="true")
         mock_read.format.return_value.options.return_value.load.assert_called_once()
         mock_spark_engine_setup_storage_connector.assert_called_once()
-        mock_spark_engine_setup_storage_connector.assert_called_once_with(
-            None, "test_location/**"
-        )
+        mock_spark_engine_setup_storage_connector.assert_called_once_with(None, "test_location/**")
 
     def test_read_stream(self, mocker):
         # Arrange
@@ -3369,7 +3346,7 @@ class TestSpark:
             pyspark.sql.SparkSession,
             "readStream",
             new_callable=PropertyMock,
-            return_value=mock_read_stream,
+            return_value=mock_read_stream
         )
 
         mock_spark_engine_read_stream_kafka = mocker.patch(
@@ -3658,13 +3635,10 @@ class TestSpark:
 
     def test_add_file_if_present_in_job_configuration(self, mocker):
         # Arrange
-        mocker.patch(
-            "os.environ",
-            {
-                "APP_FILES": "/Projects/test_file",
-                "MATERIALISATION_DIR": "/tmp/materialisation_dir",
-            },
-        )
+        mocker.patch("os.environ", {
+            "APP_FILES": "/Projects/test_file",
+            "MATERIALISATION_DIR": "/tmp/materialisation_dir"
+        })
 
         mock_add_file = mocker.patch("pyspark.SparkContext.addFile")
 
@@ -3676,7 +3650,7 @@ class TestSpark:
         )
 
         # Assert
-        assert path == "/tmp/materialisation_dir/test_file"
+        assert (path == "/tmp/materialisation_dir/test_file")
         mock_add_file.assert_not_called()
 
     def test_profile(self, mocker):
@@ -3686,7 +3660,7 @@ class TestSpark:
             pyspark.sql.SparkSession,
             "sparkContext",
             new_callable=PropertyMock,
-            return_value=mock_spark_context,
+            return_value=mock_spark_context
         )
 
         spark_engine = spark.Engine()
@@ -4410,7 +4384,7 @@ class TestSpark:
             pyspark.sql.SparkSession,
             "sparkContext",
             new_callable=PropertyMock,
-            return_value=mock_spark_context,
+            return_value=mock_spark_context
         )
 
         spark_engine = spark.Engine()
@@ -4471,7 +4445,7 @@ class TestSpark:
             pyspark.sql.SparkSession,
             "sparkContext",
             new_callable=PropertyMock,
-            return_value=mock_spark_context,
+            return_value=mock_spark_context
         )
 
         spark_engine = spark.Engine()
@@ -4581,7 +4555,7 @@ class TestSpark:
             pyspark.sql.SparkSession,
             "sparkContext",
             new_callable=PropertyMock,
-            return_value=mock_spark_context,
+            return_value=mock_spark_context
         )
 
         spark_engine = spark.Engine()
@@ -4644,7 +4618,7 @@ class TestSpark:
             pyspark.sql.SparkSession,
             "sparkContext",
             new_callable=PropertyMock,
-            return_value=mock_spark_context,
+            return_value=mock_spark_context
         )
 
         spark_engine = spark.Engine()
@@ -4668,7 +4642,8 @@ class TestSpark:
         # Assert
         assert result == "adls_test_path"
         assert (
-            mock_spark_context._jsc.hadoopConfiguration.return_value.set.call_count == 2
+            mock_spark_context._jsc.hadoopConfiguration.return_value.set.call_count
+            == 2
         )
         mock_spark_context._jsc.hadoopConfiguration.return_value.set.assert_any_call(
             "name_1", "value_1"
@@ -5787,7 +5762,7 @@ class TestSpark:
             pyspark.sql.SparkSession,
             "sparkContext",
             new_callable=PropertyMock,
-            return_value=mock_spark_context,
+            return_value=mock_spark_context
         )
 
         spark_engine = spark.Engine()
@@ -5821,7 +5796,8 @@ class TestSpark:
         )
         assert mock_spark_engine_add_file.call_count == 1
         assert (
-            mock_spark_context._jsc.hadoopConfiguration.return_value.set.call_count == 3
+            mock_spark_context._jsc.hadoopConfiguration.return_value.set.call_count
+            == 3
         )
         assert (
             mock_spark_context._jsc.hadoopConfiguration.return_value.unset.call_count
@@ -5863,7 +5839,7 @@ class TestSpark:
             pyspark.sql.SparkSession,
             "sparkContext",
             new_callable=PropertyMock,
-            return_value=mock_spark_context,
+            return_value=mock_spark_context
         )
 
         spark_engine = spark.Engine()
@@ -5903,7 +5879,8 @@ class TestSpark:
         )
         assert mock_spark_engine_add_file.call_count == 1
         assert (
-            mock_spark_context._jsc.hadoopConfiguration.return_value.set.call_count == 6
+            mock_spark_context._jsc.hadoopConfiguration.return_value.set.call_count
+            == 6
         )
         assert (
             mock_spark_context._jsc.hadoopConfiguration.return_value.unset.call_count
