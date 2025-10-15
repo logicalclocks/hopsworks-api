@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from urllib.parse import urlparse
 
 from hopsworks.core import project_api
@@ -304,13 +305,21 @@ class DeltaEngine:
         # Convert to basic PyArrow table first
         table = pa.Table.from_pandas(df_copy, preserve_index=False)
 
-        # Cast timestamp columns to the specified precision
+        # Cast timestamp columns to the specified precision and float16 to float32
         new_cols = []
         for i, field in enumerate(table.schema):
             col = table.column(i)
             if pa.types.is_timestamp(field.type):
                 # Cast to specified precision
                 new_cols.append(col.cast(pa.timestamp(timestamp_precision)))
+            elif pa.types.is_float16(field.type):  # delta lake do not support float16
+                # Convert float16 to float32
+                warnings.warn(
+                    f"Casting float16 column '{field.name}' to float32 for Delta Lake compatibility.",
+                    UserWarning,
+                    stacklevel=1,
+                )
+                new_cols.append(col.cast(pa.float32()))
             else:
                 new_cols.append(col)
 
