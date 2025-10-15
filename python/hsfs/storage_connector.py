@@ -267,6 +267,10 @@ class StorageConnector(ABC):
     def get_metadata(self, data_source: ds.DataSource):
         return self._data_source_api.get_metadata(self._featurestore_id, self._name, data_source)
 
+    def _update_using_data_source(self, data_source: ds.DataSource):
+        """Updates storage connector to use information saved in data source.
+        """
+
 
 class HopsFSConnector(StorageConnector):
     type = StorageConnector.HOPSFS
@@ -688,6 +692,11 @@ class RedshiftConnector(StorageConnector):
         """
         self._storage_connector_api.refetch(self)
 
+    def _update_using_data_source(self, data_source: ds.DataSource):
+        """Updates storage connector to use information saved in data source.
+        """
+        self._database_name = data_source.database
+
 
 class AdlsConnector(StorageConnector):
     type = StorageConnector.ADLS
@@ -1034,6 +1043,13 @@ class SnowflakeConnector(StorageConnector):
         return engine.get_instance().read(
             self, self.SNOWFLAKE_FORMAT, options, None, dataframe_type
         )
+
+    def _update_using_data_source(self, data_source: ds.DataSource):
+        """Updates storage connector to use information saved in data source.
+        """
+        self._database = data_source.database
+        self._schema = data_source.group
+        self._table = data_source.table
 
 
 class JdbcConnector(StorageConnector):
@@ -1839,6 +1855,13 @@ class BigQueryConnector(StorageConnector):
             self, self.BIGQUERY_FORMAT, options, path, dataframe_type
         )
 
+    def _update_using_data_source(self, data_source: ds.DataSource):
+        """Updates storage connector to use information saved in data source.
+        """
+        self._query_project = data_source.database
+        self._dataset = data_source.group
+
+
 class RdsConnector(StorageConnector):
     type = StorageConnector.RDS
     JDBC_FORMAT = "jdbc"
@@ -1958,3 +1981,8 @@ class RdsConnector(StorageConnector):
         return engine.get_instance().read(
             self, self.JDBC_FORMAT, options, None, dataframe_type
         )
+
+    def _update_using_data_source(self, data_source: ds.DataSource):
+        """Updates storage connector to use information saved in data source.
+        """
+        self._database = data_source.database
