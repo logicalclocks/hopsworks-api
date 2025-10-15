@@ -364,9 +364,7 @@ class DeltaEngine:
         table = pa.Table.from_pandas(df_copy, preserve_index=False)
 
         # Cast timestamp columns to the specified precision and float16 to float32
-        _logger.debug(
-            f"Casting timestamp and float16 columns if needed"
-        )
+        _logger.debug("Casting timestamp and float16 columns if needed")
         new_cols = []
         for i, field in enumerate(table.schema):
             col = table.column(i)
