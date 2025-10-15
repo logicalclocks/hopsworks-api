@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from urllib.parse import urlparse
 
 from hopsworks.core import project_api
@@ -313,6 +314,11 @@ class DeltaEngine:
                 new_cols.append(col.cast(pa.timestamp(timestamp_precision)))
             elif pa.types.is_float16(field.type):  # delta lake do not support float16
                 # Convert float16 to float32
+                warnings.warn(
+                    f"Casting float16 column '{field.name}' to float32 for Delta Lake compatibility.",
+                    UserWarning,
+                    stacklevel=1,
+                )
                 new_cols.append(col.cast(pa.float32()))
             else:
                 new_cols.append(col)
