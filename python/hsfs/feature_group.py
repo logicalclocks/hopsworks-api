@@ -2694,7 +2694,7 @@ class FeatureGroup(FeatureGroupBase):
             self._init_time_travel_and_stream(
                 time_travel_format,
                 online_enabled,
-                storage_connector,
+                FeatureGroup._is_hopsfs_storage(storage_connector),
             )
 
             self.primary_key = primary_key
@@ -2759,19 +2759,24 @@ class FeatureGroup(FeatureGroupBase):
         self,
         time_travel_format: Optional[str],
         online_enabled: bool,
-        storage_connector: Optional[sc.StorageConnector],
+        is_hopsfs: bool,
     ) -> None:
         """Initialize `self._time_travel_format` and `self._stream` for new objects.
 
         Extracted into testable helpers to simplify unit testing.
         """
-        is_hopsfs = FeatureGroup._is_hopsfs_storage(storage_connector)
-        self._time_travel_format, self._stream = self._resolve_time_travel_and_stream(
-            stream=self._stream,
+        self._time_travel_format = FeatureGroup.resolve_time_travel_format(
             time_travel_format=time_travel_format,
             online_enabled=online_enabled,
             is_hopsfs=is_hopsfs,
         )
+        if engine.get_type() == "python":
+            self._stream = FeatureGroup.resolve_stream_python(
+                time_travel_format=self._time_travel_format,
+                is_hopsfs=is_hopsfs,
+                online_enabled=online_enabled,
+            )
+        return self._time_travel_format, self._stream
 
     @staticmethod
     def _is_hopsfs_storage(
@@ -2782,29 +2787,6 @@ class FeatureGroup(FeatureGroupBase):
             storage_connector is not None
             and storage_connector.type == sc.StorageConnector.HOPSFS
         )
-
-    def _resolve_time_travel_and_stream(
-        self,
-        stream: bool,
-        time_travel_format: Optional[str],
-        online_enabled: bool,
-        is_hopsfs: bool,
-    ):
-        """Resolve (time_travel_format, stream) by delegating to the active engine."""
-        resolved_time_travel_format = FeatureGroup.resolve_time_travel_format(
-            time_travel_format=time_travel_format,
-            online_enabled=online_enabled,
-            is_hopsfs=is_hopsfs,
-        )
-        if engine.get_type() == "python":
-            resolved_stream = FeatureGroup.resolve_stream_python(
-                time_travel_format=time_travel_format,
-                is_hopsfs=is_hopsfs,
-                online_enabled=online_enabled,
-            )
-            return resolved_time_travel_format, resolved_stream
-        else:
-            return resolved_time_travel_format, stream
 
     @staticmethod
     def resolve_stream_python(
