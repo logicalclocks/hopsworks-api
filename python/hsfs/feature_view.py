@@ -666,7 +666,7 @@ class FeatureView:
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-            logging_data: `bool`, defaults to `False`. Setting this to `True` return feature vector with logging metadata. The feature vector will contain only contain the required features.
+            logging_data: `bool`, defaults to `False`. Setting this to `True` return feature vector with logging metadata. The feature vector will contain only the required features.
                 The logging metadata is available as part of an additional attribute `hopsworks_logging_metadata` of the returned object. The logging metadata contains the untransformed features, transformed features, inference helpers, serving keys, request parameters and event time.
                 The feature vector object returned can be passed to `feature_view.log()` to log the feature vector along with all the logging metadata.
 
