@@ -243,8 +243,8 @@ class FeatureGroupBase:
             featurestore_id
         )
         if self._id is not None:
-            if self.storage_connector:
-                self.storage_connector._update_using_data_source(self.data_source)
+            if self.storage_connector and self.data_source:
+                self.data_source._update_storage_connector(self.storage_connector)
             if expectation_suite:
                 self._expectation_suite._init_expectation_engine(
                     feature_store_id=featurestore_id, feature_group_id=self._id
