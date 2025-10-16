@@ -99,6 +99,7 @@ public class ExternalFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
     this.onlineConfig = onlineConfig;
     this.dataSource.setPath(path);
     this.dataSource.setQuery(query);
+    this.dataSource.updateStorageConnector(storageConnector);
   }
 
   public ExternalFeatureGroup() {
