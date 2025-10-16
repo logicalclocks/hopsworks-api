@@ -9653,7 +9653,7 @@ class TestSpark:
         )
 
     def test_extract_logging_metadata_all_columns_and_drop_none(
-        self, mocker, spark_engine
+        self, mocker, spark_engine, logging_test_dataframe
     ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
@@ -9704,49 +9704,17 @@ class TestSpark:
             ServingKey(feature_name="primary_key", join_index=0, feature_group=fg)
         ]
 
-        untransformed_df = pd.DataFrame(
-            {
-                "primary_key": [1, 2, 3],
-                "event_time": pd.to_datetime(
-                    [
-                        "2025-01-01 12:00:00",
-                        "2025-01-02 13:30:00",
-                        "2025-01-03 15:45:00",
-                    ]
-                ),
-                "feature_1": [0.25, 0.75, 1.1],
-                "feature_2": [5.0, 10.2, 7.7],
-                "inference_helper_1": [0.99, 0.85, 0.76],
-            }
+        untransformed_spark_df = logging_test_dataframe.select(
+            "primary_key", "event_time", "feature_1", "feature_2", "inference_helper_1"
         )
-        untransformed_spark_df = spark_engine._spark_session.createDataFrame(
-            untransformed_df
+        transformed_spark_df = logging_test_dataframe.select(
+            "primary_key",
+            "event_time",
+            "min_max_scaler_feature_3",
+            "inference_helper_1",
         )
 
-        # Mocked transformed dataframe usually created with a transformation function (transformation functions are not added in the feature view for simplicity)
-        transformed_df = pd.DataFrame(
-            {
-                "primary_key": [1, 2, 3],
-                "event_time": pd.to_datetime(
-                    [
-                        "2025-01-01 12:00:00",
-                        "2025-01-02 13:30:00",
-                        "2025-01-03 15:45:00",
-                    ]
-                ),
-                "min_max_scaler_feature_1": [0.25, 0.75, 1.1],
-                "min_max_scaler_feature_2": [5.0, 10.2, 7.7],
-                "inference_helper_1": [0.99, 0.85, 0.76],
-            }
-        )
-        transformed_spark_df = spark_engine._spark_session.createDataFrame(
-            transformed_df
-        )
-
-        request_parameters = pd.DataFrame({"rp_1": [1, 2, 3], "rp_2": [4, 5, 6]})
-        request_parameters_spark_df = spark_engine._spark_session.createDataFrame(
-            request_parameters
-        )
+        request_parameters_spark_df = logging_test_dataframe.select("rp_1", "rp_2")
 
         # Act
         untransformed_result = spark_engine.extract_logging_metadata(
@@ -9771,8 +9739,6 @@ class TestSpark:
             request_parameters=request_parameters_spark_df,
         )
 
-        # Assert
-
         # Check the column in the returned dataframe are as expected.
         assert untransformed_result.columns == [
             "primary_key",
@@ -9784,8 +9750,7 @@ class TestSpark:
         assert transformed_result.columns == [
             "primary_key",
             "event_time",
-            "min_max_scaler_feature_1",
-            "min_max_scaler_feature_2",
+            "min_max_scaler_feature_3",
             "inference_helper_1",
         ]
 
@@ -9838,16 +9803,8 @@ class TestSpark:
                 == request_parameters_spark_df.collect()
             )
 
-        assert transformed_result.columns == [
-            "primary_key",
-            "event_time",
-            "min_max_scaler_feature_1",
-            "min_max_scaler_feature_2",
-            "inference_helper_1",
-        ]
-
     def test_extract_logging_metadata_all_columns_and_drop_all(
-        self, mocker, spark_engine
+        self, mocker, spark_engine, logging_test_dataframe
     ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
@@ -9898,49 +9855,16 @@ class TestSpark:
             ServingKey(feature_name="primary_key", join_index=0, feature_group=fg)
         ]
 
-        untransformed_df = pd.DataFrame(
-            {
-                "primary_key": [1, 2, 3],
-                "event_time": pd.to_datetime(
-                    [
-                        "2025-01-01 12:00:00",
-                        "2025-01-02 13:30:00",
-                        "2025-01-03 15:45:00",
-                    ]
-                ),
-                "feature_1": [0.25, 0.75, 1.1],
-                "feature_2": [5.0, 10.2, 7.7],
-                "inference_helper_1": [0.99, 0.85, 0.76],
-            }
+        untransformed_spark_df = logging_test_dataframe.select(
+            "primary_key", "event_time", "feature_1", "feature_2", "inference_helper_1"
         )
-        untransformed_spark_df = spark_engine._spark_session.createDataFrame(
-            untransformed_df
+        transformed_spark_df = logging_test_dataframe.select(
+            "primary_key",
+            "event_time",
+            "min_max_scaler_feature_3",
+            "inference_helper_1",
         )
-
-        # Mocked transformed dataframe usually created with a transformation function (transformation functions are not added in the feature view for simplicity)
-        transformed_df = pd.DataFrame(
-            {
-                "primary_key": [1, 2, 3],
-                "event_time": pd.to_datetime(
-                    [
-                        "2025-01-01 12:00:00",
-                        "2025-01-02 13:30:00",
-                        "2025-01-03 15:45:00",
-                    ]
-                ),
-                "min_max_scaler_feature_1": [0.25, 0.75, 1.1],
-                "min_max_scaler_feature_2": [5.0, 10.2, 7.7],
-                "inference_helper_1": [0.99, 0.85, 0.76],
-            }
-        )
-        transformed_spark_df = spark_engine._spark_session.createDataFrame(
-            transformed_df
-        )
-
-        request_parameters = pd.DataFrame({"rp_1": [1, 2, 3], "rp_2": [4, 5, 6]})
-        request_parameters_spark_df = spark_engine._spark_session.createDataFrame(
-            request_parameters
-        )
+        request_parameters_spark_df = logging_test_dataframe.select("rp_1", "rp_2")
 
         # Act
         untransformed_result = spark_engine.extract_logging_metadata(
@@ -9965,13 +9889,10 @@ class TestSpark:
             request_parameters=request_parameters_spark_df,
         )
 
-        # Assert
-
         # Check if the column in the returned dataframe are as expected.
         assert untransformed_result.columns == ["feature_1", "feature_2"]
         assert transformed_result.columns == [
-            "min_max_scaler_feature_1",
-            "min_max_scaler_feature_2",
+            "min_max_scaler_feature_3",
         ]
 
         # Check if the metadata is correctly attached to the returned dataframe.
@@ -9986,14 +9907,11 @@ class TestSpark:
                 == untransformed_spark_df.select("feature_1", "feature_2").collect()
             )
             assert result.hopsworks_logging_metadata.transformed_features.columns == [
-                "min_max_scaler_feature_1",
-                "min_max_scaler_feature_2",
+                "min_max_scaler_feature_3",
             ]
             assert (
                 result.hopsworks_logging_metadata.transformed_features.collect()
-                == transformed_spark_df.select(
-                    "min_max_scaler_feature_1", "min_max_scaler_feature_2"
-                ).collect()
+                == transformed_spark_df.select("min_max_scaler_feature_3").collect()
             )
             assert result.hopsworks_logging_metadata.event_time.columns == [
                 "event_time"
@@ -10026,7 +9944,7 @@ class TestSpark:
             )
 
     def test_extract_logging_metadata_all_columns_and_drop_none_fully_qualified_names(
-        self, mocker, spark_engine
+        self, mocker, spark_engine, logging_test_dataframe
     ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
@@ -10079,49 +9997,28 @@ class TestSpark:
 
         # Dataframes read has the fully qualified names for the primary key and event time.
         # The fully qualified name is constructed as <feature_store_name>_<feature_group_name>_<feature_group_version>_<feature_name>
-        untransformed_df = pd.DataFrame(
-            {
-                "test_fs_test1_1_primary_key": [1, 2, 3],
-                "test_fs_test1_1_event_time": pd.to_datetime(
-                    [
-                        "2025-01-01 12:00:00",
-                        "2025-01-02 13:30:00",
-                        "2025-01-03 15:45:00",
-                    ]
-                ),
-                "feature_1": [0.25, 0.75, 1.1],
-                "feature_2": [5.0, 10.2, 7.7],
-                "inference_helper_1": [0.99, 0.85, 0.76],
-            }
+        untransformed_spark_df = (
+            logging_test_dataframe.select(
+                "primary_key",
+                "event_time",
+                "feature_1",
+                "feature_2",
+                "inference_helper_1",
+            )
+            .withColumnRenamed("primary_key", "test_fs_test1_1_primary_key")
+            .withColumnRenamed("event_time", "test_fs_test1_1_event_time")
         )
-        untransformed_spark_df = spark_engine._spark_session.createDataFrame(
-            untransformed_df
+        transformed_spark_df = (
+            logging_test_dataframe.select(
+                "primary_key",
+                "event_time",
+                "min_max_scaler_feature_3",
+                "inference_helper_1",
+            )
+            .withColumnRenamed("primary_key", "test_fs_test1_1_primary_key")
+            .withColumnRenamed("event_time", "test_fs_test1_1_event_time")
         )
-
-        # Mocked transformed dataframe usually created with a transformation function (transformation functions are not added in the feature view for simplicity)
-        transformed_df = pd.DataFrame(
-            {
-                "test_fs_test1_1_primary_key": [1, 2, 3],
-                "test_fs_test1_1_event_time": pd.to_datetime(
-                    [
-                        "2025-01-01 12:00:00",
-                        "2025-01-02 13:30:00",
-                        "2025-01-03 15:45:00",
-                    ]
-                ),
-                "min_max_scaler_feature_1": [0.25, 0.75, 1.1],
-                "min_max_scaler_feature_2": [5.0, 10.2, 7.7],
-                "inference_helper_1": [0.99, 0.85, 0.76],
-            }
-        )
-        transformed_spark_df = spark_engine._spark_session.createDataFrame(
-            transformed_df
-        )
-
-        request_parameters = pd.DataFrame({"rp_1": [1, 2, 3], "rp_2": [4, 5, 6]})
-        request_parameters_spark_df = spark_engine._spark_session.createDataFrame(
-            request_parameters
-        )
+        request_parameters_spark_df = logging_test_dataframe.select("rp_1", "rp_2")
 
         # Act
         untransformed_result = spark_engine.extract_logging_metadata(
@@ -10159,8 +10056,7 @@ class TestSpark:
         assert transformed_result.columns == [
             "test_fs_test1_1_primary_key",
             "test_fs_test1_1_event_time",
-            "min_max_scaler_feature_1",
-            "min_max_scaler_feature_2",
+            "min_max_scaler_feature_3",
             "inference_helper_1",
         ]
 
@@ -10218,7 +10114,7 @@ class TestSpark:
             )
 
     def test_extract_logging_metadata_all_columns_and_drop_all_fully_qualified_names(
-        self, mocker, spark_engine
+        self, mocker, spark_engine, logging_test_dataframe
     ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
@@ -10271,49 +10167,28 @@ class TestSpark:
 
         # Dataframes read has the fully qualified names for the primary key and event time.
         # The fully qualified name is constructed as <feature_store_name>_<feature_group_name>_<feature_group_version>_<feature_name>
-        untransformed_df = pd.DataFrame(
-            {
-                "test_fs_test1_1_primary_key": [1, 2, 3],
-                "test_fs_test1_1_event_time": pd.to_datetime(
-                    [
-                        "2025-01-01 12:00:00",
-                        "2025-01-02 13:30:00",
-                        "2025-01-03 15:45:00",
-                    ]
-                ),
-                "feature_1": [0.25, 0.75, 1.1],
-                "feature_2": [5.0, 10.2, 7.7],
-                "inference_helper_1": [0.99, 0.85, 0.76],
-            }
+        untransformed_spark_df = (
+            logging_test_dataframe.select(
+                "primary_key",
+                "event_time",
+                "feature_1",
+                "feature_2",
+                "inference_helper_1",
+            )
+            .withColumnRenamed("primary_key", "test_fs_test1_1_primary_key")
+            .withColumnRenamed("event_time", "test_fs_test1_1_event_time")
         )
-        untransformed_spark_df = spark_engine._spark_session.createDataFrame(
-            untransformed_df
+        transformed_spark_df = (
+            logging_test_dataframe.select(
+                "primary_key",
+                "event_time",
+                "min_max_scaler_feature_3",
+                "inference_helper_1",
+            )
+            .withColumnRenamed("primary_key", "test_fs_test1_1_primary_key")
+            .withColumnRenamed("event_time", "test_fs_test1_1_event_time")
         )
-
-        # Mocked transformed dataframe usually created with a transformation function (transformation functions are not added in the feature view for simplicity)
-        transformed_df = pd.DataFrame(
-            {
-                "test_fs_test1_1_primary_key": [1, 2, 3],
-                "test_fs_test1_1_event_time": pd.to_datetime(
-                    [
-                        "2025-01-01 12:00:00",
-                        "2025-01-02 13:30:00",
-                        "2025-01-03 15:45:00",
-                    ]
-                ),
-                "min_max_scaler_feature_1": [0.25, 0.75, 1.1],
-                "min_max_scaler_feature_2": [5.0, 10.2, 7.7],
-                "inference_helper_1": [0.99, 0.85, 0.76],
-            }
-        )
-        transformed_spark_df = spark_engine._spark_session.createDataFrame(
-            transformed_df
-        )
-
-        request_parameters = pd.DataFrame({"rp_1": [1, 2, 3], "rp_2": [4, 5, 6]})
-        request_parameters_spark_df = spark_engine._spark_session.createDataFrame(
-            request_parameters
-        )
+        request_parameters_spark_df = logging_test_dataframe.select("rp_1", "rp_2")
 
         # Act
         untransformed_result = spark_engine.extract_logging_metadata(
@@ -10341,8 +10216,7 @@ class TestSpark:
         # Assert
         assert untransformed_result.columns == ["feature_1", "feature_2"]
         assert transformed_result.columns == [
-            "min_max_scaler_feature_1",
-            "min_max_scaler_feature_2",
+            "min_max_scaler_feature_3",
         ]
 
         expected_untransformed_df = untransformed_spark_df.drop(
