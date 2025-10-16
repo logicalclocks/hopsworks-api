@@ -459,10 +459,10 @@ def validate_job_conf(config, project_name):
 
     # If PYSPARK application set the mainClass, if SPARK validate there is a mainClass set
     if config["type"] == "sparkJobConfiguration":
-        if config["appPath"].endswith(".py"):
+        if config["appPath"].endswith(".py") or config["appPath"].endswith(".ipynb"):
             config["mainClass"] = "org.apache.spark.deploy.PythonRunner"
         elif "mainClass" not in config:
-            raise JobException("'mainClass' not set in job configuration")
+            raise JobException("'mainClass' needs to be set in the job configuration")
 
     return config
 
