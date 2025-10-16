@@ -2694,7 +2694,7 @@ class FeatureGroup(FeatureGroupBase):
             self._init_time_travel_and_stream(
                 time_travel_format,
                 online_enabled,
-                FeatureGroup._is_hopsfs_storage(storage_connector),
+                self._is_hopsfs_storage(),
             )
 
             self.primary_key = primary_key
@@ -2776,16 +2776,12 @@ class FeatureGroup(FeatureGroupBase):
                 is_hopsfs=is_hopsfs,
                 online_enabled=online_enabled,
             )
-        return self._time_travel_format, self._stream
 
-    @staticmethod
-    def _is_hopsfs_storage(
-        storage_connector: Optional[sc.StorageConnector],
-    ) -> bool:
+    def _is_hopsfs_storage(self) -> bool:
         """Return True if storage is HopsFS."""
-        return storage_connector is None or (
-            storage_connector is not None
-            and storage_connector.type == sc.StorageConnector.HOPSFS
+        return self._storage_connector is None or (
+            self._storage_connector is not None
+            and self._storage_connector.type == sc.StorageConnector.HOPSFS
         )
 
     @staticmethod

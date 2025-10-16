@@ -39,6 +39,7 @@ from hsfs.transformation_function import TransformationType
 with mock.patch("hopsworks_common.client.get_instance"):
     engine.init("python")
 
+
 def get_test_feature_group():
     return feature_group.FeatureGroup(
         name="test",
@@ -65,7 +66,9 @@ def get_test_feature_group():
         expectation_suite=None,
     )
 
+
 test_feature_group = get_test_feature_group()
+
 
 class TestFeatureGroup:
     def test_from_response_json(self, backend_fixtures):
@@ -867,7 +870,9 @@ class TestFeatureGroup:
         ],
     )
     def test_is_hopsfs_storage(self, sc, expected):
-        assert feature_group.FeatureGroup._is_hopsfs_storage(sc) is expected
+        fg = get_test_feature_group()
+        fg._storage_connector = sc
+        assert fg._is_hopsfs_storage() is expected
 
     @pytest.mark.parametrize(
         "time_travel_format,online_enabled,is_hopsfs,expected_fmt,expected_stream",
@@ -905,18 +910,22 @@ class TestFeatureGroup:
     ):
         # Arrange: ensure code path selects Python Engine class
         monkeypatch.setattr("hsfs.engine.get_type", lambda: "python")
-        monkeypatch.setattr(feature_group.FeatureGroup, "_is_hopsfs_storage", staticmethod(lambda c: is_hopsfs))
+        monkeypatch.setattr(
+            "hsfs.feature_group.FeatureGroup._is_hopsfs_storage",
+            lambda self: is_hopsfs,
+        )
 
         # Act
-        fmt, stream = get_test_feature_group()._init_time_travel_and_stream(
+        fg = get_test_feature_group()
+        fg._init_time_travel_and_stream(
             time_travel_format=time_travel_format,
             online_enabled=online_enabled,
             is_hopsfs=is_hopsfs,
         )
 
         # Assert: passthrough of input stream, resolved format from engine
-        assert fmt == expected_fmt
-        assert stream is expected_stream
+        assert fg._time_travel_format == expected_fmt
+        assert fg._stream is expected_stream
 
     @pytest.mark.parametrize(
         "time_travel_format,online_enabled,is_hopsfs,expected_fmt,expected_stream",
@@ -945,6 +954,7 @@ class TestFeatureGroup:
     )
     def test_resolve_time_travel_and_stream_spark_permutations(
         self,
+        mocker,
         monkeypatch,
         time_travel_format,
         online_enabled,
@@ -954,18 +964,22 @@ class TestFeatureGroup:
     ):
         # Arrange: ensure code path selects Spark Engine class
         monkeypatch.setattr("hsfs.engine.get_type", lambda: "spark")
-        monkeypatch.setattr(feature_group.FeatureGroup, "_is_hopsfs_storage", staticmethod(lambda c: is_hopsfs))
+        monkeypatch.setattr(
+            "hsfs.feature_group.FeatureGroup._is_hopsfs_storage",
+            lambda self: is_hopsfs,
+        )
 
         # Act
-        fmt, stream = get_test_feature_group()._init_time_travel_and_stream(
+        fg = get_test_feature_group()
+        fg._init_time_travel_and_stream(
             time_travel_format=time_travel_format,
             online_enabled=online_enabled,
             is_hopsfs=is_hopsfs,
         )
 
         # Assert: passthrough of input stream, resolved format from engine
-        assert fmt == expected_fmt
-        assert stream is expected_stream
+        assert fg._time_travel_format == expected_fmt
+        assert fg._stream is expected_stream
 
     @pytest.mark.parametrize(
         "time_travel_format,is_hopsfs,online_enabled,expected",
