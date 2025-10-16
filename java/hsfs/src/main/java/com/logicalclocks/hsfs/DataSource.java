@@ -57,31 +57,31 @@ public class DataSource extends RestDto<DataSource> {
   @Setter
   private String path = "";
 
-  public void updateStorageConnector(StorageConnector storage_connector) {
-    if (storage_connector == null) {
+  public void updateStorageConnector(StorageConnector storageConnector) {
+    if (storageConnector == null) {
       return;
     }
-    switch (storage_connector.storageConnectorType) {
+    switch (storageConnector.getStorageConnectorType()) {
       case REDSHIFT:
-        RedshiftConnector redshiftConnector = (RedshiftConnector) storage_connector;
+        RedshiftConnector redshiftConnector = (RedshiftConnector) storageConnector;
         redshiftConnector.setDatabaseName(database);
         redshiftConnector.setDatabaseGroup(group);
         redshiftConnector.setTableName(table);
         break;
       case SNOWFLAKE:
-        SnowflakeConnector snowflakeConnector = (SnowflakeConnector) storage_connector;
+        SnowflakeConnector snowflakeConnector = (SnowflakeConnector) storageConnector;
         snowflakeConnector.setDatabase(database);
         snowflakeConnector.setSchema(group);
         snowflakeConnector.setTable(table);
         break;
       case BIGQUERY:
-        BigqueryConnector bigqueryConnector = (BigqueryConnector) storage_connector;
+        BigqueryConnector bigqueryConnector = (BigqueryConnector) storageConnector;
         bigqueryConnector.setQueryProject(query);
         bigqueryConnector.setDataset(group);
         bigqueryConnector.setQueryTable(table);
         break;
       case RDS:
-        RdsConnector rdsConnector = (RdsConnector) storage_connector;
+        RdsConnector rdsConnector = (RdsConnector) storageConnector;
         rdsConnector.setDatabase(database);
         break;
       default:
