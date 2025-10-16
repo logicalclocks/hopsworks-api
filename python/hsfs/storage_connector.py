@@ -267,9 +267,20 @@ class StorageConnector(ABC):
     def get_metadata(self, data_source: ds.DataSource):
         return self._data_source_api.get_metadata(self._featurestore_id, self._name, data_source)
 
+    @abstractmethod
     def _update_using_data_source(self, data_source: ds.DataSource):
-        """Updates storage connector to use information saved in data source.
         """
+        Update the storage connector configuration based on a given DataSource.
+
+        This internal method updates the connectors target database, dataset,
+        and table to match the information stored in the provided DataSource object.
+
+        # Arguments
+            data_source: ds.DataSource
+            A DataSource instance containing metadata about the database, group,
+            and table that the connector should target.
+        """
+        pass
 
 
 class HopsFSConnector(StorageConnector):
@@ -693,9 +704,21 @@ class RedshiftConnector(StorageConnector):
         self._storage_connector_api.refetch(self)
 
     def _update_using_data_source(self, data_source: ds.DataSource):
-        """Updates storage connector to use information saved in data source.
         """
-        self._database_name = data_source.database
+        Update the Redshift storage connector configuration based on a given DataSource.
+
+        This internal method updates the connectors target database, dataset,
+        and table to match the information stored in the provided DataSource object.
+
+        # Arguments
+            data_source: ds.DataSource
+            A DataSource instance containing metadata about the database, group,
+            and table that the connector should target.
+        """
+        if data_source:
+            self._database_name = data_source.database
+            self._database_group = data_source.group
+            self._table_name = data_source.table
 
 
 class AdlsConnector(StorageConnector):
@@ -1045,11 +1068,21 @@ class SnowflakeConnector(StorageConnector):
         )
 
     def _update_using_data_source(self, data_source: ds.DataSource):
-        """Updates storage connector to use information saved in data source.
         """
-        self._database = data_source.database
-        self._schema = data_source.group
-        self._table = data_source.table
+        Update the Snowflake storage connector configuration based on a given DataSource.
+
+        This internal method updates the connectors target database, dataset,
+        and table to match the information stored in the provided DataSource object.
+
+        # Arguments
+            data_source: ds.DataSource
+            A DataSource instance containing metadata about the database, group,
+            and table that the connector should target.
+        """
+        if data_source:
+            self._database = data_source.database
+            self._schema = data_source.group
+            self._table = data_source.table
 
 
 class JdbcConnector(StorageConnector):
@@ -1856,10 +1889,21 @@ class BigQueryConnector(StorageConnector):
         )
 
     def _update_using_data_source(self, data_source: ds.DataSource):
-        """Updates storage connector to use information saved in data source.
         """
-        self._query_project = data_source.database
-        self._dataset = data_source.group
+        Update the BigQuery storage connector configuration based on a given DataSource.
+
+        This internal method updates the connectors target database, dataset,
+        and table to match the information stored in the provided DataSource object.
+
+        # Arguments
+            data_source: ds.DataSource
+            A DataSource instance containing metadata about the database, group,
+            and table that the connector should target.
+        """
+        if data_source:
+            self._query_project = data_source.database
+            self._dataset = data_source.group
+            self._query_table = data_source.table
 
 
 class RdsConnector(StorageConnector):
@@ -1983,6 +2027,16 @@ class RdsConnector(StorageConnector):
         )
 
     def _update_using_data_source(self, data_source: ds.DataSource):
-        """Updates storage connector to use information saved in data source.
         """
-        self._database = data_source.database
+        Update the RDS storage connector configuration based on a given DataSource.
+
+        This internal method updates the connectors target database, dataset,
+        and table to match the information stored in the provided DataSource object.
+
+        # Arguments
+            data_source: ds.DataSource
+            A DataSource instance containing metadata about the database, group,
+            and table that the connector should target.
+        """
+        if data_source:
+            self._database = data_source.database
