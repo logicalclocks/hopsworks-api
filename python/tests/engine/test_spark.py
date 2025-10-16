@@ -81,7 +81,10 @@ hopsworks_common.connection._hsfs_engine_type = "spark"
 class TestSpark:
     @pytest.fixture(scope="class")
     def spark_engine(self):
-        return spark.Engine()
+        spark_engine = spark.Engine()
+        # Set shuffle partitions to 1 for testing purposes
+        spark_engine._spark_session.conf.set("spark.sql.shuffle.partitions", "1")
+        yield spark_engine
 
     @pytest.fixture
     def logging_features(self):
@@ -214,7 +217,9 @@ class TestSpark:
             ),
         ]
 
-        return spark_engine._spark_session.createDataFrame(log_data_list, schema)
+        return spark_engine._spark_session.createDataFrame(
+            log_data_list, schema
+        ).cache()
 
     def test_sql(self, mocker):
         # Arrange
