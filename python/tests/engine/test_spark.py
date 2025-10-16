@@ -9657,6 +9657,10 @@ class TestSpark:
             .collect()
         )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_extract_logging_metadata_all_columns_and_drop_none(
         self, mocker, spark_engine, logging_test_dataframe
     ):
@@ -9808,6 +9812,10 @@ class TestSpark:
                 == request_parameters_spark_df.collect()
             )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_extract_logging_metadata_all_columns_and_drop_all(
         self, mocker, spark_engine, logging_test_dataframe
     ):
@@ -9948,6 +9956,10 @@ class TestSpark:
                 == request_parameters_spark_df.collect()
             )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_extract_logging_metadata_all_columns_and_drop_none_fully_qualified_names(
         self, mocker, spark_engine, logging_test_dataframe
     ):
@@ -10118,6 +10130,10 @@ class TestSpark:
                 == request_parameters_spark_df.collect()
             )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_extract_logging_metadata_all_columns_and_drop_all_fully_qualified_names(
         self, mocker, spark_engine, logging_test_dataframe
     ):
