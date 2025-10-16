@@ -104,3 +104,13 @@ class TestDataSource:
 
         # Assert
         assert sc_dict == {k: v for k, v in vars(sc).items() if k not in ignore_keys}
+
+    def test_update_storage_connector_none(self):
+        # Arrange
+        ds = data_source.DataSource()
+        ds.database = "test_database"
+        ds.group = "test_group"
+        ds.table = "test_table"
+
+        # Act / Assert
+        ds._update_storage_connector(None)

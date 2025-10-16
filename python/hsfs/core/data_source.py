@@ -128,6 +128,9 @@ class DataSource:
         # Arguments
             storage_connector: A StorageConnector instance to be updated depending on the connector type.
         """
+        if not storage_connector:
+            return
+
         if storage_connector.type == sc.StorageConnector.REDSHIFT:
             storage_connector._database_name = self.database
             storage_connector._database_group = self.group

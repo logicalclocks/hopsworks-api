@@ -20,6 +20,10 @@ package com.logicalclocks.hsfs;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.logicalclocks.hsfs.StorageConnector.BigqueryConnector;
+import com.logicalclocks.hsfs.StorageConnector.RdsConnector;
+import com.logicalclocks.hsfs.StorageConnector.RedshiftConnector;
+import com.logicalclocks.hsfs.StorageConnector.SnowflakeConnector;
 import com.logicalclocks.hsfs.metadata.RestDto;
 
 import lombok.AllArgsConstructor;
@@ -53,4 +57,35 @@ public class DataSource extends RestDto<DataSource> {
   @Setter
   private String path = "";
 
+  public void updateStorageConnector(StorageConnector storage_connector) {
+    if (storage_connector == null) {
+      return;
+    }
+    switch (storage_connector.storageConnectorType) {
+      case REDSHIFT:
+        RedshiftConnector redshiftConnector = (RedshiftConnector) storage_connector;
+        redshiftConnector.setDatabaseName(database);
+        redshiftConnector.setDatabaseGroup(group);
+        redshiftConnector.setTableName(table);
+        break;
+      case SNOWFLAKE:
+        SnowflakeConnector snowflakeConnector = (SnowflakeConnector) storage_connector;
+        snowflakeConnector.setDatabase(database);
+        snowflakeConnector.setSchema(group);
+        snowflakeConnector.setTable(table);
+        break;
+      case BIGQUERY:
+        BigqueryConnector bigqueryConnector = (BigqueryConnector) storage_connector;
+        bigqueryConnector.setQueryProject(query);
+        bigqueryConnector.setDataset(group);
+        bigqueryConnector.setQueryTable(table);
+        break;
+      case RDS:
+        RdsConnector rdsConnector = (RdsConnector) storage_connector;
+        rdsConnector.setDatabase(database);
+        break;
+      default:
+        break;
+    }
+  }
 }

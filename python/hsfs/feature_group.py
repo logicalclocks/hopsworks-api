@@ -244,9 +244,9 @@ class FeatureGroupBase:
         self._great_expectation_engine: great_expectation_engine.GreatExpectationEngine = great_expectation_engine.GreatExpectationEngine(
             featurestore_id
         )
+        if self.data_source is not None:
+            self.data_source._update_storage_connector(self.storage_connector)
         if self._id is not None:
-            if self.storage_connector and self.data_source:
-                self.data_source._update_storage_connector(self.storage_connector)
             if expectation_suite:
                 self._expectation_suite._init_expectation_engine(
                     feature_store_id=featurestore_id, feature_group_id=self._id
