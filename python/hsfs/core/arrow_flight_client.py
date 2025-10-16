@@ -187,7 +187,9 @@ class ArrowFlightClient:
 
         self._client = client.get_instance()
         self._variable_api: VariableApi = VariableApi()
-        self._service_discovery_domain = self._variable_api.get_service_discovery_domain()
+        self._service_discovery_domain = (
+            self._variable_api.get_service_discovery_domain()
+        )
 
         self._certificates_json: Optional[str] = None
 
@@ -258,7 +260,9 @@ class ArrowFlightClient:
                     "Client could not get Hopsworks Query Service hostname from service_discovery_domain. "
                     "The variable is either not set or empty in Hopsworks cluster configuration."
                 )
-            host_url = f"grpc+tls://flyingduck.service.{self._service_discovery_domain}:5005"
+            host_url = (
+                f"grpc+tls://flyingduck.service.{self._service_discovery_domain}:5005"
+            )
         _logger.debug(f"Connecting to Hopsworks Query Service on host {host_url}")
         return host_url
 
@@ -593,7 +597,7 @@ class ArrowFlightClient:
 
 
 def _serialize_featuregroup_connector(fg, query, on_demand_fg_aliases):
-    connector = {}
+    connector = {"feature_group_id": fg.id}
     if isinstance(fg, feature_group.ExternalFeatureGroup):
         connector["time_travel_type"] = None
         connector["type"] = fg.storage_connector.type
