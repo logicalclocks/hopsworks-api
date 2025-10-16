@@ -132,16 +132,26 @@ class DataSource:
             return
 
         if storage_connector.type == sc.StorageConnector.REDSHIFT:
-            storage_connector._database_name = self.database
-            storage_connector._database_group = self.group
-            storage_connector._table_name = self.table
+            if self.database:
+                storage_connector._database_name = self.database
+            if self.group:
+                storage_connector._database_group = self.group
+            if self.table:
+                storage_connector._table_name = self.table
         if storage_connector.type == sc.StorageConnector.SNOWFLAKE:
-            storage_connector._database = self.database
-            storage_connector._schema = self.group
-            storage_connector._table = self.table
+            if self.database:
+                storage_connector._database = self.database
+            if self.group:
+                storage_connector._schema = self.group
+            if self.table:
+                storage_connector._table = self.table
         if storage_connector.type == sc.StorageConnector.BIGQUERY:
-            storage_connector._query_project = self.database
-            storage_connector._dataset = self.group
-            storage_connector._query_table = self.table
+            if self.database:
+                storage_connector._query_project = self.database
+            if self.group:
+                storage_connector._dataset = self.group
+            if self.table:
+                storage_connector._query_table = self.table
         if storage_connector.type == sc.StorageConnector.RDS:
-            storage_connector._database = self.database
+            if self.database:
+                storage_connector._database = self.database
