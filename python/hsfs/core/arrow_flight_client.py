@@ -597,6 +597,7 @@ class ArrowFlightClient:
 
 
 def _serialize_featuregroup_connector(fg, query, on_demand_fg_aliases):
+    # Add feature_group_id to build cache key in flyingduck
     connector = {"feature_group_id": fg.id}
     if isinstance(fg, feature_group.ExternalFeatureGroup):
         connector["time_travel_type"] = None

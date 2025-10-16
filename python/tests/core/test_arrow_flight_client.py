@@ -257,7 +257,7 @@ class TestArrowFlightClient:
                 },
             },
             "connectors": {
-                "test.fg_test_1": {"time_travel_type": "hudi", "feature_group_id": 15}
+                "test.fg_test_1": {"feature_group_id": 15, "time_travel_type": "hudi"}
             },
         }
 
@@ -300,7 +300,7 @@ class TestArrowFlightClient:
                 "right_filter": None,
             },
             "connectors": {
-                "test.fg_test_1": {"time_travel_type": "hudi", "feature_group_id": 15}
+                "test.fg_test_1": {"feature_group_id": 15, "time_travel_type": "hudi"}
             },
         }
 
@@ -340,7 +340,7 @@ class TestArrowFlightClient:
                 "right_filter": None,
             },
             "connectors": {
-                "test.fg_test_1": {"time_travel_type": "hudi", "feature_group_id": 15}
+                "test.fg_test_1": {"feature_group_id": 15, "time_travel_type": "hudi"}
             },
         }
 
@@ -380,7 +380,7 @@ class TestArrowFlightClient:
                 "right_filter": None,
             },
             "connectors": {
-                "test.fg_test_1": {"time_travel_type": "hudi", "feature_group_id": 15}
+                "test.fg_test_1": {"feature_group_id": 15, "time_travel_type": "hudi"}
             },
         }
 
@@ -442,8 +442,8 @@ class TestArrowFlightClient:
             },
             "connectors": {
                 "test.tpch1snowflake_1": {
+                    "feature_group_id": 13,
                     "time_travel_type": None,
-                    "feature_group_id": 15,
                     "type": "SNOWFLAKE",
                     "options": {
                         "user": "test_user",
