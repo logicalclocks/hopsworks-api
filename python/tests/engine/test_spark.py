@@ -18,6 +18,7 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+import sys
 from unittest.mock import MagicMock, PropertyMock, call
 
 import hopsworks_common
@@ -8942,6 +8943,10 @@ class TestSpark:
             == f"Error logging data `{constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME}` do not have all required features. Please check the `{constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME}` to ensure that it has the following features : {column_names['request_parameters']}."
         )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_get_feature_logging_df_logging_data_override_dataframe(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -9159,6 +9164,10 @@ class TestSpark:
             .collect()
         )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_get_feature_logging_df_logging_data_override_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -9401,6 +9410,10 @@ class TestSpark:
             .collect()
         )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_get_feature_logging_df_logging_data_override_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -9639,11 +9652,12 @@ class TestSpark:
             .collect()
         )
 
-    def test_extract_logging_metadata_all_columns_and_drop_none(self, mocker):
+    def test_extract_logging_metadata_all_columns_and_drop_none(
+        self, mocker, spark_engine
+    ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
-        spark_engine = spark.Engine()
 
         fg = feature_group.FeatureGroup(
             name="test1",
@@ -9832,11 +9846,12 @@ class TestSpark:
             "inference_helper_1",
         ]
 
-    def test_extract_logging_metadata_all_columns_and_drop_all(self, mocker):
+    def test_extract_logging_metadata_all_columns_and_drop_all(
+        self, mocker, spark_engine
+    ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
-        spark_engine = spark.Engine()
 
         fg = feature_group.FeatureGroup(
             name="test1",
@@ -10011,12 +10026,11 @@ class TestSpark:
             )
 
     def test_extract_logging_metadata_all_columns_and_drop_none_fully_qualified_names(
-        self, mocker
+        self, mocker, spark_engine
     ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
-        spark_engine = spark.Engine()
 
         fg = feature_group.FeatureGroup(
             name="test1",
@@ -10204,12 +10218,11 @@ class TestSpark:
             )
 
     def test_extract_logging_metadata_all_columns_and_drop_all_fully_qualified_names(
-        self, mocker
+        self, mocker, spark_engine
     ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
-        spark_engine = spark.Engine()
 
         fg = feature_group.FeatureGroup(
             name="test1",
