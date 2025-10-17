@@ -38,7 +38,12 @@ import humps
 import pandas as pd
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core import alerts_api
-from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS, HAS_DELTALAKE_PYTHON, HAS_DELTALAKE_SPARK
+from hopsworks_common.core.constants import (
+    HAS_DELTALAKE_PYTHON,
+    HAS_DELTALAKE_SPARK,
+    HAS_NUMPY,
+    HAS_POLARS,
+)
 from hsfs import (
     engine,
     feature,

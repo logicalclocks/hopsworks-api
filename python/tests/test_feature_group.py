@@ -874,7 +874,9 @@ class TestFeatureGroup:
         fg._storage_connector = sc
         assert fg._is_hopsfs_storage() is expected
 
-    def test_init_time_travel_and_stream_uses_resolvers_python(self, mocker, monkeypatch):
+    def test_init_time_travel_and_stream_uses_resolvers_python(
+        self, mocker, monkeypatch
+    ):
         """
         Purpose: Verify that `_init_time_travel_and_stream` delegates to
         `_resolve_time_travel_format` and, for the Python engine, to
@@ -975,14 +977,26 @@ class TestFeatureGroup:
         "time_travel_format,is_hopsfs,has_deltalake,online_enabled,expected",
         [
             # time_travel_format=None cases (resolved by flags)
-            (None, False, False, True, "HUDI"),   # Non-HopsFS & Online -> HUDI
+            (None, False, False, True, "HUDI"),  # Non-HopsFS & Online -> HUDI
             (None, False, False, False, "HUDI"),  # Non-HopsFS & Offline -> HUDI
-            (None, False, True, True, "HUDI"),    # Non-HopsFS & Online -> HUDI
-            (None, False, True, False, "HUDI"),   # Non-HopsFS & Offline -> HUDI
-            (None, True, False, True, "HUDI"),    # HopsFS & Online -> HUDI
-            (None, True, True, True, "HUDI"),     # HopsFS & Online -> HUDI
-            (None, True, True, False, "DELTA"),   # HopsFS & Offline -> DELTA when available
-            (None, True, False, False, "HUDI"),   # HopsFS & Offline -> HUDI when not available
+            (None, False, True, True, "HUDI"),  # Non-HopsFS & Online -> HUDI
+            (None, False, True, False, "HUDI"),  # Non-HopsFS & Offline -> HUDI
+            (None, True, False, True, "HUDI"),  # HopsFS & Online -> HUDI
+            (None, True, True, True, "HUDI"),  # HopsFS & Online -> HUDI
+            (
+                None,
+                True,
+                True,
+                False,
+                "DELTA",
+            ),  # HopsFS & Offline -> DELTA when available
+            (
+                None,
+                True,
+                False,
+                False,
+                "HUDI",
+            ),  # HopsFS & Offline -> HUDI when not available
             # time_travel_format="HUDI" cases (passthrough)
             ("HUDI", False, False, True, "HUDI"),
             ("HUDI", False, True, False, "HUDI"),
@@ -996,9 +1010,17 @@ class TestFeatureGroup:
         ],
     )
     def test_resolve_time_travel_format(
-        self, monkeypatch, time_travel_format, online_enabled, is_hopsfs, has_deltalake, expected
+        self,
+        monkeypatch,
+        time_travel_format,
+        online_enabled,
+        is_hopsfs,
+        has_deltalake,
+        expected,
     ):
-        monkeypatch.setattr("hsfs.feature_group.FeatureGroup._has_deltalake", lambda: has_deltalake)
+        monkeypatch.setattr(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", lambda: has_deltalake
+        )
         result = feature_group.FeatureGroup._resolve_time_travel_format(
             time_travel_format=time_travel_format,
             online_enabled=online_enabled,
