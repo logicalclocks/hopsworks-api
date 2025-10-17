@@ -111,7 +111,7 @@ jobs:
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run Pytest suite
-        run: pytest python/tests
+        run: pytest -n auto python/tests
 
   unit_tests_no_opt:
     name: Unit Tests (No Optional Dependencies)
@@ -144,7 +144,7 @@ jobs:
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run Pytest suite
-        run: pytest python/tests
+        run: pytest -n auto python/tests
 
   unit_tests_pandas1:
     name: Unit Tests (Pandas 1.x)
@@ -180,7 +180,7 @@ jobs:
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run Pytest suite
-        run: pytest python/tests
+        run: pytest -n auto python/tests
 
   unit_tests_local_tz:
     name: Unit Tests (Local TZ)
@@ -216,7 +216,7 @@ jobs:
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run Pytest suite
-        run: pytest python/tests
+        run: pytest -n auto python/tests
 
   unit_tests_typechecked:
     name: Unit Tests (Typechecked)
@@ -242,7 +242,7 @@ jobs:
       - name: Run Pytest suite
         env:
           HOPSWORKS_RUN_WITH_TYPECHECK: "true"
-        run: pytest python/tests
+        run: pytest -n auto python/tests
         continue-on-error: true
 
   unit_tests_windows:
@@ -275,7 +275,7 @@ jobs:
           echo PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell >> %GITHUB_ENV%
 
       - name: Run Pytest suite
-        run: pytest python/tests
+        run: pytest -n auto python/tests
 
   unit_tests_windows_local_tz:
     name: Unit Tests (Windows) (Local TZ)
@@ -310,4 +310,4 @@ jobs:
           echo PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell >> %GITHUB_ENV%
 
       - name: Run Pytest suite
-        run: pytest python/tests
+        run: pytest -n auto python/tests
