@@ -6396,6 +6396,10 @@ class TestSpark:
             .collect()
         )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_get_feature_logging_df_logging_data_no_missing_no_additional_list(
         self, mocker, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -6613,6 +6617,10 @@ class TestSpark:
             .collect()
         )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_get_feature_logging_df_logging_data_missing_columns_and_additional_list(
         self, mocker, caplog, logging_features, spark_engine, logging_test_dataframe
     ):
@@ -6690,6 +6698,10 @@ class TestSpark:
             .collect()
         )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_get_feature_logging_df_untransformed_features_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -6900,6 +6912,10 @@ class TestSpark:
             .collect()
         )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_get_feature_logging_df_untransformed_features_missing_columns_and_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -6976,6 +6992,10 @@ class TestSpark:
             .collect()
         )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_get_feature_logging_df_transformed_features_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7183,6 +7203,10 @@ class TestSpark:
             .collect()
         )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_get_feature_logging_df_transformed_features_missing_columns_and_additional_list(
         self, mocker, logging_features, spark_engine, logging_test_dataframe
     ):
@@ -7256,6 +7280,10 @@ class TestSpark:
             .collect()
         )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_get_feature_logging_df_predictions_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7496,6 +7524,10 @@ class TestSpark:
             .collect()
         )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_get_feature_logging_df_predictions_missing_columns_and_additional_list(
         self, mocker, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7591,6 +7623,10 @@ class TestSpark:
             .collect()
         )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_get_feature_logging_df_serving_keys_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, spark_engine, logging_test_dataframe
     ):
@@ -7808,6 +7844,10 @@ class TestSpark:
             .collect()
         )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_get_feature_logging_df_serving_key_missing_columns_and_additional_list(
         self, mocker, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -7892,6 +7932,10 @@ class TestSpark:
             .collect()
         )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_get_feature_logging_df_inference_helper_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8103,6 +8147,10 @@ class TestSpark:
             .collect()
         )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_get_feature_logging_df_inference_helpers_missing_columns_and_additional_list(
         self, mocker, logging_features, spark_engine, logging_test_dataframe
     ):
@@ -8183,6 +8231,10 @@ class TestSpark:
             .collect()
         )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_get_feature_logging_df_extra_log_columns_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8401,6 +8453,10 @@ class TestSpark:
             .collect()
         )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_get_feature_logging_df_extra_log_missing_columns_and_additional_list(
         self, mocker, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8480,6 +8536,10 @@ class TestSpark:
             .collect()
         )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_get_feature_logging_df_event_time_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8626,6 +8686,10 @@ class TestSpark:
             .collect()
         )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_get_feature_logging_df_request_id_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8774,6 +8838,10 @@ class TestSpark:
             .collect()
         )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_get_feature_logging_df_request_parameters_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
@@ -8990,6 +9058,10 @@ class TestSpark:
             .collect()
         )
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="Skip on Windows since test is really slow due due to multiple collects used.",
+    )
     def test_get_feature_logging_df_request_parameters_missing_columns_and_additional_list(
         self, mocker, logging_features, spark_engine, logging_test_dataframe
     ):
