@@ -54,6 +54,162 @@ hopsworks_common.connection._hsfs_engine_type = "python"
 
 
 class TestPython:
+    # Helper Functions
+
+    @staticmethod
+    def get_logging_arguments(
+        logging_data=None,
+        transformed_features=None,
+        untransformed_features=None,
+        predictions=None,
+        serving_keys=None,
+        helper_columns=None,
+        request_parameters=None,
+        event_time=None,
+        request_id=None,
+        extra_logging_features=None,
+        column_names=None,
+        logging_feature_group_features=None,
+    ):
+        return {
+            "logging_data": logging_data,
+            "logging_feature_group_features": logging_feature_group_features,
+            "transformed_features": (
+                transformed_features,
+                column_names["transformed_features"],
+                constants.FEATURE_LOGGING.TRANSFORMED_FEATURES,
+            ),
+            "untransformed_features": (
+                untransformed_features,
+                column_names["untransformed_features"],
+                constants.FEATURE_LOGGING.UNTRANSFORMED_FEATURES,
+            ),
+            "predictions": (
+                predictions,
+                column_names["predictions"],
+                constants.FEATURE_LOGGING.PREDICTIONS,
+            ),
+            "serving_keys": (
+                serving_keys,
+                column_names["serving_keys"],
+                constants.FEATURE_LOGGING.SERVING_KEYS,
+            ),
+            "helper_columns": (
+                helper_columns,
+                column_names["helper_columns"],
+                constants.FEATURE_LOGGING.INFERENCE_HELPER_COLUMNS,
+            ),
+            "request_parameters": (
+                request_parameters,
+                column_names["request_parameters"],
+                constants.FEATURE_LOGGING.REQUEST_PARAMETERS,
+            ),
+            "event_time": (
+                event_time,
+                column_names["event_time"],
+                constants.FEATURE_LOGGING.EVENT_TIME,
+            ),
+            "request_id": (
+                request_id,
+                column_names["request_id"],
+                constants.FEATURE_LOGGING.REQUEST_ID,
+            ),
+            "extra_logging_features": (
+                extra_logging_features,
+                column_names["extra_logging_features"],
+                constants.FEATURE_LOGGING.EXTRA_LOGGING_FEATURES,
+            ),
+            "td_col_name": constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
+            "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
+            "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+            "training_dataset_version": 1,
+            "model_name": "test_model",
+        }
+
+    @staticmethod
+    def create_expected_logging_dataframe(
+        logging_data=None,
+        transformed_features=None,
+        untransformed_features=None,
+        predictions=None,
+        serving_keys=None,
+        helper_columns=None,
+        request_parameters=None,
+        event_time=None,
+        request_id=None,
+        extra_logging_features=None,
+        column_names=None,
+        logging_feature_group_features=None,
+        meta_data_logging_columns=None,
+    ):
+        expected_df = pd.DataFrame()
+        missing_features, additional_features = [], []
+        meta_data_column_names = [feature.name for feature in meta_data_logging_columns]
+
+        expected_columns = [feature.name for feature in logging_feature_group_features]
+        for df in [
+            logging_data,
+            transformed_features,
+            untransformed_features,
+            predictions,
+            serving_keys,
+            helper_columns,
+            request_parameters,
+            event_time,
+            request_id,
+            extra_logging_features,
+        ]:
+            if df is not None:
+                for col in df.columns:
+                    expected_df[col] = df[col]
+
+        for col in column_names["predictions"]:
+            if col in expected_df.columns:
+                expected_df[constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + col] = (
+                    expected_df.pop(col)
+                )
+
+        for feature_name in expected_columns:
+            if feature_name not in expected_df.columns:
+                expected_df[feature_name] = None
+                if (
+                    feature_name not in meta_data_column_names
+                    and feature_name
+                    != constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME
+                ):
+                    missing_features.append(feature_name)
+
+        if request_parameters is None:
+            request_parameters = pd.DataFrame()
+        for col in column_names["request_parameters"]:
+            if col not in request_parameters.columns and col in expected_df.columns:
+                request_parameters[col] = expected_df[col]
+
+            if col not in request_parameters.columns:
+                request_parameters[col] = None
+                if col not in missing_features:
+                    missing_features.append(col)
+        if request_parameters.empty or all(pd.isna(request_parameters).all()):
+            expected_df[constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME] = (
+                constants.FEATURE_LOGGING.EMPTY_REQUEST_PARAMETER_COLUMN_VALUE
+            )
+        else:
+            expected_df[constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME] = (
+                request_parameters.apply(lambda row: json.dumps(row.to_dict()), axis=1)
+            )
+
+        for col in expected_df.columns:
+            if col not in expected_columns:
+                additional_features.append(col)
+
+        return (
+            expected_df[expected_columns],
+            expected_columns,
+            missing_features,
+            additional_features,
+        )
+
+    # Pytest Fixtures
     @pytest.fixture
     def logging_features(self):
         meta_data_logging_columns = [
@@ -4824,159 +4980,6 @@ class TestPython:
                 result.hopsworks_logging_metadata.request_parameters.values.tolist()
                 == request_parameters.values.tolist()
             )
-
-    @staticmethod
-    def get_logging_arguments(
-        logging_data=None,
-        transformed_features=None,
-        untransformed_features=None,
-        predictions=None,
-        serving_keys=None,
-        helper_columns=None,
-        request_parameters=None,
-        event_time=None,
-        request_id=None,
-        extra_logging_features=None,
-        column_names=None,
-        logging_feature_group_features=None,
-    ):
-        return {
-            "logging_data": logging_data,
-            "logging_feature_group_features": logging_feature_group_features,
-            "transformed_features": (
-                transformed_features,
-                column_names["transformed_features"],
-                constants.FEATURE_LOGGING.TRANSFORMED_FEATURES,
-            ),
-            "untransformed_features": (
-                untransformed_features,
-                column_names["untransformed_features"],
-                constants.FEATURE_LOGGING.UNTRANSFORMED_FEATURES,
-            ),
-            "predictions": (
-                predictions,
-                column_names["predictions"],
-                constants.FEATURE_LOGGING.PREDICTIONS,
-            ),
-            "serving_keys": (
-                serving_keys,
-                column_names["serving_keys"],
-                constants.FEATURE_LOGGING.SERVING_KEYS,
-            ),
-            "helper_columns": (
-                helper_columns,
-                column_names["helper_columns"],
-                constants.FEATURE_LOGGING.INFERENCE_HELPER_COLUMNS,
-            ),
-            "request_parameters": (
-                request_parameters,
-                column_names["request_parameters"],
-                constants.FEATURE_LOGGING.REQUEST_PARAMETERS,
-            ),
-            "event_time": (
-                event_time,
-                column_names["event_time"],
-                constants.FEATURE_LOGGING.EVENT_TIME,
-            ),
-            "request_id": (
-                request_id,
-                column_names["request_id"],
-                constants.FEATURE_LOGGING.REQUEST_ID,
-            ),
-            "extra_logging_features": (
-                extra_logging_features,
-                column_names["extra_logging_features"],
-                constants.FEATURE_LOGGING.EXTRA_LOGGING_FEATURES,
-            ),
-            "td_col_name": constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
-            "time_col_name": constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
-            "model_col_name": constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
-            "training_dataset_version": 1,
-            "model_name": "test_model",
-        }
-
-    @staticmethod
-    def create_expected_logging_dataframe(
-        logging_data=None,
-        transformed_features=None,
-        untransformed_features=None,
-        predictions=None,
-        serving_keys=None,
-        helper_columns=None,
-        request_parameters=None,
-        event_time=None,
-        request_id=None,
-        extra_logging_features=None,
-        column_names=None,
-        logging_feature_group_features=None,
-        meta_data_logging_columns=None,
-    ):
-        expected_df = pd.DataFrame()
-        missing_features, additional_features = [], []
-        meta_data_column_names = [feature.name for feature in meta_data_logging_columns]
-
-        expected_columns = [feature.name for feature in logging_feature_group_features]
-        for df in [
-            logging_data,
-            transformed_features,
-            untransformed_features,
-            predictions,
-            serving_keys,
-            helper_columns,
-            request_parameters,
-            event_time,
-            request_id,
-            extra_logging_features,
-        ]:
-            if df is not None:
-                for col in df.columns:
-                    expected_df[col] = df[col]
-
-        for col in column_names["predictions"]:
-            if col in expected_df.columns:
-                expected_df[constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + col] = (
-                    expected_df.pop(col)
-                )
-
-        for feature_name in expected_columns:
-            if feature_name not in expected_df.columns:
-                expected_df[feature_name] = None
-                if (
-                    feature_name not in meta_data_column_names
-                    and feature_name
-                    != constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME
-                ):
-                    missing_features.append(feature_name)
-
-        if request_parameters is None:
-            request_parameters = pd.DataFrame()
-        for col in column_names["request_parameters"]:
-            if col not in request_parameters.columns and col in expected_df.columns:
-                request_parameters[col] = expected_df[col]
-
-            if col not in request_parameters.columns:
-                request_parameters[col] = None
-                if col not in missing_features:
-                    missing_features.append(col)
-        if request_parameters.empty or all(pd.isna(request_parameters).all()):
-            expected_df[constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME] = (
-                constants.FEATURE_LOGGING.EMPTY_REQUEST_PARAMETER_COLUMN_VALUE
-            )
-        else:
-            expected_df[constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME] = (
-                request_parameters.apply(lambda row: json.dumps(row.to_dict()), axis=1)
-            )
-
-        for col in expected_df.columns:
-            if col not in expected_columns:
-                additional_features.append(col)
-
-        return (
-            expected_df[expected_columns],
-            expected_columns,
-            missing_features,
-            additional_features,
-        )
 
     def test_get_feature_logging_df_logging_data_no_missing_no_additional_dataframe(
         self, mocker, logging_features, logging_test_dataframe

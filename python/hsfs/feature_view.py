@@ -3833,14 +3833,15 @@ class FeatureView:
         )
 
     def enable_logging(
-        self, extra_log_columns: Union[Feature, Dict[str, str]] = None
+        self,
+        extra_log_columns: Optional[Union[List[Feature], List[Dict[str, str]]]] = None,
     ) -> None:
         """Enable feature logging for the current feature view.
 
         This method activates logging of features.
 
         # Arguments
-            extra_log_columns: `Union[Feature, List[Dict[str, str]]]` Additional columns to be logged. Any duplicate columns will be ignored.
+            extra_log_columns: `Optional[Union[List[Feature], List[Dict[str, str]]]]`: Additional columns to be logged. Any duplicate columns will be ignored.
 
 
         !!! example "Enable feature logging"
