@@ -24,6 +24,7 @@ import humps
 from hopsworks.core import project_api
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.core.constants import HAS_POLARS
 from hsfs import feature_group_commit, util
 from hsfs.core import feature_group_api, variable_api
 
@@ -270,8 +271,6 @@ class DeltaEngine:
 
     def _write_delta_rs_dataset(self, dataset):
         try:
-            import polars as pl
-            import pyarrow as pa  # noqa: F401  # used indirectly via _prepare_df_for_delta
             from deltalake import DeltaTable as DeltaRsTable
             from deltalake import write_deltalake as deltars_write
             from deltalake.exceptions import TableNotFoundError
@@ -281,11 +280,15 @@ class DeltaEngine:
                 "Install 'hops-deltalake' to enable Delta RS features."
             ) from e
         location = self._get_delta_rs_location()
+        is_polars_df = False
+        if HAS_POLARS:
+            import polars as pl
+            if isinstance(dataset, pl.DataFrame):
+                is_polars_df = True
+                _logger.debug("Converting DataFrame to Arrow Table for Delta write")
+                dataset = dataset.to_arrow()
 
-        _logger.debug("Converting DataFrame to Arrow Table for Delta write")
-        if isinstance(dataset, pl.DataFrame):
-            dataset = dataset.to_arrow()
-        else:
+        if not is_polars_df:
             dataset = self._prepare_df_for_delta(dataset)
 
         try:

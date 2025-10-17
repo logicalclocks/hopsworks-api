@@ -38,30 +38,36 @@ from hsfs.transformation_function import TransformationType
 
 with mock.patch("hopsworks_common.client.get_instance"):
     engine.init("python")
-test_feature_group = feature_group.FeatureGroup(
-    name="test",
-    version=1,
-    description="description",
-    online_enabled=False,
-    time_travel_format="HUDI",
-    partition_key=[],
-    primary_key=["pk"],
-    foreign_key=["fk"],
-    hudi_precombine_key="pk",
-    featurestore_id=1,
-    featurestore_name="fs",
-    features=[
-        feature.Feature("pk", primary=True),
-        feature.Feature("fk", foreign=True),
-        feature.Feature("ts", primary=False),
-        feature.Feature("f1", primary=False),
-        feature.Feature("f2", primary=False),
-    ],
-    statistics_config={},
-    event_time="ts",
-    stream=False,
-    expectation_suite=None,
-)
+
+
+def get_test_feature_group():
+    return feature_group.FeatureGroup(
+        name="test",
+        version=1,
+        description="description",
+        online_enabled=False,
+        time_travel_format="HUDI",
+        partition_key=[],
+        primary_key=["pk"],
+        foreign_key=["fk"],
+        hudi_precombine_key="pk",
+        featurestore_id=1,
+        featurestore_name="fs",
+        features=[
+            feature.Feature("pk", primary=True),
+            feature.Feature("fk", foreign=True),
+            feature.Feature("ts", primary=False),
+            feature.Feature("f1", primary=False),
+            feature.Feature("f2", primary=False),
+        ],
+        statistics_config={},
+        event_time="ts",
+        stream=False,
+        expectation_suite=None,
+    )
+
+
+test_feature_group = get_test_feature_group()
 
 
 class TestFeatureGroup:
@@ -847,6 +853,206 @@ class TestFeatureGroup:
         )
         mock_compute_statistics.assert_called_once()
 
+    @pytest.mark.parametrize(
+        "sc,expected",
+        [
+            (None, True),  # default HopsFS
+            (
+                storage_connector.HopsFSConnector(
+                    id=1, name="default", featurestore_id=1
+                ),
+                True,
+            ),  # explicit HopsFS connector
+            (
+                storage_connector.S3Connector(id=1, name="s3", featurestore_id=1),
+                False,
+            ),  # non-HopsFS connector
+        ],
+    )
+    def test_is_hopsfs_storage(self, sc, expected):
+        fg = get_test_feature_group()
+        fg._storage_connector = sc
+        assert fg._is_hopsfs_storage() is expected
+
+    def test_init_time_travel_and_stream_uses_resolvers_python(
+        self, mocker, monkeypatch
+    ):
+        """
+        Purpose: Verify that `_init_time_travel_and_stream` delegates to
+        `_resolve_time_travel_format` and, for the Python engine, to
+        `_resolve_stream_python` to derive `_time_travel_format` and `_stream`.
+
+        This test does not validate resolver logic; it only checks that the
+        outputs of the resolver functions are propagated to the FeatureGroup
+        instance and that the resolvers are called with the expected arguments
+        (notably that the stream resolver receives the already-resolved format).
+        """
+        # Arrange: ensure code path selects Python Engine class
+        monkeypatch.setattr("hsfs.engine.get_type", lambda: "python")
+        expected_fmt = "DELTA"
+        expected_stream = False
+        fmt_mock = mocker.Mock(return_value=expected_fmt)
+        stream_mock = mocker.Mock(return_value=expected_stream)
+        monkeypatch.setattr(
+            "hsfs.feature_group.FeatureGroup._resolve_time_travel_format",
+            fmt_mock,
+        )
+        monkeypatch.setattr(
+            "hsfs.feature_group.FeatureGroup._resolve_stream_python",
+            stream_mock,
+        )
+
+        fg = get_test_feature_group()
+
+        # Act
+        # Reset mocks to ignore any constructor-time calls
+        fmt_mock.reset_mock()
+        stream_mock.reset_mock()
+        fg._init_time_travel_and_stream(
+            time_travel_format="None",
+            online_enabled=True,
+            is_hopsfs=False,
+        )
+
+        # Assert: _init uses resolvers' outputs
+        assert fg._time_travel_format == expected_fmt
+        assert fg._stream is expected_stream
+        assert fmt_mock.call_count == 1
+        assert fmt_mock.call_args.kwargs == {
+            "time_travel_format": "None",
+            "online_enabled": True,
+            "is_hopsfs": False,
+        }
+        assert stream_mock.call_count == 1
+        assert stream_mock.call_args.kwargs == {
+            "time_travel_format": expected_fmt,
+            "is_hopsfs": False,
+            "online_enabled": True,
+        }
+
+    def test_init_time_travel_and_stream_uses_resolver_spark(self, mocker, monkeypatch):
+        """
+        Purpose: Verify that `_init_time_travel_and_stream` delegates to
+        `_resolve_time_travel_format` for setting `_time_travel_format` on the
+        Spark engine, and that it does not call `_resolve_stream_python` nor
+        mutate `_stream` (stream is a Python-engine concern only).
+
+        This test avoids checking the internal logic of the resolver and only
+        validates the delegation and side-effects of `_init_time_travel_and_stream`.
+        """
+        # Arrange: ensure code path selects Spark Engine class
+        monkeypatch.setattr("hsfs.engine.get_type", lambda: "spark")
+        expected_fmt = "HUDI"
+        fmt_mock = mocker.Mock(return_value=expected_fmt)
+        stream_mock = mocker.Mock(return_value=True)
+        monkeypatch.setattr(
+            "hsfs.feature_group.FeatureGroup._resolve_time_travel_format",
+            fmt_mock,
+        )
+        monkeypatch.setattr(
+            "hsfs.feature_group.FeatureGroup._resolve_stream_python",
+            stream_mock,
+        )
+
+        fg = get_test_feature_group()
+        fg._stream = False  # Should remain unchanged in spark path
+
+        # Act
+        # Reset mocks to ignore any constructor-time calls
+        fmt_mock.reset_mock()
+        stream_mock.reset_mock()
+        fg._init_time_travel_and_stream(
+            time_travel_format="HUDI",
+            online_enabled=False,
+            is_hopsfs=False,
+        )
+
+        # Assert: format set via resolver, stream resolver not used, _stream unchanged
+        assert fg._time_travel_format == expected_fmt
+        assert fmt_mock.call_count == 1
+        stream_mock.assert_not_called()
+        assert fg._stream is False
+
+    @pytest.mark.parametrize(
+        "time_travel_format,is_hopsfs,has_deltalake,online_enabled,expected",
+        [
+            # time_travel_format=None cases (resolved by flags)
+            (None, False, False, True, "HUDI"),  # Non-HopsFS & Online -> HUDI
+            (None, False, False, False, "HUDI"),  # Non-HopsFS & Offline -> HUDI
+            (None, False, True, True, "HUDI"),  # Non-HopsFS & Online -> HUDI
+            (None, False, True, False, "HUDI"),  # Non-HopsFS & Offline -> HUDI
+            (None, True, False, True, "HUDI"),  # HopsFS & Online -> HUDI
+            (None, True, True, True, "HUDI"),  # HopsFS & Online -> HUDI
+            (
+                None,
+                True,
+                True,
+                False,
+                "DELTA",
+            ),  # HopsFS & Offline -> DELTA when available
+            (
+                None,
+                True,
+                False,
+                False,
+                "HUDI",
+            ),  # HopsFS & Offline -> HUDI when not available
+            # time_travel_format="HUDI" cases (passthrough)
+            ("HUDI", False, False, True, "HUDI"),
+            ("HUDI", False, True, False, "HUDI"),
+            ("HUDI", True, False, True, "HUDI"),
+            ("HUDI", True, True, False, "HUDI"),
+            # time_travel_format="DELTA" cases (passthrough)
+            ("DELTA", False, False, True, "DELTA"),
+            ("DELTA", False, True, False, "DELTA"),
+            ("DELTA", True, False, True, "DELTA"),
+            ("DELTA", True, True, False, "DELTA"),
+        ],
+    )
+    def test_resolve_time_travel_format(
+        self,
+        monkeypatch,
+        time_travel_format,
+        online_enabled,
+        is_hopsfs,
+        has_deltalake,
+        expected,
+    ):
+        monkeypatch.setattr(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", lambda: has_deltalake
+        )
+        result = feature_group.FeatureGroup._resolve_time_travel_format(
+            time_travel_format=time_travel_format,
+            online_enabled=online_enabled,
+            is_hopsfs=is_hopsfs,
+        )
+        assert result == expected
+
+    @pytest.mark.parametrize(
+        "time_travel_format,is_hopsfs,online_enabled,expected",
+        [
+            # DELTA not streams when not HopsFS and online enabled
+            ("DELTA", True, False, False),
+            ("DELTA", True, True, True),
+            ("DELTA", False, False, True),
+            ("DELTA", False, True, True),
+            # HUDI always streams
+            ("HUDI", True, False, True),
+            ("HUDI", True, True, True),
+            ("HUDI", False, False, True),
+            ("HUDI", False, True, True),
+        ],
+    )
+    def test_resolve_stream_python(
+        self, time_travel_format, is_hopsfs, online_enabled, expected
+    ):
+        result = feature_group.FeatureGroup._resolve_stream_python(
+            time_travel_format=time_travel_format,
+            is_hopsfs=is_hopsfs,
+            online_enabled=online_enabled,
+        )
+        assert result is expected
+
 
 class TestExternalFeatureGroup:
     def test_from_response_json(self, backend_fixtures):
@@ -1192,40 +1398,3 @@ class TestExternalFeatureGroup:
         assert new_fg.features[0].name == "primarykey"
         assert new_fg.features[1].name == "event_time"
         assert new_fg.features[2].name == "feat"
-
-
-@pytest.mark.parametrize(
-    "engine_type,time_travel_format,online_enabled,expected_format,expected_stream",
-    [
-        ("python", None, True, "HUDI", True),
-        ("python", None, False, "DELTA", False),
-        ("spark", None, True, "HUDI", False),
-        ("spark", None, False, "HUDI", False),
-        ("python", "HUDI", True, "HUDI", True),
-        ("python", "HUDI", False, "HUDI", True),
-        ("spark", "HUDI", True, "HUDI", False),
-        ("spark", "HUDI", False, "HUDI", False),
-        ("python", "DELTA", True, "DELTA", True),
-        ("python", "DELTA", False, "DELTA", False),
-        ("spark", "DELTA", True, "DELTA", False),
-        ("spark", "DELTA", False, "DELTA", False),
-    ],
-)
-def test_init_time_travel_and_stream(
-    engine_type, time_travel_format, online_enabled, expected_format, expected_stream
-):
-    with mock.patch("hsfs.engine.get_type", return_value=engine_type):
-        fg = feature_group.FeatureGroup(
-            name="fg",
-            version=1,
-            featurestore_id=1,
-            primary_key=[],
-            foreign_key=[],
-            partition_key=[],
-            online_enabled=online_enabled,
-            time_travel_format=time_travel_format,
-            stream=False,
-        )
-
-        assert fg.time_travel_format == expected_format
-        assert fg.stream is expected_stream
