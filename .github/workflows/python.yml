@@ -9,7 +9,7 @@ env:
 jobs:
   lint_stylecheck:
     name: Lint and Stylecheck
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - uses: actions/checkout@v4
@@ -56,7 +56,7 @@ jobs:
   check_aliases:
     name: Check Aliases
     needs: lint_stylecheck
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - uses: actions/checkout@v4
@@ -77,7 +77,7 @@ jobs:
   unit_tests:
     name: Unit Tests
     needs: lint_stylecheck
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
@@ -116,7 +116,7 @@ jobs:
   unit_tests_no_opt:
     name: Unit Tests (No Optional Dependencies)
     needs: lint_stylecheck
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Set up JDK 8
@@ -149,7 +149,7 @@ jobs:
   unit_tests_pandas1:
     name: Unit Tests (Pandas 1.x)
     needs: lint_stylecheck
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Set up JDK 8
@@ -185,7 +185,7 @@ jobs:
   unit_tests_local_tz:
     name: Unit Tests (Local TZ)
     needs: lint_stylecheck
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Set up JDK 8
@@ -221,7 +221,7 @@ jobs:
   unit_tests_typechecked:
     name: Unit Tests (Typechecked)
     needs: lint_stylecheck
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - uses: actions/checkout@v3
@@ -248,7 +248,7 @@ jobs:
   unit_tests_windows:
     name: Unit Tests (Windows)
     needs: lint_stylecheck
-    runs-on: windows-latest
+    runs-on: windows-11-arm
 
     steps:
       - name: Set Timezone
@@ -280,7 +280,7 @@ jobs:
   unit_tests_windows_local_tz:
     name: Unit Tests (Windows) (Local TZ)
     needs: lint_stylecheck
-    runs-on: windows-latest
+    runs-on: windows-11-arm
 
     steps:
       - name: Set Timezone
