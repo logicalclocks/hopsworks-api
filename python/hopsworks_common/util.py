@@ -670,6 +670,12 @@ def get_predictor_for_model(model, **kwargs):
         )
 
 
+def get_predictor_for_server(name: str, script_file: str, **kwargs):
+    from hsml.python.endpoint import Endpoint as PyEndpoint
+
+    return PyEndpoint(name=name, script_file=script_file, **kwargs)
+
+
 # General
 
 

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import warnings
 from datetime import date, datetime
 from typing import (
@@ -34,6 +35,7 @@ from typing import (
 
 import humps
 import pandas as pd
+from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import alerts_api
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
@@ -3976,6 +3978,31 @@ class FeatureView:
                 self, self.feature_logging, transformed
             )
 
+    def create_feature_logger(self):
+        if (
+            "DEPLOYMENT_NAME" not in os.environ
+            or "HOPSWORKS_PROJECT_NAME" not in os.environ
+        ):
+            raise FeatureStoreException(
+                "Feature logging only supported in Hopsworks serving deployments"
+            )
+        from hsfs.feature_logger_async import AsyncFeatureLogger
+
+        return AsyncFeatureLogger(
+            project_id=int(client.get_instance()._project_id),
+            source="localhost",
+            namespace=os.environ["HOPSWORKS_PROJECT_NAME"].replace("_", "-"),
+            deployment_name=os.environ["DEPLOYMENT_NAME"],
+            max_concurrent_tasks=int(
+                os.environ.get("FEATURE_LOGGER_CLIENT_POOL_SIZE", "3")
+            ),
+            feature_logger_config={
+                "timeout": int(
+                    os.environ.get("FEATURE_LOGGER_CLIENT_REQ_TIMEOUT", "3")
+                ),
+            },
+        )
+
     @staticmethod
     def _update_attribute_if_present(this: "FeatureView", new: Any, key: str) -> None:
         if getattr(new, key):
@@ -4249,7 +4276,11 @@ class FeatureView:
         return self._feature_logging
 
     def _get_spine_fg_ids(self) -> List[feature_group.SpineGroup]:
-        return [fg.id for fg in self.query.featuregroups if isinstance(fg, feature_group.SpineGroup)]
+        return [
+            fg.id
+            for fg in self.query.featuregroups
+            if isinstance(fg, feature_group.SpineGroup)
+        ]
 
     def _get_skip_fg_ids(self) -> Set[int]:
         embedding_fg_ids = [fg.id for fg in self._get_embedding_fgs()]

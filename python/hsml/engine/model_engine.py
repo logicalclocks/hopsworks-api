@@ -155,7 +155,7 @@ class ModelEngine:
                 # otherwise, make a recursive call for the folder
                 if (
                     basename == constants.MODEL_SERVING.ARTIFACTS_DIR_NAME
-                ):  # TODO: Not needed anymore
+                ):  # NOTE: Keep for backward compatibility (<4.6). Existing models during upgrade contain Artifacts folder
                     continue  # skip Artifacts subfolder
                 local_folder_path = os.path.join(to_local_path, basename)
                 os.mkdir(local_folder_path)
@@ -352,11 +352,11 @@ class ModelEngine:
         if is_shared_registry:
             dataset_models_root_path = "{}::{}".format(
                 model_instance.shared_registry_project_name,
-                constants.MODEL_SERVING.MODELS_DATASET,
+                constants.MODEL_REGISTRY.MODELS_DATASET,
             )
             model_instance._project_name = model_instance.shared_registry_project_name
         else:
-            dataset_models_root_path = constants.MODEL_SERVING.MODELS_DATASET
+            dataset_models_root_path = constants.MODEL_REGISTRY.MODELS_DATASET
             model_instance._project_name = _client._project_name
 
         util.validate_metrics(model_instance.training_metrics)

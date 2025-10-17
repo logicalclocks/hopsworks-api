@@ -339,6 +339,11 @@ class Deployment:
         self._predictor.name = name
 
     @property
+    def version(self):
+        """Version of the deployment."""
+        return self._predictor.version
+
+    @property
     def description(self):
         """Description of the deployment."""
         return self._description
@@ -346,6 +351,11 @@ class Deployment:
     @description.setter
     def description(self, description: str):
         self._description = description
+
+    @property
+    def has_model(self):
+        """Whether the deployment has a model associated."""
+        return self.model_name is not None and self.model_version is not None
 
     @property
     def predictor(self):
@@ -392,12 +402,16 @@ class Deployment:
 
     @property
     def artifact_version(self):
-        """Artifact version deployed by the predictor."""
-        return self._predictor.artifact_version
+        """Artifact version deployed by the predictor.
+
+        !!! warning "Deprecated"
+            Artifact versions are deprecated in favor of deployment versions.
+        """
+        return self._predictor.version
 
     @artifact_version.setter
-    def artifact_version(self, artifact_version: Union[int, str]):
-        self._predictor.artifact_version = artifact_version
+    def artifact_version(self, version: Union[int, str]):
+        pass  # do nothing, kept for backward compatibility
 
     @property
     def artifact_files_path(self):
@@ -406,9 +420,12 @@ class Deployment:
 
     @property
     def artifact_path(self):
-        """Path of the model artifact deployed by the predictor."""
-        # TODO: deprecated
-        return self._predictor.artifact_path
+        """Path of the model artifact deployed by the predictor.
+
+        !!! warning "Deprecated"
+            Artifact versions are deprecated in favor of deployment versions.
+        """
+        return self.artifact_files_path
 
     @property
     def model_server(self):
@@ -530,6 +547,15 @@ class Deployment:
     @project_namespace.setter
     def project_namespace(self, project_namespace: str):
         self._predictor.project_namespace = project_namespace
+
+    @property
+    def project_name(self):
+        """Name of the project the deployment belongs to."""
+        return self._predictor._project_name
+
+    @project_name.setter
+    def project_name(self, project_name: str):
+        self._predictor._project_name = project_name
 
     def __repr__(self):
         desc = (
