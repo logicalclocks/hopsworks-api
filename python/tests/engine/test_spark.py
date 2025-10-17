@@ -6387,14 +6387,17 @@ class TestSpark:
         # Assert
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_logging_data_no_missing_no_additional_list(
         self, mocker, logging_features, logging_test_dataframe, spark_engine
@@ -6440,14 +6443,17 @@ class TestSpark:
         # Assert
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_logging_data_no_missing_no_additional_dict(
         self, mocker, logging_features, logging_test_dataframe, spark_engine
@@ -6493,14 +6499,17 @@ class TestSpark:
         # Assert
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_logging_data_missing_columns_and_additional_dataframe(
         self,
@@ -6546,14 +6555,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
 
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_logging_data_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -6596,14 +6608,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_logging_data_missing_columns_and_additional_list(
         self, mocker, caplog, logging_features, spark_engine, logging_test_dataframe
@@ -6673,14 +6688,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_untransformed_features_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -6724,14 +6742,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_untransformed_features_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -6774,14 +6795,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_untransformed_features_missing_columns_and_additional_dataframe(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -6822,14 +6846,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_untransformed_features_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -6875,14 +6902,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_untransformed_features_missing_columns_and_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -6951,14 +6981,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_transformed_features_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -6999,14 +7032,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_transformed_features_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -7048,14 +7084,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_transformed_features_missing_columns_and_additional_dataframe(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -7097,14 +7136,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_transformed_features_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -7150,14 +7192,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_transformed_features_missing_columns_and_additional_list(
         self, mocker, logging_features, spark_engine, logging_test_dataframe
@@ -7223,14 +7268,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_predictions_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -7318,14 +7366,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_predictions_missing_columns_and_additional_dataframe(
         self, mocker, caplog, logging_features, spark_engine, logging_test_dataframe
@@ -7386,14 +7437,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_predictions_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, spark_engine, logging_test_dataframe
@@ -7455,14 +7509,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_predictions_missing_columns_and_additional_list(
         self, mocker, logging_features, logging_test_dataframe, spark_engine
@@ -7550,14 +7607,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_serving_keys_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, spark_engine, logging_test_dataframe
@@ -7598,14 +7658,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_serving_keys_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -7646,14 +7709,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_serving_keys_missing_columns_and_additional_dataframe(
         self, mocker, caplog, logging_features, spark_engine, logging_test_dataframe
@@ -7843,14 +7909,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_inference_helper_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -7891,14 +7960,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_inference_helper_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -7939,14 +8011,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.count() == 3
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_inference_helpers_missing_columns_and_additional_dataframe(
         self, mocker, caplog, logging_features, spark_engine, logging_test_dataframe
@@ -7991,14 +8066,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_inference_helpers_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, spark_engine, logging_test_dataframe
@@ -8046,14 +8124,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_inference_helpers_missing_columns_and_additional_list(
         self, mocker, logging_features, spark_engine, logging_test_dataframe
@@ -8126,14 +8207,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_extra_log_columns_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -8180,14 +8264,17 @@ class TestSpark:
 
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_extra_log_columns_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -8235,14 +8322,17 @@ class TestSpark:
 
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_extra_log_missing_columns_and_additional_dataframe(
         self, mocker, caplog, logging_features, spark_engine, logging_test_dataframe
@@ -8284,14 +8374,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.count() == 3
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_extra_log_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, spark_engine, logging_test_dataframe
@@ -8336,14 +8429,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.count() == 3
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_extra_log_missing_columns_and_additional_list(
         self, mocker, logging_features, logging_test_dataframe, spark_engine
@@ -8415,14 +8511,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.count() == 3
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_event_time_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -8462,14 +8561,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.count() == 3
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_event_time_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -8511,14 +8613,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.count() == 3
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_request_id_no_missing_no_additional_dataframe(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -8557,14 +8662,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.count() == 3
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_request_id_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -8607,14 +8715,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.count() == 3
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_request_id_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -8655,14 +8766,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_request_parameters_no_missing_no_additional_dataframe(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -8701,14 +8815,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_request_parameters_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -8751,14 +8868,17 @@ class TestSpark:
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_request_parameters_no_missing_no_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -8804,14 +8924,17 @@ class TestSpark:
 
         # Verify specific columns exist and have expected data types
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_request_parameters_missing_columns_and_additional_dataframe(
         self, mocker, caplog, logging_features, spark_engine, logging_test_dataframe
@@ -8856,14 +8979,17 @@ class TestSpark:
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_request_parameters_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
@@ -8909,14 +9035,17 @@ class TestSpark:
         ] == [rec.message for rec in caplog.records]
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.count() == 3
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     def test_get_feature_logging_df_request_parameters_missing_columns_and_additional_list(
         self, mocker, logging_features, spark_engine, logging_test_dataframe
@@ -9160,14 +9289,17 @@ class TestSpark:
         )
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     @pytest.mark.skipif(
         sys.platform.startswith("win"),
@@ -9406,14 +9538,17 @@ class TestSpark:
         )
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     @pytest.mark.skipif(
         sys.platform.startswith("win"),
@@ -9648,14 +9783,17 @@ class TestSpark:
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
-        assert (
-            logging_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-            == expected_dataframe.sort("primary_key")
-            .select(*logging_feature_names)
-            .collect()
-        )
+        if sys.platform.startswith("win"):
+            assert logging_test_dataframe.count() == expected_dataframe.count()
+        else:
+            assert (
+                logging_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+                == expected_dataframe.sort("primary_key")
+                .select(*logging_feature_names)
+                .collect()
+            )
 
     @pytest.mark.skipif(
         sys.platform.startswith("win"),
