@@ -1672,7 +1672,9 @@ class FeatureStore:
             List[Union[TransformationFunction, HopsworksUdf]]
         ] = None,
         logging_enabled: Optional[bool] = False,
-        extra_log_columns: Union[feature.Feature, Dict[str, str]] = None,
+        extra_log_columns: Optional[
+            Union[List[feature.Feature], List[Dict[str, str]]]
+        ] = None,
     ) -> feature_view.FeatureView:
         """Create a feature view metadata object and saved it to hopsworks.
 
@@ -1763,7 +1765,7 @@ class FeatureStore:
                 Defaults to `None`, no transformations.
             logging_enabled: If true, enable feature logging for the feature view. Defaults to `False`.
             extra_log_columns: Extra columns to be logged in addition to the features used in the feature view.
-                It can be a single `Feature` or a dictionary of key value pairs where key is the column name.
+                It can be a list of Feature objects or list a dictionaries that contains the the name and type of the columns as keys.
                 Defaults to `None`, no extra log columns. Setting this argument implicitly enables feature logging.
 
         # Returns:
@@ -1797,7 +1799,9 @@ class FeatureStore:
         training_helper_columns: Optional[List[str]] = None,
         transformation_functions: Optional[Dict[str, TransformationFunction]] = None,
         logging_enabled: Optional[bool] = False,
-        extra_log_columns: Union[feature.Feature, Dict[str, str]] = None,
+        extra_log_columns: Optional[
+            Union[List[feature.Feature], List[Dict[str, str]]]
+        ] = None,
     ) -> feature_view.FeatureView:
         """Get feature view metadata object or create a new one if it doesn't exist. This method doesn't update
         existing feature view metadata object.
@@ -1848,7 +1852,7 @@ class FeatureStore:
                 Defaults to `None`, no transformations.
             logging_enabled: If true, enable feature logging for the feature view. Defaults to `False`.
             extra_log_columns: Extra columns to be logged in addition to the features used in the feature view.
-                It can be a single `Feature` or a dictionary of key value pairs where key is the column name.
+                It can be a list of Feature objects or list a dictionaries that contains the the name and type of the columns as keys.
                 Defaults to `None`, no extra log columns. Setting this argument implicitly enables feature logging.
 
         # Returns:
