@@ -20,7 +20,6 @@ import os
 import warnings
 from urllib.parse import urlparse
 
-import humps
 from hopsworks.core import project_api
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
@@ -497,15 +496,13 @@ class DeltaEngine:
         rows_updated = 0
         rows_deleted = 0
 
-        humps.camelize(operation_metrics)
-
         # Depending on operation, set the relevant metrics
         if operation == "WRITE":
-            rows_inserted = operation_metrics.get("numOutputRows", 0)
+            rows_inserted = operation_metrics.get("numOutputRows") or operation_metrics.get("num_added_rows") or 0
         elif operation == "MERGE":
-            rows_inserted = operation_metrics.get("numTargetRowsInserted", 0)
-            rows_updated = operation_metrics.get("numTargetRowsUpdated", 0)
-            rows_deleted = operation_metrics.get("numTargetRowsDeleted", 0)
+            rows_inserted = operation_metrics.get("numTargetRowsInserted") or operation_metrics.get("num_target_rows_inserted") or 0
+            rows_updated = operation_metrics.get("numTargetRowsUpdated") or operation_metrics.get("num_target_rows_updated") or 0
+            rows_deleted = operation_metrics.get("numTargetRowsDeleted") or operation_metrics.get("num_target_rows_deleted") or 0
 
         _logger.debug(
             f"Commit metrics {commit_timestamp} - inserted: {rows_inserted}, updated: {rows_updated}, deleted: {rows_deleted}"
