@@ -38,7 +38,7 @@ import humps
 import pandas as pd
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core import alerts_api
-from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
+from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS, HAS_DELTALAKE_PYTHON, HAS_DELTALAKE_SPARK
 from hsfs import (
     engine,
     feature,
@@ -2807,11 +2807,18 @@ class FeatureGroup(FeatureGroupBase):
         """Resolve only the time travel format string."""
         fmt = time_travel_format.upper() if time_travel_format is not None else None
         if fmt is None:
-            if is_hopsfs and not online_enabled:
+            if is_hopsfs and not online_enabled and FeatureGroup._has_deltalake():
                 return "DELTA"
             else:
                 return "HUDI"
         return fmt
+
+    @staticmethod
+    def _has_deltalake():
+        if engine.get_type() == "python":
+            return HAS_DELTALAKE_PYTHON
+        else:
+            return HAS_DELTALAKE_SPARK
 
     @staticmethod
     def _sort_transformation_functions(
