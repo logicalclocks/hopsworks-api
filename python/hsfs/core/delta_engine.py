@@ -20,7 +20,6 @@ import os
 import warnings
 from urllib.parse import urlparse
 
-import humps
 from hopsworks.core import project_api
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
@@ -496,8 +495,6 @@ class DeltaEngine:
         rows_inserted = 0
         rows_updated = 0
         rows_deleted = 0
-
-        humps.camelize(operation_metrics)
 
         # Depending on operation, set the relevant metrics
         if operation == "WRITE":
