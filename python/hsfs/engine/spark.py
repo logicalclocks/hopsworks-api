@@ -2008,7 +2008,7 @@ class Engine:
                     TEMP_JOIN_KEY,
                     row_number().over(Window.orderBy(monotonically_increasing_id())),
                 )
-            elif df.count() == 1 and logging_data.count() > 1:
+            elif df.count() == 1 and logging_df.count() > 1:
                 df = df.withColumn(
                     TEMP_JOIN_KEY,
                     row_number().over(Window.orderBy(monotonically_increasing_id())),
