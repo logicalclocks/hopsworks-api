@@ -9,7 +9,7 @@ env:
 jobs:
   lint_stylecheck:
     name: Lint and Stylecheck
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -56,7 +56,7 @@ jobs:
   check_aliases:
     name: Check Aliases
     needs: lint_stylecheck
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -77,7 +77,7 @@ jobs:
   unit_tests:
     name: Unit Tests
     needs: lint_stylecheck
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
@@ -111,12 +111,12 @@ jobs:
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run Pytest suite
-        run: pytest -n auto python/tests
+        run: pytest python/tests
 
   unit_tests_no_opt:
     name: Unit Tests (No Optional Dependencies)
     needs: lint_stylecheck
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Set up JDK 8
@@ -144,12 +144,12 @@ jobs:
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run Pytest suite
-        run: pytest -n auto python/tests
+        run: pytest python/tests
 
   unit_tests_pandas1:
     name: Unit Tests (Pandas 1.x)
     needs: lint_stylecheck
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Set up JDK 8
@@ -180,12 +180,12 @@ jobs:
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run Pytest suite
-        run: pytest -n auto python/tests
+        run: pytest python/tests
 
   unit_tests_local_tz:
     name: Unit Tests (Local TZ)
     needs: lint_stylecheck
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Set up JDK 8
@@ -216,12 +216,12 @@ jobs:
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run Pytest suite
-        run: pytest -n auto python/tests
+        run: pytest python/tests
 
   unit_tests_typechecked:
     name: Unit Tests (Typechecked)
     needs: lint_stylecheck
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v3
@@ -242,13 +242,13 @@ jobs:
       - name: Run Pytest suite
         env:
           HOPSWORKS_RUN_WITH_TYPECHECK: "true"
-        run: pytest -n auto python/tests
+        run: pytest python/tests
         continue-on-error: true
 
   unit_tests_windows:
     name: Unit Tests (Windows)
     needs: lint_stylecheck
-    runs-on: windows-11-arm
+    runs-on: windows-latest
 
     steps:
       - name: Set Timezone
@@ -261,7 +261,7 @@ jobs:
       - uses: actions/setup-python@v5
         name: Setup Python
         with:
-          python-version: "3.11"
+          python-version: "3.10"
           cache: "pip"
           cache-dependency-path: "python/setup.py"
       - run: pip install -e python[python,dev]
@@ -275,12 +275,12 @@ jobs:
           echo PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell >> %GITHUB_ENV%
 
       - name: Run Pytest suite
-        run: pytest -n auto python/tests
+        run: pytest python/tests
 
   unit_tests_windows_local_tz:
     name: Unit Tests (Windows) (Local TZ)
     needs: lint_stylecheck
-    runs-on: windows-11-arm
+    runs-on: windows-latest
 
     steps:
       - name: Set Timezone
@@ -293,7 +293,7 @@ jobs:
       - uses: actions/setup-python@v5
         name: Setup Python
         with:
-          python-version: "3.11"
+          python-version: "3.10"
           cache: "pip"
           cache-dependency-path: "python/setup.py"
       - run: pip install -e python[python,dev]
@@ -310,4 +310,4 @@ jobs:
           echo PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell >> %GITHUB_ENV%
 
       - name: Run Pytest suite
-        run: pytest -n auto python/tests
+        run: pytest python/tests

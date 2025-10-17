@@ -6280,7 +6280,7 @@ class TestSpark:
                     for col in expected_columns
                     if col not in metadata_logging_columns_names
                 ]
-            ),
+            ).cache(),
             expected_columns,
             additional_columns,
             missing_columns,
