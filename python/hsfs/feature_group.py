@@ -2765,13 +2765,13 @@ class FeatureGroup(FeatureGroupBase):
 
         Extracted into testable helpers to simplify unit testing.
         """
-        self._time_travel_format = FeatureGroup.resolve_time_travel_format(
+        self._time_travel_format = FeatureGroup._resolve_time_travel_format(
             time_travel_format=time_travel_format,
             online_enabled=online_enabled,
             is_hopsfs=is_hopsfs,
         )
         if engine.get_type() == "python":
-            self._stream = FeatureGroup.resolve_stream_python(
+            self._stream = FeatureGroup._resolve_stream_python(
                 time_travel_format=self._time_travel_format,
                 is_hopsfs=is_hopsfs,
                 online_enabled=online_enabled,
@@ -2785,24 +2785,18 @@ class FeatureGroup(FeatureGroupBase):
         )
 
     @staticmethod
-    def resolve_stream_python(
+    def _resolve_stream_python(
         time_travel_format: str,
         is_hopsfs: bool,
         online_enabled: bool,
-        *args,
-        **kwargs,
     ) -> Optional[bool]:
-        if is_hopsfs and time_travel_format == "DELTA" and not online_enabled:
-            return False
-        return True
+        return not (is_hopsfs and time_travel_format == "DELTA" and not online_enabled)
 
     @staticmethod
-    def resolve_time_travel_format(
+    def _resolve_time_travel_format(
         time_travel_format: Optional[str],
         online_enabled: bool,
         is_hopsfs: bool,
-        *args,
-        **kwargs,
     ) -> str:
         """Resolve only the time travel format string."""
         fmt = time_travel_format.upper() if time_travel_format is not None else None

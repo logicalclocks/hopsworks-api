@@ -877,8 +877,8 @@ class TestFeatureGroup:
     def test_init_time_travel_and_stream_uses_resolvers_python(self, mocker, monkeypatch):
         """
         Purpose: Verify that `_init_time_travel_and_stream` delegates to
-        `resolve_time_travel_format` and, for the Python engine, to
-        `resolve_stream_python` to derive `_time_travel_format` and `_stream`.
+        `_resolve_time_travel_format` and, for the Python engine, to
+        `_resolve_stream_python` to derive `_time_travel_format` and `_stream`.
 
         This test does not validate resolver logic; it only checks that the
         outputs of the resolver functions are propagated to the FeatureGroup
@@ -892,11 +892,11 @@ class TestFeatureGroup:
         fmt_mock = mocker.Mock(return_value=expected_fmt)
         stream_mock = mocker.Mock(return_value=expected_stream)
         monkeypatch.setattr(
-            "hsfs.feature_group.FeatureGroup.resolve_time_travel_format",
+            "hsfs.feature_group.FeatureGroup._resolve_time_travel_format",
             fmt_mock,
         )
         monkeypatch.setattr(
-            "hsfs.feature_group.FeatureGroup.resolve_stream_python",
+            "hsfs.feature_group.FeatureGroup._resolve_stream_python",
             stream_mock,
         )
 
@@ -931,8 +931,8 @@ class TestFeatureGroup:
     def test_init_time_travel_and_stream_uses_resolver_spark(self, mocker, monkeypatch):
         """
         Purpose: Verify that `_init_time_travel_and_stream` delegates to
-        `resolve_time_travel_format` for setting `_time_travel_format` on the
-        Spark engine, and that it does not call `resolve_stream_python` nor
+        `_resolve_time_travel_format` for setting `_time_travel_format` on the
+        Spark engine, and that it does not call `_resolve_stream_python` nor
         mutate `_stream` (stream is a Python-engine concern only).
 
         This test avoids checking the internal logic of the resolver and only
@@ -944,11 +944,11 @@ class TestFeatureGroup:
         fmt_mock = mocker.Mock(return_value=expected_fmt)
         stream_mock = mocker.Mock(return_value=True)
         monkeypatch.setattr(
-            "hsfs.feature_group.FeatureGroup.resolve_time_travel_format",
+            "hsfs.feature_group.FeatureGroup._resolve_time_travel_format",
             fmt_mock,
         )
         monkeypatch.setattr(
-            "hsfs.feature_group.FeatureGroup.resolve_stream_python",
+            "hsfs.feature_group.FeatureGroup._resolve_stream_python",
             stream_mock,
         )
 
@@ -999,7 +999,7 @@ class TestFeatureGroup:
         self, monkeypatch, time_travel_format, online_enabled, is_hopsfs, has_deltalake, expected
     ):
         monkeypatch.setattr("hsfs.feature_group.FeatureGroup._has_deltalake", lambda: has_deltalake)
-        result = feature_group.FeatureGroup.resolve_time_travel_format(
+        result = feature_group.FeatureGroup._resolve_time_travel_format(
             time_travel_format=time_travel_format,
             online_enabled=online_enabled,
             is_hopsfs=is_hopsfs,
@@ -1024,7 +1024,7 @@ class TestFeatureGroup:
     def test_resolve_stream_python(
         self, time_travel_format, is_hopsfs, online_enabled, expected
     ):
-        result = feature_group.FeatureGroup.resolve_stream_python(
+        result = feature_group.FeatureGroup._resolve_stream_python(
             time_travel_format=time_travel_format,
             is_hopsfs=is_hopsfs,
             online_enabled=online_enabled,
