@@ -38,7 +38,12 @@ import humps
 import pandas as pd
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core import alerts_api
-from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
+from hopsworks_common.core.constants import (
+    HAS_DELTALAKE_PYTHON,
+    HAS_DELTALAKE_SPARK,
+    HAS_NUMPY,
+    HAS_POLARS,
+)
 from hsfs import (
     engine,
     feature,
@@ -2691,7 +2696,11 @@ class FeatureGroup(FeatureGroupBase):
 
         else:
             # Set time travel format and streaming based on engine type and online status
-            self._init_time_travel_and_stream(time_travel_format, online_enabled)
+            self._init_time_travel_and_stream(
+                time_travel_format,
+                online_enabled,
+                self._is_hopsfs_storage(),
+            )
 
             self.primary_key = primary_key
             self.foreign_key = foreign_key
@@ -2752,35 +2761,63 @@ class FeatureGroup(FeatureGroupBase):
             )
 
     def _init_time_travel_and_stream(
-        self, time_travel_format: Optional[str], online_enabled: bool
+        self,
+        time_travel_format: Optional[str],
+        online_enabled: bool,
+        is_hopsfs: bool,
     ) -> None:
         """Initialize `self._time_travel_format` and `self._stream` for new objects.
 
-        Behavior mirrors the previous inline logic and depends on engine type,
-        provided `time_travel_format`, and `online_enabled`.
+        Extracted into testable helpers to simplify unit testing.
         """
-        if time_travel_format is None:
-            if engine.get_type() == "python":
-                if online_enabled:
-                    self._time_travel_format = "HUDI"
-                    self._stream = True
-                else:
-                    self._time_travel_format = "DELTA"
+        self._time_travel_format = FeatureGroup._resolve_time_travel_format(
+            time_travel_format=time_travel_format,
+            online_enabled=online_enabled,
+            is_hopsfs=is_hopsfs,
+        )
+        if engine.get_type() == "python":
+            self._stream = FeatureGroup._resolve_stream_python(
+                time_travel_format=self._time_travel_format,
+                is_hopsfs=is_hopsfs,
+                online_enabled=online_enabled,
+            )
+
+    def _is_hopsfs_storage(self) -> bool:
+        """Return True if storage is HopsFS."""
+        return self._storage_connector is None or (
+            self._storage_connector is not None
+            and self._storage_connector.type == sc.StorageConnector.HOPSFS
+        )
+
+    @staticmethod
+    def _resolve_stream_python(
+        time_travel_format: str,
+        is_hopsfs: bool,
+        online_enabled: bool,
+    ) -> Optional[bool]:
+        return not (is_hopsfs and time_travel_format == "DELTA" and not online_enabled)
+
+    @staticmethod
+    def _resolve_time_travel_format(
+        time_travel_format: Optional[str],
+        online_enabled: bool,
+        is_hopsfs: bool,
+    ) -> str:
+        """Resolve only the time travel format string."""
+        fmt = time_travel_format.upper() if time_travel_format is not None else None
+        if fmt is None:
+            if is_hopsfs and not online_enabled and FeatureGroup._has_deltalake():
+                return "DELTA"
             else:
-                self._time_travel_format = "HUDI"
+                return "HUDI"
+        return fmt
 
-        elif time_travel_format == "HUDI":
-            self._time_travel_format = "HUDI"
-            if engine.get_type() == "python":
-                self._stream = True
-
-        elif time_travel_format == "DELTA":
-            self._time_travel_format = "DELTA"
-            if online_enabled and engine.get_type() == "python":
-                self._stream = True
-
+    @staticmethod
+    def _has_deltalake():
+        if engine.get_type() == "python":
+            return HAS_DELTALAKE_PYTHON
         else:
-            self._time_travel_format = time_travel_format
+            return HAS_DELTALAKE_SPARK
 
     @staticmethod
     def _sort_transformation_functions(

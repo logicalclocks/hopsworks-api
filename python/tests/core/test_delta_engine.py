@@ -699,3 +699,88 @@ class TestDeltaEngine:
         assert fg_commit.rows_updated == 0
         assert fg_commit.rows_deleted == 0
         assert fg_commit.last_active_commit_time == "2024-01-01T08:00:00Z"
+
+    def test_get_delta_feature_group_commit_merge_delta_rs(self, mocker):
+        # Arrange
+        last_commit = {
+            "operation": "MERGE",
+            "timestamp": "2024-01-02T12:00:00Z",
+            "operationMetrics": {
+                "num_target_rows_inserted": 10,
+                "num_target_rows_updated": 5,
+                "num_target_rows_deleted": 2,
+            },
+        }
+        oldest_commit = {
+            "timestamp": "2024-01-01T08:00:00Z",
+        }
+
+        mocker.patch("hsfs.core.delta_engine.util.convert_event_time_to_timestamp", side_effect = lambda ts: ts)
+        mocker.patch("hsfs.core.delta_engine.util.get_hudi_datestr_from_timestamp", side_effect = lambda ts: f"date-{ts}")
+
+        # Act
+        fg_commit = DeltaEngine._get_delta_feature_group_commit(last_commit, oldest_commit)
+
+        # Assert
+        assert isinstance(fg_commit, FeatureGroupCommit)
+        assert fg_commit.commit_time == "2024-01-02T12:00:00Z"
+        assert fg_commit.commit_date_string == "date-2024-01-02T12:00:00Z"
+        assert fg_commit.rows_inserted == 10
+        assert fg_commit.rows_updated == 5
+        assert fg_commit.rows_deleted == 2
+        assert fg_commit.last_active_commit_time == "2024-01-01T08:00:00Z"
+
+    def test_get_delta_feature_group_commit_write_delta_rs(self, mocker):
+        # Arrange
+        last_commit = {
+            "operation": "WRITE",
+            "timestamp": "2024-01-02T12:00:00Z",
+            "operationMetrics": {
+                "num_added_rows": 10
+            },
+        }
+        oldest_commit = {
+            "timestamp": "2024-01-01T08:00:00Z",
+        }
+
+        mocker.patch("hsfs.core.delta_engine.util.convert_event_time_to_timestamp", side_effect = lambda ts: ts)
+        mocker.patch("hsfs.core.delta_engine.util.get_hudi_datestr_from_timestamp", side_effect = lambda ts: f"date-{ts}")
+
+        # Act
+        fg_commit = DeltaEngine._get_delta_feature_group_commit(last_commit, oldest_commit)
+
+        # Assert
+        assert isinstance(fg_commit, FeatureGroupCommit)
+        assert fg_commit.commit_time == "2024-01-02T12:00:00Z"
+        assert fg_commit.commit_date_string == "date-2024-01-02T12:00:00Z"
+        assert fg_commit.rows_inserted == 10
+        assert fg_commit.rows_updated == 0
+        assert fg_commit.rows_deleted == 0
+        assert fg_commit.last_active_commit_time == "2024-01-01T08:00:00Z"
+
+    def test_get_delta_feature_group_commit_other_delta_rs(self, mocker):
+        # Arrange
+        last_commit = {
+            "operation": "OPTIMIZE",
+            "timestamp": "2024-01-02T12:00:00Z",
+            "operationMetrics": {
+            },
+        }
+        oldest_commit = {
+            "timestamp": "2024-01-01T08:00:00Z",
+        }
+
+        mocker.patch("hsfs.core.delta_engine.util.convert_event_time_to_timestamp", side_effect = lambda ts: ts)
+        mocker.patch("hsfs.core.delta_engine.util.get_hudi_datestr_from_timestamp", side_effect = lambda ts: f"date-{ts}")
+
+        # Act
+        fg_commit = DeltaEngine._get_delta_feature_group_commit(last_commit, oldest_commit)
+
+        # Assert
+        assert isinstance(fg_commit, FeatureGroupCommit)
+        assert fg_commit.commit_time == "2024-01-02T12:00:00Z"
+        assert fg_commit.commit_date_string == "date-2024-01-02T12:00:00Z"
+        assert fg_commit.rows_inserted == 0
+        assert fg_commit.rows_updated == 0
+        assert fg_commit.rows_deleted == 0
+        assert fg_commit.last_active_commit_time == "2024-01-01T08:00:00Z"
