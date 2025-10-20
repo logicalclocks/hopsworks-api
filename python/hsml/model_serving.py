@@ -18,8 +18,8 @@ import os
 from typing import List, Optional, Union
 
 from hopsworks_common import usage, util
-from hopsworks_common.constants import ARTIFACT_VERSION, PREDICTOR_STATE
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
+from hopsworks_common.constants import PREDICTOR_STATE
 from hsml.core import serving_api
 from hsml.deployment import Deployment
 from hsml.inference_batcher import InferenceBatcher
@@ -159,7 +159,9 @@ class ModelServing:
         self,
         model: Model,
         name: Optional[str] = None,
-        artifact_version: Optional[str] = ARTIFACT_VERSION.CREATE,
+        artifact_version: Optional[
+            str
+        ] = None,  # deprecated, kept for backward compatibility
         serving_tool: Optional[str] = None,
         script_file: Optional[str] = None,
         config_file: Optional[str] = None,
@@ -168,6 +170,7 @@ class ModelServing:
         inference_batcher: Optional[Union[InferenceBatcher, dict]] = None,
         transformer: Optional[Union[Transformer, dict]] = None,
         api_protocol: Optional[str] = IE.API_PROTOCOL_REST,
+        environment: Optional[str] = None,
     ) -> Predictor:
         """Create a Predictor metadata object.
 
@@ -196,7 +199,7 @@ class ModelServing:
         # Arguments
             model: Model to be deployed.
             name: Name of the predictor.
-            artifact_version: Version number of the model artifact to deploy, `CREATE` to create a new model artifact
+            artifact_version: (**Deprecated**) Version number of the model artifact to deploy, `CREATE` to create a new model artifact
             or `MODEL-ONLY` to reuse the shared artifact containing only the model files.
             serving_tool: Serving tool used to deploy the model server.
             script_file: Path to a custom predictor script implementing the Predict class.
@@ -208,6 +211,7 @@ class ModelServing:
             inference_batcher: Inference batcher configuration.
             transformer: Transformer to be deployed together with the predictor.
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC'). Defaults to 'REST'.
+            environment: The project Python environment to use
 
         # Returns
             `Predictor`. The predictor metadata object.
@@ -219,7 +223,6 @@ class ModelServing:
         return Predictor.for_model(
             model,
             name=name,
-            artifact_version=artifact_version,
             serving_tool=serving_tool,
             script_file=script_file,
             config_file=config_file,
@@ -228,6 +231,7 @@ class ModelServing:
             inference_batcher=inference_batcher,
             transformer=transformer,
             api_protocol=api_protocol,
+            environment=environment,
         )
 
     @usage.method_logger
@@ -299,6 +303,61 @@ class ModelServing:
         return Transformer(script_file=script_file, resources=resources)
 
     @usage.method_logger
+    def create_endpoint(
+        self,
+        name: str,
+        script_file: str,
+        description: Optional[str] = None,
+        resources: Optional[Union[PredictorResources, dict]] = None,
+        inference_logger: Optional[Union[InferenceLogger, dict, str]] = None,
+        inference_batcher: Optional[Union[InferenceBatcher, dict]] = None,
+        api_protocol: Optional[str] = IE.API_PROTOCOL_REST,
+        environment: Optional[str] = None,
+    ) -> Predictor:
+        """Create an Entrypoint metadata object.
+
+        !!! example
+            ```python
+            # login into Hopsworks using hopsworks.login()
+
+            # get Hopsworks Model Registry handle
+            ms = project.get_model_serving()
+
+            my_endpoint = ms.create_entrypoint(name="feature_server", entrypoint_file="feature_server.py")
+
+            my_deployment = my_endpoint.deploy()
+            ```
+
+        !!! note "Lazy"
+            This method is lazy and does not persist any metadata or deploy any endpoint on its own.
+            To create a deployment using this endpoint, call the `deploy()` method.
+
+        # Arguments
+            name: Name of the endpoint.
+            script_file: Path to a custom script file implementing a HTTP server.
+            description: Description of the endpoint.
+            resources: Resources to be allocated for the predictor.
+            inference_logger: Inference logger configuration.
+            inference_batcher: Inference batcher configuration.
+            api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC'). Defaults to 'REST'.
+            environment: The project Python environment to use
+
+        # Returns
+            `Predictor`. The predictor metadata object.
+        """
+
+        return Predictor.for_server(
+            name=name,
+            script_file=script_file,
+            description=description,
+            resources=resources,
+            inference_logger=inference_logger,
+            inference_batcher=inference_batcher,
+            api_protocol=api_protocol,
+            environment=environment,
+        )
+
+    @usage.method_logger
     def create_deployment(
         self,
         predictor: Predictor,
@@ -367,13 +426,13 @@ class ModelServing:
         # Arguments
             predictor: predictor to be used in the deployment
             name: name of the deployment
-            environment: The inference environment to use
+            environment: (**Deprecated**) The project Python environment to use. This argument will be ignored, use the argument `environment` in the `create_predictor()` or `create_endpoint()` methods instead.
 
         # Returns
             `Deployment`. The deployment metadata object.
         """
 
-        return Deployment(predictor=predictor, name=name, environment=environment)
+        return Deployment(predictor=predictor, name=name)
 
     @property
     def project_name(self):

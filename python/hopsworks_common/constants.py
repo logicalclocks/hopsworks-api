@@ -171,16 +171,13 @@ class MODEL:
 
 class MODEL_REGISTRY:
     HOPSFS_MOUNT_PREFIX = "/hopsfs/"
+    MODELS_DATASET = "Models"
     MODEL_FILES_DIR_NAME = "Files"
 
 
 class MODEL_SERVING:
-    MODELS_DATASET = "Models"
-    ARTIFACTS_DIR_NAME = "Artifacts"
-
-
-class ARTIFACT_VERSION:
-    CREATE = "CREATE"
+    DEPLOYMENTS_DATASET = "Deployments"
+    ARTIFACTS_DIR_NAME = "Artifacts"  # legacy, kept for backward compatibility (<4.6)
 
 
 class RESOURCES:
