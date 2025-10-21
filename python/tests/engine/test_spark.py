@@ -4716,7 +4716,7 @@ class TestSpark:
         mock_spark_read = mocker.patch("pyspark.sql.SparkSession.read")
         mock_format = mocker.Mock()
         mock_spark_read.format.return_value = mock_format
-        
+
         # Mock the conf property and its set method
         mock_conf = mocker.Mock()
         mocker.patch.object(
