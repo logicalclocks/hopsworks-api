@@ -1414,6 +1414,10 @@ class Engine:
         )
 
     def _add_cols_to_delta_table(self, feature_group):
+        self._spark_session.conf.set(
+            "spark.sql.catalog.spark_catalog",
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+        )
         location = feature_group.prepare_spark_location()
 
         dataframe = self._spark_session.read.format("delta").load(location)
