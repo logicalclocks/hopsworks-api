@@ -568,6 +568,29 @@ class TestFeatureGroup:
             "tableSpace": "",
         }
 
+    def test_feature_group_data_source_update_storage_connector(self, mocker):
+        # Arrange
+        data_source = mocker.Mock()
+        sc = storage_connector.S3Connector(
+            id=1, name="s3_conn", featurestore_id=1
+        )
+
+        # Act
+        feature_group.FeatureGroup(
+            name="test_fg",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            data_source=data_source,
+            storage_connector=sc,
+        )
+
+        # Assert
+        assert data_source._update_storage_connector.call_count == 1
+        data_source._update_storage_connector.assert_called_once_with(sc)
+
     def test_materialization_job_retry_success(self, mocker):
         # Arrange
         mocker.patch("time.sleep")

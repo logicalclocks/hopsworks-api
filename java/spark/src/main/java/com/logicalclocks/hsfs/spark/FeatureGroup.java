@@ -90,7 +90,6 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
     this.onlineConfig = onlineConfig;
     this.storageConnector = storageConnector;
     this.dataSource.setPath(path);
-    this.dataSource.updateStorageConnector(storageConnector);
   }
 
   public FeatureGroup() {

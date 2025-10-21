@@ -19,6 +19,8 @@ package com.logicalclocks.hsfs;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.logicalclocks.hsfs.StorageConnector.RdsConnector;
+
 import org.apache.log4j.Appender;
 import org.apache.log4j.spi.LoggingEvent;
 import org.junit.Assert;
@@ -71,5 +73,22 @@ class TestStreamFeatureGroup {
     Assert.assertEquals(Level.WARN, argument.getValue().getLevel());
     Assert.assertEquals("Feature Group `test_fg`, version `1` is deprecated", argument.getValue().getMessage());
     Assert.assertEquals("com.logicalclocks.hsfs.FeatureGroupBase", argument.getValue().getLoggerName());
+  }
+
+  @Test
+  void testDataSourceUpdateStorageConnector() throws JsonProcessingException {
+    // Arrange
+    RdsConnector sc = new RdsConnector();
+
+    DataSource ds = Mockito.mock(DataSource.class);
+
+    StreamFeatureGroup fg = new StreamFeatureGroup();
+    fg.setStorageConnector(sc);
+
+    // Act
+    fg.setDataSource(ds);
+
+    // Assert
+    Mockito.verify(ds, Mockito.times(1)).updateStorageConnector(sc);
   }
 }

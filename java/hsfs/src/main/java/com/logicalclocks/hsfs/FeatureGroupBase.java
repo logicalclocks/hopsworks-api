@@ -140,7 +140,6 @@ public abstract class FeatureGroupBase<T> {
   protected StorageConnector storageConnector;
 
   @Getter
-  @Setter
   protected DataSource dataSource;
 
   @JsonIgnore
@@ -168,6 +167,13 @@ public abstract class FeatureGroupBase<T> {
   public void checkDeprecated() {
     if (Boolean.TRUE.equals(this.deprecated)) {
       LOGGER.warn(String.format("Feature Group `%s`, version `%s` is deprecated", this.name, this.version));
+    }
+  }
+
+  public void setDataSource(DataSource dataSource) {
+    this.dataSource = dataSource;
+    if (this.dataSource != null) {
+      this.dataSource.updateStorageConnector(this.storageConnector);
     }
   }
 

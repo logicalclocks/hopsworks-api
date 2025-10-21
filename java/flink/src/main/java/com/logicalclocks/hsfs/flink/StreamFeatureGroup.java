@@ -77,7 +77,6 @@ public class StreamFeatureGroup extends FeatureGroupBase<DataStream<?>> {
     this.onlineConfig = onlineConfig;
     this.storageConnector = storageConnector;
     this.dataSource.setPath(path);
-    this.dataSource.updateStorageConnector(storageConnector);
   }
 
   public StreamFeatureGroup() {
