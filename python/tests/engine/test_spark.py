@@ -4716,6 +4716,15 @@ class TestSpark:
         mock_spark_read = mocker.patch("pyspark.sql.SparkSession.read")
         mock_format = mocker.Mock()
         mock_spark_read.format.return_value = mock_format
+        
+        # Mock the conf property and its set method
+        mock_conf = mocker.Mock()
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "conf",
+            new_callable=PropertyMock,
+            return_value=mock_conf
+        )
 
         # Arrange
         spark_engine = spark.Engine()
@@ -4736,6 +4745,11 @@ class TestSpark:
 
         # Assert
         assert mock_spark_read.format.call_count == 1
+        # Verify that the Delta catalog configuration is set
+        mock_conf.set.assert_called_with(
+            "spark.sql.catalog.spark_catalog",
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog"
+        )
 
     def test_apply_transformation_function_single_output_udf_default_mode(self, mocker):
         # Arrange
