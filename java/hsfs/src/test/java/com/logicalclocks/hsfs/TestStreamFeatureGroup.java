@@ -36,6 +36,7 @@ class TestStreamFeatureGroup {
   void testParsingJson() throws JsonProcessingException {
     // Arrange
     Logger logger = Logger.getRootLogger();
+    logger.removeAllAppenders();
     Appender appender = Mockito.mock(Appender.class);
     logger.addAppender(appender);
 
@@ -56,6 +57,7 @@ class TestStreamFeatureGroup {
   void testParsingJsonWhenDeprecated() throws JsonProcessingException {
     // Arrange
     Logger logger = Logger.getRootLogger();
+    logger.removeAllAppenders();
     Appender appender = Mockito.mock(Appender.class);
     logger.addAppender(appender);
 
