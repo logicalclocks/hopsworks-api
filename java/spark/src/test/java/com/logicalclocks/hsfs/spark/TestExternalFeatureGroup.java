@@ -21,6 +21,7 @@ import com.logicalclocks.hsfs.ExternalDataFormat;
 import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.StorageConnector;
+import com.logicalclocks.hsfs.StorageConnectorType;
 import com.logicalclocks.hsfs.spark.engine.FeatureGroupEngine;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -40,6 +41,8 @@ public class TestExternalFeatureGroup {
 
     FeatureStore featureStore = Mockito.mock(FeatureStore.class);
     StorageConnector storageConnector = Mockito.mock(StorageConnector.class);
+    Mockito.when(storageConnector.getStorageConnectorType())
+          .thenReturn(StorageConnectorType.S3);
     FeatureGroupEngine externalFeatureGroupEngine = new FeatureGroupEngine();
 
     // Act
@@ -66,6 +69,8 @@ public class TestExternalFeatureGroup {
 
     FeatureStore featureStore = Mockito.mock(FeatureStore.class);
     StorageConnector storageConnector = Mockito.mock(StorageConnector.class);
+    Mockito.when(storageConnector.getStorageConnectorType())
+          .thenReturn(StorageConnectorType.S3);
     FeatureGroupEngine externalFeatureGroupEngine = new FeatureGroupEngine();
 
     // Act

@@ -1839,6 +1839,7 @@ class BigQueryConnector(StorageConnector):
             self, self.BIGQUERY_FORMAT, options, path, dataframe_type
         )
 
+
 class RdsConnector(StorageConnector):
     type = StorageConnector.RDS
     JDBC_FORMAT = "jdbc"

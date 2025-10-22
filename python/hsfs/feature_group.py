@@ -227,13 +227,13 @@ class FeatureGroupBase:
                 self._online_config.table_space = ""
 
         if data_source:
-            self._data_source = (
+            self.data_source = (
                 ds.DataSource.from_response_json(data_source)
                 if isinstance(data_source, dict)
                 else data_source
             )
         else:
-            self._data_source = ds.DataSource()
+            self.data_source = ds.DataSource()
 
         self._multi_part_insert: bool = False
         self._embedding_index = embedding_index
@@ -2330,6 +2330,12 @@ class FeatureGroupBase:
     def data_source(self) -> Optional[ds.DataSource]:
         return self._data_source
 
+    @data_source.setter
+    def data_source(self, data_source: ds.DataSource) -> None:
+        self._data_source = data_source
+        if self._data_source is not None:
+            self._data_source._update_storage_connector(self.storage_connector)
+
     @property
     def subject(self) -> Dict[str, Any]:
         """Subject of the feature group."""
@@ -4082,8 +4088,8 @@ class FeatureGroup(FeatureGroupBase):
             "ttl": self.ttl,
             "ttlEnabled": self._ttl_enabled,
         }
-        if self._data_source:
-            fg_meta_dict["dataSource"] = self._data_source.to_dict()
+        if self.data_source:
+            fg_meta_dict["dataSource"] = self.data_source.to_dict()
         if self._online_config:
             fg_meta_dict["onlineConfig"] = self._online_config.to_dict()
         if self.embedding_index:
@@ -4764,8 +4770,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
             "ttl": self.ttl,
             "ttlEnabled": self._ttl_enabled,
         }
-        if self._data_source:
-            fg_meta_dict["dataSource"] = self._data_source.to_dict()
+        if self.data_source:
+            fg_meta_dict["dataSource"] = self.data_source.to_dict()
         if self._online_config:
             fg_meta_dict["onlineConfig"] = self._online_config.to_dict()
         if self.embedding_index:
