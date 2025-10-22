@@ -525,9 +525,11 @@ class FeatureView:
             self,
             start_time,
             end_time,
-            training_dataset_version=self._batch_scoring_server.training_dataset_version
-            if self._batch_scoring_server
-            else None,
+            training_dataset_version=(
+                self._batch_scoring_server.training_dataset_version
+                if self._batch_scoring_server
+                else None
+            ),
         )
 
     def get_feature_vector(
@@ -3593,17 +3595,19 @@ class FeatureView:
             featurestore_name=json_decamelized.get("featurestore_name", None),
             serving_keys=serving_keys,
             logging_enabled=json_decamelized.get("logging_enabled", False),
-            transformation_functions=[
-                TransformationFunction.from_response_json(
-                    {
-                        **transformation_function,
-                        "transformation_type": TransformationType.MODEL_DEPENDENT,
-                    }
-                )
-                for transformation_function in transformation_functions
-            ]
-            if transformation_functions
-            else [],
+            transformation_functions=(
+                [
+                    TransformationFunction.from_response_json(
+                        {
+                            **transformation_function,
+                            "transformation_type": TransformationType.MODEL_DEPENDENT,
+                        }
+                    )
+                    for transformation_function in transformation_functions
+                ]
+                if transformation_functions
+                else []
+            ),
         )
         features = json_decamelized.get("features", [])
         if features:
@@ -3979,6 +3983,23 @@ class FeatureView:
             )
 
     def create_feature_logger(self):
+        """Create an asynchronous feature logger for logging features in Hopsworks serving deployments.
+
+        # Example
+            ```python
+            # get feature logger
+            feature_logger = feature_view.create_feature_logger()
+
+            # initialize feature view for serving with feature logger
+            feature_view.init_serving(1, feature_logger=feature_logger)
+
+            # log features
+            feature_view.log(...)
+            ```
+
+        # Raises
+            `hopsworks.client.exceptions.FeatureStoreException`: If not running in a Hopsworks serving deployment.
+        """
         if (
             "DEPLOYMENT_NAME" not in os.environ
             or "HOPSWORKS_PROJECT_NAME" not in os.environ

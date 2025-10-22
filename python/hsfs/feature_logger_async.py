@@ -179,7 +179,8 @@ class AsyncFeatureLogger(FeatureLogger):
         if self._feature_logger_config is None:
             self._feature_logger_config = {}
         # set pool size equals to the number of concurrent tasks
-        self._feature_logger_config = {"pool_size": max_concurrent_tasks}
+        if "pool_size" not in self._feature_logger_config:
+            self._feature_logger_config["pool_size"] = max_concurrent_tasks
         self._feature_encoders = {}
 
     def log(
