@@ -133,7 +133,7 @@ if HAS_PANDAS:
     }
 
 
-def create_extended_type(base_type: type) -> "ExtendedType":
+def create_extended_type(base_type: type) -> "HopsworksLoggingMetadataType":
     """
     This is wrapper function to create a new class that extends the base_type class with a new attribute that can be used to store metadata.
 
@@ -141,7 +141,7 @@ def create_extended_type(base_type: type) -> "ExtendedType":
         base_type : The base class to extend
     """
 
-    class ExtendedType(base_type):
+    class HopsworksLoggingMetadataType(base_type):
         """
         This is a class that extends the base_type class with a new attribute `hopsworks_logging_metadata` that can be used to store metadata.
         """
@@ -158,11 +158,11 @@ def create_extended_type(base_type: type) -> "ExtendedType":
         def hopsworks_logging_metadata(self, meta_data: LoggingMetaData):
             self._hopsworks_logging_metadata = meta_data
 
-    return ExtendedType
+    return HopsworksLoggingMetadataType
 
 
-ExtendedType = NewType(
-    "ExtendedType", create_extended_type(type)
+HopsworksLoggingMetadataType = NewType(
+    "HopsworksLoggingMetadataType", create_extended_type(type)
 )  # Adding new type for type hinting and static analysis.
 
 
@@ -225,7 +225,7 @@ def cast_pandas_column_to_offline_type(
                     if not isinstance(x, (list, dict, np.ndarray))
                     else True
                 )
-                and x != ""
+                and (x != "" if not isinstance(x, (list, dict, np.ndarray)) else True)
             )
             else None
         )
