@@ -20,7 +20,6 @@ import logging
 import warnings
 from datetime import date, datetime
 from typing import (
-    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -38,6 +37,7 @@ import pandas as pd
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import alerts_api
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
+from hopsworks_common.core.type_systems import HopsworksLoggingMetadataType
 from hsfs import (
     feature_group,
     storage_connector,
@@ -79,9 +79,6 @@ from hsml.model import Model
 
 if HAS_NUMPY:
     import numpy as np
-
-if TYPE_CHECKING:
-    from hopsworks_common.core.type_systems import HopsworksLoggingMetadataType
 
 
 _logger = logging.getLogger(__name__)
