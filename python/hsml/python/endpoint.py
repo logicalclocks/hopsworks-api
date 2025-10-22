@@ -21,14 +21,14 @@ from hsml.predictor import Predictor
 class Endpoint(Predictor):
     """Configuration for an endpoint running a python script."""
 
-    def __init__(self, **kwargs):
+    def __init__(self, name: str, script_file: str, **kwargs):
         kwargs["model_server"] = PREDICTOR.MODEL_SERVER_PYTHON
 
-        if kwargs["name"] is None:
+        if name is None:
             raise ValueError("A deployment name must be provided")
-        if kwargs["script_file"] is None:
+        if script_file is None:
             raise ValueError(
                 "Python scripts are required in deployments without models"
             )
 
-        super().__init__(**kwargs)
+        super().__init__(name=name, script_file=script_file, **kwargs)
