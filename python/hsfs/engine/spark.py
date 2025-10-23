@@ -1387,37 +1387,52 @@ class Engine:
         return False
 
     def update_table_schema(self, feature_group):
-        table_format = feature_group.time_travel_format.lower()
-
-        # Choose format and write options
         if feature_group.time_travel_format == "DELTA":
-            self._spark_session.conf.set(
-                "spark.sql.catalog.spark_catalog",
-                "org.apache.spark.sql.delta.catalog.DeltaCatalog",
-            )
-            write_options = {
-                "mergeSchema": "true",
-                "spark.databricks.delta.schema.autoMerge.enabled": "true",
-            }
+            self._add_cols_to_delta_table(feature_group)
         else:
-            write_options = {
-                "hoodie.datasource.write.schema.evolution.enable": "true",
-            }
+            self._save_empty_dataframe(feature_group)
 
+    def _save_empty_dataframe(self, feature_group):
         location = feature_group.prepare_spark_location()
 
-        # Load existing table
-        df = self._spark_session.read.format(table_format).load(location)
+        dataframe = self._spark_session.read.format("hudi").load(location)
 
-        # Add missing columns
         for _feature in feature_group.features:
-            if _feature.name not in df.columns:
-                df = df.withColumn(
-                    _feature.name, lit(_feature.default_value).cast(_feature.type)
+            if _feature.name not in dataframe.columns:
+                dataframe = dataframe.withColumn(
+                    _feature.name, lit(None).cast(_feature.type)
                 )
 
-        # Write empty DataFrame to trigger schema evolution
-        df.limit(0).write.format(table_format).mode("append").options(**write_options).save(location)
+        self.save_dataframe(
+            feature_group,
+            dataframe.limit(0),
+            "upsert",
+            feature_group.online_enabled,
+            "offline",
+            {},
+            {},
+        )
+
+    def _add_cols_to_delta_table(self, feature_group):
+        self._spark_session.conf.set(
+            "spark.sql.catalog.spark_catalog",
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+        )
+        location = feature_group.prepare_spark_location()
+
+        dataframe = self._spark_session.read.format("delta").load(location)
+
+        for _feature in feature_group.features:
+            if _feature.name not in dataframe.columns:
+                dataframe = dataframe.withColumn(
+                    _feature.name, lit(None).cast(_feature.type)
+                )
+
+        dataframe.limit(0).write.format("delta").mode("append").option(
+            "mergeSchema", "true"
+        ).option("spark.databricks.delta.schema.autoMerge.enabled", "true").save(
+            location
+        )
 
     def _apply_transformation_function(
         self,
