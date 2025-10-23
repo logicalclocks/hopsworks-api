@@ -1387,11 +1387,14 @@ class Engine:
         return False
 
     def update_table_schema(self, feature_group):
-        location = feature_group.prepare_spark_location()
         table_format = feature_group.time_travel_format.lower()
 
         # Choose format and write options
         if feature_group.time_travel_format == "DELTA":
+            self._spark_session.conf.set(
+                "spark.sql.catalog.spark_catalog",
+                "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+            )
             write_options = {
                 "mergeSchema": "true",
                 "spark.databricks.delta.schema.autoMerge.enabled": "true",
@@ -1400,6 +1403,8 @@ class Engine:
             write_options = {
                 "hoodie.datasource.write.schema.evolution.enable": "true",
             }
+
+        location = feature_group.prepare_spark_location()
 
         # Load existing table
         df = self._spark_session.read.format(table_format).load(location)
