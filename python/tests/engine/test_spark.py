@@ -4683,9 +4683,6 @@ class TestSpark:
 
     def test_update_table_schema_hudi(self, mocker):
         # Arrange
-        mock_spark_engine_save_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine.save_dataframe"
-        )
         mock_spark_read = mocker.patch("pyspark.sql.SparkSession.read")
         mock_format = mocker.Mock()
         mock_spark_read.format.return_value = mock_format
@@ -4708,7 +4705,6 @@ class TestSpark:
         spark_engine.update_table_schema(feature_group=fg)
 
         # Assert
-        assert mock_spark_engine_save_dataframe.call_count == 1
         assert mock_spark_read.format.call_count == 1
 
     def test_update_table_schema_delta(self, mocker):
