@@ -285,7 +285,7 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
         else:
             starting_offset_string = spark.read.json(offset_location).toJSON().first()
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        print(f"Failed to use existing offsets: {e}")
         # if all else fails read from the beggining
         initial_check_point_string = kafka_engine.kafka_get_offsets(
             topic_name=entity._online_topic_name,
