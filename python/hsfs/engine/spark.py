@@ -1848,6 +1848,8 @@ class Engine:
             pd.DataFrame, "pyspark.sql.DataFrame", List[List], np.ndarray
         ] = None,
         logging_feature_group_features: List[feature.Feature] = None,
+        logging_feature_group_feature_names: List[str] = None,
+        logging_features: List[str] = None,
         transformed_features: Optional[
             Tuple[
                 Union[pd.DataFrame, "pyspark.sql.DataFrame", List[List], np.ndarray],
@@ -1925,6 +1927,8 @@ class Engine:
         # Arguments
             logging_data: `Union[pd.DataFrame, pyspark.sql.DataFrame, List[List], np.ndarray]` : The data to be logged.
             logging_feature_group_features: `List[feature.Feature]` : The features of the logging feature group.
+            logging_feature_group_feature_names: `List[str]`. The names of the logging feature group features.
+            logging_features: `List[str]`: The names of the logging features, this excludes the names of all metadata columns.
             transformed_features: `Optional[Tuple[Union[pd.DataFrame, pyspark.sql.DataFrame, List[List], np.ndarray], List[str]]]` : A tuple containing the transformed features and their feature names and a log component name (a constant named "transformed_features").
             untransformed_features: `Optional[Tuple[Union[pd.DataFrame, pyspark.sql.DataFrame, List[List], np.ndarray], List[str]]]` : A tuple containing the untransformed features and their feature names and a log component name (a constant named "untransformed_features").
             predictions: `Optional[Tuple[Union[pd.DataFrame, pyspark.sql.DataFrame, List[List], np.ndarray], List[str]]]` : A tuple containing the predictions and their feature names and a log component name (a constant named "predictions").
@@ -1939,25 +1943,14 @@ class Engine:
             model_col_name: `Optional[str]` : The name of the model column.
             training_dataset_version: `Optional[int]` : The version of the training dataset.
             hsml_model: `str` : The name of the model.
+
+        # Returns
+            `DataFrame`: A spark dataframe with all the logging components.
+            `List[str]`: Names of additional logging features passed in the Logging Dataframe.
+            `List[str]`: Names of missing logging features passed in the Logging Dataframe.
         """
         TEMP_JOIN_KEY = "row_id"
 
-        logging_feature_group_feature_names = [
-            feature.name for feature in logging_feature_group_features
-        ]
-        logging_meta_data_columns = [
-            constants.FEATURE_LOGGING.LOG_ID_COLUMN_NAME,
-            constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
-            constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
-            constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
-            constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME,
-            constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME,
-        ]
-        logging_features = [
-            feature_name
-            for feature_name in logging_feature_group_feature_names
-            if feature_name not in logging_meta_data_columns
-        ]
         if logging_data is not None:
             try:
                 logging_df = (
@@ -2137,15 +2130,6 @@ class Engine:
             - set(user_passed_request_parameters)
         )
 
-        if additional_logging_features:
-            _logger.info(
-                f"The following columns : `{'`, `'.join(sorted(additional_logging_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored."
-            )
-        if missing_logging_features:
-            _logger.info(
-                f"The following columns : `{'`, `'.join(sorted(missing_logging_features))}` are missing in the logged dataframe. Setting them to None."
-            )
-
         # Cast all features to their respective offline type before writing.
         for f in logging_feature_group_features:
             if f.name in missing_logging_features:
@@ -2178,7 +2162,11 @@ class Engine:
                     ) from e
 
         # Select the required columns
-        return logging_df.select(*logging_feature_group_feature_names)
+        return (
+            logging_df.select(*logging_feature_group_feature_names),
+            additional_logging_features,
+            missing_logging_features,
+        )
 
     @staticmethod
     def read_feature_log(query, time_col):

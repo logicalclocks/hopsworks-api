@@ -221,11 +221,9 @@ def cast_pandas_column_to_offline_type(
             if (
                 x is not None
                 and (
-                    not pd.isnull(x)
-                    if not isinstance(x, (list, dict, np.ndarray))
-                    else True
+                    isinstance(x, (list, dict, np.ndarray))
+                    or (not pd.isnull(x) and x != "")
                 )
-                and (x != "" if not isinstance(x, (list, dict, np.ndarray)) else True)
             )
             else None
         )

@@ -1900,6 +1900,8 @@ class Engine:
             np.ndarray,
         ] = None,
         logging_feature_group_features: List[feature.Feature] = None,
+        logging_feature_group_feature_names: List[str] = None,
+        logging_features: List[str] = None,
         transformed_features: Optional[
             Tuple[
                 Union[
@@ -2032,6 +2034,8 @@ class Engine:
         # Arguments:
             logging_data : Feature log provided by the user.
             logging_feature_group_features : List of features in the logging feature group.
+            logging_feature_group_feature_names: `List[str]`. The names of the logging feature group features.
+            logging_features: `List[str]`: The names of the logging features, this excludes the names of all metadata columns.
             transformed_features: Tuple of transformed features to be logged, transformed feature names and a log component name (a constant named "transformed_features").
             untransformed_features : Tuple of untransformed features, feature names and log component name (a constant named "untransformed_features").
             predictions : Tuple of predictions, prediction names and log component name (a constant named "predictions").
@@ -2048,25 +2052,11 @@ class Engine:
             hsml_model : Name of the model.
         # Returns:
             `pd.DataFrame`: A pandas dataframe with all the logging components.
+            `List[str]`: Names of additional logging features passed in the Logging Dataframe.
+            `List[str]`: Names of missing logging features passed in the Logging Dataframe.
         """
-        logging_feature_group_feature_names = [
-            feature.name for feature in logging_feature_group_features
-        ]
-        logging_meta_data_columns = [
-            constants.FEATURE_LOGGING.LOG_ID_COLUMN_NAME,
-            constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
-            constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
-            constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
-            constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME,
-            constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME,
-        ]
         if logging_data is not None:
             try:
-                logging_features = [
-                    feature_name
-                    for feature_name in logging_feature_group_feature_names
-                    if feature_name not in logging_meta_data_columns
-                ]
                 logging_df = Engine._convert_feature_log_to_df(
                     logging_data, logging_features
                 )
@@ -2207,11 +2197,6 @@ class Engine:
             set(logging_feature_group_feature_names)
         )
 
-        if additional_logging_features:
-            _logger.info(
-                f"The following columns : `{'`, `'.join(sorted(additional_logging_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored."
-            )
-
         # Cast columns to the correct types
         for f in logging_feature_group_features:
             if f.name in logging_df.columns:
@@ -2220,9 +2205,6 @@ class Engine:
                 )
 
         if missing_logging_features:
-            _logger.info(
-                f"The following columns : `{'`, `'.join(sorted(missing_logging_features))}` are missing in the logged dataframe. Setting them to None."
-            )
             # Set missing columns to None
             for col in missing_logging_features:
                 logging_df[col] = None
@@ -2239,7 +2221,12 @@ class Engine:
             logging_df[missing_event_time_feature] = logging_df[
                 missing_event_time_feature
             ].replace({pd.NaT: None})
-        return logging_df[logging_feature_group_feature_names]
+
+        return (
+            logging_df[logging_feature_group_feature_names],
+            additional_logging_features,
+            missing_logging_features,
+        )
 
     def get_feature_logging_list(
         self,
@@ -2247,6 +2234,8 @@ class Engine:
             pd.DataFrame, pl.DataFrame, List[Dict[str, Any]], List[List], np.ndarray
         ] = None,
         logging_feature_group_features: List[feature.Feature] = None,
+        logging_feature_group_feature_names: List[str] = None,
+        logging_features: List[str] = None,
         transformed_features: Optional[
             Tuple[
                 Union[
@@ -2377,6 +2366,8 @@ class Engine:
         # Arguments:
             logging_data : Feature log provided by the user.
             logging_feature_group_features : List of features in the logging feature group.
+            logging_feature_group_feature_names: `List[str]`. The names of the logging feature group features.
+            logging_features: `List[str]`: The names of the logging features, this excludes the names of all metadata columns.
             transformed_features: Tuple of transformed features to be logged, transformed feature names and a log component name (a constant named "transformed_features").
             untransformed_features : Tuple of untransformed features, feature names and log component name (a constant named "untransformed_features").
             predictions : Tuple of predictions, prediction names and log component name (a constant named "predictions").
@@ -2395,22 +2386,6 @@ class Engine:
         # Returns:
             `List[Dict[str, Any]]`: A list of dictionaries with all the logging components
         """
-        logging_feature_group_feature_names = [
-            feature.name for feature in logging_feature_group_features
-        ]
-        logging_meta_data_columns = [
-            constants.FEATURE_LOGGING.LOG_ID_COLUMN_NAME,
-            constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
-            constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
-            constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
-            constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME,
-            constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME,
-        ]
-        logging_features = [
-            feature_name
-            for feature_name in logging_feature_group_feature_names
-            if feature_name not in logging_meta_data_columns
-        ]
         _, label_columns, _ = predictions
         # If any of the logging components is a dataframe, we use the get_feature_logging_df function to get a dataframe and then convert it to a list of dictionaries.
         if any(
@@ -2429,25 +2404,35 @@ class Engine:
                 request_id,
             ]
         ):
-            return self.get_feature_logging_df(
-                logging_data=logging_data,
-                logging_feature_group_features=logging_feature_group_features,
-                transformed_features=transformed_features,
-                untransformed_features=untransformed_features,
-                predictions=predictions,
-                serving_keys=serving_keys,
-                helper_columns=helper_columns,
-                request_parameters=request_parameters,
-                event_time=event_time,
-                request_id=request_id,
-                extra_logging_features=extra_logging_features,
-                td_col_name=td_col_name,
-                time_col_name=time_col_name,
-                model_col_name=model_col_name,
-                training_dataset_version=training_dataset_version,
-                model_name=model_name,
-                model_version=model_version,
-            ).to_dict(orient="records")
+            logging_data, additional_logging_features, missing_logging_features = (
+                self.get_feature_logging_df(
+                    logging_data=logging_data,
+                    logging_feature_group_features=logging_feature_group_features,
+                    logging_feature_group_feature_names=logging_feature_group_feature_names,
+                    logging_features=logging_features,
+                    transformed_features=transformed_features,
+                    untransformed_features=untransformed_features,
+                    predictions=predictions,
+                    serving_keys=serving_keys,
+                    helper_columns=helper_columns,
+                    request_parameters=request_parameters,
+                    event_time=event_time,
+                    request_id=request_id,
+                    extra_logging_features=extra_logging_features,
+                    td_col_name=td_col_name,
+                    time_col_name=time_col_name,
+                    model_col_name=model_col_name,
+                    training_dataset_version=training_dataset_version,
+                    model_name=model_name,
+                    model_version=model_version,
+                )
+            )
+
+            return (
+                logging_data.to_dict(orient="records"),
+                additional_logging_features,
+                missing_logging_features,
+            )
 
         log_vectors: List[Dict[Any, str]] = None
         all_missing_columns = set()
@@ -2620,7 +2605,8 @@ class Engine:
                 if col not in row:
                     row[col] = None
 
-        return log_vectors
+        # Additional and missing columns are null in this case since we would have thrown expections for these cases.
+        return log_vectors, None, None
 
     @staticmethod
     def read_feature_log(query, time_col):

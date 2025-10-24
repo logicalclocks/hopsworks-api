@@ -38,6 +38,7 @@ from hsfs.hopsworks_udf import udf
 from hsfs.serving_key import ServingKey
 from hsfs.storage_connector import BigQueryConnector, StorageConnector
 from hsfs.training_dataset_feature import TrainingDatasetFeature
+from hsfs.transformation_function import TransformationFunction, TransformationType
 
 
 engine.init("python")
@@ -83,6 +84,42 @@ fg4 = feature_group.FeatureGroup(
     features=[feature.Feature("id4"), feature.Feature("label4")],
     id=14,
     stream=False,
+)
+
+fg5 = feature_group.FeatureGroup(
+    name="test5",
+    version=1,
+    featurestore_id=99,
+    primary_key=["primary_key"],
+    event_time="event_time",
+    partition_key=[],
+    features=[
+        feature.Feature("primary_key", primary=True, type="bigint"),
+        feature.Feature("event_time", type="timestamp"),
+        feature.Feature("feature_1", type="float"),
+        feature.Feature("feature_2", type="float"),
+    ],
+    id=11,
+    stream=False,
+    featurestore_name="test_fs",
+)
+
+fg6 = feature_group.FeatureGroup(
+    name="test6",
+    version=1,
+    featurestore_id=99,
+    primary_key=["primary_key"],
+    event_time="event_time",
+    partition_key=[],
+    features=[
+        feature.Feature("primary_key", primary=True, type="bigint"),
+        feature.Feature("event_time", type="timestamp"),
+        feature.Feature("feature_1", type="float"),
+        feature.Feature("feature_2", type="float"),
+    ],
+    id=11,
+    stream=False,
+    featurestore_name="test_fs",
 )
 
 fg1._feature_store_name = "test_fs1"
@@ -2817,6 +2854,7 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocked_engine = mocker.Mock()
         mocker.patch("hsfs.engine.get_instance", return_value=mocked_engine)
+        mocked_engine.get_feature_logging_df.return_value = (pd.DataFrame, None, None)
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv_engine = feature_view_engine.FeatureViewEngine(
@@ -2960,6 +2998,16 @@ class TestFeatureViewEngine:
         # Verify the main arguments
         assert call_args[1]["logging_data"] is logging_data
         assert len(call_args[1]["logging_feature_group_features"]) == len(fg.features)
+        assert sorted(call_args[1]["logging_feature_group_feature_names"]) == sorted(
+            [feat.name for feat in fg.features]
+        )
+        assert sorted(call_args[1]["logging_features"]) == sorted(
+            [
+                feat.name
+                for feat in fg.features
+                if feat.name not in constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS
+            ]
+        )
 
         # Verify transformed_features tuple structure: (data, feature_names, constant)
         transformed_tuple = call_args[1]["transformed_features"]
@@ -3050,6 +3098,7 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocked_engine = mocker.Mock()
         mocker.patch("hsfs.engine.get_instance", return_value=mocked_engine)
+        mocked_engine.get_feature_logging_df.return_value = (pd.DataFrame, None, None)
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv_engine = feature_view_engine.FeatureViewEngine(
@@ -3192,6 +3241,16 @@ class TestFeatureViewEngine:
         # Verify the main arguments
         assert call_args[1]["logging_data"] is logging_data
         assert len(call_args[1]["logging_feature_group_features"]) == len(fg.features)
+        assert sorted(call_args[1]["logging_feature_group_feature_names"]) == sorted(
+            [feat.name for feat in fg.features]
+        )
+        assert sorted(call_args[1]["logging_features"]) == sorted(
+            [
+                feat.name
+                for feat in fg.features
+                if feat.name not in constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS
+            ]
+        )
 
         # Verify transformed_features tuple structure: (data, feature_names, constant)
         transformed_tuple = call_args[1]["transformed_features"]
@@ -3282,6 +3341,7 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocked_engine = mocker.Mock()
         mocker.patch("hsfs.engine.get_instance", return_value=mocked_engine)
+        mocked_engine.get_feature_logging_df.return_value = (pd.DataFrame, None, None)
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv_engine = feature_view_engine.FeatureViewEngine(
@@ -3454,6 +3514,16 @@ class TestFeatureViewEngine:
         # Verify the main arguments
         assert call_args[1]["logging_data"] is logging_data
         assert len(call_args[1]["logging_feature_group_features"]) == len(fg.features)
+        assert sorted(call_args[1]["logging_feature_group_feature_names"]) == sorted(
+            [feat.name for feat in fg.features]
+        )
+        assert sorted(call_args[1]["logging_features"]) == sorted(
+            [
+                feat.name
+                for feat in fg.features
+                if feat.name not in constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS
+            ]
+        )
 
         # Verify transformed_features tuple structure: (data, feature_names, constant)
         transformed_tuple = call_args[1]["transformed_features"]
@@ -3550,6 +3620,7 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocked_engine = mocker.Mock()
         mocker.patch("hsfs.engine.get_instance", return_value=mocked_engine)
+        mocked_engine.get_feature_logging_list.return_value = (pd.DataFrame, None, None)
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv_engine = feature_view_engine.FeatureViewEngine(
@@ -3658,6 +3729,16 @@ class TestFeatureViewEngine:
         # Verify the main arguments for list version
         assert call_args[1]["logging_data"] is logging_data
         assert len(call_args[1]["logging_feature_group_features"]) == len(fg.features)
+        assert sorted(call_args[1]["logging_feature_group_feature_names"]) == sorted(
+            [feat.name for feat in fg.features]
+        )
+        assert sorted(call_args[1]["logging_features"]) == sorted(
+            [
+                feat.name
+                for feat in fg.features
+                if feat.name not in constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS
+            ]
+        )
         assert call_args[1]["training_dataset_version"] == training_dataset_version
 
     def test_get_feature_logging_data_return_list_logging_meta_data(self, mocker):
@@ -3667,6 +3748,7 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocked_engine = mocker.Mock()
         mocker.patch("hsfs.engine.get_instance", return_value=mocked_engine)
+        mocked_engine.get_feature_logging_list.return_value = (pd.DataFrame, None, None)
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv_engine = feature_view_engine.FeatureViewEngine(
@@ -3826,6 +3908,16 @@ class TestFeatureViewEngine:
             call_args[1]["logging_data"] is None
         )  # Should be None since all the data is in the metadata
         assert len(call_args[1]["logging_feature_group_features"]) == len(fg.features)
+        assert sorted(call_args[1]["logging_feature_group_feature_names"]) == sorted(
+            [feat.name for feat in fg.features]
+        )
+        assert sorted(call_args[1]["logging_features"]) == sorted(
+            [
+                feat.name
+                for feat in fg.features
+                if feat.name not in constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS
+            ]
+        )
         assert call_args[1]["training_dataset_version"] == training_dataset_version
         assert (
             call_args[1]["untransformed_features"][0]
@@ -3856,6 +3948,7 @@ class TestFeatureViewEngine:
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocked_engine = mocker.Mock()
         mocker.patch("hsfs.engine.get_instance", return_value=mocked_engine)
+        mocked_engine.get_feature_logging_list.return_value = (pd.DataFrame, None, None)
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
         fv_engine = feature_view_engine.FeatureViewEngine(
@@ -4050,6 +4143,16 @@ class TestFeatureViewEngine:
             call_args[1]["logging_data"] is None
         )  # Should be None since all the data is in the metadata
         assert len(call_args[1]["logging_feature_group_features"]) == len(fg.features)
+        assert sorted(call_args[1]["logging_feature_group_feature_names"]) == sorted(
+            [feat.name for feat in fg.features]
+        )
+        assert sorted(call_args[1]["logging_features"]) == sorted(
+            [
+                feat.name
+                for feat in fg.features
+                if feat.name not in constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS
+            ]
+        )
         assert call_args[1]["training_dataset_version"] == training_dataset_version
         assert (
             call_args[1]["untransformed_features"][0]
@@ -4079,3 +4182,229 @@ class TestFeatureViewEngine:
         assert call_args[1]["extra_logging_features"][0] is extra_logging_data
         assert call_args[1]["model_name"] == "test_model"
         assert call_args[1]["model_version"] == 1
+
+    def test_get_primary_keys_from_query_all_fully_qualified(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=99,
+        )
+
+        query = fg5.select_features().join(fg6.select_features())
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=query,
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            labels=["label"],
+        )
+
+        fqn_primary_keys = fv_engine._get_primary_keys_from_query(fv.query)
+
+        assert {"test_fs_test5_1_primary_key", "test_fs_test6_1_primary_key"} == set(
+            fqn_primary_keys
+        )
+
+    def test_get_primary_keys_from_query_some_fully_qualified(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=99,
+        )
+
+        query = fg5.select_features().join(fg6.select_all())
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=query,
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            labels=["label"],
+        )
+
+        fqn_primary_keys = fv_engine._get_primary_keys_from_query(fv.query)
+
+        assert {"test_fs_test5_1_primary_key", "primary_key"} == set(fqn_primary_keys)
+
+    def test_get_event_time_from_query_all_fully_qualified(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=99,
+        )
+
+        query = fg5.select_features().join(fg6.select_features())
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=query,
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            labels=["label"],
+        )
+
+        fqn_primary_keys = fv_engine._get_eventtimes_from_query(fv.query)
+
+        assert {"test_fs_test5_1_event_time", "test_fs_test6_1_event_time"} == set(
+            fqn_primary_keys
+        )
+
+    def test_get_event_time_from_query_some_fully_qualified(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=99,
+        )
+
+        query = fg5.select_features().join(fg6.select_all())
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=query,
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            labels=["label"],
+        )
+
+        fqn_primary_keys = fv_engine._get_eventtimes_from_query(fv.query)
+
+        assert {"test_fs_test5_1_event_time", "event_time"} == set(fqn_primary_keys)
+
+    def test_get_training_dataset_schema_no_transformations(self, mocker):
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=99,
+        )
+
+        query = fg5.select_features().join(fg6.select_all())
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=query,
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            labels=["label"],
+        )
+
+        fv.schema = [
+            TrainingDatasetFeature(name="fg1_feature1", type="float"),
+            TrainingDatasetFeature(name="fg1_feature2", type="int"),
+            TrainingDatasetFeature(name="label", type="int", label=True),
+            TrainingDatasetFeature(name="fg2_feature1", type="float"),
+            TrainingDatasetFeature(name="fg2_feature2", type="int"),
+        ]
+
+        # If there are no transformation function training dataset schema == feature view schema
+        assert fv_engine.get_training_dataset_schema(fv) == fv.features
+
+    def test_get_training_dataset_schema_transformation_functions(self, mocker):
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=99,
+        )
+
+        query = fg5.select_features().join(fg6.select_all())
+
+        @udf(int, drop="feature")
+        def add_one(feature):
+            return feature + 1
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=query,
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            transformation_functions=[add_one("fg1_feature1")],
+            labels=["label"],
+        )
+
+        fv.schema = [
+            TrainingDatasetFeature(name="fg1_feature1", type="float"),
+            TrainingDatasetFeature(name="fg1_feature2", type="int"),
+            TrainingDatasetFeature(name="label", type="int", label=True),
+            TrainingDatasetFeature(name="fg2_feature1", type="float"),
+            TrainingDatasetFeature(name="fg2_feature2", type="int"),
+        ]
+
+        assert {feat.name for feat in fv_engine.get_training_dataset_schema(fv)} == {
+            "add_one_fg1_feature1_",
+            "fg1_feature2",
+            "label",
+            "fg2_feature1",
+            "fg2_feature2",
+        }
+
+    def test_get_training_dataset_schema_transformation_functions_statistics(
+        self, mocker
+    ):
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=99,
+        )
+
+        mocker.patch.object(fv_engine, "_get_training_dataset_metadata")
+
+        query = fg5.select_features().join(fg6.select_all())
+
+        from hsfs.builtin_transformations import one_hot_encoder
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=query,
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            transformation_functions=[one_hot_encoder("fg1_feature1")],
+            labels=["label"],
+        )
+
+        fv.schema = [
+            TrainingDatasetFeature(name="fg1_feature1", type="float"),
+            TrainingDatasetFeature(name="fg1_feature2", type="int"),
+            TrainingDatasetFeature(name="label", type="int", label=True),
+            TrainingDatasetFeature(name="fg2_feature1", type="float"),
+            TrainingDatasetFeature(name="fg2_feature2", type="int"),
+        ]
+
+        mock_one_hot_stats = one_hot_encoder("fg1_feature1")
+        mock_one_hot_stats = TransformationFunction(
+            featurestore_id=99,
+            hopsworks_udf=mock_one_hot_stats,
+            version=1,
+            id=1,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        mock_one_hot_stats.transformation_statistics = [
+            FeatureDescriptiveStatistics(
+                feature_name="fg1_feature1",
+                extended_statistics={"unique_values": ["a", "b"]},
+            )
+        ]
+        mocker.patch.object(
+            fv_engine._transformation_function_engine,
+            "get_ready_to_use_transformation_fns",
+            return_value=[mock_one_hot_stats],
+        )
+
+        assert {feat.name for feat in fv_engine.get_training_dataset_schema(fv, 1)} == {
+            "one_hot_encoder_fg1_feature1_0",
+            "one_hot_encoder_fg1_feature1_1",
+            "fg1_feature2",
+            "label",
+            "fg2_feature1",
+            "fg2_feature2",
+        }

@@ -74,6 +74,14 @@ class TestPython:
         return {
             "logging_data": logging_data,
             "logging_feature_group_features": logging_feature_group_features,
+            "logging_feature_group_feature_names": [
+                feat.name for feat in logging_feature_group_features
+            ],
+            "logging_features": [
+                feat.name
+                for feat in logging_feature_group_features
+                if feat.name not in constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS
+            ],
             "transformed_features": (
                 transformed_features,
                 column_names["transformed_features"],
@@ -5003,7 +5011,7 @@ class TestPython:
             )
 
             # Act
-            logging_dataframe = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
 
             # Assert expected columns and values
             expected_log_data, expected_columns, _, _ = (
@@ -5049,7 +5057,7 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
 
         # Assert expected columns and values
         expected_log_data, expected_columns, _, _ = (
@@ -5095,7 +5103,7 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
 
         # Assert expected columns and values
         expected_log_data, expected_columns, _, _ = (
@@ -5153,13 +5161,13 @@ class TestPython:
             )
 
             # Act
-            logging_dataframe = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, additional_logging_features, missing_logging_features = (
+                python_engine.get_feature_logging_df(**args)
+            )
 
             # Assert expected columns and values
-            assert [
-                f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-                f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-            ] == [rec.message for rec in caplog.records]
+            assert sorted(missing_features) == sorted(missing_logging_features)
+            assert sorted(additional_features) == sorted(additional_logging_features)
             assert all(logging_dataframe.columns == expected_columns)
             assert (
                 logging_dataframe[logging_feature_names].values.tolist()
@@ -5195,7 +5203,9 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            python_engine.get_feature_logging_df(**args)
+        )
 
         # Assert expected columns and values
         expected_log_data, expected_columns, missing_features, additional_features = (
@@ -5207,10 +5217,8 @@ class TestPython:
             )
         )
         logging_feature_names = [feature.name for feature in logging_features]
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(additional_features) == sorted(additional_logging_features)
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert all(logging_dataframe.columns == expected_columns)
         assert (
             logging_dataframe[logging_feature_names].values.tolist()
@@ -5278,7 +5286,9 @@ class TestPython:
                 logging_feature_group_features=logging_feature_group_features,
                 column_names=column_names,
             )
-            logging_dataframe = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, additional_logging_features, missing_logging_features = (
+                python_engine.get_feature_logging_df(**args)
+            )
             logging_feature_names = [feature.name for feature in logging_features]
 
             missing_features = {
@@ -5298,9 +5308,7 @@ class TestPython:
             )
 
             # Assert log message for missing columns
-            assert [
-                f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None."
-            ] == [rec.message for rec in caplog.records]
+            assert sorted(missing_features) == sorted(missing_logging_features)
 
             # Assert expected columns and values
             assert all(logging_dataframe.columns == expected_columns)
@@ -5338,7 +5346,9 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            python_engine.get_feature_logging_df(**args)
+        )
 
         # Assert expected columns and values
         expected_log_data, expected_columns, missing_features, _ = (
@@ -5350,9 +5360,7 @@ class TestPython:
             )
         )
         logging_feature_names = [feature.name for feature in logging_features]
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None."
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert all(logging_dataframe.columns == expected_columns)
         assert (
             logging_dataframe[logging_feature_names].values.tolist()
@@ -5384,7 +5392,9 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            python_engine.get_feature_logging_df(**args)
+        )
 
         # Assert expected columns and values
         expected_log_data, expected_columns, missing_features, _ = (
@@ -5397,9 +5407,7 @@ class TestPython:
         )
         logging_feature_names = [feature.name for feature in logging_features]
 
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None."
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert all(logging_dataframe.columns == expected_columns)
         assert (
             logging_dataframe[logging_feature_names].values.tolist()
@@ -5434,7 +5442,9 @@ class TestPython:
             )
 
             # Act
-            logging_dataframe = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, additional_logging_features, missing_logging_features = (
+                python_engine.get_feature_logging_df(**args)
+            )
 
             # Assert log message for missing columns
             logging_feature_names = [feature.name for feature in logging_features]
@@ -5449,10 +5459,8 @@ class TestPython:
                 column_names=column_names,
                 meta_data_logging_columns=meta_data_logging_columns,
             )
-            assert [
-                f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-                f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-            ] == [rec.message for rec in caplog.records]
+            assert sorted(missing_features) == sorted(missing_logging_features)
+            assert sorted(additional_features) == sorted(additional_logging_features)
             assert all(logging_dataframe.columns == expected_columns)
             assert (
                 logging_dataframe[logging_feature_names].values.tolist()
@@ -5486,7 +5494,9 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            python_engine.get_feature_logging_df(**args)
+        )
 
         # Assert expected columns and values
         expected_log_data, expected_columns, missing_features, additional_features = (
@@ -5499,10 +5509,8 @@ class TestPython:
         )
         logging_feature_names = [feature.name for feature in logging_features]
 
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(additional_features) == sorted(additional_logging_features)
+        assert sorted(missing_features) == sorted(missing_logging_features)
 
         assert all(logging_dataframe.columns == expected_columns)
         assert (
@@ -5550,12 +5558,12 @@ class TestPython:
             )
 
             # Act
-            logging_dataframe = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, _, missing_logging_features = (
+                python_engine.get_feature_logging_df(**args)
+            )
 
             # Assert expected columns and values
-            assert [
-                f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None."
-            ] == [rec.message for rec in caplog.records]
+            assert sorted(missing_features) == sorted(missing_logging_features)
             assert all(logging_dataframe.columns == expected_columns)
             assert (
                 logging_dataframe[logging_feature_names].values.tolist()
@@ -5590,7 +5598,9 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            python_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         expected_log_data, expected_columns, missing_features, _ = (
@@ -5602,9 +5612,7 @@ class TestPython:
             )
         )
         logging_feature_names = [feature.name for feature in logging_features]
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None."
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert all(logging_dataframe.columns == expected_columns)
         assert (
             logging_dataframe[logging_feature_names].values.tolist()
@@ -5648,13 +5656,13 @@ class TestPython:
                 logging_feature_group_features=logging_feature_group_features,
                 column_names=column_names,
             )
-            logging_dataframe = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, additional_logging_features, missing_logging_features = (
+                python_engine.get_feature_logging_df(**args)
+            )
 
             # Assert log message for missing columns
-            assert [
-                f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-                f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-            ] == [rec.message for rec in caplog.records]
+            assert sorted(missing_features) == sorted(missing_logging_features)
+            assert sorted(additional_features) == sorted(additional_logging_features)
 
             # Assert expected columns and values
             assert all(logging_dataframe.columns == expected_columns)
@@ -5700,13 +5708,13 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            python_engine.get_feature_logging_df(**args)
+        )
 
         # Assert log message for missing columns
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(additional_features) == sorted(additional_logging_features)
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert all(logging_dataframe.columns == expected_columns)
         assert (
             logging_dataframe[logging_feature_names].values.tolist()
@@ -5780,12 +5788,12 @@ class TestPython:
             )
 
             # Act
-            logging_dataframe = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, _, missing_logging_features = (
+                python_engine.get_feature_logging_df(**args)
+            )
 
             # Assert log message for missing columns
-            assert [
-                f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None."
-            ] == [rec.message for rec in caplog.records]
+            assert sorted(missing_features) == sorted(missing_logging_features)
             assert all(logging_dataframe.columns == expected_columns)
             assert (
                 logging_dataframe[logging_feature_names].values.tolist()
@@ -5816,7 +5824,9 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            python_engine.get_feature_logging_df(**args)
+        )
 
         # Assert expected columns and values
         expected_log_data, expected_columns, missing_features, _ = (
@@ -5828,9 +5838,7 @@ class TestPython:
             )
         )
         logging_feature_names = [feature.name for feature in logging_features]
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None."
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert all(logging_dataframe.columns == expected_columns)
         assert (
             logging_dataframe[logging_feature_names].values.tolist()
@@ -5859,7 +5867,9 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            python_engine.get_feature_logging_df(**args)
+        )
 
         # Assert log message for missing columns
         expected_log_data, expected_columns, missing_features, _ = (
@@ -5871,9 +5881,7 @@ class TestPython:
             )
         )
         logging_feature_names = [feature.name for feature in logging_features]
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None."
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert all(logging_dataframe.columns == expected_columns)
         assert (
             logging_dataframe[logging_feature_names].values.tolist()
@@ -5941,13 +5949,13 @@ class TestPython:
             )
 
             # Act
-            logging_dataframe = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, additional_logging_features, missing_logging_features = (
+                python_engine.get_feature_logging_df(**args)
+            )
 
             # Assert log message for missing columns
-            assert [
-                f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-                f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-            ] == [rec.message for rec in caplog.records]
+            assert sorted(missing_features) == sorted(missing_logging_features)
+            assert sorted(additional_features) == sorted(additional_logging_features)
             assert all(logging_dataframe.columns == expected_columns)
             assert (
                 logging_dataframe[logging_feature_names].values.tolist()
@@ -5997,7 +6005,9 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            python_engine.get_feature_logging_df(**args)
+        )
 
         # Assert log message for missing columns
         expected_log_data, expected_columns, missing_features, additional_features = (
@@ -6009,10 +6019,8 @@ class TestPython:
             )
         )
         logging_feature_names = [feature.name for feature in logging_features]
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(additional_features) == sorted(additional_logging_features)
+        assert sorted(missing_features) == sorted(missing_logging_features)
 
         assert all(logging_dataframe.columns == expected_columns)
         assert (
@@ -6111,12 +6119,12 @@ class TestPython:
             )
 
             # Act
-            logging_dataframe = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, _, missing_logging_features = (
+                python_engine.get_feature_logging_df(**args)
+            )
 
             # Assert expected columns and values
-            assert [
-                f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None."
-            ] == [rec.message for rec in caplog.records]
+            assert sorted(missing_features) == sorted(missing_logging_features)
             assert all(logging_dataframe.columns == expected_columns)
             assert (
                 logging_dataframe[logging_feature_names].values.tolist()
@@ -6156,12 +6164,12 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            python_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None."
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert all(logging_dataframe.columns == expected_columns)
         assert (
             logging_dataframe[logging_feature_names].values.tolist()
@@ -6201,12 +6209,12 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            python_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None."
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert all(logging_dataframe.columns == expected_columns)
         assert (
             logging_dataframe[logging_feature_names].values.tolist()
@@ -6259,13 +6267,13 @@ class TestPython:
             )
 
             # Act
-            logging_dataframe = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, additional_logging_features, missing_logging_features = (
+                python_engine.get_feature_logging_df(**args)
+            )
 
             # Assert
-            assert [
-                f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-                f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-            ] == [rec.message for rec in caplog.records]
+            assert sorted(missing_features) == sorted(missing_logging_features)
+            assert sorted(additional_features) == sorted(additional_logging_features)
             assert all(logging_dataframe.columns == expected_columns)
             assert (
                 logging_dataframe[logging_feature_names].values.tolist()
@@ -6306,7 +6314,9 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            python_engine.get_feature_logging_df(**args)
+        )
 
         # Assert expected columns and values
         expected_log_data, expected_columns, missing_features, additional_features = (
@@ -6318,10 +6328,8 @@ class TestPython:
             )
         )
         logging_feature_names = [feature.name for feature in logging_features]
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(additional_features) == sorted(additional_logging_features)
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert all(logging_dataframe.columns == expected_columns)
         assert (
             logging_dataframe[logging_feature_names].values.tolist()
@@ -6399,12 +6407,12 @@ class TestPython:
             )
 
             # Act
-            logging_dataframe = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, _, missing_logging_features = (
+                python_engine.get_feature_logging_df(**args)
+            )
 
             # Assert expected columns and values
-            assert [
-                f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None."
-            ] == [rec.message for rec in caplog.records]
+            assert sorted(missing_features) == sorted(missing_logging_features)
             assert all(logging_dataframe.columns == expected_columns)
             assert (
                 logging_dataframe[logging_feature_names].values.tolist()
@@ -6444,12 +6452,12 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            python_engine.get_feature_logging_df(**args)
+        )
 
         # Assert log message for missing columns
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None."
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert all(logging_dataframe.columns == expected_columns)
         assert (
             logging_dataframe[logging_feature_names].values.tolist()
@@ -6488,12 +6496,12 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            python_engine.get_feature_logging_df(**args)
+        )
 
         # Assert expected columns and values
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None."
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert all(logging_dataframe.columns == expected_columns)
         assert (
             logging_dataframe[logging_feature_names].values.tolist()
@@ -6540,13 +6548,13 @@ class TestPython:
             )
 
             # Act
-            logging_dataframe = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, additional_logging_features, missing_logging_features = (
+                python_engine.get_feature_logging_df(**args)
+            )
 
             # Assert log message for missing columns
-            assert [
-                f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-                f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-            ] == [rec.message for rec in caplog.records]
+            assert sorted(missing_features) == sorted(missing_logging_features)
+            assert sorted(additional_features) == sorted(additional_logging_features)
             assert all(logging_dataframe.columns == expected_columns)
             assert (
                 logging_dataframe[logging_feature_names].values.tolist()
@@ -6591,13 +6599,13 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            python_engine.get_feature_logging_df(**args)
+        )
 
         # Assert log message for missing columns
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(additional_features) == sorted(additional_logging_features)
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert all(logging_dataframe.columns == expected_columns)
         assert (
             logging_dataframe[logging_feature_names].values.tolist()
@@ -6674,12 +6682,12 @@ class TestPython:
             )
 
             # Act
-            logging_dataframe = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, _, missing_logging_features = (
+                python_engine.get_feature_logging_df(**args)
+            )
 
             # Assert log message for missing columns
-            assert [
-                f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None."
-            ] == [rec.message for rec in caplog.records]
+            assert sorted(missing_features) == sorted(missing_logging_features)
             assert all(logging_dataframe.columns == expected_columns)
             assert (
                 logging_dataframe[logging_feature_names].values.tolist()
@@ -6720,12 +6728,12 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            python_engine.get_feature_logging_df(**args)
+        )
 
         # Assert log message for missing columns
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None."
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert all(logging_dataframe.columns == expected_columns)
         assert (
             logging_dataframe[logging_feature_names].values.tolist()
@@ -6765,12 +6773,12 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            python_engine.get_feature_logging_df(**args)
+        )
 
         # Assert log message for missing columns
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None."
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert all(logging_dataframe.columns == expected_columns)
         assert (
             logging_dataframe[logging_feature_names].values.tolist()
@@ -6816,12 +6824,12 @@ class TestPython:
             )
 
             # Act
-            logging_dataframe = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, _, missing_logging_features = (
+                python_engine.get_feature_logging_df(**args)
+            )
 
             # Assert expected columns and values
-            assert [
-                f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None."
-            ] == [rec.message for rec in caplog.records]
+            assert sorted(missing_features) == sorted(missing_logging_features)
             assert all(logging_dataframe.columns == expected_columns)
             assert (
                 logging_dataframe[logging_feature_names].values.tolist()
@@ -6866,12 +6874,12 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            python_engine.get_feature_logging_df(**args)
+        )
 
         # Assert expected columns and values
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None."
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert all(logging_dataframe.columns == expected_columns)
         assert (
             logging_dataframe[logging_feature_names].values.tolist()
@@ -6948,7 +6956,7 @@ class TestPython:
             )
 
             # Act
-            logging_dataframe = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
 
             # Assert expected columns and values
             assert all(logging_dataframe.columns == expected_columns)
@@ -6989,7 +6997,7 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
 
         # Assert
         assert all(logging_dataframe.columns == expected_columns)
@@ -7030,7 +7038,7 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
 
         # Assert
         assert all(logging_dataframe.columns == expected_columns)
@@ -7075,7 +7083,7 @@ class TestPython:
             )
 
             # Act
-            logging_dataframe = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
 
             # Assert
             assert all(logging_dataframe.columns == expected_columns)
@@ -7117,7 +7125,7 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
 
         # Assert expected columns and values
         assert all(logging_dataframe.columns == expected_columns)
@@ -7159,7 +7167,7 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
 
         # Assert expected columns and values
         assert all(logging_dataframe.columns == expected_columns)
@@ -7207,12 +7215,12 @@ class TestPython:
             )
 
             # Act
-            logging_dataframe = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, _, missing_logging_features = (
+                python_engine.get_feature_logging_df(**args)
+            )
 
             # Assert expected columns and values
-            assert [
-                f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None."
-            ] == [rec.message for rec in caplog.records]
+            assert sorted(missing_features) == sorted(missing_logging_features)
             assert all(logging_dataframe.columns == expected_columns)
             assert (
                 logging_dataframe[logging_feature_names].values.tolist()
@@ -7254,12 +7262,12 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            python_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None."
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert all(logging_dataframe.columns == expected_columns)
         assert (
             logging_dataframe[logging_feature_names].values.tolist()
@@ -7296,12 +7304,12 @@ class TestPython:
             logging_feature_group_features=logging_feature_group_features,
             column_names=column_names,
         )
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            python_engine.get_feature_logging_df(**args)
+        )
 
         # Assert expected columns and values
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None."
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert all(logging_dataframe.columns == expected_columns)
         assert (
             logging_dataframe[logging_feature_names].values.tolist()
@@ -7350,13 +7358,13 @@ class TestPython:
             )
 
             # Act
-            logging_dataframe = python_engine.get_feature_logging_df(**args)
+            logging_dataframe, additional_logging_features, missing_logging_features = (
+                python_engine.get_feature_logging_df(**args)
+            )
 
             # Assert
-            assert [
-                f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-                f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-            ] == [rec.message for rec in caplog.records]
+            assert sorted(missing_features) == sorted(missing_logging_features)
+            assert sorted(additional_features) == sorted(additional_logging_features)
             assert all(logging_dataframe.columns == expected_columns)
             assert (
                 logging_dataframe[logging_feature_names].values.tolist()
@@ -7403,13 +7411,13 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            python_engine.get_feature_logging_df(**args)
+        )
 
         # Assert expected columns and values
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(additional_features) == sorted(additional_logging_features)
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert all(logging_dataframe.columns == expected_columns)
         assert (
             logging_dataframe[logging_feature_names].values.tolist()
@@ -7472,7 +7480,9 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            python_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         expected_log_data, expected_columns, missing_features, _ = (
@@ -7484,9 +7494,7 @@ class TestPython:
             )
         )
         logging_feature_names = [feature.name for feature in logging_features]
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None."
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert all(
             logging_dataframe[constants.FEATURE_LOGGING.MODEL_COLUMN_NAME]
             == "test_model"
@@ -7591,7 +7599,9 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            python_engine.get_feature_logging_df(**args)
+        )
 
         # Assert expected columns and values
         expected_log_data, expected_columns, _, _ = (
@@ -7720,7 +7730,7 @@ class TestPython:
             logging_feature_group_features=logging_feature_group_features,
             column_names=column_names,
         )
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
 
         expected_log_data, expected_columns, _, _ = (
             TestPython.create_expected_logging_dataframe(
@@ -7862,7 +7872,7 @@ class TestPython:
             logging_feature_group_features=logging_feature_group_features,
             column_names=column_names,
         )
-        logging_dataframe = python_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python_engine.get_feature_logging_df(**args)
 
         # Assert expected columns and values
         expected_log_data, expected_columns, _, _ = (
@@ -7897,7 +7907,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -7926,7 +7940,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         meta_data_logging_column_names = [col.name for col in meta_data_logging_columns]
@@ -7949,7 +7967,7 @@ class TestPython:
         )
 
         # Act
-        logging_list = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -7973,7 +7991,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -8006,7 +8028,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         meta_data_logging_column_names = [col.name for col in meta_data_logging_columns]
@@ -8020,7 +8046,7 @@ class TestPython:
             column_names=column_names,
         )
 
-        logging_list = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             logging_data=logging_test_dataframe,
@@ -8042,7 +8068,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -8075,7 +8105,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         meta_data_logging_column_names = [col.name for col in meta_data_logging_columns]
@@ -8092,7 +8126,7 @@ class TestPython:
             column_names=column_names,
         )
 
-        logging_list = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             untransformed_features=untransformed_features_df,
@@ -8114,7 +8148,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -8145,7 +8183,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         meta_data_logging_column_names = [col.name for col in meta_data_logging_columns]
@@ -8164,7 +8206,7 @@ class TestPython:
             column_names=column_names,
         )
 
-        logging_list = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             untransformed_features=untransformed_features_df,
@@ -8186,7 +8228,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -8218,7 +8264,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         meta_data_logging_columnn_names = [col for col in meta_data_logging_columns]
@@ -8235,7 +8285,7 @@ class TestPython:
             column_names=column_names,
         )
 
-        logging_list = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             transformed_features=transformed_features_df,
@@ -8258,7 +8308,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -8291,7 +8345,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         meta_data_logging_column_names = [col.name for col in meta_data_logging_columns]
@@ -8309,7 +8367,7 @@ class TestPython:
         )
 
         # Act
-        logging_list = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8332,7 +8390,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         meta_data_logging_columns, logging_features, column_names = logging_features
 
@@ -8365,7 +8427,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         meta_data_logging_column_names = [col.name for col in meta_data_logging_columns]
@@ -8383,7 +8449,7 @@ class TestPython:
             column_names=column_names,
         )
 
-        logging_list = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             predictions=predictions_df,
@@ -8406,7 +8472,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
 
@@ -8444,7 +8514,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         meta_data_logging_columns_names = [
@@ -8464,7 +8538,7 @@ class TestPython:
         )
 
         # Act
-        logging_list = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8485,7 +8559,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         meta_data_logging_columns, logging_features, column_names = logging_features
 
@@ -8517,7 +8595,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         meta_data_logging_columns_names = [
@@ -8536,7 +8618,7 @@ class TestPython:
         )
 
         # Act
-        logging_list = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8558,7 +8640,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
 
@@ -8595,7 +8681,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         meta_data_logging_columns_names = [
@@ -8614,7 +8704,7 @@ class TestPython:
         )
 
         # Act
-        logging_list = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8636,7 +8726,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         meta_data_logging_columns, logging_features, column_names = logging_features
 
@@ -8668,7 +8762,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         meta_data_logging_columns_names = [col for col in meta_data_logging_columns]
@@ -8685,7 +8783,7 @@ class TestPython:
         )
 
         # Act
-        logging_list = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8707,7 +8805,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
 
@@ -8744,7 +8846,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         meta_data_logging_columns_names = [col for col in meta_data_logging_columns]
@@ -8760,7 +8866,7 @@ class TestPython:
             column_names=column_names,
         )
 
-        logging_list = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             helper_columns=inference_helpers_df,
@@ -8783,7 +8889,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         meta_data_logging_columns, logging_features, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -8813,7 +8923,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         meta_data_logging_column_names = [
@@ -8832,7 +8946,7 @@ class TestPython:
         )
 
         # Act
-        logging_list = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8854,7 +8968,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         meta_data_logging_columns, logging_features, column_names = logging_features
 
@@ -8890,7 +9008,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         meta_data_logging_column_names = [
@@ -8910,7 +9032,7 @@ class TestPython:
         )
 
         # Act
-        logging_list = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -8932,7 +9054,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         meta_data_logging_columns, logging_features, column_names = logging_features
 
@@ -8964,7 +9090,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         meta_data_column_names = [feature.name for feature in meta_data_logging_columns]
@@ -8982,7 +9112,7 @@ class TestPython:
         )
 
         # Act
-        logging_list = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -9004,7 +9134,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         meta_data_column_names = [feature.name for feature in meta_data_logging_columns]
@@ -9020,7 +9154,7 @@ class TestPython:
         )
 
         # Act
-        logging_list = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -9043,7 +9177,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         meta_data_logging_columns, logging_features, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -9073,7 +9211,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         meta_data_column_names = [feature.name for feature in meta_data_logging_columns]
@@ -9089,7 +9231,7 @@ class TestPython:
         )
 
         # Act
-        logging_list = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -9112,7 +9254,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         meta_data_column_names = [feature.name for feature in meta_data_logging_columns]
@@ -9129,7 +9275,7 @@ class TestPython:
         )
 
         # Act
-        logging_list = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -9151,7 +9297,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         meta_data_logging_columns, logging_features, column_names = logging_features
 
@@ -9183,7 +9333,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
 
@@ -9203,7 +9357,7 @@ class TestPython:
         )
 
         # Act
-        logging_list = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
 
         # Assert
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
@@ -9227,7 +9381,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
 
@@ -9263,7 +9421,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         meta_data_logging_columns_names = [
@@ -9283,7 +9445,7 @@ class TestPython:
         )
 
         # Act
-        logging_list = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             extra_logging_features=extra_logging_features_df,
@@ -9305,7 +9467,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -9415,7 +9581,7 @@ class TestPython:
         )
 
         # Act
-        logging_list = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             logging_data=logging_test_dataframe,
@@ -9447,7 +9613,11 @@ class TestPython:
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
         python_engine = python.Engine()
-        mocker.patch.object(python_engine, "get_feature_logging_df")
+        mocker.patch.object(
+            python_engine,
+            "get_feature_logging_df",
+            return_value=(pd.DataFrame(), None, None),
+        )
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
@@ -9561,7 +9731,7 @@ class TestPython:
         )
 
         # Act
-        logging_list = python_engine.get_feature_logging_list(**log_data_args)
+        logging_list, _, _ = python_engine.get_feature_logging_list(**log_data_args)
 
         expected_log_data, _, _, _ = TestPython.create_expected_logging_dataframe(
             logging_data=logging_test_dataframe,

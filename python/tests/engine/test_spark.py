@@ -260,6 +260,14 @@ class TestSpark:
         return {
             "logging_data": logging_data,
             "logging_feature_group_features": logging_feature_group_features,
+            "logging_feature_group_feature_names": [
+                feat.name for feat in logging_feature_group_features
+            ],
+            "logging_features": [
+                feat.name
+                for feat in logging_feature_group_features
+                if feat.name not in constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS
+            ],
             "transformed_features": (
                 transformed_features,
                 column_names["transformed_features"],
@@ -5134,7 +5142,7 @@ class TestSpark:
             pyspark.sql.SparkSession,
             "conf",
             new_callable=PropertyMock,
-            return_value=mock_conf
+            return_value=mock_conf,
         )
 
         # Arrange
@@ -5159,7 +5167,7 @@ class TestSpark:
         # Verify that the Delta catalog configuration is set
         mock_conf.set.assert_called_with(
             "spark.sql.catalog.spark_catalog",
-            "org.apache.spark.sql.delta.catalog.DeltaCatalog"
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
         )
 
     def test_apply_transformation_function_single_output_udf_default_mode(self, mocker):
@@ -6389,7 +6397,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         logging_feature_names = [feature.name for feature in logging_features]
         expected_dataframe, expected_columns, _, _ = TestSpark.get_expected_logging_df(
@@ -6446,7 +6456,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         logging_feature_names = [feature.name for feature in logging_features]
         expected_dataframe, expected_columns, _, _ = TestSpark.get_expected_logging_df(
@@ -6503,7 +6515,7 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, _ = spark_engine.get_feature_logging_df(**args)
 
         logging_feature_names = [feature.name for feature in logging_features]
         expected_dataframe, expected_columns, _, _ = TestSpark.get_expected_logging_df(
@@ -6551,7 +6563,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -6564,10 +6578,8 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(additional_features) == sorted(additional_logging_features)
+        assert sorted(missing_features) == sorted(missing_logging_features)
 
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -6604,7 +6616,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -6618,10 +6632,8 @@ class TestSpark:
             )
         )
 
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(additional_features) == sorted(additional_logging_features)
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -6686,7 +6698,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -6700,9 +6714,7 @@ class TestSpark:
             )
         )
 
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -6742,7 +6754,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -6755,9 +6769,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -6796,7 +6808,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -6809,9 +6823,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -6843,7 +6855,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -6856,10 +6870,8 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(additional_features) == sorted(additional_logging_features)
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -6900,7 +6912,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -6913,10 +6927,8 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(additional_features) == sorted(additional_logging_features)
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -6981,7 +6993,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -6994,9 +7008,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -7033,7 +7045,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**arg)
+        logging_dataframe, _, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**arg)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -7046,9 +7060,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -7086,7 +7098,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -7099,9 +7113,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -7134,7 +7146,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -7147,10 +7161,8 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(additional_features) == sorted(additional_logging_features)
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -7191,7 +7203,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -7204,10 +7218,8 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(additional_features) == sorted(additional_logging_features)
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -7269,7 +7281,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -7282,9 +7296,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -7322,7 +7334,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -7335,9 +7349,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         print(logging_dataframe.select("predicted_label").collect())
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
@@ -7372,7 +7384,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -7385,9 +7399,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -7439,7 +7451,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -7452,10 +7466,8 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(additional_features) == sorted(additional_logging_features)
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -7512,7 +7524,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -7525,10 +7539,8 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(additional_features) == sorted(additional_logging_features)
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -7612,7 +7624,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -7625,9 +7639,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -7664,7 +7676,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -7677,9 +7691,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -7716,7 +7728,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -7729,9 +7743,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -7773,7 +7785,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -7786,10 +7800,8 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(additional_features) == sorted(additional_logging_features)
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -7836,7 +7848,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -7921,7 +7935,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -7934,9 +7950,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -7973,7 +7987,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -7986,9 +8002,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -8025,7 +8039,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -8038,9 +8054,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.count() == 3
         assert (
@@ -8076,7 +8090,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -8089,10 +8105,8 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(additional_features) == sorted(additional_logging_features)
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -8135,7 +8149,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -8148,10 +8164,8 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(additional_features) == sorted(additional_logging_features)
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -8220,7 +8234,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -8233,9 +8249,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -8273,7 +8287,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -8286,9 +8302,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
 
         # Assert expected columns using Spark DataFrame methods
         assert logging_dataframe.columns == expected_columns
@@ -8331,7 +8345,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, _, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -8345,9 +8361,7 @@ class TestSpark:
             )
         )
 
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
 
         # Assert expected columns using Spark DataFrame methods
         assert logging_dataframe.columns == expected_columns
@@ -8385,7 +8399,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -8398,10 +8414,8 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(additional_features) == sorted(additional_logging_features)
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.count() == 3
         assert (
@@ -8441,7 +8455,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -8454,10 +8470,8 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(additional_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored.",
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(additional_features) == sorted(additional_logging_features)
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.count() == 3
         assert (
@@ -8525,7 +8539,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -8538,9 +8554,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.count() == 3
         assert (
@@ -8576,7 +8590,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -8589,9 +8605,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.count() == 3
         assert (
@@ -8629,7 +8643,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -8642,9 +8658,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.count() == 3
         assert (
@@ -8675,7 +8689,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -8688,9 +8704,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.count() == 3
         assert (
@@ -8728,7 +8742,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -8742,9 +8758,7 @@ class TestSpark:
             )
         )
 
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.count() == 3
         assert (
@@ -8781,7 +8795,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -8794,9 +8810,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -8827,7 +8841,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -8840,9 +8856,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
         assert (
@@ -8880,7 +8894,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -8893,9 +8909,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
@@ -8933,7 +8947,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -8946,9 +8962,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
 
         # Assert expected columns using Spark DataFrame methods
         assert logging_dataframe.columns == expected_columns
@@ -8988,7 +9002,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -9002,9 +9018,7 @@ class TestSpark:
             )
         )
 
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.count() == 3
         assert logging_dataframe.columns == expected_columns
@@ -9047,7 +9061,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -9060,9 +9076,7 @@ class TestSpark:
                 metadata_logging_columns=meta_data_logging_columns,
             )
         )
-        assert [
-            f"The following columns : `{'`, `'.join(sorted(missing_features))}` are missing in the logged dataframe. Setting them to None.",
-        ] == [rec.message for rec in caplog.records]
+        assert sorted(missing_features) == sorted(missing_logging_features)
         assert logging_dataframe.columns == expected_columns
         assert logging_dataframe.count() == 3
         assert (
@@ -9298,7 +9312,9 @@ class TestSpark:
         )
 
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -9542,7 +9558,9 @@ class TestSpark:
             logging_feature_group_features=logging_feature_group_features,
             column_names=column_names,
         )
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
@@ -9783,7 +9801,9 @@ class TestSpark:
             column_names=column_names,
         )
         # Act
-        logging_dataframe = spark_engine.get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, missing_logging_features = (
+            spark_engine.get_feature_logging_df(**args)
+        )
 
         # Assert
         logging_feature_names = [feature.name for feature in logging_features]
