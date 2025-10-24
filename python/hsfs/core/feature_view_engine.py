@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import datetime
+import logging
 import warnings
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar, Union
 
@@ -54,6 +55,8 @@ if HAS_NUMPY:
 if TYPE_CHECKING:
     import polars as pl
     from hsfs.core.feature_logging import LoggingMetaData
+
+_logger = logging.getLogger(__name__)
 
 
 class FeatureViewEngine:
@@ -1264,10 +1267,10 @@ class FeatureViewEngine:
         Function to extract features from a logging dataframe.
 
         #Arguments:
-            transformed_features : `DataFrame`. Transformed features dataframe.
-            untransformed_features : `DataFrame`. Untransformed features dataframe.
+            feature_view_obj: `feature_view.FeatureView`. The feature view object for which logging features are to be extracted.
+            dataframes: `List[Union[pd.DataFrame, pl.DataFrame, TypeVar("pyspark.sql.DataFrame")]]`. The dataframes from which logging features are to be extracted.
         #Returns:
-            `List[feature.Feature]`. List of features extracted from the logging features.
+            `List[feature.Feature]`. List of features extracted from the logging feature view provided.
         """
         logging_features = []
         logging_feature_names = []
@@ -1639,6 +1642,14 @@ class FeatureViewEngine:
         logging_feature_group_features = [
             feature for feature in logging_feature_group.features
         ]
+        logging_feature_group_feature_names = [
+            feature.name for feature in logging_feature_group_features
+        ]
+        logging_features = [
+            feature_name
+            for feature_name in logging_feature_group_feature_names
+            if feature_name not in constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS
+        ]
         model_name = (
             model_name if model_name else hsml_model.name if hsml_model else None
         )
@@ -1651,117 +1662,136 @@ class FeatureViewEngine:
         )
 
         if return_list:
-            return engine.get_instance().get_feature_logging_list(
-                logging_data=logging_data,
-                logging_feature_group_features=logging_feature_group_features,
-                transformed_features=(
-                    transformed_features,
-                    fv._transformed_feature_names,
-                    constants.FEATURE_LOGGING.TRANSFORMED_FEATURES,
-                ),
-                untransformed_features=(
-                    untransformed_features,
-                    fv._untransformed_feature_names,
-                    constants.FEATURE_LOGGING.UNTRANSFORMED_FEATURES,
-                ),
-                predictions=(
-                    predictions,
-                    list(fv._label_column_names),
-                    constants.FEATURE_LOGGING.PREDICTIONS,
-                ),
-                serving_keys=(
-                    serving_keys,
-                    fv._required_serving_key_names,
-                    constants.FEATURE_LOGGING.SERVING_KEYS,
-                ),
-                helper_columns=(
-                    helper_columns,
-                    fv.inference_helper_columns,
-                    constants.FEATURE_LOGGING.INFERENCE_HELPER_COLUMNS,
-                ),
-                request_parameters=(
-                    request_parameters,
-                    fv.request_parameters,
-                    constants.FEATURE_LOGGING.REQUEST_PARAMETERS,
-                ),
-                event_time=(
-                    event_time,
-                    [fv._root_feature_group_event_time_column_name],
-                    constants.FEATURE_LOGGING.EVENT_TIME,
-                ),
-                request_id=(
-                    [request_id] if isinstance(request_id, str) else request_id,
-                    [constants.FEATURE_LOGGING.REQUEST_ID_COLUMN_NAME],
-                    constants.FEATURE_LOGGING.REQUEST_ID,
-                ),
-                extra_logging_features=(
-                    extra_logging_features,
-                    fv._extra_logging_column_names,
-                    constants.FEATURE_LOGGING.EXTRA_LOGGING_FEATURES,
-                ),
-                td_col_name=constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
-                time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
-                model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
-                training_dataset_version=training_dataset_version,
-                model_name=model_name,
-                model_version=model_version,
+            logging_data, additional_logging_features, missing_logging_features = (
+                engine.get_instance().get_feature_logging_list(
+                    logging_data=logging_data,
+                    logging_feature_group_features=logging_feature_group_features,
+                    logging_feature_group_feature_names=logging_feature_group_feature_names,
+                    logging_features=logging_features,
+                    transformed_features=(
+                        transformed_features,
+                        fv._transformed_feature_names,
+                        constants.FEATURE_LOGGING.TRANSFORMED_FEATURES,
+                    ),
+                    untransformed_features=(
+                        untransformed_features,
+                        fv._untransformed_feature_names,
+                        constants.FEATURE_LOGGING.UNTRANSFORMED_FEATURES,
+                    ),
+                    predictions=(
+                        predictions,
+                        list(fv._label_column_names),
+                        constants.FEATURE_LOGGING.PREDICTIONS,
+                    ),
+                    serving_keys=(
+                        serving_keys,
+                        fv._required_serving_key_names,
+                        constants.FEATURE_LOGGING.SERVING_KEYS,
+                    ),
+                    helper_columns=(
+                        helper_columns,
+                        fv.inference_helper_columns,
+                        constants.FEATURE_LOGGING.INFERENCE_HELPER_COLUMNS,
+                    ),
+                    request_parameters=(
+                        request_parameters,
+                        fv.request_parameters,
+                        constants.FEATURE_LOGGING.REQUEST_PARAMETERS,
+                    ),
+                    event_time=(
+                        event_time,
+                        [fv._root_feature_group_event_time_column_name],
+                        constants.FEATURE_LOGGING.EVENT_TIME,
+                    ),
+                    request_id=(
+                        [request_id] if isinstance(request_id, str) else request_id,
+                        [constants.FEATURE_LOGGING.REQUEST_ID_COLUMN_NAME],
+                        constants.FEATURE_LOGGING.REQUEST_ID,
+                    ),
+                    extra_logging_features=(
+                        extra_logging_features,
+                        fv._extra_logging_column_names,
+                        constants.FEATURE_LOGGING.EXTRA_LOGGING_FEATURES,
+                    ),
+                    td_col_name=constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
+                    time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
+                    model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+                    training_dataset_version=training_dataset_version,
+                    model_name=model_name,
+                    model_version=model_version,
+                )
             )
         else:
-            return engine.get_instance().get_feature_logging_df(
-                logging_data=logging_data,
-                logging_feature_group_features=logging_feature_group_features,
-                transformed_features=(
-                    transformed_features,
-                    fv._transformed_feature_names,
-                    constants.FEATURE_LOGGING.TRANSFORMED_FEATURES,
-                ),
-                untransformed_features=(
-                    untransformed_features,
-                    fv._untransformed_feature_names,
-                    constants.FEATURE_LOGGING.UNTRANSFORMED_FEATURES,
-                ),
-                predictions=(
-                    predictions,
-                    list(fv._label_column_names),
-                    constants.FEATURE_LOGGING.PREDICTIONS,
-                ),
-                serving_keys=(
-                    serving_keys,
-                    fv._required_serving_key_names,
-                    constants.FEATURE_LOGGING.SERVING_KEYS,
-                ),
-                helper_columns=(
-                    helper_columns,
-                    fv.inference_helper_columns,
-                    constants.FEATURE_LOGGING.INFERENCE_HELPER_COLUMNS,
-                ),
-                request_parameters=(
-                    request_parameters,
-                    fv.request_parameters,
-                    constants.FEATURE_LOGGING.REQUEST_PARAMETERS,
-                ),
-                event_time=(
-                    event_time,
-                    [fv._root_feature_group_event_time_column_name],
-                    constants.FEATURE_LOGGING.EVENT_TIME,
-                ),
-                request_id=(
-                    [request_id] if isinstance(request_id, str) else request_id,
-                    [constants.FEATURE_LOGGING.REQUEST_ID_COLUMN_NAME],
-                    constants.FEATURE_LOGGING.REQUEST_ID,
-                ),
-                extra_logging_features=(
-                    extra_logging_features,
-                    fv._extra_logging_column_names,
-                    constants.FEATURE_LOGGING.EXTRA_LOGGING_FEATURES,
-                ),
-                td_col_name=constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
-                time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
-                model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
-                training_dataset_version=training_dataset_version,
-                model_name=model_name,
-                model_version=model_version,
+            logging_data, additional_logging_features, missing_logging_features = (
+                engine.get_instance().get_feature_logging_df(
+                    logging_data=logging_data,
+                    logging_feature_group_features=logging_feature_group_features,
+                    logging_feature_group_feature_names=logging_feature_group_feature_names,
+                    logging_features=logging_features,
+                    transformed_features=(
+                        transformed_features,
+                        fv._transformed_feature_names,
+                        constants.FEATURE_LOGGING.TRANSFORMED_FEATURES,
+                    ),
+                    untransformed_features=(
+                        untransformed_features,
+                        fv._untransformed_feature_names,
+                        constants.FEATURE_LOGGING.UNTRANSFORMED_FEATURES,
+                    ),
+                    predictions=(
+                        predictions,
+                        list(fv._label_column_names),
+                        constants.FEATURE_LOGGING.PREDICTIONS,
+                    ),
+                    serving_keys=(
+                        serving_keys,
+                        fv._required_serving_key_names,
+                        constants.FEATURE_LOGGING.SERVING_KEYS,
+                    ),
+                    helper_columns=(
+                        helper_columns,
+                        fv.inference_helper_columns,
+                        constants.FEATURE_LOGGING.INFERENCE_HELPER_COLUMNS,
+                    ),
+                    request_parameters=(
+                        request_parameters,
+                        fv.request_parameters,
+                        constants.FEATURE_LOGGING.REQUEST_PARAMETERS,
+                    ),
+                    event_time=(
+                        event_time,
+                        [fv._root_feature_group_event_time_column_name],
+                        constants.FEATURE_LOGGING.EVENT_TIME,
+                    ),
+                    request_id=(
+                        [request_id] if isinstance(request_id, str) else request_id,
+                        [constants.FEATURE_LOGGING.REQUEST_ID_COLUMN_NAME],
+                        constants.FEATURE_LOGGING.REQUEST_ID,
+                    ),
+                    extra_logging_features=(
+                        extra_logging_features,
+                        fv._extra_logging_column_names,
+                        constants.FEATURE_LOGGING.EXTRA_LOGGING_FEATURES,
+                    ),
+                    td_col_name=constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
+                    time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
+                    model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+                    training_dataset_version=training_dataset_version,
+                    model_name=model_name,
+                    model_version=model_version,
+                )
             )
+
+        if additional_logging_features:
+            _logger.info(
+                f"The following columns : `{'`, `'.join(sorted(additional_logging_features))}` are additional columns in the logged dataframe and is not present in the logging feature groups. They will be ignored."
+            )
+        if missing_logging_features:
+            _logger.info(
+                f"The following columns : `{'`, `'.join(sorted(missing_logging_features))}` are missing in the logged dataframe. Setting them to None."
+            )
+
+        return logging_data
 
     def read_feature_logs(
         self,

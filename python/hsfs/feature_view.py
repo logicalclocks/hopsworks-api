@@ -4614,7 +4614,7 @@ class FeatureView:
 
     @property
     def _fully_qualified_primary_keys(self) -> List[str]:
-        """Get fully qualified names for applicable primary keys from the query."""
+        """Get name for primary key with fully qualified names from the feature view."""
         if not self.__fully_qualified_primary_keys:
             self.__fully_qualified_primary_keys = (
                 self._feature_view_engine._get_primary_keys_from_query(self.query)
@@ -4623,7 +4623,7 @@ class FeatureView:
 
     @property
     def _fully_qualified_event_time(self) -> List[str]:
-        """Get fully qualified names for applicable event time from the query."""
+        """Get fully qualified names for applicable event time from the feature view."""
         if not self.__fully_qualified_event_time:
             self.__fully_qualified_event_time = (
                 self._feature_view_engine._get_eventtimes_from_query(self.query)
