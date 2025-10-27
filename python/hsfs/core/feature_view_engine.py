@@ -1416,7 +1416,7 @@ class FeatureViewEngine:
             default_write_options.update(write_options)
         results = []
 
-        # FSTORE-1664 combines the untransformed and transformed logging feature groups.
+        # FSTORE-1871 combines the untransformed and transformed logging feature groups.
         # Transformed and untransformed logging features groups are retrived here to maintain backwards compatibility.
         if logger:
             logger.log(
@@ -1918,7 +1918,7 @@ class FeatureViewEngine:
         self._feature_view_api.resume_feature_logging(fv.name, fv.version)
 
     def materialize_feature_logs(self, fv, wait, transform):
-        # FSTORE-1664 combines the untransformed and transformed logging feature groups.
+        # FSTORE-1871 combines the untransformed and transformed logging feature groups.
         # Here we are checking are fetching both transformed and untransformed logging feature groups to maintain backwards compatibility.
         if transform is None:
             feature_logging = self.get_feature_logging(fv)
