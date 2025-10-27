@@ -441,7 +441,9 @@ class S3Connector(StorageConnector):
             # where as fs.s3a.path.style.access is used by spark s3a connector
             # hadoop: https://hadoop.apache.org/docs/stable/hadoop-aws/tools/hadoop-aws/connecting.html#Third_party_stores
             # duckdb: https://duckdb.org/docs/stable/core_extensions/httpfs/s3api
-            options["url_style"] = self.arguments.get("fs.s3a.path.style.access")
+            options["url_style"] = (
+                "path" if self.arguments.get("fs.s3a.path.style.access") else "vhost"
+            )
         return options
 
     def read(

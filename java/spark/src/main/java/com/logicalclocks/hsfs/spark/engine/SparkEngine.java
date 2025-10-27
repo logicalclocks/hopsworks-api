@@ -760,6 +760,16 @@ public class SparkEngine extends EngineBase {
       sparkSession.sparkContext().hadoopConfiguration()
       .set(Constants.S3_ENDPOINT, storageConnector.sparkOptions().get(Constants.S3_ENDPOINT));
     }
+    if (storageConnector.sparkOptions().containsKey(Constants.S3_PATH_STYLE_ACCESS)) {
+      sparkSession.sparkContext().hadoopConfiguration()
+      .set(Constants.S3_PATH_STYLE_ACCESS,
+          storageConnector.sparkOptions().get(Constants.S3_PATH_STYLE_ACCESS));
+    }
+    if (storageConnector.sparkOptions().containsKey(Constants.S3_CONNECTION_USE_SSL)) {
+      sparkSession.sparkContext().hadoopConfiguration()
+      .set(Constants.S3_CONNECTION_USE_SSL,
+          storageConnector.sparkOptions().get(Constants.S3_CONNECTION_USE_SSL));
+    }
   }
 
   private void setupAdlsConnectorHadoopConf(StorageConnector.AdlsConnector storageConnector) {
