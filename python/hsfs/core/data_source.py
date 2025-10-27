@@ -49,14 +49,14 @@ class DataSource:
     @classmethod
     def from_response_json(
         cls, json_dict: Dict[str, Any]
-    ) -> DataSource:
+    )  -> list[DataSource]:
         if json_dict is None:
-            return None
+            return []
 
         json_decamelized: dict = humps.decamelize(json_dict)
 
         if "items" not in json_decamelized:
-            return cls(**json_decamelized)
+            return [cls(**json_decamelized)]
         else:
             return [
                 cls(**item)
