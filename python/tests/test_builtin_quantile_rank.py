@@ -16,11 +16,10 @@
 
 import pandas as pd
 import pytest
-
-from hsfs.engine import python as python_engine
 from hsfs import transformation_function
-from hsfs.transformation_function import TransformationType
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
+from hsfs.engine import python as python_engine
+from hsfs.transformation_function import TransformationType
 
 
 def test_quantile_transformer():
