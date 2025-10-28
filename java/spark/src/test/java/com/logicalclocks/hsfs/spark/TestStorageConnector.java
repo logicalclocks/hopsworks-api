@@ -464,6 +464,8 @@ public class TestStorageConnector {
       s3Connector.setStorageConnectorType(StorageConnectorType.S3);
       List<Option> arguments = new java.util.ArrayList<>();
       arguments.add(new Option("fs.s3a.endpoint", "testEndpoint"));
+      arguments.add(new Option("fs.s3a.path.style.access", "false"));
+      arguments.add(new Option("fs.s3a.connection.ssl.enabled", "true"));
       s3Connector.setArguments(arguments);
       s3Connector.setAccessKey("testAccessKey");
       s3Connector.setSecretKey("testSecretKey");
