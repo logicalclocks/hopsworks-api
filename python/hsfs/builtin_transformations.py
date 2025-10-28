@@ -378,67 +378,67 @@ def winsorize(
     return pd.Series(clipped, index=feature.index)
 
 
-@udf(float, drop=["feature"], mode="pandas")
-def target_mean_encoder(
-    feature: pd.Series,
-    label: pd.Series,
-    statistics=feature_statistics,
-    context: dict | None = None,
-) -> pd.Series:
-    """
-    Target / Mean Encoding for categorical features.
+# @udf(float, drop=["feature"], mode="pandas")
+# def target_mean_encoder(
+#     feature: pd.Series,
+#     label: pd.Series,
+#     statistics=feature_statistics,
+#     context: dict | None = None,
+# ) -> pd.Series:
+#     """
+#     Target / Mean Encoding for categorical features.
 
-    Replaces each category in `feature` with the mean of the target variable `label`.
+#     Replaces each category in `feature` with the mean of the target variable `label`.
 
-    Usage notes:
-    - During training (offline): provide both `feature` and `label`; the encoder computes
-      the per-category mean on-the-fly from these two Series.
-    - During serving/online or when labels are unavailable: provide a precomputed mapping via
-      the transformation context as `{"target_means": {category: mean, ...}, "global_mean": <float>}`.
-      Unseen categories fall back to `global_mean` when provided, otherwise NaN.
-    - Only the input `feature` column is dropped. The `label` column is preserved in outputs.
+#     Usage notes:
+#     - During training (offline): provide both `feature` and `label`; the encoder computes
+#       the per-category mean on-the-fly from these two Series.
+#     - During serving/online or when labels are unavailable: provide a precomputed mapping via
+#       the transformation context as `{"target_means": {category: mean, ...}, "global_mean": <float>}`.
+#       Unseen categories fall back to `global_mean` when provided, otherwise NaN.
+#     - Only the input `feature` column is dropped. The `label` column is preserved in outputs.
 
-    Edge cases:
-    - If `label` is entirely null or not provided (e.g., serving), a context mapping is required.
-    - If `feature` contains NaN, the encoded value will be NaN for those rows.
-    """
+#     Edge cases:
+#     - If `label` is entirely null or not provided (e.g., serving), a context mapping is required.
+#     - If `feature` contains NaN, the encoded value will be NaN for those rows.
+#     """
 
-    # Ensure pandas Series with appropriate dtype
-    f = feature
-    y = label if label is not None else None
+#     # Ensure pandas Series with appropriate dtype
+#     f = feature
+#     y = label if label is not None else None
 
-    mapping: dict | None = None
-    global_mean: float | None = None
+#     mapping: dict | None = None
+#     global_mean: float | None = None
 
-    if isinstance(context, dict):
-        mapping = context.get("target_means") or context.get("mapping")
-        global_mean = context.get("global_mean")
+#     if isinstance(context, dict):
+#         mapping = context.get("target_means") or context.get("mapping")
+#         global_mean = context.get("global_mean")
 
-    # Training/offline path: compute mapping from data if label provided and non-empty
-    if y is not None and not (isinstance(y, pd.Series) and y.isna().all()):
-        # Attempt numeric conversion for label; errors='coerce' will turn non-numeric into NaN
-        y_num = pd.to_numeric(y, errors="coerce")
-        # Compute category -> mean(label)
-        df = pd.DataFrame({"__cat__": f, "__y__": y_num})
-        means = df.groupby("__cat__")["__y__"].mean()
-        mapping = means.to_dict()
-        # Global mean for fallback on unseen categories at serve-time
-        global_mean = float(y_num.mean()) if not pd.isna(y_num.mean()) else None
+#     # Training/offline path: compute mapping from data if label provided and non-empty
+#     if y is not None and not (isinstance(y, pd.Series) and y.isna().all()):
+#         # Attempt numeric conversion for label; errors='coerce' will turn non-numeric into NaN
+#         y_num = pd.to_numeric(y, errors="coerce")
+#         # Compute category -> mean(label)
+#         df = pd.DataFrame({"__cat__": f, "__y__": y_num})
+#         means = df.groupby("__cat__")["__y__"].mean()
+#         mapping = means.to_dict()
+#         # Global mean for fallback on unseen categories at serve-time
+#         global_mean = float(y_num.mean()) if not pd.isna(y_num.mean()) else None
 
-    if mapping is None:
-        # No mapping available: try to use just global mean for all known categories
-        if global_mean is not None:
-            return pd.Series(
-                [global_mean if pd.notna(v) else np.nan for v in f], index=f.index
-            )
-        # As a last resort, return NaNs (cannot encode)
-        return pd.Series([np.nan for _ in f], index=f.index)
+#     if mapping is None:
+#         # No mapping available: try to use just global mean for all known categories
+#         if global_mean is not None:
+#             return pd.Series(
+#                 [global_mean if pd.notna(v) else np.nan for v in f], index=f.index
+#             )
+#         # As a last resort, return NaNs (cannot encode)
+#         return pd.Series([np.nan for _ in f], index=f.index)
 
-    # Map categories to target means; unseen -> global_mean (if provided) else NaN
-    def _map_val(v):
-        if pd.isna(v):
-            return np.nan
-        return mapping.get(v, global_mean)
+#     # Map categories to target means; unseen -> global_mean (if provided) else NaN
+#     def _map_val(v):
+#         if pd.isna(v):
+#             return np.nan
+#         return mapping.get(v, global_mean)
 
-    encoded = f.map(_map_val)
-    return pd.Series(encoded, index=f.index)
+#     encoded = f.map(_map_val)
+#     return pd.Series(encoded, index=f.index)
