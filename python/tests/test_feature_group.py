@@ -571,9 +571,7 @@ class TestFeatureGroup:
     def test_feature_group_data_source_update_storage_connector(self, mocker):
         # Arrange
         data_source = mocker.Mock()
-        sc = storage_connector.S3Connector(
-            id=1, name="s3_conn", featurestore_id=1
-        )
+        sc = storage_connector.S3Connector(id=1, name="s3_conn", featurestore_id=1)
 
         # Act
         feature_group.FeatureGroup(
@@ -778,6 +776,16 @@ class TestFeatureGroup:
             "hsfs.core.feature_group_engine.FeatureGroupEngine.save",
             return_value=(None, None),
         )
+        mock_commit_details = mocker.patch(
+            "hsfs.feature_group.FeatureGroup.commit_details",
+            return_value={
+                "21378543924": {}
+            },  # non-empty dict to simulate successful commit
+        )
+        mock_stats_engine = mocker.patch(
+            "hsfs.core.statistics_engine.StatisticsEngine.compute_and_save_statistics",
+            return_value=None,
+        )
 
         fg = feature_group.FeatureGroup(
             name="test_fg",
@@ -786,12 +794,15 @@ class TestFeatureGroup:
             primary_key=[],
             foreign_key=[],
             partition_key=[],
+            time_travel_format="DELTA",
         )
 
         data = [[1, "test_1"], [2, "test_2"]]
         fg.save(data)
 
         mock_convert_to_default_dataframe.assert_called_once_with(data)
+        mock_commit_details.assert_called_once()
+        mock_stats_engine.assert_called_once()
 
     def test_save_report_true_default(self, mocker, dataframe_fixture_basic):
         engine = python.Engine()
@@ -805,8 +816,14 @@ class TestFeatureGroup:
             "hsfs.core.feature_group_engine.FeatureGroupEngine.insert",
             return_value=(None, None),
         )
-        mock_compute_statistics = mocker.patch(
-            "hsfs.feature_group.FeatureGroupBase.compute_statistics",
+        mock_commit_details = mocker.patch(
+            "hsfs.feature_group.FeatureGroup.commit_details",
+            return_value={
+                "21378543924": {}
+            },  # non-empty dict to simulate successful commit
+        )
+        mock_stats_engine = mocker.patch(
+            "hsfs.core.statistics_engine.StatisticsEngine.compute_and_save_statistics",
             return_value=None,
         )
 
@@ -818,6 +835,7 @@ class TestFeatureGroup:
             foreign_key=[],
             partition_key=[],
             id=10,
+            time_travel_format="DELTA",
         )
 
         fg.insert(dataframe_fixture_basic)
@@ -832,7 +850,8 @@ class TestFeatureGroup:
             transformation_context=None,
             transform=True,
         )
-        mock_compute_statistics.assert_called_once()
+        mock_commit_details.assert_called_once()
+        mock_stats_engine.assert_called_once()
 
     def test_save_report_default_overwritable(self, mocker, dataframe_fixture_basic):
         engine = python.Engine()
@@ -846,8 +865,14 @@ class TestFeatureGroup:
             "hsfs.core.feature_group_engine.FeatureGroupEngine.insert",
             return_value=(None, None),
         )
-        mock_compute_statistics = mocker.patch(
-            "hsfs.feature_group.FeatureGroupBase.compute_statistics",
+        mock_commit_details = mocker.patch(
+            "hsfs.feature_group.FeatureGroup.commit_details",
+            return_value={
+                "21378543924": {}
+            },  # non-empty dict to simulate successful commit
+        )
+        mock_stats_engine = mocker.patch(
+            "hsfs.core.statistics_engine.StatisticsEngine.compute_and_save_statistics",
             return_value=None,
         )
 
@@ -859,6 +884,7 @@ class TestFeatureGroup:
             foreign_key=[],
             partition_key=[],
             id=10,
+            time_travel_format="DELTA",
         )
 
         fg.insert(dataframe_fixture_basic, validation_options={"save_report": False})
@@ -874,7 +900,8 @@ class TestFeatureGroup:
             transformation_context=None,
             transform=True,
         )
-        mock_compute_statistics.assert_called_once()
+        mock_commit_details.assert_called_once()
+        mock_stats_engine.assert_called_once()
 
     @pytest.mark.parametrize(
         "sc,expected",
