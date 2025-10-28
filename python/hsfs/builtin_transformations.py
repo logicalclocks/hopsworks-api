@@ -18,9 +18,9 @@ import math
 
 import numpy as np
 import pandas as pd
-
 from hsfs.hopsworks_udf import udf
 from hsfs.transformation_statistics import TransformationStatistics
+
 
 feature_statistics = TransformationStatistics("feature")
 
@@ -117,18 +117,24 @@ def equal_width_binner(feature: pd.Series, statistics=feature_statistics) -> pd.
 
     # Handle degenerate/constant features
     if pd.isna(min_v) or pd.isna(max_v) or min_v == max_v:
-        return pd.Series([math.nan if pd.isna(v) else 0 for v in s], index=feature.index)
+        return pd.Series(
+            [math.nan if pd.isna(v) else 0 for v in s], index=feature.index
+        )
 
     bins = 10
     edges = np.linspace(min_v, max_v, num=bins + 1)
     edges[0] = -np.inf
     edges[-1] = np.inf
-    binned = pd.cut(s, bins=edges, labels=False, include_lowest=True, right=True, duplicates="drop")
+    binned = pd.cut(
+        s, bins=edges, labels=False, include_lowest=True, right=True, duplicates="drop"
+    )
     return pd.Series(binned, index=feature.index)
 
 
 @udf(int, drop=["feature"])
-def equal_frequency_binner(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
+def equal_frequency_binner(
+    feature: pd.Series, statistics=feature_statistics
+) -> pd.Series:
     """
     Discretize numeric values into equal-frequency bins using training quartiles.
 
@@ -147,10 +153,14 @@ def equal_frequency_binner(feature: pd.Series, statistics=feature_statistics) ->
     core = np.unique(finite)
     if len(core) < 2:
         # Not enough distinct boundaries; fall back to single-bin centered by median
-        return pd.Series([math.nan if pd.isna(v) else 0 for v in s], index=feature.index)
+        return pd.Series(
+            [math.nan if pd.isna(v) else 0 for v in s], index=feature.index
+        )
     # Rebuild with -inf, unique core, +inf
     edges = np.concatenate(([-np.inf], core, [np.inf]))
-    binned = pd.cut(s, bins=edges, labels=False, include_lowest=True, right=True, duplicates="drop")
+    binned = pd.cut(
+        s, bins=edges, labels=False, include_lowest=True, right=True, duplicates="drop"
+    )
     return pd.Series(binned, index=feature.index)
 
 
@@ -173,9 +183,13 @@ def quantile_binner(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
     finite = boundaries[np.isfinite(boundaries)]
     core = np.unique(finite)
     if len(core) < 2:
-        return pd.Series([math.nan if pd.isna(v) else 0 for v in s], index=feature.index)
+        return pd.Series(
+            [math.nan if pd.isna(v) else 0 for v in s], index=feature.index
+        )
     edges = np.concatenate(([-np.inf], core, [np.inf]))
-    binned = pd.cut(s, bins=edges, labels=False, include_lowest=True, right=True, duplicates="drop")
+    binned = pd.cut(
+        s, bins=edges, labels=False, include_lowest=True, right=True, duplicates="drop"
+    )
     return pd.Series(binned, index=feature.index)
 
 
@@ -207,9 +221,7 @@ def quantile_transformer(
         # Map each value to its quantile position using linear interpolation
         # percentiles is a list of 100 values (0th to 99th percentile)
         quantile_positions = np.interp(
-            valid_values,
-            percentiles,
-            np.linspace(0, 1, len(percentiles))
+            valid_values, percentiles, np.linspace(0, 1, len(percentiles))
         )
         result[valid_mask] = quantile_positions
 
@@ -242,7 +254,9 @@ def rank_normalizer(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
         valid_values = s[valid_mask].values
         # For each value, find what percentile it corresponds to
         # Using searchsorted to find the position in the sorted percentiles
-        ranks = np.searchsorted(percentiles, valid_values, side='right') / len(percentiles)
+        ranks = np.searchsorted(percentiles, valid_values, side="right") / len(
+            percentiles
+        )
         # Clip to [0, 1] range
         ranks = np.clip(ranks, 0.0, 1.0)
         result[valid_mask] = ranks
