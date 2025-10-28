@@ -15,12 +15,12 @@
 #
 
 import math
-import numpy as np
 
+import numpy as np
 import pandas as pd
+
 from hsfs.hopsworks_udf import udf
 from hsfs.transformation_statistics import TransformationStatistics
-
 
 feature_statistics = TransformationStatistics("feature")
 
@@ -197,11 +197,11 @@ def quantile_transformer(
     """
     s = feature.astype("float64")
     percentiles = statistics.feature.percentiles
-    
+
     # Handle NaN values
     result = np.full(len(s), np.nan)
     valid_mask = ~s.isna()
-    
+
     if valid_mask.any():
         valid_values = s[valid_mask].values
         # Map each value to its quantile position using linear interpolation
@@ -212,7 +212,7 @@ def quantile_transformer(
             np.linspace(0, 1, len(percentiles))
         )
         result[valid_mask] = quantile_positions
-    
+
     return pd.Series(result, index=feature.index)
 
 
@@ -233,11 +233,11 @@ def rank_normalizer(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
     """
     s = feature.astype("float64")
     percentiles = statistics.feature.percentiles
-    
+
     # Handle NaN values
     result = np.full(len(s), np.nan)
     valid_mask = ~s.isna()
-    
+
     if valid_mask.any():
         valid_values = s[valid_mask].values
         # For each value, find what percentile it corresponds to
@@ -246,7 +246,7 @@ def rank_normalizer(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
         # Clip to [0, 1] range
         ranks = np.clip(ranks, 0.0, 1.0)
         result[valid_mask] = ranks
-    
+
     return pd.Series(result, index=feature.index)
 
 
