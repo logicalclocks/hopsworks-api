@@ -55,6 +55,7 @@ class TestConstants:
         # Arrange
         model_registry = {
             "HOPSFS_MOUNT_PREFIX": "/hopsfs/",
+            "MODELS_DATASET": "Models",
             "MODEL_FILES_DIR_NAME": "Files",
         }
 
@@ -69,26 +70,16 @@ class TestConstants:
 
     def test_model_serving_constants(self):
         # Arrange
-        model_serving = {"MODELS_DATASET": "Models", "ARTIFACTS_DIR_NAME": "Artifacts"}
+        model_serving = {
+            "DEPLOYMENTS_DATASET": "Deployments",
+            "ARTIFACTS_DIR_NAME": "Artifacts",
+        }
 
         # Assert
         self._check_added_modified_or_removed_values(
             constants.MODEL_SERVING,
             num_values=len(model_serving),
             expected_constants=model_serving,
-        )
-
-    # ARTIFACT_VERSION
-
-    def test_artifact_version_constants(self):
-        # Arrange
-        artifact_versions = {"CREATE": "CREATE"}
-
-        # Assert
-        self._check_added_modified_or_removed_values(
-            constants.ARTIFACT_VERSION,
-            num_values=len(artifact_versions),
-            expected_constants=artifact_versions,
         )
 
     # RESOURCES
