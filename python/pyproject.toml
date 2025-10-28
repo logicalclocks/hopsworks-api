@@ -69,10 +69,10 @@ python = [
     "tqdm",
     "hops-deltalake; python_version >= '3.9' and (sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64'))",
 ]
-# sqlalchemy-1 = [
-#     "pandas<2.2.0",
-#     "sqlalchemy<2.0.0",
-# ]
+sqlalchemy-1 = [
+    "pandas<2.2.0",
+    "sqlalchemy<2.0.0",
+]
 great-expectations = ["great_expectations==0.18.12"]
 dev-no-opt = [
     "hopsworks[python]",
@@ -85,17 +85,17 @@ dev-no-opt = [
     "typeguard==4.2.1",
     "delta-spark==3.3.1"
 ]
-# dev-pandas1 = [
-#     "hopsworks[python]",
-#     "pytest==7.4.4",
-#     "pytest-mock==3.12.0",
-#     "ruff",
-#     "pyspark==3.5.5",
-#     "moto[s3]==5.0.0",
-#     "pandas<=1.5.3",
-#     "sqlalchemy<=1.4.48",
-#     "delta-spark==3.3.1"
-# ]
+dev-pandas1 = [
+    "hopsworks[python]",
+    "pytest==7.4.4",
+    "pytest-mock==3.12.0",
+    "ruff",
+    "pyspark==3.5.5",
+    "moto[s3]==5.0.0",
+    "pandas<=1.5.3",
+    "sqlalchemy<=1.4.48",
+    "delta-spark==3.3.1"
+]
 dev = ["hopsworks[dev-no-opt,great-expectations,polars]"]
 polars=[
     "polars>=0.20.18,<=0.21.0",
