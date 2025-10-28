@@ -60,7 +60,6 @@ public class Constants {
   public static final String S3_ENCRYPTION_ALGO = "fs.s3a.server-side-encryption-algorithm";
   public static final String S3_ENCRYPTION_KEY = "fs.s3a.server-side-encryption-key";
   public static final String S3_PATH_STYLE_ACCESS = "fs.s3a.path.style.access";
-  public static final String S3_SIGNING_ALGO = "fs.s3a.signing-algorithm";
   public static final String S3_CONNECTION_USE_SSL = "fs.s3a.connection.ssl.enabled";
 
   public static final String SNOWFLAKE_USER = "sfUser";
