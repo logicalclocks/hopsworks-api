@@ -3224,6 +3224,14 @@ class FeatureGroup(FeatureGroupBase):
             # Only compute statistics if the engine is Spark.
             # For Python engine, the computation happens in the Hopsworks application
             self._statistics_engine.compute_and_save_statistics(self, feature_dataframe)
+        elif engine.get_type() == "python" and not self.stream:
+            commit_id = [key for key in self.commit_details(limit=1)][0]
+            self._statistics_engine.compute_and_save_statistics(
+                metadata_instance=self,
+                feature_dataframe=feature_dataframe,
+                feature_group_commit_id=commit_id,
+            )
+
         if user_version is None:
             warnings.warn(
                 "No version provided for creating feature group `{}`, incremented version to `{}`.".format(
@@ -3409,13 +3417,18 @@ class FeatureGroup(FeatureGroupBase):
             transform=transform,
         )
 
-        if (engine.get_type().startswith("spark") and not self.stream) or (
-            engine.get_type() == "python" and not self.stream
-        ):
+        if engine.get_type().startswith("spark") and not self.stream:
             # Compute stats in client if there is no backfill job:
             # - spark engine: always compute in client
             # - python engine: only compute if FG is offline only (no backfill job)
             self.compute_statistics()
+        elif engine.get_type() == "python" and not self.stream:
+            commit_id = [key for key in self.commit_details(limit=1)][0]
+            self._statistics_engine.compute_and_save_statistics(
+                metadata_instance=self,
+                feature_dataframe=feature_dataframe,
+                feature_group_commit_id=commit_id,
+            )
 
         return (
             job,
