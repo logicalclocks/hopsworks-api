@@ -6488,6 +6488,7 @@ class TestSpark:
     def test_get_feature_logging_df_logging_data_no_missing_no_additional_dict(
         self, mocker, logging_features, logging_test_dataframe, spark_engine
     ):
+        # Prepare
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
 
@@ -6652,6 +6653,7 @@ class TestSpark:
     def test_get_feature_logging_df_logging_data_missing_columns_and_additional_list(
         self, mocker, caplog, logging_features, spark_engine, logging_test_dataframe
     ):
+        # Prepare
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
 
@@ -6681,6 +6683,7 @@ class TestSpark:
     def test_get_feature_logging_df_untransformed_features_no_missing_no_additional_dataframe(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
+        # Prepare
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
 
@@ -6838,6 +6841,7 @@ class TestSpark:
     def test_get_feature_logging_df_untransformed_features_missing_columns_and_additional_dataframe(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
+        # Prepare
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
 
@@ -7315,6 +7319,7 @@ class TestSpark:
     def test_get_feature_logging_df_predictions_no_missing_no_additional_list(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
+        # Prepare
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
 
@@ -8673,6 +8678,7 @@ class TestSpark:
     def test_get_feature_logging_df_request_id_no_missing_no_additional_dataframe(
         self, mocker, caplog, logging_features, logging_test_dataframe, spark_engine
     ):
+        # Prepare
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="spark")
 

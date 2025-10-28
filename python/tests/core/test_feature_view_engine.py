@@ -4203,8 +4203,10 @@ class TestFeatureViewEngine:
             labels=["label"],
         )
 
+        # Act
         fqn_primary_keys = fv_engine._get_primary_keys_from_query(fv.query)
 
+        # Assert
         assert {"test_fs_test5_1_primary_key", "test_fs_test6_1_primary_key"} == set(
             fqn_primary_keys
         )
@@ -4228,8 +4230,10 @@ class TestFeatureViewEngine:
             labels=["label"],
         )
 
+        # Act
         fqn_primary_keys = fv_engine._get_primary_keys_from_query(fv.query)
 
+        # Assert
         assert {"test_fs_test5_1_primary_key", "primary_key"} == set(fqn_primary_keys)
 
     def test_get_event_time_from_query_all_fully_qualified(self, mocker):
@@ -4251,8 +4255,10 @@ class TestFeatureViewEngine:
             labels=["label"],
         )
 
+        # Act
         fqn_primary_keys = fv_engine._get_eventtimes_from_query(fv.query)
 
+        # Assert
         assert {"test_fs_test5_1_event_time", "test_fs_test6_1_event_time"} == set(
             fqn_primary_keys
         )
