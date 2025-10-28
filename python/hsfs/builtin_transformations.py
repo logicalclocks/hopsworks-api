@@ -1,5 +1,5 @@
 #
-#   Copyright 2024 Hopsworks AB
+#   Copyright 2024, 2025 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ def standard_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
     return (feature - statistics.feature.mean) / statistics.feature.stddev
 
 
-@udf(float, drop=["feature"])
+@udf(float, drop=["feature"], mode="pandas")
 def robust_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
     """
     Robust scaling using median and IQR.
@@ -48,17 +48,17 @@ def robust_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Serie
     If IQR is zero (constant feature), the function centers the data by the
     median without scaling to avoid division by zero.
     """
-    q1 = statistics.feature.percentiles[24]
-    q2 = statistics.feature.percentiles[49]
-    q3 = statistics.feature.percentiles[74]
+    q1 = statistics.feature.percentiles[25]
+    q2 = statistics.feature.percentiles[50]
+    q3 = statistics.feature.percentiles[75]
     iqr = q3 - q1
 
-    s = feature.astype("float64")
+    scaled_feature = feature.astype("float64")
     if pd.isna(iqr) or iqr == 0:
         # Constant feature or invalid IQR: center only
-        return s - q2
+        return scaled_feature - q2
 
-    return (s - q2) / iqr
+    return (scaled_feature - q2) / iqr
 
 
 @udf(int, drop=["feature"], mode="pandas")
@@ -88,7 +88,7 @@ def one_hot_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
     return one_hot.reindex(sorted(one_hot.columns), axis=1)
 
 
-@udf(float, drop=["feature"])
+@udf(float, drop=["feature"], mode="pandas")
 def log_transform(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
     """
     Apply natural logarithm to a numeric feature.
@@ -98,11 +98,14 @@ def log_transform(feature: pd.Series, statistics=feature_statistics) -> pd.Serie
     - This is useful to reduce skewness or model exponential relationships.
     """
     # Ensure float dtype and handle NaNs; values <= 0 become NaN
-    s = feature.astype("float64")
-    return pd.Series(np.where(s > 0, np.log(s), np.nan), index=feature.index)
+    numeric_feature = feature.astype("float64")
+    return pd.Series(
+        np.where(numeric_feature > 0, np.log(numeric_feature), np.nan),
+        index=feature.index,
+    )
 
 
-@udf(int, drop=["feature"])
+@udf(int, drop=["feature"], mode="pandas")
 def equal_width_binner(
     feature: pd.Series, statistics=feature_statistics, context: dict | None = None
 ) -> pd.Series:
@@ -117,15 +120,15 @@ def equal_width_binner(
         tf = equal_width_binner("feature")
         tf.hopsworks_udf.transformation_context = {"n_bins": 20}
     """
-    s = feature.astype("float64")
+    numerical_feature = feature.astype("float64")
     min_v = statistics.feature.min
     max_v = statistics.feature.max
 
     # Handle degenerate/constant features
     if pd.isna(min_v) or pd.isna(max_v) or min_v == max_v:
-        return pd.Series(
-            [math.nan if pd.isna(v) else 0 for v in s], index=feature.index
-        )
+        result = pd.Series(0, index=feature.index, dtype="Int64")
+        result[numerical_feature.isna()] = pd.NA
+        return result
 
     # Get number of bins from context, default to 10
     bins = 10
@@ -141,42 +144,64 @@ def equal_width_binner(
     edges[0] = -np.inf
     edges[-1] = np.inf
     binned = pd.cut(
-        s, bins=edges, labels=False, include_lowest=True, right=True, duplicates="drop"
+        numerical_feature,
+        bins=edges,
+        labels=False,
+        include_lowest=True,
+        right=True,
+        duplicates="drop",
     )
-    return pd.Series(binned, index=feature.index)
+
+    # Convert to nullable integer type
+    return binned.astype("Int64")
 
 
-@udf(int, drop=["feature"])
+@udf(int, drop=["feature"], mode="pandas")
 def equal_frequency_binner(
     feature: pd.Series, statistics=feature_statistics
 ) -> pd.Series:
     """
     Discretize numeric values into equal-frequency bins using training quartiles.
 
-    - Uses Q1/Q2/Q3 percentiles as boundaries to form 4 bins.
+    - Uses Q1/Q2/Q3 percentiles as boundaries to form up to 4 bins.
+    - If quartiles have duplicates (constant regions), fewer bins are created.
     - NaN inputs remain NaN.
     """
     s = feature.astype("float64")
-    q1 = statistics.feature.percentiles[24]
-    q2 = statistics.feature.percentiles[49]
-    q3 = statistics.feature.percentiles[74]
+    q1 = statistics.feature.percentiles[25]
+    q2 = statistics.feature.percentiles[50]
+    q3 = statistics.feature.percentiles[75]
 
-    # Build boundaries with robust handling for duplicates
-    boundaries = np.array([-np.inf, q1, q2, q3, np.inf], dtype=float)
-    # Remove non-finite boundaries except -inf/inf, and ensure sorted unique
-    finite = boundaries[np.isfinite(boundaries)]
-    core = np.unique(finite)
-    if len(core) < 2:
-        # Not enough distinct boundaries; fall back to single-bin centered by median
-        return pd.Series(
-            [math.nan if pd.isna(v) else 0 for v in s], index=feature.index
-        )
-    # Rebuild with -inf, unique core, +inf
-    edges = np.concatenate(([-np.inf], core, [np.inf]))
+    # Check if we have valid quartiles
+    if any(pd.isna([q1, q2, q3])):
+        # Invalid statistics: assign all to bin 0
+        result = pd.Series(0, index=feature.index, dtype="Int64")
+        result[s.isna()] = pd.NA
+        return result
+
+    # Create bin edges with infinity boundaries
+    edges = np.array([-np.inf, q1, q2, q3, np.inf])
+
+    # Remove duplicate edges (handles constant features)
+    edges = np.unique(edges)
+
+    if len(edges) < 2:
+        # Degenerate case: assign all to bin 0
+        result = pd.Series(0, index=feature.index, dtype="Int64")
+        result[s.isna()] = pd.NA
+        return result
+
     binned = pd.cut(
-        s, bins=edges, labels=False, include_lowest=True, right=True, duplicates="drop"
+        s,
+        bins=edges,
+        labels=False,
+        include_lowest=True,
+        right=True,
+        duplicates="drop",  # Safety net, though we've already handled this
     )
-    return pd.Series(binned, index=feature.index)
+
+    # Convert to nullable integer
+    return binned.astype("Int64")
 
 
 @udf(int, drop=["feature"])
@@ -185,30 +210,49 @@ def quantile_binner(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
     Discretize numeric values using quantile-based boundaries from training statistics.
 
     - Default quantiles: quartiles (0%, 25%, 50%, 75%, 100%).
+    - Creates up to 4 bins based on Q1, Q2 (median), and Q3.
     - NaN inputs remain NaN.
     """
-    s = feature.astype("float64")
-    # Use available percentiles at 25/50/75 plus -inf/inf; min/max handled via +/-inf.
+    numerical_feature = feature.astype("float64")
+
+    # Use quartiles: 25th, 50th, 75th percentiles
     p = statistics.feature.percentiles
-    q25 = p[24]
-    q50 = p[49]
-    q75 = p[74]
+    q25 = p[25]  # Q1
+    q50 = p[50]  # Q2 (median)
+    q75 = p[75]  # Q3
 
-    boundaries = np.array([-np.inf, q25, q50, q75, np.inf], dtype=float)
-    finite = boundaries[np.isfinite(boundaries)]
-    core = np.unique(finite)
-    if len(core) < 2:
-        return pd.Series(
-            [math.nan if pd.isna(v) else 0 for v in s], index=feature.index
-        )
-    edges = np.concatenate(([-np.inf], core, [np.inf]))
+    # Check if we have valid quartiles
+    if any(pd.isna([q25, q50, q75])):
+        result = pd.Series(0, index=feature.index, dtype="Int64")
+        result[numerical_feature.isna()] = pd.NA
+        return result
+
+    # Create bin edges with infinity boundaries
+    edges = np.array([-np.inf, q25, q50, q75, np.inf])
+
+    # Remove duplicate edges (handles constant features)
+    edges = np.unique(edges)
+
+    if len(edges) < 2:
+        # Degenerate case: assign all to bin 0
+        result = pd.Series(0, index=feature.index, dtype="Int64")
+        result[numerical_feature.isna()] = pd.NA
+        return result
+
     binned = pd.cut(
-        s, bins=edges, labels=False, include_lowest=True, right=True, duplicates="drop"
+        numerical_feature,
+        bins=edges,
+        labels=False,
+        include_lowest=True,
+        right=True,
+        duplicates="drop",
     )
-    return pd.Series(binned, index=feature.index)
+
+    # Convert to nullable integer
+    return binned.astype("Int64")
 
 
-@udf(float, drop=["feature"])
+@udf(float, drop=["feature"], mode="pandas")
 def quantile_transformer(
     feature: pd.Series, statistics=feature_statistics
 ) -> pd.Series:
@@ -223,18 +267,19 @@ def quantile_transformer(
     - Useful for normalizing non-Gaussian distributions
     - Maps outliers to the edges of the [0, 1] interval
     - Requires percentiles computed from training data statistics
+    - Output range: [0, 1] where 0 = minimum, 0.5 = median, 1 = maximum
     """
-    s = feature.astype("float64")
+    numerical_feature = feature.astype("float64")
     percentiles = statistics.feature.percentiles
 
     # Handle NaN values
-    result = np.full(len(s), np.nan)
-    valid_mask = ~s.isna()
+    result = np.full(len(numerical_feature), np.nan)
+    valid_mask = ~numerical_feature.isna()
 
     if valid_mask.any():
-        valid_values = s[valid_mask].values
+        valid_values = numerical_feature[valid_mask].values
         # Map each value to its quantile position using linear interpolation
-        # percentiles is a list of 100 values (0th to 99th percentile)
+        # percentiles[i] = i-th percentile (0th through 100th percentile = 101 values)
         quantile_positions = np.interp(
             valid_values, percentiles, np.linspace(0, 1, len(percentiles))
         )
@@ -243,7 +288,7 @@ def quantile_transformer(
     return pd.Series(result, index=feature.index)
 
 
-@udf(float, drop=["feature"])
+@udf(float, drop=["feature"], mode="pandas")
 def rank_normalizer(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
     """
     Replace each value with its percentile rank in the training distribution.
@@ -257,16 +302,17 @@ def rank_normalizer(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
     - Robust to outliers (outliers get ranks near 0 or 1)
     - Preserves the relative ordering of values
     - Requires percentiles computed from training data statistics
+    - Output range: [0, 1] where 0 = at or below minimum, 1 = at or above maximum
     """
-    s = feature.astype("float64")
+    numerical_feature = feature.astype("float64")  # Fixed: singular
     percentiles = statistics.feature.percentiles
 
     # Handle NaN values
-    result = np.full(len(s), np.nan)
-    valid_mask = ~s.isna()
+    result = np.full(len(numerical_feature), np.nan)
+    valid_mask = ~numerical_feature.isna()
 
     if valid_mask.any():
-        valid_values = s[valid_mask].values
+        valid_values = numerical_feature[valid_mask].values
         # For each value, find what percentile it corresponds to
         # Using searchsorted to find the position in the sorted percentiles
         ranks = np.searchsorted(percentiles, valid_values, side="right") / len(
@@ -279,7 +325,7 @@ def rank_normalizer(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
     return pd.Series(result, index=feature.index)
 
 
-@udf(float, drop=["feature"])
+@udf(float, drop=["feature"], mode="pandas")
 def winsorize(
     feature: pd.Series, statistics=feature_statistics, context: dict | None = None
 ) -> pd.Series:
@@ -288,46 +334,51 @@ def winsorize(
 
     By default, clips values to the [1st, 99th] percentiles computed on the
     training data. You can override thresholds by passing a context with
-    keys `p_low` and `p_high` (percent values in [0, 100]).
+    keys `p_low` and `p_high` (percentile values in [0, 100]).
 
     Example to clip at [5th, 95th]:
         tf = winsorize("feature")
         tf.hopsworks_udf.transformation_context = {"p_low": 5, "p_high": 95}
     """
-    s = feature.astype("float64")
+    numerical_feature = feature.astype("float64")
     percentiles = statistics.feature.percentiles
 
-    # Defaults
+    # Defaults: 1st and 99th percentiles
     p_low = 1
     p_high = 99
     if isinstance(context, dict):
         p_low = context.get("p_low", p_low)
         p_high = context.get("p_high", p_high)
 
-    # Convert to indices in 0..99 (25% was at index 24 in existing code)
+    # Convert percentile values to array indices
+    # Since percentiles[i] = i-th percentile, we use the value directly as index
     try:
-        li = int(round(float(p_low))) - 1
-        ui = int(round(float(p_high))) - 1
+        li = int(round(float(p_low)))
+        ui = int(round(float(p_high)))
     except Exception:
-        li, ui = 0, 98
+        li, ui = 1, 99  # Default fallback
 
-    li = max(0, min(99, li))
-    ui = max(0, min(99, ui))
+    # Ensure indices are within valid range [0, len(percentiles)-1]
+    max_idx = len(percentiles) - 1
+    li = max(0, min(max_idx, li))
+    ui = max(0, min(max_idx, ui))
+
+    # Ensure lower index < upper index
     if li >= ui:
-        li, ui = 0, 98
+        li, ui = 1, min(99, max_idx)
 
     lower = percentiles[li]
     upper = percentiles[ui]
 
     # Ensure proper ordering and finiteness
     if pd.isna(lower) or pd.isna(upper) or lower > upper:
-        return s  # no-op if invalid thresholds
+        return numerical_feature  # no-op if invalid thresholds
 
-    clipped = s.clip(lower=lower, upper=upper)
+    clipped = numerical_feature.clip(lower=lower, upper=upper)
     return pd.Series(clipped, index=feature.index)
 
 
-@udf(float, drop=["feature"])
+@udf(float, drop=["feature"], mode="pandas")
 def target_mean_encoder(
     feature: pd.Series,
     label: pd.Series,
