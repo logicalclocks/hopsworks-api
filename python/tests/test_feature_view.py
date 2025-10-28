@@ -16,11 +16,52 @@
 import warnings
 
 from hopsworks_common import version
-from hsfs import feature_view, training_dataset_feature
+from hsfs import feature, feature_group, feature_view, training_dataset_feature
 from hsfs.constructor import query
 from hsfs.feature_store import FeatureStore
 from hsfs.hopsworks_udf import udf
+from hsfs.serving_key import ServingKey
 from hsfs.transformation_function import TransformationType
+
+
+fg1 = feature_group.FeatureGroup(
+    name="test1",
+    version=1,
+    featurestore_id=99,
+    primary_key=["primary_key"],
+    event_time="event_time",
+    partition_key=[],
+    features=[
+        feature.Feature("primary_key", primary=True, type="bigint"),
+        feature.Feature("event_time", type="timestamp"),
+        feature.Feature("fg1_feature", type="float"),
+        feature.Feature("label", type="string"),
+        feature.Feature("fg1_inference_helper", type="int"),
+        feature.Feature("fg1_training_helper", type="int"),
+    ],
+    id=11,
+    stream=False,
+    featurestore_name="test_fs",
+)
+
+fg2 = feature_group.FeatureGroup(
+    name="test2",
+    version=1,
+    featurestore_id=99,
+    primary_key=["primary_key"],
+    event_time="event_time",
+    partition_key=[],
+    features=[
+        feature.Feature("primary_key", primary=True, type="bigint"),
+        feature.Feature("event_time", type="timestamp"),
+        feature.Feature("fg2_feature", type="float"),
+        feature.Feature("fg2_inference_helper", type="int"),
+        feature.Feature("fg2_training_helper", type="int"),
+    ],
+    id=11,
+    stream=False,
+    featurestore_name="test_fs",
+)
 
 
 class TestFeatureView:
@@ -176,3 +217,235 @@ class TestFeatureView:
         transformation_functions = fv.transformation_functions
 
         assert transformation_functions[0] != transformation_functions[1]
+
+    def test_logging_enabled_instances(self, mocker, backend_fixtures):
+        # Arrange
+        mocked_connection = mocker.MagicMock()
+        mocked_connection.backend_version = version.__version__
+        mocked_connection = mocker.patch(
+            "hopsworks_common.client.get_connection", return_value=mocked_connection
+        )
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+        json = backend_fixtures["feature_view"]["get_feature_view_logging_enabled"][
+            "response"
+        ]
+
+        # Act
+        fv = feature_view.FeatureView.from_response_json(json)
+
+        # Assert
+        assert fv.logging_enabled is True
+
+    def test_label_column_name(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features().join(fg2.select_features()),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            inference_helper_columns=["fg1_inference_helpers", "fg2_inference_helpers"],
+            training_helper_columns=["fg1_training_helper", "fg2_training_helper"],
+            labels=["label"],
+        )
+
+        # Act
+        mocker.patch.object(
+            fv,
+            "get_training_dataset_schema",
+            return_value=[
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="fg1_feature", type="float"
+                ),
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="fg1_inference_helper", type="int"
+                ),
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="fg1_training_helper", type="int"
+                ),
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="label", type="int", label=True
+                ),
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="fg2_feature", type="float"
+                ),
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="fg2_inference_helper", type="int"
+                ),
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="fg2_training_helper", type="int"
+                ),
+            ],
+        )
+
+        # Assert
+        assert fv._label_column_names == {"label"}
+
+    def test_transformed_feature_name(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features().join(fg2.select_features()),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            inference_helper_columns=["fg1_inference_helper", "fg2_inference_helper"],
+            training_helper_columns=["fg1_training_helper", "fg2_training_helper"],
+            labels=["label"],
+        )
+
+        mocker.patch.object(
+            fv,
+            "get_training_dataset_schema",
+            return_value=[
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="fg1_feature", type="float"
+                ),
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="fg1_inference_helper", type="int"
+                ),
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="fg1_training_helper", type="int"
+                ),
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="fg1_transformed_features", type="int"
+                ),
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="label", type="int", label=True
+                ),
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="fg2_feature", type="float"
+                ),
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="fg2_inference_helper", type="int"
+                ),
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="fg2_training_helper", type="int"
+                ),
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="fg2_transformed_features", type="int"
+                ),
+            ],
+        )
+
+        # Act
+        transformed_features = fv._transformed_feature_names
+
+        # Assert
+        assert transformed_features == [
+            "fg1_feature",
+            "fg1_transformed_features",
+            "fg2_feature",
+            "fg2_transformed_features",
+        ]
+
+    def test_untransformed_feature_names(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features().join(fg2.select_features()),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            inference_helper_columns=["fg1_inference_helper", "fg2_inference_helper"],
+            training_helper_columns=["fg1_training_helper", "fg2_training_helper"],
+            labels=["label"],
+        )
+
+        mocker.patch.object(
+            fv,
+            "get_training_dataset_schema",
+            return_value=[
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="fg1_feature", type="float"
+                ),
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="fg1_inference_helper", type="int"
+                ),
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="fg1_training_helper", type="int"
+                ),
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="label", type="int", label=True
+                ),
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="fg2_feature", type="float"
+                ),
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="fg2_inference_helper", type="int"
+                ),
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="fg2_training_helper", type="int"
+                ),
+            ],
+        )
+
+        # Act
+        transformed_features = fv._transformed_feature_names
+
+        # Assert
+        assert transformed_features == ["fg1_feature", "fg2_feature"]
+
+    def test_required_serving_key_names(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features().join(fg2.select_features()),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            inference_helper_columns=["fg1_inference_helper", "fg2_inference_helper"],
+            training_helper_columns=["fg1_training_helper", "fg2_training_helper"],
+            labels=["label"],
+        )
+
+        fv._serving_keys = [
+            ServingKey(
+                feature_name="primary_key",
+                join_index=0,
+                feature_group=fg1,
+                required=True,
+            ),
+            ServingKey(
+                feature_name="primary_key",
+                join_index=0,
+                feature_group=fg2,
+                required=False,
+            ),
+        ]
+
+        # Act
+        required_serving_keys = fv._required_serving_key_names
+
+        # Assert
+        assert required_serving_keys == ["primary_key"]
+
+    def test_root_feature_group_event_time_column_name(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features().join(fg2.select_features()),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            inference_helper_columns=["fg1_inference_helper", "fg2_inference_helper"],
+            training_helper_columns=["fg1_training_helper", "fg2_training_helper"],
+            labels=["label"],
+        )
+
+        # Act
+        root_feature_group_event_time = fv._root_feature_group_event_time_column_name
+
+        # Assert
+        assert root_feature_group_event_time == "event_time"

@@ -57,6 +57,8 @@ class OnlineStoreSqlClient:
     SINGLE_HELPER_KEY = "single_helper_column"
     BATCH_VECTOR_KEY = "batch_feature_vectors"
     SINGLE_VECTOR_KEY = "single_feature_vector"
+    SINGLE_LOGGING_VECTOR_KEY = "single_logging_feature_vector"
+    BATCH_LOGGING_VECTOR_KEY = "batch_logging_feature_vector"
 
     def __init__(
         self,
@@ -102,13 +104,25 @@ class OnlineStoreSqlClient:
         self,
         entity: Union[feature_view.FeatureView, training_dataset.TrainingDataset],
         inference_helper_columns: bool,
+        with_logging_meta_data: bool = False,
     ) -> None:
+        """
+        Fetch prepared statement for feature vector retrival from the backend.
+
+        # Arguments:
+            entity : FeatureView or TrainingDataset object to fetch prepared statements for.
+            inference_helper_columns : Fetch prepared statements for inference helper columns.
+            with_logging_meta_data : Fetch prepared statements to include logging meta data.
+                i.e The fetched data will include the features along with inference helper columns.
+        """
         if hasattr(entity, "_feature_view_engine"):
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug(
                     f"Initialising prepared statements for feature view {entity.name} version {entity.version}."
                 )
-            for key in self.get_prepared_statement_labels(inference_helper_columns):
+            for key in self.get_prepared_statement_labels(
+                inference_helper_columns, with_logging_meta_data
+            ):
                 if _logger.isEnabledFor(logging.DEBUG):
                     _logger.debug(f"Fetching prepared statement for key {key}")
                 self.prepared_statements[key] = (
@@ -117,6 +131,7 @@ class OnlineStoreSqlClient:
                         entity.version,
                         batch=key.startswith("batch"),
                         inference_helper_columns=key.endswith("helper_column"),
+                        logging_meta_data="logging" in key,
                     )
                 )
                 if _logger.isEnabledFor(logging.DEBUG):
@@ -127,7 +142,8 @@ class OnlineStoreSqlClient:
                     f"Initialising prepared statements for training dataset {entity.name} version {entity.version}."
                 )
             for key in self.get_prepared_statement_labels(
-                with_inference_helper_column=False
+                with_inference_helper_column=False,
+                with_logging_meta_data=with_logging_meta_data,
             ):
                 if _logger.isEnabledFor(logging.DEBUG):
                     _logger.debug(f"Fetching prepared statement for key {key}")
@@ -156,18 +172,25 @@ class OnlineStoreSqlClient:
         self,
         entity: Union[feature_view.FeatureView, training_dataset.TrainingDataset],
         inference_helper_columns: bool,
+        with_logging_meta_data: bool = False,
     ) -> None:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
                 "Fetch and reset prepared statements and external as user may be re-initialising with different parameters"
             )
-        self.fetch_prepared_statements(entity, inference_helper_columns)
+        self.fetch_prepared_statements(
+            entity,
+            inference_helper_columns,
+            with_logging_meta_data=with_logging_meta_data,
+        )
 
         self.init_parametrize_and_serving_utils(
             self.prepared_statements[self.BATCH_VECTOR_KEY]
         )
 
-        for key in self.get_prepared_statement_labels(inference_helper_columns):
+        for key in self.get_prepared_statement_labels(
+            inference_helper_columns, with_logging_meta_data
+        ):
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug(f"Parametrize prepared statements for key {key}")
             self._parametrised_prepared_statements[key] = (
@@ -278,18 +301,36 @@ class OnlineStoreSqlClient:
             )
             self._async_task_thread.start()
 
-    def get_single_feature_vector(self, entry: Dict[str, Any]) -> Dict[str, Any]:
-        """Retrieve single vector with parallel queries using aiomysql engine."""
+    def get_single_feature_vector(
+        self, entry: Dict[str, Any], logging_data: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Retrieve single vector with parallel queries using aiomysql engine.
+
+        If `logging_data` is True, it will use the prepared statement that includes logging metadata.
+        i.e. The fetched feature vector will also include inference helper columns.
+        """
         return self._single_vector_result(
-            entry, self.parametrised_prepared_statements[self.SINGLE_VECTOR_KEY]
+            entry,
+            self.parametrised_prepared_statements[self.SINGLE_VECTOR_KEY]
+            if not logging_data
+            else self.parametrised_prepared_statements[self.SINGLE_LOGGING_VECTOR_KEY],
         )
 
     def get_batch_feature_vectors(
-        self, entries: List[Dict[str, Any]]
+        self, entries: List[Dict[str, Any]], logging_data: bool = False
     ) -> List[Dict[str, Any]]:
-        """Retrieve batch vector with parallel queries using aiomysql engine."""
+        """
+        Retrieve batch vector with parallel queries using aiomysql engine.
+
+        If `logging_data` is True, it will use the prepared statement that includes logging metadata.
+        i.e. The fetched feature vector will also include inference helper columns.
+        """
         return self._batch_vector_results(
-            entries, self.parametrised_prepared_statements[self.BATCH_VECTOR_KEY]
+            entries,
+            self.parametrised_prepared_statements[self.BATCH_VECTOR_KEY]
+            if not logging_data
+            else self.parametrised_prepared_statements[self.BATCH_LOGGING_VECTOR_KEY],
         )
 
     def get_inference_helper_vector(self, entry: Dict[str, Any]) -> Dict[str, Any]:
@@ -581,18 +622,26 @@ class OnlineStoreSqlClient:
     @staticmethod
     def get_prepared_statement_labels(
         with_inference_helper_column: bool = False,
+        with_logging_meta_data: bool = False,
     ) -> List[str]:
         if with_inference_helper_column:
-            return [
+            prepared_statements_list = [
                 OnlineStoreSqlClient.SINGLE_VECTOR_KEY,
                 OnlineStoreSqlClient.BATCH_VECTOR_KEY,
                 OnlineStoreSqlClient.SINGLE_HELPER_KEY,
                 OnlineStoreSqlClient.BATCH_HELPER_KEY,
             ]
-        return [
-            OnlineStoreSqlClient.SINGLE_VECTOR_KEY,
-            OnlineStoreSqlClient.BATCH_VECTOR_KEY,
-        ]
+        else:
+            prepared_statements_list = [
+                OnlineStoreSqlClient.SINGLE_VECTOR_KEY,
+                OnlineStoreSqlClient.BATCH_VECTOR_KEY,
+            ]
+        if with_logging_meta_data:
+            prepared_statements_list += [
+                OnlineStoreSqlClient.SINGLE_LOGGING_VECTOR_KEY,
+                OnlineStoreSqlClient.BATCH_LOGGING_VECTOR_KEY,
+            ]
+        return prepared_statements_list
 
     async def _get_connection_pool(self, default_min_size: int) -> None:
         connection_pool = await util_sql.create_async_engine(
