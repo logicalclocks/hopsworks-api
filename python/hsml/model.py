@@ -23,8 +23,8 @@ from typing import Any, Dict, Optional, Union
 
 import humps
 from hopsworks_common import client, usage, util
-from hopsworks_common.constants import ARTIFACT_VERSION, MODEL_REGISTRY
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
+from hopsworks_common.constants import MODEL_REGISTRY
 from hsml import deployment, tag
 from hsml.core import explicit_provenance
 from hsml.engine import model_engine
@@ -196,7 +196,9 @@ class Model:
         self,
         name: Optional[str] = None,
         description: Optional[str] = None,
-        artifact_version: Optional[str] = ARTIFACT_VERSION.CREATE,
+        artifact_version: Optional[
+            str
+        ] = None,  # deprecated, kept for backward compatibility
         serving_tool: Optional[str] = None,
         script_file: Optional[str] = None,
         config_file: Optional[str] = None,
@@ -227,7 +229,7 @@ class Model:
         # Arguments
             name: Name of the deployment.
             description: Description of the deployment.
-            artifact_version: Version number of the model artifact to deploy, `CREATE` to create a new model artifact
+            artifact_version: (**Deprecated**) Version number of the model artifact to deploy, `CREATE` to create a new model artifact
             or `MODEL-ONLY` to reuse the shared artifact containing only the model files.
             serving_tool: Serving tool used to deploy the model server.
             script_file: Path to a custom predictor script implementing the Predict class.
@@ -255,7 +257,6 @@ class Model:
             self,
             name=name,
             description=description,
-            artifact_version=artifact_version,
             serving_tool=serving_tool,
             script_file=script_file,
             config_file=config_file,

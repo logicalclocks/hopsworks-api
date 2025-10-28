@@ -208,7 +208,6 @@ class TestModel:
         m.deploy(
             name=p_json["name"],
             description=p_json["description"],
-            artifact_version=p_json["artifact_version"],
             serving_tool=p_json["serving_tool"],
             script_file=p_json["predictor"],
             config_file=p_json["config_file"],
@@ -225,7 +224,6 @@ class TestModel:
             m,
             name=p_json["name"],
             description=p_json["description"],
-            artifact_version=p_json["artifact_version"],
             serving_tool=p_json["serving_tool"],
             script_file=p_json["predictor"],
             config_file=p_json["config_file"],

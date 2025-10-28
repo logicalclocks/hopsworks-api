@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import warnings
 from datetime import date, datetime
 from typing import (
@@ -34,6 +35,7 @@ from typing import (
 
 import humps
 import pandas as pd
+from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import alerts_api
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
@@ -545,9 +547,11 @@ class FeatureView:
             self,
             start_time,
             end_time,
-            training_dataset_version=self._batch_scoring_server.training_dataset_version
-            if self._batch_scoring_server
-            else None,
+            training_dataset_version=(
+                self._batch_scoring_server.training_dataset_version
+                if self._batch_scoring_server
+                else None
+            ),
         )
 
     def get_feature_vector(
@@ -3714,17 +3718,19 @@ class FeatureView:
             featurestore_name=json_decamelized.get("featurestore_name", None),
             serving_keys=serving_keys,
             logging_enabled=json_decamelized.get("logging_enabled", False),
-            transformation_functions=[
-                TransformationFunction.from_response_json(
-                    {
-                        **transformation_function,
-                        "transformation_type": TransformationType.MODEL_DEPENDENT,
-                    }
-                )
-                for transformation_function in transformation_functions
-            ]
-            if transformation_functions
-            else [],
+            transformation_functions=(
+                [
+                    TransformationFunction.from_response_json(
+                        {
+                            **transformation_function,
+                            "transformation_type": TransformationType.MODEL_DEPENDENT,
+                        }
+                    )
+                    for transformation_function in transformation_functions
+                ]
+                if transformation_functions
+                else []
+            ),
         )
         features = json_decamelized.get("features", [])
         if features:
@@ -4274,6 +4280,48 @@ class FeatureView:
             self._feature_view_engine.delete_feature_logs(
                 self, self.feature_logging, transformed
             )
+
+    def create_feature_logger(self):
+        """Create an asynchronous feature logger for logging features in Hopsworks serving deployments.
+
+        # Example
+            ```python
+            # get feature logger
+            feature_logger = feature_view.create_feature_logger()
+
+            # initialize feature view for serving with feature logger
+            feature_view.init_serving(1, feature_logger=feature_logger)
+
+            # log features
+            feature_view.log(...)
+            ```
+
+        # Raises
+            `hopsworks.client.exceptions.FeatureStoreException`: If not running in a Hopsworks serving deployment.
+        """
+        if (
+            "DEPLOYMENT_NAME" not in os.environ
+            or "HOPSWORKS_PROJECT_NAME" not in os.environ
+        ):
+            raise FeatureStoreException(
+                "Feature logging only supported in Hopsworks serving deployments"
+            )
+        from hsfs.feature_logger_async import AsyncFeatureLogger
+
+        return AsyncFeatureLogger(
+            project_id=int(client.get_instance()._project_id),
+            source="localhost",
+            namespace=os.environ["HOPSWORKS_PROJECT_NAME"].replace("_", "-"),
+            deployment_name=os.environ["DEPLOYMENT_NAME"],
+            max_concurrent_tasks=int(
+                os.environ.get("FEATURE_LOGGER_CLIENT_POOL_SIZE", "3")
+            ),
+            feature_logger_config={
+                "timeout": int(
+                    os.environ.get("FEATURE_LOGGER_CLIENT_REQ_TIMEOUT", "3")
+                ),
+            },
+        )
 
     @staticmethod
     def _update_attribute_if_present(this: "FeatureView", new: Any, key: str) -> None:
