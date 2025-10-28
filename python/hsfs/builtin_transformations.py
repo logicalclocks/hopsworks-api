@@ -103,13 +103,19 @@ def log_transform(feature: pd.Series, statistics=feature_statistics) -> pd.Serie
 
 
 @udf(int, drop=["feature"])
-def equal_width_binner(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
+def equal_width_binner(
+    feature: pd.Series, statistics=feature_statistics, context: dict | None = None
+) -> pd.Series:
     """
     Discretize numeric values into equal-width bins using training min/max.
 
-    - Default bins: 10
+    - Default bins: 10 (configurable via context["n_bins"])
     - Values below min are placed in the first bin; values above max in the last bin.
     - NaN inputs remain NaN.
+
+    Example to use 20 bins:
+        tf = equal_width_binner("feature")
+        tf.hopsworks_udf.transformation_context = {"n_bins": 20}
     """
     s = feature.astype("float64")
     min_v = statistics.feature.min
@@ -121,7 +127,16 @@ def equal_width_binner(feature: pd.Series, statistics=feature_statistics) -> pd.
             [math.nan if pd.isna(v) else 0 for v in s], index=feature.index
         )
 
+    # Get number of bins from context, default to 10
     bins = 10
+    if isinstance(context, dict):
+        try:
+            n_bins = context.get("n_bins")
+            if n_bins is not None:
+                bins = max(2, int(n_bins))  # Ensure at least 2 bins
+        except (ValueError, TypeError):
+            pass  # Use default if conversion fails
+
     edges = np.linspace(min_v, max_v, num=bins + 1)
     edges[0] = -np.inf
     edges[-1] = np.inf
