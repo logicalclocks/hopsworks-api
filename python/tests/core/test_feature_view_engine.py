@@ -2833,16 +2833,17 @@ class TestFeatureViewEngine:
             }
         )
 
-        #
         fv.schema = [
             TrainingDatasetFeature(name="id", type="bigint", label=False),
             TrainingDatasetFeature(name="label", type="bigint", label=True),
         ]
 
+        # Act
         dataframe_logging_features = fv_engine.get_logging_feature_from_dataframe(
             fv, [df1, df2]
         )
 
+        # Assert
         assert ["id", "feature1", "feature2", "predicted_label"] == [
             feature.name for feature in dataframe_logging_features
         ]
@@ -4275,11 +4276,14 @@ class TestFeatureViewEngine:
             labels=["label"],
         )
 
+        # Act
         fqn_primary_keys = fv_engine._get_eventtimes_from_query(fv.query)
 
+        # Assert
         assert {"test_fs_test5_1_event_time", "event_time"} == set(fqn_primary_keys)
 
     def test_get_training_dataset_schema_no_transformations(self, mocker):
+        # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
@@ -4305,10 +4309,15 @@ class TestFeatureViewEngine:
             TrainingDatasetFeature(name="fg2_feature2", type="int"),
         ]
 
+        # Act
+        schema = fv_engine.get_training_dataset_schema(fv)
+
+        # Assert
         # If there are no transformation function training dataset schema == feature view schema
-        assert fv_engine.get_training_dataset_schema(fv) == fv.features
+        assert schema == fv.features
 
     def test_get_training_dataset_schema_transformation_functions(self, mocker):
+        # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
@@ -4339,7 +4348,11 @@ class TestFeatureViewEngine:
             TrainingDatasetFeature(name="fg2_feature2", type="int"),
         ]
 
-        assert {feat.name for feat in fv_engine.get_training_dataset_schema(fv)} == {
+        # Act
+        schema = fv_engine.get_training_dataset_schema(fv)
+
+        # Assert
+        assert {feat.name for feat in schema} == {
             "add_one_fg1_feature1_",
             "fg1_feature2",
             "label",
@@ -4350,6 +4363,7 @@ class TestFeatureViewEngine:
     def test_get_training_dataset_schema_transformation_functions_statistics(
         self, mocker
     ):
+        # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
         mocker.patch("hsfs.engine.get_type", return_value="python")
 
@@ -4400,7 +4414,11 @@ class TestFeatureViewEngine:
             return_value=[mock_one_hot_stats],
         )
 
-        assert {feat.name for feat in fv_engine.get_training_dataset_schema(fv, 1)} == {
+        # Act
+        schema = fv_engine.get_training_dataset_schema(fv, 1)
+
+        # Assert
+        assert {feat.name for feat in schema} == {
             "one_hot_encoder_fg1_feature1_0",
             "one_hot_encoder_fg1_feature1_1",
             "fg1_feature2",

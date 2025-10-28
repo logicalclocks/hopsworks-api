@@ -234,6 +234,7 @@ class TestFeatureView:
         # Act
         fv = feature_view.FeatureView.from_response_json(json)
 
+        # Assert
         assert fv.logging_enabled is True
 
     def test_label_column_name(self, mocker):
@@ -251,6 +252,7 @@ class TestFeatureView:
             labels=["label"],
         )
 
+        # Act
         mocker.patch.object(
             fv,
             "get_training_dataset_schema",
@@ -279,6 +281,7 @@ class TestFeatureView:
             ],
         )
 
+        # Assert
         assert fv._label_column_names == {"label"}
 
     def test_transformed_feature_name(self, mocker):
@@ -330,7 +333,11 @@ class TestFeatureView:
             ],
         )
 
-        assert fv._transformed_feature_names == [
+        # Act
+        transformed_features = fv._transformed_feature_names
+
+        # Assert
+        assert transformed_features == [
             "fg1_feature",
             "fg1_transformed_features",
             "fg2_feature",
@@ -380,7 +387,11 @@ class TestFeatureView:
             ],
         )
 
-        assert fv._transformed_feature_names == ["fg1_feature", "fg2_feature"]
+        # Act
+        transformed_features = fv._transformed_feature_names
+
+        # Assert
+        assert transformed_features == ["fg1_feature", "fg2_feature"]
 
     def test_required_serving_key_names(self, mocker):
         # Arrange
@@ -412,7 +423,11 @@ class TestFeatureView:
             ),
         ]
 
-        assert fv._required_serving_key_names == ["primary_key"]
+        # Act
+        required_serving_keys = fv._required_serving_key_names
+
+        # Assert
+        assert required_serving_keys == ["primary_key"]
 
     def test_root_feature_group_event_time_column_name(self, mocker):
         # Arrange
@@ -429,4 +444,8 @@ class TestFeatureView:
             labels=["label"],
         )
 
-        assert fv._root_feature_group_event_time_column_name == "event_time"
+        # Act
+        root_feature_group_event_time = fv._root_feature_group_event_time_column_name
+
+        # Assert
+        assert root_feature_group_event_time == "event_time"
