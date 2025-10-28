@@ -36,6 +36,7 @@ The HSFS library includes several ready-to-use transformation functions in `hsfs
 
 - **`label_encoder(feature)`**: Encode categorical values as integers based on sorted unique values from training. Unseen categories → -1.
 - **`one_hot_encoder(feature)`**: One-hot encode categorical features. Unseen categories → all False.
+<!-- 
 - **`target_mean_encoder(feature, label)`**: Replace categories with the mean of the target variable.
   - **Training**: Computes per-category target means from `feature` and `label` Series.
   - **Serving**: Use a precomputed mapping via transformation context:
@@ -50,6 +51,7 @@ The HSFS library includes several ready-to-use transformation functions in `hsfs
     ```
   - Unseen categories fall back to `global_mean` if provided, otherwise NaN.
   - Only the feature column is dropped; the label column is preserved.
+-->
 
 ## Usage
 
