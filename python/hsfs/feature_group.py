@@ -3220,9 +3220,10 @@ class FeatureGroup(FeatureGroupBase):
             self, feature_dataframe, write_options, validation_options or {}
         )
 
+        # Compute stats in client if there is no backfill job:
+        # - spark engine: always compute in client
+        # - python engine: only compute if FG is offline only (no backfill job)
         if self.statistics_config.enabled and engine.get_type().startswith("spark"):
-            # Only compute statistics if the engine is Spark.
-            # For Python engine, the computation happens in the Hopsworks application
             self._statistics_engine.compute_and_save_statistics(self, feature_dataframe)
         elif engine.get_type() == "python" and not self.stream:
             commit_id = [key for key in self.commit_details(limit=1)][0]
@@ -3417,10 +3418,10 @@ class FeatureGroup(FeatureGroupBase):
             transform=transform,
         )
 
+        # Compute stats in client if there is no backfill job:
+        # - spark engine: always compute in client
+        # - python engine: only compute if FG is offline only (no backfill job)
         if engine.get_type().startswith("spark") and not self.stream:
-            # Compute stats in client if there is no backfill job:
-            # - spark engine: always compute in client
-            # - python engine: only compute if FG is offline only (no backfill job)
             self.compute_statistics()
         elif engine.get_type() == "python" and not self.stream:
             commit_id = [key for key in self.commit_details(limit=1)][0]
