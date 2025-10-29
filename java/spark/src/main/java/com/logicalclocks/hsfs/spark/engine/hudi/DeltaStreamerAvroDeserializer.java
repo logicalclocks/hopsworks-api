@@ -156,7 +156,6 @@ public class DeltaStreamerAvroDeserializer implements Deserializer<GenericRecord
         finalResult.put(feature, result.get(feature));
       }
     }
-    LOGGER.error("[MANU] Deserialized record from topic '" + topic + "': " + finalResult.toString());
     return finalResult;
   }
 
