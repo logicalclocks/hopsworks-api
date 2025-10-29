@@ -279,11 +279,10 @@ class SearchApi:
             "project",
             _client._project_id,
             "elastic",
-            "featurestore",
-            search_term,
+            "featurestore"
         ]
         headers = {"content-type": "application/json"}
-        query_params = {"docType": doc_type, "from": offset, "size": limit}
+        query_params = {"searchTerm": search_term, "docType": doc_type, "from": offset, "size": limit}
 
         result = _client._send_request(
             "GET", path_params, query_params=query_params, headers=headers
