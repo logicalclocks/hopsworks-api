@@ -37,6 +37,7 @@ from hsfs.core import (
     feature_group_api,
     feature_group_engine,
     feature_view_engine,
+    search_api,
     storage_connector_api,
     training_dataset_api,
     transformation_function_engine,
@@ -125,6 +126,9 @@ class FeatureStore:
         )
         self._feature_view_engine: feature_view_engine.FeatureViewEngine = (
             feature_view_engine.FeatureViewEngine(self._id)
+        )
+        self._search_api: search_api.SearchApi = (
+            search_api.SearchApi()
         )
 
     @classmethod
@@ -2092,3 +2096,264 @@ class FeatureStore:
     def offline_featurestore_name(self) -> str:
         """Name of the offline feature store database."""
         return self._offline_feature_store_name
+
+
+    @usage.method_logger
+    def search(
+            self,
+            search_term: str = None,
+            keyword_filter: Optional[Union[str, List[str]]] = None,
+            tag_filter: Optional[Union[Dict[str, str], List[Union[Dict[str, str], search_api.TagSearchFilter]]]] = None,
+            offset: int = 0,
+            limit: int = 100,
+            global_search: bool = False,
+    ) -> search_api.FeaturestoreSearchResult:
+        """
+       Search for feature groups, feature views, training datasets and features.
+
+       # Arguments
+           search_term: the term to search for.
+           keyword_filter: filter results by keywords. Can be a single string or an array of strings.
+           tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+           offset: the number of results to skip (default is 0).
+           limit: the number of search results to return (default is 100).
+           global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+       # Returns
+           `FeaturestoreSearchResult`: The search results containing lists of metadata objects for feature groups, feature views, training datasets, and features.
+       # Raises
+           `ValueError`: If the search term is not provided.
+           `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+       # Example
+```python
+       import hopsworks
+
+       project = hopsworks.login()
+       fs = project.get_feature_store()
+
+       # Simple search
+       result = fs.search("search-term")
+
+       # Access results
+       for fg_meta in result.feature_groups:
+           print(f"Feature Group: {fg_meta.name} v{fg_meta.version}")
+           print(f"Description: {fg_meta.description}")
+           print(f"Highlights: {fg_meta.highlights}")
+
+           # Get the same FeatureGroup object as returned by featurestore.get_feature_group
+           fg = fg_meta.get()
+
+       # Search with a single keyword (string)
+       result = fs.search("search-term", keyword_filter="ml")
+
+       # Search with multiple keywords (array of strings)
+       result = fs.search.featurestore("search-term", keyword_filter=["ml", "production"])
+
+       # Search with tag filter as a single dictionary
+       result = fs.search.featurestore(
+           "search-term",
+           tag_filter={"name": "tag1", "key": "environment", "value": "production"}
+       )
+
+       # Search with tag filter as an array of dictionaries
+       result = fs.search.featurestore(
+           "search-term",
+           tag_filter=[
+               {"name": "tag1", "key": "environment", "value": "production"},
+               {"name": "tag2", "key": "version", "value": "v1.0"}
+           ]
+       )
+
+       # Search with TagSearchFilter objects
+       from hopsworks_common.core.search_api import TagSearchFilter
+       tags = [
+           TagSearchFilter(name="tag1", key="environment", value="production"),
+           TagSearchFilter(name="tag2", key="version", value="v1.0")
+       ]
+       result = fs.search.featurestore("search-term", tag_filter=tags)
+
+       # Search with both keyword_filter and tag_filter
+       result = fs.search.featurestore(
+           "search-term",
+           keyword_filter=["ml", "production"],
+           tag_filter=tags
+       )
+```
+       """
+        return self._search_api.feature_store(search_term=search_term, tag_filter=tag_filter, keyword_filter=keyword_filter, offset=offset, limit=limit, global_search=global_search)
+
+    @usage.method_logger
+    def search_feature_groups(
+            self,
+            search_term: str = None,
+            keyword_filter: Optional[Union[str, List[str]]] = None,
+            tag_filter: Optional[Union[Dict[str, str], List[Union[Dict[str, str], search_api.TagSearchFilter]]]] = None,
+            offset: int = 0,
+            limit: int = 100,
+            global_search: bool = False,
+    ) -> List:
+        """
+        Search for feature groups only.
+
+        # Arguments
+            search_term: the term to search for.
+            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
+            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+            offset: the number of results to skip (default is 0).
+            limit: the number of search results to return (default is 100).
+            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+        # Returns
+            `List`: A list of metadata objects for feature groups matching the search criteria.
+        # Raises
+            `ValueError`: If the search term is not provided.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        # Example
+```python
+        import hopsworks
+
+        project = hopsworks.login()
+        fs = project.get_feature_store()
+
+        # Search for feature groups
+        fg_metas = fs.search_feature_groups("customer")
+
+        for fg_meta in fg_metas:
+            print(f"Feature Group: {fg_meta.name} v{fg_meta.version}")
+
+            # Get the same FeatureGroup object as returned by featurestore.get_feature_group
+            fg = fg_meta.get()
+```
+        """
+        return self._search_api.feature_groups(search_term=search_term, tag_filter=tag_filter, keyword_filter=keyword_filter, offset=offset, limit=limit, global_search=global_search)
+
+    @usage.method_logger
+    def search_feature_views(
+            self,
+            search_term: str = None,
+            keyword_filter: Optional[Union[str, List[str]]] = None,
+            tag_filter: Optional[Union[Dict[str, str], List[Union[Dict[str, str], search_api.TagSearchFilter]]]] = None,
+            offset: int = 0,
+            limit: int = 100,
+            global_search: bool = False,
+    ) -> List:
+        """
+        Search for feature views only.
+
+        # Arguments
+            search_term: the term to search for.
+            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
+            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+            offset: the number of results to skip (default is 0).
+            limit: the number of search results to return (default is 100).
+            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+        # Returns
+            `List`: A list of metadata objects for feature views matching the search criteria.
+        # Raises
+            `ValueError`: If the search term is not provided.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        # Example
+```python
+        import hopsworks
+
+        project = hopsworks.login()
+        fs = project.get_feature_store()
+
+        # Search for feature views
+        fv_metas = fs.search_feature_views("customer")
+
+        for fv_meta in fv_metas:
+            print(f"Feature View: {fv_meta.name} v{fv_meta.version}")
+
+            # Get the same FeatureView object as returned by featurestore.get_feature_view
+            fv = fv_meta.get()
+```
+        """
+        return self._search_api.feature_views(search_term=search_term, tag_filter=tag_filter, keyword_filter=keyword_filter, offset=offset, limit=limit, global_search=global_search)
+
+    @usage.method_logger
+    def search_training_datasets(
+                self,
+                search_term: str = None,
+                keyword_filter: Optional[Union[str, List[str]]] = None,
+                tag_filter: Optional[Union[Dict[str, str], List[Union[Dict[str, str], search_api.TagSearchFilter]]]] = None,
+                offset: int = 0,
+                limit: int = 100,
+                global_search: bool = False,
+        ) -> List:
+        """
+        Search for training datasets only.
+
+        # Arguments
+            search_term: the term to search for.
+            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
+            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+            offset: the number of results to skip (default is 0).
+            limit: the number of search results to return (default is 100).
+            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+        # Returns
+            `List`: A list of metadata objects for training datasets matching the search criteria.
+        # Raises
+            `ValueError`: If the search term is not provided.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        # Example
+```python
+        import hopsworks
+
+        project = hopsworks.login()
+        fs = project.get_feature_store()
+
+        # Search for training datasets
+        td_metas = fs.training_datasets("model")
+
+        for td_meta in td_metas:
+            print(f"Training Dataset: {td_meta.name} v{td_meta.version}")
+
+            # Get the same TrainingDataset object as returned by featurestore.get_training_dataset
+            td = td_meta.get()
+```
+        """
+        return self._search_api.training_datasets(search_term=search_term, tag_filter=tag_filter, keyword_filter=keyword_filter, offset=offset, limit=limit, global_search=global_search)
+
+    def features(
+            self,
+            search_term: str = None,
+            keyword_filter: Optional[Union[str, List[str]]] = None,
+            tag_filter: Optional[Union[Dict[str, str], List[Union[Dict[str, str], search_api.TagSearchFilter]]]] = None,
+            offset: int = 0,
+            limit: int = 100,
+            global_search: bool = False,
+    ) -> List:
+        """
+        Search for features only.
+
+        # Arguments
+            search_term: the term to search for.
+            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
+            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+            offset: the number of results to skip (default is 0).
+            limit: the number of search results to return (default is 100).
+            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
+        # Returns
+            `List`: A list of features matching the search criteria.
+        # Raises
+            `ValueError`: If the search term is not provided.
+            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        # Example
+```python
+        import hopsworks
+
+        project = hopsworks.login()
+        fs = project.get_feature_store()
+
+        # Search for features
+        features = search_api.features("age")
+
+        for feature in features:
+            print(f"Feature: {feature.name}")
+```
+        """
+        return self._search_api.features(search_term=search_term, tag_filter=tag_filter, keyword_filter=keyword_filter, offset=offset, limit=limit, global_search=global_search)
