@@ -133,7 +133,6 @@ public class DeltaStreamerAvroDeserializer implements Deserializer<GenericRecord
 
     for (String complexFeature : complexFeatures) {
       ByteBuffer byteBuffer = (ByteBuffer) result.get(complexFeature);
-      LOGGER.error("[MANU] byteBuffer '" +byteBuffer);
       if (byteBuffer == null) {
         // This is required since PySpark to_avro encodes 'null' values as null while fast avro encodes it as "\u0000"
         finalResult.put(complexFeature, null);
