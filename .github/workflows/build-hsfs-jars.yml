@@ -129,30 +129,30 @@ env:
   DEFAULT_HUDI_URL: https://repo.hops.works/master
 
 jobs:
-  build-hudi:
-    uses: logicalclocks/hudi/.github/workflows/build_hudi_with_hopsfs.yml@HWORKS-2204-vatj
-    with:
-      ref: HWORKS-2204-vatj
-      runner: ${{ inputs.runner || 'ubuntu-latest' }}
-      jira_tag: ${{ inputs.jira_tag || 'NOJIRA' }}
-      build: ${{ (github.event_name == 'pull_request' && contains(join(github.event.pull_request.labels.*.name, ','), 'build-hudi')) }}
-    secrets:
-      NEXUS_HARBOR_PASSWORD: ${{ secrets.NEXUS_HARBOR_PASSWORD }}
+  # build-hudi:
+  #   uses: logicalclocks/hudi/.github/workflows/build_hudi_with_hopsfs.yml@HWORKS-2204-vatj
+  #   with:
+  #     ref: HWORKS-2204-vatj
+  #     runner: ${{ inputs.runner || 'ubuntu-latest' }}
+  #     jira_tag: ${{ inputs.jira_tag || 'NOJIRA' }}
+  #     build: ${{ (github.event_name == 'pull_request' && contains(join(github.event.pull_request.labels.*.name, ','), 'build-hudi')) }}
+  #   secrets:
+  #     NEXUS_HARBOR_PASSWORD: ${{ secrets.NEXUS_HARBOR_PASSWORD }}
   
-  build-spark:
-    uses: logicalclocks/spark/.github/workflows/build_spark_with_hopsfs.yaml@IS-153
-    with:
-      ref: IS-153
-      runner: ${{ inputs.runner || 'ubuntu-latest' }}
-      jira_tag: ${{ inputs.jira_tag || 'NOJIRA' }}
-      build: ${{ (github.event_name == 'pull_request' && contains(join(github.event.pull_request.labels.*.name, ','), 'build-spark')) }}
-    secrets:
-      NEXUS_HARBOR_PASSWORD: ${{ secrets.NEXUS_HARBOR_PASSWORD }}
+  # build-spark:
+  #   uses: logicalclocks/spark/.github/workflows/build_spark_with_hopsfs.yaml@IS-153
+  #   with:
+  #     ref: IS-153
+  #     runner: ${{ inputs.runner || 'ubuntu-latest' }}
+  #     jira_tag: ${{ inputs.jira_tag || 'NOJIRA' }}
+  #     build: ${{ (github.event_name == 'pull_request' && contains(join(github.event.pull_request.labels.*.name, ','), 'build-spark')) }}
+  #   secrets:
+  #     NEXUS_HARBOR_PASSWORD: ${{ secrets.NEXUS_HARBOR_PASSWORD }}
 
   build-hsfs-jars:
-    needs:
-      - build-hudi
-      - build-spark
+    # needs:
+    #   - build-hudi
+    #   - build-spark
     runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
     outputs:
       pom_version: ${{ steps.prep_version.outputs.pom_version }}
@@ -280,25 +280,25 @@ jobs:
           echo "HSFS_SPARK_JAR_WITH_DEPENDENCIES_NAME=${HSFS_SPARK_JAR_WITH_DEPENDENCIES_NAME}" >> $GITHUB_OUTPUT
           echo "HSFS_SPARK_JAR_WITH_DEPENDENCIES_URL=${HSFS_SPARK_JAR_WITH_DEPENDENCIES_URL}" >> $GITHUB_OUTPUT
       
-      - name: Use jira tagged hudi if exists
-        working-directory: ${{ github.workspace }}/hopsworks-api
-        run: |
-          hudi_exist=$(curl -u ${{ vars.NEXUS_HARBOR_USER }}:${{ secrets.NEXUS_HARBOR_PASSWORD }} \
-            -I "https://nexus.hops.works/repository/hops-artifacts/io/hops/hudi/hudi/${{ env.HUDI_VERSION }}-${JIRA_TAG}-SNAPSHOT/maven-metadata.xml")
-          if [[ $hudi_exist == *"200 OK"* ]]; then
-            echo "JIRA tagged Hudi found"
-            HUDI_JIRA_VERSION=${{ env.HUDI_VERSION }}-${JIRA_TAG}-SNAPSHOT
-            echo "HUDI_JIRA_VERSION=${HUDI_JIRA_VERSION}" >> $GITHUB_ENV
-            echo "HUDI_JIRA_VERSION=${HUDI_JIRA_VERSION}" >> $GITHUB_OUTPUT
-            echo "HUDI_JIRA_VERSION=${HUDI_JIRA_VERSION}" >> $GITHUB_STEP_SUMMARY
+      # - name: Use jira tagged hudi if exists
+      #   working-directory: ${{ github.workspace }}/hopsworks-api
+      #   run: |
+      #     hudi_exist=$(curl -u ${{ vars.NEXUS_HARBOR_USER }}:${{ secrets.NEXUS_HARBOR_PASSWORD }} \
+      #       -I "https://nexus.hops.works/repository/hops-artifacts/io/hops/hudi/hudi/${{ env.HUDI_VERSION }}-${JIRA_TAG}-SNAPSHOT/maven-metadata.xml")
+      #     if [[ $hudi_exist == *"200 OK"* ]]; then
+      #       echo "JIRA tagged Hudi found"
+      #       HUDI_JIRA_VERSION=${{ env.HUDI_VERSION }}-${JIRA_TAG}-SNAPSHOT
+      #       echo "HUDI_JIRA_VERSION=${HUDI_JIRA_VERSION}" >> $GITHUB_ENV
+      #       echo "HUDI_JIRA_VERSION=${HUDI_JIRA_VERSION}" >> $GITHUB_OUTPUT
+      #       echo "HUDI_JIRA_VERSION=${HUDI_JIRA_VERSION}" >> $GITHUB_STEP_SUMMARY
       
-            find ./java -name pom.xml -exec sed -i "s|<hudi.version>${{ env.HUDI_VERSION }}</hudi.version>|<hudi.version>${HUDI_JIRA_VERSION}</hudi.version>|g" {} \;
-            find ./utils/java -name pom.xml -exec sed -i "s|<hudi.version>${{ env.HUDI_VERSION }}-SNAPSHOT</hudi.version>|<hudi.version>${HUDI_JIRA_VERSION}</hudi.version>|g" {} \;
-            sed -i "s|</repositories>|<repository><id>HopsEE</id><name>HopsEE Repo</name><url>https://nexus.hops.works/repository/hops-artifacts</url><releases><enabled>true</enabled></releases><snapshots><enabled>true</enabled></snapshots></repository></repositories>|g" ./java/pom.xml
-          else
-            echo "No JIRA tagged Hudi found, using default"
-            echo "HUDI_JIRA_VERSION=${{ env.HUDI_VERSION }}" >> $GITHUB_ENV
-          fi
+      #       find ./java -name pom.xml -exec sed -i "s|<hudi.version>${{ env.HUDI_VERSION }}</hudi.version>|<hudi.version>${HUDI_JIRA_VERSION}</hudi.version>|g" {} \;
+      #       find ./utils/java -name pom.xml -exec sed -i "s|<hudi.version>${{ env.HUDI_VERSION }}-SNAPSHOT</hudi.version>|<hudi.version>${HUDI_JIRA_VERSION}</hudi.version>|g" {} \;
+      #       sed -i "s|</repositories>|<repository><id>HopsEE</id><name>HopsEE Repo</name><url>https://nexus.hops.works/repository/hops-artifacts</url><releases><enabled>true</enabled></releases><snapshots><enabled>true</enabled></snapshots></repository></repositories>|g" ./java/pom.xml
+      #     else
+      #       echo "No JIRA tagged Hudi found, using default"
+      #       echo "HUDI_JIRA_VERSION=${{ env.HUDI_VERSION }}" >> $GITHUB_ENV
+      #     fi
 
           
       - name: Build hsfs jars
