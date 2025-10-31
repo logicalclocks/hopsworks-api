@@ -30,7 +30,6 @@ from hsml.client.istio.utils.infer_type import (
     InferOutput,
     InferRequest,
 )
-from hsml.constants import ARTIFACT_VERSION
 from hsml.constants import INFERENCE_ENDPOINTS as IE
 
 
@@ -59,6 +58,7 @@ class ServingApi:
         deployment_json = _client._send_request("GET", path_params)
         deployment_instance = deployment.Deployment.from_response_json(deployment_json)
         deployment_instance.model_registry_id = _client._project_id
+        deployment_instance.project_name = _client._project_name
         return deployment_instance
 
     @decorators.catch_not_found("hsml.deployment.Deployment", fallback_return=None)
@@ -80,6 +80,7 @@ class ServingApi:
         )
         deployment_instance = deployment.Deployment.from_response_json(deployment_json)
         deployment_instance.model_registry_id = _client._project_id
+        deployment_instance.project_name = _client._project_name
         return deployment_instance
 
     def get_all(self, model_name: str = None, status: str = None):
@@ -103,6 +104,7 @@ class ServingApi:
         )
         for deployment_instance in deployment_instances:
             deployment_instance.model_registry_id = _client._project_id
+            deployment_instance.project_name = _client._project_name
         return deployment_instances
 
     def get_inference_endpoints(self):
@@ -130,9 +132,6 @@ class ServingApi:
         path_params = ["project", _client._project_id, "serving"]
         headers = {"content-type": "application/json"}
 
-        if deployment_instance.artifact_version == ARTIFACT_VERSION.CREATE:
-            deployment_instance.artifact_version = -1
-
         deployment_instance = deployment_instance.update_from_response_json(
             _client._send_request(
                 "PUT",
@@ -142,6 +141,7 @@ class ServingApi:
             )
         )
         deployment_instance.model_registry_id = _client._project_id
+        deployment_instance.project_name = _client._project_name
         return deployment_instance
 
     def post(self, deployment_instance, action: str):
@@ -214,6 +214,7 @@ class ServingApi:
         deployment_aux = deployment_instance.update_from_response_json(deployment_json)
         # TODO: remove when model_registry_id is added properly to deployments in backend
         deployment_aux.model_registry_id = _client._project_id
+        deployment_aux.project_name = _client._project_name
         return deployment_aux
 
     def send_inference_request(
