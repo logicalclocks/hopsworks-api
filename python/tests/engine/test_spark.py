@@ -51,6 +51,7 @@ from pyspark.sql import DataFrame, Window
 from pyspark.sql.functions import (
     lit,
     monotonically_increasing_id,
+    regexp_replace,
     row_number,
     struct,
     to_json,
@@ -196,14 +197,18 @@ class TestSpark:
             )
             logging_df = logging_df.withColumn(
                 constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME,
-                to_json(
-                    struct(
-                        *[
-                            col
-                            for col in request_parameters_df.columns
-                            if col != "row_id_temp"
-                        ]
-                    )
+                regexp_replace(
+                    to_json(
+                        struct(
+                            *[
+                                col
+                                for col in request_parameters_df.columns
+                                if col != "row_id_temp"
+                            ]
+                        )
+                    ),
+                    r"([,:])",
+                    r"$1 ",
                 ),
             )
         else:
