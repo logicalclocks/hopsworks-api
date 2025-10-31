@@ -1482,8 +1482,6 @@ class FeatureViewEngine:
                         model_name=model_name,
                         model_version=model_version,
                     )
-                    if engine.get_type().startswith("spark"):
-                        fg.stream = False  # Setting stream to directly write to offline logging feature group.
                     results.append(
                         fg.insert(logging_df, write_options=default_write_options)
                     )
