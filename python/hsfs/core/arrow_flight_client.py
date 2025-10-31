@@ -87,6 +87,14 @@ def _is_no_commits_found_error(exception):
         exception, pyarrow._flight.FlightServerError
     ) and "No commits found" in str(exception)
 
+def _is_no_metadata_found_error(exception):
+    return isinstance(
+        exception, pyarrow._flight.FlightServerError
+    ) and any(
+        msg in str(exception)
+        for msg in ["No hudi properties found", "No delta logs found"]
+    )
+
 
 def _should_retry_healthcheck(exception):
     return isinstance(exception, pyarrow._flight.FlightUnavailableError) or isinstance(
@@ -187,9 +195,7 @@ class ArrowFlightClient:
 
         self._client = client.get_instance()
         self._variable_api: VariableApi = VariableApi()
-        self._service_discovery_domain = (
-            self._variable_api.get_service_discovery_domain()
-        )
+        self._service_discovery_domain = self._variable_api.get_service_discovery_domain()
 
         self._certificates_json: Optional[str] = None
 
@@ -260,9 +266,7 @@ class ArrowFlightClient:
                     "Client could not get Hopsworks Query Service hostname from service_discovery_domain. "
                     "The variable is either not set or empty in Hopsworks cluster configuration."
                 )
-            host_url = (
-                f"grpc+tls://flyingduck.service.{self._service_discovery_domain}:5005"
-            )
+            host_url = f"grpc+tls://flyingduck.service.{self._service_discovery_domain}:5005"
         _logger.debug(f"Connecting to Hopsworks Query Service on host {host_url}")
         return host_url
 
@@ -416,7 +420,7 @@ class ArrowFlightClient:
                         raise FeatureStoreException(
                             "Hopsworks Query Service is busy right now. Please try again later."
                         ) from e
-                    elif _is_no_commits_found_error(e):
+                    elif _is_no_commits_found_error(e) or _is_no_metadata_found_error(e):
                         raise FeatureStoreException(str(e).split("Details:")[0]) from e
                     else:
                         raise FeatureStoreException(user_message) from e
@@ -541,7 +545,7 @@ class ArrowFlightClient:
             fg_connector = _serialize_featuregroup_connector(
                 fg, query, on_demand_fg_aliases
             )
-            features[fg_name] = [{"name": feat.name, "type": feat.type} for feat in fg.features]
+            features[fg_name] = [feat.name for feat in fg.features]
             connectors[fg_name] = fg_connector
         filters = _serialize_filter_expression(query.filters, query)
 
@@ -597,8 +601,7 @@ class ArrowFlightClient:
 
 
 def _serialize_featuregroup_connector(fg, query, on_demand_fg_aliases):
-    # Add feature_group_id to build cache key in flyingduck
-    connector = {"feature_group_id": fg.id}
+    connector = {}
     if isinstance(fg, feature_group.ExternalFeatureGroup):
         connector["time_travel_type"] = None
         connector["type"] = fg.storage_connector.type
