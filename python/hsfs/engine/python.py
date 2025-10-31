@@ -788,7 +788,7 @@ class Engine:
             if "min" in stat:
                 content_dict["minimum"] = stat["min"]
         if "unique" in stat:
-            content_dict["approxNumDistinctValues"] = stat["unique"]
+            content_dict["approximateNumDistinctValues"] = stat["unique"]
             content_dict["exactNumDistinctValues"] = stat["unique"]
 
         _logger.debug(f"Converted statistics: {content_dict}")
