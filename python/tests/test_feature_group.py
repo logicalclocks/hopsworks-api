@@ -1124,6 +1124,7 @@ class TestFeatureGroup:
 
         # Assert
         assert fg.online_enabled is True
+        assert fg.stream is True
 
 
 class TestExternalFeatureGroup:
