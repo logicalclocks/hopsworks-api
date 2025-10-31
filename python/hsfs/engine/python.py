@@ -687,7 +687,16 @@ class Engine:
         # we need to compute stats for the rest of the cols iteratively
         missing_cols = list(set(relevant_columns) - set(stats.keys()))
         for col in missing_cols:
-            stats[col] = df[col].describe().to_dict()
+            # for some datatypes (e.g list[int]) the describe method fails
+            try:
+                stats[col] = df[col].describe().to_dict()
+            except Exception as e:
+                warnings.warn(
+                    f"Failed to compute stats for column {col}: {e}, adding empty stats",
+                    util.FeatureGroupWarning,
+                    stacklevel=1,
+                )
+                stats[col] = {}
         final_stats = []
         for col in relevant_columns:
             if HAS_POLARS and (
@@ -764,6 +773,9 @@ class Engine:
                 content_dict["stdDev"] = stat["std"]
             if "min" in stat:
                 content_dict["minimum"] = stat["min"]
+            if "unique" in stat:
+                content_dict["approxNumDistinctValues"] = stat["unique"]
+                content_dict["exactNumDistinctValues"] = stat["unique"]
 
         return content_dict
 
