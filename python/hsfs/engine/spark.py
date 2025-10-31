@@ -57,6 +57,7 @@ try:
         from_json,
         lit,
         monotonically_increasing_id,
+        regexp_replace,
         row_number,
         struct,
         udf,
@@ -2086,7 +2087,9 @@ class Engine:
 
                 logging_df = logging_df.withColumn(
                     constants.FEATURE_LOGGING.REQUEST_PARAMETERS_COLUMN_NAME,
-                    to_json(struct(*(request_parameter_columns))),
+                    regexp_replace(
+                        to_json(struct(*request_parameter_columns)), r"([,:])", r"$1 "
+                    ),
                 )
 
                 # Drop individual request parameter columns that are not part of the logging feature group.
