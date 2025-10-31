@@ -651,6 +651,7 @@ class Engine:
         exact_uniqueness: bool = True,
     ) -> str:
         # TODO: add statistics for correlations, histograms and exact_uniqueness
+        _logger.info("Profiling dataframe in Python Engine")
         if HAS_POLARS and (
             isinstance(df, pl.DataFrame) or isinstance(df, pl.dataframe.frame.DataFrame)
         ):
@@ -673,8 +674,14 @@ class Engine:
                     isinstance(df, pl.DataFrame)
                     or isinstance(df, pl.dataframe.frame.DataFrame)
                 ):
+                    _logger.debug(
+                        f"Casting polars dataframe column {field.name} from {field.type} to string"
+                    )
                     df = df.with_columns(pl.col(field.name).cast(pl.String))
                 else:
+                    _logger.debug(
+                        f"Casting column pandas dataframe column {field.name} from {field.type} to string"
+                    )
                     df[field.name] = df[field.name].astype(str)
 
         if relevant_columns is None or len(relevant_columns) == 0:
@@ -682,12 +689,25 @@ class Engine:
             relevant_columns = df.columns
         else:
             target_cols = [col for col in df.columns if col in relevant_columns]
+            _logger.debug(f"Target columns for describe: {target_cols}")
             stats = df[target_cols].describe().to_dict()
+        _logger.debug(f"Column stats computed via describe for: {stats.keys()}")
         # df.describe() does not compute stats for all col types (e.g., string)
         # we need to compute stats for the rest of the cols iteratively
         missing_cols = list(set(relevant_columns) - set(stats.keys()))
+        _logger.debug(f"Columns missing stats from describe: {missing_cols}")
         for col in missing_cols:
-            stats[col] = df[col].describe().to_dict()
+            # for some datatypes (e.g list[int]) the describe method fails
+            try:
+                _logger.debug(f"Computing stats for column {col}")
+                stats[col] = df[col].describe().to_dict()
+            except Exception as e:
+                warnings.warn(
+                    f"Failed to compute stats for column {col}: {e}, adding empty stats",
+                    util.FeatureGroupWarning,
+                    stacklevel=1,
+                )
+                stats[col] = {}
         final_stats = []
         for col in relevant_columns:
             if HAS_POLARS and (
@@ -743,6 +763,9 @@ class Engine:
     ) -> Dict[str, Any]:
         # For now transformation only need 25th, 50th, 75th percentiles
         # TODO: calculate properly all percentiles
+        _logger.debug(
+            f"Converting pandas statistics: {stat} of type {dataType} to be similar to Deequ stats"
+        )
         content_dict = {"dataType": dataType}
         if "count" in stat:
             content_dict["count"] = stat["count"]
@@ -764,6 +787,11 @@ class Engine:
                 content_dict["stdDev"] = stat["std"]
             if "min" in stat:
                 content_dict["minimum"] = stat["min"]
+        if "unique" in stat:
+            content_dict["approximateNumDistinctValues"] = stat["unique"]
+            content_dict["exactNumDistinctValues"] = stat["unique"]
+
+        _logger.debug(f"Converted statistics: {content_dict}")
 
         return content_dict
 

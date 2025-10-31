@@ -187,7 +187,7 @@ class FeatureGroupBase:
         self._version = version
         self._name = name
         self.event_time = event_time
-        self._online_enabled = online_enabled
+        self._online_enabled = online_enabled or embedding_index is not None
         self._location = location
         self._id = id
         self._subject = None
@@ -2196,6 +2196,8 @@ class FeatureGroupBase:
 
     @embedding_index.setter
     def embedding_index(self, embedding_index: Optional["EmbeddingIndex"]) -> None:
+        if embedding_index is not None and self._id is None:
+            self.online_enabled = True
         self._embedding_index = embedding_index
 
     @property
@@ -2704,7 +2706,7 @@ class FeatureGroup(FeatureGroupBase):
             # Set time travel format and streaming based on engine type and online status
             self._init_time_travel_and_stream(
                 time_travel_format,
-                online_enabled,
+                self.online_enabled,  # use the getter of the super class to take into account embedding index
                 self._is_hopsfs_storage(),
             )
 
