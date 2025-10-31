@@ -133,16 +133,21 @@ public class DeltaStreamerAvroDeserializer implements Deserializer<GenericRecord
 
     for (String complexFeature : complexFeatures) {
       ByteBuffer byteBuffer = (ByteBuffer) result.get(complexFeature);
-      featureData = new byte[byteBuffer.remaining()];
-      byteBuffer.get(featureData);
-      featureSchema = complexFeatureSchemas.get(complexFeature);
-      try {
-        decoder = DecoderFactory.get().binaryDecoder(featureData, binaryDecoder);
-        finalResult.put(complexFeature, complexFeaturesDatumReaders.get(complexFeature).read(null, decoder));
-      } catch (Exception ex) {
-        LOGGER.info(
-            "Can't deserialize complex feature data '" + Arrays.toString(featureData) + "' from topic '" + topic
-                + "' with schema: " + featureSchema.toString(true), ex);
+      if (byteBuffer == null) {
+        // This is required since PySpark to_avro encodes 'null' values as null while fast avro encodes it as "\u0000"
+        finalResult.put(complexFeature, null);
+      } else {
+        featureData = new byte[byteBuffer.remaining()];
+        byteBuffer.get(featureData);
+        featureSchema = complexFeatureSchemas.get(complexFeature);
+        try {
+          decoder = DecoderFactory.get().binaryDecoder(featureData, binaryDecoder);
+          finalResult.put(complexFeature, complexFeaturesDatumReaders.get(complexFeature).read(null, decoder));
+        } catch (Exception ex) {
+          LOGGER.info(
+              "Can't deserialize complex feature data '" + Arrays.toString(featureData) + "' from topic '" + topic
+                  + "' with schema: " + featureSchema.toString(true), ex);
+        }
       }
     }
 
