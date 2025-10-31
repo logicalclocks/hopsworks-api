@@ -1103,6 +1103,28 @@ class TestFeatureGroup:
         )
         assert result is expected
 
+    def test_embedding_index_forces_online_enabled(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        # Act
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            embedding_index=hsfs.embedding.EmbeddingIndex(
+                index_name="test_index",
+                features=[hsfs.embedding.EmbeddingFeature("emb_feat", 128)],
+            ),
+            online_enabled=False,
+        )
+
+        # Assert
+        assert fg.online_enabled is True
+
 
 class TestExternalFeatureGroup:
     def test_from_response_json(self, backend_fixtures):
