@@ -10513,12 +10513,16 @@ class TestSpark:
 
         sdf = spark_engine._spark_session.createDataFrame({}, schema)
 
-        spark_engine.rename_columns(
+        renamed_spdf = spark_engine.rename_columns(
             df=sdf,
             mapper={"feature_1": "renamed_feature_1", "feature_3": "renamed_feature3"},
         )
 
-        assert sdf.columns == ["renamed_feature_1", "feature_2", "renamed_feature3"]
+        assert renamed_spdf.columns == [
+            "renamed_feature_1",
+            "feature_2",
+            "renamed_feature3",
+        ]
 
     def test_rename_columns_pandas_df(self, mocker, spark_engine):
         # Arrange
