@@ -18,7 +18,20 @@ import pytest
 from hsfs import feature, feature_group, feature_group_commit, validation_report
 from hsfs.client import exceptions
 from hsfs.core import feature_group_engine
+from hsfs.core.constants import HAS_PANDAS, HAS_POLARS
 from hsfs.hopsworks_udf import udf
+
+
+if HAS_PANDAS:
+    import pandas as pd
+
+if HAS_POLARS:
+    import polars as pl
+
+try:
+    HAS_SPARK = True
+except ImportError:
+    HAS_SPARK = False
 
 
 class TestFeatureGroupEngine:
@@ -1668,3 +1681,111 @@ class TestFeatureGroupEngine:
         assert len(result) == 2
         assert result[0].name == "col1"
         assert result[1].name == "test"
+
+    def test_rename_columns_to_compatible_names_pandas(self, mocker):
+        mock_engine = mocker.Mock()
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine.get_instance", return_value=mock_engine)
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_feature_group_metadata"
+        )
+        mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
+
+        test_df = pd.DataFrame(
+            {},
+            columns=[
+                "with space",
+                "Upppercase",
+                "With space and UpperCase",
+                "correct_format",
+            ],
+        )
+
+        _ = feature_group_engine.FeatureGroupEngine.rename_columns_to_compatible_names(
+            test_df
+        )
+
+        _, kwargs = mock_engine.rename_columns.call_args
+
+        assert kwargs["mapper"]["with space"] == "with_space"
+        assert kwargs["mapper"]["Upppercase"] == "upppercase"
+        assert (
+            kwargs["mapper"]["With space and UpperCase"] == "with_space_and_uppercase"
+        )
+        assert "correct_format" not in kwargs["mapper"]
+
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
+    def test_rename_columns_to_compatible_names_polars(self, mocker):
+        mock_engine = mocker.Mock()
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine.get_instance", return_value=mock_engine)
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_feature_group_metadata"
+        )
+        mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
+
+        test_df = pl.DataFrame(
+            {
+                "with space": [],
+                "Upppercase": [],
+                "With space and UpperCase": [],
+                "correct_format": [],
+            }
+        )
+
+        _ = feature_group_engine.FeatureGroupEngine.rename_columns_to_compatible_names(
+            test_df
+        )
+
+        _, kwargs = mock_engine.rename_columns.call_args
+
+        assert kwargs["mapper"]["with space"] == "with_space"
+        assert kwargs["mapper"]["Upppercase"] == "upppercase"
+        assert (
+            kwargs["mapper"]["With space and UpperCase"] == "with_space_and_uppercase"
+        )
+        assert "correct_format" not in kwargs["mapper"]
+
+    @pytest.mark.skipif(
+        not HAS_SPARK,
+        reason="Spark is not installed.",
+    )
+    def test_rename_columns_to_compatible_names_spark(self, mocker):
+        from pyspark.sql import SparkSession
+
+        spark = SparkSession.builder.getOrCreate()
+        mock_engine = mocker.Mock()
+        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine.get_instance", return_value=mock_engine)
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_feature_group_metadata"
+        )
+        mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
+
+        test_df = spark.createDataFrame(
+            pd.DataFrame(
+                [[1, 1, 1, 1]],
+                columns=[
+                    "with space",
+                    "Upppercase",
+                    "With space and UpperCase",
+                    "correct_format",
+                ],
+            )
+        )
+
+        _ = feature_group_engine.FeatureGroupEngine.rename_columns_to_compatible_names(
+            test_df
+        )
+
+        _, kwargs = mock_engine.rename_columns.call_args
+
+        assert kwargs["mapper"]["with space"] == "with_space"
+        assert kwargs["mapper"]["Upppercase"] == "upppercase"
+        assert (
+            kwargs["mapper"]["With space and UpperCase"] == "with_space_and_uppercase"
+        )
+        assert "correct_format" not in kwargs["mapper"]

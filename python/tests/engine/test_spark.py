@@ -2273,7 +2273,7 @@ class TestSpark:
 
     def test_write_training_dataset_to_df(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
         mocker.patch("hopsworks_common.client.get_instance")
 
         spark_engine = spark.Engine()
@@ -2344,7 +2344,7 @@ class TestSpark:
 
     def test_write_training_dataset_split_to_df(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
         mocker.patch("hopsworks_common.client.get_instance")
 
         spark_engine = spark.Engine()
@@ -9857,7 +9857,7 @@ class TestSpark:
     ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
 
         fg = feature_group.FeatureGroup(
             name="test1",
@@ -10012,7 +10012,7 @@ class TestSpark:
     ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
 
         fg = feature_group.FeatureGroup(
             name="test1",
@@ -10156,7 +10156,7 @@ class TestSpark:
     ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
 
         fg = feature_group.FeatureGroup(
             name="test1",
@@ -10330,7 +10330,7 @@ class TestSpark:
     ):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
 
         fg = feature_group.FeatureGroup(
             name="test1",
@@ -10497,3 +10497,43 @@ class TestSpark:
                 result.hopsworks_logging_metadata.request_parameters.collect()
                 == request_parameters_spark_df.collect()
             )
+
+    def test_rename_columns_spark_df(self, mocker, spark_engine):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+
+        schema = StructType(
+            [
+                StructField("feature_1", DoubleType(), True),
+                StructField("feature_2", DoubleType(), True),
+                StructField("feature_3", IntegerType(), True),
+            ]
+        )
+
+        sdf = spark_engine._spark_session.createDataFrame({}, schema)
+
+        spark_engine.rename_columns(
+            df=sdf,
+            mapper={"feature_1": "renamed_feature_1", "feature_3": "renamed_feature3"},
+        )
+
+        assert sdf.columns == ["renamed_feature_1", "feature_2", "renamed_feature3"]
+
+    def test_rename_columns_pandas_df(self, mocker, spark_engine):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+
+        pdf = pd.DataFrame({}, columns=["feature_1", "feature_2", "feature_3"])
+
+        renamed_pdf = spark_engine.rename_columns(
+            df=pdf,
+            mapper={"feature_1": "renamed_feature_1", "feature_3": "renamed_feature3"},
+        )
+
+        assert renamed_pdf.columns.values.tolist() == [
+            "renamed_feature_1",
+            "feature_2",
+            "renamed_feature3",
+        ]

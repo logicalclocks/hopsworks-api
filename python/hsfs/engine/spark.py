@@ -761,6 +761,18 @@ class Engine:
     def drop_columns(self, df, drop_cols):
         return df.drop(*drop_cols)
 
+    def rename_columns(
+        self, df: Union[pd.DataFrame, DataFrame], mapper: Dict[str, str]
+    ):
+        if isinstance(df, pd.DataFrame):
+            return df.rename(columns=mapper)
+        elif isinstance(df, DataFrame):
+            for old_name, new_name in mapper.items():
+                df = df.withColumnRenamed(old_name, new_name)
+            return df
+        else:
+            raise TypeError("Dataframe type `{}` not supported.".format(type(df)))
+
     def write_training_dataset(
         self,
         training_dataset: training_dataset.TrainingDataset,

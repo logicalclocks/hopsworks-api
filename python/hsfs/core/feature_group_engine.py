@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import Any, Dict, List, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 from hsfs import engine, feature, util
 from hsfs import feature_group as fg
@@ -23,6 +23,12 @@ from hsfs.client import exceptions
 from hsfs.core import delta_engine, feature_group_base_engine, hudi_engine
 from hsfs.core.deltastreamer_jobconf import DeltaStreamerJobConf
 from hsfs.core.schema_validation import DataFrameValidator
+
+
+if TYPE_CHECKING:
+    import pandas as pd
+    import polars as pl
+    from pyspark import sql as spark
 
 
 class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
@@ -167,6 +173,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             features=feature_group.features,
         )
 
+        if feature_dataframe is not None:
+            feature_dataframe = FeatureGroupEngine.rename_columns_to_compatible_names(
+                feature_dataframe
+            )
+
         # Currently on-demand transformation functions not supported in external feature groups.
         if (
             not isinstance(feature_group, fg.ExternalFeatureGroup)
@@ -254,6 +265,29 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             ge_report,
         )
 
+    @staticmethod
+    def rename_columns_to_compatible_names(
+        dataframe: Union[pd.DataFrame, pl.DataFrame, spark.DataFrame],
+    ) -> Union[pd.DataFrame, pl.DataFrame, spark.DataFrame]:
+        """
+        The function renames rename columns in a dataframe to use lower case letter and underscores instead of white spaces.
+
+        # Arguments:
+            dataframe: `Union[pd.DataFrame, pl.DataFrame, spark.DataFrame]`. A pandas, polars or PySpark Dataframe.
+        # Returns:
+            dataframe: `Union[pd.DataFrame, pl.DataFrame, spark.DataFrame]`. The renamed pandas, polars or PySpark Dataframe.
+        """
+        col_name_mapper = {
+            col: util.autofix_feature_name(col, warn=False)
+            for col in dataframe.columns
+            if util.contains_uppercase(col) or util.contains_whitespace(col)
+        }
+        if col_name_mapper:
+            dataframe = engine.get_instance().rename_columns(
+                df=dataframe, mapper=col_name_mapper
+            )
+        return dataframe
+
     def delete(self, feature_group):
         self._feature_group_api.delete(feature_group)
 
@@ -286,13 +320,18 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
     @staticmethod
     def _get_spark_session_and_context():
         if isinstance(engine.get_instance(), engine.spark.Engine):
-            return engine.get_instance()._spark_session, engine.get_instance()._spark_context
+            return (
+                engine.get_instance()._spark_session,
+                engine.get_instance()._spark_context,
+            )
         else:
             return None, None
 
     @staticmethod
     def commit_delete(feature_group, delete_df, write_options):
-        spark_session, spark_context = FeatureGroupEngine._get_spark_session_and_context()
+        spark_session, spark_context = (
+            FeatureGroupEngine._get_spark_session_and_context()
+        )
         if feature_group.time_travel_format == "DELTA":
             delta_engine_instance = delta_engine.DeltaEngine(
                 feature_group.feature_store_id,
@@ -315,7 +354,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
     @staticmethod
     def delta_vacuum(feature_group, retention_hours):
         if feature_group.time_travel_format == "DELTA":
-            spark_session, spark_context = FeatureGroupEngine._get_spark_session_and_context()
+            spark_session, spark_context = (
+                FeatureGroupEngine._get_spark_session_and_context()
+            )
 
             delta_engine_instance = delta_engine.DeltaEngine(
                 feature_group.feature_store_id,

@@ -1093,6 +1093,16 @@ class Engine:
     ) -> Union[pd.DataFrame, pl.DataFrame]:
         return df.drop(columns=drop_cols)
 
+    def rename_columns(
+        self, df: Union[pd.DataFrame, pl.DataFrame], mapper: Dict[str, str]
+    ):
+        if isinstance(df, pd.DataFrame):
+            return df.rename(columns=mapper)
+        elif HAS_POLARS and isinstance(df, pl.DataFrame):
+            return df.rename(mapper)
+        else:
+            raise TypeError("Dataframe type `{}` not supported.".format(type(df)))
+
     def _prepare_transform_split_df(
         self,
         query_obj: query.Query,

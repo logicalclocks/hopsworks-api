@@ -9754,3 +9754,45 @@ class TestPython:
             for key in row:
                 if key not in meta_data_logging_columns_name:
                     assert row[key] == expected_row[key]
+
+    def test_rename_columns_pandas_df(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+        python_engine = python.Engine()
+
+        pdf = pd.DataFrame({}, columns=["feature_1", "feature_2", "feature_3"])
+
+        renamed_pdf = python_engine.rename_columns(
+            df=pdf,
+            mapper={"feature_1": "renamed_feature_1", "feature_3": "renamed_feature3"},
+        )
+
+        assert renamed_pdf.columns.values.tolist() == [
+            "renamed_feature_1",
+            "feature_2",
+            "renamed_feature3",
+        ]
+
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
+    def test_rename_columns_polars_df(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+        python_engine = python.Engine()
+
+        pdf = pl.DataFrame({"feature_1": [], "feature_2": [], "feature_3": []})
+
+        renamed_pdf = python_engine.rename_columns(
+            df=pdf,
+            mapper={"feature_1": "renamed_feature_1", "feature_3": "renamed_feature3"},
+        )
+
+        assert renamed_pdf.columns == [
+            "renamed_feature_1",
+            "feature_2",
+            "renamed_feature3",
+        ]
