@@ -1,7 +1,7 @@
 [project]
 name = "hopsworks"
 dynamic = ["version"]
-requires-python = ">=3.8,<3.13"
+requires-python = ">=3.9,<3.14"
 readme = "README.md"
 description = "Hopsworks Python SDK to interact with Hopsworks Platform, Feature Store, Model Registry and Model Serving"
 keywords = [
@@ -28,11 +28,11 @@ classifiers = [
     "Topic :: Utilities",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Intended Audience :: Developers",
 ]
 
@@ -50,7 +50,7 @@ dependencies = [
     "tzlocal",
     "fsspec",
     "retrying",
-    "hopsworks_aiomysql[sa]==0.2.1",
+    "hopsworks_aiomysql[sa]==0.2.2",
     "opensearch-py>=1.1.0,<=2.4.2",
     "tqdm",
     "grpcio>=1.49.1,<2.0.0",         # ^1.49.1
@@ -64,9 +64,10 @@ hopsworks-mcp = "hopsworks.mcp.main:main"
 [project.optional-dependencies]
 python = [
     "pyarrow>=17.0",
-    "confluent-kafka<=2.6.1",
+    "confluent-kafka<=2.11.1",
     "fastavro>=1.4.11,<=1.11.1",
     "tqdm",
+    "hops-deltalake; python_version >= '3.9' and (sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64'))",
 ]
 sqlalchemy-1 = [
     "pandas<2.2.0",
@@ -79,21 +80,21 @@ dev-no-opt = [
     "pytest-mock==3.12.0",
     "ruff",
     "gitignorefile",
-    "pyspark==3.1.1",
+    "pyspark==3.5.5",
     "moto[s3]==5.0.0",
     "typeguard==4.2.1",
-    "delta-spark==1.0.1"
+    "delta-spark==3.3.1"
 ]
 dev-pandas1 = [
     "hopsworks[python]",
     "pytest==7.4.4",
     "pytest-mock==3.12.0",
     "ruff",
-    "pyspark==3.1.1",
+    "pyspark==3.5.5",
     "moto[s3]==5.0.0",
     "pandas<=1.5.3",
     "sqlalchemy<=1.4.48",
-    "delta-spark==1.0.1"
+    "delta-spark==3.3.1"
 ]
 dev = ["hopsworks[dev-no-opt,great-expectations,polars]"]
 polars=[
@@ -167,8 +168,8 @@ exclude = [
 line-length = 88
 indent-width = 4
 
-# Assume Python 3.8+ syntax.
-target-version = "py38"
+# Assume Python 3.9+ syntax.
+target-version = "py39"
 
 [tool.ruff.lint]
 # 1. Enable flake8-bugbear (`B`) rules, in addition to the defaults.

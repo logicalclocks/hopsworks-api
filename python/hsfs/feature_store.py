@@ -521,7 +521,7 @@ class FeatureStore:
         version: Optional[int] = None,
         description: Optional[str] = "",
         online_enabled: Optional[bool] = False,
-        time_travel_format: Optional[str] = "HUDI",
+        time_travel_format: Optional[str] = None,
         partition_key: Optional[List[str]] = None,
         primary_key: Optional[List[str]] = None,
         foreign_key: Optional[List[str]] = None,
@@ -562,6 +562,7 @@ class FeatureStore:
         ] = None,
         ttl: Optional[Union[int, float, timedelta]] = None,
         ttl_enabled: Optional[bool] = None,
+        online_disk: Optional[bool] = None,
     ) -> feature_group.FeatureGroup:
         """Create a feature group metadata object.
 
@@ -590,7 +591,8 @@ class FeatureStore:
                     online_enabled=True,
                     event_time='date',
                     transformation_functions=transformation_functions,
-                    online_config={'table_space': 'ts_1', 'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
+                    online_config={'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
+                    online_disk=True, # Online data will be stored on disk instead of in memory
                     ttl=timedelta(days=7)  # features will be deleted after 7 days
                 )
             ```
@@ -681,6 +683,9 @@ class FeatureStore:
                 This ttl value is added to the event time of the feature group and when the system time exceeds the event time + ttl, the entries will be automatically removed.
                 The system time zone is in UTC. Defaults to None (no TTL).
             ttl_enabled: Optionally, enable TTL for this feature group. Defaults to True if ttl is set.
+            online_disk: Optionally, specify online data storage for this feature group.
+                When set to True data will be stored on disk, instead of in memory. Overrides online_config.table_space.
+                Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
         # Returns
             `FeatureGroup`. The feature group metadata object.
         """
@@ -714,6 +719,7 @@ class FeatureStore:
             data_source=data_source,
             ttl=ttl,
             ttl_enabled=ttl_enabled,
+            online_disk=online_disk,
         )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -725,7 +731,7 @@ class FeatureStore:
         version: int,
         description: Optional[str] = "",
         online_enabled: Optional[bool] = False,
-        time_travel_format: Optional[str] = "HUDI",
+        time_travel_format: Optional[str] = None,
         partition_key: Optional[List[str]] = None,
         primary_key: Optional[List[str]] = None,
         foreign_key: Optional[List[str]] = None,
@@ -761,6 +767,7 @@ class FeatureStore:
         ] = None,
         ttl: Optional[Union[int, float, timedelta]] = None,
         ttl_enabled: Optional[bool] = None,
+        online_disk: Optional[bool] = None,
     ) -> Union[
         feature_group.FeatureGroup,
         feature_group.ExternalFeatureGroup,
@@ -781,7 +788,8 @@ class FeatureStore:
                     online_enabled=True,
                     event_time="timestamp",
                     transformation_functions=transformation_functions,
-                    online_config={'table_space': 'ts_1', 'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
+                    online_config={'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
+                    online_disk=True, # Online data will be stored on disk instead of in memory
                     ttl=timedelta(days=30),
                     )
             ```
@@ -869,6 +877,9 @@ class FeatureStore:
                 This ttl value is added to the event time of the feature group and when the system time exceeds the event time + ttl, the entries will be automatically removed.
                 The system time zone is in UTC. Defaults to None (no TTL).
             ttl_enabled: Optionally, enable TTL for this feature group. Defaults to True if ttl is set.
+            online_disk: Optionally, specify online data storage for this feature group.
+                When set to True data will be stored on disk, instead of in memory. Overrides online_config.table_space.
+                Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
         # Returns
             `FeatureGroup`. The feature group metadata object.
         """
@@ -904,6 +915,7 @@ class FeatureStore:
                 data_source=data_source,
                 ttl=ttl,
                 ttl_enabled=ttl_enabled,
+                online_disk=online_disk,
             )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -1083,6 +1095,7 @@ class FeatureStore:
         ] = None,
         ttl: Optional[Union[int, float, timedelta]] = None,
         ttl_enabled: Optional[bool] = None,
+        online_disk: Optional[bool] = None,
     ) -> feature_group.ExternalFeatureGroup:
         """Create an external feature group metadata object.
 
@@ -1121,7 +1134,8 @@ class FeatureStore:
                     primary_key=['ss_store_sk'],
                     event_time='sale_date',
                     online_enabled=True,
-                    online_config={'table_space': 'ts_1', 'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
+                    online_config={'online_comments': ['NDB_TABLE=READ_BACKUP=1']},
+                    online_disk=True, # Online data will be stored on disk instead of in memory
                     ttl=timedelta(days=30),
                     )
         external_fg.save()
@@ -1196,6 +1210,9 @@ class FeatureStore:
                 This ttl value is added to the event time of the feature group and when the system time exceeds the event time + ttl, the entries will be automatically removed.
                 The system time zone is in UTC. Defaults to None (no TTL).
             ttl_enabled: Optionally, enable TTL for this feature group. Defaults to True if ttl is set.
+            online_disk: Optionally, specify online data storage for this feature group.
+                When set to True data will be stored on disk, instead of in memory. Overrides online_config.table_space.
+                Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
 
         # Returns
             `ExternalFeatureGroup`. The external feature group metadata object.
@@ -1225,6 +1242,7 @@ class FeatureStore:
             data_source=data_source,
             ttl=ttl,
             ttl_enabled=ttl_enabled,
+            online_disk=online_disk,
         )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -1654,6 +1672,9 @@ class FeatureStore:
             List[Union[TransformationFunction, HopsworksUdf]]
         ] = None,
         logging_enabled: Optional[bool] = False,
+        extra_log_columns: Optional[
+            Union[List[feature.Feature], List[Dict[str, str]]]
+        ] = None,
     ) -> feature_view.FeatureView:
         """Create a feature view metadata object and saved it to hopsworks.
 
@@ -1742,6 +1763,10 @@ class FeatureStore:
             transformation_functions: Model Dependent Transformation functions attached to the feature view.
                 It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
                 Defaults to `None`, no transformations.
+            logging_enabled: If true, enable feature logging for the feature view. Defaults to `False`.
+            extra_log_columns: Extra columns to be logged in addition to the features used in the feature view.
+                It can be a list of Feature objects or list a dictionaries that contains the the name and type of the columns as keys.
+                Defaults to `None`, no extra log columns. Setting this argument implicitly enables feature logging.
 
         # Returns:
             `FeatureView`: The feature view metadata object.
@@ -1758,6 +1783,7 @@ class FeatureStore:
             transformation_functions=transformation_functions or {},
             featurestore_name=self._name,
             logging_enabled=logging_enabled,
+            extra_log_columns=extra_log_columns,
         )
         return self._feature_view_engine.save(feat_view)
 
@@ -1773,6 +1799,9 @@ class FeatureStore:
         training_helper_columns: Optional[List[str]] = None,
         transformation_functions: Optional[Dict[str, TransformationFunction]] = None,
         logging_enabled: Optional[bool] = False,
+        extra_log_columns: Optional[
+            Union[List[feature.Feature], List[Dict[str, str]]]
+        ] = None,
     ) -> feature_view.FeatureView:
         """Get feature view metadata object or create a new one if it doesn't exist. This method doesn't update
         existing feature view metadata object.
@@ -1821,7 +1850,10 @@ class FeatureStore:
             transformation_functions: Model Dependent Transformation functions attached to the feature view.
                 It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
                 Defaults to `None`, no transformations.
-            logging_enabled: If true, enable feature logging for the feature view.
+            logging_enabled: If true, enable feature logging for the feature view. Defaults to `False`.
+            extra_log_columns: Extra columns to be logged in addition to the features used in the feature view.
+                It can be a list of Feature objects or list a dictionaries that contains the the name and type of the columns as keys.
+                Defaults to `None`, no extra log columns. Setting this argument implicitly enables feature logging.
 
         # Returns:
             `FeatureView`: The feature view metadata object.
@@ -1838,6 +1870,7 @@ class FeatureStore:
                 training_helper_columns=training_helper_columns or [],
                 transformation_functions=transformation_functions or [],
                 logging_enabled=logging_enabled,
+                extra_log_columns=extra_log_columns,
             )
         return fv_object
 

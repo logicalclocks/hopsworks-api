@@ -38,30 +38,36 @@ from hsfs.transformation_function import TransformationType
 
 with mock.patch("hopsworks_common.client.get_instance"):
     engine.init("python")
-test_feature_group = feature_group.FeatureGroup(
-    name="test",
-    version=1,
-    description="description",
-    online_enabled=False,
-    time_travel_format="HUDI",
-    partition_key=[],
-    primary_key=["pk"],
-    foreign_key=["fk"],
-    hudi_precombine_key="pk",
-    featurestore_id=1,
-    featurestore_name="fs",
-    features=[
-        feature.Feature("pk", primary=True),
-        feature.Feature("fk", foreign=True),
-        feature.Feature("ts", primary=False),
-        feature.Feature("f1", primary=False),
-        feature.Feature("f2", primary=False),
-    ],
-    statistics_config={},
-    event_time="ts",
-    stream=False,
-    expectation_suite=None,
-)
+
+
+def get_test_feature_group():
+    return feature_group.FeatureGroup(
+        name="test",
+        version=1,
+        description="description",
+        online_enabled=False,
+        time_travel_format="HUDI",
+        partition_key=[],
+        primary_key=["pk"],
+        foreign_key=["fk"],
+        hudi_precombine_key="pk",
+        featurestore_id=1,
+        featurestore_name="fs",
+        features=[
+            feature.Feature("pk", primary=True),
+            feature.Feature("fk", foreign=True),
+            feature.Feature("ts", primary=False),
+            feature.Feature("f1", primary=False),
+            feature.Feature("f2", primary=False),
+        ],
+        statistics_config={},
+        event_time="ts",
+        stream=False,
+        expectation_suite=None,
+    )
+
+
+test_feature_group = get_test_feature_group()
 
 
 class TestFeatureGroup:
@@ -408,6 +414,181 @@ class TestFeatureGroup:
         mock_job_api.assert_called_once  # noqa: B018
         assert fg.materialization_job == mock_job
 
+    def test_feature_group_online_disk_not_set(self, mocker):
+        # Arrange
+        variable_api_mock = mocker.patch(
+            "hopsworks_common.core.variable_api.VariableApi.get_featurestore_online_tablespace",
+            return_value="ts_1",  # Simulate no tablespace set
+        )
+
+        # Act
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=2,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+        )
+
+        # Assert
+        assert variable_api_mock.call_count == 0
+        assert fg._online_config is None
+
+    def test_feature_group_online_disk_not_set_online_config(self, mocker):
+        # Arrange
+        variable_api_mock = mocker.patch(
+            "hopsworks_common.core.variable_api.VariableApi.get_featurestore_online_tablespace",
+            return_value="ts_1",
+        )
+
+        # Act
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=2,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            online_config={
+                "table_space": "tt",
+                "online_comments": ["NDB_TABLE=READ_BACKUP=1"],
+            },
+        )
+
+        # Assert
+        assert variable_api_mock.call_count == 0
+        assert fg._online_config.to_dict() == {
+            "onlineComments": ["NDB_TABLE=READ_BACKUP=1"],
+            "tableSpace": "tt",
+        }
+
+    def test_feature_group_online_disk_true(self, mocker):
+        # Arrange
+        variable_api_mock = mocker.patch(
+            "hopsworks_common.core.variable_api.VariableApi.get_featurestore_online_tablespace",
+            return_value="ts_1",  # Simulate no tablespace set
+        )
+
+        # Act
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=2,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            online_disk=True,
+        )
+
+        # Assert
+        assert variable_api_mock.call_count == 1
+        assert fg._online_config.to_dict() == {
+            "onlineComments": None,
+            "tableSpace": "ts_1",
+        }
+
+    def test_feature_group_online_disk_true_override_online_config(self, mocker):
+        # Arrange
+        variable_api_mock = mocker.patch(
+            "hopsworks_common.core.variable_api.VariableApi.get_featurestore_online_tablespace",
+            return_value="ts_1",
+        )
+
+        # Act
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=2,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            online_disk=True,
+            online_config={
+                "table_space": "",
+                "online_comments": ["NDB_TABLE=READ_BACKUP=1"],
+            },
+        )
+
+        # Assert
+        assert variable_api_mock.call_count == 1
+        assert fg._online_config.to_dict() == {
+            "onlineComments": ["NDB_TABLE=READ_BACKUP=1"],
+            "tableSpace": "ts_1",
+        }
+
+    def test_feature_group_online_disk_false(self, mocker):
+        # Arrange
+        variable_api_mock = mocker.patch(
+            "hopsworks_common.core.variable_api.VariableApi.get_featurestore_online_tablespace",
+            return_value="ts_1",
+        )
+
+        # Act
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=2,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            online_disk=False,
+        )
+
+        # Assert
+        assert variable_api_mock.call_count == 0
+        assert fg._online_config.to_dict() == {"onlineComments": None, "tableSpace": ""}
+
+    def test_feature_group_online_disk_false_override_online_config(self, mocker):
+        # Arrange
+        variable_api_mock = mocker.patch(
+            "hopsworks_common.core.variable_api.VariableApi.get_featurestore_online_tablespace",
+            return_value="ts_1",
+        )
+
+        # Act
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=2,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            online_disk=False,
+            online_config={
+                "table_space": "ts_1",
+                "online_comments": ["NDB_TABLE=READ_BACKUP=1"],
+            },
+        )
+
+        # Assert
+        assert variable_api_mock.call_count == 0
+        assert fg._online_config.to_dict() == {
+            "onlineComments": ["NDB_TABLE=READ_BACKUP=1"],
+            "tableSpace": "",
+        }
+
+    def test_feature_group_data_source_update_storage_connector(self, mocker):
+        # Arrange
+        data_source = mocker.Mock()
+        sc = storage_connector.S3Connector(id=1, name="s3_conn", featurestore_id=1)
+
+        # Act
+        feature_group.FeatureGroup(
+            name="test_fg",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            data_source=data_source,
+            storage_connector=sc,
+        )
+
+        # Assert
+        assert data_source._update_storage_connector.call_count == 1
+        data_source._update_storage_connector.assert_called_once_with(sc)
+
     def test_materialization_job_retry_success(self, mocker):
         # Arrange
         mocker.patch("time.sleep")
@@ -595,6 +776,16 @@ class TestFeatureGroup:
             "hsfs.core.feature_group_engine.FeatureGroupEngine.save",
             return_value=(None, None),
         )
+        mock_commit_details = mocker.patch(
+            "hsfs.feature_group.FeatureGroup.commit_details",
+            return_value={
+                "21378543924": {}
+            },  # non-empty dict to simulate successful commit
+        )
+        mock_stats_engine = mocker.patch(
+            "hsfs.core.statistics_engine.StatisticsEngine.compute_and_save_statistics",
+            return_value=None,
+        )
 
         fg = feature_group.FeatureGroup(
             name="test_fg",
@@ -603,12 +794,15 @@ class TestFeatureGroup:
             primary_key=[],
             foreign_key=[],
             partition_key=[],
+            time_travel_format="DELTA",
         )
 
         data = [[1, "test_1"], [2, "test_2"]]
         fg.save(data)
 
         mock_convert_to_default_dataframe.assert_called_once_with(data)
+        mock_commit_details.assert_called_once()
+        mock_stats_engine.assert_called_once()
 
     def test_save_report_true_default(self, mocker, dataframe_fixture_basic):
         engine = python.Engine()
@@ -622,6 +816,16 @@ class TestFeatureGroup:
             "hsfs.core.feature_group_engine.FeatureGroupEngine.insert",
             return_value=(None, None),
         )
+        mock_commit_details = mocker.patch(
+            "hsfs.feature_group.FeatureGroup.commit_details",
+            return_value={
+                "21378543924": {}
+            },  # non-empty dict to simulate successful commit
+        )
+        mock_stats_engine = mocker.patch(
+            "hsfs.core.statistics_engine.StatisticsEngine.compute_and_save_statistics",
+            return_value=None,
+        )
 
         fg = feature_group.FeatureGroup(
             name="test_fg",
@@ -631,6 +835,7 @@ class TestFeatureGroup:
             foreign_key=[],
             partition_key=[],
             id=10,
+            time_travel_format="DELTA",
         )
 
         fg.insert(dataframe_fixture_basic)
@@ -645,6 +850,8 @@ class TestFeatureGroup:
             transformation_context=None,
             transform=True,
         )
+        mock_commit_details.assert_called_once()
+        mock_stats_engine.assert_called_once()
 
     def test_save_report_default_overwritable(self, mocker, dataframe_fixture_basic):
         engine = python.Engine()
@@ -658,6 +865,16 @@ class TestFeatureGroup:
             "hsfs.core.feature_group_engine.FeatureGroupEngine.insert",
             return_value=(None, None),
         )
+        mock_commit_details = mocker.patch(
+            "hsfs.feature_group.FeatureGroup.commit_details",
+            return_value={
+                "21378543924": {}
+            },  # non-empty dict to simulate successful commit
+        )
+        mock_stats_engine = mocker.patch(
+            "hsfs.core.statistics_engine.StatisticsEngine.compute_and_save_statistics",
+            return_value=None,
+        )
 
         fg = feature_group.FeatureGroup(
             name="test_fg",
@@ -667,6 +884,7 @@ class TestFeatureGroup:
             foreign_key=[],
             partition_key=[],
             id=10,
+            time_travel_format="DELTA",
         )
 
         fg.insert(dataframe_fixture_basic, validation_options={"save_report": False})
@@ -682,6 +900,231 @@ class TestFeatureGroup:
             transformation_context=None,
             transform=True,
         )
+        mock_commit_details.assert_called_once()
+        mock_stats_engine.assert_called_once()
+
+    @pytest.mark.parametrize(
+        "sc,expected",
+        [
+            (None, True),  # default HopsFS
+            (
+                storage_connector.HopsFSConnector(
+                    id=1, name="default", featurestore_id=1
+                ),
+                True,
+            ),  # explicit HopsFS connector
+            (
+                storage_connector.S3Connector(id=1, name="s3", featurestore_id=1),
+                False,
+            ),  # non-HopsFS connector
+        ],
+    )
+    def test_is_hopsfs_storage(self, sc, expected):
+        fg = get_test_feature_group()
+        fg._storage_connector = sc
+        assert fg._is_hopsfs_storage() is expected
+
+    def test_init_time_travel_and_stream_uses_resolvers_python(
+        self, mocker, monkeypatch
+    ):
+        """
+        Purpose: Verify that `_init_time_travel_and_stream` delegates to
+        `_resolve_time_travel_format` and, for the Python engine, to
+        `_resolve_stream_python` to derive `_time_travel_format` and `_stream`.
+
+        This test does not validate resolver logic; it only checks that the
+        outputs of the resolver functions are propagated to the FeatureGroup
+        instance and that the resolvers are called with the expected arguments
+        (notably that the stream resolver receives the already-resolved format).
+        """
+        # Arrange: ensure code path selects Python Engine class
+        monkeypatch.setattr("hsfs.engine.get_type", lambda: "python")
+        expected_fmt = "DELTA"
+        expected_stream = False
+        fmt_mock = mocker.Mock(return_value=expected_fmt)
+        stream_mock = mocker.Mock(return_value=expected_stream)
+        monkeypatch.setattr(
+            "hsfs.feature_group.FeatureGroup._resolve_time_travel_format",
+            fmt_mock,
+        )
+        monkeypatch.setattr(
+            "hsfs.feature_group.FeatureGroup._resolve_stream_python",
+            stream_mock,
+        )
+
+        fg = get_test_feature_group()
+
+        # Act
+        # Reset mocks to ignore any constructor-time calls
+        fmt_mock.reset_mock()
+        stream_mock.reset_mock()
+        fg._init_time_travel_and_stream(
+            time_travel_format="None",
+            online_enabled=True,
+            is_hopsfs=False,
+        )
+
+        # Assert: _init uses resolvers' outputs
+        assert fg._time_travel_format == expected_fmt
+        assert fg._stream is expected_stream
+        assert fmt_mock.call_count == 1
+        assert fmt_mock.call_args.kwargs == {
+            "time_travel_format": "None",
+            "online_enabled": True,
+            "is_hopsfs": False,
+        }
+        assert stream_mock.call_count == 1
+        assert stream_mock.call_args.kwargs == {
+            "time_travel_format": expected_fmt,
+            "is_hopsfs": False,
+            "online_enabled": True,
+        }
+
+    def test_init_time_travel_and_stream_uses_resolver_spark(self, mocker, monkeypatch):
+        """
+        Purpose: Verify that `_init_time_travel_and_stream` delegates to
+        `_resolve_time_travel_format` for setting `_time_travel_format` on the
+        Spark engine, and that it does not call `_resolve_stream_python` nor
+        mutate `_stream` (stream is a Python-engine concern only).
+
+        This test avoids checking the internal logic of the resolver and only
+        validates the delegation and side-effects of `_init_time_travel_and_stream`.
+        """
+        # Arrange: ensure code path selects Spark Engine class
+        monkeypatch.setattr("hsfs.engine.get_type", lambda: "spark")
+        expected_fmt = "HUDI"
+        fmt_mock = mocker.Mock(return_value=expected_fmt)
+        stream_mock = mocker.Mock(return_value=True)
+        monkeypatch.setattr(
+            "hsfs.feature_group.FeatureGroup._resolve_time_travel_format",
+            fmt_mock,
+        )
+        monkeypatch.setattr(
+            "hsfs.feature_group.FeatureGroup._resolve_stream_python",
+            stream_mock,
+        )
+
+        fg = get_test_feature_group()
+        fg._stream = False  # Should remain unchanged in spark path
+
+        # Act
+        # Reset mocks to ignore any constructor-time calls
+        fmt_mock.reset_mock()
+        stream_mock.reset_mock()
+        fg._init_time_travel_and_stream(
+            time_travel_format="HUDI",
+            online_enabled=False,
+            is_hopsfs=False,
+        )
+
+        # Assert: format set via resolver, stream resolver not used, _stream unchanged
+        assert fg._time_travel_format == expected_fmt
+        assert fmt_mock.call_count == 1
+        stream_mock.assert_not_called()
+        assert fg._stream is False
+
+    @pytest.mark.parametrize(
+        "time_travel_format,is_hopsfs,has_deltalake,online_enabled,expected",
+        [
+            # time_travel_format=None cases (resolved by flags)
+            (None, False, False, True, "HUDI"),  # Non-HopsFS & Online -> HUDI
+            (None, False, False, False, "HUDI"),  # Non-HopsFS & Offline -> HUDI
+            (None, False, True, True, "DELTA"),  # Non-HopsFS & Online -> HUDI
+            (None, False, True, False, "DELTA"),  # Non-HopsFS & Offline -> HUDI
+            (None, True, False, True, "HUDI"),  # HopsFS & Online -> HUDI
+            (None, True, True, True, "DELTA"),  # HopsFS & Online -> HUDI
+            (
+                None,
+                True,
+                True,
+                False,
+                "DELTA",
+            ),  # HopsFS & Offline -> DELTA when available
+            (
+                None,
+                True,
+                False,
+                False,
+                "HUDI",
+            ),  # HopsFS & Offline -> HUDI when not available
+            # time_travel_format="HUDI" cases (passthrough)
+            ("HUDI", False, False, True, "HUDI"),
+            ("HUDI", False, True, False, "HUDI"),
+            ("HUDI", True, False, True, "HUDI"),
+            ("HUDI", True, True, False, "HUDI"),
+            # time_travel_format="DELTA" cases (passthrough)
+            ("DELTA", False, False, True, "DELTA"),
+            ("DELTA", False, True, False, "DELTA"),
+            ("DELTA", True, False, True, "DELTA"),
+            ("DELTA", True, True, False, "DELTA"),
+        ],
+    )
+    def test_resolve_time_travel_format(
+        self,
+        monkeypatch,
+        time_travel_format,
+        online_enabled,
+        is_hopsfs,
+        has_deltalake,
+        expected,
+    ):
+        monkeypatch.setattr(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", lambda: has_deltalake
+        )
+        result = feature_group.FeatureGroup._resolve_time_travel_format(
+            time_travel_format=time_travel_format,
+            online_enabled=online_enabled,
+            is_hopsfs=is_hopsfs,
+        )
+        assert result == expected
+
+    @pytest.mark.parametrize(
+        "time_travel_format,is_hopsfs,online_enabled,expected",
+        [
+            # DELTA not streams when not HopsFS and online enabled
+            ("DELTA", True, False, False),
+            ("DELTA", True, True, True),
+            ("DELTA", False, False, True),
+            ("DELTA", False, True, True),
+            # HUDI always streams
+            ("HUDI", True, False, True),
+            ("HUDI", True, True, True),
+            ("HUDI", False, False, True),
+            ("HUDI", False, True, True),
+        ],
+    )
+    def test_resolve_stream_python(
+        self, time_travel_format, is_hopsfs, online_enabled, expected
+    ):
+        result = feature_group.FeatureGroup._resolve_stream_python(
+            time_travel_format=time_travel_format,
+            is_hopsfs=is_hopsfs,
+            online_enabled=online_enabled,
+        )
+        assert result is expected
+
+    def test_embedding_index_forces_online_enabled(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        # Act
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            embedding_index=hsfs.embedding.EmbeddingIndex(
+                index_name="test_index",
+                features=[hsfs.embedding.EmbeddingFeature("emb_feat", 128)],
+            ),
+            online_enabled=False,
+        )
+
+        # Assert
+        assert fg.online_enabled is True
+        assert fg.stream is True
 
 
 class TestExternalFeatureGroup:

@@ -19,6 +19,7 @@ from fastmcp import Context
 from hopsworks.mcp.models.dataset import Dataset, Datasets, File, Files
 from hopsworks.mcp.utils.tags import TAGS
 from hopsworks_common import client
+from hopsworks_common.core import dataset, inode
 
 
 class DatasetTools:
@@ -70,22 +71,22 @@ class DatasetTools:
         if isinstance(limit, str):
             limit = int(limit)
 
-        datasets = project.get_dataset_api().list(
-            remote_path="", offset=offset, limit=limit
+        count, datasets = project.get_dataset_api()._list_dataset_path(
+            "", dataset.Dataset, offset=offset, limit=limit
         )
 
         # Return the dataset details
         return Datasets(
             datasets=[
                 Dataset(
-                    name=ds["name"],
-                    id=ds["id"],
-                    description=ds["description"] if "description" in ds else None,
-                    datasetType=ds["datasetType"],
+                    name=ds.name,
+                    id=ds.id,
+                    description=ds.description,
+                    datasetType=ds.dataset_type,
                 )
-                for ds in datasets["items"]
+                for ds in datasets
             ],
-            total=datasets["count"],
+            total=count,
             offset=offset,
             limit=limit,
         )
@@ -117,22 +118,22 @@ class DatasetTools:
 
         conn = client.get_connection()
         project = conn.get_project(project_name)
-        datasets = project.get_dataset_api().list(
-            remote_path="", offset=offset, limit=limit
+        count, datasets = project.get_dataset_api()._list_dataset_path(
+            "", dataset.Dataset, offset=offset, limit=limit
         )
 
         # Return the dataset details
         return Datasets(
             datasets=[
                 Dataset(
-                    name=ds["name"],
-                    id=ds["id"],
-                    description=ds["description"] if "description" in ds else None,
-                    datasetType=ds["datasetType"],
+                    name=ds.name,
+                    id=ds.id,
+                    description=ds.description,
+                    datasetType=ds.dataset_type,
                 )
-                for ds in datasets["items"]
+                for ds in datasets
             ],
-            total=datasets["count"],
+            total=count,
             offset=offset,
             limit=limit,
         )
@@ -163,27 +164,25 @@ class DatasetTools:
             limit = int(limit)
 
         project = hopsworks.get_current_project()
-        files = project.get_dataset_api().list(
-            remote_path=path, offset=offset, limit=limit
+        count, files = project.get_dataset_api()._list_dataset_path(
+            path, inode.Inode, offset=offset, limit=limit
         )
 
         # Return the file details
         return Files(
             files=[
                 File(
-                    name=f["attributes"]["name"],
-                    is_directory=f["attributes"]["dir"],
-                    owner=f["attributes"]["owner"],
-                    path=f["attributes"]["path"],
-                    permission=f["attributes"]["permission"],
-                    last_modified=f["attributes"]["modificationTime"],
-                    under_construction=f["attributes"]["underConstruction"]
-                    if "underConstruction" in f["attributes"]
-                    else None,
+                    name=f.name,
+                    is_directory=f.dir,
+                    owner=f.owner,
+                    path=f.path,
+                    permission=f.permission,
+                    last_modified=f.modification_time,
+                    under_construction=f.under_construction,
                 )
-                for f in files["items"]
+                for f in files
             ],
-            total=files["count"],
+            total=count,
             offset=offset,
             limit=limit,
         )
@@ -219,27 +218,25 @@ class DatasetTools:
 
         conn = client.get_connection()
         project = conn.get_project(project_name)
-        files = project.get_dataset_api().list(
-            remote_path=path, offset=offset, limit=limit
+        count, files = project.get_dataset_api()._list_dataset_path(
+            path, inode.Inode, offset=offset, limit=limit
         )
 
         # Return the file details
         return Files(
             files=[
                 File(
-                    name=f["attributes"]["name"],
-                    is_directory=f["attributes"]["dir"],
-                    owner=f["attributes"]["owner"],
-                    path=f["attributes"]["path"],
-                    permission=f["attributes"]["permission"],
-                    last_modified=f["attributes"]["modificationTime"],
-                    under_construction=f["attributes"]["underConstruction"]
-                    if "underConstruction" in f["attributes"]
-                    else None,
+                    name=f.name,
+                    is_directory=f.dir,
+                    owner=f.owner,
+                    path=f.path,
+                    permission=f.permission,
+                    last_modified=f.modification_time,
+                    under_construction=f.under_construction,
                 )
-                for f in files["items"]
+                for f in files
             ],
-            total=files["count"],
+            total=count,
             offset=offset,
             limit=limit,
         )

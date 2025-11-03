@@ -24,12 +24,13 @@ from hopsworks_common.client.exceptions import ModelServingException, RestAPIErr
 from hopsworks_common.client.istio.utils.infer_type import InferInput
 from hopsworks_common.constants import (
     DEPLOYMENT,
+    MODEL_REGISTRY,
     MODEL_SERVING,
     PREDICTOR,
     PREDICTOR_STATE,
 )
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
-from hopsworks_common.core import dataset_api
+from hopsworks_common.core import dataset_api, inode
 from hsml.core import serving_api
 from hsml.engine import local_engine
 from tqdm.auto import tqdm
@@ -316,24 +317,21 @@ class ServingEngine:
         n_files,
     ):
         """Download model files from a model path in hdfs, recursively"""
-
-        for entry in self._dataset_api.list(from_hdfs_path, sort_by="NAME:desc")[
-            "items"
-        ]:
-            path_attr = entry["attributes"]
-            path = path_attr["path"]
-            basename = os.path.basename(path)
-
-            if path_attr.get("dir", False):
+        count, items = self._dataset_api._list_dataset_path(
+            from_hdfs_path, inode.Inode, sort_by="NAME:desc"
+        )
+        for entry in items:
+            basename = os.path.basename(entry.path)
+            if entry.dir:
                 # otherwise, make a recursive call for the folder
                 if (
                     basename == MODEL_SERVING.ARTIFACTS_DIR_NAME
-                ):  # TODO: Not needed anymore
+                ):  # NOTE: Keep for backward compatibility (<4.6). Existing models during upgrade contain Artifacts folder
                     continue  # skip Artifacts subfolder
                 local_folder_path = os.path.join(to_local_path, basename)
                 os.mkdir(local_folder_path)
                 n_dirs, n_files = self._download_files_from_hopsfs_recursive(
-                    from_hdfs_path=path,
+                    from_hdfs_path=entry.path,
                     to_local_path=local_folder_path,
                     update_download_progress=update_download_progress,
                     n_dirs=n_dirs,
@@ -344,7 +342,7 @@ class ServingEngine:
             else:
                 # if it's a file, download it
                 local_file_path = os.path.join(to_local_path, basename)
-                self._engine.download(path, local_file_path)
+                self._engine.download(entry.path, local_file_path)
                 n_files += 1
                 update_download_progress(n_dirs=n_dirs, n_files=n_files)
 
@@ -353,7 +351,7 @@ class ServingEngine:
     def _download_files_from_hopsfs(
         self, from_hdfs_path: str, to_local_path: str, update_download_progress
     ):
-        """Download files from a model path in hdfs."""
+        """Download files from a deployment path in hdfs."""
 
         n_dirs, n_files = self._download_files_from_hopsfs_recursive(
             from_hdfs_path=from_hdfs_path,
@@ -369,21 +367,13 @@ class ServingEngine:
             raise ModelServingException(
                 "Deployment is not created yet. To create the deployment use `.save()`"
             )
-        if deployment_instance.artifact_version is None:
-            # model artifacts are not created in non-k8s installations
-            raise ModelServingException(
-                "Model artifacts not supported in non-k8s installations. \
-                 Download the model files by using `model.download()`"
-            )
 
         if local_path is None:
             local_path = os.path.join(
                 tempfile.gettempdir(),
                 str(uuid.uuid4()),
-                deployment_instance.model_name,
-                str(deployment_instance.model_version),
-                MODEL_SERVING.ARTIFACTS_DIR_NAME,
-                str(deployment_instance.artifact_version),
+                deployment_instance.name,
+                str(deployment_instance.version),
             )
         os.makedirs(local_path, exist_ok=True)
 
@@ -399,6 +389,25 @@ class ServingEngine:
             if from_hdfs_path.startswith("hdfs:/"):
                 projects_index = from_hdfs_path.find("/Projects", 0)
                 from_hdfs_path = from_hdfs_path[projects_index:]
+
+            # backward compatibility: running deployments during upgrade contain artifact files under /Models/name/version/Artifacts folder
+            # if the deployment scales out, this method is used by storage-initializer to pull the files. Therefore, we need to pull files
+            # from the legacy path if the deployment has not yet been migrated
+            if deployment_instance.has_model and not self._dataset_api.path_exists(
+                from_hdfs_path
+            ):
+                # legacy artifact version path under Models dataset
+                legacy_from_hdfs_path = "{}/{}/{}/{}/{}/{}/{}".format(
+                    "/Projects",
+                    deployment_instance.project_name,
+                    MODEL_REGISTRY.MODELS_DATASET,
+                    deployment_instance.model_name,
+                    str(deployment_instance.model_version),
+                    MODEL_SERVING.ARTIFACTS_DIR_NAME,
+                    str(deployment_instance.version),
+                )
+                if self._dataset_api.path_exists(legacy_from_hdfs_path):
+                    from_hdfs_path = legacy_from_hdfs_path
 
             self._download_files_from_hopsfs(
                 from_hdfs_path=from_hdfs_path,

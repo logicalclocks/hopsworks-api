@@ -18,18 +18,18 @@
     <properties>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
-        <guava.version>14.0.1</guava.version>
+        <guava.version>30.1.1-jre</guava.version>
         <httpclient.version>4.5.6</httpclient.version>
         <httpcore.version>4.4.13</httpcore.version>
-        <slf4j.version>1.7.30</slf4j.version>
+        <slf4j.version>2.0.17</slf4j.version>
         <log4j.version>1.2.17</log4j.version>
         <handy.version>2.1.8</handy.version>
         <lombok.version>1.18.36</lombok.version>
         <lombok.plugin.version>1.18.20.0</lombok.plugin.version>
         <fasterxml.jackson.databind.version>2.10.0</fasterxml.jackson.databind.version>
         <deequ.version>1.1.0.6-SNAPSHOT</deequ.version>
-        <spark.version>3.1.1.3</spark.version>
-        <hudi.version>0.12.3.2</hudi.version>
+        <spark.version>3.5.5</spark.version>
+        <hudi.version>1.0.2</hudi.version>
         <awssdk.version>2.10.40</awssdk.version>
         <scala.version>2.12.10</scala.version>
         <scala-short.version>2.12</scala-short.version>
@@ -39,10 +39,11 @@
         <junit.version>5.9.1</junit.version>
         <surefire-plugin.version>2.22.0</surefire-plugin.version>
         <mockito.version>4.3.1</mockito.version>
-        <avro.version>1.8.2</avro.version>
+        <avro.version>1.11.4</avro.version>
         <commons-text.version>1.13.1</commons-text.version>
+        <skipHops>true</skipHops>
 
-        <artifact.spark.version>spark3.1</artifact.spark.version>
+        <artifact.spark.version>spark3.5</artifact.spark.version>
 
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <delombok.output>${project.basedir}/delombok</delombok.output>
@@ -301,12 +302,33 @@
         <profile>
             <id>spark-3.5</id>
             <properties>
-                <spark.version>3.5.3</spark.version>
+                <spark.version>3.5.5</spark.version>
                 <deequ.version>2.0.7-spark-3.5</deequ.version>
                 <artifact.spark.version>spark3.5</artifact.spark.version>
                 <fasterxml.jackson.databind.version>2.15.2</fasterxml.jackson.databind.version>
-                <avro.version>1.11.2</avro.version>
+                <avro.version>1.11.4</avro.version>
+                <kafka.version>3.4.1</kafka.version>
             </properties>
+        </profile>
+        <!-- Needs to be included when running mvn deploy or mvn install -->
+        <profile>
+            <id>with-hops-ee</id>
+            <properties>
+                <skipHops>false</skipHops>
+            </properties>
+            <repositories>
+                <repository>
+                    <id>HopsEE</id>
+                    <name>Hops Enterprise Repository</name>
+                    <url>https://nexus.hops.works/repository/hops-artifacts</url>
+                    <releases>
+                        <enabled>true</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>true</enabled>
+                    </snapshots>
+                </repository>
+            </repositories>
         </profile>
     </profiles>
 
@@ -322,6 +344,7 @@
                 <enabled>true</enabled>
             </snapshots>
         </repository>
+        
     </repositories>
 
     <distributionManagement>

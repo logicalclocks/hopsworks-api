@@ -130,6 +130,7 @@ class TestHudiEngine:
         feature_store_id = 99
 
         mocker.patch("hsfs.core.hudi_engine.HudiEngine._setup_hudi_write_opts")
+        mocker.patch("hsfs.core.dataset_api.DatasetApi")
         mock_hudi_engine_get_last_commit_metadata = mocker.patch(
             "hsfs.core.hudi_engine.HudiEngine._get_last_commit_metadata"
         )
@@ -218,6 +219,15 @@ class TestHudiEngine:
             "hoodie.table.name": "test_1",
             "hoodie.upsert.shuffle.parallelism": "5",
             "test_name": "test_value",
+            "hoodie.table.base.file.format": "PARQUET",
+            "hoodie.table.recordkey.fields": "key1,key2",
+            "hoodie.table.partition.fields": "key3:SIMPLE,key4:SIMPLE",
+            "hoodie.table.keygenerator.class": "org.apache.hudi.keygen.CustomKeyGenerator",
+            "hoodie.table.precombine.field": "key1",
+            "hoodie.datasource.hive_sync.use_jdbc": "false",
+            "hoodie.datasource.hive_sync.auto_create_database": "false",
+            "hoodie.datasource.write.table.type": "COPY_ON_WRITE",
+            "hoodie.datasource.write.storage.type": "COPY_ON_WRITE",
         }
 
     def test_write_hudi_dataset_hudi_precombine_key(self, mocker):
@@ -268,6 +278,15 @@ class TestHudiEngine:
             "hoodie.table.name": "test_1",
             "hoodie.upsert.shuffle.parallelism": "5",
             "test_name": "test_value",
+            "hoodie.table.base.file.format": "PARQUET",
+            "hoodie.table.recordkey.fields": "key1,key2",
+            "hoodie.table.partition.fields": "key3:SIMPLE,key4:SIMPLE",
+            "hoodie.table.keygenerator.class": "org.apache.hudi.keygen.CustomKeyGenerator",
+            "hoodie.table.precombine.field": "key2",
+            "hoodie.datasource.hive_sync.use_jdbc": "false",
+            "hoodie.datasource.hive_sync.auto_create_database": "false",
+            "hoodie.datasource.write.table.type": "COPY_ON_WRITE",
+            "hoodie.datasource.write.storage.type": "COPY_ON_WRITE",
         }
 
     def test_setup_hudi_read_opts(self, mocker, backend_fixtures):
@@ -361,10 +380,12 @@ class TestHudiEngine:
         )
 
         spark_context = mocker.Mock()
-        spark_context._jvm.org.apache.hudi.HoodieDataSourceHelpers.allCompletedCommitsCompactions().lastInstant().get().getTimestamp.return_value = 1
-        spark_context._jvm.org.apache.hudi.common.model.HoodieCommitMetadata.fromBytes().fetchTotalInsertRecordsWritten.return_value = 2
-        spark_context._jvm.org.apache.hudi.common.model.HoodieCommitMetadata.fromBytes().fetchTotalUpdateRecordsWritten.return_value = 3
-        spark_context._jvm.org.apache.hudi.common.model.HoodieCommitMetadata.fromBytes().getTotalRecordsDeleted.return_value = 4
+        spark_context._jvm.org.apache.hudi.HoodieDataSourceHelpers.latestCompletedCommit().getCompletionTime.return_value = "1"
+        mock_commit_metadata = mocker.Mock()
+        mock_commit_metadata.fetchTotalInsertRecordsWritten.return_value = 2
+        mock_commit_metadata.fetchTotalUpdateRecordsWritten.return_value = 3
+        mock_commit_metadata.getTotalRecordsDeleted.return_value = 4
+        spark_context._jvm.org.apache.hudi.common.table.timeline.TimelineUtils.getCommitMetadata.return_value = mock_commit_metadata
         mock_util_get_timestamp_from_date_string.return_value = 5
 
         # Act
@@ -372,9 +393,11 @@ class TestHudiEngine:
             spark_context=spark_context, base_path=None
         )
 
+        print(result)
+
         # Assert
         assert result.commitid is None
-        assert result.commit_date_string == 1
+        assert result.commit_date_string == str(1)
         assert result.rows_inserted == 2
         assert result.rows_updated == 3
         assert result.rows_deleted == 4

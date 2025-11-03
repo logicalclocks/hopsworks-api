@@ -212,3 +212,29 @@ Finally, run the `auto_doc.py` script, as decribed above, to update the document
 
 For information about Markdown syntax and possible Admonitions/Highlighting etc. see
 the [Material for Mkdocs themes reference documentation](https://squidfunk.github.io/mkdocs-material/reference/abbreviations/).
+
+## Java development setup
+
+You must add the Hopsworks Enterprise Edition repository to your `~/.m2/settings.xml` file in order to build the Java code. You can get access to the repository using your nexus credentials. Add the following to your `settings.xml`:
+
+```xml
+<settings>
+<servers>
+  <server>
+    <id>HopsEE</id>
+    <username>YOUR_NEXUS_USERNAME</username>
+    <password>YOUR_NEXUS_PASSWORD</password>
+    </server>
+</servers> 
+<settings>
+```
+
+You can then build either hsfs or hsfs_utils:
+
+```bash
+cd java
+mvn clean package -Pspark-3.5,with-hops-ee
+# Or
+cd ../utils/python
+mvn clean package
+```

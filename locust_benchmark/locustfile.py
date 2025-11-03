@@ -1,11 +1,11 @@
 import random
 
+import nest_asyncio
 from common.hopsworks_client import HopsworksClient
 from common.stop_watch import stopwatch
-from locust import HttpUser, User, task, constant, events
+from locust import HttpUser, User, constant, events, task
 from locust.runners import MasterRunner
 from urllib3 import PoolManager
-import nest_asyncio
 
 
 @events.init.add_listener
