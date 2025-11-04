@@ -157,7 +157,7 @@ class Engine:
         if not connector:
             result_df = self._sql_offline(sql_query, feature_store)
         else:
-            result_df = connector.read(sql_query, None, {}, None)
+            result_df = connector.read(sql_query, None, read_options, None)
 
         self.set_job_group("", "")
         return self._return_dataframe_type(result_df, dataframe_type)
