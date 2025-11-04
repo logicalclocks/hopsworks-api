@@ -513,12 +513,13 @@ class TestSpark:
             feature_store=None,
             connector=connector,
             dataframe_type=None,
-            read_options=None,
+            read_options={"numPartitions": 5},
         )
 
         # Assert
         assert mock_spark_engine_sql_offline.call_count == 0
         assert connector.read.call_count == 1
+        assert connector.read.call_args[0][2] == {"numPartitions": 5}
         assert mock_spark_engine_return_dataframe_type.call_count == 1
 
     def test_sql_offline(self, mocker):
