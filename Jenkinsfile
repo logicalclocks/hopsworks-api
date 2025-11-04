@@ -2,7 +2,7 @@ pipeline {
     agent {
         docker {
             label "local"
-            image "docker.hops.works/hopsworks_twine:0.0.1"
+            image "docker.hops.works/hopsworks_twine/hopsworks_twine:0.0.1"
         }
     }
     stages {
