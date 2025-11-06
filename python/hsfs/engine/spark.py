@@ -682,14 +682,31 @@ class Engine:
         Step 2: Replace complex fields in the 'value' column
         """
         new_value_fields = []
+        wrapped_fields = []
         for field in json.loads(feature_group.avro_schema)["fields"]:
             field_name = field["name"]
             if field_name in feature_group.get_complex_features():
-                # re-apply from_avro on the nested field
-                decoded_field = from_avro(
-                    col(f"{serialized_column}.{field_name}"),
-                    feature_group._get_feature_avro_schema(field_name),
-                ).alias(field_name)
+                if feature_group.get_feature(field_name).type.startswith("struct<"):
+                    avro_schema = (
+                        '{"type": "record", "name": "Wrapper", "fields": [{"name": "'
+                        + field_name
+                        + '",  "type": '
+                        + feature_group._get_feature_avro_schema(field_name)
+                        + "}]}"
+                    )
+
+                    # re-apply from_avro on the nested field
+                    decoded_field = from_avro(
+                        col(f"{serialized_column}.{field_name}"),
+                        avro_schema,
+                    ).alias(field_name)
+                    wrapped_fields.append(field_name)
+                else:
+                    # re-apply from_avro on the nested field
+                    decoded_field = from_avro(
+                        col(f"{serialized_column}.{field_name}"),
+                        feature_group._get_feature_avro_schema(field_name),
+                    ).alias(field_name)
             else:
                 decoded_field = col(f"{serialized_column}.{field_name}").alias(
                     field_name
@@ -701,10 +718,31 @@ class Engine:
         """
         updated_value_col = struct(*new_value_fields).alias(serialized_column)
 
-        return decoded_dataframe.select(
+        decoded_dataframe = decoded_dataframe.select(
             *[col(c) for c in decoded_dataframe.columns if c != serialized_column],
             updated_value_col,
         )
+
+        new_value_fields = []
+        if wrapped_fields:
+            for field in json.loads(feature_group.avro_schema)["fields"]:
+                field_name = field["name"]
+                decoded_field = (
+                    col(f"{serialized_column}.{field_name}").alias(field_name)
+                    if field_name not in wrapped_fields
+                    else col(f"{serialized_column}.{field_name}.{field_name}").alias(
+                        field_name
+                    )
+                )
+                new_value_fields.append(decoded_field)
+
+            updated_value_col = struct(*new_value_fields).alias(serialized_column)
+
+            decoded_dataframe = decoded_dataframe.select(
+                *[col(c) for c in decoded_dataframe.columns if c != serialized_column],
+                updated_value_col,
+            )
+        return decoded_dataframe
 
     def get_training_data(
         self,
