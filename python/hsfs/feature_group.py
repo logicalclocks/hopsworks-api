@@ -2814,10 +2814,10 @@ class FeatureGroup(FeatureGroupBase):
         """Resolve only the time travel format string."""
         fmt = time_travel_format.upper() if time_travel_format is not None else None
         if fmt is None:
-            if is_hopsfs and not online_enabled and FeatureGroup._has_deltalake():
-                return "DELTA"
-            else:
+            if not FeatureGroup._has_deltalake():
                 return "HUDI"
+            else:
+                return "DELTA"
         return fmt
 
     @staticmethod
