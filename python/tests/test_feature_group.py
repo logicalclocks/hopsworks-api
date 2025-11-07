@@ -1029,10 +1029,10 @@ class TestFeatureGroup:
             # time_travel_format=None cases (resolved by flags)
             (None, False, False, True, "HUDI"),  # Non-HopsFS & Online -> HUDI
             (None, False, False, False, "HUDI"),  # Non-HopsFS & Offline -> HUDI
-            (None, False, True, True, "DELTA"),  # Non-HopsFS & Online -> HUDI
-            (None, False, True, False, "DELTA"),  # Non-HopsFS & Offline -> HUDI
+            (None, False, True, True, "HUDI"),  # Non-HopsFS & Online -> HUDI
+            (None, False, True, False, "HUDI"),  # Non-HopsFS & Offline -> HUDI
             (None, True, False, True, "HUDI"),  # HopsFS & Online -> HUDI
-            (None, True, True, True, "DELTA"),  # HopsFS & Online -> HUDI
+            (None, True, True, True, "HUDI"),  # HopsFS & Online -> HUDI
             (
                 None,
                 True,
