@@ -148,7 +148,28 @@ class TestFeatureGroupEngine:
         # Assert
         assert mock_engine_get_instance.return_value.save_dataframe.call_count == 0
 
-    def test_insert(self, mocker):
+    @pytest.mark.parametrize(
+        "online_enabled,stream,storage,expected_error,validate_schema",
+        [
+            # online enabled
+            (False, False, "offline", None, False),
+            (False, False, "online", "Online storage is not enabled for this feature group", False),
+            (False, False, None, None, False),
+            # online enabled
+            (True, False, "offline", None, False),
+            (True, False, "online", None, True),
+            (True, False, None, None, True),
+            # online enabled stream
+            (False, True, "offline", None, False),
+            (False, True, "online", "Online storage is not enabled for this feature group", False),
+            (False, True, None, None, False),
+            # online enabled stream
+            (True, True, "offline", None, True),
+            (True, True, "online", None, True),
+            (True, True, None, None, True),
+        ],
+    )
+    def test_insert(self, storage, online_enabled, stream, expected_error, validate_schema, mocker):
         # Arrange
         feature_store_id = 99
 
@@ -162,6 +183,7 @@ class TestFeatureGroupEngine:
         )
         mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mock_validate_schema = mocker.patch("hsfs.core.schema_validation.DataFrameValidator.validate_schema")
 
         fg_engine = feature_group_engine.FeatureGroupEngine(
             feature_store_id=feature_store_id
@@ -174,21 +196,40 @@ class TestFeatureGroupEngine:
             primary_key=[],
             foreign_key=[],
             partition_key=[],
+            online_enabled=online_enabled,
+            stream=stream,
         )
 
         # Act
-        fg_engine.insert(
-            feature_group=fg,
-            feature_dataframe=None,
-            overwrite=None,
-            operation=None,
-            storage=None,
-            write_options=None,
-        )
+        if expected_error:
+            with pytest.raises(exceptions.FeatureStoreException) as e_info:
+                fg_engine.insert(
+                    feature_group=fg,
+                    feature_dataframe=None,
+                    overwrite=None,
+                    operation=None,
+                    storage=storage,
+                    write_options=None,
+                    validation_options={},
+                )
+            assert str(e_info.value).startswith(expected_error)
+            assert mock_engine_get_instance.return_value.save_dataframe.call_count == 0
+        else:
+            fg_engine.insert(
+                feature_group=fg,
+                feature_dataframe=None,
+                overwrite=None,
+                operation=None,
+                storage=storage,
+                write_options=None,
+                validation_options={},
+            )
+            assert mock_engine_get_instance.return_value.save_dataframe.call_count == 1
 
         # Assert
         assert mock_fg_api.return_value.delete_content.call_count == 0
-        assert mock_engine_get_instance.return_value.save_dataframe.call_count == 1
+        if validate_schema:
+            assert mock_validate_schema.called
 
     def test_insert_transformation_functions(self, mocker):
         # Arrange
@@ -342,52 +383,6 @@ class TestFeatureGroupEngine:
         # Assert
         assert mock_fg_api.return_value.delete_content.call_count == 0
         assert mock_engine_get_instance.return_value.save_dataframe.call_count == 0
-
-    def test_insert_storage(self, mocker):
-        # Arrange
-        feature_store_id = 99
-
-        mocker.patch("hsfs.engine.get_type")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mocker.patch(
-            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_feature_group_metadata"
-        )
-        mocker.patch(
-            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
-        )
-        mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
-        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
-
-        fg_engine = feature_group_engine.FeatureGroupEngine(
-            feature_store_id=feature_store_id
-        )
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=feature_store_id,
-            primary_key=[],
-            foreign_key=[],
-            partition_key=[],
-        )
-
-        # Act
-        with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            fg_engine.insert(
-                feature_group=fg,
-                feature_dataframe=None,
-                overwrite=None,
-                operation=None,
-                storage="online",
-                write_options=None,
-            )
-
-        # Assert
-        assert mock_fg_api.return_value.delete_content.call_count == 0
-        assert mock_engine_get_instance.return_value.save_dataframe.call_count == 0
-        assert (
-            str(e_info.value) == "Online storage is not enabled for this feature group."
-        )
 
     def test_insert_overwrite(self, mocker):
         # Arrange
