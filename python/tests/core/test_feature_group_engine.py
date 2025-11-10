@@ -149,9 +149,9 @@ class TestFeatureGroupEngine:
         assert mock_engine_get_instance.return_value.save_dataframe.call_count == 0
 
     @pytest.mark.parametrize(
-        "online_enabled,stream,storage,expected_error,validate_schema",
+        "online_enabled,stream,storage,expected_error,should_validate_schema",
         [
-            # online enabled
+            # not online enabled
             (False, False, "offline", None, False),
             (False, False, "online", "Online storage is not enabled for this feature group", False),
             (False, False, None, None, False),
@@ -159,7 +159,7 @@ class TestFeatureGroupEngine:
             (True, False, "offline", None, False),
             (True, False, "online", None, True),
             (True, False, None, None, True),
-            # online enabled stream
+            # not online enabled stream
             (False, True, "offline", None, False),
             (False, True, "online", "Online storage is not enabled for this feature group", False),
             (False, True, None, None, False),
@@ -169,7 +169,7 @@ class TestFeatureGroupEngine:
             (True, True, None, None, True),
         ],
     )
-    def test_insert(self, storage, online_enabled, stream, expected_error, validate_schema, mocker):
+    def test_insert(self, online_enabled, stream, storage, expected_error, should_validate_schema, mocker):
         # Arrange
         feature_store_id = 99
 
@@ -228,7 +228,7 @@ class TestFeatureGroupEngine:
 
         # Assert
         assert mock_fg_api.return_value.delete_content.call_count == 0
-        if validate_schema:
+        if should_validate_schema:
             assert mock_validate_schema.called
 
     def test_insert_transformation_functions(self, mocker):
