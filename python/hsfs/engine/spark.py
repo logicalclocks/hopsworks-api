@@ -664,6 +664,29 @@ class Engine:
             ]
         )
 
+    def _generate_wrapper_record_avro_schema(
+        self,
+        feature_name: str,
+        feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
+    ):
+        """
+        Function to generate a wrapper record avro schema for a struct feature.
+        This is required to deserialize a union of null and a struct field in spark, since spark expects the top level avro schema to be a record in this case.
+
+        # Arguments
+            feature_name: `str`: The name of the feature to generate the wrapper record avro schema for.
+            feature_group: `Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup]`: The feature group object.
+        # Returns
+            `str`: The wrapper record avro schema.
+        """
+        return (
+            '{"type": "record", "name": "Wrapper", "fields": [{"name": "'
+            + feature_name
+            + '",  "type": '
+            + feature_group._get_feature_avro_schema(feature_name)
+            + "}]}"
+        )
+
     def _deserialize_from_avro(
         self,
         feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
@@ -682,29 +705,62 @@ class Engine:
         Step 2: Replace complex fields in the 'value' column
         """
         new_value_fields = []
+        unwrapped_field_names = []
+        needs_unwrapping = False
         for field in json.loads(feature_group.avro_schema)["fields"]:
             field_name = field["name"]
+            field_path = f"{serialized_column}.{field_name}"
+
             if field_name in feature_group.get_complex_features():
+                # If the feature is a struct, use a wrapper record avro schema to deserialize it.
+                is_stuct = feature_group.get_feature(field_name).type.startswith(
+                    "struct<"
+                )
+
+                if is_stuct:
+                    avro_schema = self._generate_wrapper_record_avro_schema(
+                        field_name, feature_group
+                    )
+                    unwrapped_field_name = col(f"{field_path}.{field_name}").alias(
+                        field_name
+                    )
+                    # We need to unwrap the struct field after deserialization to get the actual struct values.
+                    needs_unwrapping = True
+                else:
+                    avro_schema = feature_group._get_feature_avro_schema(field_name)
+                    unwrapped_field_name = col(field_path).alias(field_name)
+
                 # re-apply from_avro on the nested field
                 decoded_field = from_avro(
-                    col(f"{serialized_column}.{field_name}"),
-                    feature_group._get_feature_avro_schema(field_name),
+                    col(field_path),
+                    avro_schema,
                 ).alias(field_name)
             else:
-                decoded_field = col(f"{serialized_column}.{field_name}").alias(
-                    field_name
-                )
+                decoded_field = col(field_path).alias(field_name)
+                unwrapped_field_name = decoded_field
             new_value_fields.append(decoded_field)
-
+            unwrapped_field_names.append(unwrapped_field_name)
         """
         Step 3: Rebuild the "value" struct
         """
         updated_value_col = struct(*new_value_fields).alias(serialized_column)
 
-        return decoded_dataframe.select(
+        decoded_dataframe = decoded_dataframe.select(
             *[col(c) for c in decoded_dataframe.columns if c != serialized_column],
             updated_value_col,
         )
+
+        if needs_unwrapping:
+            # Unwrap the struct field after deserialization to get the actual struct values.
+            unwrapped_value_col = struct(*unwrapped_field_names).alias(
+                serialized_column
+            )
+            decoded_dataframe = decoded_dataframe.select(
+                *[col(c) for c in decoded_dataframe.columns if c != serialized_column],
+                unwrapped_value_col,
+            )
+
+        return decoded_dataframe
 
     def get_training_data(
         self,

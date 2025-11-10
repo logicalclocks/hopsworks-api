@@ -2170,6 +2170,74 @@ class TestSpark:
         assert df.schema == deserialized_df.schema["value"].dataType
         assert df.collect() == deserialized_df.select("value.*").collect()
 
+    def test_serialize_deserialize_avro_with_struct_feature(self, mocker, spark_engine):
+        # Arrange
+        now = datetime.datetime.now()
+
+        fg_data = []
+        fg_data.append(
+            ("ekarson", ["GRAVITY RUSH 2", "KING'S QUEST"], now, {"value": "test"})
+        )
+        fg_data.append(
+            ("ratmilkdrinker", ["NBA 2K", "CALL OF DUTY"], now, {"value": "test"})
+        )
+
+        schema = StructType(
+            [
+                StructField("account_id", StringType(), True),
+                StructField("last_played_games", ArrayType(StringType()), True),
+                StructField("event_time", TimestampType(), True),
+                StructField(
+                    "struct_feature",
+                    StructType([StructField("value", StringType(), True)]),
+                ),
+            ]
+        )
+
+        df = spark_engine._spark_session.createDataFrame(data=fg_data, schema=schema)
+
+        features = [
+            feature.Feature(name="account_id", type="str"),
+            feature.Feature(name="last_played_games", type="array"),
+            feature.Feature(name="event_time", type="timestamp"),
+            feature.Feature(name="struct_feature", type="struct<value:string>"),
+        ]
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            features=features,
+        )
+        fg._subject = {
+            "id": 1025,
+            "subject": "fg_1",
+            "version": 1,
+            "schema": '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]},{"name":"event_time","type":["null",{"type":"long","logicalType":"timestamp-micros"}]},{"name":"struct_feature","type":["null",{"type":"record","name":"S_struct_feature","fields":[{"name":"value","type":["null","string"]}]}]}]}',
+        }
+
+        # Act
+        serialized_df = spark_engine._serialize_to_avro(
+            feature_group=fg,
+            dataframe=df,
+        )
+
+        deserialized_df = spark_engine._deserialize_from_avro(
+            feature_group=fg,
+            dataframe=serialized_df,
+        )
+
+        # Assert
+        assert (
+            serialized_df.schema.json()
+            == '{"fields":[{"metadata":{},"name":"key","nullable":false,"type":"binary"},{"metadata":{},"name":"value","nullable":false,"type":"binary"}],"type":"struct"}'
+        )
+        assert df.schema == deserialized_df.schema["value"].dataType
+        assert df.collect() == deserialized_df.select("value.*").collect()
+
     def test_get_training_data(self, mocker):
         # Arrange
         mock_spark_engine_write_training_dataset = mocker.patch(
