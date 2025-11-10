@@ -669,6 +669,16 @@ class Engine:
         feature_name: str,
         feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
     ):
+        """
+        Function to generate a wrapper record avro schema for a struct feature.
+        This is required to deserialize a union of null and a struct field in spark, since spark expects the top level avro schema to be a record in this case.
+
+        # Arguments
+            feature_name: `str`: The name of the feature to generate the wrapper record avro schema for.
+            feature_group: `Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup]`: The feature group object.
+        # Returns
+            `str`: The wrapper record avro schema.
+        """
         return (
             '{"type": "record", "name": "Wrapper", "fields": [{"name": "'
             + feature_name
@@ -702,6 +712,7 @@ class Engine:
             field_path = f"{serialized_column}.{field_name}"
 
             if field_name in feature_group.get_complex_features():
+                # If the feature is a struct, use a wrapper record avro schema to deserialize it.
                 is_stuct = feature_group.get_feature(field_name).type.startswith(
                     "struct<"
                 )
@@ -713,6 +724,7 @@ class Engine:
                     unwrapped_field_name = col(f"{field_path}.{field_name}").alias(
                         field_name
                     )
+                    # We need to unwrap the struct field after deserialization to get the actual struct values.
                     needs_unwrapping = True
                 else:
                     avro_schema = feature_group._get_feature_avro_schema(field_name)
@@ -739,6 +751,7 @@ class Engine:
         )
 
         if needs_unwrapping:
+            # Unwrap the struct field after deserialization to get the actual struct values.
             unwrapped_value_col = struct(*unwrapped_field_names).alias(
                 serialized_column
             )
