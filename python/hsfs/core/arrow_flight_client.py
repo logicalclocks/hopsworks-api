@@ -685,9 +685,8 @@ def _get_connector_options(fg):
             option_map["authenticator"] = "oauth"
             option_map["token"] = connector.token
         else:
-            option_map["authenticator"] = "keypair"
-            option_map["private_key"] = connector.key_path
-            option_map["private_key_passphrase"] = connector.passphrase
+            option_map["key_path"] = connector.key_path
+            option_map["passphrase"] = connector.passphrase
 
         if connector.warehouse:
             option_map["warehouse"] = connector.warehouse
