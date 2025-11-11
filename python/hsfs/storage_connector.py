@@ -1039,7 +1039,6 @@ class SnowflakeConnector(StorageConnector):
 
         # read private key from hive key path
         local_key_path = engine.get_instance().add_file(self._key_path)
-        print("Using private key file from path: {}".format(local_key_path))
         with open(local_key_path, "rb") as file_privateKey:
             p_key = serialization.load_pem_private_key(
                 file_privateKey.read(),
