@@ -227,7 +227,9 @@
             "user": "test_user",
             "warehouse": "test_warehouse",
             "application": "test_application",
-            "sf_options": [{"name":  "test_name", "value":  "test_value"}]
+            "sf_options": [{"name":  "test_name", "value":  "test_value"}],
+            "key_path": "test_key_path",
+            "passphrase": "test_passphrase"
         },
         "method": "GET",
         "path_params": [

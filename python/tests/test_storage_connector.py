@@ -348,6 +348,8 @@ class TestSnowflakeConnector:
         assert sc.warehouse == "test_warehouse"
         assert sc.application == "test_application"
         assert sc._options == {"test_name": "test_value"}
+        assert sc.key_path == "test_key_path"
+        assert sc.passphrase == "test_passphrase"
 
     def test_from_response_json_basic_info(self, backend_fixtures):
         # Arrange
