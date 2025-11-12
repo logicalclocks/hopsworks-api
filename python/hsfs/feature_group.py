@@ -38,7 +38,12 @@ import humps
 import pandas as pd
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core import alerts_api
-from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
+from hopsworks_common.core.constants import (
+    HAS_DELTALAKE_PYTHON,
+    HAS_DELTALAKE_SPARK,
+    HAS_NUMPY,
+    HAS_POLARS,
+)
 from hsfs import (
     engine,
     feature,
@@ -182,7 +187,7 @@ class FeatureGroupBase:
         self._version = version
         self._name = name
         self.event_time = event_time
-        self._online_enabled = online_enabled
+        self._online_enabled = online_enabled or embedding_index is not None
         self._location = location
         self._id = id
         self._subject = None
@@ -214,19 +219,21 @@ class FeatureGroupBase:
                 self._online_config = OnlineConfig()
 
             if online_disk:
-                self._online_config.table_space = self._variable_api.get_featurestore_online_tablespace()
+                self._online_config.table_space = (
+                    self._variable_api.get_featurestore_online_tablespace()
+                )
             else:
                 # An empty string is interpreted as don't set table space, while None uses the cluster default
                 self._online_config.table_space = ""
 
         if data_source:
-            self._data_source = (
+            self.data_source = (
                 ds.DataSource.from_response_json(data_source)
                 if isinstance(data_source, dict)
                 else data_source
             )
         else:
-            self._data_source = ds.DataSource()
+            self.data_source = ds.DataSource()
 
         self._multi_part_insert: bool = False
         self._embedding_index = embedding_index
@@ -2189,6 +2196,8 @@ class FeatureGroupBase:
 
     @embedding_index.setter
     def embedding_index(self, embedding_index: Optional["EmbeddingIndex"]) -> None:
+        if embedding_index is not None and self._id is None:
+            self.online_enabled = True
         self._embedding_index = embedding_index
 
     @property
@@ -2322,6 +2331,12 @@ class FeatureGroupBase:
     @property
     def data_source(self) -> Optional[ds.DataSource]:
         return self._data_source
+
+    @data_source.setter
+    def data_source(self, data_source: ds.DataSource) -> None:
+        self._data_source = data_source
+        if self._data_source is not None:
+            self._data_source._update_storage_connector(self.storage_connector)
 
     @property
     def subject(self) -> Dict[str, Any]:
@@ -2689,7 +2704,11 @@ class FeatureGroup(FeatureGroupBase):
 
         else:
             # Set time travel format and streaming based on engine type and online status
-            self._init_time_travel_and_stream(time_travel_format, online_enabled)
+            self._init_time_travel_and_stream(
+                time_travel_format,
+                self.online_enabled,  # use the getter of the super class to take into account embedding index
+                self._is_hopsfs_storage(),
+            )
 
             self.primary_key = primary_key
             self.foreign_key = foreign_key
@@ -2750,35 +2769,63 @@ class FeatureGroup(FeatureGroupBase):
             )
 
     def _init_time_travel_and_stream(
-        self, time_travel_format: Optional[str], online_enabled: bool
+        self,
+        time_travel_format: Optional[str],
+        online_enabled: bool,
+        is_hopsfs: bool,
     ) -> None:
         """Initialize `self._time_travel_format` and `self._stream` for new objects.
 
-        Behavior mirrors the previous inline logic and depends on engine type,
-        provided `time_travel_format`, and `online_enabled`.
+        Extracted into testable helpers to simplify unit testing.
         """
-        if time_travel_format is None:
-            if engine.get_type() == "python":
-                if online_enabled:
-                    self._time_travel_format = "HUDI"
-                    self._stream = True
-                else:
-                    self._time_travel_format = "DELTA"
+        self._time_travel_format = FeatureGroup._resolve_time_travel_format(
+            time_travel_format=time_travel_format,
+            online_enabled=online_enabled,
+            is_hopsfs=is_hopsfs,
+        )
+        if engine.get_type() == "python":
+            self._stream = FeatureGroup._resolve_stream_python(
+                time_travel_format=self._time_travel_format,
+                is_hopsfs=is_hopsfs,
+                online_enabled=online_enabled,
+            )
+
+    def _is_hopsfs_storage(self) -> bool:
+        """Return True if storage is HopsFS."""
+        return self._storage_connector is None or (
+            self._storage_connector is not None
+            and self._storage_connector.type == sc.StorageConnector.HOPSFS
+        )
+
+    @staticmethod
+    def _resolve_stream_python(
+        time_travel_format: str,
+        is_hopsfs: bool,
+        online_enabled: bool,
+    ) -> Optional[bool]:
+        return not (is_hopsfs and time_travel_format == "DELTA" and not online_enabled)
+
+    @staticmethod
+    def _resolve_time_travel_format(
+        time_travel_format: Optional[str],
+        online_enabled: bool,
+        is_hopsfs: bool,
+    ) -> str:
+        """Resolve only the time travel format string."""
+        fmt = time_travel_format.upper() if time_travel_format is not None else None
+        if fmt is None:
+            if not FeatureGroup._has_deltalake():
+                return "HUDI"
             else:
-                self._time_travel_format = "HUDI"
+                return "DELTA"
+        return fmt
 
-        elif time_travel_format == "HUDI":
-            self._time_travel_format = "HUDI"
-            if engine.get_type() == "python":
-                self._stream = True
-
-        elif time_travel_format == "DELTA":
-            self._time_travel_format = "DELTA"
-            if online_enabled and engine.get_type() == "python":
-                self._stream = True
-
+    @staticmethod
+    def _has_deltalake():
+        if engine.get_type() == "python":
+            return HAS_DELTALAKE_PYTHON
         else:
-            self._time_travel_format = time_travel_format
+            return HAS_DELTALAKE_SPARK
 
     @staticmethod
     def _sort_transformation_functions(
@@ -3175,10 +3222,19 @@ class FeatureGroup(FeatureGroupBase):
             self, feature_dataframe, write_options, validation_options or {}
         )
 
+        # Compute stats in client if there is no backfill job:
+        # - spark engine: always compute in client
+        # - python engine: only compute if FG is offline only (no backfill job)
         if self.statistics_config.enabled and engine.get_type().startswith("spark"):
-            # Only compute statistics if the engine is Spark.
-            # For Python engine, the computation happens in the Hopsworks application
             self._statistics_engine.compute_and_save_statistics(self, feature_dataframe)
+        elif engine.get_type() == "python" and not self.stream:
+            commit_id = [key for key in self.commit_details(limit=1)][0]
+            self._statistics_engine.compute_and_save_statistics(
+                metadata_instance=self,
+                feature_dataframe=feature_dataframe,
+                feature_group_commit_id=commit_id,
+            )
+
         if user_version is None:
             warnings.warn(
                 "No version provided for creating feature group `{}`, incremented version to `{}`.".format(
@@ -3364,10 +3420,18 @@ class FeatureGroup(FeatureGroupBase):
             transform=transform,
         )
 
+        # Compute stats in client if there is no backfill job:
+        # - spark engine: always compute in client
+        # - python engine: only compute if FG is offline only (no backfill job)
         if engine.get_type().startswith("spark") and not self.stream:
-            # Also, only compute statistics if stream is False.
-            # if True, the backfill job has not been triggered and the data has not been inserted (it's in Kafka)
             self.compute_statistics()
+        elif engine.get_type() == "python" and not self.stream:
+            commit_id = [key for key in self.commit_details(limit=1)][0]
+            self._statistics_engine.compute_and_save_statistics(
+                metadata_instance=self,
+                feature_dataframe=feature_dataframe,
+                feature_group_commit_id=commit_id,
+            )
 
         return (
             job,
@@ -4040,8 +4104,8 @@ class FeatureGroup(FeatureGroupBase):
             "ttl": self.ttl,
             "ttlEnabled": self._ttl_enabled,
         }
-        if self._data_source:
-            fg_meta_dict["dataSource"] = self._data_source.to_dict()
+        if self.data_source:
+            fg_meta_dict["dataSource"] = self.data_source.to_dict()
         if self._online_config:
             fg_meta_dict["onlineConfig"] = self._online_config.to_dict()
         if self.embedding_index:
@@ -4722,8 +4786,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
             "ttl": self.ttl,
             "ttlEnabled": self._ttl_enabled,
         }
-        if self._data_source:
-            fg_meta_dict["dataSource"] = self._data_source.to_dict()
+        if self.data_source:
+            fg_meta_dict["dataSource"] = self.data_source.to_dict()
         if self._online_config:
             fg_meta_dict["onlineConfig"] = self._online_config.to_dict()
         if self.embedding_index:

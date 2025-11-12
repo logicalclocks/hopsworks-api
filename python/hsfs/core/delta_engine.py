@@ -15,12 +15,15 @@
 #
 from __future__ import annotations
 
+import logging
 import os
+import warnings
 from urllib.parse import urlparse
 
 from hopsworks.core import project_api
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.core.constants import HAS_POLARS
 from hsfs import feature_group_commit, util
 from hsfs.core import feature_group_api, variable_api
 
@@ -28,6 +31,7 @@ from hsfs.core import feature_group_api, variable_api
 # Note: Avoid importing optional Delta dependencies at module import time.
 # They are imported on-demand inside methods to provide friendly errors only
 # when the functionality is used.
+_logger = logging.getLogger(__name__)
 
 
 class DeltaEngine:
@@ -42,12 +46,17 @@ class DeltaEngine:
         spark_session,
         spark_context,
     ):
+        _logger.debug(
+            f"Initializing DeltaEngine {feature_group.name} v{feature_group.version}"
+        )
         self._feature_group = feature_group
         self._spark_context = spark_context
         self._spark_session = spark_session
         if self._spark_session:
-            self._spark_session.conf.set("spark.sql.catalog.spark_catalog",
-            "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+            self._spark_session.conf.set(
+                "spark.sql.catalog.spark_catalog",
+                "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+            )
         self._feature_store_id = feature_store_id
         self._feature_store_name = feature_store_name
 
@@ -58,14 +67,23 @@ class DeltaEngine:
 
     def save_delta_fg(self, dataset, write_options, validation_id=None):
         if self._spark_session is not None:
+            _logger.debug(
+                f"Saving Delta dataset using spark to feature group {self._feature_group.name} v{self._feature_group.version}"
+            )
             fg_commit = self._write_delta_dataset(dataset, write_options)
         else:
+            _logger.debug(
+                f"Saving Delta dataset using delta-rs to feature group {self._feature_group.name} v{self._feature_group.version}"
+            )
             fg_commit = self._write_delta_rs_dataset(dataset)
         fg_commit.validation_id = validation_id
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
     def register_temporary_table(self, delta_fg_alias, read_options):
         location = self._feature_group.prepare_spark_location()
+        _logger.debug(
+            f"Registering temporary table for Delta feature group {self._feature_group.name} v{self._feature_group.version} at location {location}"
+        )
 
         delta_options = self._setup_delta_read_opts(delta_fg_alias, read_options)
         self._spark_session.read.format(self.DELTA_SPARK_FORMAT).options(
@@ -94,6 +112,10 @@ class DeltaEngine:
 
         if read_options:
             delta_options.update(read_options)
+
+        _logger.debug(
+            f"Delta read options for feature group {self._feature_group.name} v{self._feature_group.version}: {delta_options}"
+        )
 
         return delta_options
 
@@ -194,37 +216,60 @@ class DeltaEngine:
         return self._get_last_commit_metadata(self._spark_session, location)
 
     def _setup_delta_rs(self):
+        _logger.debug("Setting up delta-rs environment")
         _client = client.get_instance()
         if _client._is_external():
+            _logger.debug("Setting up delta-rs for external client")
             os.environ["PEMS_DIR"] = _client.get_certs_folder()
+            _logger.debug(f"PEMS_DIR set to {os.environ['PEMS_DIR']}")
             try:
-                os.environ["HOPSFS_CLOUD_DATANODE_HOSTNAME_OVERRIDE"] = self._variable_api.get_loadbalancer_external_domain("datanode")
+                datanode_ip = self._variable_api.get_loadbalancer_external_domain(
+                    "datanode"
+                )
+                _logger.debug(
+                    f"Setting HOPSFS_CLOUD_DATANODE_HOSTNAME_OVERRIDE to {datanode_ip}"
+                )
+                os.environ["HOPSFS_CLOUD_DATANODE_HOSTNAME_OVERRIDE"] = datanode_ip
             except FeatureStoreException as e:
-                raise FeatureStoreException("Failed to write to delta table in external cluster. Make sure datanode load balancer has been setup on the cluster.") from e
+                raise FeatureStoreException(
+                    "Failed to write to delta table in external cluster. Make sure datanode load balancer has been setup on the cluster."
+                ) from e
 
             user_name = self._project_api.get_user_info().get("username", None)
+
             if not user_name:
-                raise FeatureStoreException("Failed to write to delta table in external cluster. Cannot get user name for project.")
+                raise FeatureStoreException(
+                    "Failed to write to delta table in external cluster. Cannot get user name for project."
+                )
             else:
-                os.environ["LIBHDFS_DEFAULT_USER"] = _client.project_name + "__" + user_name
+                project_username = f"{_client.project_name}__{user_name}"
+                _logger.debug(f"Setting LIBHDFS_DEFAULT_USER to {project_username}")
+                os.environ["LIBHDFS_DEFAULT_USER"] = project_username
 
     def _get_delta_rs_location(self):
         _client = client.get_instance()
-        location = self._feature_group.location.replace("hopsfs:/", "hdfs:/")  # deltars requires hdfs scheme
+        location = self._feature_group.location.replace(
+            "hopsfs:/", "hdfs:/"
+        )  # deltars requires hdfs scheme
 
         if _client._is_external():
             parsed_url = urlparse(location)
             try:
-                return f"hdfs://{self._variable_api.get_loadbalancer_external_domain('namenode')}:{parsed_url.port}" + parsed_url.path
+                deltars_loc = f"hdfs://{self._variable_api.get_loadbalancer_external_domain('namenode')}:{parsed_url.port}{parsed_url.path}"
+                _logger.debug(
+                    f"External client, using namenode url + delta-rs location: {deltars_loc}"
+                )
+                return deltars_loc
             except FeatureStoreException as e:
-                raise FeatureStoreException("Failed to write to delta table. Make sure namenode load balancer has been setup on the cluster.") from e
+                raise FeatureStoreException(
+                    "Failed to write to delta table. Make sure namenode load balancer has been setup on the cluster."
+                ) from e
         else:
+            _logger.debug(f"Internal client, using delta-rs location: {location}")
             return location
 
     def _write_delta_rs_dataset(self, dataset):
         try:
-            import polars as pl
-            import pyarrow as pa  # noqa: F401  # used indirectly via _prepare_df_for_delta
             from deltalake import DeltaTable as DeltaRsTable
             from deltalake import write_deltalake as deltars_write
             from deltalake.exceptions import TableNotFoundError
@@ -234,15 +279,27 @@ class DeltaEngine:
                 "Install 'hops-deltalake' to enable Delta RS features."
             ) from e
         location = self._get_delta_rs_location()
-        if isinstance(dataset, pl.DataFrame):
-            dataset = dataset.to_arrow()
-        else:
+        is_polars_df = False
+        if HAS_POLARS:
+            import polars as pl
+            if isinstance(dataset, pl.DataFrame):
+                is_polars_df = True
+                _logger.debug("Converting DataFrame to Arrow Table for Delta write")
+                dataset = dataset.to_arrow()
+
+        if not is_polars_df:
             dataset = self._prepare_df_for_delta(dataset)
 
         try:
             fg_source_table = DeltaRsTable(location)
             is_delta_table = True
+            _logger.debug(
+                f"Delta table found at {location}. Proceeding with merge operation."
+            )
         except TableNotFoundError:
+            _logger.debug(
+                f"Delta table not found at {location}. A new Delta table will be created."
+            )
             is_delta_table = False
 
         if not is_delta_table:
@@ -269,6 +326,9 @@ class DeltaEngine:
                 .when_not_matched_insert_all()
                 .execute()
             )
+        _logger.debug(
+            f"Executed delta-rs write. Retrieving commit metadata for Delta table at {location}"
+        )
         return self._get_last_commit_metadata(self._spark_session, location)
 
     @staticmethod
@@ -302,29 +362,46 @@ class DeltaEngine:
                 df_copy[col] = df_copy[col].dt.tz_convert("UTC").dt.tz_localize(None)
 
         # Convert to basic PyArrow table first
+        _logger.debug("Converting DataFrame to basic PyArrow Table")
         table = pa.Table.from_pandas(df_copy, preserve_index=False)
 
-        # Cast timestamp columns to the specified precision
+        # Cast timestamp columns to the specified precision and float16 to float32
+        _logger.debug("Casting timestamp and float16 columns if needed")
         new_cols = []
         for i, field in enumerate(table.schema):
             col = table.column(i)
             if pa.types.is_timestamp(field.type):
                 # Cast to specified precision
                 new_cols.append(col.cast(pa.timestamp(timestamp_precision)))
+            elif pa.types.is_float16(field.type):  # delta lake do not support float16
+                # Convert float16 to float32
+                warnings.warn(
+                    f"Casting float16 column '{field.name}' to float32 for Delta Lake compatibility.",
+                    UserWarning,
+                    stacklevel=1,
+                )
+                new_cols.append(col.cast(pa.float32()))
             else:
                 new_cols.append(col)
 
         # Create new table with modified columns
+        _logger.debug("Creating new PyArrow Table with modified columns")
         return pa.Table.from_arrays(new_cols, names=table.column_names)
 
     def vacuum(self, retention_hours: int):
         location = self._feature_group.prepare_spark_location()
+        _logger.debug(
+            f"Vacuuming Delta table for feature group {self._feature_group.name} v{self._feature_group.version} at location {location} with retention {retention_hours} hours"
+        )
         retention = (
             f"RETAIN {retention_hours} HOURS" if retention_hours is not None else ""
         )
         self._spark_session.sql(f"VACUUM '{location}' {retention}")
 
     def _generate_merge_query(self, source_alias, updates_alias):
+        _logger.debug(
+            f"Generating merge query for feature group {self._feature_group.name} v{self._feature_group.version} from source alias {source_alias} and updates alias {updates_alias}"
+        )
         merge_query_list = []
         primary_key = self._feature_group.primary_key
 
@@ -338,8 +415,9 @@ class DeltaEngine:
 
         for pk in primary_key:
             merge_query_list.append(f"{source_alias}.{pk} == {updates_alias}.{pk}")
-        megrge_query_str = " AND ".join(merge_query_list)
-        return megrge_query_str
+        merge_query_str = " AND ".join(merge_query_list)
+        _logger.debug(f"Merge query: {merge_query_str}")
+        return merge_query_str
 
     @staticmethod
     def _get_last_commit_metadata(spark_context, base_path):
@@ -348,6 +426,7 @@ class DeltaEngine:
         Uses shared filtering logic for both Spark and delta-rs.
         """
         data_ops = ["MERGE", "WRITE"]
+        _logger.debug(f"Retrieving last commit metadata for Delta table at {base_path}")
 
         # --- Get commit history ---
         if spark_context is not None:
@@ -362,6 +441,7 @@ class DeltaEngine:
             fg_source_table = DeltaTable.forPath(spark_context, base_path)
             history = fg_source_table.history()
             history_records = [r.asDict() for r in history.collect()]
+            _logger.debug(f"history_records for {base_path}: {history_records}")
         else:
             try:
                 from deltalake import DeltaTable as DeltaRsTable
@@ -373,6 +453,7 @@ class DeltaEngine:
             # delta-rs DeltaTable (returns list[dict])
             fg_source_table = DeltaRsTable(base_path)
             history_records = fg_source_table.history()
+            _logger.debug(f"history_records for {base_path}: {history_records}")
 
         if not history_records:
             return None
@@ -386,11 +467,18 @@ class DeltaEngine:
         oldest_commit = min(filtered, key=lambda c: c["version"])
         last_commit = max(filtered, key=lambda c: c["version"])
 
+        _logger.debug(
+            f"Oldest commit: {oldest_commit['version']} at {oldest_commit['timestamp']}"
+        )
+        _logger.debug(
+            f"Last commit: {last_commit['version']} at {last_commit['timestamp']}"
+        )
+
         return DeltaEngine._get_delta_feature_group_commit(last_commit, oldest_commit)
 
     @staticmethod
     def _get_delta_feature_group_commit(last_commit, oldest_commit):
-        # Extract info about the latest commit
+        _logger.debug(f"Extract info about the latest commit {last_commit}")
         operation = last_commit["operation"]
         commit_timestamp = util.convert_event_time_to_timestamp(
             last_commit["timestamp"]
@@ -410,11 +498,15 @@ class DeltaEngine:
 
         # Depending on operation, set the relevant metrics
         if operation == "WRITE":
-            rows_inserted = operation_metrics.get("numOutputRows", 0)
+            rows_inserted = operation_metrics.get("numOutputRows") or operation_metrics.get("num_added_rows") or 0
         elif operation == "MERGE":
-            rows_inserted = operation_metrics.get("numTargetRowsInserted", 0)
-            rows_updated = operation_metrics.get("numTargetRowsUpdated", 0)
-            rows_deleted = operation_metrics.get("numTargetRowsDeleted", 0)
+            rows_inserted = operation_metrics.get("numTargetRowsInserted") or operation_metrics.get("num_target_rows_inserted") or 0
+            rows_updated = operation_metrics.get("numTargetRowsUpdated") or operation_metrics.get("num_target_rows_updated") or 0
+            rows_deleted = operation_metrics.get("numTargetRowsDeleted") or operation_metrics.get("num_target_rows_deleted") or 0
+
+        _logger.debug(
+            f"Commit metrics {commit_timestamp} - inserted: {rows_inserted}, updated: {rows_updated}, deleted: {rows_deleted}"
+        )
 
         fg_commit = feature_group_commit.FeatureGroupCommit(
             commitid=None,
