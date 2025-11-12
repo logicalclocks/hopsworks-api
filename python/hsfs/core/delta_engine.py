@@ -290,6 +290,9 @@ class DeltaEngine:
         if not is_polars_df:
             dataset = self._prepare_df_for_delta(dataset)
 
+        self._check_duplicate_records(dataset)
+        _logger.debug("No duplicate records found. Proceeding with Delta write.")
+        
         try:
             fg_source_table = DeltaRsTable(location)
             is_delta_table = True
@@ -330,6 +333,92 @@ class DeltaEngine:
             f"Executed delta-rs write. Retrieving commit metadata for Delta table at {location}"
         )
         return self._get_last_commit_metadata(self._spark_session, location)
+
+    def _check_duplicate_records(self, dataset):
+        """
+        Check for duplicate records within primary_key and partition_key columns.
+        
+        Raises FeatureStoreException if duplicates are found.
+        
+        Parameters:
+        -----------
+        dataset : pyarrow.Table
+            The dataset to check for duplicates
+        """
+        # Get the key columns to check (primary_key + partition_key)
+        key_columns = list(self._feature_group.primary_key)
+
+        if not key_columns:
+            # No keys to check, skip validation
+            return
+
+        if self._feature_group.partition_key:
+            key_columns.extend(self._feature_group.partition_key)
+        
+        # Verify all key columns exist in the dataset
+        try:
+            import pyarrow as pa
+            import pyarrow.compute as pc
+        except ImportError as e:
+            raise ImportError(
+                "pyarrow is required for duplicate checking."
+            ) from e
+        
+        if not isinstance(dataset, pa.Table):
+            raise FeatureStoreException(
+                f"Expected PyArrow Table, but got {type(dataset)}."
+            )
+        
+        # Verify all key columns exist
+        table_columns = dataset.column_names
+        missing_columns = [col for col in key_columns if col not in table_columns]
+        if missing_columns:
+            raise FeatureStoreException(
+                f"Key columns {missing_columns} are missing from the dataset. "
+                f"Available columns: {table_columns}"
+            )
+        
+        # Check for duplicates using PyArrow group_by
+        # Group by key columns and count occurrences
+        grouped = dataset.group_by(key_columns).aggregate([
+            # The aggregation tuple structure: ([], function_name, FunctionOptions)
+            ([], "count_all", pc.CountOptions(mode="all")) 
+        ])
+                
+        # Filter groups with count > 1 (duplicates)
+        duplicate_groups = grouped.filter(pc.greater(grouped["count_all"], 1))
+        
+        duplicate_count = len(duplicate_groups)
+        
+        if duplicate_count > 0:
+            # Get total number of duplicate rows (sum of counts - 1 for each duplicate group)
+            # Since count includes the first occurrence, duplicates = count - 1 per group
+            total_duplicate_rows = sum(
+                duplicate_groups["count_all"].to_pylist()
+            ) - duplicate_count
+            
+            # Get sample duplicate records for error message
+            # Take first 10 duplicate groups and get their key values
+            sample_groups = duplicate_groups.slice(0, min(10, duplicate_count))
+            
+            # Build sample string showing the duplicate key combinations
+            sample_rows = []
+            for i in range(len(sample_groups)):
+                row_dict = {}
+                for col in key_columns:
+                    row_dict[col] = sample_groups[col][i].as_py()
+                row_dict["count_all"] = sample_groups["count_all"][i].as_py()
+                sample_rows.append(str(row_dict))
+            
+            sample_str = "\n".join(sample_rows)
+            
+            raise FeatureStoreException(
+                f"Dataset contains {total_duplicate_rows} duplicate record(s) within "
+                f"primary_key ({self._feature_group.primary_key}) and "
+                f"partition_key ({self._feature_group.partition_key}). "
+                f"Found {duplicate_count} duplicate group(s). "
+                f"Sample duplicate key combinations:\n{sample_str}"
+            )
 
     @staticmethod
     def _prepare_df_for_delta(df, timestamp_precision="us"):
