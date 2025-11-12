@@ -3155,7 +3155,7 @@ class FeatureGroup(FeatureGroupBase):
                 * key `run_validation` boolean value, set to `False` to skip validation temporarily on ingestion.
                 * key `save_report` boolean value, set to `False` to skip upload of the validation report to Hopsworks.
                 * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
-                * key `online_schema_validation` boolean value, set to `True` to validate the schema for online ingestion.
+                * key `schema_validation` boolean value, set to `True` to validate the schema.
             wait: Wait for job and online ingestion to finish before returning, defaults to `False`.
                 Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
 
@@ -3373,7 +3373,7 @@ class FeatureGroup(FeatureGroupBase):
                 * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
                 * key `fetch_expectation_suite` a boolean value, by default `True`, to control whether the expectation
                    suite of the feature group should be fetched before every insert.
-                * key `online_schema_validation` boolean value, set to `True` to validate the schema for online ingestion.
+                * key `schema_validation` boolean value, set to `True` to validate the schema.
             wait: Wait for job and online ingestion to finish before returning, defaults to `False`.
                 Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.

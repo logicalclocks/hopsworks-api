@@ -60,13 +60,6 @@ class DataFrameValidator:
 
     def validate_schema(self, feature_group, df, df_features):
         """Common validation rules"""
-        if feature_group.online_enabled is False:
-            logger.warning("Feature group is not online enabled. Skipping validation")
-            return df_features
-        if feature_group._embedding_index is not None:
-            logger.warning("Feature group is embedding type. Skipping validation")
-            return df_features
-
         validator = self.get_validator(df)
         if validator is None:
             # If no validator is found for this type, skip validation and return df_features
@@ -251,33 +244,57 @@ class PySparkValidator(DataFrameValidator):
         is_pk_null = False
         is_string_length_exceeded = False
 
-        # Check for null values in primary key columns
-        for pk in feature_group.primary_key:
-            if df.filter(df[pk].isNull()).count() > 0:
+        # Collect string columns and primary key columns
+        string_cols = [
+            f.name for f in df.schema.fields if isinstance(f.dataType, StringType)
+        ]
+        pk_cols = list(feature_group.primary_key) if feature_group.primary_key else []
+
+        # Build a single aggregation expression list:
+        # - sum(when(col.isNull(),1).otherwise(0)) for pk null counts
+        # - max(length(col)) for string max lengths
+        agg_exprs = []
+        for pk in pk_cols:
+            agg_exprs.append(
+                sf.sum(sf.when(sf.col(pk).isNull(), 1).otherwise(0)).alias(
+                    f"__nulls_{pk}"
+                )
+            )
+        for col in string_cols:
+            agg_exprs.append(sf.max(sf.length(sf.col(col))).alias(f"__maxlen_{col}"))
+
+        # If there is nothing to compute, return early
+        if not agg_exprs:
+            return errors, column_lengths, is_pk_null, is_string_length_exceeded
+
+        # Execute a single aggregation job
+        agg_row = df.agg(*agg_exprs).collect()[0]
+
+        # Evaluate primary key nulls
+        for pk in pk_cols:
+            null_count = agg_row[f"__nulls_{pk}"]
+            if null_count is not None and int(null_count) > 0:
                 errors[pk] = f"Primary key column {pk} contains null values."
                 is_pk_null = True
 
-        # Check string lengths for string columns
-        for field in df.schema.fields:
-            if isinstance(field.dataType, StringType):
-                col = field.name
-                # Compute max length - PySpark specific way
-                currentmax_row = df.select(sf.max(sf.length(col))).collect()[0][0]
-                currentmax = 0 if currentmax_row is None else currentmax_row
+        # Evaluate string length violations
+        for col in string_cols:
+            currentmax = agg_row[f"__maxlen_{col}"]
+            currentmax = 0 if currentmax is None else int(currentmax)
 
-                col_max_len = (
-                    self.get_online_varchar_length(
-                        self.get_feature_from_list(col, feature_group.features)
-                    )
-                    if feature_group.features
-                    else 100
+            col_max_len = (
+                self.get_online_varchar_length(
+                    self.get_feature_from_list(col, feature_group.features)
                 )
+                if feature_group.features
+                else 100
+            )
 
-                if col_max_len is not None and currentmax > col_max_len:
-                    errors[col] = (
-                        f"String length exceeded. Column {col} has string values longer than maximum column limit of {col_max_len} characters."
-                    )
-                    column_lengths[col] = currentmax
-                    is_string_length_exceeded = True
+            if col_max_len is not None and currentmax > col_max_len:
+                errors[col] = (
+                    f"String length exceeded. Column {col} has string values longer than maximum column limit of {col_max_len} characters."
+                )
+                column_lengths[col] = currentmax
+                is_string_length_exceeded = True
 
         return errors, column_lengths, is_pk_null, is_string_length_exceeded
