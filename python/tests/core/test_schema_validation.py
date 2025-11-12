@@ -236,7 +236,7 @@ class BaseDataFrameTest:
         if online_enabled:
             assert df_features[2].online_type == "varchar(200)"
         else:
-            assert df_features[2].online_type == None
+            assert df_features[2].online_type is None
 
     @pytest.mark.parametrize(
         "online_enabled",
