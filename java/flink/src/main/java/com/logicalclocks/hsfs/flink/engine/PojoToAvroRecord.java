@@ -23,7 +23,6 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
-import org.apache.flink.configuration.Configuration;
 import org.apache.flink.formats.avro.typeutils.GenericRecordAvroTypeInfo;
 
 import java.util.Map;
@@ -36,7 +35,7 @@ public class PojoToAvroRecord<T> extends RichMapFunction<T, GenericRecord> imple
   private final String encodedFeatureGroupSchemaStr;
   private final Map<String, String> complexFeatureSchemasStr;
 
-  // org.apache.avro.Schema$Field is not serializable. Create in open() and reused later on
+  // org.apache.avro.Schema$Field is not serializable. Create once and reused later on
   private transient Schema featureGroupSchema;
   private transient Schema encodedFeatureGroupSchema;
   private transient Map<String, Schema> complexFeatureSchemas;
@@ -51,14 +50,7 @@ public class PojoToAvroRecord<T> extends RichMapFunction<T, GenericRecord> imple
     this.complexFeatureSchemasStr = complexFeatureSchemas;
   }
 
-  @Override
-  public GenericRecord map(T input) throws Exception {
-    return PojoToAvroUtils.convertPojoToGenericRecord(
-        input, featureGroupSchema, encodedFeatureGroupSchema, complexFeatureSchemas);
-  }
-
-  @Override
-  public void open(Configuration configuration) throws Exception {
+  public void init() throws Exception {
     this.featureGroupSchema = new Schema.Parser().parse(this.featureGroupSchemaStr);
     this.encodedFeatureGroupSchema = new Schema.Parser().parse(this.encodedFeatureGroupSchemaStr);
     this.complexFeatureSchemas = this.complexFeatureSchemasStr
@@ -70,8 +62,17 @@ public class PojoToAvroRecord<T> extends RichMapFunction<T, GenericRecord> imple
   }
 
   @Override
+  public GenericRecord map(T input) throws Exception {
+    // handle serialization across task managers
+    if (featureGroupSchema == null || encodedFeatureGroupSchema == null || complexFeatureSchemas == null) {
+      init();
+    }
+    return PojoToAvroUtils.convertPojoToGenericRecord(
+        input, featureGroupSchema, encodedFeatureGroupSchema, complexFeatureSchemas);
+  }
+
+  @Override
   public TypeInformation<GenericRecord> getProducedType() {
     return producedType;
   }
-
 }
