@@ -149,27 +149,21 @@ class TestFeatureGroupEngine:
         assert mock_engine_get_instance.return_value.save_dataframe.call_count == 0
 
     @pytest.mark.parametrize(
-        "online_enabled,stream,storage,expected_error,should_validate_schema",
+        "online_enabled,validation_options,should_validate_schema",
         [
-            # not online enabled
-            (False, False, "offline", None, False),
-            (False, False, "online", "Online storage is not enabled for this feature group", False),
-            (False, False, None, None, False),
-            # online enabled
-            (True, False, "offline", None, False),
-            (True, False, "online", None, True),
-            (True, False, None, None, True),
-            # not online enabled stream
-            (False, True, "offline", None, False),
-            (False, True, "online", "Online storage is not enabled for this feature group", False),
-            (False, True, None, None, False),
-            # online enabled stream
-            (True, True, "offline", None, True),
-            (True, True, "online", None, True),
-            (True, True, None, None, True),
+            # Online enabled
+            (True, None, True),
+            (True, {}, True),
+            (True, {"online_schema_validation": False}, False),
+            (True, {"schema_validation": False}, False),
+            # Not enabled
+            (False, None, True),
+            (False, {}, True),
+            (False, {"online_schema_validation": False}, False),
+            (False, {"schema_validation": False}, False),
         ],
     )
-    def test_insert(self, online_enabled, stream, storage, expected_error, should_validate_schema, mocker):
+    def test_insert(self, online_enabled, validation_options, should_validate_schema, mocker):
         # Arrange
         feature_store_id = 99
 
@@ -197,39 +191,23 @@ class TestFeatureGroupEngine:
             foreign_key=[],
             partition_key=[],
             online_enabled=online_enabled,
-            stream=stream,
         )
 
         # Act
-        if expected_error:
-            with pytest.raises(exceptions.FeatureStoreException) as e_info:
-                fg_engine.insert(
-                    feature_group=fg,
-                    feature_dataframe=None,
-                    overwrite=None,
-                    operation=None,
-                    storage=storage,
-                    write_options=None,
-                    validation_options={},
-                )
-            assert str(e_info.value).startswith(expected_error)
-            assert mock_engine_get_instance.return_value.save_dataframe.call_count == 0
-        else:
-            fg_engine.insert(
-                feature_group=fg,
-                feature_dataframe=None,
-                overwrite=None,
-                operation=None,
-                storage=storage,
-                write_options=None,
-                validation_options={},
-            )
-            assert mock_engine_get_instance.return_value.save_dataframe.call_count == 1
+        fg_engine.insert(
+            feature_group=fg,
+            feature_dataframe=None,
+            overwrite=None,
+            operation=None,
+            storage=None,
+            write_options=None,
+            validation_options=validation_options,
+        )
 
         # Assert
+        assert mock_engine_get_instance.return_value.save_dataframe.call_count == 1
         assert mock_fg_api.return_value.delete_content.call_count == 0
-        if should_validate_schema:
-            assert mock_validate_schema.called
+        assert mock_validate_schema.called == should_validate_schema
 
     def test_insert_transformation_functions(self, mocker):
         # Arrange

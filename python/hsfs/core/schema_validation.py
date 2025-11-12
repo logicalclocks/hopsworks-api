@@ -60,13 +60,6 @@ class DataFrameValidator:
 
     def validate_schema(self, feature_group, df, df_features):
         """Common validation rules"""
-        if feature_group.online_enabled is False:
-            logger.warning("Feature group is not online enabled. Skipping validation")
-            return df_features
-        if feature_group._embedding_index is not None:
-            logger.warning("Feature group is embedding type. Skipping validation")
-            return df_features
-
         validator = self.get_validator(df)
         if validator is None:
             # If no validator is found for this type, skip validation and return df_features

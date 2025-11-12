@@ -107,9 +107,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         )
 
         if (
-            feature_group.online_enabled
-            and not feature_group.embedding_index
-            and validation_options.get("online_schema_validation", True)
+            not validation_options
+            or (
+                validation_options.get("online_schema_validation", True) # for backwards compatibility
+                and validation_options.get("schema_validation", True)
+            )
         ):
             # validate df schema
             dataframe_features = DataFrameValidator().validate_schema(
@@ -190,10 +192,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         )
 
         if (
-            feature_group.online_enabled
-            and (feature_group.stream or storage != "offline")
-            and not feature_group.embedding_index
-            and validation_options.get("online_schema_validation", True)
+            not validation_options
+            or (
+                validation_options.get("online_schema_validation", True) # for backwards compatibility
+                and validation_options.get("schema_validation", True)
+            )
         ):
             # validate df schema for online ingestion
             dataframe_features = DataFrameValidator().validate_schema(
