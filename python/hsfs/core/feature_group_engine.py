@@ -198,7 +198,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 and validation_options.get("schema_validation", True)
             )
         ):
-            # validate df schema for online ingestion
+            # validate df schema
             dataframe_features = DataFrameValidator().validate_schema(
                 feature_group, feature_dataframe, dataframe_features
             )

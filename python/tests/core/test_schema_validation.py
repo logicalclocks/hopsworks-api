@@ -127,7 +127,6 @@ def feature_group_created():
 
 # Base class for common test behavior
 class BaseDataFrameTest:
-
     def _update_online_enabled(self, fg, online_enabled):
         fg.online_enabled = online_enabled
         if not online_enabled:
@@ -137,9 +136,7 @@ class BaseDataFrameTest:
     # region primary key
     @pytest.mark.parametrize(
         "online_enabled",
-        [
-            True, False
-        ],
+        [True, False],
     )
     def test_primary_key_missing(self, online_enabled, df, feature_group_data):
         # Arrange
@@ -157,9 +154,7 @@ class BaseDataFrameTest:
 
     @pytest.mark.parametrize(
         "online_enabled",
-        [
-            True, False
-        ],
+        [True, False],
     )
     def test_primary_key_null(self, online_enabled, df, feature_group_data):
         # Arrange
@@ -173,16 +168,17 @@ class BaseDataFrameTest:
             DataFrameValidator().validate_schema(
                 feature_group_data, modified_df, feature_group_data.features
             )
+
     # endregion
 
     # region string
     @pytest.mark.parametrize(
         "online_enabled",
-        [
-            True, False
-        ],
+        [True, False],
     )
-    def test_string_length_exceeded_created_fg(self, online_enabled, df, feature_group_created):
+    def test_string_length_exceeded_created_fg(
+        self, online_enabled, df, feature_group_created
+    ):
         # Arrange
         self._update_online_enabled(feature_group_created, online_enabled)
         modified_df = self._modify_row(df, 0, string_col="a" * 101)
@@ -202,9 +198,7 @@ class BaseDataFrameTest:
 
     @pytest.mark.parametrize(
         "online_enabled",
-        [
-            True, False
-        ],
+        [True, False],
     )
     def test_string_length_exceeded(self, online_enabled, df, feature_group_data):
         # Arrange
@@ -226,9 +220,7 @@ class BaseDataFrameTest:
 
     @pytest.mark.parametrize(
         "online_enabled",
-        [
-            True, False
-        ],
+        [True, False],
     )
     def test_string_with_features(self, online_enabled, df, feature_group_data):
         # Arrange
@@ -239,7 +231,7 @@ class BaseDataFrameTest:
         df_features = DataFrameValidator().validate_schema(
             feature_group_data, df, feature_group_data.features
         )
-        # Assert 
+        # Assert
         # the online type of the string_col feature is same as explcitly set in the feature group
         if online_enabled:
             assert df_features[2].online_type == "varchar(200)"
@@ -248,9 +240,7 @@ class BaseDataFrameTest:
 
     @pytest.mark.parametrize(
         "online_enabled",
-        [
-            True, False
-        ],
+        [True, False],
     )
     def test_string_without_features(self, online_enabled, df, feature_group_data):
         # Arrange
@@ -274,9 +264,7 @@ class BaseDataFrameTest:
 
     @pytest.mark.parametrize(
         "online_enabled",
-        [
-            True
-        ],
+        [True],
     )
     def test_string_update_nonvarchar(self, online_enabled, df, feature_group_data):
         # Arrange
@@ -293,15 +281,16 @@ class BaseDataFrameTest:
 
         # Assert
         assert df_features == feature_group_data.features
+
     # endregion
 
     @pytest.mark.parametrize(
         "online_enabled",
-        [
-            True, False
-        ],
+        [True, False],
     )
-    def test_pk_null_and_string_length_exceeded(self, online_enabled, df, feature_group_data):
+    def test_pk_null_and_string_length_exceeded(
+        self, online_enabled, df, feature_group_data
+    ):
         # Arrange
         self._update_online_enabled(feature_group_data, online_enabled)
         modified_df = self._modify_row(df, 0, primary_key=None, string_col="a" * 1001)
@@ -320,7 +309,10 @@ class BaseDataFrameTest:
         assert "Primary key column primary_key contains null values" in msg
         # string_col error only expected when online is enabled
         if online_enabled:
-            assert "String length exceeded. Column string_col has string values longer than maximum column limit" in msg
+            assert (
+                "String length exceeded. Column string_col has string values longer than maximum column limit"
+                in msg
+            )
         else:
             assert "string_col" not in msg
 
@@ -438,7 +430,7 @@ class TestSparkDataframe(BaseDataFrameTest):
 
     def test_get_validator_spark(self, spark_df):
         # Arrange
-        
+
         # Act
         validator = DataFrameValidator.get_validator(spark_df)
 

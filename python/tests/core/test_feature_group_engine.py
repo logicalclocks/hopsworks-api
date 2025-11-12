@@ -163,7 +163,9 @@ class TestFeatureGroupEngine:
             (False, {"schema_validation": False}, False),
         ],
     )
-    def test_insert(self, online_enabled, validation_options, should_validate_schema, mocker):
+    def test_insert(
+        self, online_enabled, validation_options, should_validate_schema, mocker
+    ):
         # Arrange
         feature_store_id = 99
 
@@ -177,7 +179,9 @@ class TestFeatureGroupEngine:
         )
         mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
         mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
-        mock_validate_schema = mocker.patch("hsfs.core.schema_validation.DataFrameValidator.validate_schema")
+        mock_validate_schema = mocker.patch(
+            "hsfs.core.schema_validation.DataFrameValidator.validate_schema"
+        )
 
         fg_engine = feature_group_engine.FeatureGroupEngine(
             feature_store_id=feature_store_id
