@@ -449,9 +449,9 @@ class Engine:
     def _check_duplicate_records(self, dataframe, feature_group):
         """
         Check for duplicate records within primary_key and partition_key columns.
-        
+
         Raises FeatureStoreException if duplicates are found.
-        
+
         Parameters:
         -----------
         dataframe : pyspark.sql.DataFrame
@@ -461,45 +461,49 @@ class Engine:
         """
         # Get the key columns to check (primary_key + partition_key)
         key_columns = list(feature_group.primary_key)
-        
+
         if not key_columns:
             # No keys to check, skip validation
             return
-        
+
         if feature_group.partition_key:
             key_columns.extend(feature_group.partition_key)
-        
+
         # Verify all key columns exist in the dataset
         dataframe_columns = dataframe.columns
-        missing_columns = [col_name for col_name in key_columns if col_name not in dataframe_columns]
+        missing_columns = [
+            col_name for col_name in key_columns if col_name not in dataframe_columns
+        ]
         if missing_columns:
             raise FeatureStoreException(
                 f"Key columns {missing_columns} are missing from the dataset. "
                 f"Available columns: {dataframe_columns}"
             )
-        
+
         # Check for duplicates using Spark groupBy and count
         # Group by key columns and count occurrences
         grouped = dataframe.groupBy(*key_columns).agg(count("*").alias("count"))
-        
+
         # Filter groups with count > 1 (duplicates)
         duplicate_groups = grouped.filter(col("count") > 1)
-        
+
         # Count the number of duplicate groups
         duplicate_count = duplicate_groups.count()
-        
+
         if duplicate_count > 0:
             # Get total number of duplicate rows (sum of counts - 1 for each duplicate group)
             # Since count includes the first occurrence, duplicates = count - 1 per group
             duplicate_rows_data = duplicate_groups.select(
                 col("count").cast("long")
             ).collect()
-            total_duplicate_rows = sum(row["count"] for row in duplicate_rows_data) - duplicate_count
-            
+            total_duplicate_rows = (
+                sum(row["count"] for row in duplicate_rows_data) - duplicate_count
+            )
+
             # Get sample duplicate records for error message
             # Take first 10 duplicate groups and get their key values
             sample_groups = duplicate_groups.limit(10).collect()
-            
+
             # Build sample string showing the duplicate key combinations
             sample_rows = []
             for row in sample_groups:
@@ -508,12 +512,12 @@ class Engine:
                     row_dict[col_name] = row[col_name]
                 row_dict["count"] = row["count"]
                 sample_rows.append(str(row_dict))
-            
+
             sample_str = "\n".join(sample_rows)
-            
+
             raise FeatureStoreException(
-                delta_engine.DeltaEngine.DUPLICATE_RECORD_ERROR_MESSAGE +
-                f"Dataset contains {total_duplicate_rows} duplicate record(s) within "
+                delta_engine.DeltaEngine.DUPLICATE_RECORD_ERROR_MESSAGE
+                + f"Dataset contains {total_duplicate_rows} duplicate record(s) within "
                 f"primary_key ({feature_group.primary_key}) and "
                 f"partition_key ({feature_group.partition_key}). "
                 f"Found {duplicate_count} duplicate group(s). "
@@ -534,8 +538,10 @@ class Engine:
         try:
             if feature_group.time_travel_format == "DELTA":
                 self._check_duplicate_records(dataframe, feature_group)
-                _logger.debug("No duplicate records found. Proceeding with Delta write.")
-                
+                _logger.debug(
+                    "No duplicate records found. Proceeding with Delta write."
+                )
+
             if (
                 isinstance(feature_group, fg_mod.ExternalFeatureGroup)
                 and feature_group.online_enabled
