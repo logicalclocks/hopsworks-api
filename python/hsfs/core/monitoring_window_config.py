@@ -62,6 +62,7 @@ class WindowConfigType(str, Enum):
 
 
 class MonitoringWindowConfig:
+    # TODO: Add docstring
     DEFAULT_ROW_PERCENTAGE = 1.0
 
     def __init__(

@@ -261,6 +261,7 @@ class Feature:
 
     @property
     def feature_group_id(self) -> Optional[int]:
+        """ID of the feature group to which this feature belongs."""
         return self._feature_group_id
 
     @property
@@ -306,9 +307,11 @@ class Feature:
         return self.isin(other)
 
     def isin(self, other: Union[str, List[Any]]) -> "filter.Filter":
+        # TODO: Add docstring
         return filter.Filter(self, filter.Filter.IN, json.dumps(other))
 
     def like(self, other: Any) -> "filter.Filter":
+        # TODO: Add docstring
         return filter.Filter(self, filter.Filter.LK, other)
 
     def __str__(self) -> str:
