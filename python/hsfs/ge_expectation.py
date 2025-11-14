@@ -113,6 +113,7 @@ class GeExpectation:
 
     @uses_great_expectations
     def to_ge_type(self) -> great_expectations.core.ExpectationConfiguration:
+        """Convert to Great Expectations ExpectationConfiguration type."""
         return great_expectations.core.ExpectationConfiguration(
             expectation_type=self.expectation_type, kwargs=self.kwargs, meta=self.meta
         )

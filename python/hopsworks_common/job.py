@@ -131,10 +131,12 @@ class Job:
 
     @property
     def executions(self):
+        """List of executions for the job"""
         return self._executions
 
     @property
     def href(self):
+        # TODO: Add docstring
         return self._href
 
     @property
