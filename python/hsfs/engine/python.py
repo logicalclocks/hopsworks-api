@@ -967,7 +967,7 @@ class Engine:
 
     def _check_duplicate_records(self, dataset, feature_group_instance):
         """
-        Check for duplicate records within primary_key and partition_key columns.
+        Check for duplicate records within primary_key, event_time and partition_key columns.
 
         Raises FeatureStoreException if duplicates are found.
 
@@ -975,6 +975,8 @@ class Engine:
         -----------
         dataset : Union[pd.DataFrame, pl.DataFrame]
             The dataset to check for duplicates
+        feature_group_instance : FeatureGroup
+            The feature group instance containing primary_key, event_time and partition_key
         """
         # Get the key columns to check (primary_key + partition_key)
         key_columns = list(feature_group_instance.primary_key)
@@ -982,6 +984,9 @@ class Engine:
         if not key_columns:
             # No keys to check, skip validation
             return
+
+        if feature_group_instance.event_time:
+            key_columns.append(feature_group_instance.event_time)
 
         if feature_group_instance.partition_key:
             key_columns.extend(feature_group_instance.partition_key)
@@ -1036,7 +1041,7 @@ class Engine:
 
             raise FeatureStoreException(
                 delta_engine.DeltaEngine.DUPLICATE_RECORD_ERROR_MESSAGE
-                + f"Dataset contains {total_duplicate_rows} duplicate record(s) within "
+                + f"\nDataset contains {total_duplicate_rows} duplicate record(s) within "
                 f"primary_key ({feature_group_instance.primary_key}) and "
                 f"partition_key ({feature_group_instance.partition_key}). "
                 f"Found {duplicate_count} duplicate group(s). "
