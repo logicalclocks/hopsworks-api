@@ -598,7 +598,12 @@ class Engine:
         pass
 
     def register_delta_temporary_table(
-        self, delta_fg_alias, feature_store_id, feature_store_name, read_options
+        self,
+        delta_fg_alias,
+        feature_store_id,
+        feature_store_name,
+        read_options,
+        is_cdc_query=False,
     ):
         # No op to avoid query failure
         pass
@@ -964,7 +969,11 @@ class Engine:
                     None,
                     None,
                 )
-                delta_engine_instance.save_delta_fg(dataframe, {}, validation_id)
+                delta_engine_instance.save_delta_fg(
+                    dataframe,
+                    write_options=offline_write_options,
+                    validation_id=validation_id,
+                )
         else:
             # for backwards compatibility
             return self.legacy_save_dataframe(

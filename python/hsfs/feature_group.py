@@ -3280,6 +3280,8 @@ class FeatureGroup(FeatureGroupBase):
         group.
         If feature group's time travel format is `HUDI` then `operation` argument can be
         either `insert` or `upsert`.
+        For feature groups with time travel format `DELTA`, `delta.enableChangeDataFeed` option can be set in write_options. If
+        not set, it defaults to `true` for new feature groups.
 
         If feature group doesn't exist the insert method will create the necessary metadata the first time it is
         invoked and writes the specified `features` dataframe as feature group to the online/offline feature store.
@@ -3348,6 +3350,9 @@ class FeatureGroup(FeatureGroupBase):
                 [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
                   to configure the Hopsworks Job used to write data into the
                   feature group.
+                * key `delta.*` to pass Delta Lake specific write options, e.g
+                  `{"delta.enableChangeDataFeed": "true"}`. Note that these options only take
+                  strings as values.
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the insert call should return only
                   after the Hopsworks Job has finished. By default it waits.
@@ -3407,6 +3412,14 @@ class FeatureGroup(FeatureGroupBase):
             write_options["wait_for_online_ingestion"] = wait
         if not self._id and self._offline_backfill_every_hr is not None:
             write_options["offline_backfill_every_hr"] = self._offline_backfill_every_hr
+        if all(
+            [
+                not self._id,
+                self.time_travel_format == "DELTA",
+                write_options.get("delta.enableChangeDataFeed") != "false",
+            ]
+        ):
+            write_options["delta.enableChangeDataFeed"] = "true"
 
         job, ge_report = self._feature_group_engine.insert(
             self,
@@ -4121,9 +4134,9 @@ class FeatureGroup(FeatureGroupBase):
 
     def _is_time_travel_enabled(self) -> bool:
         """Whether time-travel is enabled or not"""
-        return (
-            self._time_travel_format is not None
-            and self._time_travel_format.upper() == "HUDI"
+        return self._time_travel_format is not None and (
+            self._time_travel_format.upper() == "HUDI"
+            or self._time_travel_format.upper() == "DELTA"
         )
 
     @property
