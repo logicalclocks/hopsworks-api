@@ -717,13 +717,12 @@ class DatasetApi:
     def read_content(self, path: str, dataset_type: str = "DATASET"):
         """Read the content of a file.
 
-        Parameters:
+        # Arguments
             path: The path to the file to read.
-            dataset_type:
-                The type of dataset, can be `DATASET` or `HIVEDB`; defaults to `DATASET`.
+            dataset_type: The type of dataset, can be `DATASET` or `HIVEDB`; defaults to `DATASET`.
                 `HIVEDB` type is used to read files from Apache Hive.
 
-        Returns:
+        # Returns
             An object with `content` attribute containing the file content as bytes, or `None` if the file was not found.
         """
         _client = client.get_instance()
