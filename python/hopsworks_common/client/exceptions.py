@@ -77,6 +77,10 @@ class UnknownSecretStorageError(Exception):
 
 class FeatureStoreException(Exception):
     """Generic feature store exception"""
+    DUPLICATE_RECORD_ERROR_MESSAGE = (
+        "Dataset contains duplicate records within primary_key, event_time and partition_key. "
+        "Please remove the duplicates and try again."
+    )
 
 
 class VectorDatabaseException(Exception):

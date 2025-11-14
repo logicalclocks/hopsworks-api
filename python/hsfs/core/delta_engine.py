@@ -282,6 +282,7 @@ class DeltaEngine:
         is_polars_df = False
         if HAS_POLARS:
             import polars as pl
+
             if isinstance(dataset, pl.DataFrame):
                 is_polars_df = True
                 _logger.debug("Converting DataFrame to Arrow Table for Delta write")
@@ -498,11 +499,27 @@ class DeltaEngine:
 
         # Depending on operation, set the relevant metrics
         if operation == "WRITE":
-            rows_inserted = operation_metrics.get("numOutputRows") or operation_metrics.get("num_added_rows") or 0
+            rows_inserted = (
+                operation_metrics.get("numOutputRows")
+                or operation_metrics.get("num_added_rows")
+                or 0
+            )
         elif operation == "MERGE":
-            rows_inserted = operation_metrics.get("numTargetRowsInserted") or operation_metrics.get("num_target_rows_inserted") or 0
-            rows_updated = operation_metrics.get("numTargetRowsUpdated") or operation_metrics.get("num_target_rows_updated") or 0
-            rows_deleted = operation_metrics.get("numTargetRowsDeleted") or operation_metrics.get("num_target_rows_deleted") or 0
+            rows_inserted = (
+                operation_metrics.get("numTargetRowsInserted")
+                or operation_metrics.get("num_target_rows_inserted")
+                or 0
+            )
+            rows_updated = (
+                operation_metrics.get("numTargetRowsUpdated")
+                or operation_metrics.get("num_target_rows_updated")
+                or 0
+            )
+            rows_deleted = (
+                operation_metrics.get("numTargetRowsDeleted")
+                or operation_metrics.get("num_target_rows_deleted")
+                or 0
+            )
 
         _logger.debug(
             f"Commit metrics {commit_timestamp} - inserted: {rows_inserted}, updated: {rows_updated}, deleted: {rows_deleted}"

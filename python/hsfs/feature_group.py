@@ -4123,7 +4123,7 @@ class FeatureGroup(FeatureGroupBase):
         """Whether time-travel is enabled or not"""
         return (
             self._time_travel_format is not None
-            and self._time_travel_format.upper() == "HUDI"
+            and self._time_travel_format.upper() != "NONE"
         )
 
     @property
