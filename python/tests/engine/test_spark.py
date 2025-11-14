@@ -1381,9 +1381,6 @@ class TestSpark:
         from datetime import datetime
 
         mocker.patch("hsfs.engine.get_type", return_value="spark")
-        mock_spark_engine_save_offline_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_offline_dataframe"
-        )
 
         spark_engine = spark.Engine()
 
