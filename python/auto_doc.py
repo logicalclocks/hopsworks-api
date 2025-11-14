@@ -24,6 +24,7 @@ EXCLUDE_METHODS = [
     "extract_fields_from_json",
     "from_json",
     "from_response_json",
+    "from_response_json_single",
     "json",
     "update_from_response_json",
     "to_dict",
@@ -223,7 +224,6 @@ PAGES = {
                 "append_features",
                 "compute_statistics",
                 "delete_expectation_suite",
-                "from_response_json",
                 "get_all_validation_reports",
                 "get_expectation_suite",
                 "get_latest_validation_report",
@@ -231,7 +231,6 @@ PAGES = {
                 "get_validation_history",
                 "save_expectation_suite",
                 "save_validation_report",
-                "update_from_response_json",
                 "update_statistics_config",
                 "validate",
             ]

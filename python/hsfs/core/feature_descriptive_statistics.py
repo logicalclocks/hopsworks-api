@@ -23,6 +23,7 @@ from hsfs import util
 
 
 class FeatureDescriptiveStatistics:
+    # TODO: Add docstring
     _SINGLE_VALUE_STATISTICS = [
         "count",
         "completeness",
@@ -211,6 +212,7 @@ class FeatureDescriptiveStatistics:
 
     @property
     def id(self) -> Optional[int]:
+        # TODO: Add docstring
         return self._id
 
     @property

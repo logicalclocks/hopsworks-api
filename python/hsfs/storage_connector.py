@@ -147,6 +147,7 @@ class StorageConnector(ABC):
         pass
 
     def prepare_spark(self, path: Optional[str] = None) -> Optional[str]:
+        # TODO: Add docstring
         return path
 
     def read(
