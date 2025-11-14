@@ -1255,6 +1255,177 @@ class TestSpark:
         assert mock_spark_engine_save_online_dataframe.call_count == 1
         assert mock_spark_engine_save_offline_dataframe.call_count == 0
 
+    def test_save_dataframe_delta_calls_check_duplicate_records(self, mocker):
+        # Arrange
+        mock_check_duplicate_records = mocker.patch(
+            "hsfs.engine.spark.Engine._check_duplicate_records"
+        )
+        mock_spark_engine_save_offline_dataframe = mocker.patch(
+            "hsfs.engine.spark.Engine._save_offline_dataframe"
+        )
+
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["pk1"],
+            partition_key=[],
+            id=10,
+            time_travel_format="DELTA",
+        )
+
+        mock_dataframe = mocker.Mock(spec=DataFrame)
+
+        # Act
+        spark_engine.save_dataframe(
+            feature_group=fg,
+            dataframe=mock_dataframe,
+            operation="insert",
+            online_enabled=False,
+            storage="offline",
+            offline_write_options=None,
+            online_write_options=None,
+            validation_id=None,
+        )
+
+        # Assert
+        assert mock_check_duplicate_records.call_count == 1
+        mock_check_duplicate_records.assert_called_once_with(mock_dataframe, fg)
+        assert mock_spark_engine_save_offline_dataframe.call_count == 1
+
+    def test_save_dataframe_non_delta_does_not_call_check_duplicate_records(
+        self, mocker
+    ):
+        # Arrange
+        mock_check_duplicate_records = mocker.patch(
+            "hsfs.engine.spark.Engine._check_duplicate_records"
+        )
+        mock_spark_engine_save_offline_dataframe = mocker.patch(
+            "hsfs.engine.spark.Engine._save_offline_dataframe"
+        )
+
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["pk1"],
+            partition_key=[],
+            id=10,
+            time_travel_format="HUDI",
+        )
+
+        mock_dataframe = mocker.Mock(spec=DataFrame)
+
+        # Act
+        spark_engine.save_dataframe(
+            feature_group=fg,
+            dataframe=mock_dataframe,
+            operation="insert",
+            online_enabled=False,
+            storage="offline",
+            offline_write_options=None,
+            online_write_options=None,
+            validation_id=None,
+        )
+
+        # Assert
+        assert mock_check_duplicate_records.call_count == 0
+        assert mock_spark_engine_save_offline_dataframe.call_count == 1
+
+    def test_save_dataframe_delta_duplicate_primary_key_should_fail(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mock_spark_engine_save_offline_dataframe = mocker.patch(
+            "hsfs.engine.spark.Engine._save_offline_dataframe"
+        )
+
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="dl_dup_pk",
+            version=1,
+            featurestore_id=99,
+            primary_key=["id"],
+            partition_key=[],
+            time_travel_format="DELTA",
+        )
+
+        # Create Spark DataFrame with duplicate primary keys
+        data = [
+            {"id": 1, "text": "a"},
+            {"id": 1, "text": "a_dup"},
+            {"id": 2, "text": "b"},
+        ]
+        df = spark_engine._spark_session.createDataFrame(data)
+
+        # Act & Assert
+        with pytest.raises(exceptions.FeatureStoreException) as exc_info:
+            spark_engine.save_dataframe(
+                feature_group=fg,
+                dataframe=df,
+                operation="insert",
+                online_enabled=True,
+                storage="offline",
+                offline_write_options={},
+                online_write_options={},
+                validation_id=None,
+            )
+
+        assert (
+            exceptions.FeatureStoreException.DUPLICATE_RECORD_ERROR_MESSAGE
+            in str(exc_info.value)
+        )
+
+    def test_save_dataframe_delta_duplicate_primary_key_partition_should_fail(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mock_spark_engine_save_offline_dataframe = mocker.patch(
+            "hsfs.engine.spark.Engine._save_offline_dataframe"
+        )
+
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="dl_dup_pk_part_same",
+            version=1,
+            featurestore_id=99,
+            primary_key=["id"],
+            partition_key=["p"],
+            time_travel_format="DELTA",
+        )
+
+        # Create Spark DataFrame with duplicate primary keys within the same partition
+        data = [
+            {"id": 1, "p": 0, "text": "a_p0"},
+            {"id": 1, "p": 0, "text": "a_p0_dup"},
+            {"id": 2, "p": 0, "text": "b_p0"},
+        ]
+        df = spark_engine._spark_session.createDataFrame(data)
+
+        # Act & Assert
+        with pytest.raises(exceptions.FeatureStoreException) as exc_info:
+            spark_engine.save_dataframe(
+                feature_group=fg,
+                dataframe=df,
+                operation="insert",
+                online_enabled=True,
+                storage="offline",
+                offline_write_options={},
+                online_write_options={},
+                validation_id=None,
+            )
+
+        assert (
+            exceptions.FeatureStoreException.DUPLICATE_RECORD_ERROR_MESSAGE
+            in str(exc_info.value)
+        )
+
     def test_save_stream_dataframe(self, mocker, backend_fixtures):
         # Arrange
         mock_common_client_get_instance = mocker.patch(

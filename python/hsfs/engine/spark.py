@@ -519,7 +519,7 @@ class Engine:
             sample_str = "\n".join(sample_rows)
 
             raise FeatureStoreException(
-                delta_engine.DeltaEngine.DUPLICATE_RECORD_ERROR_MESSAGE
+                FeatureStoreException.DUPLICATE_RECORD_ERROR_MESSAGE
                 + f"\nDataset contains {total_duplicate_rows} duplicate record(s) within "
                 f"primary_key ({feature_group.primary_key}) and "
                 f"partition_key ({feature_group.partition_key}). "

@@ -37,10 +37,6 @@ _logger = logging.getLogger(__name__)
 class DeltaEngine:
     DELTA_SPARK_FORMAT = "delta"
     DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT = "timestampAsOf"
-    DUPLICATE_RECORD_ERROR_MESSAGE = (
-        "Dataset contains duplicate records within primary_key, event_time and partition_key. "
-        "Please remove the duplicates and try again."
-    )
 
     def __init__(
         self,
