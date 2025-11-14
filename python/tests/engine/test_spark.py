@@ -1426,6 +1426,133 @@ class TestSpark:
             in str(exc_info.value)
         )
 
+    def test_save_dataframe_delta_duplicate_primary_key_partition_across_should_succeed(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mock_spark_engine_save_offline_dataframe = mocker.patch(
+            "hsfs.engine.spark.Engine._save_offline_dataframe"
+        )
+
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="dl_dup_pk_part_across",
+            version=1,
+            featurestore_id=99,
+            primary_key=["id"],
+            partition_key=["p"],
+            time_travel_format="DELTA",
+        )
+
+        # Create Spark DataFrame with duplicate primary keys across different partitions
+        data = [
+            {"id": 1, "p": 0, "text": "a_p0"},
+            {"id": 1, "p": 1, "text": "a_p1"},
+            {"id": 2, "p": 0, "text": "b_p0"},
+        ]
+        df = spark_engine._spark_session.createDataFrame(data)
+
+        # Act - should not raise exception since duplicates are in different partitions
+        spark_engine.save_dataframe(
+            feature_group=fg,
+            dataframe=df,
+            operation="insert",
+            online_enabled=True,
+            storage="offline",
+            offline_write_options={},
+            online_write_options={},
+            validation_id=None,
+        )
+
+        # Assert - no exception should be raised, and save should be called
+        assert mock_spark_engine_save_offline_dataframe.call_count == 1
+
+    def test_save_dataframe_delta_duplicate_no_pk_partition_only_should_succeed(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mock_spark_engine_save_offline_dataframe = mocker.patch(
+            "hsfs.engine.spark.Engine._save_offline_dataframe"
+        )
+
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="dl_dup_no_pk_partition_only",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=["p"],
+            time_travel_format="DELTA",
+        )
+
+        # Create Spark DataFrame with duplicates but no primary key
+        data = [
+            {"id": 1, "p": 0, "text": "a_p0"},
+            {"id": 1, "p": 1, "text": "a_p1"},
+            {"id": 2, "p": 0, "text": "b_p0"},
+        ]
+        df = spark_engine._spark_session.createDataFrame(data)
+
+        # Act - should not raise exception since there's no primary key
+        spark_engine.save_dataframe(
+            feature_group=fg,
+            dataframe=df,
+            operation="insert",
+            online_enabled=True,
+            storage="offline",
+            offline_write_options={},
+            online_write_options={},
+            validation_id=None,
+        )
+
+        # Assert - no exception should be raised, and save should be called
+        assert mock_spark_engine_save_offline_dataframe.call_count == 1
+
+    def test_save_dataframe_delta_duplicate_no_pk_should_succeed(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mock_spark_engine_save_offline_dataframe = mocker.patch(
+            "hsfs.engine.spark.Engine._save_offline_dataframe"
+        )
+
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="dl_dup_no_pk",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            time_travel_format="DELTA",
+        )
+
+        # Create Spark DataFrame with duplicates but no primary key
+        data = [
+            {"id": 1, "text": "a"},
+            {"id": 1, "text": "a_dup"},
+            {"id": 2, "text": "b"},
+        ]
+        df = spark_engine._spark_session.createDataFrame(data)
+
+        # Act - should not raise exception since there's no primary key
+        spark_engine.save_dataframe(
+            feature_group=fg,
+            dataframe=df,
+            operation="insert",
+            online_enabled=True,
+            storage="offline",
+            offline_write_options={},
+            online_write_options={},
+            validation_id=None,
+        )
+
+        # Assert - no exception should be raised, and save should be called
+        assert mock_spark_engine_save_offline_dataframe.call_count == 1
+
     def test_save_stream_dataframe(self, mocker, backend_fixtures):
         # Arrange
         mock_common_client_get_instance = mocker.patch(
