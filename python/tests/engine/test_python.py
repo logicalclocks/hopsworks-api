@@ -1914,7 +1914,43 @@ class TestPython:
         # Assert
         assert mock_check_duplicate_records.call_count == 0
 
-    def test_save_dataframe_delta_duplicate_primary_key_should_fail(self, mocker):
+    @pytest.mark.parametrize(
+        "test_name,primary_key,partition_key,event_time,data_dict",
+        [
+            (
+                "duplicate_primary_key",
+                ["id"],
+                [],
+                None,
+                {"id": [1, 1, 2], "text": ["a", "a_dup", "b"]},
+            ),
+            (
+                "duplicate_primary_key_partition",
+                ["id"],
+                ["p"],
+                None,
+                {"id": [1, 1, 2], "p": [0, 0, 0], "text": ["a_p0", "a_p0_dup", "b_p0"]},
+            ),
+            (
+                "duplicate_primary_key_event_time",
+                ["id"],
+                [],
+                "event_time",
+                {
+                    "id": [1, 1, 2],
+                    "event_time": [
+                        pd.Timestamp("2024-01-01"),
+                        pd.Timestamp("2024-01-01"),
+                        pd.Timestamp("2024-01-02"),
+                    ],
+                    "text": ["a_t1", "a_t1_dup", "b_t2"],
+                },
+            ),
+        ],
+    )
+    def test_save_dataframe_delta_duplicate_should_fail(
+        self, mocker, test_name, primary_key, partition_key, event_time, data_dict
+    ):
         # Arrange
         mocker.patch("hsfs.core.delta_engine.DeltaEngine")
         mocker.patch("hsfs.engine.get_type", return_value="python")
@@ -1934,17 +1970,17 @@ class TestPython:
         python_engine = python.Engine()
 
         fg = feature_group.FeatureGroup(
-            name="dl_dup_pk",
+            name=f"dl_dup_{test_name}",
             version=1,
             featurestore_id=99,
-            primary_key=["id"],
-            partition_key=[],
+            primary_key=primary_key,
+            partition_key=partition_key,
+            event_time=event_time,
             stream=False,
             time_travel_format="DELTA",
         )
 
-        # Create dataframe with duplicate primary keys
-        df = pd.DataFrame({"id": [1, 1, 2], "text": ["a", "a_dup", "b"]})
+        df = pd.DataFrame(data_dict)
 
         # Act & Assert
         with pytest.raises(exceptions.FeatureStoreException) as exc_info:
@@ -1964,8 +2000,71 @@ class TestPython:
             in str(exc_info.value)
         )
 
-    def test_save_dataframe_delta_duplicate_primary_key_partition_should_fail(
-        self, mocker
+    @pytest.mark.parametrize(
+        "test_name,primary_key,partition_key,event_time,data_dict",
+        [
+            (
+                "pk_partition_across",
+                ["id"],
+                ["p"],
+                None,
+                {"id": [1, 1, 2], "p": [0, 1, 0], "text": ["a_p0", "a_p1", "b_p0"]},
+            ),
+            (
+                "pk_event_time_across",
+                ["id"],
+                [],
+                "event_time",
+                {
+                    "id": [1, 1, 2],
+                    "event_time": [
+                        pd.Timestamp("2024-01-01"),
+                        pd.Timestamp("2024-01-02"),
+                        pd.Timestamp("2024-01-01"),
+                    ],
+                    "text": ["a_t1", "a_t2", "b_t1"],
+                },
+            ),
+            (
+                "pk_with_no_duplicate",
+                ["id"],
+                [],
+                None,
+                {"id": [1, 2, 3], "text": ["a", "b", "c"]},
+            ),
+            (
+                "no_pk_partition_only",
+                [],
+                ["p"],
+                None,
+                {"id": [1, 1, 2], "p": [0, 1, 0], "text": ["a_p0", "a_p1", "b_p0"]},
+            ),
+            (
+                "no_pk_event_time_only",
+                [],
+                [],
+                "event_time",
+                {
+                    "id": [1, 1, 2],
+                    "event_time": [
+                        pd.Timestamp("2024-01-01"),
+                        pd.Timestamp("2024-01-02"),
+                        pd.Timestamp("2024-01-01"),
+                    ],
+                    "text": ["a_t1", "a_t2", "b_t1"],
+                },
+            ),
+            (
+                "no_pk",
+                [],
+                [],
+                None,
+                {"id": [1, 1, 2], "text": ["a", "a_dup", "b"]},
+            ),
+        ],
+    )
+    def test_save_dataframe_delta_duplicate_should_succeed(
+        self, mocker, test_name, primary_key, partition_key, event_time, data_dict
     ):
         # Arrange
         mocker.patch("hsfs.core.delta_engine.DeltaEngine")
@@ -1986,183 +2085,19 @@ class TestPython:
         python_engine = python.Engine()
 
         fg = feature_group.FeatureGroup(
-            name="dl_dup_pk_part_same",
+            name=f"dl_dup_{test_name}",
             version=1,
             featurestore_id=99,
-            primary_key=["id"],
-            partition_key=["p"],
+            primary_key=primary_key,
+            partition_key=partition_key,
+            event_time=event_time,
             stream=False,
             time_travel_format="DELTA",
         )
 
-        # Create dataframe with duplicate primary keys within the same partition
-        df = pd.DataFrame(
-            {
-                "id": [1, 1, 2],
-                "p": [0, 0, 0],
-                "text": ["a_p0", "a_p0_dup", "b_p0"],
-            }
-        )
+        df = pd.DataFrame(data_dict)
 
-        # Act & Assert
-        with pytest.raises(exceptions.FeatureStoreException) as exc_info:
-            python_engine.save_dataframe(
-                feature_group=fg,
-                dataframe=df,
-                operation="insert",
-                online_enabled=True,
-                storage="offline",
-                offline_write_options={},
-                online_write_options={},
-                validation_id=None,
-            )
-
-        assert (
-            exceptions.FeatureStoreException.DUPLICATE_RECORD_ERROR_MESSAGE
-            in str(exc_info.value)
-        )
-
-    def test_save_dataframe_delta_duplicate_primary_key_partition_across_should_succeed(
-        self, mocker
-    ):
-        # Arrange
-        mocker.patch("hsfs.core.delta_engine.DeltaEngine")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
-        mocker.patch(
-            "hsfs.engine.python.Engine.convert_to_default_dataframe",
-            side_effect=lambda x: x,
-        )
-        mocker.patch(
-            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_feature_group_metadata"
-        )
-        mocker.patch(
-            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
-        )
-        mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
-        mocker.patch("hsfs.engine.python.Engine._write_dataframe_kafka")
-
-        python_engine = python.Engine()
-
-        fg = feature_group.FeatureGroup(
-            name="dl_dup_pk_part_across",
-            version=1,
-            featurestore_id=99,
-            primary_key=["id"],
-            partition_key=["p"],
-            stream=False,
-            time_travel_format="DELTA",
-        )
-
-        # Create dataframe with duplicate primary keys across different partitions
-        df = pd.DataFrame(
-            {
-                "id": [1, 1, 2],
-                "p": [0, 1, 0],
-                "text": ["a_p0", "a_p1", "b_p0"],
-            }
-        )
-
-        # Act - should not raise exception since duplicates are in different partitions
-        python_engine.save_dataframe(
-            feature_group=fg,
-            dataframe=df,
-            operation="insert",
-            online_enabled=True,
-            storage="offline",
-            offline_write_options={},
-            online_write_options={},
-            validation_id=None,
-        )
-
-        # Assert - no exception should be raised
-
-    def test_save_dataframe_delta_duplicate_no_pk_partition_only_should_succeed(
-        self, mocker
-    ):
-        # Arrange
-        mocker.patch("hsfs.core.delta_engine.DeltaEngine")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
-        mocker.patch(
-            "hsfs.engine.python.Engine.convert_to_default_dataframe",
-            side_effect=lambda x: x,
-        )
-        mocker.patch(
-            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_feature_group_metadata"
-        )
-        mocker.patch(
-            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
-        )
-        mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
-        mocker.patch("hsfs.engine.python.Engine._write_dataframe_kafka")
-
-        python_engine = python.Engine()
-
-        fg = feature_group.FeatureGroup(
-            name="dl_dup_no_pk_partition_only",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=["p"],
-            stream=False,
-            time_travel_format="DELTA",
-        )
-
-        # Create dataframe with duplicates but no primary key
-        df = pd.DataFrame(
-            {
-                "id": [1, 1, 2],
-                "p": [0, 1, 0],
-                "text": ["a_p0", "a_p1", "b_p0"],
-            }
-        )
-
-        # Act - should not raise exception since there's no primary key
-        python_engine.save_dataframe(
-            feature_group=fg,
-            dataframe=df,
-            operation="insert",
-            online_enabled=True,
-            storage="offline",
-            offline_write_options={},
-            online_write_options={},
-            validation_id=None,
-        )
-
-        # Assert - no exception should be raised
-
-    def test_save_dataframe_delta_duplicate_no_pk_should_succeed(self, mocker):
-        # Arrange
-        mocker.patch("hsfs.core.delta_engine.DeltaEngine")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
-        mocker.patch(
-            "hsfs.engine.python.Engine.convert_to_default_dataframe",
-            side_effect=lambda x: x,
-        )
-        mocker.patch(
-            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_feature_group_metadata"
-        )
-        mocker.patch(
-            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
-        )
-        mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
-        mocker.patch("hsfs.engine.python.Engine._write_dataframe_kafka")
-
-        python_engine = python.Engine()
-
-        fg = feature_group.FeatureGroup(
-            name="dl_dup_no_pk",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            stream=False,
-            time_travel_format="DELTA",
-        )
-
-        # Create dataframe with duplicates but no primary key
-        df = pd.DataFrame({"id": [1, 1, 2], "text": ["a", "a_dup", "b"]})
-
-        # Act - should not raise exception since there's no primary key
+        # Act - should not raise exception
         python_engine.save_dataframe(
             feature_group=fg,
             dataframe=df,

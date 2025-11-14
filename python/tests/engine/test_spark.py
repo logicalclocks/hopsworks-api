@@ -1336,8 +1336,50 @@ class TestSpark:
         assert mock_check_duplicate_records.call_count == 0
         assert mock_spark_engine_save_offline_dataframe.call_count == 1
 
-    def test_save_dataframe_delta_duplicate_primary_key_should_fail(self, mocker):
+    @pytest.mark.parametrize(
+        "test_name,primary_key,partition_key,event_time,data",
+        [
+            (
+                "duplicate_primary_key",
+                ["id"],
+                [],
+                None,
+                [
+                    {"id": 1, "text": "a"},
+                    {"id": 1, "text": "a_dup"},
+                    {"id": 2, "text": "b"},
+                ],
+            ),
+            (
+                "duplicate_primary_key_partition",
+                ["id"],
+                ["p"],
+                None,
+                [
+                    {"id": 1, "p": 0, "text": "a_p0"},
+                    {"id": 1, "p": 0, "text": "a_p0_dup"},
+                    {"id": 2, "p": 0, "text": "b_p0"},
+                ],
+            ),
+            (
+                "duplicate_primary_key_event_time",
+                ["id"],
+                [],
+                "event_time",
+                [
+                    {"id": 1, "event_time": "2024-01-01", "text": "a_t1"},
+                    {"id": 1, "event_time": "2024-01-01", "text": "a_t1_dup"},
+                    {"id": 2, "event_time": "2024-01-02", "text": "b_t2"},
+                ],
+            ),
+        ],
+    )
+    def test_save_dataframe_delta_duplicate_should_fail(
+        self, mocker, test_name, primary_key, partition_key, event_time, data
+    ):
         # Arrange
+        from datetime import datetime
+
         mocker.patch("hsfs.engine.get_type", return_value="spark")
         mock_spark_engine_save_offline_dataframe = mocker.patch(
             "hsfs.engine.spark.Engine._save_offline_dataframe"
@@ -1346,20 +1388,21 @@ class TestSpark:
         spark_engine = spark.Engine()
 
         fg = feature_group.FeatureGroup(
-            name="dl_dup_pk",
+            name=f"dl_dup_{test_name}",
             version=1,
             featurestore_id=99,
-            primary_key=["id"],
-            partition_key=[],
+            primary_key=primary_key,
+            partition_key=partition_key,
+            event_time=event_time,
             time_travel_format="DELTA",
         )
 
-        # Create Spark DataFrame with duplicate primary keys
-        data = [
-            {"id": 1, "text": "a"},
-            {"id": 1, "text": "a_dup"},
-            {"id": 2, "text": "b"},
-        ]
+        # Convert event_time strings to datetime if needed
+        if event_time and any(isinstance(row.get(event_time), str) for row in data):
+            for row in data:
+                if event_time in row and isinstance(row[event_time], str):
+                    row[event_time] = datetime.fromisoformat(row[event_time])
+
         df = spark_engine._spark_session.createDataFrame(data)
 
         # Act & Assert
@@ -1380,8 +1423,79 @@ class TestSpark:
             in str(exc_info.value)
         )
 
-    def test_save_dataframe_delta_duplicate_primary_key_partition_should_fail(
-        self, mocker
+    @pytest.mark.parametrize(
+        "test_name,primary_key,partition_key,event_time,data_factory",
+        [
+            (
+                "pk_partition_across",
+                ["id"],
+                ["p"],
+                None,
+                lambda dt: [
+                    {"id": 1, "p": 0, "text": "a_p0"},
+                    {"id": 1, "p": 1, "text": "a_p1"},
+                    {"id": 2, "p": 0, "text": "b_p0"},
+                ],
+            ),
+            (
+                "pk_event_time_across",
+                ["id"],
+                [],
+                "event_time",
+                lambda dt: [
+                    {"id": 1, "event_time": dt.datetime(2024, 1, 1), "text": "a_t1"},
+                    {"id": 1, "event_time": dt.datetime(2024, 1, 2), "text": "a_t2"},
+                    {"id": 2, "event_time": dt.datetime(2024, 1, 1), "text": "b_t1"},
+                ],
+            ),
+            (
+                "pk_with_no_duplicate",
+                ["id"],
+                [],
+                None,
+                lambda dt: [
+                    {"id": 1, "text": "a"},
+                    {"id": 2, "text": "b"},
+                    {"id": 3, "text": "c"},
+                ],
+            ),
+            (
+                "no_pk_partition_only",
+                [],
+                ["p"],
+                None,
+                lambda dt: [
+                    {"id": 1, "p": 0, "text": "a_p0"},
+                    {"id": 1, "p": 1, "text": "a_p1"},
+                    {"id": 2, "p": 0, "text": "b_p0"},
+                ],
+            ),
+            (
+                "no_pk_event_time_only",
+                [],
+                [],
+                "event_time",
+                lambda dt: [
+                    {"id": 1, "event_time": dt.datetime(2024, 1, 1), "text": "a_t1"},
+                    {"id": 1, "event_time": dt.datetime(2024, 1, 2), "text": "a_t2"},
+                    {"id": 2, "event_time": dt.datetime(2024, 1, 1), "text": "b_t1"},
+                ],
+            ),
+            (
+                "no_pk",
+                [],
+                [],
+                None,
+                lambda dt: [
+                    {"id": 1, "text": "a"},
+                    {"id": 1, "text": "a_dup"},
+                    {"id": 2, "text": "b"},
+                ],
+            ),
+        ],
+    )
+    def test_save_dataframe_delta_duplicate_should_succeed(
+        self, mocker, test_name, primary_key, partition_key, event_time, data_factory
     ):
         # Arrange
         mocker.patch("hsfs.engine.get_type", return_value="spark")
@@ -1392,153 +1506,19 @@ class TestSpark:
         spark_engine = spark.Engine()
 
         fg = feature_group.FeatureGroup(
-            name="dl_dup_pk_part_same",
+            name=f"dl_dup_{test_name}",
             version=1,
             featurestore_id=99,
-            primary_key=["id"],
-            partition_key=["p"],
+            primary_key=primary_key,
+            partition_key=partition_key,
+            event_time=event_time,
             time_travel_format="DELTA",
         )
 
-        # Create Spark DataFrame with duplicate primary keys within the same partition
-        data = [
-            {"id": 1, "p": 0, "text": "a_p0"},
-            {"id": 1, "p": 0, "text": "a_p0_dup"},
-            {"id": 2, "p": 0, "text": "b_p0"},
-        ]
+        data = data_factory(datetime)
         df = spark_engine._spark_session.createDataFrame(data)
 
-        # Act & Assert
-        with pytest.raises(exceptions.FeatureStoreException) as exc_info:
-            spark_engine.save_dataframe(
-                feature_group=fg,
-                dataframe=df,
-                operation="insert",
-                online_enabled=True,
-                storage="offline",
-                offline_write_options={},
-                online_write_options={},
-                validation_id=None,
-            )
-
-        assert (
-            exceptions.FeatureStoreException.DUPLICATE_RECORD_ERROR_MESSAGE
-            in str(exc_info.value)
-        )
-
-    def test_save_dataframe_delta_duplicate_primary_key_partition_across_should_succeed(
-        self, mocker
-    ):
-        # Arrange
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
-        mock_spark_engine_save_offline_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_offline_dataframe"
-        )
-
-        spark_engine = spark.Engine()
-
-        fg = feature_group.FeatureGroup(
-            name="dl_dup_pk_part_across",
-            version=1,
-            featurestore_id=99,
-            primary_key=["id"],
-            partition_key=["p"],
-            time_travel_format="DELTA",
-        )
-
-        # Create Spark DataFrame with duplicate primary keys across different partitions
-        data = [
-            {"id": 1, "p": 0, "text": "a_p0"},
-            {"id": 1, "p": 1, "text": "a_p1"},
-            {"id": 2, "p": 0, "text": "b_p0"},
-        ]
-        df = spark_engine._spark_session.createDataFrame(data)
-
-        # Act - should not raise exception since duplicates are in different partitions
-        spark_engine.save_dataframe(
-            feature_group=fg,
-            dataframe=df,
-            operation="insert",
-            online_enabled=True,
-            storage="offline",
-            offline_write_options={},
-            online_write_options={},
-            validation_id=None,
-        )
-
-        # Assert - no exception should be raised, and save should be called
-        assert mock_spark_engine_save_offline_dataframe.call_count == 1
-
-    def test_save_dataframe_delta_duplicate_no_pk_partition_only_should_succeed(
-        self, mocker
-    ):
-        # Arrange
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
-        mock_spark_engine_save_offline_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_offline_dataframe"
-        )
-
-        spark_engine = spark.Engine()
-
-        fg = feature_group.FeatureGroup(
-            name="dl_dup_no_pk_partition_only",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=["p"],
-            time_travel_format="DELTA",
-        )
-
-        # Create Spark DataFrame with duplicates but no primary key
-        data = [
-            {"id": 1, "p": 0, "text": "a_p0"},
-            {"id": 1, "p": 1, "text": "a_p1"},
-            {"id": 2, "p": 0, "text": "b_p0"},
-        ]
-        df = spark_engine._spark_session.createDataFrame(data)
-
-        # Act - should not raise exception since there's no primary key
-        spark_engine.save_dataframe(
-            feature_group=fg,
-            dataframe=df,
-            operation="insert",
-            online_enabled=True,
-            storage="offline",
-            offline_write_options={},
-            online_write_options={},
-            validation_id=None,
-        )
-
-        # Assert - no exception should be raised, and save should be called
-        assert mock_spark_engine_save_offline_dataframe.call_count == 1
-
-    def test_save_dataframe_delta_duplicate_no_pk_should_succeed(self, mocker):
-        # Arrange
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
-        mock_spark_engine_save_offline_dataframe = mocker.patch(
-            "hsfs.engine.spark.Engine._save_offline_dataframe"
-        )
-
-        spark_engine = spark.Engine()
-
-        fg = feature_group.FeatureGroup(
-            name="dl_dup_no_pk",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            partition_key=[],
-            time_travel_format="DELTA",
-        )
-
-        # Create Spark DataFrame with duplicates but no primary key
-        data = [
-            {"id": 1, "text": "a"},
-            {"id": 1, "text": "a_dup"},
-            {"id": 2, "text": "b"},
-        ]
-        df = spark_engine._spark_session.createDataFrame(data)
-
-        # Act - should not raise exception since there's no primary key
+        # Act - should not raise exception
         spark_engine.save_dataframe(
             feature_group=fg,
             dataframe=df,
