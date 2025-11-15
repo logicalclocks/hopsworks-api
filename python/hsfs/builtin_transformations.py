@@ -325,56 +325,63 @@ def rank_normalizer(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
     return pd.Series(result, index=feature.index)
 
 
-@udf(float, drop=["feature"], mode="pandas")
+@udf(float, mode="pandas")
 def winsorize(
     feature: pd.Series, statistics=feature_statistics, context: dict | None = None
 ) -> pd.Series:
     """
     Winsorization (clipping) to limit extreme values and reduce outlier influence.
 
-    By default, clips values to the [1st, 99th] percentiles computed on the
-    training data. You can override thresholds by passing a context with
-    keys `p_low` and `p_high` (percentile values in [0, 100]).
+    Row-size preserving: outliers are replaced with percentile boundary
+    values instead of removing rows.
 
-    Example to clip at [5th, 95th]:
-        tf = winsorize("feature")
-        tf.hopsworks_udf.transformation_context = {"p_low": 5, "p_high": 95}
+    Defaults to [1st, 99th] percentiles unless overridden via context:
+      {"p_low": 5, "p_high": 95}
     """
     numerical_feature = feature.astype("float64")
     percentiles = statistics.feature.percentiles
 
-    # Defaults: 1st and 99th percentiles
+    print("1")
+    # Defaults: 1 and 99 percentiles
     p_low = 1
     p_high = 99
     if isinstance(context, dict):
         p_low = context.get("p_low", p_low)
         p_high = context.get("p_high", p_high)
 
-    # Convert percentile values to array indices
-    # Since percentiles[i] = i-th percentile, we use the value directly as index
+    print("2")
     try:
         li = int(round(float(p_low)))
         ui = int(round(float(p_high)))
     except Exception:
-        li, ui = 1, 99  # Default fallback
+        li, ui = 1, 99
 
-    # Ensure indices are within valid range [0, len(percentiles)-1]
+    print("3")
+    # Bound indices
     max_idx = len(percentiles) - 1
     li = max(0, min(max_idx, li))
     ui = max(0, min(max_idx, ui))
 
-    # Ensure lower index < upper index
+    print("4")
+
+    # Ensure li < ui
     if li >= ui:
         li, ui = 1, min(99, max_idx)
 
     lower = percentiles[li]
     upper = percentiles[ui]
 
-    # Ensure proper ordering and finiteness
+    print("5")
+    # Invalid bounds → return unchanged
     if pd.isna(lower) or pd.isna(upper) or lower > upper:
-        return numerical_feature  # no-op if invalid thresholds
+        return numerical_feature
 
-    clipped = numerical_feature.clip(lower=lower, upper=upper)
+    print("6")
+    # Winsorize (no rows dropped)
+    clipped = numerical_feature.where(numerical_feature >= lower, lower).where(
+        numerical_feature <= upper, upper
+    )
+
     return pd.Series(clipped, index=feature.index)
 
 

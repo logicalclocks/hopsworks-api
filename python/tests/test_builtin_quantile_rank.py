@@ -16,6 +16,7 @@
 
 import pandas as pd
 import pytest
+from hsfs import engine as hopsworks_engine
 from hsfs import transformation_function
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hsfs.engine import python as python_engine
@@ -47,6 +48,7 @@ def test_quantile_transformer():
     ]
 
     engine = python_engine.Engine()
+    hopsworks_engine.set_instance(engine=engine, engine_type="python")
 
     # Act
     result = engine._apply_transformation_function([tf], df)
@@ -85,6 +87,7 @@ def test_rank_normalizer():
     ]
 
     engine = python_engine.Engine()
+    hopsworks_engine.set_instance(engine=engine, engine_type="python")
 
     # Act
     result = engine._apply_transformation_function([tf], df)
@@ -123,6 +126,7 @@ def test_quantile_transformer_handles_nan():
     ]
 
     engine = python_engine.Engine()
+    hopsworks_engine.set_instance(engine=engine, engine_type="python")
 
     # Act
     result = engine._apply_transformation_function([tf], df)
