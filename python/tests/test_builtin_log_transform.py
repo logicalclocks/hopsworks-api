@@ -17,6 +17,7 @@
 import math
 
 import pandas as pd
+from hsfs import engine as hopsworks_engine
 from hsfs import transformation_function
 from hsfs.engine import python as python_engine
 from hsfs.transformation_function import TransformationType
@@ -40,6 +41,7 @@ def test_log_transform_python_engine():
     )
 
     engine = python_engine.Engine()
+    hopsworks_engine.set_instance(engine=engine, engine_type="python")
 
     # Act
     result = engine._apply_transformation_function([tf], df)
@@ -50,6 +52,7 @@ def test_log_transform_python_engine():
         "log_transform_col_0_",
     ]
     expected = pd.Series([0.0, math.log(2.0), math.nan, math.nan, math.nan])
+    expected.name = "log_transform_col_0_"
     pd.testing.assert_series_equal(
         result["log_transform_col_0_"], expected, check_names=True, check_dtype=False
     )
