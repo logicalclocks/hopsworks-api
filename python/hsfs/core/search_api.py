@@ -14,11 +14,11 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.core.search_api_v2 import (
-    SearchApiV2,
+from hopsworks_common.core.search_api import (
+    SearchApi,
 )
 
 
 __all__ = [
-    "SearchApiV2",
+    "SearchApi",
 ]

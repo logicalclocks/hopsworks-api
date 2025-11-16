@@ -42,7 +42,7 @@ from hsfs.core import (
     feature_group_api,
     feature_group_engine,
     feature_view_engine,
-    search_api_v2,
+    search_api,
     storage_connector_api,
     training_dataset_api,
     transformation_function_engine,
@@ -117,8 +117,8 @@ class FeatureStore:
         self._feature_view_engine: feature_view_engine.FeatureViewEngine = (
             feature_view_engine.FeatureViewEngine(self._id)
         )
-        self._search_api_v2: search_api_v2.SearchApiV2 = (
-            search_api_v2.SearchApiV2()
+        self._search_api: search_api.SearchApi = (
+            search_api.SearchApi()
         )
 
     @classmethod
@@ -1987,11 +1987,11 @@ class FeatureStore:
             self,
             search_term: str = None,
             keyword_filter: Optional[Union[str, List[str]]] = None,
-            tag_filter: Optional[Union[Dict[str, str], List[Union[Dict[str, str], search_api_v2.TagSearchFilter]]]] = None,
+            tag_filter: Optional[Union[Dict[str, str], List[Union[Dict[str, str], search_api.TagSearchFilter]]]] = None,
             offset: int = 0,
             limit: int = 100,
             global_search: bool = False,
-    ) -> search_api_v2.FeaturestoreSearchResult:
+    ) -> search_api.FeaturestoreSearchResult:
         """
        Search for feature groups, feature views, training datasets and features.
 
@@ -2049,7 +2049,7 @@ class FeatureStore:
        )
 
        # Search with TagSearchFilter objects
-       from hopsworks_common.search_api_v2 import TagSearchFilter
+       from hopsworks_common.core.search_api import TagSearchFilter
        tags = [
            TagSearchFilter(name="tag1", key="environment", value="production"),
            TagSearchFilter(name="tag2", key="version", value="v1.0")
@@ -2064,14 +2064,14 @@ class FeatureStore:
        )
 ```
        """
-        return self._search_api_v2.featurestore(search_term=search_term, tag_filter=tag_filter, keyword_filter=keyword_filter, offset=offset, limit=limit, global_search=global_search)
+        return self._search_api.featurestore(search_term=search_term, tag_filter=tag_filter, keyword_filter=keyword_filter, offset=offset, limit=limit, global_search=global_search)
 
     @usage.method_logger
     def search_feature_groups(
             self,
             search_term: str = None,
             keyword_filter: Optional[Union[str, List[str]]] = None,
-            tag_filter: Optional[Union[Dict[str, str], List[Union[Dict[str, str], search_api_v2.TagSearchFilter]]]] = None,
+            tag_filter: Optional[Union[Dict[str, str], List[Union[Dict[str, str], search_api.TagSearchFilter]]]] = None,
             offset: int = 0,
             limit: int = 100,
             global_search: bool = False,
@@ -2109,14 +2109,14 @@ class FeatureStore:
             fg = fg_meta.get()
 ```
         """
-        return self._search_api_v2.feature_groups(search_term=search_term, tag_filter=tag_filter, keyword_filter=keyword_filter, offset=offset, limit=limit, global_search=global_search)
+        return self._search_api.feature_groups(search_term=search_term, tag_filter=tag_filter, keyword_filter=keyword_filter, offset=offset, limit=limit, global_search=global_search)
 
     @usage.method_logger
     def search_feature_views(
             self,
             search_term: str = None,
             keyword_filter: Optional[Union[str, List[str]]] = None,
-            tag_filter: Optional[Union[Dict[str, str], List[Union[Dict[str, str], search_api_v2.TagSearchFilter]]]] = None,
+            tag_filter: Optional[Union[Dict[str, str], List[Union[Dict[str, str], search_api.TagSearchFilter]]]] = None,
             offset: int = 0,
             limit: int = 100,
             global_search: bool = False,
@@ -2154,14 +2154,14 @@ class FeatureStore:
             fv = fv_meta.get()
 ```
         """
-        return self._search_api_v2.feature_views(search_term=search_term, tag_filter=tag_filter, keyword_filter=keyword_filter, offset=offset, limit=limit, global_search=global_search)
+        return self._search_api.feature_views(search_term=search_term, tag_filter=tag_filter, keyword_filter=keyword_filter, offset=offset, limit=limit, global_search=global_search)
 
     @usage.method_logger
     def search_training_datasets(
                 self,
                 search_term: str = None,
                 keyword_filter: Optional[Union[str, List[str]]] = None,
-                tag_filter: Optional[Union[Dict[str, str], List[Union[Dict[str, str], search_api_v2.TagSearchFilter]]]] = None,
+                tag_filter: Optional[Union[Dict[str, str], List[Union[Dict[str, str], search_api.TagSearchFilter]]]] = None,
                 offset: int = 0,
                 limit: int = 100,
                 global_search: bool = False,
@@ -2199,13 +2199,13 @@ class FeatureStore:
             td = td_meta.get()
 ```
         """
-        return self._search_api_v2.training_datasets(search_term=search_term, tag_filter=tag_filter, keyword_filter=keyword_filter, offset=offset, limit=limit, global_search=global_search)
+        return self._search_api.training_datasets(search_term=search_term, tag_filter=tag_filter, keyword_filter=keyword_filter, offset=offset, limit=limit, global_search=global_search)
 
     def features(
             self,
             search_term: str = None,
             keyword_filter: Optional[Union[str, List[str]]] = None,
-            tag_filter: Optional[Union[Dict[str, str], List[Union[Dict[str, str], search_api_v2.TagSearchFilter]]]] = None,
+            tag_filter: Optional[Union[Dict[str, str], List[Union[Dict[str, str], search_api.TagSearchFilter]]]] = None,
             offset: int = 0,
             limit: int = 100,
             global_search: bool = False,
@@ -2240,4 +2240,4 @@ class FeatureStore:
             print(f"Feature: {feature.name}")
 ```
         """
-        return self._search_api_v2.features(search_term=search_term, tag_filter=tag_filter, keyword_filter=keyword_filter, offset=offset, limit=limit, global_search=global_search)
+        return self._search_api.features(search_term=search_term, tag_filter=tag_filter, keyword_filter=keyword_filter, offset=offset, limit=limit, global_search=global_search)
