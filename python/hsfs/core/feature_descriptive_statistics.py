@@ -212,7 +212,7 @@ class FeatureDescriptiveStatistics:
 
     @property
     def id(self) -> Optional[int]:
-        # TODO: Add docstring
+        """ID of the feature descriptive statistics object."""
         return self._id
 
     @property

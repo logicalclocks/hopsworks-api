@@ -136,7 +136,7 @@ class Job:
 
     @property
     def href(self):
-        # TODO: Add docstring
+        """The URL of the job in Hopsworks UI, use `get_url` instead."""
         return self._href
 
     @property

@@ -147,7 +147,11 @@ class StorageConnector(ABC):
         pass
 
     def prepare_spark(self, path: Optional[str] = None) -> Optional[str]:
-        # TODO: Add docstring
+        """Prepare Spark to use this Storage Connector.
+
+        # Arguments
+            path: Path to prepare for reading from cloud storage. Defaults to `None`.
+        """
         return path
 
     def read(

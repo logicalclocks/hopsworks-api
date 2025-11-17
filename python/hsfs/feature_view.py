@@ -114,7 +114,10 @@ _logger = logging.getLogger(__name__)
 
 @typechecked
 class FeatureView:
-    # TODO: Add docstring
+    """Metadata class for Hopsworks feature views.
+
+    Feature view is a logical grouping of features, defined by a query over feature groups.
+    """
     ENTITY_TYPE = "featureview"
     NOT_FOUND_ERROR_CODE = 270181
 
@@ -4254,7 +4257,7 @@ class FeatureView:
 
     @property
     def feature_logging(self) -> Optional[FeatureLogging]:
-        # TODO: Add docstring
+        """Feature logging feature groups of this feature view."""
         if self.logging_enabled and self._feature_logging is None:
             self._feature_logging = self._feature_view_engine.get_feature_logging(self)
         return self._feature_logging

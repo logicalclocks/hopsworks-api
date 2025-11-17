@@ -307,11 +307,11 @@ class Feature:
         return self.isin(other)
 
     def isin(self, other: Union[str, List[Any]]) -> "filter.Filter":
-        # TODO: Add docstring
+        """Returns `IN` filter for the feature; replicating the behavior of SQL `IN` clause."""
         return filter.Filter(self, filter.Filter.IN, json.dumps(other))
 
     def like(self, other: Any) -> "filter.Filter":
-        # TODO: Add docstring
+        """Returns `LIKE` filter for the feature; replicating the behavior of SQL `LIKE` clause."""
         return filter.Filter(self, filter.Filter.LK, other)
 
     def __str__(self) -> str:
