@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import os
 import warnings
+from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
 from hopsworks.core import project_api
@@ -65,7 +66,12 @@ class DeltaEngine:
         self._project_api = project_api.ProjectApi()
         self._setup_delta_rs()
 
-    def save_delta_fg(self, dataset, write_options, validation_id=None):
+    def save_delta_fg(
+        self,
+        dataset,
+        write_options: Optional[Dict[str, str]] = None,
+        validation_id=None,
+    ):
         if self._spark_session is not None:
             _logger.debug(
                 f"Saving Delta dataset using spark to feature group {self._feature_group.name} v{self._feature_group.version}"
@@ -75,22 +81,45 @@ class DeltaEngine:
             _logger.debug(
                 f"Saving Delta dataset using delta-rs to feature group {self._feature_group.name} v{self._feature_group.version}"
             )
-            fg_commit = self._write_delta_rs_dataset(dataset)
+            fg_commit = self._write_delta_rs_dataset(
+                dataset, write_options=write_options
+            )
         fg_commit.validation_id = validation_id
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
-    def register_temporary_table(self, delta_fg_alias, read_options):
+    def register_temporary_table(
+        self,
+        delta_fg_alias,
+        read_options: Optional[Dict[str, Any]] = None,
+        is_cdc_query: bool = False,
+    ):
         location = self._feature_group.prepare_spark_location()
         _logger.debug(
             f"Registering temporary table for Delta feature group {self._feature_group.name} v{self._feature_group.version} at location {location}"
         )
 
-        delta_options = self._setup_delta_read_opts(delta_fg_alias, read_options)
-        self._spark_session.read.format(self.DELTA_SPARK_FORMAT).options(
-            **delta_options
-        ).load(location).createOrReplaceTempView(delta_fg_alias.alias)
+        delta_options = self._setup_delta_read_opts(
+            delta_fg_alias, read_options=read_options
+        )
+        if not is_cdc_query:
+            self._spark_session.read.format(self.DELTA_SPARK_FORMAT).options(
+                **delta_options
+            ).load(location).createOrReplaceTempView(delta_fg_alias.alias)
+        else:
+            from pyspark.sql.functions import col
 
-    def _setup_delta_read_opts(self, delta_fg_alias, read_options):
+            # CDC query - remove duplicates for upserts and do not include deleted rows
+            self._spark_session.read.format(self.DELTA_SPARK_FORMAT).options(
+                **delta_options
+            ).load(location).filter(
+                col("_change_type").isin("update_postimage", "insert")
+            ).createOrReplaceTempView(delta_fg_alias.alias)
+
+    def _setup_delta_read_opts(
+        self,
+        delta_fg_alias,
+        read_options: Optional[Dict[str, str]] = None,
+    ):
         delta_options = {}
         if delta_fg_alias.left_feature_group_end_timestamp is None and (
             delta_fg_alias.left_feature_group_start_timestamp is None
@@ -109,9 +138,28 @@ class DeltaEngine:
             delta_options = {
                 self.DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT: _delta_commit_end_time,
             }
+        elif delta_fg_alias.left_feature_group_start_timestamp is not None:
+            # change data feed query with start and end time
+            _delta_commit_start_time = util.get_delta_datestr_from_timestamp(
+                delta_fg_alias.left_feature_group_start_timestamp
+            )
+            _delta_commit_end_time = util.get_delta_datestr_from_timestamp(
+                delta_fg_alias.left_feature_group_end_timestamp
+            )
+            delta_options = {
+                "readChangeFeed": "true",
+                "startingTimestamp": _delta_commit_start_time,
+            }
+            if delta_fg_alias.left_feature_group_end_timestamp is not None:
+                delta_options["endingTimestamp"] = _delta_commit_end_time
 
         if read_options:
-            delta_options.update(read_options)
+            for key in read_options.keys():
+                if isinstance(key, str) and key.startswith("delta."):
+                    # delta read options do not have the "delta." prefix
+                    delta_options[key[6:]] = read_options[key]
+                else:
+                    delta_options[key] = read_options[key]
 
         _logger.debug(
             f"Delta read options for feature group {self._feature_group.name} v{self._feature_group.version}: {delta_options}"
@@ -174,7 +222,9 @@ class DeltaEngine:
             fg_commit = self._get_last_commit_metadata(self._spark_session, location)
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
-    def _write_delta_dataset(self, dataset, write_options):
+    def _write_delta_dataset(
+        self, dataset, write_options: Optional[Dict[str, Any]] = None
+    ):
         try:
             from delta.tables import DeltaTable
         except ImportError as e:
@@ -268,11 +318,11 @@ class DeltaEngine:
             _logger.debug(f"Internal client, using delta-rs location: {location}")
             return location
 
-    def _write_delta_rs_dataset(self, dataset):
+    def _write_delta_rs_dataset(
+        self, dataset, write_options: Optional[Dict[str, str]] = None
+    ):
         try:
-            from deltalake import DeltaTable as DeltaRsTable
             from deltalake import write_deltalake as deltars_write
-            from deltalake.exceptions import TableNotFoundError
         except ImportError as e:
             raise ImportError(
                 "Delta Lake (deltalake) and its dependencies are required for non-Spark operations. "
@@ -282,6 +332,7 @@ class DeltaEngine:
         is_polars_df = False
         if HAS_POLARS:
             import polars as pl
+
             if isinstance(dataset, pl.DataFrame):
                 is_polars_df = True
                 _logger.debug("Converting DataFrame to Arrow Table for Delta write")
@@ -290,21 +341,20 @@ class DeltaEngine:
         if not is_polars_df:
             dataset = self._prepare_df_for_delta(dataset)
 
-        try:
-            fg_source_table = DeltaRsTable(location)
-            is_delta_table = True
-            _logger.debug(
-                f"Delta table found at {location}. Proceeding with merge operation."
-            )
-        except TableNotFoundError:
-            _logger.debug(
-                f"Delta table not found at {location}. A new Delta table will be created."
-            )
-            is_delta_table = False
+        configuration = {}
+        # Other values in write_options like auth credentials should be passed to storage_options
+        for key, value in (write_options or {}).items():
+            if all([isinstance(key, str), key.startswith("delta.")]):
+                configuration[key] = value
 
-        if not is_delta_table:
+        fg_source_table = self._get_delta_rs_table(_write_options=write_options)
+
+        if not fg_source_table:
             deltars_write(
-                location, dataset, partition_by=self._feature_group.partition_key
+                location,
+                dataset,
+                configuration=configuration,
+                partition_by=self._feature_group.partition_key,
             )
         else:
             source_alias = (
@@ -321,6 +371,7 @@ class DeltaEngine:
                     predicate=merge_query_str,
                     source_alias=updates_alias,
                     target_alias=source_alias,
+                    configuration=configuration,
                 )
                 .when_matched_update_all()
                 .when_not_matched_insert_all()
@@ -330,6 +381,29 @@ class DeltaEngine:
             f"Executed delta-rs write. Retrieving commit metadata for Delta table at {location}"
         )
         return self._get_last_commit_metadata(self._spark_session, location)
+
+    def _get_delta_rs_table(self, _write_options: Optional[Dict[str, str]] = None):
+        try:
+            from deltalake import DeltaTable as DeltaRsTable
+            from deltalake.exceptions import TableNotFoundError
+        except ImportError as e:
+            raise ImportError(
+                "Delta Lake (deltalake) and its dependencies are required for non-Spark operations. "
+                "Install 'hops-deltalake' to enable Delta RS features."
+            ) from e
+        location = self._get_delta_rs_location()
+        try:
+            fg_source_table = DeltaRsTable(location)
+            is_delta_table = True
+            _logger.debug(f"Delta table found at {location}.")
+        except TableNotFoundError:
+            _logger.debug(f"Delta table not found at {location}.")
+            is_delta_table = False
+
+        if not is_delta_table:
+            return None
+        else:
+            return fg_source_table
 
     @staticmethod
     def _prepare_df_for_delta(df, timestamp_precision="us"):
@@ -498,11 +572,27 @@ class DeltaEngine:
 
         # Depending on operation, set the relevant metrics
         if operation == "WRITE":
-            rows_inserted = operation_metrics.get("numOutputRows") or operation_metrics.get("num_added_rows") or 0
+            rows_inserted = (
+                operation_metrics.get("numOutputRows")
+                or operation_metrics.get("num_added_rows")
+                or 0
+            )
         elif operation == "MERGE":
-            rows_inserted = operation_metrics.get("numTargetRowsInserted") or operation_metrics.get("num_target_rows_inserted") or 0
-            rows_updated = operation_metrics.get("numTargetRowsUpdated") or operation_metrics.get("num_target_rows_updated") or 0
-            rows_deleted = operation_metrics.get("numTargetRowsDeleted") or operation_metrics.get("num_target_rows_deleted") or 0
+            rows_inserted = (
+                operation_metrics.get("numTargetRowsInserted")
+                or operation_metrics.get("num_target_rows_inserted")
+                or 0
+            )
+            rows_updated = (
+                operation_metrics.get("numTargetRowsUpdated")
+                or operation_metrics.get("num_target_rows_updated")
+                or 0
+            )
+            rows_deleted = (
+                operation_metrics.get("numTargetRowsDeleted")
+                or operation_metrics.get("num_target_rows_deleted")
+                or 0
+            )
 
         _logger.debug(
             f"Commit metrics {commit_timestamp} - inserted: {rows_inserted}, updated: {rows_updated}, deleted: {rows_deleted}"
