@@ -31,6 +31,8 @@ class FsQuery:
         query_online: Optional[str] = None,
         pit_query: Optional[str] = None,
         pit_query_asof: Optional[str] = None,
+        hqs_payload: Optional[str] = None,
+        hqs_payload_signature: Optional[str] = None,
         href: Optional[str] = None,
         expand: Optional[List[str]] = None,
         items: Optional[List[Dict[str, Any]]] = None,
@@ -42,6 +44,9 @@ class FsQuery:
         self._query_online = query_online
         self._pit_query = pit_query
         self._pit_query_asof = pit_query_asof
+
+        self._hqs_payload = hqs_payload
+        self._hqs_payload_signature = hqs_payload_signature
 
         if on_demand_feature_groups is not None:
             self._on_demand_fg_aliases = [
@@ -101,6 +106,14 @@ class FsQuery:
         self,
     ) -> List["hudi_feature_group_alias.HudiFeatureGroupAlias"]:
         return self._hudi_cached_feature_groups
+
+    @property
+    def hqs_payload(self) -> Optional[str]:
+        return self._hqs_payload
+    
+    @property
+    def hqs_payload_signature(self) -> Optional[str]:
+        return self._hqs_payload_signature
 
     def register_external(
         self,
