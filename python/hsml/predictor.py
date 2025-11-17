@@ -142,7 +142,7 @@ class Predictor(DeployableComponent):
         return _deployment
 
     def describe(self):
-        """Print a description of the predictor"""
+        """Print a JSON description of the predictor."""
         util.pretty_print(self)
 
     def _set_state(self, state: PredictorState):
@@ -402,6 +402,7 @@ class Predictor(DeployableComponent):
 
     @property
     def artifact_files_path(self):
+        """Path of the artifact files deployed by the predictor."""
         return "{}/{}/{}/{}".format(
             self._model_path,
             str(self._model_version),
