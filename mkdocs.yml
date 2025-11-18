@@ -4,7 +4,7 @@ site_author: "Logical Clocks"
 site_url: "https://docs.hopsworks.ai/hopsworks-api/latest"
 
 # Repository
-edit_uri: ""
+edit_uri: "https://github.com/logicalclocks/hopsworks-api"
 
 nav:
   - Home: https://docs.hopsworks.ai/
