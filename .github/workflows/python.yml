@@ -74,10 +74,12 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
+        working-directory: python
         run: uv sync --extra dev
 
       - name: Check aliases
-        run: uv run python python/aliases.py check
+        working-directory: python
+        run: uv run python aliases.py check
 
   unit_tests:
     name: Unit Tests
@@ -112,16 +114,19 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
+        working-directory: python
         run: uv sync --extra dev
 
       - name: Display Python version
+        working-directory: python
         run: uv run python --version
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run Pytest suite
-        run: uv run pytest python/tests
+        working-directory: python
+        run: uv run pytest tests
 
   unit_tests_no_opt:
     name: Unit Tests (No Optional Dependencies)
@@ -153,13 +158,15 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
+        working-directory: python
         run: uv sync --extra dev-no-opt
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run Pytest suite
-        run: uv run pytest python/tests
+        working-directory: python
+        run: uv run pytest tests
 
   unit_tests_pandas1:
     name: Unit Tests (Pandas 1.x)
@@ -191,16 +198,19 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
+        working-directory: python
         run: uv sync --extra dev-pandas1
 
       - name: Display Python version
+        working-directory: python
         run: uv run python --version
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run Pytest suite
-        run: uv run pytest python/tests
+        working-directory: python
+        run: uv run pytest tests
 
   unit_tests_local_tz:
     name: Unit Tests (Local TZ)
@@ -232,16 +242,19 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
+        working-directory: python
         run: uv sync --extra dev
 
       - name: Display Python version
+        working-directory: python
         run: uv run python --version
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run Pytest suite
-        run: uv run pytest python/tests
+        working-directory: python
+        run: uv run pytest tests
 
   unit_tests_typechecked:
     name: Unit Tests (Typechecked)
@@ -264,6 +277,7 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
+        working-directory: python
         run: uv sync --extra dev
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
@@ -272,7 +286,8 @@ jobs:
       - name: Run Pytest suite
         env:
           HOPSWORKS_RUN_WITH_TYPECHECK: "true"
-        run: uv run pytest python/tests
+        working-directory: python
+        run: uv run pytest tests
         continue-on-error: true
 
   unit_tests_windows:
@@ -299,9 +314,11 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
+        working-directory: python
         run: uv sync --extra dev
 
       - name: Display Python version
+        working-directory: python
         run: uv run python --version
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
@@ -310,7 +327,8 @@ jobs:
           echo PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell >> %GITHUB_ENV%
 
       - name: Run Pytest suite
-        run: uv run pytest python/tests
+        working-directory: python
+        run: uv run pytest tests
 
   unit_tests_windows_local_tz:
     name: Unit Tests (Windows) (Local TZ)
@@ -336,12 +354,15 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
+        working-directory: python
         run: uv sync --extra dev
 
       - name: Display Python version
+        working-directory: python
         run: uv run python --version
 
       - name: Display pip freeze
+        working-directory: python
         run: uv pip freeze
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
@@ -350,4 +371,5 @@ jobs:
           echo PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell >> %GITHUB_ENV%
 
       - name: Run Pytest suite
-        run: uv run pytest python/tests
+        working-directory: python
+        run: uv run pytest tests
