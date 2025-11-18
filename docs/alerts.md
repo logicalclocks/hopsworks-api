@@ -2,7 +2,7 @@
 
 ## Handle
 
-::: hopsworks_common.project.Project.get_alerts_api
+::: hopsworks.project.Project.get_alerts_api
 
 ## Methods
 
