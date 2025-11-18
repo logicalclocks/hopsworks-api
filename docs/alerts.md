@@ -2,8 +2,8 @@
 
 ## Handle
 
-{{alerts_api_handle}}
+::: hopsworks.project.Project.get_alerts_api
 
 ## Methods
 
-{{alert_methods}}
+::: hopsworks.core.alerts_api.AlertsApi
