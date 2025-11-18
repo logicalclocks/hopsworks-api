@@ -123,6 +123,7 @@ docs = [
     "polars==0.20.31",
     "mkdocs-minify-plugin>=0.2.0",
 ]
+pre-commit = ["pre-commit"]
 
 [tool.uv]
 conflicts = [
