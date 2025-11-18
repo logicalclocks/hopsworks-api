@@ -28,6 +28,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           activate-environment: true
+          working-directory: python
 
       - name: install deps
         working-directory: python

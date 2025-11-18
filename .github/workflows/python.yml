@@ -72,6 +72,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           activate-environment: true
+          working-directory: python
 
       - name: Install dependencies
         run: uv sync --extra dev --project python
@@ -110,6 +111,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           activate-environment: true
+          working-directory: python
 
       - name: Install dependencies
         run: uv sync --extra dev --project python
@@ -151,6 +153,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           activate-environment: true
+          working-directory: python
 
       - name: Install dependencies
         run: uv sync --extra dev-no-opt --project python
@@ -189,6 +192,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           activate-environment: true
+          working-directory: python
 
       - name: Install dependencies
         run: uv sync --extra dev-pandas1 --project python
@@ -230,6 +234,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           activate-environment: true
+          working-directory: python
 
       - name: Install dependencies
         run: uv sync --extra dev --project python
@@ -262,6 +267,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           activate-environment: true
+          working-directory: python
 
       - name: Install dependencies
         run: uv sync --extra dev --project python
@@ -297,6 +303,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           activate-environment: true
+          working-directory: python
 
       - name: Install dependencies
         run: uv sync --extra dev --project python
@@ -334,6 +341,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           activate-environment: true
+          working-directory: python
 
       - name: Install dependencies
         run: uv sync --extra dev --project python
