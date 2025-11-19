@@ -112,10 +112,12 @@ class AlertsApi:
         alert = alerts_api.get_alerts(alert_id=1)
 
         ```
-        # Returns
-            `List[ProjectAlert]`: List of ProjectAlert objects.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Returns:
+            List of ProjectAlert objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
 
         _client = client.get_instance()
@@ -143,12 +145,15 @@ class AlertsApi:
         alert = alerts_api.get_alert(alert_id=1)
 
         ```
-        # Arguments
+
+        Parameters:
             alert_id: The ID of the alert to retrieve.
-        # Returns
-            `ProjectAlert`: The ProjectAlert object.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Returns:
+            The ProjectAlert object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
 
         _client = client.get_instance()
@@ -173,12 +178,15 @@ class AlertsApi:
         job_alerts = alerts_api.get_job_alerts(job_name="my_job")
 
         ```
-        # Arguments
+
+        Parameters:
             job_name: The name of the job.
-        # Returns
-            `List[JobAlert]`: List of JobAlert objects.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Returns:
+            List of JobAlert objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
 
         _client = client.get_instance()
@@ -204,13 +212,16 @@ class AlertsApi:
         job_alerts = alerts_api.get_job_alert(job_name="my_job", alert_id=1)
 
         ```
-        # Arguments
+
+        Parameters:
             job_name: The name of the job.
             alert_id: The ID of the alert to retrieve.
-        # Returns
-            `JobAlert`: The JobAlert object.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Returns:
+            The JobAlert object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
 
         _client = client.get_instance()
@@ -246,13 +257,16 @@ class AlertsApi:
         feature_group_alerts = alerts_api.get_feature_group_alerts(feature_store_id=1, feature_group_id=1)
 
         ```
-        # Arguments
+
+        Parameters:
             feature_store_id: The ID of the feature store.
             feature_group_id: The ID of the feature group.
-        # Returns
-            `List[FeatureGroupAlert]`: List of FeatureGroupAlert objects.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Returns:
+            List of FeatureGroupAlert objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
 
         _client = client.get_instance()
@@ -293,14 +307,17 @@ class AlertsApi:
         feature_group_alerts = alerts_api.get_feature_group_alert(feature_store_id=1, feature_group_id=1, alert_id=1)
 
         ```
-        # Arguments
+
+        Parameters:
             feature_store_id: The ID of the feature store.
             feature_group_id: The ID of the feature group.
             alert_id: The ID of the alert to retrieve.
-        # Returns
-            `FeatureGroupAlert`: The FeatureGroupAlert object.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Returns:
+            The FeatureGroupAlert object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = [
@@ -338,14 +355,17 @@ class AlertsApi:
         feature_view_alerts = alerts_api.get_feature_view_alerts(feature_store_id=1, feature_view_name="my_feature_view", feature_view_version=1, alert_id=1)
 
         ```
-        # Arguments
+
+        Parameters:
             feature_store_id: The ID of the feature store.
             feature_view_name: The name of the feature view.
             feature_view_version: The version of the feature view.
-        # Returns
-            `List[FeatureViewAlert]`: List of FeatureViewAlert objects.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Returns:
+            List of FeatureViewAlert objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = [
@@ -388,15 +408,18 @@ class AlertsApi:
         feature_view_alerts = alerts_api.get_feature_view_alert(feature_store_id=1, feature_view_name="my_feature_view", feature_view_version=1, alert_id=1)
 
         ```
-        # Arguments
+
+        Parameters:
             feature_store_id: The ID of the feature store.
             feature_view_name: The name of the feature view.
             feature_view_version: The version of the feature view.
             alert_id: The ID of the alert to retrieve.
-        # Returns
-            `FeatureViewAlert`: The FeatureViewAlert object.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Returns:
+            The FeatureViewAlert object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = [
@@ -438,18 +461,21 @@ class AlertsApi:
         new_alert = alerts_api.create_project_alert(receiver="email", status="job_finished", severity="warning", service="Jobs")
 
         ```
-        # Arguments
+
+        Parameters:
             status: The status that will trigger the alert (job_finished, job_failed, job_killed, job_long_running, feature_validation_success, feature_validation_warning, feature_validation_failure, feature_monitor_shift_undetected, feature_monitor_shift_detected).
             severity: The severity of the alert (warning, critical, info).
             receiver: The receiver of the alert (e.g., email, webhook).
             service: The service associated with the alert (Featurestore, Jobs).
             threshold: The threshold for the alert (default is 0).
-        # Returns
-            `ProjectAlert`: The created ProjectAlert object.
-        # Raises
-            `ValueError`: If the service is not Featurestore or Jobs, or if the status is not valid for the specified service.
-            `ValueError`: If the severity is not valid.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Returns:
+            The created ProjectAlert object.
+
+        Raises:
+            ValueError: If the service is not Featurestore or Jobs, or if the status is not valid for the specified service.
+            ValueError: If the severity is not valid.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         if service not in _SERVICES:
             raise ValueError(f"Service must be one of the following {_SERVICES}.")
@@ -511,18 +537,21 @@ class AlertsApi:
         new_alert = alerts_api.create_feature_group_alert(67, 1, receiver="email", status="feature_validation_warning", severity="warning")
 
         ```
-        # Arguments
+
+        Parameters:
             feature_store_id: The ID of the feature store.
             feature_group_id: The ID of the feature group.
             receiver: The receiver of the alert (e.g., email, webhook).
             status: The status that will trigger the alert (feature_validation_success, feature_validation_warning, feature_validation_failure, feature_monitor_shift_undetected, feature_monitor_shift_detected).
             severity: The severity of the alert (warning, critical, info).
-        # Returns
-            `FeatureGroupAlert`: The created FeatureGroupAlert object.
-        # Raises
-            `ValueError`: If the status is not valid.
-            `ValueError`: If the severity is not valid.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Returns:
+            The created FeatureGroupAlert object.
+
+        Raises:
+            ValueError: If the status is not valid.
+            ValueError: If the severity is not valid.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
 
         if status not in _VALIDATION_STATUS + _MONITORING_STATUS:
@@ -586,19 +615,22 @@ class AlertsApi:
         new_alert = alerts_api.create_feature_view_alert(67, "fv", 1, receiver="email", status="feature_monitor_shift_undetected", severity="warning")
 
         ```
-        # Arguments
+
+        Parameters:
             feature_store_id: The ID of the feature store.
             feature_view_name: The name of the feature view.
             feature_view_version: The version of the feature view.
             receiver: The receiver of the alert (e.g., email, webhook).
             status: The status that will trigger the alert (feature_monitor_shift_undetected, feature_monitor_shift_detected).
             severity: The severity of the alert (warning, critical, info).
-        # Returns
-            `FeatureViewAlert`: The created FeatureViewAlert object.
-        # Raises
-            `ValueError`: if status is not valid.
-            `ValueError`: if severity is not valid.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Returns:
+            The created FeatureViewAlert object.
+
+        Raises:
+            ValueError: if status is not valid.
+            ValueError: if severity is not valid.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         if status not in _MONITORING_STATUS:
             raise ValueError(
@@ -652,16 +684,19 @@ class AlertsApi:
         new_alert = alerts_api.create_job_alert(job_name="my_job", receiver="email", status="finished", severity="warning")
 
         ```
-        # Arguments
+
+        Parameters:
             job_name: The name of the job.
             receiver: The receiver of the alert (e.g., email, webhook).
             status: The status of the alert (finished, failed, killed, long_running).
             severity: The severity of the alert (warning, critical, info).
-        # Returns
-            `JobAlert`: The created JobAlert object.
-        # Raises
-            `ValueError`: If the job name is not provided.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Returns:
+            The created JobAlert object.
+
+        Raises:
+            ValueError: If the job name is not provided.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         if status not in _JOB_STATUS:
             raise ValueError(f"Status must be one of the following: {_JOB_STATUS}.")
@@ -708,10 +743,12 @@ class AlertsApi:
         alert_receivers = alerts_api.get_alert_receivers()
 
         ```
-        # Returns
-            `List[AlertReceiver]`: List of alert receivers.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Returns:
+            List of alert receivers.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "alerts", "receivers"]
@@ -741,12 +778,15 @@ class AlertsApi:
         alert_receiver = alerts_api.get_alert_receiver("email")
 
         ```
-        # Arguments
+
+        Parameters:
             name: The name of the alert receiver to retrieve.
-        # Returns
-            `AlertReceiver`: The alert receiver object.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Returns:
+            The alert receiver object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
 
@@ -779,19 +819,22 @@ class AlertsApi:
         new_alert_receiver = alerts_api.create_alert_receiver(name="email", email_configs=[{"to": "email@mail.com"}])
 
         ```
-        # Arguments
+
+        Parameters:
             name: The name of the alert receiver (e.g., email, webhook).
             email_configs: List of email configurations (optional).
             slack_configs: List of Slack configurations (optional).
             pagerduty_configs: List of PagerDuty configurations (optional).
             webhook_configs: List of webhook configurations (optional).
-        # Returns
-            `AlertReceiver`: The created alert receiver object.
-        # Raises
-            `ValueError`: If multiple configurations are provided.
-            `ValueError`: If the global channel for the configuration is not configured.
-            'TimeoutError': If the alert receiver creation times out.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Returns:
+            The created alert receiver object.
+
+        Raises:
+            ValueError: If multiple configurations are provided.
+            ValueError: If the global channel for the configuration is not configured.
+            TimeoutError: If the alert receiver creation times out.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         configured_receivers = self._get_configured_receivers()
         if (
@@ -875,12 +918,12 @@ class AlertsApi:
         alerts_api.delete_alert(alert_id=1)
 
         ```
-        # Arguments
+
+        Parameters:
             alert_id: The ID of the alert to delete.
-        # Returns
-            `None`
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "service", "alerts", alert_id]
@@ -914,7 +957,8 @@ class AlertsApi:
         alerts_api.trigger_alert(receiver_name="email", title="Title", summary="Alert summary", description="Alert description", severity="info", status="script_finished", name="my_alert")
 
         ```
-        # Arguments
+
+        Parameters:
             receiver_name: The receiver of the alert (e.g., email, webhook).
             summary: The summary of the alert.
             description: The description of the alert.
@@ -923,10 +967,9 @@ class AlertsApi:
             name: The name of the alert.
             generator_url: The URL of the alert generator (optional).
             expire_after_sec: The time in seconds after which the alert should expire (optional).
-        # Returns
-            `None`
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         if severity not in _SEVERITY:
             raise ValueError(f"Severity must be one of the following: {_SEVERITY}.")
@@ -980,14 +1023,17 @@ class AlertsApi:
         triggered_alerts = alerts_api.get_triggered_alerts()
 
         ```
-        # Arguments
+
+        Parameters:
             active: Whether to include active alerts (default is True).
             silenced: Whether to include silenced alerts (default is False).
             inhibited: Whether to include inhibited alerts (default is False).
-        # Returns
-            `List[TriggeredAlert]`: The triggered alert objects.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Returns:
+            The triggered alert objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "alerts"]
@@ -1016,7 +1062,6 @@ class AlertsApi:
     ):
         """
         Create a route for the alert receiver.
-        :return: None
         """
         _client = client.get_instance()
         if receiver_name is None:
@@ -1065,12 +1110,16 @@ class AlertsApi:
                 else:
                     raise e
 
-    def _fix_receiver_name(self, name, project_name):
+    def _fix_receiver_name(self, name: str, project_name: str) -> str:
         """
         Fix the receiver name by adding the project name prefix if necessary.
-        :param name: The name of the receiver.
-        :param project_name: The name of the project.
-        :return: The fixed receiver name.
+
+        Parameters:
+            name: The name of the receiver.
+            project_name: The name of the project.
+
+        Returns:
+            The fixed receiver name.
         """
         if not name.startswith(f"{_GLOBAL_RECEIVER_PREFIX}__") and not name.startswith(
             f"{project_name}__"
