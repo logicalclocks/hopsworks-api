@@ -242,11 +242,11 @@ class Project:
         """
         return self._environment_api
 
-    def get_alerts_api(self):
+    def get_alerts_api(self) -> alerts_api.AlertsApi:
         """Get the alerts api for the project.
 
-        # Returns
-            `AlertsApi`: The Alerts Api handle
+        Returns:
+            The Alerts Api handle
         """
         return self._alerts_api
 
