@@ -101,17 +101,17 @@ class AlertsApi:
     def get_alerts(self) -> List[alert.ProjectAlert]:
         """
         Get all project alerts.
-        ```python
 
-        import hopsworks
+        Example:
+            ```python
+            import hopsworks
 
-        project = hopsworks.login()
+            project = hopsworks.login()
 
-        alerts_api = project.get_alerts_api()
+            alerts_api: list[ProjectAlert] = project.get_alerts_api()
 
-        alert = alerts_api.get_alerts(alert_id=1)
-
-        ```
+            alert = alerts_api.get_alerts(alert_id=1)
+            ```
 
         Returns:
             List of ProjectAlert objects.
@@ -134,17 +134,17 @@ class AlertsApi:
     def get_alert(self, alert_id: int) -> Optional[alert.ProjectAlert]:
         """
         Get a specific project alert by ID.
-        ```python
 
-        import hopsworks
+        Example:
+            ```python
+            import hopsworks
 
-        project = hopsworks.login()
+            project = hopsworks.login()
 
-        alerts_api = project.get_alerts_api()
+            alerts_api = project.get_alerts_api()
 
-        alert = alerts_api.get_alert(alert_id=1)
-
-        ```
+            alert = alerts_api.get_alert(alert_id=1)
+            ```
 
         Parameters:
             alert_id: The ID of the alert to retrieve.
@@ -167,17 +167,17 @@ class AlertsApi:
     def get_job_alerts(self, job_name: str) -> List[alert.JobAlert]:
         """
         Get all job alerts.
-        ```python
 
-        import hopsworks
+        Example:
+            ```python
+            import hopsworks
 
-        project = hopsworks.login()
+            project = hopsworks.login()
 
-        alerts_api = project.get_alerts_api()
+            alerts_api = project.get_alerts_api()
 
-        job_alerts = alerts_api.get_job_alerts(job_name="my_job")
-
-        ```
+            job_alerts = alerts_api.get_job_alerts(job_name="my_job")
+            ```
 
         Parameters:
             job_name: The name of the job.
@@ -201,17 +201,17 @@ class AlertsApi:
     def get_job_alert(self, job_name: str, alert_id: int) -> Optional[alert.JobAlert]:
         """
         Get a specific job alert by ID.
-        ```python
 
-        import hopsworks
+        Example:
+            ```python
+            import hopsworks
 
-        project = hopsworks.login()
+            project = hopsworks.login()
 
-        alerts_api = project.get_alerts_api()
+            alerts_api = project.get_alerts_api()
 
-        job_alerts = alerts_api.get_job_alert(job_name="my_job", alert_id=1)
-
-        ```
+            job_alerts = alerts_api.get_job_alert(job_name="my_job", alert_id=1)
+            ```
 
         Parameters:
             job_name: The name of the job.
@@ -246,17 +246,17 @@ class AlertsApi:
     ) -> List[alert.FeatureGroupAlert]:
         """
         Get all feature group alerts.
-        ```python
 
-        import hopsworks
+        Example:
+            ```python
+            import hopsworks
 
-        project = hopsworks.login()
+            project = hopsworks.login()
 
-        alerts_api = project.get_alerts_api()
+            alerts_api = project.get_alerts_api()
 
-        feature_group_alerts = alerts_api.get_feature_group_alerts(feature_store_id=1, feature_group_id=1)
-
-        ```
+            feature_group_alerts = alerts_api.get_feature_group_alerts(feature_store_id=1, feature_group_id=1)
+            ```
 
         Parameters:
             feature_store_id: The ID of the feature store.
@@ -296,17 +296,17 @@ class AlertsApi:
     ) -> Optional[alert.FeatureGroupAlert]:
         """
         Get a specific feature group alert by ID.
-        ```python
 
-        import hopsworks
+        Example:
+            ```python
+            import hopsworks
 
-        project = hopsworks.login()
+            project = hopsworks.login()
 
-        alerts_api = project.get_alerts_api()
+            alerts_api = project.get_alerts_api()
 
-        feature_group_alerts = alerts_api.get_feature_group_alert(feature_store_id=1, feature_group_id=1, alert_id=1)
-
-        ```
+            feature_group_alerts = alerts_api.get_feature_group_alert(feature_store_id=1, feature_group_id=1, alert_id=1)
+            ```
 
         Parameters:
             feature_store_id: The ID of the feature store.
@@ -344,17 +344,17 @@ class AlertsApi:
     ) -> List[alert.FeatureViewAlert]:
         """
         Get all feature view alerts.
-        ```python
 
-        import hopsworks
+        Example:
+            ```python
+            import hopsworks
 
-        project = hopsworks.login()
+            project = hopsworks.login()
 
-        alerts_api = project.get_alerts_api()
+            alerts_api = project.get_alerts_api()
 
-        feature_view_alerts = alerts_api.get_feature_view_alerts(feature_store_id=1, feature_view_name="my_feature_view", feature_view_version=1, alert_id=1)
-
-        ```
+            feature_view_alerts = alerts_api.get_feature_view_alerts(feature_store_id=1, feature_view_name="my_feature_view", feature_view_version=1, alert_id=1)
+            ```
 
         Parameters:
             feature_store_id: The ID of the feature store.
@@ -397,17 +397,17 @@ class AlertsApi:
     ) -> Optional[alert.FeatureViewAlert]:
         """
         Get a specific feature view alert by ID.
-        ```python
 
-        import hopsworks
+        Example:
+            ```python
+            import hopsworks
 
-        project = hopsworks.login()
+            project = hopsworks.login()
 
-        alerts_api = project.get_alerts_api()
+            alerts_api = project.get_alerts_api()
 
-        feature_view_alerts = alerts_api.get_feature_view_alert(feature_store_id=1, feature_view_name="my_feature_view", feature_view_version=1, alert_id=1)
-
-        ```
+            feature_view_alerts = alerts_api.get_feature_view_alert(feature_store_id=1, feature_view_name="my_feature_view", feature_view_version=1, alert_id=1)
+            ```
 
         Parameters:
             feature_store_id: The ID of the feature store.
@@ -450,17 +450,17 @@ class AlertsApi:
     ) -> alert.ProjectAlert:
         """
         Create a new alert.
-        ```python
 
-        import hopsworks
+        Example:
+            ```python
+            import hopsworks
 
-        project = hopsworks.login()
+            project = hopsworks.login()
 
-        alerts_api = project.get_alerts_api()
+            alerts_api = project.get_alerts_api()
 
-        new_alert = alerts_api.create_project_alert(receiver="email", status="job_finished", severity="warning", service="Jobs")
-
-        ```
+            new_alert = alerts_api.create_project_alert(receiver="email", status="job_finished", severity="warning", service="Jobs")
+            ```
 
         Parameters:
             status: The status that will trigger the alert (job_finished, job_failed, job_killed, job_long_running, feature_validation_success, feature_validation_warning, feature_validation_failure, feature_monitor_shift_undetected, feature_monitor_shift_detected).
@@ -526,17 +526,17 @@ class AlertsApi:
     ) -> alert.FeatureGroupAlert:
         """
         Create a new feature group alert.
-        ```python
 
-        import hopsworks
+        Example:
+            ```python
+            import hopsworks
 
-        project = hopsworks.login()
+            project = hopsworks.login()
 
-        alerts_api = project.get_alerts_api()
+            alerts_api = project.get_alerts_api()
 
-        new_alert = alerts_api.create_feature_group_alert(67, 1, receiver="email", status="feature_validation_warning", severity="warning")
-
-        ```
+            new_alert = alerts_api.create_feature_group_alert(67, 1, receiver="email", status="feature_validation_warning", severity="warning")
+            ```
 
         Parameters:
             feature_store_id: The ID of the feature store.
@@ -605,16 +605,17 @@ class AlertsApi:
     ) -> alert.FeatureViewAlert:
         """
         Create a new feature view alert.
-        ```python
-        import hopsworks
 
-        project = hopsworks.login()
+        Example:
+            ```python
+            import hopsworks
 
-        alerts_api = project.get_alerts_api()
+            project = hopsworks.login()
 
-        new_alert = alerts_api.create_feature_view_alert(67, "fv", 1, receiver="email", status="feature_monitor_shift_undetected", severity="warning")
+            alerts_api = project.get_alerts_api()
 
-        ```
+            new_alert = alerts_api.create_feature_view_alert(67, "fv", 1, receiver="email", status="feature_monitor_shift_undetected", severity="warning")
+            ```
 
         Parameters:
             feature_store_id: The ID of the feature store.
@@ -673,17 +674,17 @@ class AlertsApi:
     ) -> alert.JobAlert:
         """
         Create a new job alert.
-        ```python
 
-        import hopsworks
+        Example:
+            ```python
+            import hopsworks
 
-        project = hopsworks.login()
+            project = hopsworks.login()
 
-        alerts_api = project.get_alerts_api()
+            alerts_api = project.get_alerts_api()
 
-        new_alert = alerts_api.create_job_alert(job_name="my_job", receiver="email", status="finished", severity="warning")
-
-        ```
+            new_alert = alerts_api.create_job_alert(job_name="my_job", receiver="email", status="finished", severity="warning")
+            ```
 
         Parameters:
             job_name: The name of the job.
@@ -732,17 +733,17 @@ class AlertsApi:
     def get_alert_receivers(self) -> List[alert_receiver.AlertReceiver]:
         """
         Get all alert receivers.
-        ```python
 
-        import hopsworks
+        Example:
+            ```python
+            import hopsworks
 
-        project = hopsworks.login()
+            project = hopsworks.login()
 
-        alerts_api = project.get_alerts_api()
+            alerts_api = project.get_alerts_api()
 
-        alert_receivers = alerts_api.get_alert_receivers()
-
-        ```
+            alert_receivers = alerts_api.get_alert_receivers()
+            ```
 
         Returns:
             List of alert receivers.
@@ -767,17 +768,17 @@ class AlertsApi:
     def get_alert_receiver(self, name: str) -> Optional[alert_receiver.AlertReceiver]:
         """
         Get a specific alert receivers by name.
-        ```python
 
-        import hopsworks
+        Example:
+            ```python
+            import hopsworks
 
-        project = hopsworks.login()
+            project = hopsworks.login()
 
-        alerts_api = project.get_alerts_api()
+            alerts_api = project.get_alerts_api()
 
-        alert_receiver = alerts_api.get_alert_receiver("email")
-
-        ```
+            alert_receiver = alerts_api.get_alert_receiver("email")
+            ```
 
         Parameters:
             name: The name of the alert receiver to retrieve.
@@ -808,17 +809,17 @@ class AlertsApi:
     ) -> alert_receiver.AlertReceiver:
         """
         Create a new alert receiver.
-        ```python
 
-        import hopsworks
+        Example:
+            ```python
+            import hopsworks
 
-        project = hopsworks.login()
+            project = hopsworks.login()
 
-        alerts_api = project.get_alerts_api()
+            alerts_api = project.get_alerts_api()
 
-        new_alert_receiver = alerts_api.create_alert_receiver(name="email", email_configs=[{"to": "email@mail.com"}])
-
-        ```
+            new_alert_receiver = alerts_api.create_alert_receiver(name="email", email_configs=[{"to": "email@mail.com"}])
+            ```
 
         Parameters:
             name: The name of the alert receiver (e.g., email, webhook).
@@ -907,17 +908,17 @@ class AlertsApi:
     def delete_alert(self, alert_id: int):
         """
         Delete an alert by ID.
-        ```python
 
-        import hopsworks
+        Example:
+            ```python
+            import hopsworks
 
-        project = hopsworks.login()
+            project = hopsworks.login()
 
-        alerts_api = project.get_alerts_api()
+            alerts_api = project.get_alerts_api()
 
-        alerts_api.delete_alert(alert_id=1)
-
-        ```
+            alerts_api.delete_alert(alert_id=1)
+            ```
 
         Parameters:
             alert_id: The ID of the alert to delete.
@@ -946,17 +947,17 @@ class AlertsApi:
     ):
         """
         Trigger an alert.
-        ```python
 
-        import hopsworks
+        Example:
+            ```python
+            import hopsworks
 
-        project = hopsworks.login()
+            project = hopsworks.login()
 
-        alerts_api = project.get_alerts_api()
+            alerts_api = project.get_alerts_api()
 
-        alerts_api.trigger_alert(receiver_name="email", title="Title", summary="Alert summary", description="Alert description", severity="info", status="script_finished", name="my_alert")
-
-        ```
+            alerts_api.trigger_alert(receiver_name="email", title="Title", summary="Alert summary", description="Alert description", severity="info", status="script_finished", name="my_alert")
+            ```
 
         Parameters:
             receiver_name: The receiver of the alert (e.g., email, webhook).
@@ -1013,16 +1014,17 @@ class AlertsApi:
     ) -> List[triggered_alert.TriggeredAlert]:
         """
         Get triggered alerts.
-        ```python
-        import hopsworks
 
-        project = hopsworks.login()
+        Example:
+            ```python
+            import hopsworks
 
-        alerts_api = project.get_alerts_api()
+            project = hopsworks.login()
 
-        triggered_alerts = alerts_api.get_triggered_alerts()
+            alerts_api = project.get_alerts_api()
 
-        ```
+            triggered_alerts = alerts_api.get_triggered_alerts()
+            ```
 
         Parameters:
             active: Whether to include active alerts (default is True).
