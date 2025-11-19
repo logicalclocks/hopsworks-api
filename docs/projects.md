@@ -1,13 +1,3 @@
-# Projects API
+::: hopsworks.create_project
 
-## Creation
-
-{{project_create}}
-
-## Properties
-
-{{project_properties}}
-
-## Methods
-
-{{project_methods}}
+::: hopsworks.project.Project
