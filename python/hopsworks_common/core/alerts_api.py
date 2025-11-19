@@ -94,6 +94,10 @@ _MONITORING_STATUS = get_args(_MONITORING_STATUS_ARG)
 
 
 class AlertsApi:
+    """Alerts API handle.
+
+    To obtain an object of this type, use [`project.get_alerts_api()`][hopsworks.project.Project.get_alerts_api].
+    """
     def __init__(self):
         self._log = logging.getLogger(__name__)
 
