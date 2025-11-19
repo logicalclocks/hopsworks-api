@@ -60,6 +60,7 @@ class Highlights:
         self._tags = highlights_data.get("tags", [])
         self._keywords = highlights_data.get("keywords", [])
         self._features = highlights_data.get("features", [])
+        self._source_feature_groups = highlights_data.get("sourceFeatureGroups", [])
 
     @property
     def name(self) -> Optional[str]:
@@ -87,13 +88,18 @@ class Highlights:
         return self._features
 
     @property
+    def source_feature_groups(self) -> List:
+        """Highlighted source feature groups with <em> tags showing matched terms"""
+        return self._features
+
+    @property
     def raw_data(self) -> dict:
         """Raw highlights data"""
         return self._raw_data
 
     def has_highlights(self) -> bool:
         """Check if there are any highlights"""
-        return bool(self._name or self._description or self._tags or self._keywords or self._features)
+        return bool(self._name or self._description or self._tags or self._keywords or self._features or self._source_feature_groups)
 
     def json(self) -> dict:
         """Convert to JSON-serializable dictionary"""
@@ -102,7 +108,8 @@ class Highlights:
             "description": self._description,
             "tags": self._tags,
             "keywords": self._keywords,
-            "features": self._features
+            "features": self._features,
+            "source_feature_groups": self._source_feature_groups,
         }
 
     def __repr__(self):
@@ -117,6 +124,8 @@ class Highlights:
             highlights.append("keywords")
         if self._features:
             highlights.append("features")
+        if self._source_feature_groups:
+            highlights.append("source_feature_groups")
 
         if highlights:
             return f"Highlights({', '.join(highlights)})"
