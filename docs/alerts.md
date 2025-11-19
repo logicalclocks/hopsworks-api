@@ -1,1 +1,1 @@
-::: hopsworks.core.alerts_api.AlertsApi
+::: hopsworks_common.core.alerts_api.AlertsApi
