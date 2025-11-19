@@ -145,3 +145,6 @@ gcs.json
 # Dev directories
 dev_tools/
 dev_scripts/
+
+# uv lock file
+uv.lock
