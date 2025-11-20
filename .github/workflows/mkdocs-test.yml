@@ -11,6 +11,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Markdownlint
+        uses: DavidAnson/markdownlint-cli2-action@v9
+        with:
+          globs: '**/*.md'
+
       - name: set dev version
         working-directory: java
         run: echo "DEV_VERSION=$(mvn org.apache.maven.plugins:maven-help-plugin:2.1.1:evaluate -Dexpression=project.version | grep -Ev 'Download|INFO|WARNING')" >> $GITHUB_ENV
