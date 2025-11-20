@@ -1,5 +1,3 @@
 # Transformation Functions API
 
-::: hopsworks.udf
-    options:
-      show_root_full_path: true
+::: hsfs.hopsworks_udf.udf
