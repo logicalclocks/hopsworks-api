@@ -6,61 +6,61 @@
 
 ## HopsFS
 
-### Properties
+### HopsFS Properties
 
 {{hopsfs_properties}}
 
-### Methods
+### HopsFS Methods
 
 {{hopsfs_methods}}
 
 ## JDBC
 
-### Properties
+### JDBC Properties
 
 {{jdbc_properties}}
 
-### Methods
+### JDBC Methods
 
 {{jdbc_methods}}
 
 ## S3
 
-### Properties
+### S3 Properties
 
 {{s3_properties}}
 
-### Methods
+### S3 Methods
 
 {{s3_methods}}
 
 ## Redshift
 
-### Properties
+### Redshift Properties
 
 {{redshift_properties}}
 
-### Methods
+### Redshift Methods
 
 {{redshift_methods}}
 
 ## Azure Data Lake Storage
 
-### Properties
+### Azure Data Lake Storage Properties
 
 {{adls_properties}}
 
-### Methods
+### Azure Data Lake Storage Methods
 
 {{adls_methods}}
 
 ## Snowflake
 
-### Properties
+### Snowflake Properties
 
 {{snowflake_properties}}
 
-### Methods
+### Snowflake Methods
 
 {{snowflake_methods}}
 
@@ -81,11 +81,11 @@ Read more about encryption on [Google Documentation.](https://cloud.google.com/s
 The storage connector uses the Google `gcs-connector-hadoop` behind the scenes. For more information, check out [Google Cloud Storage Connector for Spark and Hadoop](
 https://github.com/GoogleCloudDataproc/hadoop-connectors/tree/master/gcs#google-cloud-storage-connector-for-spark-and-hadoop 'google-cloud-storage-connector-for-spark-and-hadoop')
 
-### Properties
+### GCS Properties
 
 {{gcs_properties}}
 
-### Methods
+### GCS Methods
 
 {{gcs_methods}}
 
@@ -102,20 +102,20 @@ The storage connector uses the Google `spark-bigquery-connector` behind the scen
 To read more about the spark connector, like the spark options or usage, check [Apache Spark SQL connector for Google BigQuery.](https://github.com/GoogleCloudDataproc/spark-bigquery-connector#usage
 'github.com/GoogleCloudDataproc/spark-bigquery-connector')
 
-### Properties
+### BigQuery Properties
 
 {{bigquery_properties}}
 
-### Methods
+### BigQuery Methods
 
 {{bigquery_methods}}
 
 ## Kafka
 
-### Properties
+### Kafka Properties
 
 {{kafka_properties}}
 
-### Methods
+### Kafka Methods
 
 {{kafka_methods}}

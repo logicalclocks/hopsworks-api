@@ -6,7 +6,7 @@ Provenance Links are objects returned by methods such as [get_feature_groups_pro
 
 {{links_properties}}
 
-# Artifact
+## Artifact
 
 Artifacts objects are part of the provenance graph and contain a minimal set of information regarding the entities (feature groups, feature views) they represent.
 The provenance graph contains Artifact objects when the underlying entities have been deleted or they are corrupted or they are not accessible by the user.

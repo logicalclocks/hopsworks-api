@@ -12,15 +12,11 @@ After defining the Model inputs and/or outputs schemas, a ModelSchema can be cre
 
 ## Retrieval
 
-### Model Schema
-
 Model schemas can be accessed from the model metadata objects.
 
 ``` python
 model.model_schema
 ```
-
-### Model Input & Ouput Schemas
 
 The schemas of the Model inputs and outputs can be accessed from the ModelSchema metadata objects.
 

@@ -8,7 +8,7 @@ There is an additional method using the provenance graph: [get_feature_view](../
 
 {{links_properties}}
 
-# Artifact
+## Artifact
 
 Artifacts objects are part of the provenance graph and contain a minimal set of information regarding the entities (feature views, training datasets) they represent.
 The provenance graph contains Artifact objects when the underlying entities have been deleted or they are corrupted or they are not accessible by the current project anymore.

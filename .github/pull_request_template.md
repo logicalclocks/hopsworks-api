@@ -17,7 +17,7 @@ Related PRs: -
 
 **Checklist For The Assigned Reviewer:**
 
-```
+```markdown
 - [ ] Checked if merge conflicts with master exist
 - [ ] Checked if stylechecks for Java and Python pass
 - [ ] Checked if all docstrings were added and/or updated appropriately
