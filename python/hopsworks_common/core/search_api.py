@@ -116,6 +116,7 @@ class SearchApi:
             tag_filter: Optional[Union[Dict[str, str], List[Union[Dict[str, str], TagSearchFilter]]]] = None,
             offset: int = 0,
             limit: int = 100,
+            global_search: bool = False,
     ) -> FeaturestoreSearchResult:
         """
         Search for feature groups, feature views, training datasets and features.
@@ -126,6 +127,7 @@ class SearchApi:
             tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
+            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
         # Returns
             `FeaturestoreSearchResult`: The search results containing lists of metadata objects for feature groups, feature views, training datasets, and features.
         # Raises
@@ -194,7 +196,8 @@ class SearchApi:
             keyword_filter=keyword_filter,
             tag_filter=tag_filter,
             offset=offset,
-            limit=limit
+            limit=limit,
+            global_search=global_search,
         )
 
     def feature_groups(
