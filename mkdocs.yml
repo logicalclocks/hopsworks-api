@@ -8,6 +8,7 @@ edit_uri: "https://github.com/logicalclocks/hopsworks-api"
 
 nav:
   - Login: generated/api/login.md
+  - Platform API:
     - Alerts: generated/api/alerts.md
     - Datasets: generated/api/datasets.md
     - Environment: generated/api/environment.md
