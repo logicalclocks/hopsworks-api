@@ -6,30 +6,32 @@
 
 - Create a new Python environment with your favourite environment manager (e.g. virtualenv or conda) and Python 3.9 (newer versions will return a library conflict in `auto_doc.py`)
 
-- Install repository in editable mode with development dependencies:
+- Install repository in editable mode with development dependencies (we recommend to use [uv](https://docs.astral.sh/uv/)):
 
   ```bash
   cd python
-  pip install -e ".[dev]"
+  uv sync --extra dev --all-groups
+  source .venv/bin/activate
   ```
 
-- Install [pre-commit](https://pre-commit.com/) and then activate its hooks. pre-commit is a framework for managing and maintaining multi-language pre-commit hooks. The library uses pre-commit to ensure code-style and code formatting through [ruff](https://docs.astral.sh/ruff/). Run the following commands from the `python` directory:
+- To automate linting and formatting, install [pre-commit](https://pre-commit.com/) and then activate its hooks.
+  `pre-commit` is a framework for managing and maintaining multi-language pre-commit hooks.
+  The library uses pre-commit to ensure code-style and code formatting through [ruff](https://docs.astral.sh/ruff/).
+  Activate the git hooks with:
 
   ```bash
-  cd python
-  pip install --user pre-commit
   pre-commit install
   ```
 
   Afterwards, pre-commit will run whenever you commit.
 
-- To run formatting and code-style separately, you can configure your IDE, such as VSCode, to use `ruff`, or run it via the command line:
+- To run formatting and code-style separately, you can configure your IDE, such as VSCode, to use `ruff`, or run it via the command line (assuming you are in the `python` subdirectory):
 
   ```bash
   # linting
-  ruff check python --fix
+  ruff check --fix
   # formatting
-  ruff format python
+  ruff format
   ```
 
 ### Python documentation
@@ -70,13 +72,16 @@ We follow a few best practices for writing the Python documentation:
 We use `mkdocs` together with `mike` ([for versioning](https://github.com/jimporter/mike/)) to build the documentation and a plugin called `keras-autodoc` to auto generate Python API documentation from docstrings.
 
 **Background about `mike`:**
-`mike` builds the documentation and commits it as a new directory to the gh-pages branch. Each directory corresponds to one version of the documentation. Additionally, `mike` maintains a json in the root of gh-pages with the mappings of versions/aliases for each of the directories available. With aliases you can define extra names like `dev` or `latest`, to indicate stable and unstable releases.
+`mike` builds the documentation and commits it as a new directory to the gh-pages branch.
+Each directory corresponds to one version of the documentation.
+Additionally, `mike` maintains a json in the root of gh-pages with the mappings of versions/aliases for each of the directories available.
+With aliases you can define extra names like `dev` or `latest`, to indicate stable and unstable releases.
 
-1. Install Hopsworks with `requirements-docs.txt`:
+1. Install Hopsworks with the required dependencies (assuming you are in the root directory of the repository):
 
    ```bash
-   pip install -r requirements-docs.txt
-   pip install -e "python[dev]"
+   uv sync --extra dev --all-groups --project python
+   source python/.venv/bin/activate
    ```
 
 2. To build the docs, first run the auto doc script:
@@ -90,10 +95,8 @@ We use `mkdocs` together with `mike` ([for versioning](https://github.com/jimpor
 3. Either build the docs, or serve them dynamically:
 
    Note: Links and pictures might not resolve properly later on when checking with this build.
-   The reason for that is that the docs are deployed with versioning on docs.hopsworks.ai and
-   therefore another level is added to all paths, e.g. `docs.hopsworks.ai/[version-or-alias]`.
-   Using relative links should not be affected by this, however, building the docs with version
-   (Option 2) is recommended.
+   The reason for that is that the docs are deployed with versioning on docs.hopsworks.ai and therefore another level is added to all paths, e.g. `docs.hopsworks.ai/[version-or-alias]`.
+   Using relative links should not be affected by this, however, building the docs with version (Option 2) is recommended.
 
    ```bash
    mkdocs build
@@ -191,9 +194,10 @@ PAGES = {
 }
 ```
 
-Now you can add a template markdown file to the `docs/templates` directory with the name you specified in the auto-doc script. The `new_template.md` file should contain a tag to identify the place at which the API documentation should be inserted:
+Now you can add a template markdown file to the `docs/templates` directory with the name you specified in the auto-doc script.
+The `new_template.md` file should contain a tag to identify the place at which the API documentation should be inserted:
 
-````
+````markdown
 ## The XYZ package
 
 {{module}}
@@ -210,12 +214,13 @@ Some extra content here.
 
 Finally, run the `auto_doc.py` script, as decribed above, to update the documentation.
 
-For information about Markdown syntax and possible Admonitions/Highlighting etc. see
-the [Material for Mkdocs themes reference documentation](https://squidfunk.github.io/mkdocs-material/reference/abbreviations/).
+For information about Markdown syntax and possible Admonitions/Highlighting etc. see the [Material for Mkdocs themes reference documentation](https://squidfunk.github.io/mkdocs-material/reference/abbreviations/).
 
 ## Java development setup
 
-You must add the Hopsworks Enterprise Edition repository to your `~/.m2/settings.xml` file in order to build the Java code. You can get access to the repository using your nexus credentials. Add the following to your `settings.xml`:
+You must add the Hopsworks Enterprise Edition repository to your `~/.m2/settings.xml` file in order to build the Java code.
+You can get access to the repository using your nexus credentials.
+Add the following to your `settings.xml`:
 
 ```xml
 <settings>
@@ -224,9 +229,9 @@ You must add the Hopsworks Enterprise Edition repository to your `~/.m2/settings
     <id>HopsEE</id>
     <username>YOUR_NEXUS_USERNAME</username>
     <password>YOUR_NEXUS_PASSWORD</password>
-    </server>
-</servers> 
-<settings>
+  </server>
+</servers>
+</settings>
 ```
 
 You can then build either hsfs or hsfs_utils:
