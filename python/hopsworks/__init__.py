@@ -95,7 +95,7 @@ def login(
         project = hopsworks.login()
         ```
 
-    Alternatively, connect to your own Hopsworks installation by specifying the host, port and api key.
+    Alternatively, connect to your own Hopsworks installation by specifying the host, port and API key.
 
     Example: Connect to your Hopsworks cluster
         ```python
@@ -117,21 +117,23 @@ def login(
         host: The hostname of the Hopsworks instance.
         port: The port on which the Hopsworks instance can be reached.
         project: Name of the project to access. If used inside a Hopsworks environment it always gets the current project. If not provided you will be prompted to enter it.
-        api_key_value: Value of the Api Key
-        api_key_file: Path to file wih Api Key
+        api_key_value: Value of the API Key
+        api_key_file: Path to file wih API Key
         hostname_verification: Whether to verify Hopsworks' certificate
         trust_store_path: Path on the file system containing the Hopsworks certificates
         engine:
             Specifies the engine to use.
-            The default value is None, which automatically selects the engine based on the environment:
+            The default value is `None`, which automatically selects the engine based on the environment:
 
             - `spark`: Used if Spark is available, such as in Hopsworks or Databricks environments.
             - `python`: Used in local Python environments or AWS SageMaker when Spark is not available.
             - `training`: Used when only feature store metadata is needed, such as for obtaining training dataset locations and label information during Hopsworks training experiments.
             - `spark-no-metastore`: Functions like `spark` but does not rely on the Hive metastore.
             - `spark-delta`: Minimizes dependencies further by avoiding both Hive metastore and HopsFS.
+
     Returns:
         The Project object to perform operations on.
+
     Raises:
         hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         hopsworks.client.exceptions.HopsworksSSLClientError: If SSLError is raised from underlying requests library.
@@ -245,7 +247,7 @@ def login(
 
     if api_key is None and is_app:
         print(
-            "Copy your Api Key (first register/login): https://c.app.hopsworks.ai/account/api/generated"
+            "Copy your API Key (first register/login): https://c.app.hopsworks.ai/account/api/generated"
         )
         api_key = getpass.getpass(prompt="\nPaste it here: ")
 
@@ -482,7 +484,7 @@ def get_secrets_api() -> secret_api.SecretsApi:
     """Get the secrets api.
 
     Returns:
-        The Secrets Api handle.
+        The Secrets API handle.
     """
     global _secrets_api
     if not _is_connection_active():
