@@ -22,7 +22,7 @@ import sys
 import tempfile
 import warnings
 from pathlib import Path
-from typing import Literal, Optional, Union
+from typing import Literal
 
 from hopsworks import client, constants, project, version
 from hopsworks.client.exceptions import (
@@ -77,71 +77,63 @@ logging.basicConfig(
 
 
 def login(
-    host: Optional[str] = None,
+    host: str | None = None,
     port: int = 443,
-    project: Optional[str] = None,
-    api_key_value: Optional[str] = None,
-    api_key_file: Optional[str] = None,
+    project: str | None = None,
+    api_key_value: str | None = None,
+    api_key_file: str | None = None,
     hostname_verification: bool = False,
-    trust_store_path: Optional[str] = None,
-    engine: Union[
-        None,
-        Literal["spark"],
-        Literal["python"],
-        Literal["training"],
-        Literal["spark-no-metastore"],
-        Literal["spark-delta"],
-    ] = None,
+    trust_store_path: str | None = None,
+    engine: Literal["spark", "python", "training", "spark-no-metastore", "spark-delta"] | None = None,
 ) -> project.Project:
     """Connect to [Serverless Hopsworks](https://app.hopsworks.ai) by calling the `hopsworks.login()` function with no arguments.
 
-    !!! example "Connect to Serverless"
+    Example: Connect to Serverless
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
-
         ```
 
     Alternatively, connect to your own Hopsworks installation by specifying the host, port and api key.
 
-    !!! example "Connect to your Hopsworks cluster"
+    Example: Connect to your Hopsworks cluster
         ```python
-
         import hopsworks
 
-        project = hopsworks.login(host="my.hopsworks.server",
-                                  port=8181,
-                                  api_key_value="DKN8DndwaAjdf98FFNSxwdVKx")
-
+        project = hopsworks.login(
+            host="my.hopsworks.server",
+            port=8181,
+            api_key_value="DKN8DndwaAjdf98FFNSxwdVKx",
+        )
         ```
 
     In addition to setting function arguments directly, `hopsworks.login()` also reads the environment variables:
-    HOPSWORKS_HOST, HOPSWORKS_PORT, HOPSWORKS_PROJECT, HOPSWORKS_API_KEY, HOPSWORKS_HOSTNAME_VERIFICATION, HOPSWORKS_TRUST_STORE_PATH and HOPSWORKS_ENGINE.
+    `HOPSWORKS_HOST`, `HOPSWORKS_PORT`, `HOPSWORKS_PROJECT`, `HOPSWORKS_API_KEY`, `HOPSWORKS_HOSTNAME_VERIFICATION`, `HOPSWORKS_TRUST_STORE_PATH` and `HOPSWORKS_ENGINE`.
 
     The function arguments do however take precedence over the environment variables in case both are set.
 
-    # Arguments
-        host: The hostname of the Hopsworks instance, defaults to `None`.
-        port: The port on which the Hopsworks instance can be reached,
-            defaults to `443`.
+    Parameters:
+        host: The hostname of the Hopsworks instance.
+        port: The port on which the Hopsworks instance can be reached.
         project: Name of the project to access. If used inside a Hopsworks environment it always gets the current project. If not provided you will be prompted to enter it.
         api_key_value: Value of the Api Key
         api_key_file: Path to file wih Api Key
         hostname_verification: Whether to verify Hopsworks' certificate
         trust_store_path: Path on the file system containing the Hopsworks certificates
-        engine: Specifies the engine to use. Possible options are "spark", "python", "training", "spark-no-metastore", or "spark-delta". The default value is None, which automatically selects the engine based on the environment:
-            "spark": Used if Spark is available, such as in Hopsworks or Databricks environments.
-            "python": Used in local Python environments or AWS SageMaker when Spark is not available.
-            "training": Used when only feature store metadata is needed, such as for obtaining training dataset locations and label information during Hopsworks training experiments.
-            "spark-no-metastore": Functions like "spark" but does not rely on the Hive metastore.
-            "spark-delta": Minimizes dependencies further by avoiding both Hive metastore and HopsFS.
-    # Returns
-        `Project`: The Project object to perform operations on
-    # Raises
-        `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        `hopsworks.client.exceptions.HopsworksSSLClientError`: If SSLError is raised from underlying requests library
+        engine:
+            Specifies the engine to use.
+            The default value is None, which automatically selects the engine based on the environment:
+            - `spark`: Used if Spark is available, such as in Hopsworks or Databricks environments.
+            - `python`: Used in local Python environments or AWS SageMaker when Spark is not available.
+            - `training`: Used when only feature store metadata is needed, such as for obtaining training dataset locations and label information during Hopsworks training experiments.
+            - `spark-no-metastore`: Functions like `spark` but does not rely on the Hive metastore.
+            - `spark-delta`: Minimizes dependencies further by avoiding both Hive metastore and HopsFS.
+    Returns:
+        The Project object to perform operations on.
+    Raises:
+        hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        hopsworks.client.exceptions.HopsworksSSLClientError: If SSLError is raised from underlying requests library.
     """
 
     global _connected_project
@@ -308,7 +300,6 @@ def _get_cached_api_key_path():
     First it will search for .hw_api_key in the current working directory, if it exists it will use it (this is default in 3.0 client)
     Otherwise, falls back to storing the API key in HOME
     If not sufficient permissions are set in HOME to create the API key (writable and executable), it uses the temp directory to store it.
-
     """
 
     api_key_name = ".hw_api_key"
@@ -411,19 +402,17 @@ def _is_connection_active():
 def get_current_project() -> project.Project:
     """Get a reference to the current logged in project.
 
-    !!! example "Example for getting the project reference"
+    Example: Example for getting the project reference
         ```python
-
         import hopsworks
 
         hopsworks.login()
 
         project = hopsworks.get_current_project()
-
         ```
 
-    # Returns
-        `Project`. The Project object to perform operations on
+    Returns:
+        The Project object to perform operations on.
     """
     global _connected_project
     if _connected_project is None:
@@ -488,11 +477,11 @@ def create_project(name: str, description: str | None = None, feature_store_topi
         )
 
 
-def get_secrets_api():
+def get_secrets_api() -> secret_api.SecretsApi:
     """Get the secrets api.
 
-    # Returns
-        `SecretsApi`: The Secrets Api handle
+    Returns:
+        The Secrets Api handle.
     """
     global _secrets_api
     if not _is_connection_active():
