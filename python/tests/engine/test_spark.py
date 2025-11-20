@@ -1255,6 +1255,281 @@ class TestSpark:
         assert mock_spark_engine_save_online_dataframe.call_count == 1
         assert mock_spark_engine_save_offline_dataframe.call_count == 0
 
+    def test_save_dataframe_delta_calls_check_duplicate_records(self, mocker):
+        # Arrange
+        mock_check_duplicate_records = mocker.patch(
+            "hsfs.engine.spark.Engine._check_duplicate_records"
+        )
+        mock_spark_engine_save_offline_dataframe = mocker.patch(
+            "hsfs.engine.spark.Engine._save_offline_dataframe"
+        )
+
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["pk1"],
+            partition_key=[],
+            id=10,
+            time_travel_format="DELTA",
+        )
+
+        mock_dataframe = mocker.Mock(spec=DataFrame)
+
+        # Act
+        spark_engine.save_dataframe(
+            feature_group=fg,
+            dataframe=mock_dataframe,
+            operation="insert",
+            online_enabled=False,
+            storage="offline",
+            offline_write_options=None,
+            online_write_options=None,
+            validation_id=None,
+        )
+
+        # Assert
+        assert mock_check_duplicate_records.call_count == 1
+        mock_check_duplicate_records.assert_called_once_with(mock_dataframe, fg)
+        assert mock_spark_engine_save_offline_dataframe.call_count == 1
+
+    def test_save_dataframe_non_delta_does_not_call_check_duplicate_records(
+        self, mocker
+    ):
+        # Arrange
+        mock_check_duplicate_records = mocker.patch(
+            "hsfs.engine.spark.Engine._check_duplicate_records"
+        )
+        mock_spark_engine_save_offline_dataframe = mocker.patch(
+            "hsfs.engine.spark.Engine._save_offline_dataframe"
+        )
+
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["pk1"],
+            partition_key=[],
+            id=10,
+            time_travel_format="HUDI",
+        )
+
+        mock_dataframe = mocker.Mock(spec=DataFrame)
+
+        # Act
+        spark_engine.save_dataframe(
+            feature_group=fg,
+            dataframe=mock_dataframe,
+            operation="insert",
+            online_enabled=False,
+            storage="offline",
+            offline_write_options=None,
+            online_write_options=None,
+            validation_id=None,
+        )
+
+        # Assert
+        assert mock_check_duplicate_records.call_count == 0
+        assert mock_spark_engine_save_offline_dataframe.call_count == 1
+
+    @pytest.mark.parametrize(
+        "test_name,primary_key,partition_key,event_time,data",
+        [
+            (
+                "duplicate_primary_key",
+                ["id"],
+                [],
+                None,
+                [
+                    {"id": 1, "text": "a"},
+                    {"id": 1, "text": "a_dup"},
+                    {"id": 2, "text": "b"},
+                ],
+            ),
+            (
+                "duplicate_primary_key_partition",
+                ["id"],
+                ["p"],
+                None,
+                [
+                    {"id": 1, "p": 0, "text": "a_p0"},
+                    {"id": 1, "p": 0, "text": "a_p0_dup"},
+                    {"id": 2, "p": 0, "text": "b_p0"},
+                ],
+            ),
+            (
+                "duplicate_primary_key_event_time",
+                ["id"],
+                [],
+                "event_time",
+                [
+                    {"id": 1, "event_time": "2024-01-01", "text": "a_t1"},
+                    {"id": 1, "event_time": "2024-01-01", "text": "a_t1_dup"},
+                    {"id": 2, "event_time": "2024-01-02", "text": "b_t2"},
+                ],
+            ),
+        ],
+    )
+    def test_save_dataframe_delta_duplicate_should_fail(
+        self, mocker, test_name, primary_key, partition_key, event_time, data
+    ):
+        # Arrange
+        from datetime import datetime
+
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name=f"dl_dup_{test_name}",
+            version=1,
+            featurestore_id=99,
+            primary_key=primary_key,
+            partition_key=partition_key,
+            event_time=event_time,
+            time_travel_format="DELTA",
+        )
+
+        # Convert event_time strings to datetime if needed
+        if event_time and any(isinstance(row.get(event_time), str) for row in data):
+            for row in data:
+                if event_time in row and isinstance(row[event_time], str):
+                    row[event_time] = datetime.fromisoformat(row[event_time])
+
+        df = spark_engine._spark_session.createDataFrame(data)
+
+        # Act & Assert
+        with pytest.raises(exceptions.FeatureStoreException) as exc_info:
+            spark_engine.save_dataframe(
+                feature_group=fg,
+                dataframe=df,
+                operation="insert",
+                online_enabled=True,
+                storage="offline",
+                offline_write_options={},
+                online_write_options={},
+                validation_id=None,
+            )
+
+        assert (
+            exceptions.FeatureStoreException.DUPLICATE_RECORD_ERROR_MESSAGE
+            in str(exc_info.value)
+        )
+
+    @pytest.mark.parametrize(
+        "test_name,primary_key,partition_key,event_time,data_factory",
+        [
+            (
+                "pk_partition_across",
+                ["id"],
+                ["p"],
+                None,
+                lambda dt: [
+                    {"id": 1, "p": 0, "text": "a_p0"},
+                    {"id": 1, "p": 1, "text": "a_p1"},
+                    {"id": 2, "p": 0, "text": "b_p0"},
+                ],
+            ),
+            (
+                "pk_event_time_across",
+                ["id"],
+                [],
+                "event_time",
+                lambda dt: [
+                    {"id": 1, "event_time": dt.datetime(2024, 1, 1), "text": "a_t1"},
+                    {"id": 1, "event_time": dt.datetime(2024, 1, 2), "text": "a_t2"},
+                    {"id": 2, "event_time": dt.datetime(2024, 1, 1), "text": "b_t1"},
+                ],
+            ),
+            (
+                "pk_with_no_duplicate",
+                ["id"],
+                [],
+                None,
+                lambda dt: [
+                    {"id": 1, "text": "a"},
+                    {"id": 2, "text": "b"},
+                    {"id": 3, "text": "c"},
+                ],
+            ),
+            (
+                "no_pk_partition_only",
+                [],
+                ["p"],
+                None,
+                lambda dt: [
+                    {"id": 1, "p": 0, "text": "a_p0"},
+                    {"id": 1, "p": 1, "text": "a_p1"},
+                    {"id": 2, "p": 0, "text": "b_p0"},
+                ],
+            ),
+            (
+                "no_pk_event_time_only",
+                [],
+                [],
+                "event_time",
+                lambda dt: [
+                    {"id": 1, "event_time": dt.datetime(2024, 1, 1), "text": "a_t1"},
+                    {"id": 1, "event_time": dt.datetime(2024, 1, 2), "text": "a_t2"},
+                    {"id": 2, "event_time": dt.datetime(2024, 1, 1), "text": "b_t1"},
+                ],
+            ),
+            (
+                "no_pk",
+                [],
+                [],
+                None,
+                lambda dt: [
+                    {"id": 1, "text": "a"},
+                    {"id": 1, "text": "a_dup"},
+                    {"id": 2, "text": "b"},
+                ],
+            ),
+        ],
+    )
+    def test_save_dataframe_delta_duplicate_should_succeed(
+        self, mocker, test_name, primary_key, partition_key, event_time, data_factory
+    ):
+        # Arrange
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mock_spark_engine_save_offline_dataframe = mocker.patch(
+            "hsfs.engine.spark.Engine._save_offline_dataframe"
+        )
+
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name=f"dl_dup_{test_name}",
+            version=1,
+            featurestore_id=99,
+            primary_key=primary_key,
+            partition_key=partition_key,
+            event_time=event_time,
+            time_travel_format="DELTA",
+        )
+
+        data = data_factory(datetime)
+        df = spark_engine._spark_session.createDataFrame(data)
+
+        # Act - should not raise exception
+        spark_engine.save_dataframe(
+            feature_group=fg,
+            dataframe=df,
+            operation="insert",
+            online_enabled=True,
+            storage="offline",
+            offline_write_options={},
+            online_write_options={},
+            validation_id=None,
+        )
+
+        # Assert - no exception should be raised, and save should be called
+        assert mock_spark_engine_save_offline_dataframe.call_count == 1
+
     def test_save_stream_dataframe(self, mocker, backend_fixtures):
         # Arrange
         mock_common_client_get_instance = mocker.patch(
@@ -2149,6 +2424,74 @@ class TestSpark:
             "subject": "fg_1",
             "version": 1,
             "schema": '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]},{"name":"event_time","type":["null",{"type":"long","logicalType":"timestamp-micros"}]}]}',
+        }
+
+        # Act
+        serialized_df = spark_engine._serialize_to_avro(
+            feature_group=fg,
+            dataframe=df,
+        )
+
+        deserialized_df = spark_engine._deserialize_from_avro(
+            feature_group=fg,
+            dataframe=serialized_df,
+        )
+
+        # Assert
+        assert (
+            serialized_df.schema.json()
+            == '{"fields":[{"metadata":{},"name":"key","nullable":false,"type":"binary"},{"metadata":{},"name":"value","nullable":false,"type":"binary"}],"type":"struct"}'
+        )
+        assert df.schema == deserialized_df.schema["value"].dataType
+        assert df.collect() == deserialized_df.select("value.*").collect()
+
+    def test_serialize_deserialize_avro_with_struct_feature(self, mocker, spark_engine):
+        # Arrange
+        now = datetime.datetime.now()
+
+        fg_data = []
+        fg_data.append(
+            ("ekarson", ["GRAVITY RUSH 2", "KING'S QUEST"], now, {"value": "test"})
+        )
+        fg_data.append(
+            ("ratmilkdrinker", ["NBA 2K", "CALL OF DUTY"], now, {"value": "test"})
+        )
+
+        schema = StructType(
+            [
+                StructField("account_id", StringType(), True),
+                StructField("last_played_games", ArrayType(StringType()), True),
+                StructField("event_time", TimestampType(), True),
+                StructField(
+                    "struct_feature",
+                    StructType([StructField("value", StringType(), True)]),
+                ),
+            ]
+        )
+
+        df = spark_engine._spark_session.createDataFrame(data=fg_data, schema=schema)
+
+        features = [
+            feature.Feature(name="account_id", type="str"),
+            feature.Feature(name="last_played_games", type="array"),
+            feature.Feature(name="event_time", type="timestamp"),
+            feature.Feature(name="struct_feature", type="struct<value:string>"),
+        ]
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            features=features,
+        )
+        fg._subject = {
+            "id": 1025,
+            "subject": "fg_1",
+            "version": 1,
+            "schema": '{"type":"record","name":"fg_1","namespace":"test_featurestore.db","fields":[{"name":"account_id","type":["null","string"]},{"name":"last_played_games","type":["null",{"type":"array","items":["null","string"]}]},{"name":"event_time","type":["null",{"type":"long","logicalType":"timestamp-micros"}]},{"name":"struct_feature","type":["null",{"type":"record","name":"S_struct_feature","fields":[{"name":"value","type":["null","string"]}]}]}]}',
         }
 
         # Act
