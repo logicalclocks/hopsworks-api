@@ -2064,7 +2064,7 @@ class FeatureStore:
        )
 ```
        """
-        return self._search_api.featurestore(search_term=search_term, tag_filter=tag_filter, keyword_filter=keyword_filter, offset=offset, limit=limit, global_search=global_search)
+        return self._search_api.feature_store(search_term=search_term, tag_filter=tag_filter, keyword_filter=keyword_filter, offset=offset, limit=limit, global_search=global_search)
 
     @usage.method_logger
     def search_feature_groups(
