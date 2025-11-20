@@ -124,6 +124,7 @@ def login(
         engine:
             Specifies the engine to use.
             The default value is None, which automatically selects the engine based on the environment:
+
             - `spark`: Used if Spark is available, such as in Hopsworks or Databricks environments.
             - `python`: Used in local Python environments or AWS SageMaker when Spark is not available.
             - `training`: Used when only feature store metadata is needed, such as for obtaining training dataset locations and label information during Hopsworks training experiments.
