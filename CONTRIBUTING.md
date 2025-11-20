@@ -77,34 +77,38 @@ Each directory corresponds to one version of the documentation.
 Additionally, `mike` maintains a json in the root of gh-pages with the mappings of versions/aliases for each of the directories available.
 With aliases you can define extra names like `dev` or `latest`, to indicate stable and unstable releases.
 
-1. Install Hopsworks with the required dependencies (assuming you are in the root directory of the repository):
+##### 1. Install dependencies
 
-   ```bash
-   uv sync --extra dev --all-groups --project python
-   source python/.venv/bin/activate
-   ```
+Install Hopsworks with the required dependencies (assuming you are in the root directory of the repository):
 
-2. To build the docs, first run the auto doc script:
+```bash
+uv sync --extra dev --all-groups --project python
+source python/.venv/bin/activate
+```
 
-   ```bash
-   python python/auto_doc.py
-   ```
+##### 2. Run autodoc script
 
-##### Option 1: Build only current version of docs
+To build the docs, first run the autodoc script:
 
-3. Either build the docs, or serve them dynamically:
+```bash
+python python/auto_doc.py
+```
 
-   Note: Links and pictures might not resolve properly later on when checking with this build.
-   The reason for that is that the docs are deployed with versioning on docs.hopsworks.ai and therefore another level is added to all paths, e.g. `docs.hopsworks.ai/[version-or-alias]`.
-   Using relative links should not be affected by this, however, building the docs with version (Option 2) is recommended.
+##### 3. Option 1: Build only current version of docs
 
-   ```bash
-   mkdocs build
-   # or
-   mkdocs serve
-   ```
+Either build the docs, or serve them dynamically:
 
-##### Option 2 (Preferred): Build multi-version doc with `mike`
+Note: Links and pictures might not resolve properly later on when checking with this build.
+The reason for that is that the docs are deployed with versioning on docs.hopsworks.ai and therefore another level is added to all paths, e.g. `docs.hopsworks.ai/[version-or-alias]`.
+Using relative links should not be affected by this, however, building the docs with version (Option 2) is recommended.
+
+```bash
+mkdocs build
+# or
+mkdocs serve
+```
+
+##### 3. Option 2 (Preferred): Build multi-version doc with `mike`
 
 ###### Versioning on docs.hopsworks.ai
 
@@ -114,69 +118,69 @@ On docs.hopsworks.ai we implement the following versioning scheme:
 - the latest release: rendered with full current version, e.g. **3.8.0 [latest]** with `latest` alias to indicate that this is the latest stable release.
 - previous stable releases: rendered without alias, e.g. **3.4.4**.
 
-###### Build Instructions
+###### 4. Build Instructions
 
-4. For this you can either checkout and make a local copy of the `upstream/gh-pages` branch, where `mike` maintains the current state of docs.hopsworks.ai, or just build documentation for the branch you are updating:
+For this you can either checkout and make a local copy of the `upstream/gh-pages` branch, where `mike` maintains the current state of docs.hopsworks.ai, or just build documentation for the branch you are updating:
 
-    Building *one* branch:
+Building *one* branch:
 
-    Checkout your dev branch with modified docs:
+Checkout your dev branch with modified docs:
 
-    ```bash
-    git checkout [dev-branch]
-    ```
+```bash
+git checkout [dev-branch]
+```
 
-    Generate API docs if necessary:
+Generate API docs if necessary:
 
-    ```bash
-    python auto_doc.py
-    ```
+```bash
+python auto_doc.py
+```
 
-    Build docs with a version and alias
+Build docs with a version and alias
 
-    ```bash
-    mike deploy [version] [alias] --update-alias
+```bash
+mike deploy [version] [alias] --update-alias
 
-    # for example, if you are updating documentation to be merged to master,
-    # which will become the new SNAPSHOT version:
-    mike deploy 4.0.0-SNAPSHOT dev --update-alias
+# for example, if you are updating documentation to be merged to master,
+# which will become the new SNAPSHOT version:
+mike deploy 4.0.0-SNAPSHOT dev --update-alias
 
-    # if you are updating docs of the latest stable release branch
-    mike deploy [version] latest --update-alias
+# if you are updating docs of the latest stable release branch
+mike deploy [version] latest --update-alias
 
-    # if you are updating docs of a previous stable release branch
-    mike deploy [version]
-    ```
+# if you are updating docs of a previous stable release branch
+mike deploy [version]
+```
 
-    If no gh-pages branch existed in your local repository, this will have created it.
+If no gh-pages branch existed in your local repository, this will have created it.
 
-    **Important**: If no previous docs were built, you will have to choose a version as default to be loaded as index, as follows
+**Important**: If no previous docs were built, you will have to choose a version as default to be loaded as index, as follows
 
-    ```bash
-    mike set-default [version-or-alias]
-    ```
+```bash
+mike set-default [version-or-alias]
+```
 
-    You can now checkout the gh-pages branch and serve:
+You can now checkout the gh-pages branch and serve:
 
-    ```bash
-    git checkout gh-pages
-    mike serve
-    ```
+```bash
+git checkout gh-pages
+mike serve
+```
 
-    You can also list all available versions/aliases:
+You can also list all available versions/aliases:
 
-    ```bash
-    mike list
-    ```
+```bash
+mike list
+```
 
-    Delete and reset your local gh-pages branch:
+Delete and reset your local gh-pages branch:
 
-    ```bash
-    mike delete --all
+```bash
+mike delete --all
 
-    # or delete single version
-    mike delete [version-or-alias]
-    ```
+# or delete single version
+mike delete [version-or-alias]
+```
 
 #### Adding new API documentation
 
