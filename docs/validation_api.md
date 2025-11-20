@@ -11,6 +11,7 @@
 {{expectation_methods}}
 
 ## Validate a dataframe
+
 {{validate}}
 
 ## Retrieval

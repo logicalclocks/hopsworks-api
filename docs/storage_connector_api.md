@@ -65,6 +65,7 @@
 {{snowflake_methods}}
 
 ## Google Cloud Storage
+
 This storage connector provides integration to Google Cloud Storage (GCS).
 Once you create a connector in FeatureStore, you can transact data from a GCS bucket into a spark dataframe
 by calling the `read` API.
@@ -89,6 +90,7 @@ https://github.com/GoogleCloudDataproc/hadoop-connectors/tree/master/gcs#google-
 {{gcs_methods}}
 
 ## BigQuery
+
 The BigQuery storage connector provides integration to Google Cloud BigQuery.
 You can use it to run bigquery on your GCP cluster and load results into spark dataframe by calling the `read` API.
 

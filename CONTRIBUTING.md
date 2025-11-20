@@ -116,7 +116,7 @@ On docs.hopsworks.ai we implement the following versioning scheme:
 
 ###### Build Instructions
 
-4.  For this you can either checkout and make a local copy of the `upstream/gh-pages` branch, where `mike` maintains the current state of docs.hopsworks.ai, or just build documentation for the branch you are updating:
+4. For this you can either checkout and make a local copy of the `upstream/gh-pages` branch, where `mike` maintains the current state of docs.hopsworks.ai, or just build documentation for the branch you are updating:
 
     Building *one* branch:
 

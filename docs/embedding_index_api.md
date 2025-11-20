@@ -9,4 +9,3 @@
 ## Methods
 
 {{embedding_index_methods}}
-

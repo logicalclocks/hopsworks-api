@@ -1,6 +1,6 @@
 # Environment API
 
-## Handle 
+## Handle
 
 {{env_api_handle}}
 

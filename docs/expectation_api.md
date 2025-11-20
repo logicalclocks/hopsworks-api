@@ -11,6 +11,7 @@
 {{expectation_methods}}
 
 ## Creation
+
 {{expectation_create}}
 
 ## Retrieval

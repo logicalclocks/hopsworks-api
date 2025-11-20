@@ -100,11 +100,13 @@ Note, the `recreate_feature_group` only matters if you rerun the `create_feature
 #### Run one process locust benchmark
 
 You are now ready to run the load test:
+
 ```bash
 locust -f locustfile.py --headless -u 4 -r 1 -t 30 -s 1 --html=result.html
 ```
 
 Options:
+
 - `u`: number of users sharing the python process
 - `r`: spawn rate of the users in seconds, it will launch one user every `r` seconds until there are `u` users
 - `t`: total time to run the test for
@@ -125,13 +127,12 @@ locust -f locustfile.py MySQLFeatureVectorBatchLookup --headless -u 4 -r 1 -t 30
 
 As you will see already with 4 users, the single core tends to be saturated and locust will print a warning.
 
-
-
 ```
 [2023-03-09 12:02:11,304] ip-10-0-0-187/WARNING/root: CPU usage above 90%! This may constrain your throughput and may even give inconsistent response time measurements! See https://docs.locust.io/en/stable/running-distributed.html for how to distribute the load over multiple CPU cores or machines
 ```
 
 First we need to install docker, for which we will use [the provided convenience script](https://docs.docker.com/engine/install/ubuntu/#install-using-the-convenience-script), however, you can use any other method too:
+
 ```bash
 curl -fsSL https://get.docker.com -o get-docker.sh
 sudo sh get-docker.sh
