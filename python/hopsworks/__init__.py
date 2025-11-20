@@ -438,29 +438,28 @@ def _initialize_module_apis():
     _secrets_api = secret_api.SecretsApi()
 
 
-def create_project(name: str, description: Optional[str] = None, feature_store_topic: Optional[str] = None):
+def create_project(name: str, description: str | None = None, feature_store_topic: str | None = None) -> project.Project | None:
     """Create a new project.
 
-    !!! warning "Not supported"
-        This is not supported if you are connected to [Serverless Hopsworks](https://app.hopsworks.ai)
+    Warning: Not supported
+        The function does not work if you are connected to [Serverless Hopsworks](https://app.hopsworks.ai).
 
-    !!! example "Example for creating a new project"
+    Example: Example for creating a new project
         ```python
-
         import hopsworks
 
         hopsworks.login(...)
 
         hopsworks.create_project("my_project", description="An example Hopsworks project")
-
         ```
-    # Arguments
-        name: The name of the project.
-        description: optional description of the project
-        feature_store_topic: optional feature store topic name
 
-    # Returns
-        `Project`. The Project object to perform operations on
+    Parameters:
+        name: The name of the project.
+        description: Description of the project.
+        feature_store_topic: Feature store topic name.
+
+    Returns:
+        The Project object to perform operations on.
     """
     global _hw_connection
     global _connected_project

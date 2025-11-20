@@ -16,10 +16,9 @@
 from __future__ import annotations
 
 import json
-from typing import Optional
 
 import humps
-from hopsworks_common import client, util
+from hopsworks_common import alert, client, util
 from hopsworks_common.core import (
     alerts_api,
     dataset_api,
@@ -113,14 +112,14 @@ class Project:
         return self._project_namespace
 
     def get_feature_store(
-        self, name: Optional[str] = None
-    ):  # -> hsfs.feature_store.FeatureStore
+        self, name: str | None = None
+    ):
         """Connect to Project's Feature Store.
 
         Defaulting to the project name of default feature store. To get a
         shared feature store, the project name of the feature store is required.
 
-        !!! example "Example for getting the Feature Store API of a project"
+        Example: Example for getting the Feature Store API of a project
             ```python
             import hopsworks
 
@@ -129,19 +128,21 @@ class Project:
             fs = project.get_feature_store()
             ```
 
-        # Arguments
+        Parameters:
             name: Project name of the feature store.
-        # Returns
-            `hsfs.feature_store.FeatureStore`: The Feature Store API
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Returns:
+            hsfs.feature_store.FeatureStore: The Feature Store API.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return client.get_connection().get_feature_store(name)
 
     def get_model_registry(self):
         """Connect to Project's Model Registry API.
 
-        !!! example "Example for getting the Model Registry API of a project"
+        Example: Example for getting the Model Registry API of a project
             ```python
             import hopsworks
 
@@ -150,17 +151,18 @@ class Project:
             mr = project.get_model_registry()
             ```
 
-        # Returns
-            `hsml.model_registry.ModelRegistry`: The Model Registry API
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Returns:
+            hsml.model_registry.ModelRegistry: The Model Registry API.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return client.get_connection().get_model_registry()
 
     def get_model_serving(self):
         """Connect to Project's Model Serving API.
 
-        !!! example "Example for getting the Model Serving API of a project"
+        Example: Example for getting the Model Serving API of a project
             ```python
             import hopsworks
 
@@ -169,40 +171,40 @@ class Project:
             ms = project.get_model_serving()
             ```
 
-        # Returns
-            `hsml.model_serving.ModelServing`: The Model Serving API
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Returns:
+            hsml.model_serving.ModelServing: The Model Serving API.
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return client.get_connection().get_model_serving()
 
-    def get_kafka_api(self):
+    def get_kafka_api(self) -> kafka_api.KafkaApi:
         """Get the kafka api for the project.
 
-        # Returns
-            `KafkaApi`: The Kafka Api handle
+        Returns:
+            The Kafka Api handle.
         """
         _client = client.get_instance()
         if _client._is_external():
             _client.download_certs()
         return self._kafka_api
 
-    def get_opensearch_api(self):
+    def get_opensearch_api(self) -> opensearch_api.OpenSearchApi:
         """Get the opensearch api for the project.
 
-        # Returns
-            `OpenSearchApi`: The OpenSearch Api handle
+        Returns:
+            The OpenSearch Api handle.
         """
         _client = client.get_instance()
         if _client._is_external():
             _client.download_certs()
         return self._opensearch_api
 
-    def get_job_api(self):
+    def get_job_api(self) -> job_api.JobApi:
         """Get the job API for the project.
 
-        # Returns
-            `JobApi`: The Job Api handle
+        Returns:
+            The Job Api handle.
         """
         return self._job_api
 
@@ -210,35 +212,35 @@ class Project:
         """**Deprecated**, use get_job_api instead. Excluded from docs to prevent API breakage"""
         return self.get_job_api()
 
-    def get_flink_cluster_api(self):
+    def get_flink_cluster_api(self) -> flink_cluster_api.FlinkClusterApi:
         """Get the flink cluster API for the project.
 
-        # Returns
-            `FlinkClusterApi`: The Flink Cluster Api handle
+        Returns:
+            The Flink Cluster Api handle.
         """
         return self._flink_cluster_api
 
-    def get_git_api(self):
+    def get_git_api(self) -> git_api.GitApi:
         """Get the git repository api for the project.
 
-        # Returns
-            `GitApi`: The Git Api handle
+        Returns:
+            The Git Api handle.
         """
         return self._git_api
 
-    def get_dataset_api(self):
+    def get_dataset_api(self) -> dataset_api.DatasetApi:
         """Get the dataset api for the project.
 
-        # Returns
-            `DatasetApi`: The Datasets Api handle
+        Returns:
+            The Datasets Api handle.
         """
         return self._dataset_api
 
-    def get_environment_api(self):
-        """Get the Python environment AP
+    def get_environment_api(self) -> environment_api.EnvironmentApi:
+        """Get the Python environment API for the project.
 
-        # Returns
-            `EnvironmentApi`: The Python Environment Api handle
+        Returns:
+            The Python Environment Api handle.
         """
         return self._environment_api
 
@@ -246,81 +248,87 @@ class Project:
         """Get the alerts api for the project.
 
         Returns:
-            The Alerts Api handle
+            The Alerts Api handle.
         """
         return self._alerts_api
 
-    def get_search_api(self):
+    def get_search_api(self) -> search_api.SearchApi:
         """Get the search api for the project.
 
-        # Returns
-            `SearchApi`: The Search Api handle
+        Returns:
+            The Search Api handle.
         """
         return self._search_api
 
-    def get_alerts(self):
+    def get_alerts(self) -> list[alert.ProjectAlert]:
         """Get all alerts for the project.
 
-        # Returns
-            `List[ProjectAlert]`: List of ProjectAlert objects
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Returns:
+            List of ProjectAlert objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._alerts_api.get_alerts()
 
-    def get_alert(self, alert_id: int):
+    def get_alert(self, alert_id: int) -> alert.ProjectAlert | None:
         """Get an alert for the project by ID.
 
-        # Arguments
+        Parameters:
             alert_id: The ID of the alert.
-        # Returns
-            `ProjectAlert`: The ProjectAlert object.
+
+        Returns:
+            The ProjectAlert object.
         """
         return self._alerts_api.get_alert(alert_id)
 
-    def create_job_alert(self, receiver: str, status: str, severity: str):
+    def create_job_alert(self, receiver: str, status: str, severity: str) -> alert.ProjectAlert:
         """Create an alert for jobs in this project.
 
-        !!!example "Example for creating a job alert"
+        Example: Example for creating a job alert
             ```python
             import hopsworks
             project = hopsworks.login()
             project.create_job_alert("my_receiver", "long_running", "info")
             ```
 
-        # Arguments
+        Parameters:
             receiver: The receiver of the alert.
             status: The status of the alert. Valid values are "job_finished", "job_failed", "job_killed", "job_long_running".
             severity: The severity of the alert. Valid values are "critical", "warning", "info".
-        # Returns
-            `ProjectAlert`: The created ProjectAlert object.
-        # Raises
-            `ValueError`: If the status or severity is invalid.
-            `ValueError`: If the receiver is None.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Returns:
+            The created ProjectAlert object.
+
+        Raises:
+            ValueError: If the status or severity is invalid.
+            ValueError: If the receiver is None.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         return self._alerts_api.create_project_alert(receiver, status, severity, "Jobs")
 
-    def create_featurestore_alert(self, receiver: str, status: str, severity: str):
+    def create_featurestore_alert(self, receiver: str, status: str, severity: str) -> alert.ProjectAlert:
         """Create an alert for feature validation and monitoring in this project.
 
-        !!!example "Example for creating a featurestore alert"
+        Example: Example for creating a featurestore alert
             ```python
             import hopsworks
             project = hopsworks.login()
             project.create_featurestore_alert("my_receiver", "feature_validation_success", "info")
             ```
 
-        # Arguments
+        Parameters:
             receiver: The receiver of the alert.
             status: The status of the alert. Valid values are "feature_validation_success", "feature_validation_warning", "feature_validation_failure", "feature_monitor_shift_undetected", "feature_monitor_shift_detected".
             severity: The severity of the alert. Valid values are "critical", "warning", "info".
-        # Returns
-            `ProjectAlert`: The created ProjectAlert object.
-        # Raises
-            `ValueError`: If the status or severity is invalid.
-            `ValueError`: If the receiver is None.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Returns:
+            The created ProjectAlert object.
+
+        Raises:
+            ValueError: If the status or severity is invalid.
+            ValueError: If the receiver is None.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         return self._alerts_api.create_project_alert(
             receiver, status, severity, "Featurestore"

@@ -17,7 +17,7 @@
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import List, Literal, Optional, Union, get_args
+from typing import Literal, get_args
 
 import humps
 from hopsworks_common import (
@@ -102,7 +102,7 @@ class AlertsApi:
         self._log = logging.getLogger(__name__)
 
     @usage.method_logger
-    def get_alerts(self) -> List[alert.ProjectAlert]:
+    def get_alerts(self) -> list[alert.ProjectAlert]:
         """
         Get all project alerts.
 
@@ -112,7 +112,7 @@ class AlertsApi:
 
             project = hopsworks.login()
 
-            alerts_api: list[ProjectAlert] = project.get_alerts_api()
+            alerts_api = project.get_alerts_api()
 
             alert = alerts_api.get_alerts(alert_id=1)
             ```
@@ -135,7 +135,7 @@ class AlertsApi:
     @decorators.catch_not_found(
         "hopsworks_common.alert.ProjectAlert", fallback_return=None
     )
-    def get_alert(self, alert_id: int) -> Optional[alert.ProjectAlert]:
+    def get_alert(self, alert_id: int) -> alert.ProjectAlert | None:
         """
         Get a specific project alert by ID.
 
@@ -168,7 +168,7 @@ class AlertsApi:
         )
 
     @usage.method_logger
-    def get_job_alerts(self, job_name: str) -> List[alert.JobAlert]:
+    def get_job_alerts(self, job_name: str) -> list[alert.JobAlert]:
         """
         Get all job alerts.
 
@@ -202,7 +202,7 @@ class AlertsApi:
 
     @usage.method_logger
     @decorators.catch_not_found("hopsworks_common.alert.JobAlert", fallback_return=None)
-    def get_job_alert(self, job_name: str, alert_id: int) -> Optional[alert.JobAlert]:
+    def get_job_alert(self, job_name: str, alert_id: int) -> alert.JobAlert | None:
         """
         Get a specific job alert by ID.
 
@@ -247,7 +247,7 @@ class AlertsApi:
         self,
         feature_store_id: int,
         feature_group_id: int,
-    ) -> List[alert.FeatureGroupAlert]:
+    ) -> list[alert.FeatureGroupAlert]:
         """
         Get all feature group alerts.
 
@@ -297,7 +297,7 @@ class AlertsApi:
         feature_store_id: int,
         feature_group_id: int,
         alert_id: int,
-    ) -> Optional[alert.FeatureGroupAlert]:
+    ) -> alert.FeatureGroupAlert | None:
         """
         Get a specific feature group alert by ID.
 
@@ -345,7 +345,7 @@ class AlertsApi:
         feature_store_id: int,
         feature_view_name: str,
         feature_view_version: int,
-    ) -> List[alert.FeatureViewAlert]:
+    ) -> list[alert.FeatureViewAlert]:
         """
         Get all feature view alerts.
 
@@ -398,7 +398,7 @@ class AlertsApi:
         feature_view_name: str,
         feature_view_version: int,
         alert_id: int,
-    ) -> Optional[alert.FeatureViewAlert]:
+    ) -> alert.FeatureViewAlert | None:
         """
         Get a specific feature view alert by ID.
 
@@ -447,7 +447,7 @@ class AlertsApi:
     def create_project_alert(
         self,
         receiver: str,
-        status: Union[_PROJECT_FS_STATUS_ARG, _PROJECT_JOB_STATUS_ARG],
+        status: _PROJECT_FS_STATUS_ARG | _PROJECT_JOB_STATUS_ARG,
         severity: _SEVERITY_ARG,
         service: _SERVICES_ARG,
         threshold=0,
@@ -471,7 +471,7 @@ class AlertsApi:
             severity: The severity of the alert (warning, critical, info).
             receiver: The receiver of the alert (e.g., email, webhook).
             service: The service associated with the alert (Featurestore, Jobs).
-            threshold: The threshold for the alert (default is 0).
+            threshold: The threshold for the alert.
 
         Returns:
             The created ProjectAlert object.
@@ -525,7 +525,7 @@ class AlertsApi:
         feature_store_id: int,
         feature_group_id: int,
         receiver: str,
-        status: Union[_VALIDATION_STATUS_ARG, _MONITORING_STATUS_ARG],
+        status: _VALIDATION_STATUS_ARG | _MONITORING_STATUS_ARG,
         severity: _SEVERITY_ARG,
     ) -> alert.FeatureGroupAlert:
         """
@@ -734,7 +734,7 @@ class AlertsApi:
         )
 
     @usage.method_logger
-    def get_alert_receivers(self) -> List[alert_receiver.AlertReceiver]:
+    def get_alert_receivers(self) -> list[alert_receiver.AlertReceiver]:
         """
         Get all alert receivers.
 
@@ -769,7 +769,7 @@ class AlertsApi:
     @decorators.catch_not_found(
         "hopsworks_common.alert_receiver.AlertReceiver", fallback_return=None
     )
-    def get_alert_receiver(self, name: str) -> Optional[alert_receiver.AlertReceiver]:
+    def get_alert_receiver(self, name: str) -> alert_receiver.AlertReceiver | None:
         """
         Get a specific alert receivers by name.
 
@@ -806,10 +806,10 @@ class AlertsApi:
     def create_alert_receiver(
         self,
         name: str,
-        email_configs: List[alert_receiver.EmailConfig] = None,
-        slack_configs: List[alert_receiver.SlackConfig] = None,
-        pagerduty_configs: List[alert_receiver.PagerDutyConfig] = None,
-        webhook_configs: List[alert_receiver.WebhookConfig] = None,
+        email_configs: list[alert_receiver.EmailConfig] | None = None,
+        slack_configs: list[alert_receiver.SlackConfig] | None = None,
+        pagerduty_configs: list[alert_receiver.PagerDutyConfig] | None = None,
+        webhook_configs: list[alert_receiver.WebhookConfig] | None = None,
     ) -> alert_receiver.AlertReceiver:
         """
         Create a new alert receiver.
@@ -827,10 +827,10 @@ class AlertsApi:
 
         Parameters:
             name: The name of the alert receiver (e.g., email, webhook).
-            email_configs: List of email configurations (optional).
-            slack_configs: List of Slack configurations (optional).
-            pagerduty_configs: List of PagerDuty configurations (optional).
-            webhook_configs: List of webhook configurations (optional).
+            email_configs: List of email configurations.
+            slack_configs: List of Slack configurations.
+            pagerduty_configs: List of PagerDuty configurations.
+            webhook_configs: List of webhook configurations.
 
         Returns:
             The created alert receiver object.
@@ -946,8 +946,8 @@ class AlertsApi:
         severity: _SEVERITY_ARG,
         status: str,
         name: str,
-        generator_url: str = None,
-        expire_after_sec: int = None,
+        generator_url: str | None = None,
+        expire_after_sec: int | None = None,
     ):
         """
         Trigger an alert.
@@ -970,8 +970,8 @@ class AlertsApi:
             severity: The severity of the alert (warning, critical, info).
             status: The status of the alert.
             name: The name of the alert.
-            generator_url: The URL of the alert generator (optional).
-            expire_after_sec: The time in seconds after which the alert should expire (optional).
+            generator_url: The URL of the alert generator.
+            expire_after_sec: The time in seconds after which the alert should expire.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
@@ -1015,7 +1015,7 @@ class AlertsApi:
     @usage.method_logger
     def get_triggered_alerts(
         self, active: bool = True, silenced: bool = False, inhibited: bool = False
-    ) -> List[triggered_alert.TriggeredAlert]:
+    ) -> list[triggered_alert.TriggeredAlert]:
         """
         Get triggered alerts.
 
@@ -1031,9 +1031,9 @@ class AlertsApi:
             ```
 
         Parameters:
-            active: Whether to include active alerts (default is True).
-            silenced: Whether to include silenced alerts (default is False).
-            inhibited: Whether to include inhibited alerts (default is False).
+            active: Whether to include active alerts.
+            silenced: Whether to include silenced alerts.
+            inhibited: Whether to include inhibited alerts.
 
         Returns:
             The triggered alert objects.
@@ -1054,7 +1054,9 @@ class AlertsApi:
     def _get_configured_receivers(self):
         """
         Get configured alert receivers.
-        :return: A list of configured alert receivers.
+
+        Returns:
+            A list of configured alert receivers.
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "alerts", "receivers", "default"]
