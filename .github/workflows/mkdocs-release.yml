@@ -14,5 +14,5 @@ jobs:
         run: |
           curl -XPOST -H "Authorization: Bearer ${{ secrets.ACCESS_TOKEN }}" \
             -H "Content-Type: application/json" \
-            -d '{"event_type": "trigger-rebuild", "client_payload": {"branch": "${GITHUB_REF#refs/heads/}"}}' \
+            -d "{\"event_type\": \"trigger-rebuild\", \"client_payload\": {\"branch\": \"${GITHUB_REF#refs/heads/}\"}}" \
             https://api.github.com/repos/aversey/logicalclocks.github.io/dispatches
