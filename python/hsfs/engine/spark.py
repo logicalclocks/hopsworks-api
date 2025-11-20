@@ -398,9 +398,9 @@ class Engine:
             dataframe_dict = {}
             if not is_list_of_dict:
                 if column_names:
-                    assert (
-                        num_cols == len(column_names)
-                    ), f"Expecting {len(column_names)} features/labels but {num_cols} provided."
+                    assert num_cols == len(column_names), (
+                        f"Expecting {len(column_names)} features/labels but {num_cols} provided."
+                    )
                 for n_col in range(num_cols):
                     c = (
                         "col_" + str(n_col)
@@ -539,7 +539,11 @@ class Engine:
         validation_id=None,
     ):
         try:
-            if feature_group.time_travel_format == "DELTA":
+            if (
+                # Only `FeatureGroup class has time_travel_format property
+                isinstance(feature_group, fg_mod.FeatureGroup)
+                and feature_group.time_travel_format == "DELTA"
+            ):
                 self._check_duplicate_records(dataframe, feature_group)
                 _logger.debug(
                     "No duplicate records found. Proceeding with Delta write."
@@ -1983,9 +1987,9 @@ class Engine:
             provided_len = len(feature_log[0])
         else:
             provided_len = 1
-        assert provided_len == len(
-            cols
-        ), f"Expecting {len(cols)} features/labels but {provided_len} provided."
+        assert provided_len == len(cols), (
+            f"Expecting {len(cols)} features/labels but {provided_len} provided."
+        )
 
     def get_feature_logging_df(
         self,
