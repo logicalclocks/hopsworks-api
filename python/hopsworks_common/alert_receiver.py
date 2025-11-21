@@ -292,6 +292,7 @@ class _WebhookConfig:
 
 class AlertReceiver:
     NOT_FOUND_ERROR_CODE = 390003
+
     def __init__(
         self,
         name=None,

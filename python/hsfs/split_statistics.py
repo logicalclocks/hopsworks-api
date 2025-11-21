@@ -23,6 +23,7 @@ from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistic
 
 
 class SplitStatistics:
+    # TODO: Add docstring
     def __init__(
         self,
         name,
