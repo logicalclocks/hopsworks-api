@@ -514,8 +514,24 @@ class S3Connector(StorageConnector):
             "session_token": self.session_token,
             "region": self.region,
         }
+        if not self.arguments:
+            return options
         if self.arguments.get("fs.s3a.endpoint"):
             options["endpoint"] = self.arguments.get("fs.s3a.endpoint")
+        if self.arguments.get("fs.s3a.connection.ssl.enabled"):
+            # use_ssl is used by s3 secrets in duckdb
+            # where as fs.s3a.connection.ssl.enabled is used by spark s3a connector
+            # hadoop : https://hadoop.apache.org/docs/stable/hadoop-aws/tools/hadoop-aws/connecting.html#Low-level_Network.2FHttp_Options
+            # duckdb : https://duckdb.org/docs/stable/core_extensions/httpfs/s3api
+            options["use_ssl"] = self.arguments.get("fs.s3a.connection.ssl.enabled")
+        if self.arguments.get("fs.s3a.path.style.access"):
+            # url_style is used by duckdb s3 connector
+            # where as fs.s3a.path.style.access is used by spark s3a connector
+            # hadoop: https://hadoop.apache.org/docs/stable/hadoop-aws/tools/hadoop-aws/connecting.html#Third_party_stores
+            # duckdb: https://duckdb.org/docs/stable/core_extensions/httpfs/s3api
+            options["url_style"] = (
+                "path" if self.arguments.get("fs.s3a.path.style.access") else "vhost"
+            )
         return options
 
     def read(

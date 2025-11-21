@@ -155,7 +155,7 @@ class ModelEngine:
                 # otherwise, make a recursive call for the folder
                 if (
                     basename == constants.MODEL_SERVING.ARTIFACTS_DIR_NAME
-                ):  # TODO: Not needed anymore
+                ):  # NOTE: Keep for backward compatibility (<4.6). Existing models during upgrade contain Artifacts folder
                     continue  # skip Artifacts subfolder
                 local_folder_path = os.path.join(to_local_path, basename)
                 os.mkdir(local_folder_path)
@@ -270,14 +270,22 @@ class ModelEngine:
             offset = 0
             limit = 1000
             count, items = self._dataset_api._list_dataset_path(
-                dataset_model_path, inode.Inode, offset=offset, limit=limit, sort_by="NAME:desc"
+                dataset_model_path,
+                inode.Inode,
+                offset=offset,
+                limit=limit,
+                sort_by="NAME:desc",
             )
             while items:
-              files = files + items
-              offset += limit
-              count, items = self._dataset_api._list_dataset_path(
-                  dataset_model_path, inode.Inode, offset=offset, limit=limit, sort_by="NAME:desc"
-              )
+                files = files + items
+                offset += limit
+                count, items = self._dataset_api._list_dataset_path(
+                    dataset_model_path,
+                    inode.Inode,
+                    offset=offset,
+                    limit=limit,
+                    sort_by="NAME:desc",
+                )
             for item in files:
                 _, file_name = os.path.split(item.path)
                 # Get highest version folder
@@ -295,25 +303,40 @@ class ModelEngine:
 
             # Get highest available model metadata version
             # This makes sure we skip corrupt versions where the model folder is deleted manually but the backend metadata is still there
-            model = self._model_api.get(model_instance._name, current_highest_version, model_instance.model_registry_id)
+            model = self._model_api.get(
+                model_instance._name,
+                current_highest_version,
+                model_instance.model_registry_id,
+            )
             while model:
-              current_highest_version += 1
-              model = self._model_api.get(model_instance._name, current_highest_version, model_instance.model_registry_id)
+                current_highest_version += 1
+                model = self._model_api.get(
+                    model_instance._name,
+                    current_highest_version,
+                    model_instance.model_registry_id,
+                )
 
             model_instance._version = current_highest_version
         else:
-            model_backend_object_exists = self._model_api.get(model_instance._name, model_instance._version, model_instance.model_registry_id) is not None
+            model_backend_object_exists = (
+                self._model_api.get(
+                    model_instance._name,
+                    model_instance._version,
+                    model_instance.model_registry_id,
+                )
+                is not None
+            )
             model_version_folder_exists = self._dataset_api.path_exists(
-                                                          dataset_models_root_path
-                                                          + "/"
-                                                          + model_instance._name
-                                                          + "/"
-                                                          + str(model_instance._version)
-                                                      )
+                dataset_models_root_path
+                + "/"
+                + model_instance._name
+                + "/"
+                + str(model_instance._version)
+            )
 
             # Perform validations to handle possible inconsistency between db and filesystem
             if model_backend_object_exists and not model_version_folder_exists:
-              raise ModelRegistryException(
+                raise ModelRegistryException(
                     "Model with name {0} and version {1} looks to be corrupt as the version is registered but there is no Models/{0}/{1} folder in the filesystem. Delete this version using Model.delete() or the UI and try to export this version again.".format(
                         model_instance._name, model_instance._version
                     )
@@ -352,11 +375,11 @@ class ModelEngine:
         if is_shared_registry:
             dataset_models_root_path = "{}::{}".format(
                 model_instance.shared_registry_project_name,
-                constants.MODEL_SERVING.MODELS_DATASET,
+                constants.MODEL_REGISTRY.MODELS_DATASET,
             )
             model_instance._project_name = model_instance.shared_registry_project_name
         else:
-            dataset_models_root_path = constants.MODEL_SERVING.MODELS_DATASET
+            dataset_models_root_path = constants.MODEL_REGISTRY.MODELS_DATASET
             model_instance._project_name = _client._project_name
 
         util.validate_metrics(model_instance.training_metrics)

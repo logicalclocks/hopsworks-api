@@ -127,9 +127,24 @@ def feature_group_created():
 
 # Base class for common test behavior
 class BaseDataFrameTest:
-    def test_primary_key_missing(self, df, feature_group_data):
+    def _update_online_enabled(self, fg, online_enabled):
+        fg.online_enabled = online_enabled
+        if not online_enabled:
+            for f in fg.features:
+                f.online_type = None
+
+    # region primary key
+    @pytest.mark.parametrize(
+        "online_enabled",
+        [True, False],
+    )
+    def test_primary_key_missing(self, online_enabled, df, feature_group_data):
+        # Arrange
         KEY = "missing_key"
         feature_group_data.primary_key = [KEY]
+        self._update_online_enabled(feature_group_data, online_enabled)
+
+        # Act, Assert
         with pytest.raises(
             ValueError, match=f"Primary key column {KEY} is missing in input dataframe"
         ):
@@ -137,16 +152,16 @@ class BaseDataFrameTest:
                 feature_group_data, df, feature_group_data.features
             )
 
-    def test_feature_group_with_features_not_created(self, df, feature_group_data):
-        # test with feature group with explicit features
-        df_features = DataFrameValidator().validate_schema(
-            feature_group_data, df, feature_group_data.features
-        )
-        # assert that the online type of the string_col feature is same as explcitly set in the feature group
-        assert df_features[2].online_type == "varchar(200)"
-
-    def test_primary_key_null(self, df, feature_group_data):
+    @pytest.mark.parametrize(
+        "online_enabled",
+        [True, False],
+    )
+    def test_primary_key_null(self, online_enabled, df, feature_group_data):
+        # Arrange
+        self._update_online_enabled(feature_group_data, online_enabled)
         modified_df = self._modify_row(df, 0, primary_key=None)
+
+        # Act, Assert
         with pytest.raises(
             ValueError, match="Primary key column primary_key contains null values"
         ):
@@ -154,30 +169,83 @@ class BaseDataFrameTest:
                 feature_group_data, modified_df, feature_group_data.features
             )
 
-    def test_string_length_exceeded(self, df, feature_group_created, mocker):
+    # endregion
+
+    # region string
+    @pytest.mark.parametrize(
+        "online_enabled",
+        [True, False],
+    )
+    def test_string_length_exceeded_created_fg(
+        self, online_enabled, df, feature_group_created
+    ):
+        # Arrange
+        self._update_online_enabled(feature_group_created, online_enabled)
         modified_df = self._modify_row(df, 0, string_col="a" * 101)
-        with pytest.raises(ValueError, match="String length exceeded"):
-            DataFrameValidator().validate_schema(
+
+        # Act, Assert
+        if online_enabled:
+            with pytest.raises(ValueError, match="String length exceeded"):
+                DataFrameValidator().validate_schema(
+                    feature_group_created, modified_df, feature_group_created.features
+                )
+        else:
+            # Should not raise when online is disabled
+            df_features = DataFrameValidator().validate_schema(
                 feature_group_created, modified_df, feature_group_created.features
             )
+            assert isinstance(df_features, list)
 
-    def test_fg_features_string_length_exceeded(self, df, feature_group_data):
+    @pytest.mark.parametrize(
+        "online_enabled",
+        [True, False],
+    )
+    def test_string_length_exceeded(self, online_enabled, df, feature_group_data):
+        # Arrange
+        self._update_online_enabled(feature_group_data, online_enabled)
         modified_df = self._modify_row(df, 0, string_col="a" * 301)
-        with pytest.raises(ValueError, match="String length exceeded"):
-            DataFrameValidator().validate_schema(
+
+        # Act, Assert
+        if online_enabled:
+            with pytest.raises(ValueError, match="String length exceeded"):
+                DataFrameValidator().validate_schema(
+                    feature_group_data, modified_df, feature_group_data.features
+                )
+        else:
+            # Should not raise when online is disabled
+            df_features = DataFrameValidator().validate_schema(
                 feature_group_data, modified_df, feature_group_data.features
             )
+            assert isinstance(df_features, list)
 
-    def test_feature_group_created(self, df, feature_group_created, mocker):
-        modified_df = self._modify_row(df, 0, string_col="a" * 101)
-        with pytest.raises(ValueError, match="String length exceeded"):
-            DataFrameValidator().validate_schema(
-                feature_group_created, modified_df, feature_group_created.features
-            )
+    @pytest.mark.parametrize(
+        "online_enabled",
+        [True, False],
+    )
+    def test_string_with_features(self, online_enabled, df, feature_group_data):
+        # Arrange
+        # test with feature group with explicit features
+        self._update_online_enabled(feature_group_data, online_enabled)
 
-    def test_feature_group_not_created(self, df, feature_group_data):
+        # Act
+        df_features = DataFrameValidator().validate_schema(
+            feature_group_data, df, feature_group_data.features
+        )
+        # Assert
+        # the online type of the string_col feature is same as explcitly set in the feature group
+        if online_enabled:
+            assert df_features[2].online_type == "varchar(200)"
+        else:
+            assert df_features[2].online_type is None
+
+    @pytest.mark.parametrize(
+        "online_enabled",
+        [True, False],
+    )
+    def test_string_without_features(self, online_enabled, df, feature_group_data):
+        # Arrange
         # test with non existing feature group with no explicit features
-        # arrange
+        self._update_online_enabled(feature_group_data, online_enabled)
         modified_df = self._modify_row(df, 0, string_col="a" * 101)
         initial_features = [
             Feature("primary_key", "int"),
@@ -185,58 +253,68 @@ class BaseDataFrameTest:
             Feature("string_col", "string"),
         ]
         feature_group_data.features = []
+
+        # Act
         df_features = DataFrameValidator().validate_schema(
             feature_group_data, modified_df, initial_features
         )
+
+        # Assert
         assert df_features[2].online_type == "varchar(200)"
 
-    def test_pk_null_string_length_exceeded(self, df, feature_group_data):
-        modified_df = self._modify_row(df, 0, primary_key=None, string_col="a" * 101)
-        with pytest.raises(
-            ValueError, match="One or more schema validation errors found"
-        ):
+    @pytest.mark.parametrize(
+        "online_enabled",
+        [True],
+    )
+    def test_string_update_nonvarchar(self, online_enabled, df, feature_group_data):
+        # Arrange
+        # Test that the validator does not update the online type of a non-varchar column
+        # set string_col feature online type to text
+        self._update_online_enabled(feature_group_data, online_enabled)
+        feature_group_data.features[2].online_type = "text"
+        modified_df = self._modify_row(df, 0, string_col="b" * 1001)
+
+        # Act
+        df_features = DataFrameValidator().validate_schema(
+            feature_group_data, modified_df, feature_group_data.features
+        )
+
+        # Assert
+        assert df_features == feature_group_data.features
+
+    # endregion
+
+    @pytest.mark.parametrize(
+        "online_enabled",
+        [True, False],
+    )
+    def test_pk_null_and_string_length_exceeded(
+        self, online_enabled, df, feature_group_data
+    ):
+        # Arrange
+        self._update_online_enabled(feature_group_data, online_enabled)
+        modified_df = self._modify_row(df, 0, primary_key=None, string_col="a" * 1001)
+
+        # Act
+        with pytest.raises(ValueError) as excinfo:
             DataFrameValidator().validate_schema(
                 feature_group_data, modified_df, feature_group_data.features
             )
 
-    def test_should_not_update_nonvarchar(self, df, feature_group_data):
-        # Test that the validator does not update the online type of a non-varchar column
-        # arrange
-        # set string_col feature online type to text
-        feature_group_data.features[2].online_type = "text"
-        modified_df = self._modify_row(df, 0, string_col="b" * 1001)
-        # act
-        df_features = DataFrameValidator().validate_schema(
-            feature_group_data, modified_df, feature_group_data.features
-        )
-        assert df_features == feature_group_data.features
-
-    def test_offline_fg(self, df, feature_group_data, caplog):
-        # test that offline fg are skipped for validations
-        # arrange
-        feature_group_data.online_enabled = False
-        modified_df = self._modify_row(df, 0, primary_key=None, string_col="a" * 101)
-        # act
-        df_features = DataFrameValidator().validate_schema(
-            feature_group_data, modified_df, feature_group_data.features
-        )
-        # assert raises warning
-        assert "Feature group is not online enabled" in caplog.text
-        # assert no changes were made
-        assert df_features == feature_group_data.features
-
-    def test_embedding_feature_group(self, df, feature_group_data, caplog):
-        # Test that the embedding fg is skipped validation
-        # arrange
-        modified_df = self._modify_row(df, 0, primary_key=None, string_col="a" * 101)
-        feature_group_data.embedding_index = "string_col"
-        # act
-        df_features = DataFrameValidator().validate_schema(
-            feature_group_data, modified_df, feature_group_data.features
-        )
-        # assert raises warning
-        assert "Feature group is embedding" in caplog.text
-        assert df_features == feature_group_data.features
+        # Assert
+        msg = str(excinfo.value)
+        # Basic header check
+        assert "One or more schema validation errors found" in msg
+        # primary key error must always be present
+        assert "Primary key column primary_key contains null values" in msg
+        # string_col error only expected when online is enabled
+        if online_enabled:
+            assert (
+                "String length exceeded. Column string_col has string values longer than maximum column limit"
+                in msg
+            )
+        else:
+            assert "string_col" not in msg
 
 
 class TestPandasDataframe(BaseDataFrameTest):
@@ -255,10 +333,16 @@ class TestPandasDataframe(BaseDataFrameTest):
         return df
 
     def test_get_validator_pandas(self, df):
+        # Arrange
+
+        # Act
         validator = DataFrameValidator.get_validator(df)
+
+        # Assert
         assert isinstance(validator, PandasValidator)
 
     def test_string_column_detection(self):
+        # Arrange
         df = pd.DataFrame(
             {
                 "pk": [1, 2, 3, 4, 5],
@@ -273,8 +357,11 @@ class TestPandasDataframe(BaseDataFrameTest):
                 "mixed": ["hello", 2.0, pd.Timestamp.now(), None, pd.Timestamp.now()],
             }
         )
-        # act
+
+        # Act
         string_cols = PandasValidator.get_string_columns(df)
+
+        # Assert
         # validate that only 'val' is detected as a string column
         assert ["string1", "string2"] == string_cols
 
@@ -303,7 +390,12 @@ class TestPolarsDataframe(BaseDataFrameTest):
         return df.with_row_index().with_columns(expressions).drop("index")
 
     def test_get_validator_polars(self, df):
+        # Arrange
+
+        # Act
         validator = DataFrameValidator.get_validator(df)
+
+        # Assert
         assert isinstance(validator, PolarsValidator)
 
 
@@ -337,5 +429,10 @@ class TestSparkDataframe(BaseDataFrameTest):
         return result_df.drop("row_nr")
 
     def test_get_validator_spark(self, spark_df):
+        # Arrange
+
+        # Act
         validator = DataFrameValidator.get_validator(spark_df)
+
+        # Assert
         assert isinstance(validator, PySparkValidator)

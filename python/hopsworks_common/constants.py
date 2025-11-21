@@ -171,16 +171,13 @@ class MODEL:
 
 class MODEL_REGISTRY:
     HOPSFS_MOUNT_PREFIX = "/hopsfs/"
+    MODELS_DATASET = "Models"
     MODEL_FILES_DIR_NAME = "Files"
 
 
 class MODEL_SERVING:
-    MODELS_DATASET = "Models"
-    ARTIFACTS_DIR_NAME = "Artifacts"
-
-
-class ARTIFACT_VERSION:
-    CREATE = "CREATE"
+    DEPLOYMENTS_DATASET = "Deployments"
+    ARTIFACTS_DIR_NAME = "Artifacts"  # legacy, kept for backward compatibility (<4.6)
 
 
 class RESOURCES:
@@ -262,3 +259,38 @@ class INFERENCE_ENDPOINTS:
 class DEPLOYABLE_COMPONENT:
     PREDICTOR = "predictor"
     TRANSFORMER = "transformer"
+
+
+class FEATURE_LOGGING:
+    # Metadata column names
+    LOG_ID_COLUMN_NAME = "log_id"
+    TRAINING_DATASET_VERSION_COLUMN_NAME = "td_version"
+    LOG_TIME_COLUMN_NAME = "log_time"
+    MODEL_COLUMN_NAME = "model_name"
+    MODEL_VERSION_COLUMN_NAME = "model_version"
+    REQUEST_ID_COLUMN_NAME = "request_id"
+    REQUEST_PARAMETERS_COLUMN_NAME = "request_parameters"
+
+    # Logging feature types
+    UNTRANSFORMED_FEATURES = "untransformed_features"
+    TRANSFORMED_FEATURES = "transformed_features"
+    PREDICTIONS = "predictions"
+    SERVING_KEYS = "serving_keys"
+    EVENT_TIME = "event_time"
+    INFERENCE_HELPER_COLUMNS = "inference_helper_columns"
+    REQUEST_PARAMETERS = "request_parameters"
+    EXTRA_LOGGING_FEATURES = "extra_logging_features"
+    REQUEST_ID = "request_id"
+    LOGGING_DATA = "logging_data"
+
+    PREFIX_PREDICTIONS = "predicted_"
+    EMPTY_REQUEST_PARAMETER_COLUMN_VALUE = "{}"
+
+    LOGGING_METADATA_COLUMNS = [
+        LOG_ID_COLUMN_NAME,
+        TRAINING_DATASET_VERSION_COLUMN_NAME,
+        LOG_TIME_COLUMN_NAME,
+        MODEL_COLUMN_NAME,
+        MODEL_VERSION_COLUMN_NAME,
+        REQUEST_PARAMETERS_COLUMN_NAME,
+    ]
