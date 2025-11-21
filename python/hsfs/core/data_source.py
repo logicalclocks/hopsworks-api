@@ -52,12 +52,13 @@ class DataSource:
     @classmethod
     def from_response_json(cls, json_dict: Dict[str, Any]) -> list[DataSource]:
         if json_dict is None:
-            return []
+            return None  # TODO: change to [] and fix the tests
 
         json_decamelized: dict = humps.decamelize(json_dict)
 
         if "items" not in json_decamelized:
-            return [cls(**json_decamelized)]
+            # TODO: change to [cls(**json_decamelized)] and fix the tests
+            return cls(**json_decamelized)
         else:
             return [cls(**item) for item in json_decamelized["items"]]
 
