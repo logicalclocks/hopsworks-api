@@ -380,7 +380,7 @@ def run_with_loading_animation(message: str, func: Callable, *args, **kwargs) ->
         if not end:
             print(f"\rError: {message}           ", end="\n")
         else:
-            print(f"\rFinished: {message} ({(end-start):.2f}s) ", end="\n")
+            print(f"\rFinished: {message} ({(end - start):.2f}s) ", end="\n")
 
 
 def get_feature_group_url(feature_store_id: int, feature_group_id: int) -> str:

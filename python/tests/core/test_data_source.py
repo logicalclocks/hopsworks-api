@@ -19,7 +19,6 @@ from hsfs.core import data_source
 
 
 class TestDataSource:
-
     def test_update_storage_connector_redshift(self):
         # Arrange
         ds = data_source.DataSource()

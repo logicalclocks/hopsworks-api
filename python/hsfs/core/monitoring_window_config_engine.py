@@ -311,9 +311,9 @@ class MonitoringWindowConfigEngine:
                 )
             )
 
-        assert (
-            registered_stats.feature_descriptive_statistics is not None
-        ), "statistics should contain the feature descriptive statistics"
+        assert registered_stats.feature_descriptive_statistics is not None, (
+            "statistics should contain the feature descriptive statistics"
+        )
 
         return registered_stats.feature_descriptive_statistics
 

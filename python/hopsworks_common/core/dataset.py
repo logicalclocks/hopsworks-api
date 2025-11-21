@@ -42,6 +42,7 @@ class Dataset:
         for dataset in json_decamelized:
             _ = dataset.pop("type", None)
         return [cls(**dataset) for dataset in json_decamelized]
+
     @property
     def id(self) -> str:
         return self._id

@@ -42,9 +42,7 @@ class DataSourceData:
         self._preview = preview
 
     @classmethod
-    def from_response_json(
-        cls, json_dict: Dict[str, Any]
-    ) -> DataSourceData:
+    def from_response_json(cls, json_dict: Dict[str, Any]) -> DataSourceData:
         if json_dict is None:
             return None
 

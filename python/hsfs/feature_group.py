@@ -283,6 +283,7 @@ class FeatureGroupBase:
         self.check_deprecated()
 
     def check_deprecated(self) -> None:
+        """Print a warning if this feature group is deprecated."""
         if self.deprecated:
             warnings.warn(
                 f"Feature Group `{self._name}`, version `{self._version}` is deprecated",
@@ -1939,10 +1940,12 @@ class FeatureGroupBase:
 
     @property
     def feature_store_id(self) -> Optional[int]:
+        """ID of the feature store to which the feature group belongs."""
         return self._feature_store_id
 
     @property
     def feature_store(self) -> feature_store_mod.FeatureStore:
+        """Feature store to which the feature group belongs."""
         if self._feature_store is None:
             self._feature_store = feature_store_api.FeatureStoreApi().get(
                 self._feature_store_id
@@ -1973,6 +1976,7 @@ class FeatureGroupBase:
         self._version = version
 
     def get_fg_name(self) -> str:
+        """Returns the full feature group name, that is, its base name combined with its version."""
         return f"{self.name}_{self.version}"
 
     @property
@@ -2190,6 +2194,7 @@ class FeatureGroupBase:
 
     @property
     def embedding_index(self) -> Optional["EmbeddingIndex"]:
+        # TODO: Add docstring
         if self._embedding_index:
             self._embedding_index.feature_group = self
         return self._embedding_index
@@ -2230,6 +2235,7 @@ class FeatureGroupBase:
 
     @property
     def location(self) -> Optional[str]:
+        # TODO: Add docstring
         return self._location
 
     @property
@@ -2293,9 +2299,11 @@ class FeatureGroupBase:
 
     @property
     def storage_connector(self) -> "sc.StorageConnector":
+        """The storage connector which was used to create the feature group, if any."""
         return self._storage_connector
 
     def prepare_spark_location(self) -> str:
+        # TODO: Add docstring
         location = self.location
         if self.storage_connector is not None:
             location = self.storage_connector.prepare_spark(location)
@@ -2330,6 +2338,7 @@ class FeatureGroupBase:
 
     @property
     def data_source(self) -> Optional[ds.DataSource]:
+        """The data source which was used to create the feature group, if any."""
         return self._data_source
 
     @data_source.setter
@@ -2568,6 +2577,7 @@ class FeatureGroupBase:
 
 @typechecked
 class FeatureGroup(FeatureGroupBase):
+    # TODO: Add docstring
     CACHED_FEATURE_GROUP = "CACHED_FEATURE_GROUP"
     STREAM_FEATURE_GROUP = "STREAM_FEATURE_GROUP"
     ENTITY_TYPE = "featuregroups"
@@ -4292,6 +4302,8 @@ class FeatureGroup(FeatureGroupBase):
 
 @typechecked
 class ExternalFeatureGroup(FeatureGroupBase):
+    """A feature group that references data stored outside Hopsworks."""
+
     EXTERNAL_FEATURE_GROUP = "ON_DEMAND_FEATURE_GROUP"
     ENTITY_TYPE = "featuregroups"
 
@@ -4796,26 +4808,32 @@ class ExternalFeatureGroup(FeatureGroupBase):
 
     @property
     def id(self) -> Optional[int]:
+        """ID of the feature group, set by backend."""
         return self._id
 
     @property
     def description(self) -> Optional[str]:
+        """Description of the feature group, as it appears in the UI."""
         return self._description
 
     @property
     def data_format(self) -> Optional[str]:
+        # TODO: Add docstring
         return self._data_format
 
     @property
     def options(self) -> Optional[Dict[str, Any]]:
+        # TODO: Add docstring
         return self._options
 
     @property
     def creator(self) -> Optional["user.User"]:
+        """User who created the feature group."""
         return self._creator
 
     @property
     def created(self) -> Optional[str]:
+        # TODO: Add docstring
         return self._created
 
     @description.setter
@@ -4830,6 +4848,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
 
 @typechecked
 class SpineGroup(FeatureGroupBase):
+    # TODO: Add docstring
     SPINE_GROUP = "ON_DEMAND_FEATURE_GROUP"
     ENTITY_TYPE = "featuregroups"
 

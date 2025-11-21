@@ -152,7 +152,7 @@ class FeatureMonitoringConfigEngine:
             and metric.lower() not in self._VALID_FRACTIONAL_METRICS
         ):
             raise ValueError(
-                f"Invalid metric {metric.lower()}. " "Supported metrics are {}.".format(
+                f"Invalid metric {metric.lower()}. Supported metrics are {{}}.".format(
                     set(self._VALID_FRACTIONAL_METRICS).union(
                         set(self._VALID_CATEGORICAL_METRICS)
                     )
