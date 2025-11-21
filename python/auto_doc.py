@@ -431,12 +431,15 @@ PAGES = {
         ),
     },
     "api/online_ingestion_result.md": {
-        "online_ingestion_result": ["hsfs.core.online_ingestion_result.OnlineIngestionResult"],
+        "online_ingestion_result": [
+            "hsfs.core.online_ingestion_result.OnlineIngestionResult"
+        ],
         "online_ingestion_result_properties": keras_autodoc.get_properties(
             "hsfs.core.online_ingestion_result.OnlineIngestionResult"
         ),
         "online_ingestion_result_methods": keras_autodoc.get_methods(
-            "hsfs.core.online_ingestion_result.OnlineIngestionResult", exclude=EXCLUDE_METHODS
+            "hsfs.core.online_ingestion_result.OnlineIngestionResult",
+            exclude=EXCLUDE_METHODS,
         ),
     },
     "api/query_api.md": {

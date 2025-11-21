@@ -121,6 +121,7 @@ class FeatureView:
 
     Feature view is a logical grouping of features, defined by a query over feature groups.
     """
+
     ENTITY_TYPE = "featureview"
     NOT_FOUND_ERROR_CODE = 270181
 

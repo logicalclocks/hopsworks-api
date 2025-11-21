@@ -308,7 +308,7 @@ class DatasetApi:
                     chunks = []
 
                     if os.path.getsize(local_path) == 0:
-                        chunks.append(Chunk(b'', 1, "pending"))
+                        chunks.append(Chunk(b"", 1, "pending"))
                         all_chunks_processed = True
                     else:
                         for _ in range(simultaneous_chunks):
@@ -680,15 +680,26 @@ class DatasetApi:
         else:
             cls = inode.Inode
 
-        count, items = self._list_dataset_path(normalized_path, cls, offset=offset, limit=limit)
+        count, items = self._list_dataset_path(
+            normalized_path, cls, offset=offset, limit=limit
+        )
 
         files = []
         for item in items:
-            files.append(util.convert_to_project_rel_path(item.path, _client._project_name))
+            files.append(
+                util.convert_to_project_rel_path(item.path, _client._project_name)
+            )
         return files
 
     @usage.method_logger
-    def _list_dataset_path(self, path: str, cls: Union[Type[dataset.Dataset], Type[inode.Inode]], offset: int = 0, limit: int = 1000, sort_by: str = "ID:asc"):
+    def _list_dataset_path(
+        self,
+        path: str,
+        cls: Union[Type[dataset.Dataset], Type[inode.Inode]],
+        offset: int = 0,
+        limit: int = 1000,
+        sort_by: str = "ID:asc",
+    ):
         """
         List contents of a directory in the Hopsworks Filesystem.
 

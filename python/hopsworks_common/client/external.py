@@ -174,9 +174,7 @@ class Client(base.Client):
         return res
 
     def get_certs_folder(self):
-        return os.path.join(
-            self._cert_folder_base, self._host, self._project_name
-        )
+        return os.path.join(self._cert_folder_base, self._host, self._project_name)
 
     def _materialize_certs(self):
         self._cert_folder = os.path.join(

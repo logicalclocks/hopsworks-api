@@ -45,9 +45,7 @@ class SecretsApi:
             _client._send_request("GET", path_params)
         )
 
-    @decorators.catch_not_found(
-        "hopsworks_common.secret.Secret", fallback_return=None
-    )
+    @decorators.catch_not_found("hopsworks_common.secret.Secret", fallback_return=None)
     def get_secret(self, name: str, owner: str = None) -> Optional[secret.Secret]:
         """Get a secret.
 

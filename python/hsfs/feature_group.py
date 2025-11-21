@@ -4303,6 +4303,7 @@ class FeatureGroup(FeatureGroupBase):
 @typechecked
 class ExternalFeatureGroup(FeatureGroupBase):
     """A feature group that references data stored outside Hopsworks."""
+
     EXTERNAL_FEATURE_GROUP = "ON_DEMAND_FEATURE_GROUP"
     ENTITY_TYPE = "featuregroups"
 

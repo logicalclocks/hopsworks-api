@@ -106,12 +106,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group.embedding_index, dataframe_features
         )
 
-        if (
-            not validation_options
-            or (
-                validation_options.get("online_schema_validation", True) # for backwards compatibility
-                and validation_options.get("schema_validation", True)
-            )
+        if not validation_options or (
+            validation_options.get(
+                "online_schema_validation", True
+            )  # for backwards compatibility
+            and validation_options.get("schema_validation", True)
         ):
             # validate df schema
             dataframe_features = DataFrameValidator().validate_schema(
@@ -191,12 +190,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group.embedding_index, dataframe_features
         )
 
-        if (
-            not validation_options
-            or (
-                validation_options.get("online_schema_validation", True) # for backwards compatibility
-                and validation_options.get("schema_validation", True)
-            )
+        if not validation_options or (
+            validation_options.get(
+                "online_schema_validation", True
+            )  # for backwards compatibility
+            and validation_options.get("schema_validation", True)
         ):
             # validate df schema
             dataframe_features = DataFrameValidator().validate_schema(
@@ -290,13 +288,18 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
     @staticmethod
     def _get_spark_session_and_context():
         if isinstance(engine.get_instance(), engine.spark.Engine):
-            return engine.get_instance()._spark_session, engine.get_instance()._spark_context
+            return (
+                engine.get_instance()._spark_session,
+                engine.get_instance()._spark_context,
+            )
         else:
             return None, None
 
     @staticmethod
     def commit_delete(feature_group, delete_df, write_options):
-        spark_session, spark_context = FeatureGroupEngine._get_spark_session_and_context()
+        spark_session, spark_context = (
+            FeatureGroupEngine._get_spark_session_and_context()
+        )
         if feature_group.time_travel_format == "DELTA":
             delta_engine_instance = delta_engine.DeltaEngine(
                 feature_group.feature_store_id,
@@ -319,7 +322,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
     @staticmethod
     def delta_vacuum(feature_group, retention_hours):
         if feature_group.time_travel_format == "DELTA":
-            spark_session, spark_context = FeatureGroupEngine._get_spark_session_and_context()
+            spark_session, spark_context = (
+                FeatureGroupEngine._get_spark_session_and_context()
+            )
 
             delta_engine_instance = delta_engine.DeltaEngine(
                 feature_group.feature_store_id,

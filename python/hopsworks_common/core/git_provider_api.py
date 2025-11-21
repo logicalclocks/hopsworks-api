@@ -86,5 +86,9 @@ class GitProviderApi:
         _client = client.get_instance()
         path_params = ["users", "secrets", "{}_token_{}".format(provider.lower(), host)]
         _client._send_request("DELETE", path_params)
-        path_params = ["users", "secrets", "{}_username_{}".format(provider.lower(), host)]
+        path_params = [
+            "users",
+            "secrets",
+            "{}_username_{}".format(provider.lower(), host),
+        ]
         _client._send_request("DELETE", path_params)

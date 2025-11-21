@@ -361,9 +361,9 @@ class FeatureMonitoringResultEngine:
         detection_statistics: List[FeatureDescriptiveStatistics],
         reference_statistics: List[FeatureDescriptiveStatistics],
     ):
-        assert (
-            len(reference_statistics) == len(detection_statistics)
-        ), "detection_statistics and reference_statistics must contain the same number of feature statistics"
+        assert len(reference_statistics) == len(detection_statistics), (
+            "detection_statistics and reference_statistics must contain the same number of feature statistics"
+        )
         det_stats_set, ref_stats_set = set(), set()
         for det_fds, ref_fds in zip(detection_statistics, reference_statistics):
             det_stats_set.add((det_fds.feature_name, det_fds.feature_type))

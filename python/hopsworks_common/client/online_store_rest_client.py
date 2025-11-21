@@ -205,18 +205,18 @@ class OnlineStoreRestClientSingleton:
             f"{scheme}://{self._current_config[self.HOST]}:{self._current_config[self.PORT]}/{self._current_config[self.SERVER_API_VERSION]}"
         )
 
-        assert (
-            self._session is not None
-        ), "Online Store REST Client failed to initialise."
-        assert (
-            self._auth is not None
-        ), "Online Store REST Client Authentication failed to initialise. Check API Key."
-        assert (
-            self._base_url is not None
-        ), "Online Store REST Client Base URL failed to initialise. Check host and port parameters."
-        assert (
-            self._current_config is not None
-        ), "Online Store REST Client Configuration failed to initialise."
+        assert self._session is not None, (
+            "Online Store REST Client failed to initialise."
+        )
+        assert self._auth is not None, (
+            "Online Store REST Client Authentication failed to initialise. Check API Key."
+        )
+        assert self._base_url is not None, (
+            "Online Store REST Client Base URL failed to initialise. Check host and port parameters."
+        )
+        assert self._current_config is not None, (
+            "Online Store REST Client Configuration failed to initialise."
+        )
 
     def _get_default_client_config(self) -> Dict[str, Any]:
         if _logger.isEnabledFor(logging.DEBUG):
@@ -349,9 +349,9 @@ class OnlineStoreRestClientSingleton:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Setting authentication for Online Store REST Client.")
         if client._is_external():
-            assert hasattr(
-                client.get_instance()._auth, "_token"
-            ), "External client must use API Key authentication. Contact your system administrator."
+            assert hasattr(client.get_instance()._auth, "_token"), (
+                "External client must use API Key authentication. Contact your system administrator."
+            )
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug(
                     "External Online Store REST Client : Setting authentication using Hopsworks Client API Key."

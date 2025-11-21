@@ -77,6 +77,7 @@ class UnknownSecretStorageError(Exception):
 
 class FeatureStoreException(Exception):
     """Generic feature store exception"""
+
     DUPLICATE_RECORD_ERROR_MESSAGE = (
         "Duplicate records detected: The dataset contains multiple rows that share identical values "
         "across all available columns from primary_key, and if defined: event_time and partition_key. "

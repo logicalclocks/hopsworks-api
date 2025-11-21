@@ -50,9 +50,7 @@ class DataSource:
         self._path = path
 
     @classmethod
-    def from_response_json(
-        cls, json_dict: Dict[str, Any]
-    )  -> list[DataSource]:
+    def from_response_json(cls, json_dict: Dict[str, Any]) -> list[DataSource]:
         if json_dict is None:
             return []
 
@@ -61,10 +59,7 @@ class DataSource:
         if "items" not in json_decamelized:
             return [cls(**json_decamelized)]
         else:
-            return [
-                cls(**item)
-                for item in json_decamelized["items"]
-            ]
+            return [cls(**item) for item in json_decamelized["items"]]
 
     def to_dict(self):
         return {
@@ -72,7 +67,7 @@ class DataSource:
             "database": self._database,
             "group": self._group,
             "table": self._table,
-            "path": self._path
+            "path": self._path,
         }
 
     def json(self):

@@ -26,6 +26,7 @@ class JobConfiguration:
 
     Each job has a `config` attribute, which can be used in combination with `job.save()` to update the job's configuration.
     """
+
     DTO_TYPE = "sparkJobConfiguration"
 
     def __init__(
