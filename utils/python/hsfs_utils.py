@@ -352,8 +352,15 @@ def offline_fg_materialization(spark: SparkSession, job_conf: Dict[Any, Any], in
         offset_dict[f"{entity._online_topic_name}"][f"{offset_row.partition}"] = offset_row.offset + 1
 
     # insert data
-    entity.stream = False # to make sure we dont write to kafka
-    entity.insert(deduped_df, storage="offline")
+    entity.stream = False  # to make sure we dont write to kafka
+
+    # Do not apply transformation function at this point since the data written to Kafka already has transformations applied.
+    entity.insert(
+        deduped_df,
+        storage="offline",
+        transform=False,
+        validation_options={"schema_validation": False},
+    )
 
     # save offsets
     offset_df = spark.createDataFrame([offset_dict])
