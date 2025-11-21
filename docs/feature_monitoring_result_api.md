@@ -1,11 +1,5 @@
 # Feature Monitoring Result
 
-{{feature_monitoring_result}}
+You can retrieve feature monitoring results by calling [`FeatureMonitoringConfig.get_history`][hsfs.core.feature_monitoring_config.FeatureMonitoringConfig.get_history].
 
-## Retrieval
-
-{{feature_monitoring_result_retrieval}}
-
-## Properties
-
-{{feature_monitoring_result_properties}}
+::: hsfs.core.feature_monitoring_result.FeatureMonitoringResult

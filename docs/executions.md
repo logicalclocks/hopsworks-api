@@ -1,17 +1,5 @@
 # Executions API
 
-## Creation
+You can create an  Execution by calling [`Job.run`][hopsworks.job.Job.run] and retrieve it via [`Job.get_executions`][hopsworks.job.Job.get_executions].
 
-{{execution_create}}
-
-## Retrieval
-
-{{execution_get}}
-
-## Properties
-
-{{execution_properties}}
-
-## Methods
-
-{{execution_methods}}
+::: hopsworks.execution.Execution

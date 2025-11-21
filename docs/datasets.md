@@ -1,9 +1,5 @@
 # Datasets API
 
-## Handle
+To create an object of this class, use [`get_dataset_api`][hopsworks.project.Project.get_dataset_api]
 
-{{dataset_api_handle}}
-
-## Methods
-
-{{dataset_methods}}
+::: hopsworks_common.core.dataset_api.DatasetApi

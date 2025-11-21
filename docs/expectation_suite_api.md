@@ -1,6 +1,6 @@
 # Expectation Suite
 
-{{expectation_suite}}
+::: hsfs.expectation_suite.ExpectationSuite
 
 ## Creation with Great Expectations
 
@@ -24,18 +24,4 @@ expectation_suite = ge.core.ExpectationSuite(
 
 ## Attach to Feature Group
 
-{{expectation_suite_attach}}
-
-## Single Expectation API
-
-An API to edit the expectation list based on Great Expectations API.
-
-{{single_expectation_api}}
-
-## Properties
-
-{{expectation_suite_properties}}
-
-## Methods
-
-{{expectation_suite_methods}}
+To attach an ExpectationSuite to a FeatureGroup, call [`FeatureGroup.save_expectation_suite`][hsfs.feature_group.FeatureGroup.save_expectation_suite].

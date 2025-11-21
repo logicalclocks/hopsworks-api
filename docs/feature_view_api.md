@@ -1,21 +1,5 @@
 # Feature View
 
-{{fv}}
+You can create a feature view using [`FeatureStore.create_feature_view`][hsfs.feature_store.FeatureStore.create_feature_view], and retrieve them using [`FeatureStore.get_feature_view`][hsfs.feature_store.FeatureStore.get_feature_view] and [`FeatureStore.get_feature_views`][hsfs.feature_store.FeatureStore.get_feature_views].
 
-## Creation
-
-{{fv_create}}
-
-## Retrieval
-
-{{fv_get}}
-
-{{fvs_get}}
-
-## Properties
-
-{{fv_properties}}
-
-## Methods
-
-{{fv_methods}}
+::: hsfs.feature_view.FeatureView

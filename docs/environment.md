@@ -1,17 +1,10 @@
 # Environment API
 
-## Handle
+To create an object of this class, use [`get_environment_api`][hopsworks.project.Project.get_environment_api].
+You can then use the following methods of EnvironmentApi to create or get an Environment.
 
-{{env_api_handle}}
+::: hopsworks.core.environment_api.EnvironmentApi.create_environment
 
-## Creation
+::: hopsworks.core.environment_api.EnvironmentApi.get_environment
 
-{{env_create}}
-
-## Retrieval
-
-{{env_get}}
-
-## Methods
-
-{{env_methods}}
+::: hopsworks.environment.Environment

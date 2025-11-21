@@ -1,23 +1,12 @@
 # GitProvider API
 
-## Handle
+You can obtain a GetApi handle via [`Project.get_git_api`][hopsworks.project.Project.get_git_api].
+Once you have an API handle, you can use it to obtain GitProvider objects using the following methods:
 
-{{git_api_handle}}
+::: hopsworks.core.git_api.GitApi.set_provider
 
-## Creation
+::: hopsworks.core.git_api.GitApi.get_provider
 
-{{git_provider_create}}
+::: hopsworks.core.git_api.GitApi.get_providers
 
-## Retrieval
-
-{{git_provider_get}}
-
-{{git_provider_get_all}}
-
-## Properties
-
-{{git_provider_properties}}
-
-## Methods
-
-{{git_provider_methods}}
+::: hopsworks.git_provider.GitProvider

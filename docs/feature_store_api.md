@@ -1,15 +1,5 @@
 # Feature Store
 
-{{fs}}
+You can retrieve the current feature store instance using [`Project.get_feature_store`][hopsworks.project.Project.get_feature_store].
 
-## Retrieval
-
-{{fs_get}}
-
-## Properties
-
-{{fs_properties}}
-
-## Methods
-
-{{fs_methods}}
+::: hsfs.feature_store.FeatureStore

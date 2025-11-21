@@ -1,29 +1,10 @@
 # FlinkCluster API
 
-## Handle
+You can obttain a Flink Cluster API handle using [`Project.get_flink_cluster_api`][hopsworks.project.Project.get_flink_cluster_api].
+Once you have it, you can use the following methods to obtain FlinkCluster objects:
 
-{{flink_api_handle}}
+::: hopsworks.core.flink_cluster_api.FlinkClusterApi.setup_cluster
 
-## Setup the cluster
+::: hopsworks.core.flink_cluster_api.FlinkClusterApi.get_cluster
 
-{{setup_cluster}}
-
-## Get the cluster
-
-{{get_cluster}}
-
-## Start the cluster
-
-{{start_cluster}}
-
-## Submit job to cluster
-
-{{submit_job_to_cluster}}
-
-## Properties
-
-{{flink_cluster_properties}}
-
-## Methods
-
-{{flink_cluster_methods}}
+::: hopsworks.flink_cluster.FlinkCluster

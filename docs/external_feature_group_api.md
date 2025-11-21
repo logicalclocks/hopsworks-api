@@ -1,19 +1,5 @@
 # ExternalFeatureGroup
 
-{{fg}}
+You can create an external feature group by calling [`FeatureStore.create_external_feature_group`][hsfs.feature_store.FeatureStore.create_external_feature_group] and retrieve an existing one by calling [`FeatureStore.get_external_feature_group`][hsfs.feature_store.FeatureStore.get_external_feature_group].
 
-## Creation
-
-{{fg_create}}
-
-## Retrieval
-
-{{fg_get}}
-
-## Properties
-
-{{fg_properties}}
-
-## Methods
-
-{{fg_methods}}
+::: hsfs.feature_group.ExternalFeatureGroup
