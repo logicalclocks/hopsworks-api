@@ -2705,6 +2705,7 @@ class FeatureGroup(FeatureGroupBase):
         else:
             # Set time travel format and streaming based on engine type and online status
             self._init_time_travel_and_stream(
+                stream,
                 time_travel_format,
                 self.online_enabled,  # use the getter of the super class to take into account embedding index
                 self._is_hopsfs_storage(),
@@ -2770,6 +2771,7 @@ class FeatureGroup(FeatureGroupBase):
 
     def _init_time_travel_and_stream(
         self,
+        stream: bool,
         time_travel_format: Optional[str],
         online_enabled: bool,
         is_hopsfs: bool,
@@ -2785,6 +2787,7 @@ class FeatureGroup(FeatureGroupBase):
         )
         if engine.get_type() == "python":
             self._stream = FeatureGroup._resolve_stream_python(
+                stream=stream,
                 time_travel_format=self._time_travel_format,
                 is_hopsfs=is_hopsfs,
                 online_enabled=online_enabled,
@@ -2799,11 +2802,14 @@ class FeatureGroup(FeatureGroupBase):
 
     @staticmethod
     def _resolve_stream_python(
+        stream: bool,
         time_travel_format: str,
         is_hopsfs: bool,
         online_enabled: bool,
     ) -> Optional[bool]:
-        return not (is_hopsfs and time_travel_format == "DELTA" and not online_enabled)
+        # If stream is explicitly set stream to True, use it. 
+        # Otherwise, resolve it based on time travel format and other flags.
+        return stream or not (is_hopsfs and time_travel_format == "DELTA" and not online_enabled)
 
     @staticmethod
     def _resolve_time_travel_format(
