@@ -1667,7 +1667,9 @@ class TestFeatureGroupEngine:
 
         # Act
         fg_engine.save_feature_group_metadata(
-            feature_group=fg, dataframe_features=[feature.Feature(name="f", type="str")], write_options=None
+            feature_group=fg,
+            dataframe_features=[feature.Feature(name="f", type="str")],
+            write_options=None,
         )
 
         # Assert

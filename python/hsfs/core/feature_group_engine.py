@@ -487,7 +487,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
     def save_feature_group_metadata(
         self, feature_group, dataframe_features, write_options
     ):
-        feature_schema_available = feature_group.features is not None and len(feature_group.features) > 0
+        feature_schema_available = (
+            feature_group.features is not None and len(feature_group.features) > 0
+        )
 
         # this means FG doesn't exist and should create the new one
         if len(feature_group.features) == 0:
@@ -498,7 +500,6 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             self._verify_schema_compatibility(
                 feature_group.features, dataframe_features
             )
-
 
         # set primary, foreign and partition key columns
         # we should move this to the backend
