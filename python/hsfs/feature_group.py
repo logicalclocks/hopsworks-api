@@ -3198,8 +3198,6 @@ class FeatureGroup(FeatureGroupBase):
                 self, None, write_options or {}
             )
 
-            self._feature_group_engine.save_empty_table(self)
-
             return None, None
 
         if features is None:

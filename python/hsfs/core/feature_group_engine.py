@@ -487,6 +487,8 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
     def save_feature_group_metadata(
         self, feature_group, dataframe_features, write_options
     ):
+        feature_schema_available = feature_group.features is not None and len(feature_group.features) > 0
+
         # this means FG doesn't exist and should create the new one
         if len(feature_group.features) == 0:
             # User didn't provide a schema; extract it from the dataframe
@@ -496,6 +498,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             self._verify_schema_compatibility(
                 feature_group.features, dataframe_features
             )
+
 
         # set primary, foreign and partition key columns
         # we should move this to the backend
@@ -533,6 +536,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             )
 
         self._feature_group_api.save(feature_group)
+
+        if feature_schema_available:
+            # create empty table to write feature schema to table path
+            self.save_empty_table(feature_group)
+
         print(
             "Feature Group created successfully, explore it at \n"
             + util.get_feature_group_url(
