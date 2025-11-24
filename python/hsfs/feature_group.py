@@ -2807,9 +2807,11 @@ class FeatureGroup(FeatureGroupBase):
         is_hopsfs: bool,
         online_enabled: bool,
     ) -> Optional[bool]:
-        # If stream is explicitly set stream to True, use it. 
+        # If stream is explicitly set stream to True, use it.
         # Otherwise, resolve it based on time travel format and other flags.
-        return stream or not (is_hopsfs and time_travel_format == "DELTA" and not online_enabled)
+        return stream or not (
+            is_hopsfs and time_travel_format == "DELTA" and not online_enabled
+        )
 
     @staticmethod
     def _resolve_time_travel_format(
