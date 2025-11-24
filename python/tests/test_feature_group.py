@@ -705,6 +705,10 @@ class TestFeatureGroup:
             "hsfs.core.feature_group_engine.FeatureGroupEngine.save_feature_group_metadata",
             return_value=None,
         )
+        mock_save_empty_table = mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_empty_table",
+            return_value=None,
+        )
 
         features = [
             feature.Feature(name="pk", type="int"),
@@ -723,6 +727,7 @@ class TestFeatureGroup:
 
         fg.save(features)
         mock_save_metadata.assert_called_once_with(fg, None, {})
+        mock_save_empty_table.assert_called_once_with(fg)
 
     def test_save_feature_in_create(self, mocker):
         mock_save_metadata = mocker.patch(
