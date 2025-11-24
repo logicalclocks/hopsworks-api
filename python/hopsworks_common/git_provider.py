@@ -82,4 +82,6 @@ class GitProvider:
         return self.json()
 
     def __repr__(self):
-        return f"GitProvider({self._username!r}, {self._host!r}, {self._git_provider!r})"
+        return (
+            f"GitProvider({self._username!r}, {self._host!r}, {self._git_provider!r})"
+        )

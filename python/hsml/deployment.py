@@ -284,7 +284,7 @@ class Deployment:
         return util.get_hostname_replaced_url(path)
 
     def describe(self):
-        """Print a description of the deployment"""
+        """Print a JSON description of the deployment."""
 
         util.pretty_print(self)
 

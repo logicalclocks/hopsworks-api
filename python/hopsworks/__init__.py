@@ -438,7 +438,11 @@ def _initialize_module_apis():
     _secrets_api = secret_api.SecretsApi()
 
 
-def create_project(name: str, description: Optional[str] = None, feature_store_topic: Optional[str] = None):
+def create_project(
+    name: str,
+    description: Optional[str] = None,
+    feature_store_topic: Optional[str] = None,
+):
     """Create a new project.
 
     !!! warning "Not supported"

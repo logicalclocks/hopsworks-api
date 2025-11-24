@@ -184,9 +184,7 @@ class Query:
 
             for feature in join_features:
                 ambiguous_feature_feature_group_mapping[feature] = (
-                    ambiguous_feature_feature_group_mapping.get(
-                        feature, set()
-                    ).union(
+                    ambiguous_feature_feature_group_mapping.get(feature, set()).union(
                         [
                             f"{query._left_feature_group.name} version {query._left_feature_group.version}"
                         ]

@@ -25,6 +25,7 @@ from hsfs.split_statistics import SplitStatistics
 
 
 class Statistics:
+    # TODO: Add docstring
     DEFAULT_ROW_PERCENTAGE = 1.0
     NOT_FOUND_ERROR_CODE = 270228
 

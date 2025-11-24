@@ -45,7 +45,7 @@ class Resources:
         self._gpus = gpus
 
     def describe(self):
-        """Print a description of the resource configuration"""
+        """Print a JSON description of the resource configuration."""
         util.pretty_print(self)
 
     @classmethod
@@ -140,7 +140,7 @@ class ComponentResources(ABC):
         )
 
     def describe(self):
-        """Print a description of the resource configuration"""
+        """Print a JSON description of the resource configuration."""
         util.pretty_print(self)
 
     @classmethod

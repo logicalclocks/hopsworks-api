@@ -64,6 +64,7 @@ class KafkaTopic:
         self._kafka_api = kafka_api.KafkaApi()
 
     def describe(self):
+        """Print a JSON description of the Kafka topic."""
         util.pretty_print(self)
 
     @classmethod

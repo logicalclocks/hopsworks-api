@@ -47,7 +47,7 @@ class PredictorState:
         self._status = status
 
     def describe(self):
-        """Print a description of the deployment state"""
+        """Print a JSON description of the deployment state."""
         util.pretty_print(self)
 
     @classmethod

@@ -89,9 +89,7 @@ def _is_no_commits_found_error(exception):
 
 
 def _is_no_metadata_found_error(exception):
-    return isinstance(
-        exception, pyarrow._flight.FlightServerError
-    ) and any(
+    return isinstance(exception, pyarrow._flight.FlightServerError) and any(
         msg in str(exception)
         for msg in ["No hudi properties found", "No delta logs found"]
     )
@@ -425,7 +423,9 @@ class ArrowFlightClient:
                         raise FeatureStoreException(
                             "Hopsworks Query Service is busy right now. Please try again later."
                         ) from e
-                    elif _is_no_commits_found_error(e) or _is_no_metadata_found_error(e):
+                    elif _is_no_commits_found_error(e) or _is_no_metadata_found_error(
+                        e
+                    ):
                         raise FeatureStoreException(str(e).split("Details:")[0]) from e
                     else:
                         raise FeatureStoreException(user_message) from e
@@ -550,7 +550,9 @@ class ArrowFlightClient:
             fg_connector = _serialize_featuregroup_connector(
                 fg, query, on_demand_fg_aliases
             )
-            features[fg_name] = [{"name": feat.name, "type": feat.type} for feat in fg.features]
+            features[fg_name] = [
+                {"name": feat.name, "type": feat.type} for feat in fg.features
+            ]
             connectors[fg_name] = fg_connector
         filters = _serialize_filter_expression(query.filters, query)
 
