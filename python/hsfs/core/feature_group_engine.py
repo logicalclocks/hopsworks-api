@@ -574,5 +574,3 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 spark_context,
             )
             delta_engine_instance.save_empty_table()
-        else:
-            return None

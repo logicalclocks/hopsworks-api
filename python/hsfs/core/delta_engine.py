@@ -273,14 +273,16 @@ class DeltaEngine:
         """
         Write a dataset to a Delta table using delta-rs.
 
-        Parameters:
-        -----------
-        dataset: pyarrow.Table or polars.DataFrame or pandas.DataFrame
-            Dataset to write to the Delta table
+        Supports pyarrow.Table, polars.DataFrame, and pandas.DataFrame as input.
 
-        Returns:
-        --------
-        None
+        # Arguments
+
+            dataset: `pyarrow.Table` or `polars.DataFrame` or `pandas.DataFrame`.
+                Dataset to write to the Delta table.
+
+        # Returns
+
+            `None`. Writes the dataset to the Delta table.
         """
         try:
             from deltalake import DeltaTable as DeltaRsTable
@@ -443,11 +445,9 @@ class DeltaEngine:
         """
         try:
             import pyarrow as pa
-            from deltalake import write_deltalake
         except ImportError as e:
             raise ImportError(
-                "PyArrow and deltalake are required to create empty Delta tables. "
-                "Install 'hops-deltalake' to enable Delta RS features."
+                "PyArrow is required to create empty Delta tables."
             ) from e
 
         # Build PyArrow schema directly from features
@@ -473,20 +473,10 @@ class DeltaEngine:
             f"Created PyArrow schema with {len(pyarrow_fields)} fields for feature group {self._feature_group.name} v{self._feature_group.version}"
         )
 
-        # Get the location for delta-rs (uses hdfs scheme)
-        location = self._get_delta_rs_location()
-
         # Create empty PyArrow table from schema
         empty_arrow_table = pyarrow_schema.empty_table()
 
-        # Write to Delta Lake using delta-rs
-        _logger.debug(
-            f"Writing empty schema to Delta Lake at: {location} for feature group {self._feature_group.name} v{self._feature_group.version}"
-        )
         self._write_delta_rs_dataset(empty_arrow_table)
-        _logger.debug(
-            f"Successfully created empty Delta table at {location} for feature group {self._feature_group.name} v{self._feature_group.version}"
-        )
 
     def save_empty_table(self):
         if self._spark_session is not None:

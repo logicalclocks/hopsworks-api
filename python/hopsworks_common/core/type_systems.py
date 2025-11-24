@@ -170,7 +170,7 @@ if HAS_PYARROW:
             "float": pa.float32(),
             "double": pa.float64(),
             "boolean": pa.bool_(),
-            "timestamp": pa.timestamp("us"),  # Use microsecond precision
+            "timestamp": pa.timestamp("us"),
             "date": pa.date32(),
             "binary": pa.binary(),
         }

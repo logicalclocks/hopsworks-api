@@ -16,6 +16,7 @@
 import datetime
 
 import pytest
+from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core import type_systems
 from hsfs.core.constants import HAS_PANDAS, HAS_PYARROW
 
@@ -201,6 +202,114 @@ class TestTypeSystems:
 
         # Assert
         assert arrow_type == "struct<user0:string,user1:string>"
+
+    @pytest.mark.skipif(not HAS_PYARROW, reason="PyArrow is not installed")
+    @pytest.mark.parametrize(
+        "offline_type,expected_type",
+        [
+            ("int", pa.int32()),
+            ("bigint", pa.int64()),
+            ("smallint", pa.int16()),
+            ("tinyint", pa.int8()),
+            ("float", pa.float32()),
+            ("double", pa.float64()),
+            ("string", pa.string()),
+            ("STRING", pa.string()),  # ensure case-insensitive
+            ("boolean", pa.bool_()),
+            ("timestamp", pa.timestamp("us")),
+            ("date", pa.date32()),
+            ("binary", pa.binary()),
+            ("decimal", pa.decimal128(10, 0)),
+            ("decimal(12,4)", pa.decimal128(12, 4)),
+            ("array<int>", pa.list_(pa.int32())),
+            ("array< double >", pa.list_(pa.float64())),
+            (
+                "struct<inner:array<int>,name:string>",
+                pa.struct(
+                    [
+                        pa.field("inner", pa.list_(pa.int32()), nullable=True),
+                        pa.field("name", pa.string(), nullable=True),
+                    ]
+                ),
+            ),
+            (
+                "array<struct<f1:double,f2:array<string>>>",
+                pa.list_(
+                    pa.struct(
+                        [
+                            pa.field("f1", pa.float64(), nullable=True),
+                            pa.field("f2", pa.list_(pa.string()), nullable=True),
+                        ]
+                    )
+                ),
+            ),
+            (
+                "struct<price:decimal(10,2),details:struct<id:int,tags:array<string>>>",
+                pa.struct(
+                    [
+                        pa.field("price", pa.decimal128(10, 2), nullable=True),
+                        pa.field(
+                            "details",
+                            pa.struct(
+                                [
+                                    pa.field("id", pa.int32(), nullable=True),
+                                    pa.field(
+                                        "tags", pa.list_(pa.string()), nullable=True
+                                    ),
+                                ]
+                            ),
+                            nullable=True,
+                        ),
+                    ]
+                ),
+            ),
+        ],
+    )
+    def test_convert_offline_type_to_pyarrow_type_supported(
+        self, offline_type, expected_type
+    ):
+        # Act
+        result = type_systems.convert_offline_type_to_pyarrow_type(offline_type)
+
+        # Assert
+        assert result == expected_type
+
+    @pytest.mark.skipif(not HAS_PYARROW, reason="PyArrow is not installed")
+    def test_convert_offline_type_to_pyarrow_type_invalid(self):
+        # Act & Assert
+        with pytest.raises(FeatureStoreException) as exc:
+            type_systems.convert_offline_type_to_pyarrow_type("unsupported_type")
+
+        assert "unsupported_type" in str(exc.value)
+
+    @pytest.mark.skipif(not HAS_PYARROW, reason="PyArrow is not installed")
+    def test_convert_offline_type_to_pyarrow_type_invalid_struct(self):
+        # Struct missing colon should raise error
+        with pytest.raises(FeatureStoreException) as exc:
+            type_systems.convert_offline_type_to_pyarrow_type("struct<field1 int>")
+
+        assert "Missing colon" in str(exc.value)
+
+    def test_convert_offline_type_to_pyarrow_type_fails_without_pyarrow(
+        self, monkeypatch
+    ):
+        import importlib
+        import sys
+
+        # Ensure we re-import with HAS_PYARROW=False; drop cached modules first.
+        sys.modules.pop("hopsworks_common.core.type_systems", None)
+        sys.modules.pop("hsfs.core.type_systems", None)
+
+        monkeypatch.setattr(
+            "hopsworks_common.core.constants.HAS_PYARROW", False, raising=False
+        )
+        monkeypatch.setattr("hsfs.core.constants.HAS_PYARROW", False, raising=False)
+
+        type_systems_module = importlib.import_module("hsfs.core.type_systems")
+
+        with pytest.raises(FeatureStoreException) as exc:
+            type_systems_module.convert_offline_type_to_pyarrow_type("int")
+        assert "PyArrow is not installed" in str(exc.value)
 
     def test_infer_type_pyarrow_struct_with_struct_fields(self):
         # Arrange

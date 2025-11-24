@@ -148,6 +148,68 @@ class TestFeatureGroupEngine:
         # Assert
         assert mock_engine_get_instance.return_value.save_dataframe.call_count == 0
 
+    def test_save_empty_table_creates_delta_table_for_delta_format(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine.get_type")
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=1)
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format="DELTA",
+        )
+        mocker.patch.object(
+            feature_group_engine.FeatureGroupEngine,
+            "_get_spark_session_and_context",
+            return_value=("spark", "context"),
+        )
+        delta_engine_mock = mocker.Mock()
+        delta_engine_cls = mocker.patch(
+            "hsfs.core.feature_group_engine.delta_engine.DeltaEngine",
+            return_value=delta_engine_mock,
+        )
+
+        # Act
+        fg_engine.save_empty_table(fg)
+
+        # Assert
+        delta_engine_cls.assert_called_once_with(
+            fg.feature_store_id,
+            fg.feature_store_name,
+            fg,
+            "spark",
+            "context",
+        )
+        delta_engine_mock.save_empty_table.assert_called_once_with()
+
+    def test_save_empty_table_noop_for_non_delta(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine.get_type")
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=1)
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=1,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format="HUDI",
+        )
+        delta_engine_cls = mocker.patch(
+            "hsfs.core.feature_group_engine.delta_engine.DeltaEngine"
+        )
+
+        # Act
+        result = fg_engine.save_empty_table(fg)
+
+        # Assert
+        assert result is None
+        delta_engine_cls.assert_not_called()
+
     @pytest.mark.parametrize(
         "online_enabled,validation_options,should_validate_schema",
         [
