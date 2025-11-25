@@ -24,6 +24,7 @@ from hopsworks.core import project_api
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import HAS_POLARS
+from hopsworks_common.core.type_systems import convert_offline_type_to_pyarrow_type
 from hsfs import feature_group_commit, util
 from hsfs.core import feature_group_api, variable_api
 
@@ -269,6 +270,20 @@ class DeltaEngine:
             return location
 
     def _write_delta_rs_dataset(self, dataset):
+        """
+        Write a dataset to a Delta table using delta-rs.
+
+        Supports pyarrow.Table, polars.DataFrame, and pandas.DataFrame as input.
+
+        # Arguments
+
+            dataset: `pyarrow.Table` or `polars.DataFrame` or `pandas.DataFrame`.
+                Dataset to write to the Delta table.
+
+        # Returns
+
+            `None`. Writes the dataset to the Delta table.
+        """
         try:
             from deltalake import DeltaTable as DeltaRsTable
             from deltalake import write_deltalake as deltars_write
@@ -335,6 +350,7 @@ class DeltaEngine:
     @staticmethod
     def _prepare_df_for_delta(df, timestamp_precision="us"):
         try:
+            import pandas as pd
             import pyarrow as pa
         except ImportError as e:
             raise ImportError(
@@ -356,6 +372,8 @@ class DeltaEngine:
             PyArrow table ready for Delta Lake
         """
         # Process timestamp columns
+        if not isinstance(df, pd.DataFrame):
+            return df
         df_copy = df.copy()
         for col in df_copy.select_dtypes(include=["datetime64"]).columns:
             # For timezone-aware timestamps, convert to UTC and remove timezone info
@@ -396,6 +414,83 @@ class DeltaEngine:
         # Create new table with modified columns
         _logger.debug("Creating new PyArrow Table with modified columns")
         return pa.Table.from_arrays(new_cols, names=table.column_names)
+
+    def save_empty_delta_table_pyspark(self):
+        """
+        Create an empty Delta table with the schema from the feature group features.
+
+        This method builds a DDL schema string from the feature group's features
+        and creates an empty DataFrame with that schema, then writes it to the
+        feature group location using Delta format.
+        """
+        # Build DDL schema string from features
+        ddl_fields = []
+        for _feature in self._feature_group.features:
+            if _feature.type:
+                ddl_fields.append(f"{_feature.name} {_feature.type}")
+            else:
+                raise FeatureStoreException(
+                    f"Feature '{_feature.name}' does not have a type defined. "
+                    "Cannot create Delta table schema."
+                )
+
+        ddl_schema = ", ".join(ddl_fields)
+
+        # Create empty DataFrame using the DDL string
+        empty_df = self._spark_session.createDataFrame([], ddl_schema)
+
+        self._write_delta_dataset(empty_df, {})
+
+    def save_empty_delta_table_python(self):
+        """
+        Create an empty Delta table with the schema from the feature group features using delta-rs.
+
+        This method converts feature types directly to PyArrow types without requiring Spark,
+        creates an empty PyArrow table with that schema, and writes it to the feature group
+        location using delta-rs write_deltalake.
+
+        Supports simple types, array types, and struct types.
+        """
+        try:
+            import pyarrow as pa
+        except ImportError as e:
+            raise ImportError(
+                "PyArrow is required to create empty Delta tables."
+            ) from e
+
+        # Build PyArrow schema directly from features
+        pyarrow_fields = []
+        for _feature in self._feature_group.features:
+            if not _feature.type:
+                raise FeatureStoreException(
+                    f"Feature '{_feature.name}' does not have a type defined. "
+                    "Cannot create Delta table schema."
+                )
+            try:
+                pyarrow_type = convert_offline_type_to_pyarrow_type(_feature.type)
+                pyarrow_fields.append(
+                    pa.field(_feature.name, pyarrow_type, nullable=True)
+                )
+            except Exception as e:
+                raise FeatureStoreException(
+                    f"Failed to convert type '{_feature.type}' for feature '{_feature.name}': {str(e)}"
+                ) from e
+
+        pyarrow_schema = pa.schema(pyarrow_fields)
+        _logger.debug(
+            f"Created PyArrow schema with {len(pyarrow_fields)} fields for feature group {self._feature_group.name} v{self._feature_group.version}"
+        )
+
+        # Create empty PyArrow table from schema
+        empty_arrow_table = pyarrow_schema.empty_table()
+
+        self._write_delta_rs_dataset(empty_arrow_table)
+
+    def save_empty_table(self):
+        if self._spark_session is not None:
+            self.save_empty_delta_table_pyspark()
+        else:
+            self.save_empty_delta_table_python()
 
     def vacuum(self, retention_hours: int):
         location = self._feature_group.prepare_spark_location()
