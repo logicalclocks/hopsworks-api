@@ -959,6 +959,7 @@ class TestFeatureGroup:
         fmt_mock.reset_mock()
         stream_mock.reset_mock()
         fg._init_time_travel_and_stream(
+            stream=False,
             time_travel_format="None",
             online_enabled=True,
             is_hopsfs=False,
@@ -975,6 +976,7 @@ class TestFeatureGroup:
         }
         assert stream_mock.call_count == 1
         assert stream_mock.call_args.kwargs == {
+            "stream": False,
             "time_travel_format": expected_fmt,
             "is_hopsfs": False,
             "online_enabled": True,
@@ -1012,6 +1014,7 @@ class TestFeatureGroup:
         fmt_mock.reset_mock()
         stream_mock.reset_mock()
         fg._init_time_travel_and_stream(
+            stream=False,
             time_travel_format="HUDI",
             online_enabled=False,
             is_hopsfs=False,
@@ -1079,24 +1082,34 @@ class TestFeatureGroup:
         assert result == expected
 
     @pytest.mark.parametrize(
-        "time_travel_format,is_hopsfs,online_enabled,expected",
+        "time_travel_format,stream,is_hopsfs,online_enabled,expected",
         [
             # DELTA not streams when not HopsFS and online enabled
-            ("DELTA", True, False, False),
-            ("DELTA", True, True, True),
-            ("DELTA", False, False, True),
-            ("DELTA", False, True, True),
+            ("DELTA", False, True, False, False),
+            ("DELTA", False, True, True, True),
+            ("DELTA", False, False, False, True),
+            ("DELTA", False, False, True, True),
+            # DELTA always streams when stream is True
+            ("DELTA", True, True, False, True),
+            ("DELTA", True, True, True, True),
+            ("DELTA", True, False, False, True),
+            ("DELTA", True, False, True, True),
             # HUDI always streams
-            ("HUDI", True, False, True),
-            ("HUDI", True, True, True),
-            ("HUDI", False, False, True),
-            ("HUDI", False, True, True),
+            ("HUDI", False, True, False, True),
+            ("HUDI", False, True, True, True),
+            ("HUDI", False, False, False, True),
+            ("HUDI", False, False, True, True),
+            ("HUDI", True, True, False, True),
+            ("HUDI", True, True, True, True),
+            ("HUDI", True, False, False, True),
+            ("HUDI", True, False, True, True),
         ],
     )
     def test_resolve_stream_python(
-        self, time_travel_format, is_hopsfs, online_enabled, expected
+        self, time_travel_format, stream, is_hopsfs, online_enabled, expected
     ):
         result = feature_group.FeatureGroup._resolve_stream_python(
+            stream=stream,
             time_travel_format=time_travel_format,
             is_hopsfs=is_hopsfs,
             online_enabled=online_enabled,

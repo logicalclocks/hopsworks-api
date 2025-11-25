@@ -160,11 +160,17 @@ class TestResources:
             mock_fill_missing_resources.call_args_list[0][0][2] == RESOURCES.MIN_MEMORY
         )
         assert mock_fill_missing_resources.call_args_list[0][0][3] == RESOURCES.GPUS
-        assert mock_fill_missing_resources.call_args_list[1][0][1] == RESOURCES.MAX_CORES
-        assert mock_fill_missing_resources.call_args_list[1][0][2] == RESOURCES.MAX_MEMORY
+        assert (
+            mock_fill_missing_resources.call_args_list[1][0][1] == RESOURCES.MAX_CORES
+        )
+        assert (
+            mock_fill_missing_resources.call_args_list[1][0][2] == RESOURCES.MAX_MEMORY
+        )
         assert mock_fill_missing_resources.call_args_list[1][0][3] == RESOURCES.GPUS
         expected_calls = [
-            call(pr.requests, RESOURCES.MIN_CORES, RESOURCES.MIN_MEMORY, RESOURCES.GPUS),
+            call(
+                pr.requests, RESOURCES.MIN_CORES, RESOURCES.MIN_MEMORY, RESOURCES.GPUS
+            ),
             call(pr.limits, RESOURCES.MAX_CORES, RESOURCES.MAX_MEMORY, RESOURCES.GPUS),
         ]
         mock_resources_init.assert_has_calls(expected_calls)
@@ -204,9 +210,15 @@ class TestResources:
             mock_fill_missing_resources.call_args_list[0][0][2] == RESOURCES.MIN_MEMORY
         )
         assert mock_fill_missing_resources.call_args_list[0][0][3] == RESOURCES.GPUS
-        assert mock_fill_missing_resources.call_args_list[1][0][1] == RESOURCES.MAX_CORES
-        assert mock_fill_missing_resources.call_args_list[1][0][2] == RESOURCES.MAX_MEMORY
-        assert mock_fill_missing_resources.call_args_list[1][0][3] == requests_object.gpus
+        assert (
+            mock_fill_missing_resources.call_args_list[1][0][1] == RESOURCES.MAX_CORES
+        )
+        assert (
+            mock_fill_missing_resources.call_args_list[1][0][2] == RESOURCES.MAX_MEMORY
+        )
+        assert (
+            mock_fill_missing_resources.call_args_list[1][0][3] == requests_object.gpus
+        )
         assert mock_util_get_obj_from_json.call_count == 2
         expected_calls = [
             call(json["requests"], resources.Resources),

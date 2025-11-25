@@ -51,12 +51,11 @@ class ProjectApi:
             # This information can be retrieved calling the /users/profile endpoint but is avoided as that
             # requires an API key to have the USER scope which is not guaranteed on serverless
             # Until there is a better solution this code is used to get the current user_id to check project ownership
-            current_user_uid = project_team_json[0]['user']['uid']
+            current_user_uid = project_team_json[0]["user"]["uid"]
             for project_team in project_team_json:
                 if project_team["project"]["owner"]["uid"] == current_user_uid:
                     projects.append(self._get_project(project_team["project"]["name"]))
         return projects
-
 
     def _get_project_teams(self):
         """Get all project teams for this user.
@@ -159,4 +158,3 @@ class ProjectApi:
             return projects[0]["user"]
         else:
             return {}
-
