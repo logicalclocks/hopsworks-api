@@ -1410,7 +1410,7 @@ class TestFeatureGroupEngine:
         ] == "Feature Group created successfully, explore it at \n{}".format(
             feature_group_url
         )
-        mock_save_empty_table.assert_called_once_with(fg)
+        mock_save_empty_table.assert_not_called()
 
     def test_save_feature_group_metadata_features(self, mocker):
         # Arrange
@@ -1518,7 +1518,7 @@ class TestFeatureGroupEngine:
         ] == "Feature Group created successfully, explore it at \n{}".format(
             feature_group_url
         )
-        mock_save_empty_table.assert_called_once_with(fg)
+        mock_save_empty_table.assert_not_called()
 
     def test_save_feature_group_metadata_primary_partition_precombine_event_error(
         self, mocker
@@ -1735,7 +1735,7 @@ class TestFeatureGroupEngine:
         ] == "Feature Group created successfully, explore it at \n{}".format(
             feature_group_url
         )
-        mock_save_empty_table.assert_called_once_with(fg)
+        mock_save_empty_table.assert_not_called()
 
     def test_update_feature_group_schema_on_demand_transformations(self, mocker):
         # Arrange
