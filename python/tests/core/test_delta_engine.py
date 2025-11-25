@@ -409,6 +409,37 @@ class TestDeltaEngine:
             engine.delete_record(delete_df=mock.Mock())
         assert "delta-spark" in str(e.value)
 
+    def test_save_empty_table_uses_pyspark_path(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        spark = mock.Mock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, spark, mock.Mock())
+        pyspark_mock = mocker.patch.object(engine, "save_empty_delta_table_pyspark")
+        python_mock = mocker.patch.object(engine, "save_empty_delta_table_python")
+
+        # Act
+        engine.save_empty_table()
+
+        # Assert
+        pyspark_mock.assert_called_once_with()
+        python_mock.assert_not_called()
+
+    def test_save_empty_table_uses_python_path(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        pyspark_mock = mocker.patch.object(engine, "save_empty_delta_table_pyspark")
+        python_mock = mocker.patch.object(engine, "save_empty_delta_table_python")
+
+        # Act
+        engine.save_empty_table()
+
+        # Assert
+        python_mock.assert_called_once_with()
+        pyspark_mock.assert_not_called()
+
     def test_delete_record_importerror_rs_deltalake_missing(self, mocker, monkeypatch):
         # Arrange
         _patch_client(mocker, is_external=False)
