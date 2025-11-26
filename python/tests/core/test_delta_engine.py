@@ -17,8 +17,8 @@ import os
 import sys
 import types
 from unittest import mock
-import pandas as pd
 
+import pandas as pd
 import pytest
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs.core.delta_engine import DeltaEngine
