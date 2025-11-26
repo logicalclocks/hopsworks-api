@@ -372,8 +372,16 @@ class DeltaEngine:
         for i, field in enumerate(table.schema):
             col = table.column(i)
             if pa.types.is_timestamp(field.type):
-                # Cast to specified precision
-                new_cols.append(col.cast(pa.timestamp(timestamp_precision)))
+                _precision_order = {"s": 0, "ms": 1, "us": 2, "ns": 3}
+                if _precision_order.get(timestamp_precision, -1) < _precision_order.get(field.type.unit, -1):
+                    warnings.warn(
+                        f"Casting timestamp column '{field.name}' from '{field.type.unit}'"
+                        f" to '{timestamp_precision}' will lose precision.",
+                        UserWarning,
+                        stacklevel=1,
+                    )
+                # Cast to specified precision (safe=False to allow for loss of precision)
+                new_cols.append(col.cast(pa.timestamp(timestamp_precision), safe=False))
             elif pa.types.is_float16(field.type):  # delta lake do not support float16
                 # Convert float16 to float32
                 warnings.warn(
