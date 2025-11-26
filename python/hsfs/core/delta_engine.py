@@ -396,6 +396,7 @@ class DeltaEngine:
                         f"Casting timestamp column '{field.name}' from '{field.type.unit}'"
                         f" to '{timestamp_precision}' will lose precision.",
                         UserWarning,
+                        stacklevel=1,
                     )
                 # Cast to specified precision (safe=False to allow for loss of precision)
                 new_cols.append(col.cast(pa.timestamp(timestamp_precision), safe=False))
