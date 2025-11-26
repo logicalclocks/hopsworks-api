@@ -360,6 +360,8 @@ class DeltaEngine:
             # For timezone-aware timestamps, convert to UTC and remove timezone info
             if hasattr(df_copy[col].dtype, "tz") and df_copy[col].dtype.tz is not None:
                 df_copy[col] = df_copy[col].dt.tz_convert("UTC").dt.tz_localize(None)
+            # Explicitly cast to desired precision (may lose precision)
+            df_copy[col] = df_copy[col].astype(f"datetime64[{timestamp_precision}]")
 
         # Convert to basic PyArrow table first
         _logger.debug("Converting DataFrame to basic PyArrow Table")

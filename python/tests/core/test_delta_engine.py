@@ -17,6 +17,7 @@ import os
 import sys
 import types
 from unittest import mock
+import pandas as pd
 
 import pytest
 from hopsworks_common.client.exceptions import FeatureStoreException
@@ -455,6 +456,32 @@ class TestDeltaEngine:
         # Act & Assert
         with pytest.raises(ImportError):
             DeltaEngine._prepare_df_for_delta(df=mock.Mock())
+
+    @pytest.mark.parametrize("precision", ["ns", "us", "ms", "s"])
+    def test_prepare_df_for_delta_precision_success(self, precision):
+        # Arrange
+        import pyarrow as pa
+        df = pd.DataFrame({
+            "ts": pd.to_datetime([
+                "2025-01-01 00:00:00.123456789",
+                "2025-01-02 00:00:00.987654321",
+                "2025-01-03 00:00:00.555555555",
+            ]),
+            "val": [1.0, 2.5, 3.5],
+            "name": ["a", "b", "c"]
+        })
+
+        # Act
+        table = DeltaEngine._prepare_df_for_delta(df, timestamp_precision=precision)
+
+        # Assert
+        assert isinstance(table, pa.Table)
+        # All datetime columns should have the correct precision
+        for field in table.schema:
+            if pa.types.is_timestamp(field.type):
+                assert field.type.unit == precision
+        # Other columns should remain unchanged
+        assert len(table.columns) == df.shape[1]
 
     def test_vacuum_executes_sql(self, mocker):
         # Arrange
