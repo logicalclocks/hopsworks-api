@@ -937,6 +937,117 @@ class Engine:
             + "supported in Python environment. Use HSFS Query object instead."
         )
 
+    def _to_arrow_table(self, dataframe: Union["pd.DataFrame", "pl.DataFrame"]):
+        """
+        Convert a pandas or polars DataFrame to a pyarrow.Table.
+
+        Args:
+            dataframe: Union[pd.DataFrame, pl.DataFrame]
+
+        Returns:
+            pyarrow.Table
+
+        Raises:
+            ImportError: if pyarrow is not installed
+            TypeError: if the dataframe is not supported type
+        """
+        try:
+            import pyarrow as pa
+        except ImportError as e:
+            raise ImportError("pyarrow is required to convert to Arrow table.") from e
+
+        if isinstance(dataframe, pd.DataFrame):
+            return pa.Table.from_pandas(dataframe, preserve_index=False)
+        elif HAS_POLARS and isinstance(dataframe, pl.DataFrame):
+            return dataframe.to_arrow()
+        else:
+            raise TypeError(
+                f"Unsupported dataframe type for arrow conversion: {type(dataframe)}"
+            )
+
+    def _check_duplicate_records(self, dataset, feature_group_instance):
+        """
+        Check for duplicate records within primary_key, event_time and partition_key columns.
+
+        Raises FeatureStoreException if duplicates are found.
+
+        Parameters:
+        -----------
+        dataset : Union[pd.DataFrame, pl.DataFrame]
+            The dataset to check for duplicates
+        feature_group_instance : FeatureGroup
+            The feature group instance containing primary_key, event_time and partition_key
+        """
+        # Get the key columns to check (primary_key + partition_key)
+        key_columns = list(feature_group_instance.primary_key)
+
+        if not key_columns:
+            # No keys to check, skip validation
+            return
+
+        if feature_group_instance.event_time:
+            key_columns.append(feature_group_instance.event_time)
+
+        if feature_group_instance.partition_key:
+            key_columns.extend(feature_group_instance.partition_key)
+
+        dataset = self._to_arrow_table(dataset)
+        # Verify all key columns exist
+        table_columns = dataset.column_names
+        missing_columns = [col for col in key_columns if col not in table_columns]
+        if missing_columns:
+            raise FeatureStoreException(
+                f"Key columns {missing_columns} are missing from the dataset. "
+                f"Available columns: {table_columns}"
+            )
+
+        import pyarrow.compute as pc
+
+        # Check for duplicates using PyArrow group_by
+        # Group by key columns and count occurrences
+        grouped = dataset.group_by(key_columns).aggregate(
+            [
+                # The aggregation tuple structure: ([], function_name, FunctionOptions)
+                ([], "count_all", pc.CountOptions(mode="all"))
+            ]
+        )
+
+        # Filter groups with count > 1 (duplicates)
+        duplicate_groups = grouped.filter(pc.greater(grouped["count_all"], 1))
+
+        duplicate_count = len(duplicate_groups)
+
+        if duplicate_count > 0:
+            # Get total number of duplicate rows (sum of counts - 1 for each duplicate group)
+            # Since count includes the first occurrence, duplicates = count - 1 per group
+            total_duplicate_rows = (
+                sum(duplicate_groups["count_all"].to_pylist()) - duplicate_count
+            )
+
+            # Get sample duplicate records for error message
+            # Take first 10 duplicate groups and get their key values
+            sample_groups = duplicate_groups.slice(0, min(10, duplicate_count))
+
+            # Build sample string showing the duplicate key combinations
+            sample_rows = []
+            for i in range(len(sample_groups)):
+                row_dict = {}
+                for col in key_columns:
+                    row_dict[col] = sample_groups[col][i].as_py()
+                row_dict["count_all"] = sample_groups["count_all"][i].as_py()
+                sample_rows.append(str(row_dict))
+
+            sample_str = "\n".join(sample_rows)
+
+            raise FeatureStoreException(
+                FeatureStoreException.DUPLICATE_RECORD_ERROR_MESSAGE
+                + f"\nDataset contains {total_duplicate_rows} duplicate record(s) within "
+                f"primary_key ({feature_group_instance.primary_key}) and "
+                f"partition_key ({feature_group_instance.partition_key}). "
+                f"Found {duplicate_count} duplicate group(s). "
+                f"Sample duplicate key combinations:\n{sample_str}"
+            )
+
     def save_dataframe(
         self,
         feature_group: FeatureGroup,
@@ -948,6 +1059,14 @@ class Engine:
         online_write_options: Dict[str, Any],
         validation_id: Optional[int] = None,
     ) -> Optional[job.Job]:
+        if (
+            # Only `FeatureGroup` class has time_travel_format property
+            isinstance(feature_group, FeatureGroup)
+            and feature_group.time_travel_format == "DELTA"
+        ):
+            self._check_duplicate_records(dataframe, feature_group)
+            _logger.debug("No duplicate records found. Proceeding with Delta write.")
+
         if (
             hasattr(feature_group, "EXTERNAL_FEATURE_GROUP")
             and feature_group.online_enabled
@@ -1878,9 +1997,9 @@ class Engine:
             provided_len = len(feature_log[0])
         else:
             provided_len = 1
-        assert provided_len == len(
-            cols
-        ), f"Expecting {len(cols)} features/labels but {provided_len} provided."
+        assert provided_len == len(cols), (
+            f"Expecting {len(cols)} features/labels but {provided_len} provided."
+        )
 
     @staticmethod
     def get_logging_metadata(

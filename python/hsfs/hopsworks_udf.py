@@ -676,6 +676,8 @@ def renaming_wrapper(*args):
 def renaming_wrapper(*args):
     {self._formatted_function_source}
     df = {self.function_name}(*args)
+    # If the output is a dataframe, then it should be a single column dataframe, so we can squeeze it to a series.
+    df = df.squeeze(axis=1) if isinstance(df, pd.DataFrame) else df
     df = df.rename(_output_col_names[0])
     if _date_time_output_columns:
         # Set correct type is column is not of datetime type
@@ -1154,4 +1156,4 @@ def renaming_wrapper(*args):
         self._output_column_names = output_col_names
 
     def __repr__(self):
-        return f'{self.function_name}({", ".join(self.transformation_features)})'
+        return f"{self.function_name}({', '.join(self.transformation_features)})"

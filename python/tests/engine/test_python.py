@@ -1835,6 +1835,281 @@ class TestPython:
             test_dataframe, {}, None
         )
 
+    def test_save_dataframe_delta_calls_check_duplicate_records(self, mocker):
+        # Arrange
+        mock_check_duplicate_records = mocker.patch(
+            "hsfs.engine.python.Engine._check_duplicate_records"
+        )
+        mock_delta_engine = mocker.patch("hsfs.core.delta_engine.DeltaEngine")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        python_engine = python.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["pk1"],
+            partition_key=[],
+            id=99,
+            stream=False,
+            time_travel_format="DELTA",
+        )
+
+        test_dataframe = pd.DataFrame({"pk1": [1, 2, 3], "col2": [4, 5, 6]})
+
+        # Act
+        python_engine.save_dataframe(
+            feature_group=fg,
+            dataframe=test_dataframe,
+            operation="insert",
+            online_enabled=False,
+            storage="offline",
+            offline_write_options={},
+            online_write_options={},
+            validation_id=None,
+        )
+
+        # Assert
+        assert mock_check_duplicate_records.call_count == 1
+        mock_check_duplicate_records.assert_called_once_with(test_dataframe, fg)
+        assert mock_delta_engine.call_count == 1
+
+    def test_save_dataframe_non_delta_does_not_call_check_duplicate_records(
+        self, mocker
+    ):
+        # Arrange
+        mock_check_duplicate_records = mocker.patch(
+            "hsfs.engine.python.Engine._check_duplicate_records"
+        )
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+
+        python_engine = python.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["pk1"],
+            partition_key=[],
+            id=10,
+            stream=False,
+            time_travel_format="HUDI",
+        )
+
+        test_dataframe = pd.DataFrame({"pk1": [1, 2, 3], "col2": [4, 5, 6]})
+
+        # Act
+        python_engine.save_dataframe(
+            feature_group=fg,
+            dataframe=test_dataframe,
+            operation="insert",
+            online_enabled=False,
+            storage="offline",
+            offline_write_options={},
+            online_write_options={},
+            validation_id=None,
+        )
+
+        # Assert
+        assert mock_check_duplicate_records.call_count == 0
+
+    @pytest.mark.parametrize(
+        "test_name,primary_key,partition_key,event_time,data_dict",
+        [
+            (
+                "duplicate_primary_key",
+                ["id"],
+                [],
+                None,
+                {"id": [1, 1, 2], "text": ["a", "a_dup", "b"]},
+            ),
+            (
+                "duplicate_primary_key_partition",
+                ["id"],
+                ["p"],
+                None,
+                {"id": [1, 1, 2], "p": [0, 0, 0], "text": ["a_p0", "a_p0_dup", "b_p0"]},
+            ),
+            (
+                "duplicate_primary_key_event_time",
+                ["id"],
+                [],
+                "event_time",
+                {
+                    "id": [1, 1, 2],
+                    "event_time": [
+                        pd.Timestamp("2024-01-01"),
+                        pd.Timestamp("2024-01-01"),
+                        pd.Timestamp("2024-01-02"),
+                    ],
+                    "text": ["a_t1", "a_t1_dup", "b_t2"],
+                },
+            ),
+        ],
+    )
+    def test_save_dataframe_delta_duplicate_should_fail(
+        self, mocker, test_name, primary_key, partition_key, event_time, data_dict
+    ):
+        # Arrange
+        mocker.patch("hsfs.core.delta_engine.DeltaEngine")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch(
+            "hsfs.engine.python.Engine.convert_to_default_dataframe",
+            side_effect=lambda x: x,
+        )
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_feature_group_metadata"
+        )
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
+        )
+        mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
+        mocker.patch("hsfs.engine.python.Engine._write_dataframe_kafka")
+
+        python_engine = python.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name=f"dl_dup_{test_name}",
+            version=1,
+            featurestore_id=99,
+            primary_key=primary_key,
+            partition_key=partition_key,
+            event_time=event_time,
+            stream=False,
+            time_travel_format="DELTA",
+        )
+
+        df = pd.DataFrame(data_dict)
+
+        # Act & Assert
+        with pytest.raises(exceptions.FeatureStoreException) as exc_info:
+            python_engine.save_dataframe(
+                feature_group=fg,
+                dataframe=df,
+                operation="insert",
+                online_enabled=True,
+                storage="offline",
+                offline_write_options={},
+                online_write_options={},
+                validation_id=None,
+            )
+
+        assert exceptions.FeatureStoreException.DUPLICATE_RECORD_ERROR_MESSAGE in str(
+            exc_info.value
+        )
+
+    @pytest.mark.parametrize(
+        "test_name,primary_key,partition_key,event_time,data_dict",
+        [
+            (
+                "pk_partition_across",
+                ["id"],
+                ["p"],
+                None,
+                {"id": [1, 1, 2], "p": [0, 1, 0], "text": ["a_p0", "a_p1", "b_p0"]},
+            ),
+            (
+                "pk_event_time_across",
+                ["id"],
+                [],
+                "event_time",
+                {
+                    "id": [1, 1, 2],
+                    "event_time": [
+                        pd.Timestamp("2024-01-01"),
+                        pd.Timestamp("2024-01-02"),
+                        pd.Timestamp("2024-01-01"),
+                    ],
+                    "text": ["a_t1", "a_t2", "b_t1"],
+                },
+            ),
+            (
+                "pk_with_no_duplicate",
+                ["id"],
+                [],
+                None,
+                {"id": [1, 2, 3], "text": ["a", "b", "c"]},
+            ),
+            (
+                "no_pk_partition_only",
+                [],
+                ["p"],
+                None,
+                {"id": [1, 1, 2], "p": [0, 1, 0], "text": ["a_p0", "a_p1", "b_p0"]},
+            ),
+            (
+                "no_pk_event_time_only",
+                [],
+                [],
+                "event_time",
+                {
+                    "id": [1, 1, 2],
+                    "event_time": [
+                        pd.Timestamp("2024-01-01"),
+                        pd.Timestamp("2024-01-02"),
+                        pd.Timestamp("2024-01-01"),
+                    ],
+                    "text": ["a_t1", "a_t2", "b_t1"],
+                },
+            ),
+            (
+                "no_pk",
+                [],
+                [],
+                None,
+                {"id": [1, 1, 2], "text": ["a", "a_dup", "b"]},
+            ),
+        ],
+    )
+    def test_save_dataframe_delta_duplicate_should_succeed(
+        self, mocker, test_name, primary_key, partition_key, event_time, data_dict
+    ):
+        # Arrange
+        mocker.patch("hsfs.core.delta_engine.DeltaEngine")
+        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch(
+            "hsfs.engine.python.Engine.convert_to_default_dataframe",
+            side_effect=lambda x: x,
+        )
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine.save_feature_group_metadata"
+        )
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
+        )
+        mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
+        mocker.patch("hsfs.engine.python.Engine._write_dataframe_kafka")
+
+        python_engine = python.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name=f"dl_dup_{test_name}",
+            version=1,
+            featurestore_id=99,
+            primary_key=primary_key,
+            partition_key=partition_key,
+            event_time=event_time,
+            stream=False,
+            time_travel_format="DELTA",
+        )
+
+        df = pd.DataFrame(data_dict)
+
+        # Act - should not raise exception
+        python_engine.save_dataframe(
+            feature_group=fg,
+            dataframe=df,
+            operation="insert",
+            online_enabled=True,
+            storage="offline",
+            offline_write_options={},
+            online_write_options={},
+            validation_id=None,
+        )
+
+        # Assert - no exception should be raised
+
     def test_legacy_save_dataframe(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client.get_instance")

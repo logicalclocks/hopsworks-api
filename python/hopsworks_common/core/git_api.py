@@ -139,7 +139,9 @@ class GitApi:
         return self._git_provider_api._get_providers()
 
     @usage.method_logger
-    def get_provider(self, provider: str, host: str = None) -> Optional[git_provider.GitProvider]:
+    def get_provider(
+        self, provider: str, host: str = None
+    ) -> Optional[git_provider.GitProvider]:
         """Get the configured Git provider
 
         # Arguments
@@ -500,7 +502,6 @@ class GitApi:
             )
         )
         _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
-
 
     def _checkout_files(self, repo_id, files: Union[List[str], List[GitFileStatus]]):
         files = util.convert_git_status_to_files(files)

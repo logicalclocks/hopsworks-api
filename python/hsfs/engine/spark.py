@@ -54,6 +54,7 @@ try:
         array,
         col,
         concat,
+        count,
         from_json,
         lit,
         monotonically_increasing_id,
@@ -397,9 +398,9 @@ class Engine:
             dataframe_dict = {}
             if not is_list_of_dict:
                 if column_names:
-                    assert (
-                        num_cols == len(column_names)
-                    ), f"Expecting {len(column_names)} features/labels but {num_cols} provided."
+                    assert num_cols == len(column_names), (
+                        f"Expecting {len(column_names)} features/labels but {num_cols} provided."
+                    )
                 for n_col in range(num_cols):
                     c = (
                         "col_" + str(n_col)
@@ -445,6 +446,87 @@ class Engine:
                 )
         return self._spark_session.createDataFrame(dataframe_copy)
 
+    def _check_duplicate_records(self, dataframe, feature_group):
+        """
+        Check for duplicate records within primary_key, event_time and partition_key columns.
+
+        Raises FeatureStoreException if duplicates are found.
+
+        Parameters:
+        -----------
+        dataframe : pyspark.sql.DataFrame
+            The Spark DataFrame to check for duplicates
+        feature_group : FeatureGroup
+            The feature group instance containing primary_key, event_time and partition_key
+        """
+        # Get the key columns to check (primary_key + partition_key)
+        key_columns = list(feature_group.primary_key)
+
+        if not key_columns:
+            # No keys to check, skip validation
+            return
+
+        if feature_group.event_time:
+            key_columns.append(feature_group.event_time)
+
+        if feature_group.partition_key:
+            key_columns.extend(feature_group.partition_key)
+
+        # Verify all key columns exist in the dataset
+        dataframe_columns = dataframe.columns
+        missing_columns = [
+            col_name for col_name in key_columns if col_name not in dataframe_columns
+        ]
+        if missing_columns:
+            raise FeatureStoreException(
+                f"Key columns {missing_columns} are missing from the dataset. "
+                f"Available columns: {dataframe_columns}"
+            )
+
+        # Check for duplicates using Spark groupBy and count
+        # Group by key columns and count occurrences
+        grouped = dataframe.groupBy(*key_columns).agg(count("*").alias("count"))
+
+        # Filter groups with count > 1 (duplicates)
+        duplicate_groups = grouped.filter(col("count") > 1)
+
+        # Count the number of duplicate groups
+        duplicate_count = duplicate_groups.count()
+
+        if duplicate_count > 0:
+            # Get total number of duplicate rows (sum of counts - 1 for each duplicate group)
+            # Since count includes the first occurrence, duplicates = count - 1 per group
+            duplicate_rows_data = duplicate_groups.select(
+                col("count").cast("long")
+            ).collect()
+            total_duplicate_rows = (
+                sum(row["count"] for row in duplicate_rows_data) - duplicate_count
+            )
+
+            # Get sample duplicate records for error message
+            # Take first 10 duplicate groups and get their key values
+            sample_groups = duplicate_groups.limit(10).collect()
+
+            # Build sample string showing the duplicate key combinations
+            sample_rows = []
+            for row in sample_groups:
+                row_dict = {}
+                for col_name in key_columns:
+                    row_dict[col_name] = row[col_name]
+                row_dict["count"] = row["count"]
+                sample_rows.append(str(row_dict))
+
+            sample_str = "\n".join(sample_rows)
+
+            raise FeatureStoreException(
+                FeatureStoreException.DUPLICATE_RECORD_ERROR_MESSAGE
+                + f"\nDataset contains {total_duplicate_rows} duplicate record(s) within "
+                f"primary_key ({feature_group.primary_key}) and "
+                f"partition_key ({feature_group.partition_key}). "
+                f"Found {duplicate_count} duplicate group(s). "
+                f"Sample duplicate key combinations:\n{sample_str}"
+            )
+
     def save_dataframe(
         self,
         feature_group,
@@ -457,6 +539,16 @@ class Engine:
         validation_id=None,
     ):
         try:
+            if (
+                # Only `FeatureGroup class has time_travel_format property
+                isinstance(feature_group, fg_mod.FeatureGroup)
+                and feature_group.time_travel_format == "DELTA"
+            ):
+                self._check_duplicate_records(dataframe, feature_group)
+                _logger.debug(
+                    "No duplicate records found. Proceeding with Delta write."
+                )
+
             if (
                 isinstance(feature_group, fg_mod.ExternalFeatureGroup)
                 and feature_group.online_enabled
@@ -1895,9 +1987,9 @@ class Engine:
             provided_len = len(feature_log[0])
         else:
             provided_len = 1
-        assert provided_len == len(
-            cols
-        ), f"Expecting {len(cols)} features/labels but {provided_len} provided."
+        assert provided_len == len(cols), (
+            f"Expecting {len(cols)} features/labels but {provided_len} provided."
+        )
 
     def get_feature_logging_df(
         self,
