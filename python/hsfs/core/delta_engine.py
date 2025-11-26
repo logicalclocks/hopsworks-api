@@ -379,8 +379,6 @@ class DeltaEngine:
             # For timezone-aware timestamps, convert to UTC and remove timezone info
             if hasattr(df_copy[col].dtype, "tz") and df_copy[col].dtype.tz is not None:
                 df_copy[col] = df_copy[col].dt.tz_convert("UTC").dt.tz_localize(None)
-            # Explicitly cast to desired precision (may lose precision)
-            df_copy[col] = df_copy[col].astype(f"datetime64[{timestamp_precision}]")
 
         # Convert to basic PyArrow table first
         _logger.debug("Converting DataFrame to basic PyArrow Table")
@@ -392,8 +390,8 @@ class DeltaEngine:
         for i, field in enumerate(table.schema):
             col = table.column(i)
             if pa.types.is_timestamp(field.type):
-                # Cast to specified precision
-                new_cols.append(col.cast(pa.timestamp(timestamp_precision)))
+                # Cast to specified precision (safe=False to allow for loss of precision)
+                new_cols.append(col.cast(pa.timestamp(timestamp_precision), safe=False))
             elif pa.types.is_float16(field.type):  # delta lake do not support float16
                 # Convert float16 to float32
                 warnings.warn(
