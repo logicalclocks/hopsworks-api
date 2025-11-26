@@ -513,7 +513,7 @@ class TestDeltaEngine:
             "2025-01-03 00:00:00.555555555",
         ])
         ts_values = ts_values.astype(f"datetime64[{input_precision}]")
-        
+
         df = pd.DataFrame({
             "ts": ts_values,
             "val": [1.0, 2.5, 3.5],
