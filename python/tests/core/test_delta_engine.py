@@ -18,6 +18,7 @@ import sys
 import types
 from unittest import mock
 
+import pandas as pd
 import pytest
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs.core.delta_engine import DeltaEngine
@@ -500,6 +501,36 @@ class TestDeltaEngine:
         # Act & Assert
         with pytest.raises(ImportError):
             DeltaEngine._prepare_df_for_delta(df=mock.Mock())
+
+    @pytest.mark.parametrize("input_precision", ["s", "ms", "us", "ns"])
+    @pytest.mark.parametrize("target_precision", ["s", "ms", "us", "ns"])
+    def test_prepare_df_for_delta_all_precisions(self, input_precision, target_precision):
+        # Arrange
+        import pyarrow as pa
+        ts_values = pd.to_datetime([
+            "2025-01-01 00:00:00.123456789",
+            "2025-01-02 00:00:00.987654321",
+            "2025-01-03 00:00:00.555555555",
+        ])
+        ts_values = ts_values.astype(f"datetime64[{input_precision}]")
+
+        df = pd.DataFrame({
+            "ts": ts_values,
+            "val": [1.0, 2.5, 3.5],
+            "name": ["a", "b", "c"]
+        })
+
+        # Act
+        table = DeltaEngine._prepare_df_for_delta(df, timestamp_precision=target_precision)
+
+        # Assert
+        assert isinstance(table, pa.Table)
+        # Timestamp column should be cast to target precision
+        for field in table.schema:
+            if pa.types.is_timestamp(field.type):
+                assert field.type.unit == target_precision
+        # Other columns should remain unchanged
+        assert len(table.columns) == df.shape[1]
 
     def test_vacuum_executes_sql(self, mocker):
         # Arrange
