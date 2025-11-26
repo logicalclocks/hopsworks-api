@@ -164,7 +164,8 @@ class TestFeatureStore:
         json = backend_fixtures["feature_store"]["get"]["response"]
         fs = feature_store_mod.FeatureStore.from_response_json(json)
         mocker.patch(
-            "hsfs.core.feature_view_api.FeatureViewApi.get_by_name_version", return_value=None
+            "hsfs.core.feature_view_api.FeatureViewApi.get_by_name_version",
+            return_value=None,
         )
 
         # Act
