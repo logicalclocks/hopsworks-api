@@ -26,6 +26,8 @@ from typing import Any, Dict, List, Optional, TypeVar, Union
 
 import humps
 import pandas as pd
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
 from hopsworks_common import client
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import engine
@@ -964,6 +966,8 @@ class SnowflakeConnector(StorageConnector):
         warehouse: Optional[str] = None,
         application: Optional[Any] = None,
         sf_options: Optional[Dict[str, Any]] = None,
+        private_key: Optional[str] = None,
+        passphrase: Optional[str] = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
@@ -979,6 +983,8 @@ class SnowflakeConnector(StorageConnector):
         self._table = table
         self._role = role
         self._application = application
+        self._private_key = private_key
+        self._passphrase = passphrase
 
         self._options = (
             {opt["name"]: opt["value"] for opt in sf_options} if sf_options else {}
@@ -1044,6 +1050,16 @@ class SnowflakeConnector(StorageConnector):
         """Additional options for the Snowflake storage connector"""
         return self._options
 
+    @property
+    def private_key(self) -> Optional[str]:
+        """Path to the private key file for key pair authentication."""
+        return self._private_key
+
+    @property
+    def passphrase(self) -> Optional[str]:
+        """Passphrase for the private key file."""
+        return self._passphrase
+
     def snowflake_connector_options(self) -> Optional[Dict[str, Any]]:
         """Alias for `connector_options`"""
         return self.connector_options()
@@ -1087,9 +1103,14 @@ class SnowflakeConnector(StorageConnector):
         props["sfUser"] = self._user
         if self._password:
             props["sfPassword"] = self._password
-        else:
+        elif self._token:
             props["sfAuthenticator"] = "oauth"
             props["sfToken"] = self._token
+        elif self._private_key:
+            private_key_content = self._read_private_key()
+            if private_key_content:
+                props["pem_private_key"] = private_key_content
+
         if self._warehouse:
             props["sfWarehouse"] = self._warehouse
         if self._application:
@@ -1100,6 +1121,29 @@ class SnowflakeConnector(StorageConnector):
             props["dbtable"] = self._table
 
         return props
+
+    def _read_private_key(self) -> Optional[str]:
+        """Reads the private key from the specified key path."""
+        p_key = serialization.load_pem_private_key(
+            self._private_key.encode(),
+            password=self._passphrase.encode() if self._passphrase else None,
+            backend=default_backend(),
+        )
+
+        private_key_bytes = p_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+        private_key_content = private_key_bytes.decode("UTF-8")
+        # remove both regular and encrypted PEM headers, e.g.
+        # -----BEGIN PRIVATE KEY----- and -----BEGIN ENCRYPTED PRIVATE KEY-----
+        private_key_content = re.sub(
+            r"-*\s*(BEGIN|END)(?: ENCRYPTED)? PRIVATE KEY-*\r?\n",
+            "",
+            private_key_content,
+        ).replace("\n", "")
+        return private_key_content
 
     def read(
         self,
@@ -1131,6 +1175,13 @@ class SnowflakeConnector(StorageConnector):
         # Returns
             `DataFrame`.
         """
+
+        # validate engine supports connector type
+        if not engine.get_instance().is_connector_type_supported(self.type):
+            raise NotImplementedError(
+                "Snowflake connector not yet supported for engine: " + engine.get_type()
+            )
+
         options = (
             {**self.spark_options(), **options}
             if options is not None
@@ -1144,6 +1195,9 @@ class SnowflakeConnector(StorageConnector):
         return engine.get_instance().read(
             self, self.SNOWFLAKE_FORMAT, options, None, dataframe_type
         )
+
+    def prepare_spark(self, path=None):
+        return engine.get_instance().setup_storage_connector(self, path)
 
 
 class JdbcConnector(StorageConnector):
