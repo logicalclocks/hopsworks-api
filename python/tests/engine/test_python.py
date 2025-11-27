@@ -1995,9 +1995,8 @@ class TestPython:
                 validation_id=None,
             )
 
-        assert (
-            exceptions.FeatureStoreException.DUPLICATE_RECORD_ERROR_MESSAGE
-            in str(exc_info.value)
+        assert exceptions.FeatureStoreException.DUPLICATE_RECORD_ERROR_MESSAGE in str(
+            exc_info.value
         )
 
     @pytest.mark.parametrize(

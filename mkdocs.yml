@@ -21,7 +21,7 @@ nav:
       - Environment: generated/api/environment.md
       - Executions: generated/api/executions.md
       - FlinkCluster: generated/api/flink_cluster.md
-      - GitProvider: generated/api/git_provider.md 
+      - GitProvider: generated/api/git_provider.md
       - GitRemote: generated/api/git_remote.md
       - GitRepo: generated/api/git_repo.md
       - Jobs: generated/api/jobs.md
@@ -81,7 +81,7 @@ nav:
         - Resources: generated/model-serving/resources_api.md
         - Transformer: generated/model-serving/transformer_api.md
     # Added to allow navigation using the side drawer
-    - Feature Store JavaDoc: https://docs.hopsworks.ai/feature-store-javadoc/latest/
+    - Feature Store JavaDoc: https://docs.hopsworks.ai/hopsworks-api/latest/javadoc
     - Contributing: CONTRIBUTING.md
   - Community ↗: https://community.hopsworks.ai/
 

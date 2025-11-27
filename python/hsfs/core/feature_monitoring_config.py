@@ -75,6 +75,7 @@ class FeatureMonitoringType(str, Enum):
 
 
 class FeatureMonitoringConfig:
+    # TODO: Add docstring
     NOT_FOUND_ERROR_CODE = 270233
 
     def __init__(

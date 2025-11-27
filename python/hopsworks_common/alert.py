@@ -271,7 +271,6 @@ class FeatureGroupAlert(Alert):
             "created": self._created,
         }
 
-
     def __repr__(self):
         return f"FeatureGroupAlert({self._id!r}, {self._feature_store_name!r}, {self._feature_group_id!r}, {self._feature_group_name!r}, {self._status!r}, {self._severity!r}, {self._receiver!r}, {self._created!r})"
 

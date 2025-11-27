@@ -1059,7 +1059,11 @@ class Engine:
         online_write_options: Dict[str, Any],
         validation_id: Optional[int] = None,
     ) -> Optional[job.Job]:
-        if feature_group.time_travel_format == "DELTA":
+        if (
+            # Only `FeatureGroup` class has time_travel_format property
+            isinstance(feature_group, FeatureGroup)
+            and feature_group.time_travel_format == "DELTA"
+        ):
             self._check_duplicate_records(dataframe, feature_group)
             _logger.debug("No duplicate records found. Proceeding with Delta write.")
 
@@ -1993,9 +1997,9 @@ class Engine:
             provided_len = len(feature_log[0])
         else:
             provided_len = 1
-        assert provided_len == len(
-            cols
-        ), f"Expecting {len(cols)} features/labels but {provided_len} provided."
+        assert provided_len == len(cols), (
+            f"Expecting {len(cols)} features/labels but {provided_len} provided."
+        )
 
     @staticmethod
     def get_logging_metadata(
