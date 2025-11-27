@@ -14,19 +14,14 @@
 #   limitations under the License.
 #
 import pytest
+from unittest.mock import MagicMock
+
 from hsfs.client.exceptions import VectorDatabaseException
 from hsfs.core.opensearch import OpenSearchClientSingleton, OpensearchRequestOption
+from hopsworks_common.core.opensearch import ProjectOpenSearchClient
 
 
 class TestOpenSearchClientSingleton:
-    @pytest.fixture(autouse=True)
-    def setup_mocks(self, mocker):
-        mocker.patch(
-            "hsfs.core.opensearch.OpenSearchClientSingleton._setup_opensearch_client"
-        )
-
-        self.target = OpenSearchClientSingleton()
-
     @pytest.mark.parametrize(
         "message, expected_reason, expected_info",
         [
@@ -62,10 +57,110 @@ class TestOpenSearchClientSingleton:
     def test_create_vector_database_exception(
         self, message, expected_reason, expected_info
     ):
-        exception = self.target._create_vector_database_exception(message)
+        # Use a lightweight ProjectOpenSearchClient instance that does not
+        # require an initialized Hopsworks client.
+        target = ProjectOpenSearchClient(opensearch_client=None)
+        exception = target._create_vector_database_exception(message)
         assert isinstance(exception, VectorDatabaseException)
         assert exception.reason == expected_reason
         assert exception.info == expected_info
+
+    @pytest.fixture(autouse=True)
+    def reset_singleton(self):
+        # Ensure clean singleton state for each test
+        OpenSearchClientSingleton._instance = None
+        yield
+        OpenSearchClientSingleton._instance = None
+
+    def test_uses_default_client_when_no_federated_connector(self, mocker):
+        """
+        If there is no `federated_opensearch` connector for the feature store,
+        the OpenSearch client for that feature store should be the same object
+        as the default one.
+        """
+
+        # Arrange: mock OpenSearchApi.get_default_py_config so we don't hit real cluster
+        mock_default_cfg = {"hosts": [{"host": "default-host", "port": 9200}]}
+        mocker.patch(
+            "hopsworks_common.core.opensearch.OpenSearchApi.get_default_py_config",
+            return_value=mock_default_cfg,
+        )
+
+        # Ensure no federated connector is found
+        mocker.patch(
+            "hopsworks_common.core.opensearch.OpenSearchClientSingleton._get_federated_opensearch_config",
+            return_value=None,
+        )
+
+        # Also mock OpenSearch client class to avoid real connections
+        mock_opensearch_cls = mocker.patch(
+            "hopsworks_common.core.opensearch.OpenSearch", autospec=True
+        )
+
+        # Return different MagicMock instances for each construction so we can
+        # detect reuse; we will assert on identity via the singleton cache.
+        first_default_client = MagicMock(name="default_client")
+        second_client = MagicMock(name="second_client")
+        mock_opensearch_cls.side_effect = [first_default_client, second_client]
+
+        # Act: get default client (no feature_store_id)
+        default_wrapper = OpenSearchClientSingleton()
+        default_client = default_wrapper.get_opensearch_client()
+
+        # Act: get client for a specific feature store with no federated connector
+        fs_id = 123
+        fs_wrapper = OpenSearchClientSingleton(feature_store_id=fs_id)
+        fs_client = fs_wrapper.get_opensearch_client()
+
+        # Assert: the feature-store-specific client is the same as the default one
+        assert (
+            default_client is fs_client
+        ), "When no federated_opensearch connector exists, the feature-store client must reuse the default client instance."
+
+    def test_uses_different_client_when_federated_connector_available(self, mocker):
+        """
+        If a `federated_opensearch` connector exists for the feature store,
+        the OpenSearch client for that feature store should be a different object
+        than the default one.
+        """
+
+        # Arrange: mock default config
+        mock_default_cfg = {"hosts": [{"host": "default-host", "port": 9200}]}
+        mocker.patch(
+            "hopsworks_common.core.opensearch.OpenSearchApi.get_default_py_config",
+            return_value=mock_default_cfg,
+        )
+
+        # Federated connector config for the feature store
+        federated_cfg = {"hosts": [{"host": "federated-host", "port": 9200}]}
+        mocker.patch(
+            "hopsworks_common.core.opensearch.OpenSearchClientSingleton._get_federated_opensearch_config",
+            return_value=federated_cfg,
+        )
+
+        # Mock OpenSearch client class
+        mock_opensearch_cls = mocker.patch(
+            "hopsworks_common.core.opensearch.OpenSearch", autospec=True
+        )
+
+        # First call -> default client, second call -> federated client
+        default_client = MagicMock(name="default_client")
+        federated_client = MagicMock(name="federated_client")
+        mock_opensearch_cls.side_effect = [default_client, federated_client]
+
+        # Act: get default client (no feature_store_id)
+        default_wrapper = OpenSearchClientSingleton()
+        default_client_from_wrapper = default_wrapper.get_opensearch_client()
+
+        # Act: get client for a specific feature store with federated connector
+        fs_id = 456
+        fs_wrapper = OpenSearchClientSingleton(feature_store_id=fs_id)
+        fs_client_from_wrapper = fs_wrapper.get_opensearch_client()
+
+        # Assert: the feature-store-specific client is NOT the same as the default one
+        assert (
+            default_client_from_wrapper is not fs_client_from_wrapper
+        ), "When a federated_opensearch connector exists, the feature-store client must NOT reuse the default client instance."
 
 
 class TestOpensearchRequestOption:

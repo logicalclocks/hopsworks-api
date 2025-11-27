@@ -28,6 +28,8 @@ import humps
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from hopsworks_common import client
+from hopsworks_common.core.opensearch_api import OPENSEARCH_CONFIG
+from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import engine
 from hsfs.core import data_source as ds
 from hsfs.core import data_source_api, storage_connector_api
@@ -60,6 +62,7 @@ class StorageConnector(ABC):
     GCS = "GCS"
     BIGQUERY = "BIGQUERY"
     RDS = "RDS"
+    OPENSEARCH = "OPENSEARCH"
     NOT_FOUND_ERROR_CODE = 270042
 
     def __init__(
@@ -90,6 +93,7 @@ class StorageConnector(ABC):
         | SnowflakeConnector
         | BigQueryConnector
         | RdsConnector
+        | OpenSearchConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -110,6 +114,7 @@ class StorageConnector(ABC):
         | SnowflakeConnector
         | BigQueryConnector
         | RdsConnector
+        | OpenSearchConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -1457,7 +1462,7 @@ class KafkaConnector(StorageConnector):
                 and not pem_files_assigned
             ):
                 self.create_pem_files(kafka_options)
-                config["ssl.ca.location"] = self.ca_chain_path
+                config["ssl.ca.location"] = kafka_options["ssl.ca.location"] or self.ca_chain_path
                 config["ssl.certificate.location"] = self.client_cert_path
                 config["ssl.key.location"] = self.client_key_path
                 pem_files_assigned = True
@@ -2126,4 +2131,154 @@ class RdsConnector(StorageConnector):
 
         return engine.get_instance().read(
             self, self.JDBC_FORMAT, options, None, dataframe_type
+        )
+
+
+class OpenSearchConnector(StorageConnector):
+    type = StorageConnector.OPENSEARCH
+
+    def __init__(
+        self,
+        id: Optional[int],
+        name: str,
+        featurestore_id: int,
+        description: Optional[str] = None,
+        # members specific to type of connector
+        host: Optional[str] = None,
+        port: Optional[int] = None,
+        scheme: Optional[str] = None,
+        verify: Optional[bool] = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        arguments: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._host = host
+        self._port = port
+        self._scheme = scheme
+        self._verify = verify
+        self._username = username
+        self._password = password
+        self._arguments = (
+            {arg["name"]: arg.get("value", None) for arg in arguments}
+            if isinstance(arguments, list)
+            else (arguments if arguments else {})
+        )
+
+    @property
+    def host(self) -> Optional[str]:
+        """OpenSearch host address."""
+        return self._host
+
+    @property
+    def port(self) -> Optional[int]:
+        """OpenSearch port number."""
+        return self._port
+
+    @property
+    def scheme(self) -> Optional[str]:
+        """Connection scheme (http or https)."""
+        return self._scheme
+
+    @property
+    def verify(self) -> Optional[bool]:
+        """Whether to verify SSL certificates."""
+        return self._verify
+
+    @property
+    def username(self) -> Optional[str]:
+        """OpenSearch username for authentication."""
+        return self._username
+
+    @property
+    def password(self) -> Optional[str]:
+        """OpenSearch password for authentication."""
+        return self._password
+
+    @property
+    def arguments(self) -> Dict[str, Any]:
+        """Additional OpenSearch connection options."""
+        return self._arguments
+
+    def spark_options(self) -> Dict[str, Any]:
+        """Return prepared options to be passed to Spark, based on the additional
+        arguments.
+        """
+        options = self._arguments.copy()
+        if self._host:
+            options["es.nodes"] = self._host
+        if self._port:
+            options["es.port"] = str(self._port)
+        if self._scheme:
+            options["es.net.ssl"] = "true" if self._scheme == "https" else "false"
+        if self._verify is not None:
+            options["es.net.ssl.cert.allow.self.signed"] = "false" if self._verify else "true"
+        if self._username:
+            options["es.net.http.auth.user"] = self._username
+        if self._password:
+            options["es.net.http.auth.pass"] = self._password
+        return options
+
+    def connector_options(self) -> Dict[str, Any]:
+        """Return options to be passed to an external OpenSearch connector library"""
+        props = {
+            "http_compress": False,
+
+        }
+        if self._host:
+            props[OPENSEARCH_CONFIG.HOSTS] = [{"host": self._host, "port": self._port or 9200}]
+        if self._scheme:
+            props[OPENSEARCH_CONFIG.USE_SSL] = self._scheme == "https"
+        if self._verify is not None:
+            props[OPENSEARCH_CONFIG.VERIFY_CERTS] = self._verify
+        if self._username and self._password:
+            props[OPENSEARCH_CONFIG.HTTP_AUTH] = (self._username, self._password)
+        elif self._username:
+            props[OPENSEARCH_CONFIG.HTTP_AUTH] = self._username
+        # Merge additional arguments
+        props.update(self._arguments)
+        return props
+
+    def read(
+        self,
+        query: Optional[str] = None,
+        data_format: Optional[str] = None,
+        options: Optional[Dict[str, Any]] = None,
+        path: Optional[str] = None,
+        dataframe_type: str = "default",
+    ) -> Union[
+        TypeVar("pyspark.sql.DataFrame"),
+        TypeVar("pyspark.RDD"),
+        pd.DataFrame,
+        np.ndarray,
+        pl.DataFrame,
+    ]:
+        """Reads data from OpenSearch into a dataframe using the storage connector.
+
+        # Arguments
+            query: OpenSearch query string. Defaults to `None`.
+            data_format: Not relevant for OpenSearch connectors.
+            options: Any additional key/value options to be passed to the OpenSearch connector.
+            path: OpenSearch index name. Defaults to `None`.
+            dataframe_type: str, optional. The type of the returned dataframe.
+                Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
+                Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
+
+        # Returns
+            `DataFrame`.
+        """
+        self.refetch()
+        options = (
+            {**self.spark_options(), **options}
+            if options is not None
+            else self.spark_options()
+        )
+        if path:
+            options["es.resource"] = path
+        if query:
+            options["es.query"] = query
+
+        return engine.get_instance().read(
+            self, "org.elasticsearch.spark.sql", options, None, dataframe_type
         )
