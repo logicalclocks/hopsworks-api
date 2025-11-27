@@ -95,6 +95,13 @@ def _is_no_metadata_found_error(exception):
     )
 
 
+def _is_no_data_found_error(exception):
+    # Error message: 'No data found for featuregroup fg_read_uvbhz.fg_polars_online_true_1. Detail: Failed....
+    return isinstance(
+        exception, pyarrow._flight.FlightServerError
+    ) and "No data found" in str(exception)
+
+
 def _should_retry_healthcheck(exception):
     return isinstance(exception, pyarrow._flight.FlightUnavailableError) or isinstance(
         exception, pyarrow._flight.FlightTimedOutError
@@ -426,6 +433,8 @@ class ArrowFlightClient:
                     elif _is_no_commits_found_error(e) or _is_no_metadata_found_error(
                         e
                     ):
+                        raise FeatureStoreException(str(e).split("Details:")[0]) from e
+                    elif _is_no_data_found_error(e):
                         raise FeatureStoreException(str(e).split("Details:")[0]) from e
                     else:
                         raise FeatureStoreException(user_message) from e
