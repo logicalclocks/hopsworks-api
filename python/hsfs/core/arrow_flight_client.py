@@ -685,7 +685,7 @@ def _get_connector_options(fg):
             option_map["authenticator"] = "oauth"
             option_map["token"] = connector.token
         else:
-            option_map["key_path"] = connector.key_path
+            option_map["snowflake_private_key"] = connector.private_key
             option_map["passphrase"] = connector.passphrase
 
         if connector.warehouse:

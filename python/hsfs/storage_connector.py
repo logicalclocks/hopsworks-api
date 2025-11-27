@@ -878,7 +878,7 @@ class SnowflakeConnector(StorageConnector):
         warehouse: Optional[str] = None,
         application: Optional[Any] = None,
         sf_options: Optional[Dict[str, Any]] = None,
-        key_path: Optional[str] = None,
+        private_key: Optional[str] = None,
         passphrase: Optional[str] = None,
         **kwargs,
     ) -> None:
@@ -895,7 +895,7 @@ class SnowflakeConnector(StorageConnector):
         self._table = table
         self._role = role
         self._application = application
-        self._key_path = key_path
+        self._private_key = private_key
         self._passphrase = passphrase
 
         self._options = (
@@ -963,9 +963,9 @@ class SnowflakeConnector(StorageConnector):
         return self._options
 
     @property
-    def key_path(self) -> Optional[str]:
+    def private_key(self) -> Optional[str]:
         """Path to the private key file for key pair authentication."""
-        return self._key_path
+        return self._private_key
 
     @property
     def passphrase(self) -> Optional[str]:
@@ -1018,10 +1018,10 @@ class SnowflakeConnector(StorageConnector):
         elif self._token:
             props["sfAuthenticator"] = "oauth"
             props["sfToken"] = self._token
-        elif self._key_path:
-            pkb = self._read_private_key()
-            if pkb:
-                props["pem_private_key"] = pkb
+        elif self._private_key:
+            private_key_content = self._read_private_key()
+            if private_key_content:
+                props["pem_private_key"] = private_key_content
 
         if self._warehouse:
             props["sfWarehouse"] = self._warehouse
@@ -1036,24 +1036,22 @@ class SnowflakeConnector(StorageConnector):
 
     def _read_private_key(self) -> Optional[str]:
         """Reads the private key from the specified key path."""
+        p_key = serialization.load_pem_private_key(
+            self._private_key.encode(),
+            password=self._passphrase.encode() if self._passphrase else None,
+            backend=default_backend(),
+        )
 
-        # read private key from hive key path
-        local_key_path = engine.get_instance().add_file(self._key_path)
-        with open(local_key_path, "rb") as file_privateKey:
-            p_key = serialization.load_pem_private_key(
-                file_privateKey.read(),
-                password=self._passphrase.encode() if self._passphrase else None,
-                backend=default_backend(),
-            )
-
-        pkb = p_key.private_bytes(
+        private_key_bytes = p_key.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.PKCS8,
             encryption_algorithm=serialization.NoEncryption(),
         )
-        pkb = pkb.decode("UTF-8")
-        pkb = re.sub("-*(BEGIN|END) PRIVATE KEY-*\n", "", pkb).replace("\n", "")
-        return pkb
+        private_key_content = private_key_bytes.decode("UTF-8")
+        private_key_content = re.sub(
+            "-*(BEGIN|END) PRIVATE KEY-*\n", "", private_key_content
+        ).replace("\n", "")
+        return private_key_content
 
     def read(
         self,
@@ -1101,10 +1099,6 @@ class SnowflakeConnector(StorageConnector):
             options["query"] = query
             # if table also specified we override to use query
             options.pop("dbtable", None)
-
-        if self.key_path is not None:
-            # PLACEHOLDER for key pair authentication in spark
-            pass
 
         return engine.get_instance().read(
             self, self.SNOWFLAKE_FORMAT, options, None, dataframe_type
