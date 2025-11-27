@@ -430,11 +430,11 @@ class ArrowFlightClient:
                         raise FeatureStoreException(
                             "Hopsworks Query Service is busy right now. Please try again later."
                         ) from e
-                    elif _is_no_commits_found_error(e) or _is_no_metadata_found_error(
-                        e
+                    elif (
+                        _is_no_commits_found_error(e)
+                        or _is_no_metadata_found_error(e)
+                        or _is_no_data_found_error(e)
                     ):
-                        raise FeatureStoreException(str(e).split("Details:")[0]) from e
-                    elif _is_no_data_found_error(e):
                         raise FeatureStoreException(str(e).split("Details:")[0]) from e
                     else:
                         raise FeatureStoreException(user_message) from e
