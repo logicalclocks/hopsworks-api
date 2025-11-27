@@ -1136,8 +1136,12 @@ class SnowflakeConnector(StorageConnector):
             encryption_algorithm=serialization.NoEncryption(),
         )
         private_key_content = private_key_bytes.decode("UTF-8")
+        # remove both regular and encrypted PEM headers, e.g.
+        # -----BEGIN PRIVATE KEY----- and -----BEGIN ENCRYPTED PRIVATE KEY-----
         private_key_content = re.sub(
-            "-*(BEGIN|END) PRIVATE KEY-*\n", "", private_key_content
+            r"-*\s*(BEGIN|END)(?: ENCRYPTED)? PRIVATE KEY-*\r?\n",
+            "",
+            private_key_content,
         ).replace("\n", "")
         return private_key_content
 
