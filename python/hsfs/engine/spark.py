@@ -234,7 +234,12 @@ class Engine:
         )
 
     def register_delta_temporary_table(
-        self, delta_fg_alias, feature_store_id, feature_store_name, read_options
+        self,
+        delta_fg_alias,
+        feature_store_id: int,
+        feature_store_name: str,
+        read_options: Optional[Dict[str, Any]],
+        is_cdc_query: bool = False,
     ):
         delta_engine_instance = delta_engine.DeltaEngine(
             feature_store_id,
@@ -247,6 +252,7 @@ class Engine:
         delta_engine_instance.register_temporary_table(
             delta_fg_alias,
             read_options,
+            is_cdc_query=is_cdc_query,
         )
 
     def _return_dataframe_type(self, dataframe, dataframe_type):
@@ -398,9 +404,9 @@ class Engine:
             dataframe_dict = {}
             if not is_list_of_dict:
                 if column_names:
-                    assert num_cols == len(column_names), (
-                        f"Expecting {len(column_names)} features/labels but {num_cols} provided."
-                    )
+                    assert (
+                        num_cols == len(column_names)
+                    ), f"Expecting {len(column_names)} features/labels but {num_cols} provided."
                 for n_col in range(num_cols):
                     c = (
                         "col_" + str(n_col)
@@ -1987,9 +1993,9 @@ class Engine:
             provided_len = len(feature_log[0])
         else:
             provided_len = 1
-        assert provided_len == len(cols), (
-            f"Expecting {len(cols)} features/labels but {provided_len} provided."
-        )
+        assert provided_len == len(
+            cols
+        ), f"Expecting {len(cols)} features/labels but {provided_len} provided."
 
     def get_feature_logging_df(
         self,

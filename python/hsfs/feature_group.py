@@ -3298,6 +3298,8 @@ class FeatureGroup(FeatureGroupBase):
         group.
         If feature group's time travel format is `HUDI` then `operation` argument can be
         either `insert` or `upsert`.
+        For feature groups with time travel format `DELTA`, `delta.enableChangeDataFeed` option can be set in write_options. If
+        not set, it defaults to `true` for new feature groups.
 
         If feature group doesn't exist the insert method will create the necessary metadata the first time it is
         invoked and writes the specified `features` dataframe as feature group to the online/offline feature store.
@@ -3366,6 +3368,11 @@ class FeatureGroup(FeatureGroupBase):
                 [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
                   to configure the Hopsworks Job used to write data into the
                   feature group.
+                * key `delta.*` to pass deltalake (delta-rs) specific table properties, e.g
+                  `{"delta.enableChangeDataFeed": "true"}`. Note that these options only take
+                  strings as values.
+                * key `delta.storage.*` used by the python engine to pass storage_options to
+                  deltalake.
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the insert call should return only
                   after the Hopsworks Job has finished. By default it waits.
@@ -3425,6 +3432,14 @@ class FeatureGroup(FeatureGroupBase):
             write_options["wait_for_online_ingestion"] = wait
         if not self._id and self._offline_backfill_every_hr is not None:
             write_options["offline_backfill_every_hr"] = self._offline_backfill_every_hr
+        if all(
+            [
+                not self._id,
+                self.time_travel_format == "DELTA",
+                write_options.get("delta.enableChangeDataFeed") != "false",
+            ]
+        ):
+            write_options["delta.enableChangeDataFeed"] = "true"
 
         job, ge_report = self._feature_group_engine.insert(
             self,
@@ -3784,6 +3799,12 @@ class FeatureGroup(FeatureGroupBase):
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
+        if self.time_travel_format == "HUDI" and not engine.get_type().startswith(
+            "spark"
+        ):
+            raise NotImplementedError(
+                "commit_delete_record is only supported for HUDI feature groups when using the Spark engine."
+            )
         self._feature_group_engine.commit_delete(self, delete_df, write_options or {})
 
     def delta_vacuum(
@@ -4506,9 +4527,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
             write_options: Additional write options as key-value pairs, defaults to `{}`.
                 When using the `python` engine, write_options can contain the
                 following entries:
-                * key `wait_for_job` and value `True` or `False` to configure
-                  whether or not to the insert call should return only
-                  after the Hopsworks Job has finished. By default it waits.
                 * key `wait_for_online_ingestion` and value `True` or `False` to configure
                   whether or not to the save call should return only
                   after the Hopsworks online ingestion has finished. By default it does not wait.
@@ -4525,8 +4543,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
                 * key `fetch_expectation_suite` a boolean value, by default `True`, to control whether the expectation
                    suite of the feature group should be fetched before every insert.
-            wait: Wait for job and online ingestion to finish before returning, defaults to `False`.
-                Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
+            wait: Wait for online ingestion to finish before returning, defaults to `False`.
+                Shortcut for write_options `{"wait_for_online_ingestion": False}`.
 
         # Returns
             Tuple(None, `ge.core.ExpectationSuiteValidationResult`) The validation report if validation is enabled.

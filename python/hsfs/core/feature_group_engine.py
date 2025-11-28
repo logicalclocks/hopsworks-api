@@ -308,7 +308,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 spark_session,
                 spark_context,
             )
-            return delta_engine_instance.delete_record(delete_df)
+            return delta_engine_instance.delete_record(
+                delete_df=delete_df, write_options=write_options
+            )
         else:
             hudi_engine_instance = hudi_engine.HudiEngine(
                 feature_group.feature_store_id,

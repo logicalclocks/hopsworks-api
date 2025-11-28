@@ -239,7 +239,7 @@ def get_hudi_datestr_from_timestamp(timestamp: int) -> str:
 
 def get_delta_datestr_from_timestamp(timestamp: int) -> str:
     return datetime.fromtimestamp(timestamp / 1000, timezone.utc).strftime(
-        "%Y-%m-%d %H:%M:%S.%f"
+        "%Y-%m-%d %H:%M:%S.%fZ"
     )[:-3]
 
 
