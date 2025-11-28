@@ -1,33 +1,6 @@
 # Model
 
-## Creation of a TensorFlow model
+You can use a corresponding method of `ModelRegistry` to create models: [`ModelRegistry.tensorflow.create_model`][hsml.model_registry.ModelRegistry.tensorflow.create_model], [`ModelRegistry.torch.create_model`][hsml.model_registry.ModelRegistry.torch.create_model], [`ModelRegistry.sklearn.create_model`][hsml.model_registry.ModelRegistry.sklearn.create_model], [`ModelRegistry.python.create_model`][hsml.model_registry.ModelRegistry.python.create_model], [`ModelRegistry.llm.create_model`][hsml.model_registry.ModelRegistry.llm.create_model].
+You can retrieve an existing model via [`ModelRegistry.get_model`][hsml.model_registry.ModelRegistry.get_model].
 
-{{ml_create_tf}}
-
-## Creation of a Torch model
-
-{{ml_create_th}}
-
-## Creation of a scikit-learn model
-
-{{ml_create_sl}}
-
-## Creation of a Python model
-
-{{ml_create_py}}
-
-## Creation of a LLM
-
-{{ml_create_llm}}
-
-## Retrieval
-
-{{ml_get}}
-
-## Properties
-
-{{ml_properties}}
-
-## Methods
-
-{{ml_methods}}
+::: hsml.model.Model

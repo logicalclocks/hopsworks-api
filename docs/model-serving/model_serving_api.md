@@ -1,13 +1,5 @@
 # Model Serving
 
-## Retrieval
+You can get a `ModelServing` object using [`Project.get_model_serving`][hopsworks.project.Project.get_model_serving].
 
-{{ms_get}}
-
-## Properties
-
-{{ms_properties}}
-
-## Methods
-
-{{ms_methods}}
+::: hsml.model_serving.ModelServing

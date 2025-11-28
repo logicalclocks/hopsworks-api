@@ -1,25 +1,8 @@
 # Deployment
 
-## Handle
+You can obtain a `ModelServing` using [`Project.get_model_serving`][hopsworks.project.Project.get_model_serving].
+Then you can create a deployment using [`ModelServing.create_deployment`][hsml.model_serving.ModelServing.create_deployment], and retrieve existing deployments using [`ModelServing.get_deployment`][hsml.model_serving.ModelServing.get_deployment], [`ModelServing.get_deployment_by_id`][hsml.model_serving.ModelServing.get_deployment_by_id], and [`ModelServing.get_deployments`][hsml.model_serving.ModelServing.get_deployments].
 
-{{ms_get_model_serving}}
+You can also create a deployment by deploying a model via [`Model.deploy`][hsml.model.Model.deploy] or from a predictor via [`Predictor.deploy`][hsml.model_serving.Predictor.deploy].
 
-## Creation
-
-{{ms_create_deployment}}
-
-{{m_deploy}}
-
-{{p_deploy}}
-
-## Retrieval
-
-{{ms_get_deployments}}
-
-## Properties
-
-{{dep_properties}}
-
-## Methods
-
-{{dep_methods}}
+::: hsml.deployment.Deployment

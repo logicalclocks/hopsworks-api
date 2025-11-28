@@ -1,29 +1,12 @@
 # Transformer
 
-## Handle
+You can obtain a `ModelServing` handle using [`Project.get_model_serving`][hopsworks.project.Project.get_model_serving].
+Once you have it, you can create a transformer using [`ModelServing.create_transformer`][hsml.model_serving.ModelServing.create_transformer].
 
-{{ms_get_model_serving}}
-
-## Creation
-
-{{ms_create_transformer}}
-
-## Retrieval
-
-### predictor.transformer
-
-Transformers can be accessed from the predictor metadata objects.
+Transformers can be accessed from the [`Predictor`][hsml.predictor.Predictor] metadata objects.
 
 ``` python
 predictor.transformer
 ```
 
-Predictors can be found in the deployment metadata objects (see [Predictor Reference](../predictor_api/#retrieval)). To retrieve a deployment, see the [Deployment Reference](../deployment_api/#retrieval).
-
-## Properties
-
-{{trans_properties}}
-
-## Methods
-
-{{trans_methods}}
+::: hsml.transformer.Transformer

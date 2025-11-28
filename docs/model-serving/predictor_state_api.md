@@ -1,15 +1,5 @@
-# Deployment state
+# Deployment State
 
-The state of a deployment corresponds to the state of the predictor configured in it.
+You can get the current state of a deployment via [`Deployment.get_state`][hsml.deployment.Deployment.get_state].
 
-## Retrieval
-
-{{ps_get}}
-
-## Properties
-
-{{ps_properties}}
-
-## Methods
-
-{{ps_methods}}
+::: hsml.predictor_state.PredictorState

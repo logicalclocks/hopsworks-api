@@ -1,15 +1,5 @@
 # Deployment state condition
 
-The state condition of a deployment is a more detailed representation of a deployment state.
+You can get `DeploymentStateCondition` using [`PredictorState.condition`][hsml.predictor_state.PredictorState.condition].
 
-## Retrieval
-
-{{psc_get}}
-
-## Properties
-
-{{psc_properties}}
-
-## Methods
-
-{{psc_methods}}
+::: hsml.predictor_state_condition.PredictorStateCondition

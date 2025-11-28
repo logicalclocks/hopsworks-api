@@ -1,17 +1,5 @@
 # Model Registry
 
-## Retrieval
+You can obtain a `ModelRegistry` using [`Project.get_model_registry`][hopsworks.project.Project.get_model_registry].
 
-{{mr_get}}
-
-## Modules
-
-{{mr_modules}}
-
-## Properties
-
-{{mr_properties}}
-
-## Methods
-
-{{mr_methods}}
+::: hsml.model_registry.ModelRegistry

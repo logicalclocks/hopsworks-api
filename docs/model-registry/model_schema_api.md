@@ -1,17 +1,5 @@
 # Model Schema
 
-## Creation
-
-To create a ModelSchema, the schema of the Model inputs and/or Model ouputs has to be defined beforehand.
-
-{{schema}}
-
-After defining the Model inputs and/or outputs schemas, a ModelSchema can be created using its class constructor.
-
-{{model_schema}}
-
-## Retrieval
-
 Model schemas can be accessed from the model metadata objects.
 
 ``` python
@@ -25,8 +13,6 @@ model_schema.input_schema
 model_schema.output_schema
 ```
 
-## Methods
+::: hsml.schema.Schema
 
-{{schema_dict}}
-
-{{model_schema_dict}}
+::: hsml.model_schema.ModelSchema
