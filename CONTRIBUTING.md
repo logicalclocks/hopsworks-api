@@ -38,34 +38,36 @@
 
 We follow a few best practices for writing the Python documentation:
 
-1. Use the Google docstring style:
+01. Use the Google docstring style:
 
-   ```python
-   """[One Line Summary]
+    ```python
+    """[One Line Summary]
 
-   [Extended Summary]
+    [Extended Summary]
 
-   [!!! example
-       import xyz
-   ]
+    [Example: [Example Title]
+        import xyz
+    ]
 
-   Parameters:
-       arg1: Type[, optional]. Description[, defaults to `default`]
-       arg2: Type[, optional]. Description[, defaults to `default`]
+    Parameters:
+        arg1: Description.
+        arg2:
+            A long description.
+            Should be use in case it is multi-line.
 
-   Returns:
-       Type. Description.
+    Returns:
+        Description.
 
-   Raises:
-       Exception. Description.
-   """
-   ```
+    Raises:
+        ExceptionType: Description.
+    """
+    ```
 
-   If Python 3 type annotations are used, they are inserted automatically.
+    If Python 3 type annotations are used, they are inserted automatically.
 
-2. Hopsworks entity engine methods (e.g. ExecutionEngine etc.) only require a single line docstring.
-3. Private REST API implementations (e.g. FeatureGroupApi etc.) should be fully documented with docstrings without defaults.
-4. Public API such as metadata objects and public REST API implementations should be fully documented with defaults.
+02. Hopsworks entity engine methods (e.g. ExecutionEngine etc.) only require a single line docstring.
+03. Private REST API implementations (e.g. FeatureGroupApi etc.) should be fully documented with docstrings without defaults.
+04. Public API such as metadata objects and public REST API implementations should be fully documented with defaults.
 
 #### Setup and Build Documentation
 
