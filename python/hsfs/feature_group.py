@@ -3120,6 +3120,7 @@ class FeatureGroup(FeatureGroupBase):
                 Additional write options as key-value pairs.
 
                 When using the `python` engine, write_options can contain the following entries:
+
                 - key `spark` and value an object of type [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration) to configure the Hopsworks Job used to write data into the feature group.
                 - key `wait_for_job` and value `True` or `False` to configure whether or not to the save call should return only after the Hopsworks Job has finished.
                   By default it does not wait.
@@ -3133,12 +3134,15 @@ class FeatureGroup(FeatureGroupBase):
                   To optimize for throughput in high latency connection, consider changing the [producer properties](https://docs.confluent.io/cloud/current/client-apps/optimizing/throughput.html#producer).
                 - key `internal_kafka` and value `True` or `False` in case you established connectivity from you Python environment to the internal advertised listeners of the Hopsworks Kafka Cluster.
                   Defaults to `False` and will use external listeners when connecting from outside of Hopsworks.
+
             validation_options:
                 Additional validation options as key-value pairs.
+
                 - key `run_validation` boolean value, set to `False` to skip validation temporarily on ingestion.
                 - key `save_report` boolean value, set to `False` to skip upload of the validation report to Hopsworks.
                 - key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
                 - key `schema_validation` boolean value, set to `True` to validate the schema.
+
             wait:
                 Wait for job and online ingestion to finish before returning.
                 Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
@@ -3322,6 +3326,7 @@ class FeatureGroup(FeatureGroupBase):
                 Additional write options as key-value pairs.
 
                 When using the `python` engine, write_options can contain the following entries:
+
                 - key `spark` and value an object of type [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration) to configure the Hopsworks Job used to write data into the feature group.
                 - key `wait_for_job` and value `True` or `False` to configure whether or not to the insert call should return only after the Hopsworks Job has finished. By default it waits.
                 - key `wait_for_online_ingestion` and value `True` or `False` to configure whether or not to the save call should return only after the Hopsworks online ingestion has finished. By default it does not wait.
@@ -3334,13 +3339,16 @@ class FeatureGroup(FeatureGroupBase):
                   To optimize for throughput in high latency connection consider changing [producer properties](https://docs.confluent.io/cloud/current/client-apps/optimizing/throughput.html#producer).
                 - key `internal_kafka` and value `True` or `False` in case you established connectivity from you Python environment to the internal advertised listeners of the Hopsworks Kafka Cluster.
                   Defaults to `False` and will use external listeners when connecting from outside of Hopsworks.
+
             validation_options:
                 Additional validation options as key-value pairs.
+
                 - key `run_validation` boolean value, set to `False` to skip validation temporarily on ingestion.
                 - key `save_report` boolean value, set to `False` to skip upload of the validation report to Hopsworks.
                 - key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
                 - key `fetch_expectation_suite` a boolean value, by default `True`, to control whether the expectation suite of the feature group should be fetched before every insert.
                 - key `schema_validation` boolean value, set to `True` to validate the schema.
+
             wait:
                 Wait for job and online ingestion to finish before returning.
                 Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
@@ -3490,7 +3498,9 @@ class FeatureGroup(FeatureGroupBase):
             storage: Overwrite default behaviour, write to offline storage only with `"offline"` or online only with `"online"`.
             write_options:
                 Additional write options as key-value pairs.
+
                 When using the `python` engine, write_options can contain the following entries:
+
                 - key `spark` and value an object of type [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration) to configure the Hopsworks Job used to write data into the feature group.
                 - key `wait_for_job` and value `True` or `False` to configure whether or not to the insert call should return only after the Hopsworks Job has finished.
                   By default it waits.
@@ -3503,11 +3513,15 @@ class FeatureGroup(FeatureGroupBase):
                   To optimize for throughput in high latency connection consider changing [producer properties](https://docs.confluent.io/cloud/current/client-apps/optimizing/throughput.html#producer).
                 - key `internal_kafka` and value `True` or `False` in case you established connectivity from you Python environment to the internal advertised listeners of the Hopsworks Kafka Cluster.
                   Defaults to `False` and will use external listeners when connecting from outside of Hopsworks.
-            validation_options: Additional validation options as key-value pairs, defaults to `{}`.
+
+            validation_options:
+                Additional validation options as key-value pairs.
+
                 - key `run_validation` boolean value, set to `False` to skip validation temporarily on ingestion.
                 - key `save_report` boolean value, set to `False` to skip upload of the validation report to Hopsworks.
                 - key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
                 - key `fetch_expectation_suite` a boolean value, by default `False` for multi part inserts, to control whether the expectation suite of the feature group should be fetched before every insert.
+
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 These variables must be explicitly defined as parameters in the transformation function to be accessible during execution.
