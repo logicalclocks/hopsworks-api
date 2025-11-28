@@ -207,7 +207,7 @@ class ValidationResult:
         """
         Time at which validation was run using Great Expectations.
 
-        # Arguments
+        Parameters:
             validation_time: The time at which validation was performed.
             Supported format include timestamps(int), datetime, date or string formatted to be datutils parsable.
         """

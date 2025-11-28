@@ -55,14 +55,14 @@ class SearchApi:
         featuregroup = result.featuregroups[0].get_feature_group()
 
         ```
-        # Arguments
+        Parameters:
             search_term: the term to search for.
             filter_by: filter results by a specific field (default is None).
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
-        # Returns
+        Returns:
             `FeaturestoreSearchResult`: The results.
-        # Raises
+        Raises:
             `ValueError`: If the search term is not provided or if the filter_by is not one of the allowed values.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -96,14 +96,14 @@ class SearchApi:
         featuregroup = result.featuregroups[0].get_feature_group()
 
         ```
-        # Arguments
+        Parameters:
             search_term: the term to search for.
             filter_by: filter results by a specific field (default is None).
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
-        # Returns
+        Returns:
             `FeatureGroupSearchResult`: The results.
-        # Raises
+        Raises:
             `ValueError`: If the search term is not provided or if the filter_by is not one of the allowed values.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -143,14 +143,14 @@ class SearchApi:
         featureview = result.feature_views[0].get_feature_view()
 
         ```
-        # Arguments
+        Parameters:
             search_term: the term to search for.
             filter_by: filter results by a specific field (default is None).
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
-        # Returns
+        Returns:
             `FeatureViewSearchResult`: The results.
-        # Raises
+        Raises:
             `ValueError`: If the search term is not provided or if the filter_by is not one of the allowed values.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -190,14 +190,14 @@ class SearchApi:
         trainingdataset = result.trainingdatasets[0].get_training_dataset()
 
         ```
-        # Arguments
+        Parameters:
             search_term: the term to search for.
             filter_by: filter results by a specific field (default is None).
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
-        # Returns
+        Returns:
             `TrainingDatasetSearchResult`: The results.
-        # Raises
+        Raises:
             `ValueError`: If the search term is not provided or if the filter_by is not one of the allowed values.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -239,13 +239,13 @@ class SearchApi:
         feature = result.features[0].get_feature()
 
         ```
-        # Arguments
+        Parameters:
             search_term: the term to search for.
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
-        # Returns
+        Returns:
             `FeatureSearchResult`: The results.
-        # Raises
+        Raises:
             `ValueError`: If the search term is not provided.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """

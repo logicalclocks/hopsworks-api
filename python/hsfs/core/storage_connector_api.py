@@ -115,10 +115,10 @@ class StorageConnectorApi:
         will always be empty.
         For inaccessible feature groups, only a minimal information is returned.
 
-        # Arguments
+        Parameters:
             storage_connector_instance: Metadata object of storage connector.
 
-        # Returns
+        Returns:
             `ExplicitProvenance.Links`: the feature groups generated using this
             storage connector
         """

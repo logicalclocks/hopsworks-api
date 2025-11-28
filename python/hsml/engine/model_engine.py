@@ -588,10 +588,10 @@ class ModelEngine:
         For deleted and inaccessible feature views, only a minimal information is
         returned.
 
-        # Arguments
+        Parameters:
             model_instance: Metadata object of model.
 
-        # Returns
+        Returns:
             `Links`:  the feature view used to generate this model
         """
         return self._model_api.get_feature_view_provenance(model_instance)
@@ -602,10 +602,10 @@ class ModelEngine:
         For deleted and inaccessible feature views, only a minimal information is
         returned.
 
-        # Arguments
+        Parameters:
             model_instance: Metadata object of model.
 
-        # Returns
+        Returns:
             `Links`:  the training dataset used to generate this model
         """
         return self._model_api.get_training_dataset_provenance(model_instance)

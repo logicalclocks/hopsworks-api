@@ -88,7 +88,7 @@ class Secret:
         """Delete the secret
         !!! danger "Potentially dangerous operation"
             This operation deletes the secret and may break applications using it.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._secret_api._delete(self.name)

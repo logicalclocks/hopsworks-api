@@ -23,10 +23,10 @@ from hopsworks_common import util
 class InferenceEndpointPort:
     """Port of an inference endpoint.
 
-    # Arguments
+    Parameters:
         name: Name of the port. It typically defines the purpose of the port (e.g., HTTP, HTTPS, STATUS-PORT, TLS)
         number: Port number.
-    # Returns
+    Returns:
         `InferenceEndpointPort`. Port of an inference endpoint.
     """
 
@@ -70,11 +70,11 @@ class InferenceEndpointPort:
 class InferenceEndpoint:
     """Inference endpoint available in the current project for model inference.
 
-    # Arguments
+    Parameters:
         type: Type of inference endpoint (e.g., NODE, KUBE_CLUSTER, LOAD_BALANCER).
         hosts: List of hosts of the inference endpoint.
         ports: List of ports of the inference endpoint.
-    # Returns
+    Returns:
         `InferenceEndpoint`. Inference endpoint.
     """
 

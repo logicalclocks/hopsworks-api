@@ -68,10 +68,10 @@ class OpenSearchApi:
         """
         This helper method prefixes the supplied index name with the project name to avoid index name clashes.
 
-        # Arguments
+        Parameters:
             index: the opensearch index to interact with.
 
-        # Returns
+        Returns:
             `str`: A valid opensearch index name.
         """
         _client = client.get_instance()
@@ -95,7 +95,7 @@ class OpenSearchApi:
 
         ```
 
-        # Returns
+        Returns:
             `dict`: A dictionary with required configuration.
         """
         url = furl(self._get_opensearch_url())
@@ -114,9 +114,9 @@ class OpenSearchApi:
     def _get_authorization_token(self) -> str:
         """Get opensearch jwt token.
 
-        # Returns
+        Returns:
             `str`: OpenSearch jwt token
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 

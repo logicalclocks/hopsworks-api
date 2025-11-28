@@ -113,9 +113,9 @@ class GitRepo:
     def status(self):
         """Get the status of the repo.
 
-        # Returns
+        Returns:
             `List[GitFileStatus]`
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._git_api._status(self.id)
@@ -125,7 +125,7 @@ class GitRepo:
         """Delete the git repo from the filesystem.
         !!! danger "Potentially dangerous operation"
             This operation deletes the cloned git repository from the filesystem.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._git_api._delete_repo(self.id)
@@ -134,10 +134,10 @@ class GitRepo:
     def checkout_branch(self, branch: str, create: bool = False):
         """Checkout a branch
 
-        # Arguments
+        Parameters:
             branch: name of the branch
             create: if true will create a new branch and check it out
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if create:
@@ -148,9 +148,9 @@ class GitRepo:
     def checkout_commit(self, commit: str):
         """Checkout a commit
 
-        # Arguments
+        Parameters:
             commit: hash of the commit
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._git_api._checkout(self.id, commit=commit)
@@ -159,9 +159,9 @@ class GitRepo:
     def checkout_files(self, files: Union[List[str], List[GitFileStatus]]):
         """Checkout a list of files
 
-        # Arguments
+        Parameters:
             files: list of files or GitFileStatus objects to checkout
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._git_api._checkout_files(self.id, files)
@@ -170,9 +170,9 @@ class GitRepo:
     def delete_branch(self, branch: str):
         """Delete a branch from local repository
 
-        # Arguments
+        Parameters:
             branch: name of the branch
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._git_api._delete(self.id, branch)
@@ -181,11 +181,11 @@ class GitRepo:
     def commit(self, message: str, all: bool = True, files: List[str] = None):
         """Add changes and new files, and then commit them
 
-        # Arguments
+        Parameters:
             message: name of the remote
             all: automatically stage files that have been modified and deleted, but new files are not affected
             files: list of new files to add and commit
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._git_api._commit(self.id, message, all=all, files=files)
@@ -194,10 +194,10 @@ class GitRepo:
     def push(self, branch: str, remote: str = "origin"):
         """Push changes to the remote branch
 
-        # Arguments
+        Parameters:
             branch: name of the branch
             remote: name of the remote
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._git_api._push(self.id, branch, force=False, remote=remote)
@@ -206,10 +206,10 @@ class GitRepo:
     def pull(self, branch: str, remote: str = "origin"):
         """Pull changes from remote branch
 
-        # Arguments
+        Parameters:
             branch: name of the branch
             remote: name of the remote
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._git_api._pull(self.id, branch, force=False, remote=remote)
@@ -218,10 +218,10 @@ class GitRepo:
     def fetch(self, remote: str = None, branch: str = None):
         """Fetch changes from remote
 
-        # Arguments
+        Parameters:
             remote: name of the remote
             branch: name of the branch
-        # Raises
+        Raises:
             `RestAPIError` in case the backend fails perform the fetch operation.
         """
         self._git_api._fetch(self.id, remote, branch)
@@ -230,11 +230,11 @@ class GitRepo:
     def reset(self, remote: str = None, branch: str = None, commit: str = None):
         """Reset the branch to a specific commit or to a local branch or to a remote branch
 
-        # Arguments
+        Parameters:
             remote: name of the remote
             branch: name of the branch
             commit: hash of the commit
-        # Raises
+        Raises:
             `RestAPIError` in case the backend fails to perform the reset.
         """
         self._git_api._reset(self.id, remote, branch, commit)
@@ -242,11 +242,11 @@ class GitRepo:
     def get_commits(self, branch: str):
         """Get the commits for the repo and branch.
 
-        # Arguments
+        Parameters:
             branch: name of the branch
-        # Returns
+        Returns:
             `List[GitCommit]`: The list of commits for this repo
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._git_api._get_commits(self.id, branch)
@@ -268,12 +268,12 @@ class GitRepo:
         repo.add_remote("upstream", "https://github.com/organization/repo.git")
 
         ```
-        # Arguments
+        Parameters:
             name: name of the remote
             url: url of the remote
-        # Returns
+        Returns:
             `GitRemote`
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._git_remote_api._add(self.id, name, url)
@@ -281,11 +281,11 @@ class GitRepo:
     def get_remote(self, name: str):
         """Get a remote by name for the repo.
 
-        # Arguments
+        Parameters:
             name: name of the remote
-        # Returns
+        Returns:
             `GitRemote`: The git remote metadata object or `None` if it does not exist.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._git_remote_api._get(self.id, name)
@@ -293,9 +293,9 @@ class GitRepo:
     def get_remotes(self):
         """Get the configured remotes for the repo.
 
-        # Returns
+        Returns:
             `List[GitRemote]`
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._git_remote_api._get_remotes(self.id)

@@ -248,11 +248,11 @@ class FeatureMonitoringConfig:
                 row_percentage=0.1,
             ).with_reference_window(...).compare_on(...).save()
             ```
-        # Arguments
+        Parameters:
             time_offset: The time offset from the current time to the start of the time window.
             window_length: The length of the time window.
             row_percentage: The fraction of rows to use when computing the statistics [0, 1.0].
-        # Returns
+        Returns:
             `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
         """
         # Setter is using the engine class to perform input validation.
@@ -293,11 +293,11 @@ class FeatureMonitoringConfig:
         !!! warning "Provide a comparison configuration"
             You must provide a comparison configuration via `compare_on()` before saving the feature monitoring config.
 
-        # Arguments
+        Parameters:
             time_offset: The time offset from the current time to the start of the time window.
             window_length: The length of the time window.
             row_percentage: The percentage of rows to use when computing the statistics. Defaults to 20%.
-        # Returns
+        Returns:
             `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
         """
         # Setter is using the engine class to perform input validation and build monitoring window config object.
@@ -335,9 +335,9 @@ class FeatureMonitoringConfig:
         !!! warning "Provide a comparison configuration"
             You must provide a comparison configuration via `compare_on()` before saving the feature monitoring config.
 
-        # Arguments
+        Parameters:
             value: A float value to use as reference.
-        # Returns
+        Returns:
             `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
         """
         self.reference_window_config = {
@@ -368,9 +368,9 @@ class FeatureMonitoringConfig:
         !!! warning "Provide a comparison configuration"
             You must provide a comparison configuration via `compare_on()` before saving the feature monitoring config.
 
-        # Arguments
+        Parameters:
             training_dataset_version: The version of the training dataset to use as reference.
-        # Returns
+        Returns:
             `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
         """
         self.reference_window_config = {
@@ -407,12 +407,12 @@ class FeatureMonitoringConfig:
         !!! note
             Detection window and reference window/value/training_dataset must be set prior to comparison configuration.
 
-        # Arguments
+        Parameters:
             metric: The metric to use for comparison. Different metric are available for different feature type.
             threshold: The threshold to apply to the difference to potentially trigger an alert.
             strict: Whether to use a strict comparison (e.g. > or <) or a non-strict comparison (e.g. >= or <=).
             relative: Whether to use a relative comparison (e.g. relative mean) or an absolute comparison (e.g. absolute mean).
-        # Returns
+        Returns:
             `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
         """
         # Setter is using the engine class to perform input validation.
@@ -436,7 +436,7 @@ class FeatureMonitoringConfig:
                 name="my_monitoring_config",
             ).save()
             ```
-        # Returns
+        Returns:
             `FeatureMonitoringConfig`. The saved FeatureMonitoringConfig object.
         """
         registered_config = self._feature_monitoring_config_engine.save(self)
@@ -468,7 +468,7 @@ class FeatureMonitoringConfig:
             my_monitoring_config.detection_window.row_percentage = 10
             my_monitoring_config.update()
             ```
-        # Returns
+        Returns:
             `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
         """
         return self._feature_monitoring_config_engine.update(self)
@@ -489,9 +489,9 @@ class FeatureMonitoringConfig:
             The feature monitoring job will be triggered asynchronously and the method will return immediately.
             Calling this method does not affect the ongoing schedule.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
-        # Returns
+        Returns:
             `Job`. A handle for the job computing the statistics.
         """
         if not self._id or not self._job_name:
@@ -514,9 +514,9 @@ class FeatureMonitoringConfig:
             # Print job history and ongoing executions
             job.executions
             ```
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
-        # Returns
+        Returns:
             `Job`. A handle for the job computing the statistics.
         """
         if not self._id or not self._job_name:
@@ -540,7 +540,7 @@ class FeatureMonitoringConfig:
             # Delete the feature monitoring config
             my_monitoring_config.delete()
             ```
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
         """
         if not self._id:
@@ -561,7 +561,7 @@ class FeatureMonitoringConfig:
             # Disable the feature monitoring config
             my_monitoring_config.disable()
             ```
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
         """
         self._update_schedule(enabled=False)
@@ -578,7 +578,7 @@ class FeatureMonitoringConfig:
             # Enable the feature monitoring config
             my_monitoring_config.enable()
             ```
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
         """
         self._update_schedule(enabled=True)
@@ -622,7 +622,7 @@ class FeatureMonitoringConfig:
             start_time: The start time of the time range to fetch the history for.
             end_time: The end time of the time range to fetch the history for.
             with_statistics: Whether to include the computed statistics in the results.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
         """
         if not self._id:

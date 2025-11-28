@@ -40,7 +40,7 @@ class OnlineIngestionResult:
         """
         Initialize an OnlineIngestionResult object.
 
-        # Arguments
+        Parameters:
             online_ingestion_id (int, optional): The unique identifier for the online ingestion batch.
             status (str, optional): The status of the ingestion batch (e.g., "UPSERTED", "FAILED").
             rows (int, optional): The number of rows processed in this batch.
@@ -56,10 +56,10 @@ class OnlineIngestionResult:
         """
         Create an OnlineIngestionResult object (or list of objects) from a JSON response.
 
-        # Arguments
+        Parameters:
             json_dict (Dict[str, Any]): The JSON dictionary from the API response.
 
-        # Returns
+        Returns:
             OnlineIngestionResult or List[OnlineIngestionResult] or None: The created object(s), or None if input is None.
         """
         if json_dict is None:
@@ -80,7 +80,7 @@ class OnlineIngestionResult:
         """
         Convert the OnlineIngestionResult object to a dictionary.
 
-        # Returns
+        Returns:
             dict: Dictionary representation of the object.
         """
         return {
@@ -93,7 +93,7 @@ class OnlineIngestionResult:
         """
         Serialize the OnlineIngestionResult object to a JSON string.
 
-        # Returns
+        Returns:
             str: JSON string representation of the object.
         """
         return json.dumps(self, cls=util.Encoder)
@@ -103,7 +103,7 @@ class OnlineIngestionResult:
         """
         Get the unique identifier for the online ingestion batch.
 
-        # Returns
+        Returns:
             int: The online ingestion batch ID.
         """
         return self._online_ingestion_id
@@ -113,7 +113,7 @@ class OnlineIngestionResult:
         """
         Get the status of the ingestion batch.
 
-        # Returns
+        Returns:
             str: The status of the batch (e.g., "UPSERTED", "FAILED").
         """
         return self._status
@@ -123,7 +123,7 @@ class OnlineIngestionResult:
         """
         Get the number of rows processed in this batch.
 
-        # Returns
+        Returns:
             int: The number of rows.
         """
         return self._rows

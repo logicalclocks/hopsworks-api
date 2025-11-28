@@ -54,12 +54,12 @@ class JobApi:
         job = job_api.create_job("my_spark_job", spark_config)
 
         ```
-        # Arguments
+        Parameters:
             name: Name of the job.
             config: Configuration of the job.
-        # Returns
+        Returns:
             `Job`: The Job object
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
@@ -82,11 +82,11 @@ class JobApi:
     def get_job(self, name: str) -> Optional[job.Job]:
         """Get a job.
 
-        # Arguments
+        Parameters:
             name: Name of the job.
-        # Returns
+        Returns:
             `Job`: The Job object or `None` if it does not exist.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
@@ -105,9 +105,9 @@ class JobApi:
     def get_jobs(self) -> List[job.Job]:
         """Get all jobs.
 
-        # Returns
+        Returns:
             `List[Job]`: List of Job objects
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
@@ -125,11 +125,11 @@ class JobApi:
     def exists(self, name: str):
         """Check if a job exists.
 
-        # Arguments
+        Parameters:
             name: Name of the job.
-        # Returns
+        Returns:
             `bool`: True if the job exists, otherwise False
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         job = self.get_job(name)
@@ -139,11 +139,11 @@ class JobApi:
     def get_configuration(self, type: str):
         """Get configuration for the specific job type.
 
-        # Arguments
+        Parameters:
             type: Type of the job. Currently, supported types include: SPARK, PYSPARK, PYTHON, DOCKER, FLINK.
-        # Returns
+        Returns:
             `dict`: Default job configuration
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()

@@ -38,11 +38,11 @@ class VariableApi:
     def get_variable(self, variable: str):
         """Get the configured value of a variable.
 
-        # Arguments
+        Parameters:
             variable: Name of the variable.
-        # Returns
+        Returns:
             The variable's value
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
@@ -56,11 +56,11 @@ class VariableApi:
     def get_version(self, software: str) -> Optional[str]:
         """Get version of a software component.
 
-        # Arguments
+        Parameters:
             software: Name of the software.
-        # Returns
+        Returns:
             The software's version, if the software is available, otherwise `None`.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
@@ -79,9 +79,9 @@ class VariableApi:
     ) -> Tuple[Optional[str], Optional[str]]:
         """Extract major and minor version from full version.
 
-        # Arguments
+        Parameters:
             backend_version: The full version.
-        # Returns
+        Returns:
             (major, minor): The pair of major and minor parts of the version, or (None, None) if the version format is incorrect.
         """
 
@@ -95,9 +95,9 @@ class VariableApi:
     def get_data_science_profile_enabled(self) -> bool:
         """Check if data science profile is enabled on the backend.
 
-        # Returns
+        Returns:
             `True`: If data science profile is enabled, `False` otherwise.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self.get_variable("enable_data_science_profile") == "true"
@@ -105,9 +105,9 @@ class VariableApi:
     def get_flyingduck_enabled(self) -> bool:
         """Check if Flying Duck is enabled on the backend.
 
-        # Returns
+        Returns:
             `True`: If flying duck is available, `False` otherwise.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self.get_variable("enable_flyingduck") == "true"
@@ -115,10 +115,10 @@ class VariableApi:
     def get_loadbalancer_external_domain(self, service: str) -> str:
         """Get domain loadbalancer for a service.
 
-        # Returns
+        Returns:
             `str`: The domain of external loadbalancer for a service, if it is set up.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If variable is not set in Hopsworks Cluster Configuration.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -137,7 +137,7 @@ class VariableApi:
     def get_service_discovery_domain(self) -> str:
         """Get domain of service discovery server.
 
-        # Returns
+        Returns:
             `str`: The domain of service discovery server, if it is set up, otherwise empty string `""`.
         """
         try:
@@ -148,7 +148,7 @@ class VariableApi:
     def get_featurestore_online_tablespace(self) -> str:
         """Get domain of featurestore online tablespace.
 
-        # Returns
+        Returns:
             `str`: The name of featurestore online tablespace, if it is set up, otherwise hopsworks default tablespace `ts_1`.
         """
         try:

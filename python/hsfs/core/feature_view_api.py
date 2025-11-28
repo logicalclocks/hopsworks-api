@@ -93,13 +93,13 @@ class FeatureViewApi:
         """
         Get a feature view from the backend using its name.
 
-        # Arguments
+        Parameters:
             name `str`: Name of the feature view.
 
-        # Returns
+        Returns:
             `List[FeatureView]`: A list that contains all version of the feature view.
 
-        # Raises
+        Raises:
             `ValueError`: If the feature group associated with the feature view cannot be found.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -128,14 +128,14 @@ class FeatureViewApi:
         """
         Get a feature view from the backend using both name and version
 
-        # Arguments
+        Parameters:
             name `str`: Name of feature view.
             version `version`: Version of the feature view.
 
-        # Returns
+        Returns:
             `FeatureView`
 
-        # Raises
+        Raises:
             `ValueError`: If the feature group associated with the feature view cannot be found.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -231,7 +231,7 @@ class FeatureViewApi:
         """
         Get the prepared statement for fetching feature vectors.
 
-        # Arguments
+        Parameters:
             name : `str`. Name of the feature view.
             version : `int`. Version of the feature view.
             batch : `bool`. Whether to get the prepared statement for batch feature vector retrieval.
@@ -353,10 +353,10 @@ class FeatureViewApi:
         For deleted and inaccessible feature groups, only a minimal information is
         returned.
 
-        # Arguments
+        Parameters:
             feature_view_instance: Metadata object of feature view.
 
-        # Returns
+        Returns:
             `ExplicitProvenance.Links`: the feature groups used to generated this
             feature view
         """
@@ -392,12 +392,12 @@ class FeatureViewApi:
         will always be empty.
         For inaccessible models, only a minimal information is returned.
 
-        # Arguments
+        Parameters:
             feature_view_name: Filter generated models based on feature view name.
             feature_view_version: Filter generated models based on feature view version.
             training_dataset_version: Filter generated models based on the used training dataset version.
 
-        # Returns
+        Returns:
             `ExplicitProvenance.Links`: the models generated using this feature
             group
         """

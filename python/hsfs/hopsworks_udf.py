@@ -96,15 +96,15 @@ def udf(
             return data1 + 1
         ```
 
-    # Arguments
+    Parameters:
         return_type: `Union[List[type], type]`. The output types of the defined UDF
         drop: `Optional[Union[str, List[str]]]`. The features to be dropped after application of transformation functions. Default's to None.
         mode: `Literal["default", "python", "pandas"]`. The exection mode of the UDF. Default's to 'default'
 
-    # Returns
+    Returns:
         `HopsworksUdf`: The metadata object for hopsworks UDF's.
 
-    # Raises
+    Raises:
         `hopsworks.client.exceptions.FeatureStoreException` : If unable to create UDF.
     """
 
@@ -127,7 +127,7 @@ class TransformationFeature:
 
     The statistic_argument_name for a feature name would be None if the feature does not need statistics.
 
-    # Arguments
+    Parameters:
         feature_name : `str`. Name of the feature.
         statistic_argument_name : `str`. Name of the statistics argument in the code for the feature specified in the feature name.
     """
@@ -151,7 +151,7 @@ class HopsworksUdf:
     The class generates uses the metadata to dynamically generate user defined functions based on the
     engine it is executed in.
 
-    # Arguments
+    Parameters:
         func : `Union[Callable, str]`. The transformation function object or the source code of the transformation function.
         return_types : `Union[List[type], type, List[str], str]`. A python type or a list of python types that denotes the data types of the columns output from the transformation functions.
         name : `Optional[str]`. Name of the transformation function.
@@ -268,10 +268,10 @@ class HopsworksUdf:
     ) -> List[str]:
         """
         Function that converts dropped features to a list and validates if the dropped feature is present in the transformation function
-        # Arguments
+        Parameters:
             dropped_features: `Union[str, List[str]]`. Features of be dropped.
             transformation_feature: `List[str]`. Features to be transformed in the UDF
-        # Returns
+        Returns:
             `List[str]`: A list of features to be dropped.
         """
         if not dropped_features:
@@ -306,10 +306,10 @@ class HopsworksUdf:
         """
         Function that takes in a type or list of types validates if it is supported and return a list of strings
 
-        # Arguments
+        Parameters:
             output_types: `list`. List of python types.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.FeatureStoreException` : If any of the output type is invalid
         """
         convert_output_types = []
@@ -335,10 +335,10 @@ class HopsworksUdf:
     def _get_module_imports(path: str) -> List[str]:
         """Function that extracts the imports used in the python file specified in the path.
 
-        # Arguments
+        Parameters:
             path: `str`. Path to python file from which imports are to be extracted.
 
-        # Returns
+        Returns:
             `List[str]`: A list of string that contains the import statement using in the file.
         """
         imports = []
@@ -368,9 +368,9 @@ class HopsworksUdf:
 
         The module imports cannot be extracted if the function is defined in a jupyter notebook.
 
-        # Arguments
+        Parameters:
             udf_function: `Callable`. Function for which the source code must be extracted.
-        # Returns
+        Returns:
             `str`: a string that contains the source code of function along with the extracted module imports.
         """
         try:
@@ -394,9 +394,9 @@ class HopsworksUdf:
         """
         Function to parse the source code to extract the argument along with the start and end line of the function signature
 
-        # Arguments
+        Parameters:
             source_code: `str`. Source code of a function.
-        # Returns
+        Returns:
             `List[str]`: List of function arguments
             `str`: function signature
             `int`: starting line number of function signature
@@ -442,9 +442,9 @@ class HopsworksUdf:
         """
         Function to extract the argument names from a provided function source code.
 
-        # Arguments
+        Parameters:
             source_code: `Callable`. The function for which the value are to be extracted.
-        # Returns
+        Returns:
             `List[TransformationFeature]`: List of TransformationFeature that provide a mapping from feature names to corresponding statistics parameters if any is present.
         """
         arg_list = []
@@ -486,9 +486,9 @@ class HopsworksUdf:
         """
         Function that parses the existing source code to remove statistics parameter and remove all decorators and type hints from the function source code.
 
-        # Arguments
+        Parameters:
             source_code: `str`. Source code of a function.
-        # Returns
+        Returns:
             `Tuple[str, str]`: Tuple that contains Source code that does not contain any decorators, type hints or statistics parameters and the module imports
         """
 
@@ -513,7 +513,7 @@ class HopsworksUdf:
         """
         Function that creates the return schema required for executing the defined UDF's as pandas UDF's in Spark.
 
-        # Returns
+        Returns:
             `str`: DDL-formatted type string that denotes the return types of the user defined function.
         """
         if len(self.return_types) > 1:
@@ -555,7 +555,7 @@ class HopsworksUdf:
         The renames is done so that the column names match the schema expected by spark when multiple columns are returned in a spark udf.
         The wrapper function would be available in the main scope of the program.
 
-        # Returns
+        Returns:
             `Callable`: A wrapper function that renames outputs of the User defined function into specified output column names.
         """
         # Check if any output is of date time type.
@@ -627,7 +627,7 @@ class HopsworksUdf:
         The renames is done so that the column names match the schema expected by spark when multiple columns are returned in a pandas udf.
         The wrapper function would be available in the main scope of the program.
 
-        # Returns
+        Returns:
             `Callable`: A wrapper function that renames outputs of the User defined function into specified output column names.
         """
 
@@ -701,11 +701,11 @@ def renaming_wrapper(*args):
         """
         Set features to be passed as arguments to the user defined functions
 
-        # Arguments
+        Parameters:
             features: Name of features to be passed to the User Defined function
-        # Returns
+        Returns:
             `HopsworksUdf`: Meta data class for the user defined function.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If the provided number of features do not match the number of arguments in the defined UDF or if the provided feature names are not strings.
         """
 
@@ -819,10 +819,10 @@ def renaming_wrapper(*args):
             - In the `spark` engine : Always returns a spark udf.
             - In the `python` engine : Always returns a python udf.
 
-        # Arguments
+        Parameters:
             inference: `bool`. Specify if udf required for online inference.
 
-        # Returns
+        Returns:
             `Callable`: Pandas UDF in the spark engine otherwise returns a python function for the UDF.
         """
 
@@ -858,7 +858,7 @@ def renaming_wrapper(*args):
         """
         Convert class into a dictionary.
 
-        # Returns
+        Returns:
             `Dict`: Dictionary that contains all data required to json serialize the object.
         """
         backend_version = client.get_connection().backend_version
@@ -886,7 +886,7 @@ def renaming_wrapper(*args):
         """
         Convert class into its json serialized form.
 
-        # Returns
+        Returns:
             `str`: Json serialized object.
         """
         return json.dumps(self, cls=util.Encoder)
@@ -898,9 +898,9 @@ def renaming_wrapper(*args):
         """
         Function that constructs the class object from its json serialization.
 
-        # Arguments
+        Parameters:
             json_dict: `Dict[str, Any]`. Json serialized dictionary for the class.
-        # Returns
+        Returns:
             `HopsworksUdf`: Json deserialized class object.
         """
 

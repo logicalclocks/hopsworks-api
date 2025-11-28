@@ -619,7 +619,7 @@ class TrainingDataset(TrainingDatasetBase):
         !!! warning "Engine Support"
             Creating Training Datasets from Dataframes is only supported using Spark as Engine.
 
-        # Arguments
+        Parameters:
             features: Feature data to be materialized.
             write_options: Additional write options as key-value pairs, defaults to `{}`.
                 When using the `python` engine, write_options can contain the
@@ -631,11 +631,11 @@ class TrainingDataset(TrainingDatasetBase):
                   whether or not to the save call should return only
                   after the Hopsworks Job has finished. By default it waits.
 
-        # Returns
+        Returns:
             `Job`: When using the `python` engine, it returns the Hopsworks Job
                 that was launched to create the training dataset.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: Unable to create training dataset metadata.
         """
         user_version = self._version
@@ -684,7 +684,7 @@ class TrainingDataset(TrainingDatasetBase):
 
         This can also be used to overwrite all data in an existing training dataset.
 
-        # Arguments
+        Parameters:
             features: Feature data to be materialized.
             overwrite: Whether to overwrite the entire data in the training dataset.
             write_options: Additional write options as key-value pairs, defaults to `{}`.
@@ -697,11 +697,11 @@ class TrainingDataset(TrainingDatasetBase):
                   whether or not to the insert call should return only
                   after the Hopsworks Job has finished. By default it waits.
 
-        # Returns
+        Returns:
             `Job`: When using the `python` engine, it returns the Hopsworks Job
                 that was launched to create the training dataset.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: Unable to create training dataset metadata.
         """
         # td_job is used only if the python engine is used
@@ -718,12 +718,12 @@ class TrainingDataset(TrainingDatasetBase):
 
         It is also possible to read only a specific split.
 
-        # Arguments
+        Parameters:
             split: Name of the split to read, defaults to `None`, reading the entire
                 training dataset. If the training dataset has split, the `split` parameter
                 is mandatory.
             read_options: Additional read options as key/value pairs, defaults to `{}`.
-        # Returns
+        Returns:
             `DataFrame`: The spark dataframe containing the feature data of the
                 training dataset.
         """
@@ -766,7 +766,7 @@ class TrainingDataset(TrainingDatasetBase):
 
         You can specify a split from which to retrieve the rows.
 
-        # Arguments
+        Parameters:
             n: Number of rows to show.
             split: Name of the split to show, defaults to `None`, showing the first rows
                 when taking all splits together.
@@ -779,11 +779,11 @@ class TrainingDataset(TrainingDatasetBase):
         A tag consists of a <name,value> pair. Tag names are unique identifiers across the whole cluster.
         The value of a tag can be any valid json - primitives, arrays or json objects.
 
-        # Arguments
+        Parameters:
             name: Name of the tag to be added.
             value: Value of the tag to be added.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to add the tag.
         """
         self._training_dataset_engine.add_tag(self, name, value)
@@ -791,10 +791,10 @@ class TrainingDataset(TrainingDatasetBase):
     def delete_tag(self, name: str):
         """Delete a tag attached to a training dataset.
 
-        # Arguments
+        Parameters:
             name: Name of the tag to be removed.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to delete the tag.
         """
         self._training_dataset_engine.delete_tag(self, name)
@@ -802,13 +802,13 @@ class TrainingDataset(TrainingDatasetBase):
     def get_tag(self, name):
         """Get the tags of a training dataset.
 
-        # Arguments
+        Parameters:
             name: Name of the tag to get.
 
-        # Returns
+        Returns:
             tag value
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the tag.
         """
         return self._training_dataset_engine.get_tag(self, name)
@@ -816,10 +816,10 @@ class TrainingDataset(TrainingDatasetBase):
     def get_tags(self):
         """Returns all tags attached to a training dataset.
 
-        # Returns
+        Returns:
             `Dict[str, obj]` of tags.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the tags.
         """
         return self._training_dataset_engine.get_tags(self)
@@ -830,10 +830,10 @@ class TrainingDataset(TrainingDatasetBase):
         Change the `statistics_config` object and persist the changes by calling
         this method.
 
-        # Returns
+        Returns:
             `TrainingDataset`. The updated metadata object of the training dataset.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: in case the backend encounters an issue
         """
         self._training_dataset_engine.update_statistics_config(self)
@@ -852,7 +852,7 @@ class TrainingDataset(TrainingDatasetBase):
             This operation drops all metadata associated with **this version** of the
             training dataset **and** and the materialized data in HopsFS.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`.
         """
         warnings.warn(
@@ -969,7 +969,7 @@ class TrainingDataset(TrainingDatasetBase):
     def statistics(self):
         """Get computed statistics for the training dataset.
 
-        # Returns
+        Returns:
             `Statistics`. Object with statistics information.
         """
         return self._statistics_engine.get(self, before_transformation=False)
@@ -982,14 +982,14 @@ class TrainingDataset(TrainingDatasetBase):
     def get_query(self, online: bool = True, with_label: bool = False):
         """Returns the query used to generate this training dataset
 
-        # Arguments
+        Parameters:
             online: boolean, optional. Return the query for the online storage, else
                 for offline storage, defaults to `True` - for online storage.
             with_label: Indicator whether the query should contain features which were
                 marked as prediction label/feature when the training dataset was
                 created, defaults to `False`.
 
-        # Returns
+        Returns:
             `str`. Query string for the chosen storage used to generate this training
                 dataset.
         """
@@ -1003,7 +1003,7 @@ class TrainingDataset(TrainingDatasetBase):
         """Initialise and cache parametrized prepared statement to
            retrieve feature vector from online feature store.
 
-        # Arguments
+        Parameters:
             batch: boolean, optional. If set to True, prepared statements will be
                 initialised for retrieving serving vectors as a batch.
             external: boolean, optional. If set to True, the connection to the
@@ -1020,7 +1020,7 @@ class TrainingDataset(TrainingDatasetBase):
     ):
         """Returns assembled serving vector from online feature store.
 
-        # Arguments
+        Parameters:
             entry: dictionary of training dataset feature group primary key names as keys and values provided by
                 serving application.
             external: boolean, optional. If set to True, the connection to the
@@ -1029,7 +1029,7 @@ class TrainingDataset(TrainingDatasetBase):
                 If set to False, the online feature store storage connector is used
                 which relies on the private IP. Defaults to True if connection to Hopsworks is established from
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
-        # Returns
+        Returns:
             `list` List of feature values related to provided primary keys, ordered according to positions of this
             features in training dataset query.
         """
@@ -1042,7 +1042,7 @@ class TrainingDataset(TrainingDatasetBase):
     ):
         """Returns assembled serving vectors in batches from online feature store.
 
-        # Arguments
+        Parameters:
             entry: dict of feature group primary key names as keys and value as list of primary keys provided by
                 serving application.
             external: boolean, optional. If set to True, the connection to the
@@ -1051,7 +1051,7 @@ class TrainingDataset(TrainingDatasetBase):
                 If set to False, the online feature store storage connector is used
                 which relies on the private IP. Defaults to True if connection to Hopsworks is established from
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
-        # Returns
+        Returns:
             `List[list]` List of lists of feature values related to provided primary keys, ordered according to
             positions of this features in training dataset query.
         """

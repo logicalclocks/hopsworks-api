@@ -25,10 +25,10 @@ from hopsworks_common.kafka_topic import KafkaTopic
 class InferenceLogger:
     """Configuration of an inference logger for a predictor.
 
-    # Arguments
+    Parameters:
         kafka_topic: Kafka topic to send the inference logs to. By default, a new Kafka topic is configured.
         mode: Inference logging mode. (e.g., `NONE`, `ALL`, `PREDICTIONS`, or `MODEL_INPUTS`). By default, `ALL` inference logs are sent.
-    # Returns
+    Returns:
         `InferenceLogger`. Configuration of an inference logger.
     """
 

@@ -26,9 +26,9 @@ class ProjectApi:
     def _exists(self, name: str):
         """Check if a project exists.
 
-        # Arguments
+        Parameters:
             name: Name of the project.
-        # Returns
+        Returns:
             `bool`: True if project exists, otherwise False
         """
         try:
@@ -40,9 +40,9 @@ class ProjectApi:
     def _get_owned_projects(self):
         """Get all projects owned by the current user
 
-        # Returns
+        Returns:
             `List[Project]`: List of Project objects
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If unable to get the project teams
         """
         project_team_json = self._get_project_teams()
@@ -61,9 +61,9 @@ class ProjectApi:
     def _get_project_teams(self):
         """Get all project teams for this user.
 
-        # Returns
+        Returns:
             `str`: List of Project teams
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If unable to get the project teams
         """
         _client = client.get_instance()
@@ -75,9 +75,9 @@ class ProjectApi:
     def _get_projects(self):
         """Get all projects accessible by the user.
 
-        # Returns
+        Returns:
             `List[Project]`: List of Project objects
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If unable to get the projects
         """
         project_team_json = self._get_project_teams()
@@ -89,11 +89,11 @@ class ProjectApi:
     def _get_project(self, name: str):
         """Get a project.
 
-        # Arguments
+        Parameters:
             name: Name of the project.
-        # Returns
+        Returns:
             `Project`: The Project object
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If unable to get the project
         """
         _client = client.get_instance()
@@ -110,13 +110,13 @@ class ProjectApi:
     ):
         """Create a new project.
 
-        # Arguments
+        Parameters:
             name: Name of the project.
             description: Description of the project.
             feature_store_topic: Feature store topic name.
-        # Returns
+        Returns:
             `Project`: The Project object
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If unable to create the project
         """
         _client = client.get_instance()
@@ -159,4 +159,3 @@ class ProjectApi:
             return projects[0]["user"]
         else:
             return {}
-

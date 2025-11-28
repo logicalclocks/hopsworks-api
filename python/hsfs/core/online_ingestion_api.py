@@ -41,11 +41,11 @@ class OnlineIngestionApi:
         This method sends a request to the backend to start an online ingestion job
         for the specified feature group.
 
-        # Arguments
+        Parameters:
             feature_group_instance (FeatureGroup): The feature group for which to create the ingestion.
             online_ingestion_instance (OnlineIngestion): The OnlineIngestion object containing ingestion details.
 
-        # Returns
+        Returns:
             OnlineIngestion: The created OnlineIngestion object with metadata from the backend.
         """
         _client = client.get_instance()
@@ -82,12 +82,12 @@ class OnlineIngestionApi:
         You can filter the results using query parameters, such as retrieving the latest job
         or a job by its ID.
 
-        # Arguments
+        Parameters:
             feature_group_instance (FeatureGroup): The feature group for which to retrieve ingestion jobs.
             query_params (Optional[Dict[str, str]]): Optional query parameters for filtering results,
                 e.g., {"filter_by": "LATEST"} or {"filter_by": "ID:123"}.
 
-        # Returns
+        Returns:
             OnlineIngestion: The OnlineIngestion object(s) matching the query.
         """
         _client = client.get_instance()

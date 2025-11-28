@@ -89,10 +89,10 @@ class FeatureViewEngine:
         """
         Save a feature view to the backend.
 
-        # Arguments
+        Parameters:
             feature_view_obj `FeatureView` : The feature view object to be saved.
 
-        # Returns
+        Returns:
             `FeatureView` : Updated feature view that has the ID used to save in the backend.
         """
         if feature_view_obj.query.is_time_travel():
@@ -158,10 +158,10 @@ class FeatureViewEngine:
         """
         Update the feature view object saved in the backend
 
-        # Arguments
+        Parameters:
             feature_view_obj `FeatureView` : The feature view object to be saved.
 
-        # Returns
+        Returns:
             `FeatureView` : Updated feature view that has the ID used to save in the backend.
         """
         self._feature_view_api.update(feature_view_obj)
@@ -175,14 +175,14 @@ class FeatureViewEngine:
 
         If version is not provided then a List of feature views containing all of its versions is returned.
 
-        # Arguments
+        Parameters:
             name `str`: Name of feature view.
             version `version`: Version of the feature view.
 
-        # Returns
+        Returns:
             `Union[FeatureView, List[FeatureView]]`
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
             `ValueError`: If the feature group associated with the feature view cannot be found.
         """
@@ -206,13 +206,13 @@ class FeatureViewEngine:
         """
         Function that returns the schema of the training dataset generated using the feature view.
 
-        # Arguments
+        Parameters:
             feature_view: `FeatureView`. The feature view for which the schema is to be generated.
             training_dataset_version: `int`. Specifies the version of the training dataset for which the schema should be generated.
                 By default, this is set to None. However, if the `one_hot_encoder` transformation function is used, the training dataset version must be provided.
                 This is because the schema will then depend on the statistics of the training data used.
 
-        # Returns
+        Returns:
             `List[training_dataset_feature.TrainingDatasetFeature]`: List of training dataset features objects.
         """
         # This is used to verify that the training dataset version actually exists, otherwise it raises an exception
@@ -1022,10 +1022,10 @@ class FeatureViewEngine:
         For deleted and inaccessible feature groups, only a minimal information is
         returned.
 
-        # Arguments
+        Parameters:
             feature_view_obj: Metadata object of feature view.
 
-        # Returns
+        Returns:
             `Links`:  the feature groups used to generate this feature view or None
         """
         links = self._feature_view_api.get_parent_feature_groups(
@@ -1043,11 +1043,11 @@ class FeatureViewEngine:
         will always be empty.
         For inaccessible models, only a minimal information is returned.
 
-        # Arguments
+        Parameters:
             feature_view_obj: Filter generated models based on feature view (name, version).
             training_dataset_version: Filter generated models based on the used training dataset version.
 
-        # Returns
+        Returns:
             `Links`: the models generated using this feature group or None
         """
         links = self._feature_view_api.get_models_provenance(

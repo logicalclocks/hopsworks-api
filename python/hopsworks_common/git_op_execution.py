@@ -103,7 +103,7 @@ class GitOpExecution:
         """Boolean to indicate if execution ran successfully or failed
 
         ```
-        # Returns
+        Returns:
             `bool`. True if execution ran successfully. False if execution failed.
         """
         if self.state is not None and self.state.upper() in constants.GIT.ERROR_STATES:

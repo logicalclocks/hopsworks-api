@@ -1139,7 +1139,7 @@ class Engine:
         """
         Function that creates or retrieves already created the training dataset.
 
-        # Arguments
+        Parameters:
             training_dataset_obj `TrainingDataset`: The training dataset metadata object.
             feature_view_obj `FeatureView`: The feature view object for the which the training data is being created.
             query_obj `Query`: The query object that contains the query used to create the feature view.
@@ -1148,7 +1148,7 @@ class Engine:
             training_dataset_version `int`: Version of training data to be retrieved.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-        # Raises
+        Raises:
             `ValueError`: If the training dataset statistics could not be retrieved.
         """
 
@@ -1222,7 +1222,7 @@ class Engine:
         Split a df into slices defined by `splits`. `splits` is a `dict(str, int)` which keys are name of split
         and values are split ratios.
 
-        # Arguments
+        Parameters:
             query_obj `Query`: The query object that contains the query used to create the feature view.
             training_dataset_obj `TrainingDataset`: The training dataset metadata object.
             feature_view_obj `FeatureView`: The feature view object for the which the training data is being created.
@@ -1231,7 +1231,7 @@ class Engine:
             training_dataset_version `int`: Version of training data to be retrieved.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-        # Raises
+        Raises:
             `ValueError`: If the training dataset statistics could not be retrieved.
         """
         if (
@@ -1467,10 +1467,10 @@ class Engine:
         """
         Returns a dataframe of particular type.
 
-        # Arguments
+        Parameters:
             dataframe `Union[pd.DataFrame, pl.DataFrame]`: Input dataframe
             dataframe_type `str`: Type of dataframe to be returned
-        # Returns
+        Returns:
             `Union[pd.DataFrame, pl.DataFrame, np.array, list]`: DataFrame of required type.
         """
         if dataframe_type.lower() in ["default", "pandas"]:
@@ -1569,12 +1569,12 @@ class Engine:
         """
         Apply transformation function to the dataframe.
 
-        # Arguments
+        Parameters:
             transformation_functions `List[transformation_function.TransformationFunction]` : List of transformation functions.
             dataset `Union[pd.DataFrame, pl.DataFrame]`: A pandas or polars dataframe.
-        # Returns
+        Returns:
             `DataFrame`: A pandas dataframe with the transformed data.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
         dropped_features = set()
@@ -1650,12 +1650,12 @@ class Engine:
         """
         Apply a python udf to a dataframe
 
-        # Arguments
+        Parameters:
             transformation_functions `List[transformation_function.TransformationFunction]` : List of transformation functions.
             dataset `Union[pd.DataFrame, pl.DataFrame]`: A pandas or polars dataframe.
-        # Returns
+        Returns:
             `DataFrame`: A pandas dataframe with the transformed data.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
         udf = hopsworks_udf.get_udf(online=False)
@@ -1712,12 +1712,12 @@ class Engine:
         """
         Apply a pandas udf to a dataframe
 
-        # Arguments
+        Parameters:
             transformation_functions `List[transformation_function.TransformationFunction]` : List of transformation functions.
             dataset `Union[pd.DataFrame, pl.DataFrame]`: A pandas or polars dataframe.
-        # Returns
+        Returns:
             `DataFrame`: A pandas dataframe with the transformed data.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
         if len(hopsworks_udf.return_types) > 1:

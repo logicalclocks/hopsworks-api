@@ -326,13 +326,13 @@ class Links:
         """Parse explicit links from json response. There are four types of
         Links: UpstreamStorageConnectors, UpstreamFeatureGroups, DownstreamFeatureGroups, DownstreamFeatureViews
 
-        # Arguments
+        Parameters:
             json_dict: json response from the explicit provenance endpoint
             direction: subset of links to parse - UPSTREAM/DOWNSTREAM
             artifact: subset of links to parse - STORAGE_CONNECTOR/FEATURE_GROUP/FEATURE_VIEW/MODEL
             training_dataset_version: training dataset version
 
-        # Returns
+        Returns:
             A ProvenanceLink object for the selected parse type.
         """
         links_json = humps.decamelize(json_dict)

@@ -82,9 +82,9 @@ class FlinkCluster:
 
         flink_cluster.start()
         ```
-        # Arguments
+        Parameters:
             await_time: defaults to 1800 seconds to account for auto-scale mechanisms.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
@@ -138,9 +138,9 @@ class FlinkCluster:
         flink_cluster.get_jobs()
         ```
 
-        # Returns
+        Returns:
             `List[Dict]`: The array of dicts with flink job id and status of the job.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
@@ -165,11 +165,11 @@ class FlinkCluster:
         flink_cluster.get_job(job_id)
         ```
 
-        # Arguments
+        Parameters:
             job_id: id of the job within this cluster
-        # Returns
+        Returns:
             `Dict`: Dict with flink job id and status of the job.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
@@ -195,9 +195,9 @@ class FlinkCluster:
         flink_cluster.stop_job(job_id)
         ```
 
-        # Arguments
+        Parameters:
             job_id: id of the job within this flink cluster.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._flink_cluster_api._stop_job(
@@ -219,9 +219,9 @@ class FlinkCluster:
         flink_cluster.get_jars()
         ```
 
-        # Returns
+        Returns:
             `List[Dict]`: The array of dicts with jar metadata.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._flink_cluster_api._get_jars(
@@ -244,9 +244,9 @@ class FlinkCluster:
         flink_cluster.upload_jar(jar_file_path)
         ```
 
-        # Arguments
+        Parameters:
             jar_file: path to the jar file.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
@@ -278,13 +278,13 @@ class FlinkCluster:
         flink_cluster.submit_job(jar_id, main_class, job_arguments=job_arguments)
         ```
 
-        # Arguments
+        Parameters:
             jar_id: id if the jar file
             main_class: path to the main class of the jar file
             job_arguments: Job arguments (if any), defaults to none.
-        # Returns
+        Returns:
             `str`:  job id.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
@@ -309,12 +309,12 @@ class FlinkCluster:
         flink_cluster.job_state(job_id)
         ```
 
-        # Arguments
+        Parameters:
             job_id: id of the job within this flink cluster
-        # Returns
+        Returns:
             `str`: status of the job. Possible states:  "INITIALIZING", "CREATED", "RUNNING", "FAILING", "FAILED",
             "CANCELLING", "CANCELED",  "FINISHED", "RESTARTING", "SUSPENDED", "RECONCILING".
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
@@ -339,7 +339,7 @@ class FlinkCluster:
         flink_cluster.stop()
         ```
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         exec = self._get_execution(assert_running=False)

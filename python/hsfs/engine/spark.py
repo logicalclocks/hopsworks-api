@@ -761,10 +761,10 @@ class Engine:
         Function to generate a wrapper record avro schema for a struct feature.
         This is required to deserialize a union of null and a struct field in spark, since spark expects the top level avro schema to be a record in this case.
 
-        # Arguments
+        Parameters:
             feature_name: `str`: The name of the feature to generate the wrapper record avro schema for.
             feature_group: `Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup]`: The feature group object.
-        # Returns
+        Returns:
             `str`: The wrapper record avro schema.
         """
         return (
@@ -863,7 +863,7 @@ class Engine:
         """
         Function that creates or retrieves already created the training dataset.
 
-        # Arguments
+        Parameters:
             training_dataset_obj `TrainingDataset`: The training dataset metadata object.
             feature_view_obj `FeatureView`: The feature view object for the which the training data is being created.
             query_obj `Query`: The query object that contains the query used to create the feature view.
@@ -872,7 +872,7 @@ class Engine:
             training_dataset_version `int`: Version of training data to be retrieved.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-        # Raises
+        Raises:
             `ValueError`: If the training dataset statistics could not be retrieved.
         """
         return self.write_training_dataset(
@@ -920,7 +920,7 @@ class Engine:
         """
         Function that creates or retrieves already created the training dataset.
 
-        # Arguments
+        Parameters:
             training_dataset `TrainingDataset`: The training dataset metadata object.
             query_obj `Query`: The query object that contains the query used to create the feature view.
             user_write_options `Dict[str, Any]`: Dictionary that can be used to specify extra parameters for writing data using spark.
@@ -931,7 +931,7 @@ class Engine:
             training_dataset_version `Optional[int]`: Version of training data to be retrieved.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-        # Raises
+        Raises:
             `ValueError`: If the training dataset statistics could not be retrieved.
         """
         write_options = self.write_options(
@@ -1636,14 +1636,14 @@ class Engine:
         """
         Apply transformation function to the dataframe.
 
-        # Arguments
+        Parameters:
             transformation_functions `List[TransformationFunction]` : List of transformation functions.
             dataset `Union[DataFrame]`: A spark dataframe.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-        # Returns
+        Returns:
             `DataFrame`: A spark dataframe with the transformed data.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
         dropped_features = set()
@@ -2069,7 +2069,7 @@ class Engine:
         Function that combines all the logging data into a single dataframe that can be written to the logging feature group.
         The function takes care of renaming the prediction columns, creating a json column for the request parameters and adding the meta data columns.
 
-        # Arguments
+        Parameters:
             logging_data: `Union[pd.DataFrame, pyspark.sql.DataFrame, List[List], np.ndarray]` : The data to be logged.
             logging_feature_group_features: `List[feature.Feature]` : The features of the logging feature group.
             logging_feature_group_feature_names: `List[str]`. The names of the logging feature group features.
@@ -2089,7 +2089,7 @@ class Engine:
             training_dataset_version: `Optional[int]` : The version of the training dataset.
             hsml_model: `str` : The name of the model.
 
-        # Returns
+        Returns:
             `DataFrame`: A spark dataframe with all the logging components.
             `List[str]`: Names of additional logging features passed in the Logging Dataframe.
             `List[str]`: Names of missing logging features passed in the Logging Dataframe.

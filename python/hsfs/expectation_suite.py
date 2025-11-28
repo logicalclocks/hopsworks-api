@@ -143,7 +143,7 @@ class ExpectationSuite:
     ) -> ExpectationSuite:
         """Used to create a Hopsworks Expectation Suite instance from a great_expectations instance.
 
-        # Arguments
+        Parameters:
             ge_expectation_suite: great_expectations.core.ExpectationSuite
                 The great_expectations ExpectationSuite instance to convert to a Hopsworks ExpectationSuite.
             run_validation: bool
@@ -158,7 +158,7 @@ class ExpectationSuite:
             feature_group_id: int
                 The id of the feature group to which the expectation suite belongs.
 
-        # Returns
+        Returns:
             Hopsworks Expectation Suite instance.
         """
         suite_dict = ge_expectation_suite.to_json_dict()
@@ -279,13 +279,13 @@ class ExpectationSuite:
         """
         Convert different representation of expectation to Hopsworks GeExpectation type.
 
-        # Arguments
+        Parameters:
             expectation: An expectation to convert to Hopsworks GeExpectation type
 
-        # Returns
+        Returns:
             An expectation converted to Hopsworks GeExpectation type
 
-        # Raises
+        Raises:
             `TypeError`
         """
         if HAS_GREAT_EXPECTATIONS and isinstance(
@@ -319,15 +319,15 @@ class ExpectationSuite:
             selected_expectation = expectation_suite.get_expectation(expectation_id=123)
             ```
 
-        # Arguments
+        Parameters:
             expectation_id: Id of the expectation to fetch from the backend.
             ge_type: Whether to return native Great Expectations object or Hopsworks abstraction,
                 defaults to True if great_expectations is installed else false.
 
-        # Returns
+        Returns:
             The expectation with expectation_id registered in the backend.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
             `hopsworks.client.exceptions.FeatureStoreException`: If the expectation suite is not registered yet
         """
@@ -377,15 +377,15 @@ class ExpectationSuite:
                 )
             )
             ```
-        # Arguments
+        Parameters:
             expectation: The new expectation object.
             ge_type: Whether to return native Great Expectations object or Hopsworks abstraction,
                 defaults to True if great_expectations is installed else false.
 
-        # Returns
+        Returns:
             The new expectation attached to the Feature Group.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
             `hopsworks.client.exceptions.FeatureStoreException`: If the expectation suite is not registered yet
         """
@@ -419,15 +419,15 @@ class ExpectationSuite:
             updated_expectation = expectation_suite.replace_expectation(new_expectation_object)
             ```
 
-        # Arguments
+        Parameters:
             expectation: The updated expectation object. The meta field should contain an expectationId field.
             ge_type: Whether to return native Great Expectations object or Hopsworks abstraction,
                 defaults to True if great_expectations is installed else false.
 
-        # Returns
+        Returns:
             The updated expectation attached to the Feature Group.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
             `hopsworks.client.exceptions.FeatureStoreException`: If the expectation suite is not registered yet
         """
@@ -459,10 +459,10 @@ class ExpectationSuite:
             expectation_suite.remove_expectation(expectation_id=123)
             ```
 
-        # Arguments
+        Parameters:
             expectation_id: Id of the expectation to remove. The expectation will be deleted both locally and from the backend.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
             `hopsworks.client.exceptions.FeatureStoreException`: If the expectation suite is not registered yet
         """

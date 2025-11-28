@@ -64,10 +64,10 @@ class FeatureGroupBaseEngine:
         For deleted and inaccessible feature groups, only a minimal information is
         returned.
 
-        # Arguments
+        Parameters:
             feature_group: Metadata object of feature group.
 
-        # Returns
+        Returns:
             `Links`:  the feature groups used to generate this feature group
         """
         links = self._feature_group_api.get_parent_feature_groups(feature_group)
@@ -81,10 +81,10 @@ class FeatureGroupBaseEngine:
         For deleted and inaccessible storage connector, only a minimal information is
         returned.
 
-        # Arguments
+        Parameters:
             feature_group: Metadata object of feature group.
 
-        # Returns
+        Returns:
             `Links`: the storage connector used to generated this feature group
         """
         links = self._feature_group_api.get_storage_connector_provenance(feature_group)
@@ -98,10 +98,10 @@ class FeatureGroupBaseEngine:
         will always be empty.
         For inaccessible feature views, only a minimal information is returned.
 
-        # Arguments
+        Parameters:
             feature_group: Metadata object of feature group.
 
-        # Returns
+        Returns:
             `Links`:  the feature views generated using this feature group
         """
         links = self._feature_group_api.get_generated_feature_views(feature_group)
@@ -115,10 +115,10 @@ class FeatureGroupBaseEngine:
         will always be empty.
         For inaccessible feature groups, only a minimal information is returned.
 
-        # Arguments
+        Parameters:
             feature_group: Metadata object of feature group.
 
-        # Returns
+        Returns:
             `Links`:  the feature groups generated using this feature group
         """
         links = self._feature_group_api.get_generated_feature_groups(feature_group)

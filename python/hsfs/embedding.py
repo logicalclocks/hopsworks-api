@@ -113,7 +113,7 @@ class EmbeddingFeature:
     """
     Represents an embedding feature.
 
-    # Arguments
+    Parameters:
         name: The name of the embedding feature.
         dimension: The dimensionality of the embedding feature.
         similarity_function_type: The type of similarity function used for the embedding feature.
@@ -239,7 +239,7 @@ class EmbeddingIndex:
     """
     Represents an index for managing embedding features.
 
-    # Arguments
+    Parameters:
         index_name: The name of the embedding index. The name of the project index is used if not provided.
         features: A list of `EmbeddingFeature` objects for the features that
             contain embeddings that should be indexed for similarity search.
@@ -291,7 +291,7 @@ class EmbeddingIndex:
         embedding_index.add_embedding(name="user_vector", dimension=256, model=hsml_model)
         ```
 
-        # Arguments
+        Parameters:
             name: The name of the embedding feature.
             dimension: The dimensionality of the embedding feature.
             similarity_function_type: The type of similarity function to be used.
@@ -306,10 +306,10 @@ class EmbeddingIndex:
         """
         Returns the `hsfs.embedding.EmbeddingFeature` object associated with the feature name.
 
-        # Arguments
+        Parameters:
             name (str): The name of the embedding feature.
 
-        # Returns
+        Returns:
             `hsfs.embedding.EmbeddingFeature` object
         """
         feat = self._features.get(name)
@@ -322,7 +322,7 @@ class EmbeddingIndex:
         """
         Returns the list of `hsfs.embedding.EmbeddingFeature` objects associated with the index.
 
-        # Returns
+        Returns:
             A list of `hsfs.embedding.EmbeddingFeature` objects
         """
         for feat in self._features.values():
@@ -334,14 +334,14 @@ class EmbeddingIndex:
         """
         Count the number of records in the feature group.
 
-        # Arguments
+        Parameters:
             options: The options used for the request to the vector database.
                 The keys are attribute values of the `hsfs.core.opensearch.OpensearchRequestOption` class.
 
-        # Returns
+        Returns:
             `int`: The number of records in the feature group.
 
-        # Raises
+        Raises:
             `ValueError`: If the feature group is not initialized.
             `hopsworks.client.exceptions.FeatureStoreException`: If an error occurs during the count operation.
         """

@@ -126,7 +126,7 @@ def public(
 
     If you want to publish a constant, use `publish`.
 
-    # Arguments
+    Parameters:
         paths: the import paths under which the entity is publically available; effectively results in generation of aliases in all of the paths for the entity.
         as_alias: make the alias of the specified name.
         deprecated_by: make the alias deprecated and provide a set of recommendations to use instead; use of the entity outside hopsworks will print a warning, saying that it is going to be removed from the public API in one of the future releases. See `deprecated` decorator for the implementation of construction of the deprecated objects.
@@ -167,7 +167,7 @@ def publish(*paths: str):
 
     If you need to deprecate an alias, use `public` instead.
 
-    # Arguments
+    Parameters:
         paths: the import paths under which the names declared in this context will be publically available; effectively results in generation of aliases in all of the paths for all the names declared in the context.
     """
 
@@ -183,7 +183,7 @@ class Publisher:
     Note that it is impossible to create an alias for a variable, i.e., it is impossible to make a change of a variable in one module to propagate to another variable in another module.
     If you need to deprecate an alias, use `public` instead.
 
-    # Arguments
+    Parameters:
         paths: the import paths under which the names declared in this context will be publically available; effectively results in generation of aliases in all of the paths for all the names declared in the context.
     """
 
@@ -217,7 +217,7 @@ def deprecated(
     Use of the entity outside hopsworks will print a warning, saying that it is going to be removed from the public API in one of the future releases.
     Therefore, do not use it on classes or functions used internally; it is a utility for creation of deprecated aliases.
 
-    # Arguments
+    Parameters:
         deprecated_by: a set of recommendations to use instead.
         available_until: the first hopsworks release in which the entity will become unavailable, defaults to `None`; if the release is known, it is reoprted to the external user in the warning.
     """

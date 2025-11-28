@@ -108,7 +108,7 @@ class Model:
     ):
         """Persist this model including model files and metadata to the model registry.
 
-        # Arguments
+        Parameters:
             model_path: Local or remote (Hopsworks file system) path to the folder where the model files are located, or path to a specific model file.
             await_registration: Awaiting time for the model to be registered in Hopsworks.
             keep_original_files: If the model files are located in hopsfs, whether to move or copy those files into the Models dataset. Default is False (i.e., model files will be moved)
@@ -119,9 +119,9 @@ class Model:
                 * key `simultaneous_uploads`: number of chunks to upload in parallel. Default 3.
                 * key `max_chunk_retries`: number of times to retry the upload of a chunk in case of failure. Default 1.
 
-        # Returns
+        Returns:
             `Model`: The model metadata object.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
         if self._training_dataset_version is None and self._feature_view is not None:
@@ -169,11 +169,11 @@ class Model:
     def download(self, local_path=None) -> str:
         """Download the model files.
 
-        # Arguments
+        Parameters:
             local_path: path where to download the model files in the local filesystem
-        # Returns
+        Returns:
             `str`: Absolute path to local folder containing the model files.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
         return self._model_engine.download(model_instance=self, local_path=local_path)
@@ -186,7 +186,7 @@ class Model:
             This operation drops all metadata associated with **this version** of the
             model **and** deletes the model files.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
         self._model_engine.delete(model_instance=self)
@@ -226,7 +226,7 @@ class Model:
 
             my_deployment = my_model.deploy()
             ```
-        # Arguments
+        Parameters:
             name: Name of the deployment.
             description: Description of the deployment.
             artifact_version: (**Deprecated**) Version number of the model artifact to deploy, `CREATE` to create a new model artifact
@@ -243,10 +243,10 @@ class Model:
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC'). Defaults to 'REST'.
             environment: The inference environment to use.
 
-        # Returns
+        Returns:
             `Deployment`: The deployment metadata object of a new or existing deployment.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
 
@@ -277,11 +277,11 @@ class Model:
         A tag consists of a <name,value> pair. Tag names are unique identifiers across the whole cluster.
         The value of a tag can be any valid json - primitives, arrays or json objects.
 
-        # Arguments
+        Parameters:
             name: Name of the tag to be added.
             value: Value of the tag to be added.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to add the tag.
         """
         self._model_engine.set_tag(model_instance=self, name=name, value=value)
@@ -302,9 +302,9 @@ class Model:
     def delete_tag(self, name: str):
         """Delete a tag attached to a model.
 
-        # Arguments
+        Parameters:
             name: Name of the tag to be removed.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to delete the tag.
         """
         self._model_engine.delete_tag(model_instance=self, name=name)
@@ -312,11 +312,11 @@ class Model:
     def get_tag(self, name: str) -> Optional[str]:
         """Get the tags of a model.
 
-        # Arguments
+        Parameters:
             name: Name of the tag to get.
-        # Returns
+        Returns:
             tag value or `None` if it does not exist.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the tag.
         """
         return self._model_engine.get_tag(model_instance=self, name=name)
@@ -324,9 +324,9 @@ class Model:
     def get_tags(self) -> Dict[str, tag.Tag]:
         """Retrieves all tags attached to a model.
 
-        # Returns
+        Returns:
             `Dict[str, obj]` of tags.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError` in case the backend fails to retrieve the tags.
         """
         return self._model_engine.get_tags(model_instance=self)
@@ -347,12 +347,12 @@ class Model:
          Only accessible, usable feature view objects are returned. Otherwise an Exception is raised.
          For more details, call the base method - get_feature_view_provenance
 
-         # Arguments
+         Parameters:
             init: By default this is set to True. If you require a more complex initialization of the feature view for online or batch scenarios, you should set `init` to False to retrieve a non initialized feature view and then call `init_batch_scoring()` or `init_serving()` with the required parameters.
             online: By default this is set to False and the initialization for batch scoring is considered the default scenario. If you set `online` to True, the online scenario is enabled and the `init_serving()` method is called. When inside a deployment, the only available scenario is the online one, thus the parameter is ignored and init_serving is always called (if `init` is set to True). If you want to override this behaviour, you should set `init` to False and proceed with a custom initialization.
-        # Returns
+        Returns:
             `FeatureView`: Feature View Object or `None` if it does not exist.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the feature view.
         """
         fv_prov = self.get_feature_view_provenance()
@@ -380,9 +380,9 @@ class Model:
         For deleted and inaccessible feature views, only a minimal information is
         returned.
 
-        # Returns
+        Returns:
             `Links`: Object containing the section of provenance graph requested or `None` if it does not exist
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the feature view provenance
         """
         return self._model_engine.get_feature_view_provenance(model_instance=self)
@@ -393,9 +393,9 @@ class Model:
         For deleted and inaccessible training datasets, only a minimal information is
         returned.
 
-        # Returns
+        Returns:
             `Links`: Object containing the section of provenance graph requested or `None` if it does not exist
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the training dataset provenance
         """
         return self._model_engine.get_training_dataset_provenance(model_instance=self)

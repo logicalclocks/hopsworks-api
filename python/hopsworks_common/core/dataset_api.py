@@ -76,14 +76,14 @@ class DatasetApi:
         downloaded_file_path = dataset_api.download("Resources/my_local_file.txt")
 
         ```
-        # Arguments
+        Parameters:
             path: path in Hopsworks filesystem to the file
             local_path: path where to download the file in the local filesystem
             overwrite: overwrite local file if exists
             chunk_size: upload chunk size in bytes. Default 1 MB
-        # Returns
+        Returns:
             `str`: Path to downloaded file
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
@@ -179,7 +179,7 @@ class DatasetApi:
         uploaded_file_path = dataset_api.upload("my_dir", "Resources")
 
         ```
-        # Arguments
+        Parameters:
             local_path: local path to file or directory to upload, can be relative or absolute
             upload_path: path to directory where to upload the file in Hopsworks Filesystem
             overwrite: overwrite file or directory if exists
@@ -188,9 +188,9 @@ class DatasetApi:
             simultaneous_uploads: number of simultaneous files to be uploaded for directories. Default 3
             max_chunk_retries: maximum retry for a chunk. Default is 1
             chunk_retry_interval: chunk retry interval in seconds. Default is 1sec
-        # Returns
+        Returns:
             `str`: Path to uploaded file or directory
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
@@ -409,9 +409,9 @@ class DatasetApi:
     def _get(self, path: str):
         """Get dataset metadata.
 
-        # Arguments
+        Parameters:
             path: path to check
-        # Returns
+        Returns:
             `dict`: dataset metadata
         """
         _client = client.get_instance()
@@ -424,9 +424,9 @@ class DatasetApi:
 
         Get dataset metadata.
 
-        # Arguments
+        Parameters:
             path: path to check
-        # Returns
+        Returns:
             `dict`: dataset metadata
         """
         return self._get(path)
@@ -434,9 +434,9 @@ class DatasetApi:
     def exists(self, path: str):
         """Check if a file exists in the Hopsworks Filesystem.
 
-        # Arguments
+        Parameters:
             path: path to check
-        # Returns
+        Returns:
             `bool`: True if exists, otherwise False
         """
         try:
@@ -450,9 +450,9 @@ class DatasetApi:
 
         Check if a path exists in datasets.
 
-        # Arguments
+        Parameters:
             remote_path: path to check
-        # Returns
+        Returns:
             `bool`: True if exists, otherwise False
         """
         return self.exists(remote_path)
@@ -461,9 +461,9 @@ class DatasetApi:
     def remove(self, path: str):
         """Remove a path in the Hopsworks Filesystem.
 
-        # Arguments
+        Parameters:
             path: path to remove
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
@@ -475,9 +475,9 @@ class DatasetApi:
 
         Remove a path in the Hopsworks Filesystem.
 
-        # Arguments
+        Parameters:
             remote_path: path to remove
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self.remove(remote_path)
@@ -497,11 +497,11 @@ class DatasetApi:
         directory_path = dataset_api.mkdir("Resources/my_dir")
 
         ```
-        # Arguments
+        Parameters:
             path: path to directory
-        # Returns
+        Returns:
             `str`: Path to created directory
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
@@ -532,11 +532,11 @@ class DatasetApi:
         directory_path = dataset_api.copy("Resources/myfile.txt", "Logs/myfile.txt")
 
         ```
-        # Arguments
+        Parameters:
             source_path: the source path to copy
             destination_path: the destination path
             overwrite: overwrite destination if exists
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.DatasetException`: If the destination path already exists and overwrite is not set to True
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -578,11 +578,11 @@ class DatasetApi:
         directory_path = dataset_api.move("Resources/myfile.txt", "Logs/myfile.txt")
 
         ```
-        # Arguments
+        Parameters:
             source_path: the source path to move
             destination_path: the destination path
             overwrite: overwrite destination if exists
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.DatasetException`: If the destination path already exists and overwrite is not set to True
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -656,13 +656,13 @@ class DatasetApi:
         files = dataset_api.list("/")
 
         ```
-        # Arguments
+        Parameters:
             path: path in Hopsworks filesystem to the directory
             offset: the number of entities to skip
             limit: max number of the returned entities
-        # Returns
+        Returns:
             `list[str]`: List of path to files and directories in the provided path
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
@@ -687,11 +687,11 @@ class DatasetApi:
         """
         List contents of a directory in the Hopsworks Filesystem.
 
-        # Arguments
+        Parameters:
             path: path to the directory to list the contents of.
             offset: the number of Inodes to skip.
             limit: max number of the returned Inodes.
-        # Returns
+        Returns:
             `tuple[int, tuple[int, list[inode.Inode]] | tuple[int, list[Dataset]]]`: count of Dataset or Inodes and objects
         """
         _client = client.get_instance()
@@ -735,12 +735,12 @@ class DatasetApi:
     def chmod(self, remote_path: str, permissions: str):
         """Change permissions of a file or a directory in the Hopsworks Filesystem.
 
-        # Arguments
+        Parameters:
             remote_path: path to change the permissions of.
             permissions: permissions string, for example `"u+x"`.
-        # Returns
+        Returns:
             `dict`: the updated dataset metadata
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
@@ -763,17 +763,17 @@ class DatasetApi:
     ):
         """Internal (de)compression logic.
 
-        # Arguments
+        Parameters:
             remote_path: path to file or directory to unzip.
             destination_path: path to upload the zip, defaults to None; is used only if action is zip.
             block: if the operation should be blocking until complete, defaults to False.
             timeout: timeout in seconds for the blocking, defaults to 120; if None, the blocking is unbounded.
             action: zip or unzip, defaults to unzip.
 
-        # Returns
+        Returns:
             `bool`: whether the operation completed in the specified timeout; if non-blocking, always returns True.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
@@ -836,15 +836,15 @@ class DatasetApi:
     ):
         """Unzip an archive in the dataset.
 
-        # Arguments
+        Parameters:
             remote_path: path to file or directory to unzip.
             block: if the operation should be blocking until complete, defaults to False.
             timeout: timeout in seconds for the blocking, defaults to 120; if None, the blocking is unbounded.
 
-        # Returns
+        Returns:
             `bool`: whether the operation completed in the specified timeout; if non-blocking, always returns True.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._archive(remote_path, block=block, timeout=timeout, action="unzip")
@@ -858,16 +858,16 @@ class DatasetApi:
     ):
         """Zip a file or directory in the dataset.
 
-        # Arguments
+        Parameters:
             remote_path: path to file or directory to unzip.
             destination_path: path to upload the zip, defaults to None.
             block: if the operation should be blocking until complete, defaults to False.
             timeout: timeout in seconds for the blocking, defaults to 120; if None, the blocking is unbounded.
 
-        # Returns
+        Returns:
             `bool`: whether the operation completed in the specified timeout; if non-blocking, always returns True.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._archive(
@@ -888,7 +888,7 @@ class DatasetApi:
         A tag consists of a name/value pair. Tag names are unique identifiers.
         The value of a tag can be any valid json - primitives, arrays or json objects.
 
-        # Arguments
+        Parameters:
             path: path to add the tag
             name: name of the tag to be added
             value: value of the tag to be added
@@ -914,7 +914,7 @@ class DatasetApi:
 
         Tag names are unique identifiers.
 
-        # Arguments
+        Parameters:
             path: path to delete the tags
             name: name of the tag to be removed
         """
@@ -937,11 +937,11 @@ class DatasetApi:
 
         Gets all tags if no tag name is specified.
 
-        # Arguments
+        Parameters:
             path: path to get the tags
             name: tag name
 
-        # Returns
+        Returns:
             `dict`: tag names and values
         """
         _client = client.get_instance()

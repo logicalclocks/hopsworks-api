@@ -57,7 +57,7 @@ class OnlineIngestion:
         """
         Initialize an OnlineIngestion object.
 
-        # Arguments
+        Parameters:
             id (Optional[int]): The unique identifier for the ingestion operation.
             num_entries (Optional[int]): The total number of entries to ingest.
             results (Union[List[OnlineIngestionResult], List[Dict[str, Any]]], optional):
@@ -89,11 +89,11 @@ class OnlineIngestion:
         """
         Create an OnlineIngestion object from a JSON response.
 
-        # Arguments
+        Parameters:
             json_dict (Dict[str, Any]): The JSON dictionary from the API response.
             feature_group (FeatureGroup, optional): The feature group associated with this ingestion.
 
-        # Returns
+        Returns:
             OnlineIngestion: The created OnlineIngestion object, or a list of them if multiple items are present.
         """
         if json_dict is None:
@@ -124,7 +124,7 @@ class OnlineIngestion:
         """
         Convert the OnlineIngestion object to a dictionary.
 
-        # Returns
+        Returns:
             dict: Dictionary representation of the object.
         """
         return {"id": self._id, "numEntries": self._num_entries}
@@ -133,7 +133,7 @@ class OnlineIngestion:
         """
         Serialize the OnlineIngestion object to a JSON string.
 
-        # Returns
+        Returns:
             str: JSON string representation of the object.
         """
         return json.dumps(self, cls=util.Encoder)
@@ -143,7 +143,7 @@ class OnlineIngestion:
         """
         Get the unique identifier for the ingestion operation.
 
-        # Returns
+        Returns:
             Optional[int]: The ingestion ID.
         """
         return self._id
@@ -153,7 +153,7 @@ class OnlineIngestion:
         """
         Get the total number of entries to ingest.
 
-        # Returns
+        Returns:
             Optional[int]: The number of entries.
         """
         return self._num_entries
@@ -163,7 +163,7 @@ class OnlineIngestion:
         """
         Set the total number of entries to ingest.
 
-        # Arguments
+        Parameters:
             num_entries (int): The number of entries.
         """
         self._num_entries = num_entries
@@ -175,7 +175,7 @@ class OnlineIngestion:
         """
         Get the list of ingestion results.
 
-        # Returns
+        Returns:
             List[OnlineIngestionResult]: List of ingestion result objects.
         """
         return self._results
@@ -185,7 +185,7 @@ class OnlineIngestion:
         """
         Get the feature group associated with this ingestion.
 
-        # Returns
+        Returns:
             FeatureGroup: The associated feature group.
         """
         return self._feature_group
@@ -194,12 +194,12 @@ class OnlineIngestion:
         """
         Wait for the online ingestion operation to complete, displaying a progress bar.
 
-        # Arguments
+        Parameters:
             options (Dict[str, Any], optional): Options for waiting.
                 - "timeout" (int): Maximum time to wait in seconds (default: 60).
                 - "period" (int): Polling period in seconds (default: 1).
 
-        # Raises
+        Raises:
             Warning: If the timeout is exceeded before completion.
         """
         if options is None:
@@ -246,7 +246,7 @@ class OnlineIngestion:
         """
         Print logs related to the online ingestion operation from OpenSearch.
 
-        # Arguments
+        Parameters:
             priority (str, optional): Log priority to filter by (default: "error").
             size (int, optional): Number of log entries to retrieve (default: 20).
         """

@@ -98,10 +98,10 @@ class OnlineStoreRestClientEngine:
         This method identifies features that have types requiring special decoding from the RonDB Rest Server
         response and maps their position in the ordered feature list to their type.
 
-        # Arguments
+        Parameters:
             features: List of TrainingDatasetFeature objects containing feature metadata
 
-        # Returns
+        Returns:
             Dict[int, str]: A dictionary mapping feature indices to their type strings for features
                 that require decoding. The indices correspond to the position in _ordered_feature_names.
         """

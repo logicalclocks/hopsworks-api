@@ -169,10 +169,10 @@ class Job:
             out_log_path, err_log_path = execution.download_logs()
             ```
 
-        # Arguments
+        Parameters:
             args: Optional runtime arguments for the job.
             await_termination: Identifies if the client should wait for the job to complete, defaults to True.
-        # Returns
+        Returns:
             `Execution`: The execution object for the submitted run.
         """
         if self._is_materialization_running(args):
@@ -190,7 +190,7 @@ class Job:
     def get_state(self):
         """Get the state of the job.
 
-        # Returns
+        Returns:
             `state`. Current state of the job, which can be one of the following:
             `INITIALIZING`, `INITIALIZATION_FAILED`, `FINISHED`, `RUNNING`, `ACCEPTED`,
             `FAILED`, `KILLED`, `NEW`, `NEW_SAVING`, `SUBMITTED`, `AGGREGATING_LOGS`,
@@ -217,7 +217,7 @@ class Job:
     ]:
         """Get the final state of the job.
 
-        # Returns
+        Returns:
             `final_state`. Final state of the job, which can be one of the following:
             `UNDEFINED`, `FINISHED`, `FAILED`, `KILLED`, `FRAMEWORK_FAILURE`,
             `APP_MASTER_START_FAILED`, `INITIALIZATION_FAILED`. `UNDEFINED` indicates
@@ -232,9 +232,9 @@ class Job:
     def get_executions(self):
         """Retrieves all executions for the job ordered by submission time.
 
-        # Returns
+        Returns:
             `List[Execution]`: list of Execution objects
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._execution_api._get_all(self)
@@ -249,7 +249,7 @@ class Job:
         job.config['appPath'] = "Resources/my_app.py"
         job.save()
         ```
-        # Returns
+        Returns:
             `Job`: The updated job object.
         """
         return self._job_api._update_job(self.name, self.config)
@@ -259,7 +259,7 @@ class Job:
         """Delete the job
         !!! danger "Potentially dangerous operation"
             This operation deletes the job and all executions.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._job_api._delete(self)
@@ -322,11 +322,11 @@ class Job:
         print(job.job_schedule.next_execution_date_time)
         ```
 
-        # Arguments
+        Parameters:
             cron_expression: The quartz cron expression
             start_time: The schedule start time in UTC. If None, the current time is used. The start_time can be a value in the past.
             end_time: The schedule end time in UTC. If None, the schedule will continue running indefinitely. The end_time can be a value in the past.
-        # Returns
+        Returns:
             `JobSchedule`: The schedule of the job
         """
         job_schedule = JobSchedule(
@@ -381,9 +381,9 @@ class Job:
     def get_alerts(self) -> List[alert.JobAlert]:
         """Get all alerts for the job.
 
-        # Returns
+        Returns:
             `List[JobAlert]`: list of JobAlert objects
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._alerts_api.get_job_alerts(self._name)
@@ -392,11 +392,11 @@ class Job:
     def get_alert(self, alert_id: int) -> alert.JobAlert:
         """Get an alert for the job by ID.
 
-        # Arguments
+        Parameters:
             alert_id: ID of the alert
-        # Returns
+        Returns:
             `JobAlert`: the JobAlert object
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._alerts_api.get_job_alert(self._name, alert_id)
@@ -418,13 +418,13 @@ class Job:
             severity="critical"
         )
         ```
-        # Arguments
+        Parameters:
             receiver: The receiver of the alert
             status: The status of the alert. Valid values are "long_running", "failed", "finished", "killed"
             severity: The severity of the alert. Valid values are "critical", "warning", "info"
-        # Returns
+        Returns:
             `JobAlert`: The created JobAlert object
-        # Raises
+        Raises:
             `ValueError`: If the status is not valid.
             `ValueError`: If the severity is not valid.
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request

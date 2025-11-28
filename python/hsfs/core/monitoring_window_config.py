@@ -105,7 +105,7 @@ class MonitoringWindowConfig:
             )
             ```
 
-        # Arguments
+        Parameters:
             id: int, optional
                 The id of the monitoring window config.
             window_config_type: str, optional
@@ -127,7 +127,7 @@ class MonitoringWindowConfig:
                 The fraction of rows to use when computing statistics [0, 1.0]. Only used
                 for ROLLING_TIME and ALL_TIME window config types.
 
-        # Raises
+        Raises:
             AttributeError: If window_config_type is not one of INSERT, SNAPSHOT,
                 BATCH, TRAINING_DATASET, SPECIFIC_VALUE.
         """

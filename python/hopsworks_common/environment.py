@@ -101,12 +101,12 @@ class Environment:
 
         ```
 
-        # Arguments
+        Parameters:
             path: str. The path on Hopsworks where the wheel file is located
             await_installation: bool. If True the method returns only when the installation finishes. Default True
-        # Returns
+        Returns:
             `Library`: The library object
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
@@ -158,12 +158,12 @@ class Environment:
 
         ```
 
-        # Arguments
+        Parameters:
             path: str. The path on Hopsworks where the requirements.txt file is located
             await_installation: bool. If True the method returns only when the installation is finished. Default True
-        # Returns
+        Returns:
             `Library`: The library object
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
@@ -195,7 +195,7 @@ class Environment:
         """Delete the environment
         !!! danger "Potentially dangerous operation"
             This operation deletes the python environment.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._environment_api._delete(self.name)

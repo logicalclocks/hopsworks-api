@@ -70,13 +70,13 @@ class ModelRegistry:
         Getting a model from the Model Registry means getting its metadata handle
         so you can subsequently download the model directory.
 
-        # Arguments
+        Parameters:
             name: Name of the model to get.
             version: Version of the model to retrieve, defaults to `None` and will
                 return the `version=1`.
-        # Returns
+        Returns:
             `Model`: The model metadata object or `None` if it does not exist.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If unable to retrieve model from the model registry.
         """
 
@@ -103,11 +103,11 @@ class ModelRegistry:
         Getting all models from the Model Registry for a given name returns a list of model entities, one for each version registered under
         the specified model name.
 
-        # Arguments
+        Parameters:
             name: Name of the model to get.
-        # Returns
+        Returns:
             `List[Model]`: A list of model metadata objects.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If unable to retrieve model versions from the model registry.
         """
 
@@ -126,13 +126,13 @@ class ModelRegistry:
         name corresponding to one of the keys in the training_metrics dict of the model and a direction. For example to
         get the model version with the highest accuracy, specify metric='accuracy' and direction='max'.
 
-        # Arguments
+        Parameters:
             name: Name of the model to get.
             metric: Name of the key in the training metrics field to compare.
             direction: 'max' to get the model entity with the highest value of the set metric, or 'min' for the lowest.
-        # Returns
+        Returns:
             `Model`: The model metadata object or `None` if it does not exist.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If unable to retrieve model from the model registry.
         """
 

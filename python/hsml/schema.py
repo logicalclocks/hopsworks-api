@@ -26,10 +26,10 @@ from hsml.utils.schema.tensor_schema import TensorSchema
 class Schema:
     """Create a schema for a model input or output.
 
-    # Arguments
+    Parameters:
         object: The object to construct the schema from.
 
-    # Returns
+    Returns:
         `Schema`. The schema object.
     """
 

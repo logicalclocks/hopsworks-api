@@ -324,7 +324,7 @@ class FeatureGroupApi:
         `feature_group_instance` is the user object, which is only updated
         after a successful REST call.
 
-        # Arguments
+        Parameters:
             feature_group_instance: FeatureGroup. User metadata object of the
                 feature group.
             feature_group_copy: FeatureGroup. Metadata object of the feature
@@ -332,7 +332,7 @@ class FeatureGroupApi:
             query_parameter: str. Query parameter that controls which information is updated. E.g. "updateMetadata".
             query_parameter_value: Str. Value of the query_parameter.
 
-        # Returns
+        Returns:
             FeatureGroup. The updated feature group metadata object.
         """
         _client = client.get_instance()
@@ -364,12 +364,12 @@ class FeatureGroupApi:
     ) -> feature_group_commit.FeatureGroupCommit:
         """
         Save feature group commit metadata.
-        # Arguments
+        Parameters:
         feature_group_instance: FeatureGroup, required
             metadata object of feature group.
         feature_group_commit_instance: FeatureGroupCommit, required
             metadata object of feature group commit.
-        # Returns
+        Returns:
             `FeatureGroupCommit`.
         """
         _client = client.get_instance()
@@ -400,12 +400,12 @@ class FeatureGroupApi:
     ) -> feature_group_commit.FeatureGroupCommit:
         """
         Get feature group commit metadata.
-        # Arguments
+        Parameters:
         feature_group_instance: FeatureGroup, required
             metadata object of feature group.
         limit: number of commits to retrieve
         wallclock_timestamp: specific point in time.
-        # Returns
+        Returns:
             `FeatureGroupCommit`.
         """
         _client = client.get_instance()
@@ -498,10 +498,10 @@ class FeatureGroupApi:
         For deleted and inaccessible feature groups, only a minimal information is
         returned.
 
-        # Arguments
+        Parameters:
             feature_group_instance: Metadata object of feature group.
 
-        # Returns
+        Returns:
             `ExplicitProvenance.Links`:  the feature groups used to generate this
             feature group
         """
@@ -535,10 +535,10 @@ class FeatureGroupApi:
         For deleted and inaccessible storage connector, only a minimal information is
         returned.
 
-        # Arguments
+        Parameters:
             feature_group_instance: Metadata object of feature group.
 
-        # Returns
+        Returns:
             `ExplicitProvenance.Links`: the storage connector used to generated this
             feature group
         """
@@ -577,10 +577,10 @@ class FeatureGroupApi:
         will always be empty.
         For inaccessible feature views, only a minimal information is returned.
 
-        # Arguments
+        Parameters:
             feature_group_instance: Metadata object of feature group.
 
-        # Returns
+        Returns:
             `ExplicitProvenance.Links`: the feature views generated using this feature
             group
         """
@@ -619,10 +619,10 @@ class FeatureGroupApi:
         will always be empty.
         For inaccessible feature groups, only a minimal information is returned.
 
-        # Arguments
+        Parameters:
             feature_group_instance: Metadata object of feature group.
 
-        # Returns
+        Returns:
             `ExplicitProvenance.Links`: the feature groups generated using this
             feature group
         """

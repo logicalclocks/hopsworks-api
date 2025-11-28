@@ -158,7 +158,7 @@ class TrainingDatasetApi:
         `training_dataset_instance` is the user object, which is only updated
         after a successful REST call.
 
-        # Arguments
+        Parameters:
             training_dataset_instance: FeatureGroup. User metadata object of the
                 training dataset.
             training_dataset_copy: FeatureGroup. Metadata object of the training
@@ -167,7 +167,7 @@ class TrainingDatasetApi:
                 control which information is updated. E.g. "updateMetadata" or
                 "updateStatsConfig".
 
-        # Returns
+        Returns:
             FeatureGroup. The updated feature group metadata object.
         """
         _client = client.get_instance()

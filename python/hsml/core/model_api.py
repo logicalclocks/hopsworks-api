@@ -264,13 +264,13 @@ class ModelApi:
         These feature views can be accessible, deleted or inaccessible.
         For deleted and inaccessible feature views, only a minimal information is returned.
 
-        # Arguments
+        Parameters:
             model_instance: Metadata object of model.
 
-        # Returns
+        Returns:
             `Links`: the feature view used to generate this model or `None` if it does not exist.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`.
         """
         _client = client.get_instance()
@@ -303,13 +303,13 @@ class ModelApi:
         These training datasets can be accessible, deleted or inaccessible.
         For deleted and inaccessible training dataset, only a minimal information is returned.
 
-        # Arguments
+        Parameters:
             model_instance: Metadata object of model.
 
-        # Returns
+        Returns:
             `Links`: the training dataset used to generate this model or `None` if it does not exist.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`.
         """
         _client = client.get_instance()

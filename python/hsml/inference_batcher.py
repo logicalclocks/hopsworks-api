@@ -24,12 +24,12 @@ from hopsworks_common.constants import INFERENCE_BATCHER
 class InferenceBatcher:
     """Configuration of an inference batcher for a predictor.
 
-    # Arguments
+    Parameters:
         enabled: Whether the inference batcher is enabled or not. The default value is `false`.
         max_batch_size: Maximum requests batch size.
         max_latency: Maximum latency for request batching.
         timeout: Maximum waiting time for request batching.
-    # Returns
+    Returns:
         `InferenceLogger`. Configuration of an inference logger.
     """
 

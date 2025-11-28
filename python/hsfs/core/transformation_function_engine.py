@@ -73,7 +73,7 @@ class TransformationFunctionEngine:
         # Argument
             name ` Optional[str]`: The name of the transformation function to be retrieved.
             version `Optional[int]`: The version of the transformation function to be retrieved.
-        # Returns
+        Returns:
             `Union[transformation_function.TransformationFunction, List[transformation_function.TransformationFunction]]` : A transformation function if name and version is provided. A list of transformation functions if only name is provided.
         """
 
@@ -88,7 +88,7 @@ class TransformationFunctionEngine:
         """
         Get all the transformation functions in the feature store
 
-        # Returns
+        Returns:
             `List[transformation_function.TransformationFunction]` : A list of transformation functions.
         """
         transformation_fn_instances = (
@@ -110,7 +110,7 @@ class TransformationFunctionEngine:
         """
         Delete a transformation function from the feature store.
 
-        # Arguments
+        Parameters:
             transformation_function_instance `transformation_function.TransformationFunction`: The transformation function to be removed from the feature store.
         """
         self._transformation_function_api.delete(transformation_function_instance)
@@ -128,13 +128,13 @@ class TransformationFunctionEngine:
         """
         Compute the statistics required for a training dataset object.
 
-        # Arguments
+        Parameters:
             training_dataset_obj `TrainingDataset`: The training dataset for which the statistics is to be computed.
             statistics_features `List[str]`: The list of features for which the statistics should be computed.
             label_encoder_features `List[str]`: Features used for label encoding.
             feature_dataframe `Union[pd.DataFrame, pl.DataFrame, ps.DataFrame]`: The dataframe that contains the data for which the statistics must be computed.
             feature_view_obj `FeatureView`: The feature view in which the training data is being created.
-        # Returns
+        Returns:
             `Statistics` : The statistics object that contains the statistics for each features.
         """
         return training_dataset_obj._statistics_engine.compute_transformation_fn_statistics(
@@ -153,10 +153,10 @@ class TransformationFunctionEngine:
         """
         Function that updates statistics required for all transformation functions in the feature view based on training dataset version.
 
-        # Arguments
+        Parameters:
             feature_view `FeatureView`: The feature view in which the training data is being created.
             training_dataset_version `TrainingDataset`: The training version used to update the statistics used in the transformation functions.
-        # Returns
+        Returns:
             `List[transformation_function.TransformationFunction]` : List of transformation functions.
         """
         # check if transformation functions require statistics
@@ -273,7 +273,7 @@ class TransformationFunctionEngine:
             feature_view `FeatureView`: The feature view in which the training data is being created.
             training_dataset_version `int`: The version of the training dataset for which the statistics is to be retrieved.
 
-        # Raises
+        Raises:
             `ValueError` : If the statistics are not present in the backend.
         """
 

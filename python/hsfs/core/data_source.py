@@ -125,7 +125,7 @@ class DataSource:
         This internal method updates the connectors target database, schema,
         and table to match the information stored in the provided DataSource object.
 
-        # Arguments
+        Parameters:
             storage_connector: A StorageConnector instance to be updated depending on the connector type.
         """
         if not storage_connector:

@@ -25,11 +25,11 @@ from hopsworks_common.constants import RESOURCES, Default
 class Resources:
     """Resource configuration for a predictor or transformer.
 
-    # Arguments
+    Parameters:
         cores: Number of CPUs.
         memory: Memory (MB) resources.
         gpus: Number of GPUs.
-    # Returns
+    Returns:
         `Resources`. Resource configuration for a predictor or transformer.
     """
 
@@ -105,11 +105,11 @@ class Resources:
 class ComponentResources(ABC):
     """Resource configuration for a predictor or transformer.
 
-    # Arguments
+    Parameters:
         num_instances: Number of instances.
         requests: Minimum resources to allocate for a deployment
         limits: Maximum resources to allocate for a deployment
-    # Returns
+    Returns:
         `ComponentResource`. Resource configuration for a predictor or transformer.
     """
 

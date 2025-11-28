@@ -95,13 +95,13 @@ class ExecutionEngine:
     def wait_until_finished(self, job, execution, timeout: Optional[float] = None):
         """Wait until execution terminates.
 
-        # Arguments
+        Parameters:
             job: job of the execution
             execution: execution to monitor
             timeout: the maximum waiting time in seconds, if `None` the waiting time is unbounded; defaults to `None`. Note: the actual waiting time may be bigger by approximately 3 seconds.
-        # Returns
+        Returns:
             `Optional[Execution]`: The final execution or `None` if the timeout is exceeded.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         start_time = datetime.now()

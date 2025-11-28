@@ -47,13 +47,13 @@ class EnvironmentApi:
 
 
         ```
-        # Arguments
+        Parameters:
             name: name of the environment
             base_environment_name: the name of the environment to clone from
             await_creation: bool. If True the method returns only when the creation is finished. Default True
-        # Returns
+        Returns:
             `Environment`: The Environment object
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
@@ -96,9 +96,9 @@ class EnvironmentApi:
         envs = env_api.get_environments()
 
         ```
-        # Returns
+        Returns:
             `List[Environment]`: List of Environment objects
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
@@ -130,11 +130,11 @@ class EnvironmentApi:
         env = env_api.get_environment("my_custom_environment")
 
         ```
-        # Arguments
+        Parameters:
             name: name of the environment
-        # Returns
+        Returns:
             `Environment`: The Environment object or `None` if it does not exist.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()

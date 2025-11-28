@@ -348,7 +348,7 @@ class VectorServer:
     ):
         """
         Check if any request parameters required for computing on-demand features are missing.
-        # Arguments
+        Parameters:
             feature_vector: `Dict[str, Any]`. The feature vector used to compute on-demand features.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
         """
@@ -813,7 +813,7 @@ class VectorServer:
         """
         Validate if an feature-vector provided contain all required features.
 
-        # Arguments
+        Parameters:
             feature_vectors: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vectors to be converted.
             on_demand_features : `bool`. Specify if on-demand features provided in the input feature vector.
 
@@ -860,11 +860,11 @@ class VectorServer:
         """
         Function that converts an input feature vector into a list of dictionaries.
 
-        # Arguments
+        Parameters:
             feature_vectors: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vectors to be converted.
             on_demand_features : `bool`. Specify if on-demand features provided in the input feature vector.
 
-        # Returns
+        Returns:
             `Tuple[Dict[str, Any], Literal["pandas", "polars", "list"]]`: A tuple that contains the feature vector as a dictionary and a string denoting the data type of the input feature vector.
 
         """
@@ -912,12 +912,12 @@ class VectorServer:
         """
         Applies model dependent transformation on the provided feature vector.
 
-        # Arguments
+        Parameters:
             feature_vectors: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vectors to be transformed using attached model-dependent transformations.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
             return_type: `"list"`, `"pandas"`, `"polars"` or `"numpy"`. Defaults to the same type as the input feature vector.
-        # Returns
+        Returns:
             `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The transformed feature vector.
         """
         if not self._model_dependent_transformation_functions:
@@ -973,13 +973,13 @@ class VectorServer:
         """
         Function computes on-demand features present in the feature view.
 
-        # Arguments
+        Parameters:
             feature_vector: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vector to be transformed.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
             return_type: `"list"`, `"pandas"`, `"polars"` or `"numpy"`. Defaults to the same type as the input feature vector.
-        # Returns
+        Returns:
             `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The feature vector that contains all on-demand features in the feature view.
         """
         if not self._on_demand_transformation_functions:
@@ -1047,11 +1047,11 @@ class VectorServer:
         Function that accepts a feature vectors as a list and returns the untransformed features as a dict that maps
         feature names to their values
 
-        # Arguments
+        Parameters:
             features : `List[Any]`. List of feature vectors.
             on_demand_features : `bool`. Specify if on-demand features provided in the input feature vector.
 
-        # Returns
+        Returns:
             `Dict[str, Any]` : Dictionary mapping features name to values.
         """
         if on_demand_features:
@@ -1409,7 +1409,7 @@ class VectorServer:
         """
         Function that raises warnings based on the values of `transform` and `on_demand_features` parameters to let users know about the behavior of the function.
 
-        # Arguments
+        Parameters:
             transform : `bool`. Specify if model-dependent transformations should be applied.
             on_demand_features : `bool`. Specify if on-demand features should be computed.
         """

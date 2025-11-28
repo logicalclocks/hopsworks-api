@@ -130,7 +130,7 @@ class Predictor(DeployableComponent):
             print(my_deployment.get_state())
             ```
 
-        # Returns
+        Returns:
             `Deployment`. The deployment metadata object of a new or existing deployment.
         """
 

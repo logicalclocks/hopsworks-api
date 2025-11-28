@@ -23,13 +23,13 @@ class LibraryApi:
     def _install(self, library_name: str, name: str, library_spec: dict):
         """Install a library in the environment
 
-        # Arguments
+        Parameters:
             library_name: Name of the library.
             name: Name of the environment.
             library_spec: installation payload
-        # Returns
+        Returns:
             `Library`: The library object
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 

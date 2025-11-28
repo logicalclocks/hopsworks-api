@@ -167,7 +167,7 @@ class StorageConnector(ABC):
         Note, paths are only supported for object stores like S3, HopsFS and ADLS, while
         queries are meant for JDBC or databases like Redshift and Snowflake.
 
-        # Arguments
+        Parameters:
             query: By default, the storage connector will read the table configured together
                 with the connector, if any. It's possible to overwrite this by passing a SQL
                 query here. Defaults to `None`.
@@ -180,7 +180,7 @@ class StorageConnector(ABC):
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
 
-        # Returns
+        Returns:
             `DataFrame`.
         """
         return engine.get_instance().read(
@@ -209,10 +209,10 @@ class StorageConnector(ABC):
         will always be empty.
         For inaccessible feature groups, only a minimal information is returned.
 
-        # Returns
+        Returns:
             `Links`: the feature groups generated using this storage connector or `None` if none were created
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
         links = self._storage_connector_api.get_feature_groups_provenance(self)
@@ -224,7 +224,7 @@ class StorageConnector(ABC):
         provenance. Only the accessible feature groups are returned.
         For more items use the base method - get_feature_groups_provenance
 
-        # Returns
+        Returns:
             `List[FeatureGroup]`: List of feature groups.
         """
         feature_groups_provenance = self.get_feature_groups_provenance()
@@ -411,7 +411,7 @@ class S3Connector(StorageConnector):
         spark.read.format("json").load(conn.prepare_spark("s3a://[bucket]/path"))
         ```
 
-        # Arguments
+        Parameters:
             path: Path to prepare for reading from cloud storage. Defaults to `None`.
         """
         self.refetch()
@@ -465,7 +465,7 @@ class S3Connector(StorageConnector):
         Note, paths are only supported for object stores like S3, HopsFS and ADLS, while
         queries are meant for JDBC or databases like Redshift and Snowflake.
 
-        # Arguments
+        Parameters:
             query: Not relevant for S3 connectors.
             data_format: The file format of the files to be read, e.g. `csv`, `parquet`.
             options: Any additional key/value options to be passed to the S3 connector.
@@ -474,7 +474,7 @@ class S3Connector(StorageConnector):
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
 
-        # Returns
+        Returns:
             `DataFrame`.
         """
         self.refetch()
@@ -674,7 +674,7 @@ class RedshiftConnector(StorageConnector):
     ]:
         """Reads a table or query into a dataframe using the storage connector.
 
-        # Arguments
+        Parameters:
             query: By default, the storage connector will read the table configured together
                 with the connector, if any. It's possible to overwrite this by passing a SQL
                 query here. Defaults to `None`.
@@ -685,7 +685,7 @@ class RedshiftConnector(StorageConnector):
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
 
-        # Returns
+        Returns:
             `DataFrame`.
         """
         # refetch to update temporary credentials
@@ -804,7 +804,7 @@ class AdlsConnector(StorageConnector):
         spark.read.format("json").load(conn.prepare_spark("abfss://[container-name]@[account_name].dfs.core.windows.net/[path]"))
         ```
 
-        # Arguments
+        Parameters:
             path: Path to prepare for reading from cloud storage. Defaults to `None`.
         """
         return engine.get_instance().setup_storage_connector(self, path)
@@ -827,7 +827,7 @@ class AdlsConnector(StorageConnector):
         pl.DataFrame,
     ]:
         """Reads a path into a dataframe using the storage connector.
-        # Arguments
+        Parameters:
             query: Not relevant for ADLS connectors.
             data_format: The file format of the files to be read, e.g. `csv`, `parquet`.
             options: Any additional key/value options to be passed to the ADLS connector.
@@ -837,7 +837,7 @@ class AdlsConnector(StorageConnector):
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
 
-        # Returns
+        Returns:
             `DataFrame`.
         """
         path = path.strip()
@@ -1029,7 +1029,7 @@ class SnowflakeConnector(StorageConnector):
     ]:
         """Reads a table or query into a dataframe using the storage connector.
 
-        # Arguments
+        Parameters:
             query: By default, the storage connector will read the table configured together
                 with the connector, if any. It's possible to overwrite this by passing a SQL
                 query here. Defaults to `None`.
@@ -1040,7 +1040,7 @@ class SnowflakeConnector(StorageConnector):
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
 
-        # Returns
+        Returns:
             `DataFrame`.
         """
         options = (
@@ -1121,7 +1121,7 @@ class JdbcConnector(StorageConnector):
     ]:
         """Reads a query into a dataframe using the storage connector.
 
-        # Arguments
+        Parameters:
             query: A SQL query to be read.
             data_format: Not relevant for JDBC based connectors.
             options: Any additional key/value options to be passed to the JDBC connector.
@@ -1130,7 +1130,7 @@ class JdbcConnector(StorageConnector):
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
 
-        # Returns
+        Returns:
             `DataFrame`.
         """
         self.refetch()
@@ -1483,7 +1483,7 @@ class KafkaConnector(StorageConnector):
             Reading from data streams using Pandas/Python as engine is currently not supported.
             Python/Pandas has no notion of streaming.
 
-        # Arguments
+        Parameters:
             topic: Name or pattern of the topic(s) to subscribe to.
             topic_pattern: Flag to indicate if `topic` string is a pattern.
                 Defaults to `False`.
@@ -1498,10 +1498,10 @@ class KafkaConnector(StorageConnector):
                 messages in the stream. Otherwise, only the decoded value fields are
                 returned. Defaults to `False`.
 
-        # Raises
+        Raises:
             `ValueError`: Malformed arguments.
 
-        # Returns
+        Returns:
             `StreamingDataframe`: A Spark streaming dataframe.
         """
         if message_format.lower() not in ["avro", "json", None]:
@@ -1635,7 +1635,7 @@ class GcsConnector(StorageConnector):
         ```python
         conn.read(data_format='spark_formats',path='gs://BUCKET/DATA')
         ```
-        # Arguments
+        Parameters:
             query: Not relevant for GCS connectors.
             data_format: Spark data format. Defaults to `None`.
             options: Spark options. Defaults to `None`.
@@ -1643,10 +1643,10 @@ class GcsConnector(StorageConnector):
             dataframe_type: str, optional. The type of the returned dataframe.
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
-        # Raises
+        Raises:
             `ValueError`: Malformed arguments.
 
-        # Returns
+        Returns:
             `Dataframe`: A Spark dataframe.
         """
         # validate engine supports connector type
@@ -1678,7 +1678,7 @@ class GcsConnector(StorageConnector):
         spark.read.format("json").load(conn.prepare_spark("gs://bucket/path"))
         ```
 
-        # Arguments
+        Parameters:
             path: Path to prepare for reading from Google cloud storage. Defaults to `None`.
         """
         return engine.get_instance().setup_storage_connector(self, path)
@@ -1837,7 +1837,7 @@ class BigQueryConnector(StorageConnector):
             conn.read(path='project.dataset.table')
             ```
 
-        # Arguments
+        Parameters:
             query: BigQuery query. Defaults to `None`.
             data_format: Spark data format. Defaults to `None`.
             options: Spark options. Defaults to `None`.
@@ -1846,10 +1846,10 @@ class BigQueryConnector(StorageConnector):
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
 
-        # Raises
+        Raises:
             `ValueError`: Malformed arguments.
 
-        # Returns
+        Returns:
             `Dataframe`: A Spark dataframe.
         """
         # validate engine supports connector type
@@ -1982,7 +1982,7 @@ class RdsConnector(StorageConnector):
     ]:
         """Reads a query into a dataframe using the storage connector.
 
-        # Arguments
+        Parameters:
             query: A SQL query to be read.
             data_format: Not relevant for RDS based connectors.
             options: Any additional key/value options to be passed to the RDS connector.
@@ -1991,7 +1991,7 @@ class RdsConnector(StorageConnector):
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
 
-        # Returns
+        Returns:
             `DataFrame`.
         """
         self.refetch()

@@ -52,15 +52,15 @@ class KafkaApi:
         kafka_topic = kafka_api.create_topic("my_topic", "my_schema", 1)
 
         ```
-        # Arguments
+        Parameters:
             name: name of the topic
             schema: subject name of the schema
             schema_version: version of the schema
             replicas: replication factor for the topic
             partitions: partitions for the topic
-        # Returns
+        Returns:
             `KafkaTopic`: The KafkaTopic object
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
@@ -111,12 +111,12 @@ class KafkaApi:
         kafka_topic = kafka_api.create_schema("my_schema", avro_schema)
 
         ```
-        # Arguments
+        Parameters:
             subject: subject name of the schema
             schema: avro schema definition
-        # Returns
+        Returns:
             `KafkaSchema`: The KafkaSchema object
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
@@ -146,11 +146,11 @@ class KafkaApi:
     def get_topic(self, name: str) -> Optional[kafka_topic.KafkaTopic]:
         """Get kafka topic by name.
 
-        # Arguments
+        Parameters:
             name: name of the topic
-        # Returns
+        Returns:
             `KafkaTopic`: The KafkaTopic object or `None` if not found
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         topics = self.get_topics()
@@ -163,9 +163,9 @@ class KafkaApi:
     def get_topics(self):
         """Get all kafka topics.
 
-        # Returns
+        Returns:
             `List[KafkaTopic]`: List of KafkaTopic objects
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
@@ -213,9 +213,9 @@ class KafkaApi:
     def get_subjects(self):
         """Get all subjects.
 
-        # Returns
+        Returns:
             `List[str]`: List of registered subjects
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         topics = self.get_topics()
@@ -231,11 +231,11 @@ class KafkaApi:
     def get_schemas(self, subject: str):
         """Get all schema versions for the subject.
 
-        # Arguments
+        Parameters:
             subject: subject name
-        # Returns
+        Returns:
             `List[KafkaSchema]`: List of KafkaSchema objects
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
@@ -262,12 +262,12 @@ class KafkaApi:
     ) -> Optional[kafka_schema.KafkaSchema]:
         """Get schema given subject name and version.
 
-        # Arguments
+        Parameters:
             subject: subject name
             version: version number
-        # Returns
+        Returns:
             `KafkaSchema`: KafkaSchema object or `None` if it does not exist.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         schemas = self.get_schemas(subject)
@@ -337,9 +337,9 @@ class KafkaApi:
         producer = Producer(kafka_conf)
 
         ```
-        # Returns
+        Returns:
             `dict`: The kafka configuration
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 

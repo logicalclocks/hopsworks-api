@@ -49,14 +49,14 @@ We follow a few best practices for writing the Python documentation:
        import xyz
    ]
 
-   # Arguments
+   Parameters:
        arg1: Type[, optional]. Description[, defaults to `default`]
        arg2: Type[, optional]. Description[, defaults to `default`]
 
-   # Returns
+   Returns:
        Type. Description.
 
-   # Raises
+   Raises:
        Exception. Description.
    """
    ```

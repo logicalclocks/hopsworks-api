@@ -31,9 +31,9 @@ class SecretsApi:
     def get_secrets(self) -> List[secret.Secret]:
         """Get all secrets
 
-        # Returns
+        Returns:
             `List[Secret]`: List of all accessible secrets
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
@@ -51,12 +51,12 @@ class SecretsApi:
     def get_secret(self, name: str, owner: str = None) -> Optional[secret.Secret]:
         """Get a secret.
 
-        # Arguments
+        Parameters:
             name: Name of the secret.
             owner: username of the owner for a secret shared with the current project. Users can find their username in the Account Settings > Profile section.
-        # Returns
+        Returns:
             `Secret`: The Secret object or `None` if it does not exist.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
@@ -83,12 +83,12 @@ class SecretsApi:
         """Get the secret's value.
         If the secret does not exist, it prompts the user to create the secret if the application is running interactively
 
-        # Arguments
+        Parameters:
             name: Name of the secret.
             owner: email of the owner for a secret shared with the current project.
-        # Returns
+        Returns:
             `str`: The secret value
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         secret_obj = self.get_secret(name=name, owner=owner)
@@ -116,13 +116,13 @@ class SecretsApi:
         secret = secrets_api.create_secret("my_secret", "Fk3MoPlQXCQvPo")
 
         ```
-        # Arguments
+        Parameters:
             name: Name of the secret.
             value: The secret value.
             project: Name of the project to share the secret with.
-        # Returns
+        Returns:
             `Secret`: The Secret object
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()

@@ -59,11 +59,11 @@ class ModelServing:
             my_deployment = ms.get_deployment_by_id(1)
             ```
 
-        # Arguments
+        Parameters:
             id: Id of the deployment to get.
-        # Returns
+        Returns:
             `Deployment`: The deployment metadata object or `None` if it does not exist.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If unable to retrieve deployment from model serving.
         """
 
@@ -84,11 +84,11 @@ class ModelServing:
         Getting a deployment from Model Serving means getting its metadata handle
         so you can subsequently operate on it (e.g., start or stop).
 
-        # Arguments
+        Parameters:
             name: Name of the deployment to get.
-        # Returns
+        Returns:
             `Deployment`: The deployment metadata object or `None` if it does not exist.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If unable to retrieve deployment from model serving.
         """
 
@@ -119,12 +119,12 @@ class ModelServing:
             for deployment in list_deployments:
                 print(deployment.get_state())
             ```
-        # Arguments
+        Parameters:
             model: Filter by model served in the deployments
             status: Filter by status of the deployments
-        # Returns
+        Returns:
             `List[Deployment]`: A list of deployments.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If unable to retrieve deployments from model serving.
         """
 
@@ -148,7 +148,7 @@ class ModelServing:
     def get_inference_endpoints(self) -> List[InferenceEndpoint]:
         """Get all inference endpoints available in the current project.
 
-        # Returns
+        Returns:
             `List[InferenceEndpoint]`: Inference endpoints for model inference
         """
 
@@ -196,7 +196,7 @@ class ModelServing:
             This method is lazy and does not persist any metadata or deploy any model on its own.
             To create a deployment using this predictor, call the `deploy()` method.
 
-        # Arguments
+        Parameters:
             model: Model to be deployed.
             name: Name of the predictor.
             artifact_version: (**Deprecated**) Version number of the model artifact to deploy, `CREATE` to create a new model artifact
@@ -213,7 +213,7 @@ class ModelServing:
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC'). Defaults to 'REST'.
             environment: The project Python environment to use
 
-        # Returns
+        Returns:
             `Predictor`. The predictor metadata object.
         """
 
@@ -292,11 +292,11 @@ class ModelServing:
         !!! note "Lazy"
             This method is lazy and does not persist any metadata or deploy any transformer. To create a deployment using this transformer, set it in the `predictor.transformer` property.
 
-        # Arguments
+        Parameters:
             script_file: Path to a custom predictor script implementing the Transformer class.
             resources: Resources to be allocated for the transformer.
 
-        # Returns
+        Returns:
             `Transformer`. The transformer metadata object.
         """
 
@@ -332,7 +332,7 @@ class ModelServing:
             This method is lazy and does not persist any metadata or deploy any endpoint on its own.
             To create a deployment using this endpoint, call the `deploy()` method.
 
-        # Arguments
+        Parameters:
             name: Name of the endpoint.
             script_file: Path to a custom script file implementing a HTTP server.
             description: Description of the endpoint.
@@ -342,7 +342,7 @@ class ModelServing:
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC'). Defaults to 'REST'.
             environment: The project Python environment to use
 
-        # Returns
+        Returns:
             `Predictor`. The predictor metadata object.
         """
 
@@ -423,12 +423,12 @@ class ModelServing:
         !!! note "Lazy"
             This method is lazy and does not persist any metadata or deploy any model. To create a deployment, call the `save()` method.
 
-        # Arguments
+        Parameters:
             predictor: predictor to be used in the deployment
             name: name of the deployment
             environment: (**Deprecated**) The project Python environment to use. This argument will be ignored, use the argument `environment` in the `create_predictor()` or `create_endpoint()` methods instead.
 
-        # Returns
+        Returns:
             `Deployment`. The deployment metadata object.
         """
 

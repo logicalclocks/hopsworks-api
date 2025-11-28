@@ -164,7 +164,7 @@ class Execution:
     def success(self):
         """Boolean to indicate if execution ran successfully or failed
 
-        # Returns
+        Returns:
             `bool`. True if execution ran successfully. False if execution failed or was killed.
         """
 
@@ -202,9 +202,9 @@ class Execution:
 
         ```
 
-        # Arguments
+        Parameters:
             path: path to download the logs. must be `str`
-        # Returns
+        Returns:
             `str`. Path to downloaded log for stdout.
             `str`. Path to downloaded log for stderr.
         """
@@ -215,7 +215,7 @@ class Execution:
         """Delete the execution
         !!! danger "Potentially dangerous operation"
             This operation deletes the execution.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._execution_api._delete(self._job.name, self.id)
@@ -225,7 +225,7 @@ class Execution:
         """Stop the execution
         !!! danger "Potentially dangerous operation"
             This operation stops the execution.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._execution_api._stop(self.job_name, self.id)
@@ -234,10 +234,10 @@ class Execution:
         """Wait until execution terminates.
 
 
-        # Arguments
+        Parameters:
             timeout: the maximum waiting time in seconds, if `None` the waiting time is unbounded; defaults to `None`. Note: the actual waiting time may be bigger by approximately 3 seconds.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         x = self._execution_engine.wait_until_finished(self._job, self, timeout)

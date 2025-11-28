@@ -23,11 +23,11 @@ from hsml.schema import Schema
 class ModelSchema:
     """Create a schema for a model.
 
-    # Arguments
+    Parameters:
         input_schema: Schema to describe the inputs.
         output_schema: Schema to describe the outputs.
 
-    # Returns
+    Returns:
         `ModelSchema`. The model schema object.
     """
 

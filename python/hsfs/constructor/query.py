@@ -164,11 +164,11 @@ class Query:
         Function that extracts all the features in the list of joins and maps them to the feature group they are selected from.
         The function will return a dictionary that maps the feature names to the set of feature group names and version they are selected from.
 
-        # Arguments
+        Parameters:
             `joins` : List of joins in the query.
             `ambiguous_feature_feature_group_mapping` : Dictionary with feature name to feature group names and version.
 
-        # Returns
+        Returns:
             `Dict[str, List[str]]`: Dictionary with feature name as key and set of feature groups name and version they are selected from as value.
         """
         for query_join in joins:
@@ -207,7 +207,7 @@ class Query:
         """
         Function to check ambiguous features in the query. The function will return a dictionary with feature name of the ambiguous features as key and list feature groups they are in as value.
 
-        # Returns
+        Returns:
             `Dict[str, List[str]]`: Dictionary with ambiguous feature name as key and corresponding set of feature group names and version as value.
         """
         query_feature_feature_group_mapping: Dict[str, set[str]] = {}
@@ -261,7 +261,7 @@ class Query:
             however, you can use the Query API to create Feature Views/Training
             Data containing External Feature Groups.
 
-        # Arguments
+        Parameters:
             online: Read from online storage. Defaults to `False`.
             dataframe_type: DataFrame type to return. Defaults to `"default"`.
             read_options: Dictionary of read options for Spark in spark engine.
@@ -270,7 +270,7 @@ class Query:
                   For example: `{"arrow_flight_config": {"timeout": 900}}`
                 Defaults to `{}`.
 
-        # Returns
+        Returns:
             `DataFrame`: DataFrame depending on the chosen type.
         """
         if not isinstance(online, bool):
@@ -324,7 +324,7 @@ class Query:
             query.show(10)
             ```
 
-        # Arguments
+        Parameters:
             n: Number of rows to show.
             online: Show from online storage. Defaults to `False`.
         """
@@ -371,7 +371,7 @@ class Query:
                     .join(fg3.select_all(), left_on=["location_id"], right_on=["id"], join_type="left")
             ```
 
-        # Arguments
+        Parameters:
             sub_query: Right-hand side query to join.
             on: List of feature names to join on if they are available in both
                 feature groups. Defaults to `[]`.
@@ -386,7 +386,7 @@ class Query:
                 alias in the query (e.g. fg1, fg2). Prefix is applied to the right feature group of the query.
                 Defaults to `None`.
 
-        # Returns
+        Returns:
             `Query`: A new Query object representing the join.
         """
         self._joins.append(
@@ -477,13 +477,13 @@ class Query:
             `hoodie.keep.min.commits` and `hoodie.keep.max.commits`
             when calling the `insert()` method.
 
-        # Arguments
+        Parameters:
             wallclock_time: Read data as of this point in time.
                 Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, or `%Y-%m-%d %H:%M:%S`.
             exclude_until: Exclude commits until this point in time. Strings should be formatted in one of the
                 following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, or `%Y-%m-%d %H:%M:%S`.
 
-        # Returns
+        Returns:
             `Query`. The query object with the applied time travel condition.
         """
         wallclock_timestamp = util.convert_event_time_to_timestamp(wallclock_time)
@@ -565,10 +565,10 @@ class Query:
                 .filter(fg1.location_id == 10)
             ```
 
-        # Arguments
+        Parameters:
             f: Filter object.
 
-        # Returns
+        Returns:
             `Query`. The query object with the applied filter.
         """
         if self._filter is None:
@@ -743,7 +743,7 @@ class Query:
         """
         Append a feature to the query.
 
-        # Arguments
+        Parameters:
             feature: `[str, Feature]`. Name of the feature to append to the query.
         """
         feature = util.validate_feature(feature)
@@ -912,10 +912,10 @@ class Query:
         """
         Get a feature by name.
 
-        # Arguments
+        Parameters:
             feature_name: `str`. Name of the feature to get.
 
-        # Returns
+        Returns:
             `Feature`. Feature object.
         """
         return self._get_feature_by_name(feature_name)[0]
@@ -924,7 +924,7 @@ class Query:
         """
         Recursively get a query object from nested join and add to joins list.
 
-        # Arguments
+        Parameters:
             join_object: `Join object`.
         """
         if len(join_object.query.joins) > 0:
@@ -937,7 +937,7 @@ class Query:
         """
         Recursively get a feature groups from nested join and add to feature_groups list.
 
-        # Arguments
+        Parameters:
             join_object: `Join object`.
         """
         if len(join_object.query.joins) > 0:

@@ -45,7 +45,7 @@ class FeatureLogging:
         """
         DTO class for feature logging.
 
-        # Arguments
+        Parameters:
             id : `int`. Id of the feature logging object.
             transformed_features : `FeatureGroup`. The feature group containing the transformed features. As of Hopsworks 4.6, transformed and untransformed features are logged in the same feature group. This feature group is maintained for backward compatibility.
             untransformed_features : `FeatureGroup`. The feature group containing the untransformed features.

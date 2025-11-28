@@ -150,15 +150,15 @@ class FeatureStore:
                 )
             ```
 
-        # Arguments
+        Parameters:
             name: Name of the feature group to get.
             version: Version of the feature group to retrieve, defaults to `None` and will
                 return the `version=1`.
 
-        # Returns
+        Returns:
             `FeatureGroup`: The feature group metadata object or `None` if it does not exist.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if version is None:
@@ -210,13 +210,13 @@ class FeatureStore:
             fgs_list = fs.get_feature_groups()
             ```
 
-        # Arguments
+        Parameters:
             name: Name of the feature group to get the versions of; by default it is `None` and all feature groups are returned.
 
-        # Returns
+        Returns:
             `list[FeatureGroup]`: List of feature group metadata objects.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if name:
@@ -240,15 +240,15 @@ class FeatureStore:
         metadata handle so you can subsequently read the data into a Spark or
         Pandas DataFrame or use the `Query`-API to perform joins between feature groups.
 
-        # Arguments
+        Parameters:
             name: Name of the external feature group to get.
             version: Version of the external feature group to retrieve,
                 defaults to `None` and will return the `version=1`.
 
-        # Returns
+        Returns:
             `ExternalFeatureGroup`: The external feature group metadata object or `None` if it does not exist.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self.get_external_feature_group(name, version)
@@ -270,15 +270,15 @@ class FeatureStore:
 
             external_fg = fs.get_external_feature_group("external_fg_test")
             ```
-        # Arguments
+        Parameters:
             name: Name of the external feature group to get.
             version: Version of the external feature group to retrieve,
                 defaults to `None` and will return the `version=1`.
 
-        # Returns
+        Returns:
             `ExternalFeatureGroup`: The external feature group metadata object or `None` if it does not exist.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
@@ -313,13 +313,13 @@ class FeatureStore:
         metadata handle so you can subsequently read the data into a Spark or
         Pandas DataFrame or use the `Query`-API to perform joins between feature groups.
 
-        # Arguments
+        Parameters:
             name: Name of the external feature group to get.
 
-        # Returns
+        Returns:
             `ExternalFeatureGroup`: List of external feature group metadata objects.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self.get_external_feature_groups(name)
@@ -351,13 +351,13 @@ class FeatureStore:
             external_fgs_list = fs.get_external_feature_groups()
             ```
 
-        # Arguments
+        Parameters:
             name: Name of the external feature group to get the versions of; by default it is `None` and all external feature groups are returned.
 
-        # Returns
+        Returns:
             `list[ExternalFeatureGroup]`: List of external feature group metadata objects.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         fgs = self.get_feature_groups(name)
@@ -379,15 +379,15 @@ class FeatureStore:
         Getting a training dataset from the Feature Store means getting its metadata handle
         so you can subsequently read the data into a Spark or Pandas DataFrame.
 
-        # Arguments
+        Parameters:
             name: Name of the training dataset to get.
             version: Version of the training dataset to retrieve, defaults to `None` and will
                 return the `version=1`.
 
-        # Returns
+        Returns:
             `TrainingDataset`: The training dataset metadata object.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
 
@@ -413,13 +413,13 @@ class FeatureStore:
         Getting a training dataset from the Feature Store means getting its metadata handle
         so you can subsequently read the data into a Spark or Pandas DataFrame.
 
-        # Arguments
+        Parameters:
             name: Name of the training dataset to get.
 
-        # Returns
+        Returns:
             `TrainingDataset`: List of training dataset metadata objects.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._training_dataset_api.get(name, None)
@@ -444,10 +444,10 @@ class FeatureStore:
             sc = fs.get_storage_connector("demo_fs_meb10000_Training_Datasets")
             ```
 
-        # Arguments
+        Parameters:
             name: Name of the storage connector to retrieve.
 
-        # Returns
+        Returns:
             `StorageConnector`. Storage connector object.
         """
         return self._storage_connector_api.get(self._id, name)
@@ -470,7 +470,7 @@ class FeatureStore:
             query_res_head = fs.sql(\"SELECT * FROM `fg_1`\").head()
             ```
 
-        # Arguments
+        Parameters:
             query: The SQL query to execute.
             dataframe_type: str, optional. The type of the returned dataframe.
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
@@ -486,7 +486,7 @@ class FeatureStore:
                 the private ip.
                 Defaults to `{}`.
 
-        # Returns
+        Returns:
             `DataFrame`: DataFrame depending on the chosen type.
         """
 
@@ -509,7 +509,7 @@ class FeatureStore:
             online_storage_connector = fs.get_online_storage_connector()
             ```
 
-        # Returns
+        Returns:
             `StorageConnector`. JDBC storage connector to the Online Feature Store.
         """
         return self._storage_connector_api.get_online_connector(self._id)
@@ -603,7 +603,7 @@ class FeatureStore:
             along the metadata in the feature store, call the `save()` method with a
             DataFrame.
 
-        # Arguments
+        Parameters:
             name: Name of the feature group to create.
             version: Version of the feature group to retrieve, defaults to `None` and
                 will create the feature group with incremented version from the last
@@ -686,7 +686,7 @@ class FeatureStore:
             online_disk: Optionally, specify online data storage for this feature group.
                 When set to True data will be stored on disk, instead of in memory. Overrides online_config.table_space.
                 Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
-        # Returns
+        Returns:
             `FeatureGroup`. The feature group metadata object.
         """
         if not data_source:
@@ -800,7 +800,7 @@ class FeatureStore:
             along the metadata in the feature store, call the `insert()` method with a
             DataFrame.
 
-        # Arguments
+        Parameters:
             name: Name of the feature group to create.
             version: Version of the feature group to retrieve or create.
             description: A string describing the contents of the feature group to
@@ -880,7 +880,7 @@ class FeatureStore:
             online_disk: Optionally, specify online data storage for this feature group.
                 When set to True data will be stored on disk, instead of in memory. Overrides online_config.table_space.
                 Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
-        # Returns
+        Returns:
             `FeatureGroup`. The feature group metadata object.
         """
         feature_group_object = self._feature_group_api.get(self.id, name, version)
@@ -964,7 +964,7 @@ class FeatureStore:
             feature store on its own. To persist the feature group metadata in the feature store,
             call the `save()` method.
 
-        # Arguments
+        Parameters:
             name: Name of the external feature group to create.
             storage_connector: the storage connector used to establish connectivity
                 with the data source.
@@ -1025,7 +1025,7 @@ class FeatureStore:
                 The system time zone is in UTC. Defaults to None (no TTL).
             ttl_enabled: Optionally, enable TTL for this feature group. Defaults to True if ttl is set.
 
-        # Returns
+        Returns:
             `ExternalFeatureGroup`. The external feature group metadata object.
         """
         if not data_source:
@@ -1147,7 +1147,7 @@ class FeatureStore:
         external_fg.insert(df)
         ```
 
-        # Arguments
+        Parameters:
             name: Name of the external feature group to create.
             storage_connector: the storage connector used to establish connectivity
                 with the data source.
@@ -1214,7 +1214,7 @@ class FeatureStore:
                 When set to True data will be stored on disk, instead of in memory. Overrides online_config.table_space.
                 Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
 
-        # Returns
+        Returns:
             `ExternalFeatureGroup`. The external feature group metadata object.
         """
         if not data_source:
@@ -1336,7 +1336,7 @@ class FeatureStore:
         feature_view.get_batch_data(spine=spine_group)
         ```
 
-        # Arguments
+        Parameters:
             name: Name of the spine group to create.
             version: Version of the spine group to retrieve, defaults to `None` and
                 will create the spine group with incremented version from the last
@@ -1366,7 +1366,7 @@ class FeatureStore:
             dataframe: DataFrame, RDD, Ndarray, list. Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features.
 
-        # Returns
+        Returns:
             `SpineGroup`. The spine group metadata object.
         """
         spine = self._feature_group_api.get(self.id, name, version)
@@ -1431,7 +1431,7 @@ class FeatureStore:
 
             Currently not supported petastorm, hdf5 and npy file formats.
 
-        # Arguments
+        Parameters:
             name: Name of the training dataset to create.
             version: Version of the training dataset to retrieve, defaults to `None` and
                 will create the training dataset with incremented version from the last
@@ -1528,7 +1528,7 @@ class FeatureStore:
             feature store on its own. To materialize the transformation function and save
             call the `save()` method of the transformation function metadata object.
 
-        # Arguments
+        Parameters:
             transformation_function: Hopsworks UDF.
 
         # Returns:
@@ -1630,7 +1630,7 @@ class FeatureStore:
             )
             ```
 
-        # Arguments
+        Parameters:
             name: name of transformation function.
             version: version of transformation function. Optional, if not provided all functions that match to provided
                 name will be retrieved.
@@ -1730,7 +1730,7 @@ class FeatureStore:
             `as_of` argument in the `Query` will be ignored because
             feature view does not support time travel query.
 
-        # Arguments
+        Parameters:
             name: Name of the feature view to create.
             query: Feature store `Query`.
             version: Version of the feature view to create, defaults to `None` and
@@ -1819,7 +1819,7 @@ class FeatureStore:
             )
             ```
 
-        # Arguments
+        Parameters:
             name: Name of the feature view to create.
             query: Feature store `Query`.
             version: Version of the feature view to create.
@@ -1894,15 +1894,15 @@ class FeatureStore:
             )
             ```
 
-        # Arguments
+        Parameters:
             name: Name of the feature view to get.
             version: Version of the feature view to retrieve, defaults to `None` and will
                 return the `version=1`.
 
-        # Returns
+        Returns:
             `FeatureView`: The feature view metadata object or `None` if it does not exist.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         if version is None:
@@ -1933,13 +1933,13 @@ class FeatureStore:
             )
             ```
 
-        # Arguments
+        Parameters:
             name: Name of the feature view to get.
 
-        # Returns
+        Returns:
             `FeatureView`: List of feature view metadata objects.
 
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine.get(name)

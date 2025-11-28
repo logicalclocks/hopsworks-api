@@ -170,7 +170,7 @@ class KafkaTopic:
         """Delete the topic
         !!! danger "Potentially dangerous operation"
             This operation deletes the topic.
-        # Raises
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         self._kafka_api._delete_topic(self.name)
