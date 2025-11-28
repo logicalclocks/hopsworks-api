@@ -46,6 +46,7 @@ nav:
       - Feature descriptive statistics: feature_descriptive_statistics_api.md
       - Split Statistics: split_statistics_api.md
       - Statistics: statistics_api.md
+      - Statistics Configuration: statistics_config_api.md
     - Storage Connector: storage_connector_api.md
     - TrainingDataset: training_dataset_api.md
     - Transformation Functions:
@@ -63,6 +64,7 @@ nav:
       - Model: model-registry/model_api.md
       - Model Registry: model-registry/model_registry_api.md
       - Model Schema: model-registry/model_schema_api.md
+      - Provenance Links: model-registry/links_api.md
     - Model Serving:
       - Deployment: model-serving/deployment_api.md
       - Deployment state: model-serving/predictor_state_api.md
