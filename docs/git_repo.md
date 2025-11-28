@@ -9,4 +9,4 @@ Once you have an API handle, you can use it to obtain GitProvider objects using 
 
 ::: hopsworks.core.git_api.GitApi.get_repos
 
-::: hopsworks.git_remote.GitRepo
+::: hopsworks.git_repo.GitRepo
