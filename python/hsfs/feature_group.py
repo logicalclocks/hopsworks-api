@@ -3385,6 +3385,9 @@ class FeatureGroup(FeatureGroupBase):
                   connectivity from you Python environment to the internal advertised
                   listeners of the Hopsworks Kafka Cluster. Defaults to `False` and
                   will use external listeners when connecting from outside of Hopsworks.
+                * key `delta.enableChangeDataFeed` set to a *string* value of true or false to enable or
+                  disable cdf operations on the feature group delta table. Set to true by default on Feature
+                  Group creation.
             validation_options: Additional validation options as key-value pairs, defaults to `{}`.
                 * key `run_validation` boolean value, set to `False` to skip validation temporarily on ingestion.
                 * key `save_report` boolean value, set to `False` to skip upload of the validation report to Hopsworks.
@@ -3425,6 +3428,15 @@ class FeatureGroup(FeatureGroupBase):
             write_options["wait_for_online_ingestion"] = wait
         if not self._id and self._offline_backfill_every_hr is not None:
             write_options["offline_backfill_every_hr"] = self._offline_backfill_every_hr
+        if all(
+            [
+                not self._id,
+                self.time_travel_format == "DELTA",
+                write_options.get("delta.enableChangeDataFeed") != "false",
+            ]
+        ):
+            # New delta FG allow for change data capture query
+            write_options["delta.enableChangeDataFeed"] = "true"
 
         job, ge_report = self._feature_group_engine.insert(
             self,
@@ -3784,6 +3796,12 @@ class FeatureGroup(FeatureGroupBase):
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
+        if self.time_travel_format == "HUDI" and not engine.get_type().startswith(
+            "spark"
+        ):
+            raise NotImplementedError(
+                "commit_delete_record is only supported for HUDI feature groups when using the Spark engine."
+            )
         self._feature_group_engine.commit_delete(self, delete_df, write_options or {})
 
     def delta_vacuum(
