@@ -1,21 +1,5 @@
 # Transformation Function
 
-{{transformation_function}}
+You can create a `TransformationFunction` via [`FeatureStore.create_transformation_function`][hsfs.feature_store.FeatureStore.create_transformation_function] and obtain an existing one via [`FeatureStore.get_transformation_function`][hsfs.feature_store.FeatureStore.get_transformation_function] or [`FeatureStore.get_transformation_functions`][hsfs.feature_store.FeatureStore.get_transformation_functions].
 
-## Properties
-
-{{transformation_function_properties}}
-
-## Methods
-
-{{transformation_function_methods}}
-
-## Creation
-
-{{create_transformation_function}}
-
-## Retrieval
-
-{{get_transformation_function}}
-
-{{get_transformation_functions}}
+::: hsfs.transformation_function.TransformationFunction

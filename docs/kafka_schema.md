@@ -1,25 +1,14 @@
 # KafkaSchema API
 
-## Handle
+You can obtain a `KafkaApi` handle via [`Project.get_kafka_api`][hopsworks.project.Project.get_kafka_api].
+Once you have it, you can manage Kafka schemas using the `KafkaApi` methods:
 
-{{kafka_api_handle}}
+::: hopsworks.core.kafka_api.KafkaApi.create_schema
 
-## Creation
+::: hopsworks.core.kafka_api.KafkaApi.get_schema
 
-{{kafka_schema_create}}
+::: hopsworks.core.kafka_api.KafkaApi.get_schemas
 
-## Retrieval
+::: hopsworks.core.kafka_api.KafkaApi.get_subjects
 
-{{kafka_schema_get}}
-
-{{kafka_schema_get_all}}
-
-{{kafka_schema_get_subjects}}
-
-## Properties
-
-{{kafka_schema_properties}}
-
-## Methods
-
-{{kafka_schema_methods}}
+::: hopsworks.kafka_schema.KafkaSchema

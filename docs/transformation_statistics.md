@@ -1,3 +1,3 @@
 # Transformation Statistics
 
-{{transformation_statistics}}
+::: hsfs.transformation_statistics.TransformationStatistics

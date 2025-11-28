@@ -1,9 +1,5 @@
 # OpenSearch API
 
-## Handle
+You can obtain an `OpenSearchApi` handle via [`Project.get_opensearch_api`][hopsworks.project.Project.get_opensearch_api].
 
-{{opensearch_api_handle}}
-
-## Methods
-
-{{opensearch_methods}}
+::: hopsworks.core.opensearch_api.OpenSearchApi

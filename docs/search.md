@@ -1,47 +1,23 @@
 # Search API
 
-## Handle
+You can obtain a `SearchApi` handle by calling [`Project.get_search_api`][hopsworks.project.Project.get_search_api].
 
-{{search_api_handle}}
+::: hopsworks.core.search_api.SearchApi
 
-## Methods
+::: hopsworks_common.search_results.FeaturestoreSearchResult
 
-{{search_methods}}
+::: hopsworks_common.search_results.FeatureGroupSearchResult
 
-## Properties
+::: hopsworks_common.search_results.FeatureViewSearchResult
 
-## FeaturestoreSearchResult
+::: hopsworks_common.search_results.TrainingDatasetSearchResult
 
-{{featurestoreSearchResult_properties}}
+::: hopsworks_common.search_results.FeatureSearchResult
 
-## FeatureGroupSearchResult
+::: hopsworks_common.search_results.FeatureGroupResult
 
-{{featureGroupSearchResult_properties}}
+::: hopsworks_common.search_results.FeatureViewResult
 
-## FeatureViewSearchResult
+::: hopsworks_common.search_results.TrainingDatasetResult
 
-{{featureViewSearchResult_properties}}
-
-## TrainingDatasetSearchResult
-
-{{trainingDatasetSearchResult_properties}}
-
-## FeatureSearchResult
-
-{{featureSearchResult_properties}}
-
-## FeatureGroupResult
-
-{{featureGroupResult_methods}}
-
-## FeatureViewResult
-
-{{featureViewResult_methods}}
-
-## TrainingDatasetResult
-
-{{trainingDatasetResult_methods}}
-
-## FeatureResult
-
-{{featureResult_methods}}
+::: hopsworks_common.search_results.FeatureResult

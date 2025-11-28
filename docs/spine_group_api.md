@@ -1,19 +1,5 @@
 # SpineGroup
 
-{{fg}}
+You can obtain a `SpineGroup` by calling [`FeatureStore.get_or_create_spine_group`][hsfs.feature_store.FeatureStore.get_or_create_spine_group].
 
-## Creation
-
-{{fg_create}}
-
-## Retrieval
-
-{{fg_get}}
-
-## Properties
-
-{{fg_properties}}
-
-## Methods
-
-{{fg_methods}}
+::: hsfs.feature_group.SpineGroup

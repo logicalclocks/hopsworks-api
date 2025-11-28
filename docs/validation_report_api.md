@@ -1,19 +1,5 @@
 # Validation Report
 
-{{validation_report}}
+You can obtain validation reports using [`FeatureGroup.validate`][hsfs.feature_group.FeatureGroup.validate], [`FeatureGroup.insert`][hsfs.feature_group.FeatureGroup.insert], [`FeatureGroup.get_latest_validation_report`][hsfs.feature_group.FeatureGroup.get_latest_validation_report], and [`FeatureGroup.get_all_validation_reports`][hsfs.feature_group.FeatureGroup.get_all_validation_reports].
 
-## Creation
-
-{{validation_report_validate}}
-
-## Retrieval
-
-{{validation_report_get}}
-
-## Properties
-
-{{validation_report_properties}}
-
-## Methods
-
-{{validation_report_methods}}
+::: hsfs.validation_report.ValidationReport

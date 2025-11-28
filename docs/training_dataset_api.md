@@ -1,19 +1,5 @@
 # Training Dataset
 
-{{td}}
+You can create a `TrainingDataset` by calling [`FeatureStore.create_training_dataset`][hsfs.feature_store.FeatureStore.create_training_dataset] and obtain an existing one by calling [`FeatureStore.get_training_dataset`][hsfs.feature_store.FeatureStore.get_training_dataset].
 
-## Creation
-
-{{td_create}}
-
-## Retrieval
-
-{{td_get}}
-
-## Properties
-
-{{td_properties}}
-
-## Methods
-
-{{td_methods}}
+::: hsfs.training_dataset.TrainingDataset

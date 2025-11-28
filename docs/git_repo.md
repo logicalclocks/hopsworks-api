@@ -1,23 +1,12 @@
 # GitRepo API
 
-## Handle
+You can obtain a [`GitApi`][hopsworks.core.git_api.GitApi] handle via [`Project.get_git_api`][hopsworks.project.Project.get_git_api].
+Once you have an API handle, you can use it to obtain GitProvider objects using the following methods:
 
-{{git_api_handle}}
+::: hopsworks.core.git_api.GitApi.clone
 
-## Creation
+::: hopsworks.core.git_api.GitApi.get_repo
 
-{{git_repo_clone}}
+::: hopsworks.core.git_api.GitApi.get_repos
 
-## Retrieval
-
-{{git_repo_get}}
-
-{{git_repo_get_all}}
-
-## Properties
-
-{{git_repo_properties}}
-
-## Methods
-
-{{git_repo_methods}}
+::: hopsworks.git_remote.GitRepo

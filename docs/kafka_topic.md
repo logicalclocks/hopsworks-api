@@ -1,27 +1,14 @@
 # KafkaTopic API
 
-## Handle
+You can obtain a `KafkaApi` handle via [`Project.get_kafka_api`][hopsworks.project.Project.get_kafka_api].
+Once you have it, you can manage Kafka topics using the `KafkaApi` methods:
 
-{{kafka_api_handle}}
+::: hopsworks.core.kafka_api.KafkaApi.get_default_config
 
-## Configuration
+::: hopsworks.core.kafka_api.KafkaApi.create_topic
 
-{{kafka_config}}
+::: hopsworks.core.kafka_api.KafkaApi.get_topic
 
-## Creation
+::: hopsworks.core.kafka_api.KafkaApi.get_topics
 
-{{kafka_topic_create}}
-
-## Retrieval
-
-{{kafka_topic_get}}
-
-{{kafka_topic_get_all}}
-
-## Properties
-
-{{kafka_topic_properties}}
-
-## Methods
-
-{{kafka_topic_methods}}
+::: hopsworks.kafka_topic.KafkaTopic

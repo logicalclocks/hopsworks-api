@@ -1,25 +1,7 @@
 # Secrets API
 
-## Handle
+::: hopsworks.get_secrets_api
 
-{{secret_api_handle}}
+::: hopsworks.core.secret_api.SecretsApi
 
-## Creation
-
-{{secret_create}}
-
-## Retrieval
-
-{{secret_get_simplified}}
-
-{{secret_get}}
-
-{{secret_get_all}}
-
-## Properties
-
-{{secret_properties}}
-
-## Methods
-
-{{secret_methods}}
+::: hopsworks.secret.Secret

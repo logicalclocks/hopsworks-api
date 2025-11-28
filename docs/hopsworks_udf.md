@@ -1,15 +1,5 @@
 # HopsworksUDF
 
-{{hopsworks_udf}}
+::: hsfs.hopsworks_udf.HopsworksUdf
 
-## Properties
-
-{{hopsworks_udf_properties}}
-
-## Methods
-
-{{hopsworks_udf_methods}}
-
-## TransformationFeature
-
-{{transformation_feature}}
+::: hsfs.hopsworks_udf.TransformationFeature

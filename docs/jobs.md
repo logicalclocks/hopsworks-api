@@ -1,27 +1,9 @@
 # Jobs API
 
-## Handle
+You can obtain a `JobApi` handle via [`Project.get_job_api`][hopsworks.project.Project.get_job_api].
 
-{{job_api_handle}}
+::: hopsworks.core.job_api.JobApi
 
-## Configuration
+::: hopsworks.job.Job
 
-{{job_config}}
-
-## Creation
-
-{{job_create}}
-
-## Retrieval
-
-{{job_get}}
-
-{{job_get_all}}
-
-## Properties
-
-{{job_properties}}
-
-## Methods
-
-{{job_methods}}
+::: hopsworks_common.core.job_configuration.JobConfiguration

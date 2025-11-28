@@ -1,7 +1,3 @@
 # StatisticsConfig
 
-{{statistics_config}}
-
-## Properties
-
-{{statistics_config_properties}}
+::: hsfs.statistics_config.StatisticsConfig

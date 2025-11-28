@@ -1,7 +1,3 @@
 # Statistics
 
-{{statistics}}
-
-## Properties
-
-{{statistics_properties}}
+::: hsfs.statistics.Statistics
