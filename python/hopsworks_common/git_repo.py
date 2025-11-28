@@ -21,6 +21,7 @@ import humps
 from hopsworks_common import git_commit, usage, user, util
 from hopsworks_common.core import dataset_api, git_api, git_remote_api
 from hopsworks_common.git_file_status import GitFileStatus
+from python.hopsworks_common.git_remote import GitRemote
 
 
 class GitRepo:
@@ -115,8 +116,9 @@ class GitRepo:
 
         Returns:
             `List[GitFileStatus]`
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._git_api._status(self.id)
 
@@ -132,13 +134,14 @@ class GitRepo:
 
     @usage.method_logger
     def checkout_branch(self, branch: str, create: bool = False):
-        """Checkout a branch
+        """Checkout a branch.
 
         Parameters:
-            branch: name of the branch
-            create: if true will create a new branch and check it out
+            branch: Name of the branch.
+            create: If `True`, creates a new branch and checks it out.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         if create:
             self._git_api._create(self.id, branch=branch, checkout=True)
@@ -149,114 +152,123 @@ class GitRepo:
         """Checkout a commit
 
         Parameters:
-            commit: hash of the commit
+            commit: Hash of the commit.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._git_api._checkout(self.id, commit=commit)
 
     @usage.method_logger
     def checkout_files(self, files: Union[List[str], List[GitFileStatus]]):
-        """Checkout a list of files
+        """Checkout a list of files.
 
         Parameters:
-            files: list of files or GitFileStatus objects to checkout
+            files: List of files or GitFileStatus objects to checkout.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._git_api._checkout_files(self.id, files)
 
     @usage.method_logger
     def delete_branch(self, branch: str):
-        """Delete a branch from local repository
+        """Delete a branch from local repository.
 
         Parameters:
-            branch: name of the branch
+            branch: Name of the branch to delete.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._git_api._delete(self.id, branch)
 
     @usage.method_logger
     def commit(self, message: str, all: bool = True, files: List[str] = None):
-        """Add changes and new files, and then commit them
+        """Add changes and new files, and then commit them.
 
         Parameters:
-            message: name of the remote
-            all: automatically stage files that have been modified and deleted, but new files are not affected
-            files: list of new files to add and commit
+            message: Commit message.
+            all: Automatically stage files that have been modified and deleted, but new files are not affected.
+            files: List of new files to add and commit.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._git_api._commit(self.id, message, all=all, files=files)
 
     @usage.method_logger
     def push(self, branch: str, remote: str = "origin"):
-        """Push changes to the remote branch
+        """Push changes to the remote branch.
 
         Parameters:
-            branch: name of the branch
-            remote: name of the remote
+            branch: Name of the branch.
+            remote: Name of the remote.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._git_api._push(self.id, branch, force=False, remote=remote)
 
     @usage.method_logger
     def pull(self, branch: str, remote: str = "origin"):
-        """Pull changes from remote branch
+        """Pull changes from remote branch.
 
         Parameters:
-            branch: name of the branch
-            remote: name of the remote
+            branch: Name of the branch.
+            remote: Name of the remote.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._git_api._pull(self.id, branch, force=False, remote=remote)
 
     @usage.method_logger
     def fetch(self, remote: str = None, branch: str = None):
-        """Fetch changes from remote
+        """Fetch changes from remote.
 
         Parameters:
-            remote: name of the remote
-            branch: name of the branch
+            remote: Name of the remote.
+            branch: Name of the branch.
+
         Raises:
-            `RestAPIError` in case the backend fails perform the fetch operation.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._git_api._fetch(self.id, remote, branch)
 
     @usage.method_logger
     def reset(self, remote: str = None, branch: str = None, commit: str = None):
-        """Reset the branch to a specific commit or to a local branch or to a remote branch
+        """Reset the branch to a specific commit or to a local branch or to a remote branch.
 
         Parameters:
-            remote: name of the remote
-            branch: name of the branch
-            commit: hash of the commit
+            remote: Name of the remote.
+            branch: Name of the branch.
+            commit: Hash of the commit.
+
         Raises:
-            `RestAPIError` in case the backend fails to perform the reset.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._git_api._reset(self.id, remote, branch, commit)
 
-    def get_commits(self, branch: str):
+    def get_commits(self, branch: str) -> list[git_commit.GitCommit]:
         """Get the commits for the repo and branch.
 
         Parameters:
-            branch: name of the branch
+            branch: Name of the branch.
+
         Returns:
-            `List[GitCommit]`: The list of commits for this repo
+            The list of commits for this repo.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._git_api._get_commits(self.id, branch)
 
     @usage.method_logger
-    def add_remote(self, name: str, url: str):
+    def add_remote(self, name: str, url: str) -> GitRemote:
         """Add a remote for the repo
 
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
@@ -266,37 +278,42 @@ class GitRepo:
         repo = git_api.get_repo("my_repo")
 
         repo.add_remote("upstream", "https://github.com/organization/repo.git")
-
         ```
+
         Parameters:
-            name: name of the remote
-            url: url of the remote
+            name: Name of the remote.
+            url: Url of the remote.
+
         Returns:
-            `GitRemote`
+            The created remote.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._git_remote_api._add(self.id, name, url)
 
-    def get_remote(self, name: str):
+    def get_remote(self, name: str) -> GitRemote:
         """Get a remote by name for the repo.
 
         Parameters:
-            name: name of the remote
+            name: Name of the remote.
+
         Returns:
-            `GitRemote`: The git remote metadata object or `None` if it does not exist.
+            The git remote metadata object or `None` if it does not exist.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._git_remote_api._get(self.id, name)
 
-    def get_remotes(self):
+    def get_remotes(self) -> list[GitRemote]:
         """Get the configured remotes for the repo.
 
         Returns:
-            `List[GitRemote]`
+            All remotes of the git repo.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._git_remote_api._get_remotes(self.id)
 

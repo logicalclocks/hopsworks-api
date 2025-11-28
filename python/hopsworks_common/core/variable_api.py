@@ -40,10 +40,12 @@ class VariableApi:
 
         Parameters:
             variable: Name of the variable.
+
         Returns:
-            The variable's value
+            The variable's value.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
 
         _client = client.get_instance()
@@ -58,10 +60,12 @@ class VariableApi:
 
         Parameters:
             software: Name of the software.
+
         Returns:
             The software's version, if the software is available, otherwise `None`.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
 
         _client = client.get_instance()
@@ -81,8 +85,10 @@ class VariableApi:
 
         Parameters:
             backend_version: The full version.
+
         Returns:
-            (major, minor): The pair of major and minor parts of the version, or (None, None) if the version format is incorrect.
+            major: The major part of the version, or `None` if the version format is incorrect.
+            minor: The minor part of the version, or `None` if the version format is incorrect.
         """
 
         version_pattern = r"(\d+)\.(\d+)"
@@ -96,9 +102,10 @@ class VariableApi:
         """Check if data science profile is enabled on the backend.
 
         Returns:
-            `True`: If data science profile is enabled, `False` otherwise.
+            `True` if data science profile is enabled, `False` otherwise.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self.get_variable("enable_data_science_profile") == "true"
 
@@ -106,9 +113,10 @@ class VariableApi:
         """Check if Flying Duck is enabled on the backend.
 
         Returns:
-            `True`: If flying duck is available, `False` otherwise.
+            `True` if flying duck is available, `False` otherwise.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self.get_variable("enable_flyingduck") == "true"
 
@@ -116,11 +124,11 @@ class VariableApi:
         """Get domain loadbalancer for a service.
 
         Returns:
-            `str`: The domain of external loadbalancer for a service, if it is set up.
+            The domain of external loadbalancer for a service, if it is set up.
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If variable is not set in Hopsworks Cluster Configuration.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.FeatureStoreException: If variable is not set in Hopsworks Cluster Configuration.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         try:
             return self.get_variable(f"loadbalancer_external_domain_{service}")
@@ -138,7 +146,7 @@ class VariableApi:
         """Get domain of service discovery server.
 
         Returns:
-            `str`: The domain of service discovery server, if it is set up, otherwise empty string `""`.
+            The domain of service discovery server, if it is set up, otherwise empty string `""`.
         """
         try:
             return self.get_variable("service_discovery_domain")
@@ -149,7 +157,7 @@ class VariableApi:
         """Get domain of featurestore online tablespace.
 
         Returns:
-            `str`: The name of featurestore online tablespace, if it is set up, otherwise hopsworks default tablespace `ts_1`.
+            The name of featurestore online tablespace, if it is set up, otherwise hopsworks default tablespace `ts_1`.
         """
         try:
             tablespace = self.get_variable("featurestore_online_tablespace")

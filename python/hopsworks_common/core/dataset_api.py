@@ -62,11 +62,10 @@ class DatasetApi:
         local_path: Optional[str] = None,
         overwrite: Optional[bool] = False,
         chunk_size: int = DEFAULT_DOWNLOAD_FLOW_CHUNK_SIZE,
-    ):
+    ) -> str:
         """Download file from Hopsworks Filesystem to the current working directory.
 
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
@@ -74,17 +73,19 @@ class DatasetApi:
         dataset_api = project.get_dataset_api()
 
         downloaded_file_path = dataset_api.download("Resources/my_local_file.txt")
-
         ```
+
         Parameters:
-            path: path in Hopsworks filesystem to the file
-            local_path: path where to download the file in the local filesystem
-            overwrite: overwrite local file if exists
-            chunk_size: upload chunk size in bytes. Default 1 MB
+            path: Path in Hopsworks filesystem to the file.
+            local_path: Path where to download the file in the local filesystem.
+            overwrite: Overwrite local file if exists.
+            chunk_size: Upload chunk size in bytes, defaults to 1 MB.
+
         Returns:
-            `str`: Path to downloaded file
+            The path to the downloaded file.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client.get_instance()
         path_params = [
@@ -161,11 +162,10 @@ class DatasetApi:
         simultaneous_chunks: int = DEFAULT_UPLOAD_SIMULTANEOUS_CHUNKS,
         max_chunk_retries: int = DEFAULT_UPLOAD_MAX_CHUNK_RETRIES,
         chunk_retry_interval: int = 1,
-    ):
+    ) -> str:
         """Upload a file or directory to the Hopsworks filesystem.
 
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
@@ -177,21 +177,23 @@ class DatasetApi:
 
         # upload a directory to Resources dataset
         uploaded_file_path = dataset_api.upload("my_dir", "Resources")
-
         ```
+
         Parameters:
-            local_path: local path to file or directory to upload, can be relative or absolute
-            upload_path: path to directory where to upload the file in Hopsworks Filesystem
-            overwrite: overwrite file or directory if exists
-            chunk_size: upload chunk size in bytes. Default 10 MB
-            simultaneous_chunks: number of simultaneous chunks to upload for each file upload. Default 3
-            simultaneous_uploads: number of simultaneous files to be uploaded for directories. Default 3
-            max_chunk_retries: maximum retry for a chunk. Default is 1
-            chunk_retry_interval: chunk retry interval in seconds. Default is 1sec
+            local_path: Local path to file or directory to upload, can be relative or absolute.
+            upload_path: Path to directory where to upload the file in Hopsworks Filesystem.
+            overwrite: Overwrite file or directory if exists.
+            chunk_size: Upload chunk size in bytes, defaults to 10 MB.
+            simultaneous_chunks: Number of simultaneous chunks to upload for each file upload.
+            simultaneous_uploads: Number of simultaneous files to be uploaded for directories.
+            max_chunk_retries: Maximum retry for a chunk.
+            chunk_retry_interval: Chunk retry interval in seconds.
+
         Returns:
-            `str`: Path to uploaded file or directory
+            The path to the uploaded file or directory.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
 
         # local path could be absolute or relative,
@@ -406,13 +408,14 @@ class DatasetApi:
             "POST", path_params, data=params, files={"file": (file_name, chunk)}
         )
 
-    def _get(self, path: str):
+    def _get(self, path: str) -> dict:
         """Get dataset metadata.
 
         Parameters:
-            path: path to check
+            path: Path to check.
+
         Returns:
-            `dict`: dataset metadata
+            Dataset metadata.
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "dataset", path]
@@ -425,19 +428,21 @@ class DatasetApi:
         Get dataset metadata.
 
         Parameters:
-            path: path to check
+            path: Path to check.
+
         Returns:
-            `dict`: dataset metadata
+            Dataset metadata.
         """
         return self._get(path)
 
-    def exists(self, path: str):
+    def exists(self, path: str) -> bool:
         """Check if a file exists in the Hopsworks Filesystem.
 
         Parameters:
-            path: path to check
+            path: Path to check.
+
         Returns:
-            `bool`: True if exists, otherwise False
+            `True` if exists, otherwise `False`.
         """
         try:
             self._get(path)
@@ -445,15 +450,16 @@ class DatasetApi:
         except RestAPIError:
             return False
 
-    def path_exists(self, remote_path: str):
+    def path_exists(self, remote_path: str) -> bool:
         """**Deprecated**, use `exists` instead.
 
         Check if a path exists in datasets.
 
         Parameters:
-            remote_path: path to check
+            remote_path: Path to check.
+
         Returns:
-            `bool`: True if exists, otherwise False
+            `True` if exists, otherwise `False`.
         """
         return self.exists(remote_path)
 
@@ -462,9 +468,10 @@ class DatasetApi:
         """Remove a path in the Hopsworks Filesystem.
 
         Parameters:
-            path: path to remove
+            path: Path to remove.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "dataset", path]
@@ -476,18 +483,18 @@ class DatasetApi:
         Remove a path in the Hopsworks Filesystem.
 
         Parameters:
-            remote_path: path to remove
+            remote_path: Path to remove.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self.remove(remote_path)
 
     @usage.method_logger
-    def mkdir(self, path: str):
+    def mkdir(self, path: str) -> str:
         """Create a directory in the Hopsworks Filesystem.
 
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
@@ -495,14 +502,16 @@ class DatasetApi:
         dataset_api = project.get_dataset_api()
 
         directory_path = dataset_api.mkdir("Resources/my_dir")
-
         ```
+
         Parameters:
-            path: path to directory
+            path: Path to directory.
+
         Returns:
-            `str`: Path to created directory
+            Path to the created directory.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "dataset", path]
@@ -522,7 +531,6 @@ class DatasetApi:
         """Copy a file or directory in the Hopsworks Filesystem.
 
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
@@ -530,15 +538,16 @@ class DatasetApi:
         dataset_api = project.get_dataset_api()
 
         directory_path = dataset_api.copy("Resources/myfile.txt", "Logs/myfile.txt")
-
         ```
+
         Parameters:
-            source_path: the source path to copy
-            destination_path: the destination path
-            overwrite: overwrite destination if exists
+            source_path: The source path to copy.
+            destination_path: The destination path.
+            overwrite: Overwrite destination if exists.
+
         Raises:
-            `hopsworks.client.exceptions.DatasetException`: If the destination path already exists and overwrite is not set to True
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.DatasetException: If the destination path already exists and overwrite is not set to `True`.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         if self.exists(destination_path):
             if overwrite:
@@ -568,7 +577,6 @@ class DatasetApi:
         """Move a file or directory in the Hopsworks Filesystem.
 
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
@@ -576,15 +584,16 @@ class DatasetApi:
         dataset_api = project.get_dataset_api()
 
         directory_path = dataset_api.move("Resources/myfile.txt", "Logs/myfile.txt")
-
         ```
+
         Parameters:
-            source_path: the source path to move
-            destination_path: the destination path
-            overwrite: overwrite destination if exists
+            source_path: The source path to move.
+            destination_path: The destination path.
+            overwrite: Overwrite destination if exists.
+
         Raises:
-            `hopsworks.client.exceptions.DatasetException`: If the destination path already exists and overwrite is not set to True
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.DatasetException: If the destination path already exists and overwrite is not set to `True`.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         if self.exists(destination_path):
             if overwrite:
@@ -638,11 +647,10 @@ class DatasetApi:
             chunk_number += 1
 
     @usage.method_logger
-    def list(self, path: str, offset: int = 0, limit: int = 1000) -> List[str]:
+    def list(self, path: str, offset: int = 0, limit: int = 1000) -> list[str]:
         """List the files and directories from a path in the Hopsworks Filesystem.
 
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
@@ -654,16 +662,18 @@ class DatasetApi:
 
         # list all datasets in the project
         files = dataset_api.list("/")
-
         ```
+
         Parameters:
-            path: path in Hopsworks filesystem to the directory
-            offset: the number of entities to skip
-            limit: max number of the returned entities
+            path: Path in Hopsworks filesystem to the directory.
+            offset: The number of entities to skip.
+            limit: Max number of the returned entities.
+
         Returns:
-            `list[str]`: List of path to files and directories in the provided path
+            List of path to files and directories in the provided path.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client.get_instance()
         # Normalize path so we can check if the path refers to the root or not
@@ -683,16 +693,17 @@ class DatasetApi:
         return files
 
     @usage.method_logger
-    def _list_dataset_path(self, path: str, cls: Union[Type[dataset.Dataset], Type[inode.Inode]], offset: int = 0, limit: int = 1000, sort_by: str = "ID:asc"):
+    def _list_dataset_path(self, path: str, cls: Union[Type[dataset.Dataset], Type[inode.Inode]], offset: int = 0, limit: int = 1000, sort_by: str = "ID:asc") -> tuple[int, tuple[int, list[inode.Inode]] | tuple[int, list[dataset.Dataset]]]:
         """
         List contents of a directory in the Hopsworks Filesystem.
 
         Parameters:
-            path: path to the directory to list the contents of.
-            offset: the number of Inodes to skip.
-            limit: max number of the returned Inodes.
+            path: Path to the directory to list the contents of.
+            offset: The number of Inodes to skip.
+            limit: Max number of the returned Inodes.
+
         Returns:
-            `tuple[int, tuple[int, list[inode.Inode]] | tuple[int, list[Dataset]]]`: count of Dataset or Inodes and objects
+            Count of Dataset or Inodes and objects.
         """
         _client = client.get_instance()
         path_params = [
@@ -732,16 +743,18 @@ class DatasetApi:
 
         return _client._send_request("GET", path_params, query_params, stream=True)
 
-    def chmod(self, remote_path: str, permissions: str):
+    def chmod(self, remote_path: str, permissions: str) -> dict:
         """Change permissions of a file or a directory in the Hopsworks Filesystem.
 
         Parameters:
-            remote_path: path to change the permissions of.
-            permissions: permissions string, for example `"u+x"`.
+            remote_path: Path to change the permissions of.
+            permissions: Permissions string, for example `"u+x"`.
+
         Returns:
-            `dict`: the updated dataset metadata
+            dict: The updated dataset metadata.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "dataset", remote_path]
@@ -756,25 +769,25 @@ class DatasetApi:
     def _archive(
         self,
         remote_path: str,
-        destination_path: Optional[str] = None,
+        destination_path: str | None = None,
         block: bool = False,
-        timeout: Optional[int] = 120,
-        action: Union[Literal["unzip"], Literal["zip"]] = "unzip",
-    ):
+        timeout: int | None = 120,
+        action: Literal["unzip", "zip"] = "unzip",
+    ) -> bool:
         """Internal (de)compression logic.
 
         Parameters:
-            remote_path: path to file or directory to unzip.
-            destination_path: path to upload the zip, defaults to None; is used only if action is zip.
-            block: if the operation should be blocking until complete, defaults to False.
-            timeout: timeout in seconds for the blocking, defaults to 120; if None, the blocking is unbounded.
-            action: zip or unzip, defaults to unzip.
+            remote_path: Path to file or directory to unzip.
+            destination_path: Path to upload the zip; is used only if action is `zip`.
+            block: If the operation should be blocking until complete.
+            timeout: Timeout in seconds for the blocking, defaults to 120; if `None`, the blocking is unbounded.
+            action: To zip or to unzip.
 
         Returns:
-            `bool`: whether the operation completed in the specified timeout; if non-blocking, always returns True.
+            Whether the operation completed in the specified timeout; if non-blocking, always returns `True`.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
 
         _client = client.get_instance()
@@ -838,37 +851,37 @@ class DatasetApi:
 
         Parameters:
             remote_path: path to file or directory to unzip.
-            block: if the operation should be blocking until complete, defaults to False.
-            timeout: timeout in seconds for the blocking, defaults to 120; if None, the blocking is unbounded.
+            block: if the operation should be blocking until complete.
+            timeout: timeout in seconds for the blocking, defaults to 120; if `None`, the blocking is unbounded.
 
         Returns:
-            `bool`: whether the operation completed in the specified timeout; if non-blocking, always returns True.
+            Whether the operation completed in the specified timeout; if non-blocking, always returns `True`.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._archive(remote_path, block=block, timeout=timeout, action="unzip")
 
     def zip(
         self,
         remote_path: str,
-        destination_path: Optional[str] = None,
+        destination_path: str | None = None,
         block: bool = False,
-        timeout: Optional[int] = 120,
-    ):
+        timeout: int | None = 120,
+    ) -> bool:
         """Zip a file or directory in the dataset.
 
         Parameters:
-            remote_path: path to file or directory to unzip.
-            destination_path: path to upload the zip, defaults to None.
-            block: if the operation should be blocking until complete, defaults to False.
-            timeout: timeout in seconds for the blocking, defaults to 120; if None, the blocking is unbounded.
+            remote_path: Path to file or directory to zip.
+            destination_path: Path to upload the zip.
+            block: Whether the operation should be blocking until complete.
+            timeout: Timeout in seconds for the blocking, defaults to 120; if `None`, the blocking is unbounded.
 
         Returns:
-            `bool`: whether the operation completed in the specified timeout; if non-blocking, always returns True.
+            Whether the operation completed in the specified timeout; if non-blocking, always returns `True`.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._archive(
             remote_path,
@@ -889,9 +902,9 @@ class DatasetApi:
         The value of a tag can be any valid json - primitives, arrays or json objects.
 
         Parameters:
-            path: path to add the tag
-            name: name of the tag to be added
-            value: value of the tag to be added
+            path: Path to add the tag.
+            name: Name of the tag to be added.
+            value: Value of the tag to be added.
         """
         _client = client.get_instance()
         path_params = [
@@ -915,8 +928,8 @@ class DatasetApi:
         Tag names are unique identifiers.
 
         Parameters:
-            path: path to delete the tags
-            name: name of the tag to be removed
+            path: Path to delete the tags.
+            name: Name of the tag to be removed.
         """
         _client = client.get_instance()
         path_params = [
@@ -930,7 +943,7 @@ class DatasetApi:
         ]
         _client._send_request("DELETE", path_params)
 
-    def get_tags(self, path: str, name: str | None = None):
+    def get_tags(self, path: str, name: str | None = None) -> dict:
         """**Deprecated**
 
         Get the tags.
@@ -938,11 +951,11 @@ class DatasetApi:
         Gets all tags if no tag name is specified.
 
         Parameters:
-            path: path to get the tags
-            name: tag name
+            path: Path to get the tags.
+            name: Tag name.
 
         Returns:
-            `dict`: tag names and values
+            Tag names and values.
         """
         _client = client.get_instance()
         path_params = [

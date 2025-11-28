@@ -16,7 +16,7 @@
 
 import json
 import logging
-from typing import List, Optional, Union
+from typing import List, Literal, Optional, Union
 from urllib.parse import quote
 
 from hopsworks_common import (
@@ -43,12 +43,11 @@ class GitApi:
 
     @usage.method_logger
     def clone(
-        self, url: str, path: str, provider: str = None, branch: str = None
+        self, url: str, path: str, provider: Literal["GitHub", "GitLab", "BitBucket"] | None = None, branch: str = None
     ) -> git_repo.GitRepo:
         """Clone a new Git Repo in to Hopsworks Filesystem.
 
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
@@ -56,17 +55,19 @@ class GitApi:
         git_api = project.get_git_api()
 
         git_repo = git_api.clone("https://github.com/logicalclocks/hops-examples.git", "Resources", "GitHub")
-
         ```
+
         Parameters:
-            url: Url to the git repository
-            path: Path in Hopsworks Filesystem to clone the repo to
-            provider: The git provider where the repo is currently hosted. Valid values are "GitHub", "GitLab" and "BitBucket".
-            branch: Optional branch to clone, defaults to configured main branch
+            url: URL to the git repository.
+            path: Path in Hopsworks Filesystem to clone the repo to.
+            provider: The git provider where the repo is currently hosted.
+            branch: The branch to clone, defaults to the configured default branch.
+
         Returns:
-            `GitRepo`: Git repository object
+            Git repository object.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
 
         _client = client.get_instance()
@@ -109,12 +110,13 @@ class GitApi:
 
     @usage.method_logger
     def get_repos(self) -> List[git_repo.GitRepo]:
-        """Get the existing Git repositories
+        """Get the existing Git repositories.
 
         Returns:
-            `List[GitRepo]`: List of git repository objects
+            List of git repository objects.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client.get_instance()
         path_params = [
@@ -129,35 +131,37 @@ class GitApi:
 
     @usage.method_logger
     def get_providers(self) -> List[git_provider.GitProvider]:
-        """Get the configured Git providers
+        """Get the configured Git providers.
 
         Returns:
-            `List[GitProvider]`: List of git provider objects
+            List of git provider objects.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._git_provider_api._get_providers()
 
     @usage.method_logger
-    def get_provider(self, provider: str, host: str = None) -> Optional[git_provider.GitProvider]:
-        """Get the configured Git provider
+    def get_provider(self, provider: Literal["GitHub", "GitLab", "BitBucket"], host: str = None) -> Optional[git_provider.GitProvider]:
+        """Get the configured Git provider.
 
         Parameters:
-            provider: Name of git provider. Valid values are "GitHub", "GitLab" and "BitBucket".
-            host: Optional host for the git provider e.g. github.com for GitHub, gitlab.com for GitLab, bitbucket.org for BitBucket
+            provider: Name of the git provider.
+            host: Optional host for the git provider, e.g., `"github.com"` for GitHub, `"gitlab.com"` for GitLab, `"bitbucket.org"` for BitBucket.
+
         Returns:
-            `GitProvider`: The git provider or `None` if it does not exist.
+            The git provider or `None` if it does not exist.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._git_provider_api._get_provider(provider, host)
 
     @usage.method_logger
-    def set_provider(self, provider: str, username: str, token: str, host: str = None):
-        """Configure a Git provider
+    def set_provider(self, provider: Literal["GitHub", "GitLab", "BitBucket"], username: str, token: str, host: str = None):
+        """Configure a Git provider.
 
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
@@ -165,15 +169,16 @@ class GitApi:
         git_api = project.get_git_api()
 
         git_api.set_provider("GitHub", "my_user", "my_token", host="github.com")
-
         ```
+
         Parameters:
-            provider: Name of git provider. Valid values are "GitHub", "GitLab" and "BitBucket".
-            username: Username for the git provider service
-            token: Token to set for the git provider service
-            host: host for the git provider e.g. github.com for GitHub, gitlab.com for GitLab, bitbucket.org for BitBucket
+            provider: Name of the git provider.
+            username: Username for the git provider service.
+            token: Token to set for the git provider service.
+            host: Host for the git provider, e.g., `"github.com"` for GitHub, `"gitlab.com"` for GitLab, `"bitbucket.org"` for BitBucket.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         if host is None:
             host = self._get_default_provider_host(provider)
@@ -182,15 +187,17 @@ class GitApi:
 
     @usage.method_logger
     def get_repo(self, name: str, path: str = None) -> Optional[git_repo.GitRepo]:
-        """Get the cloned Git repository
+        """Get the cloned Git repository.
 
         Parameters:
-            name: Name of git repository
-            path: Optional path to specify if multiple git repos with the same name exists in the project
+            name: Name of the git repository.
+            path: Optional path to specify if multiple git repositories with the same name exist in the project.
+
         Returns:
-            `GitRepo`: The git repository or `None` if it does not exist.
+            The git repository or `None` if it does not exist.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client.get_instance()
         path_params = [

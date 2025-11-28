@@ -148,7 +148,7 @@ class Job:
 
         Run the job, by default awaiting its completion, with the option of passing runtime arguments.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -171,7 +171,8 @@ class Job:
 
         Parameters:
             args: Optional runtime arguments for the job.
-            await_termination: Identifies if the client should wait for the job to complete, defaults to True.
+            await_termination: Identifies if the client should wait for the job to complete.
+
         Returns:
             `Execution`: The execution object for the submitted run.
         """
@@ -187,16 +188,32 @@ class Job:
         else:
             return execution
 
-    def get_state(self):
+    def get_state(
+        self,
+    ) -> Literal[
+        "UNDEFINED",
+        "INITIALIZING",
+        "INITIALIZATION_FAILED",
+        "FINISHED",
+        "RUNNING",
+        "ACCEPTED",
+        "FAILED",
+        "KILLED",
+        "NEW",
+        "NEW_SAVING",
+        "SUBMITTED",
+        "AGGREGATING_LOGS",
+        "FRAMEWORK_FAILURE",
+        "STARTING_APP_MASTER",
+        "APP_MASTER_START_FAILED",
+        "GENERATING_SECURITY_MATERIAL",
+        "CONVERTING_NOTEBOOK",
+    ]:
         """Get the state of the job.
 
         Returns:
-            `state`. Current state of the job, which can be one of the following:
-            `INITIALIZING`, `INITIALIZATION_FAILED`, `FINISHED`, `RUNNING`, `ACCEPTED`,
-            `FAILED`, `KILLED`, `NEW`, `NEW_SAVING`, `SUBMITTED`, `AGGREGATING_LOGS`,
-            `FRAMEWORK_FAILURE`, `STARTING_APP_MASTER`, `APP_MASTER_START_FAILED`,
-            `GENERATING_SECURITY_MATERIAL`, `CONVERTING_NOTEBOOK`. If no executions are found for the job,
-            a warning is raised and it returns `UNDEFINED`.
+            The current state of the job.
+            If no executions are found for the job, a warning is raised and it returns `UNDEFINED`.
         """
         last_execution = self._job_api.last_execution(self)
         if len(last_execution) != 1:
@@ -218,10 +235,8 @@ class Job:
         """Get the final state of the job.
 
         Returns:
-            `final_state`. Final state of the job, which can be one of the following:
-            `UNDEFINED`, `FINISHED`, `FAILED`, `KILLED`, `FRAMEWORK_FAILURE`,
-            `APP_MASTER_START_FAILED`, `INITIALIZATION_FAILED`. `UNDEFINED` indicates
-             that the job is still running.
+            The final state of the job.
+            `UNDEFINED` indicates that the job is still running.
         """
         last_execution = self._job_api.last_execution(self)
         if len(last_execution) != 1:
@@ -233,14 +248,15 @@ class Job:
         """Retrieves all executions for the job ordered by submission time.
 
         Returns:
-            `List[Execution]`: list of Execution objects
+            `List[Execution]`: List of Execution objects.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._execution_api._get_all(self)
 
     @usage.method_logger
-    def save(self):
+    def save(self) -> "Job":
         """Save the job.
 
         This function should be called after changing a property such as the job configuration to save it persistently.
@@ -249,18 +265,21 @@ class Job:
         job.config['appPath'] = "Resources/my_app.py"
         job.save()
         ```
+
         Returns:
-            `Job`: The updated job object.
+            The updated job object.
         """
         return self._job_api._update_job(self.name, self.config)
 
     @usage.method_logger
     def delete(self):
-        """Delete the job
-        !!! danger "Potentially dangerous operation"
+        """Delete the job.
+
+        Danger: Potentially dangerous operation
             This operation deletes the job and all executions.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._job_api._delete(self)
 
@@ -306,7 +325,7 @@ class Job:
         cron_expression: str,
         start_time: datetime = None,
         end_time: datetime = None,
-    ):
+    ) -> JobSchedule:
         """Schedule the execution of the job.
 
         If a schedule for this job already exists, the method updates it.
@@ -323,11 +342,18 @@ class Job:
         ```
 
         Parameters:
-            cron_expression: The quartz cron expression
-            start_time: The schedule start time in UTC. If None, the current time is used. The start_time can be a value in the past.
-            end_time: The schedule end time in UTC. If None, the schedule will continue running indefinitely. The end_time can be a value in the past.
+            cron_expression: The quartz cron expression.
+            start_time:
+                The schedule start time in UTC.
+                If `None`, the current time is used.
+                The `start_time` can be a value in the past.
+            end_time:
+                The schedule end time in UTC.
+                If `None`, the schedule will continue running indefinitely.
+                The `end_time` can be a value in the past.
+
         Returns:
-            `JobSchedule`: The schedule of the job
+            The schedule of the job
         """
         job_schedule = JobSchedule(
             id=self._job_schedule.id if self._job_schedule else None,
@@ -378,13 +404,14 @@ class Job:
         return self._update_schedule(job_schedule)
 
     @usage.method_logger
-    def get_alerts(self) -> List[alert.JobAlert]:
+    def get_alerts(self) -> list[alert.JobAlert]:
         """Get all alerts for the job.
 
         Returns:
-            `List[JobAlert]`: list of JobAlert objects
+            List of JobAlert objects.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._alerts_api.get_job_alerts(self._name)
 
@@ -393,11 +420,13 @@ class Job:
         """Get an alert for the job by ID.
 
         Parameters:
-            alert_id: ID of the alert
+            alert_id: ID of the alert.
+
         Returns:
-            `JobAlert`: the JobAlert object
+            The JobAlert object.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._alerts_api.get_job_alert(self._name, alert_id)
 
@@ -405,8 +434,8 @@ class Job:
     def create_alert(
         self,
         receiver: str,
-        status: str,
-        severity: str,
+        status: Literal["long_running", "failed", "finished", "killed"],
+        severity: Literal["critical", "warning", "info"],
     ) -> alert.JobAlert:
         """Create an alert for the job.
 
@@ -418,16 +447,18 @@ class Job:
             severity="critical"
         )
         ```
+
         Parameters:
-            receiver: The receiver of the alert
-            status: The status of the alert. Valid values are "long_running", "failed", "finished", "killed"
-            severity: The severity of the alert. Valid values are "critical", "warning", "info"
+            receiver: The receiver of the alert.
+            status: The status of the alert.
+            severity: The severity of the alert.
+
         Returns:
-            `JobAlert`: The created JobAlert object
+            The created JobAlert object.
+
         Raises:
-            `ValueError`: If the status is not valid.
-            `ValueError`: If the severity is not valid.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            ValueError: If `status` or `severity` is not valid.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._alerts_api.create_job_alert(self._name, receiver, status, severity)
 

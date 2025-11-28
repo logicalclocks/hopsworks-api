@@ -36,13 +36,10 @@ class SearchApi:
         filter_by: FILTER_BY_ARG = None,
         offset: int = 0,
         limit: int = 100,
-    ):
-        """
-        Search for feature groups, feature views, training datasets and features.
-        Returns matching results from all feature stores in the project including shared feature stores.
+    ) -> search_results.FeaturestoreSearchResult:
+        """Search for feature groups, feature views, training datasets and features.
 
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
@@ -53,18 +50,20 @@ class SearchApi:
 
         # get feature group instance
         featuregroup = result.featuregroups[0].get_feature_group()
-
         ```
+
         Parameters:
-            search_term: the term to search for.
-            filter_by: filter results by a specific field (default is None).
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
+            search_term: The term to search for.
+            filter_by: Filter results by a specific field.
+            offset: The number of results to skip.
+            limit: The number of search results to return.
+
         Returns:
-            `FeaturestoreSearchResult`: The results.
+            The matching results from all feature stores in the project including shared feature stores.
+
         Raises:
-            `ValueError`: If the search term is not provided or if the filter_by is not one of the allowed values.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            ValueError: If the search term is not provided or if the filter_by is not one of the allowed values.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._search(
             search_term, "ALL", filter_by=filter_by, offset=offset, limit=limit
@@ -77,10 +76,8 @@ class SearchApi:
         filter_by: FILTER_BY_ARG = None,
         offset: int = 0,
         limit: int = 100,
-    ):
-        """
-        Search for feature group.
-        Returns matching feature groups from all feature stores in the project including shared feature stores.
+    ) -> search_results.FeatureGroupSearchResult:
+        """Search for feature group.
 
         ```python
 
@@ -94,18 +91,20 @@ class SearchApi:
 
         # get feature group instance
         featuregroup = result.featuregroups[0].get_feature_group()
-
         ```
+
         Parameters:
-            search_term: the term to search for.
-            filter_by: filter results by a specific field (default is None).
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
+            search_term: The term to search for.
+            filter_by: Filter results by a specific field.
+            offset: The number of results to skip.
+            limit: The number of search results to return.
+
         Returns:
-            `FeatureGroupSearchResult`: The results.
+            The matching feature groups from all feature stores in the project including shared feature stores.
+
         Raises:
-            `ValueError`: If the search term is not provided or if the filter_by is not one of the allowed values.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            ValueError: If the search term is not provided or if the filter_by is not one of the allowed values.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return search_results.FeatureGroupSearchResult(
             self._search(
@@ -124,13 +123,10 @@ class SearchApi:
         filter_by: FILTER_BY_ARG = None,
         offset: int = 0,
         limit: int = 100,
-    ):
-        """
-        Search for feature views.
-        Returns matching feature views from all feature stores in the project including shared feature stores.
+    ) -> search_results.FeatureViewSearchResult:
+        """Search for feature views.
 
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
@@ -141,18 +137,20 @@ class SearchApi:
 
         # get feature view instance
         featureview = result.feature_views[0].get_feature_view()
-
         ```
+
         Parameters:
-            search_term: the term to search for.
-            filter_by: filter results by a specific field (default is None).
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
+            search_term: The term to search for.
+            filter_by: Filter results by a specific field (default is None).
+            offset: The number of results to skip (default is 0).
+            limit: The number of search results to return (default is 100).
+
         Returns:
-            `FeatureViewSearchResult`: The results.
+            The matching feature views from all feature stores in the project including shared feature stores.
+
         Raises:
-            `ValueError`: If the search term is not provided or if the filter_by is not one of the allowed values.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            ValueError: If the search term is not provided or if the filter_by is not one of the allowed values.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return search_results.FeatureViewSearchResult(
             self._search(
@@ -171,13 +169,10 @@ class SearchApi:
         filter_by: FILTER_BY_ARG = None,
         offset: int = 0,
         limit: int = 100,
-    ):
-        """
-        Search for training datasets.
-        Returns matching training datasets from all feature stores in the project including shared feature stores.
+    ) -> search_results.TrainingDatasetSearchResult:
+        """Search for training datasets.
 
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
@@ -188,18 +183,20 @@ class SearchApi:
 
         # get training datasets instance
         trainingdataset = result.trainingdatasets[0].get_training_dataset()
-
         ```
+
         Parameters:
-            search_term: the term to search for.
-            filter_by: filter results by a specific field (default is None).
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
+            search_term: The term to search for.
+            filter_by: Filter results by a specific field.
+            offset: The number of results to skip.
+            limit: The number of search results to return.
+
         Returns:
-            `TrainingDatasetSearchResult`: The results.
+            The matching training datasets from all feature stores in the project including shared feature stores.
+
         Raises:
-            `ValueError`: If the search term is not provided or if the filter_by is not one of the allowed values.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            ValueError: If the search term is not provided or if the filter_by is not one of the allowed values.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return search_results.TrainingDatasetSearchResult(
             self._search(
@@ -217,13 +214,10 @@ class SearchApi:
         search_term: str,
         offset: int = 0,
         limit: int = 100,
-    ):
-        """
-        Search for features.
-        Returns matching features from all feature stores in the project including shared feature stores.
+    ) -> search_results.FeatureSearchResult:
+        """Search for features.
 
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
@@ -237,17 +231,19 @@ class SearchApi:
 
         # get feature instance
         feature = result.features[0].get_feature()
-
         ```
+
         Parameters:
-            search_term: the term to search for.
-            offset: the number of results to skip (default is 0).
-            limit: the number of search results to return (default is 100).
+            search_term: The term to search for.
+            offset: The number of results to skip.
+            limit: The number of search results to return.
+
         Returns:
-            `FeatureSearchResult`: The results.
+            The matching features from all feature stores in the project including shared feature stores.
+
         Raises:
-            `ValueError`: If the search term is not provided.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            ValueError: If the search term is not provided.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         result = self._search(
             search_term, "FEATURE", filter_by=None, offset=offset, limit=limit

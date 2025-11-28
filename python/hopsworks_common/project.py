@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+from typing import Literal
 
 import humps
 from hopsworks_common import alert, client, util
@@ -111,9 +112,7 @@ class Project:
         """Kubernetes namespace used by project"""
         return self._project_namespace
 
-    def get_feature_store(
-        self, name: str | None = None
-    ):
+    def get_feature_store(self, name: str | None = None):
         """Connect to Project's Feature Store.
 
         Defaulting to the project name of default feature store. To get a
@@ -264,7 +263,7 @@ class Project:
         """Get all alerts for the project.
 
         Returns:
-            List of ProjectAlert objects.
+            List of `ProjectAlert` objects.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
@@ -282,7 +281,12 @@ class Project:
         """
         return self._alerts_api.get_alert(alert_id)
 
-    def create_job_alert(self, receiver: str, status: str, severity: str) -> alert.ProjectAlert:
+    def create_job_alert(
+        self,
+        receiver: str,
+        status: Literal["job_finished", "job_failed", "job_killed", "job_long_running"],
+        severity: Literal["critical", "warning", "info"],
+    ) -> alert.ProjectAlert:
         """Create an alert for jobs in this project.
 
         Example: Example for creating a job alert
@@ -294,20 +298,21 @@ class Project:
 
         Parameters:
             receiver: The receiver of the alert.
-            status: The status of the alert. Valid values are "job_finished", "job_failed", "job_killed", "job_long_running".
-            severity: The severity of the alert. Valid values are "critical", "warning", "info".
+            status: The status of the alert.
+            severity: The severity of the alert.
 
         Returns:
-            The created ProjectAlert object.
+            The created `ProjectAlert` object.
 
         Raises:
-            ValueError: If the status or severity is invalid.
-            ValueError: If the receiver is None.
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+            ValueError: If `status` or `severity` is invalid, also if `receiver` is `None`.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._alerts_api.create_project_alert(receiver, status, severity, "Jobs")
 
-    def create_featurestore_alert(self, receiver: str, status: str, severity: str) -> alert.ProjectAlert:
+    def create_featurestore_alert(
+        self, receiver: str, status: Literal["feature_validation_success", "feature_validation_warning", "feature_validation_failure", "feature_monitor_shift_undetected", "feature_monitor_shift_detected"], severity: Literal["critical", "warning", "info"]
+    ) -> alert.ProjectAlert:
         """Create an alert for feature validation and monitoring in this project.
 
         Example: Example for creating a featurestore alert
@@ -319,16 +324,15 @@ class Project:
 
         Parameters:
             receiver: The receiver of the alert.
-            status: The status of the alert. Valid values are "feature_validation_success", "feature_validation_warning", "feature_validation_failure", "feature_monitor_shift_undetected", "feature_monitor_shift_detected".
-            severity: The severity of the alert. Valid values are "critical", "warning", "info".
+            status: The status of the alert.
+            severity: The severity of the alert.
 
         Returns:
-            The created ProjectAlert object.
+            The created `ProjectAlert` object.
 
         Raises:
-            ValueError: If the status or severity is invalid.
-            ValueError: If the receiver is None.
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+            ValueError: If `status` or `severity` is invalid, also if `receiver` is `None`.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._alerts_api.create_project_alert(
             receiver, status, severity, "Featurestore"

@@ -36,6 +36,7 @@ import avro.schema
 import hsfs.expectation_suite
 import humps
 import pandas as pd
+from hopsworks_common.alert import FeatureGroupAlert
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core import alerts_api
 from hopsworks_common.core.constants import (
@@ -162,27 +163,30 @@ class FeatureGroupBase:
         """Initialize a feature group object.
 
         Parameters:
-            name: Name of the feature group to create
-            version: Version number of the feature group
-            featurestore_id: ID of the feature store to create the feature group in
-            location: Location to store the feature group data
-            event_time: Event time column for the feature group
-            online_enabled: Whether to enable online serving for this feature group
-            id: ID of the feature group
-            embedding_index: Embedding index configuration for vector similarity search
-            expectation_suite: Great Expectations suite for data validation
-            online_topic_name: Name of the Kafka topic for online serving
-            topic_name: Name of the Kafka topic for streaming
-            notification_topic_name: Name of the Kafka topic for notifications
-            deprecated: Whether this feature group is deprecated
-            online_config: Configuration for online serving
-            data_source: Data source configuration
-            storage_connector: Storage connector configuration
-            ttl: Time-to-live (TTL) configuration for this feature group
-            ttl_enabled: Whether to enable time-to-live (TTL) for this feature group. Defaults to True if ttl is set.
-            online_disk: Whether to enable online disk storage for this feature group. Overrides online_config.table_space.
-                Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
-            **kwargs: Additional keyword arguments
+            name: Name of the feature group to create.
+            version: Version number of the feature group.
+            featurestore_id: ID of the feature store to create the feature group in.
+            location: Location to store the feature group data.
+            event_time: Event time column for the feature group.
+            online_enabled: Whether to enable online serving for this feature group.
+            id: ID of the feature group.
+            embedding_index: Embedding index configuration for vector similarity search.
+            expectation_suite: Great Expectations suite for data validation.
+            online_topic_name: Name of the Kafka topic for online serving.
+            topic_name: Name of the Kafka topic for streaming.
+            notification_topic_name: Name of the Kafka topic for notifications.
+            deprecated: Whether this feature group is deprecated.
+            online_config: Configuration for online serving.
+            data_source: Data source configuration.
+            storage_connector: Storage connector configuration.
+            ttl: Time-to-live (TTL) configuration for this feature group.
+            ttl_enabled:
+                Whether to enable time-to-live (TTL) for this feature group.
+                Defaults to True if `ttl` is set.
+            online_disk:
+                Whether to enable online disk storage for this feature group.
+                Overrides `online_config.table_space`.
+                Defaults to using cluster wide configuration `featurestore_online_tablespace` to identify tablespace for disk storage.
         """
         self._version = version
         self._name = name
@@ -292,7 +296,7 @@ class FeatureGroupBase:
     def delete(self) -> None:
         """Drop the entire feature group along with its feature data.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -307,13 +311,11 @@ class FeatureGroupBase:
             fg.delete()
             ```
 
-        !!! danger "Potentially dangerous operation"
-            This operation drops all metadata associated with **this version** of the
-            feature group **and** all the feature data in offline and online storage
-            associated with it.
+        Danger: Potentially dangerous operation
+            This operation drops all metadata associated with **this version** of the feature group **and** all the feature data in offline and online storage associated with it.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         warnings.warn(
             "All jobs associated to feature group `{}`, version `{}` will be removed.".format(
@@ -326,17 +328,16 @@ class FeatureGroupBase:
 
     def select_all(
         self,
-        include_primary_key: Optional[bool] = True,
-        include_foreign_key: Optional[bool] = True,
-        include_partition_key: Optional[bool] = True,
-        include_event_time: Optional[bool] = True,
+        include_primary_key: bool = True,
+        include_foreign_key: bool = True,
+        include_partition_key: bool = True,
+        include_event_time: bool = True,
     ) -> query.Query:
         """Select all features along with primary key and event time from the feature group and return a query object.
 
-        The query can be used to construct joins of feature groups or create a
-        feature view.
+        The query can be used to construct joins of feature groups or create a feature view.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -350,7 +351,6 @@ class FeatureGroupBase:
 
             # show first 5 rows
             query.show(5)
-
 
             # select all features exclude primary key and event time
             from hsfs.feature import Feature
@@ -375,16 +375,13 @@ class FeatureGroupBase:
             ```
 
         Parameters:
-            include_primary_key: If True, include primary key of the feature group
-                to the feature list. Defaults to True.
-            include_foreign_key: If True, include foreign key of the feature group
-                to the feature list. Defaults to True.
-            include_partition_key: If True, include partition key of the feature group
-                to the feature list. Defaults to True.
-            include_event_time: If True, include event time of the feature group
-                to the feature list. Defaults to True.
+            include_primary_key: If `True`, include primary key of the feature group to the feature list.
+            include_foreign_key: If `True`, include foreign key of the feature group to the feature list.
+            include_partition_key: If `True`, include partition key of the feature group to the feature list.
+            include_event_time: If `True`, include event time of the feature group to the feature list.
+
         Returns:
-            `Query`. A query object with all features of the feature group.
+            A query object with all features of the feature group.
         """
         removed_keys = []
 
@@ -407,22 +404,18 @@ class FeatureGroupBase:
                 feature_store_id=self._feature_store_id,
             )
 
-    def select_features(
-        self,
-    ) -> query.Query:
+    def select_features(self) -> query.Query:
         """Select all the features in the feature group and return a query object.
 
-        Queries define the schema of Feature View objects which can be used to
-        create Training Datasets, read from the Online Feature Store, and more. They can
-        also be composed to create more complex queries using the `join` method.
+        Queries define the schema of Feature View objects which can be used to create Training Datasets, read from the Online Feature Store, and more.
+        They can also be composed to create more complex queries using the `join` method.
 
-        !!! info
-        This method does not select the primary key and event time of the feature group.
-        Use `select_all` to include them.
-        Note that primary keys do not need to be included in the query to allow joining
-        on them.
+        Info:
+            This method does not select the primary key and event time of the feature group.
+            Use `select_all` to include them.
+            Note that primary keys do not need to be included in the query to allow joining on them.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = hopsworks.login().get_feature_store()
@@ -498,11 +491,10 @@ class FeatureGroupBase:
             |     3      |     1      |     6      |     4      |     3      |
             |     1      |     2      |    18      |     9      |    20      |
             +------------+------------+------------+------------+------------+
-
             ```
 
         Returns:
-            `Query`. A query object with all features of the feature group.
+            A query object with all features of the feature group.
         """
         select_features = self.primary_key + self.foreign_key + [self.event_time]
         if not isinstance(self, ExternalFeatureGroup):
@@ -520,10 +512,9 @@ class FeatureGroupBase:
     def select(self, features: List[Union[str, feature.Feature]]) -> query.Query:
         """Select a subset of features of the feature group and return a query object.
 
-        The query can be used to construct joins of feature groups or create a
-        feature view with a subset of features of the feature group.
+        The query can be used to construct joins of feature groups or create a feature view with a subset of features of the feature group.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -548,11 +539,10 @@ class FeatureGroupBase:
             ```
 
         Parameters:
-            features: A list of `Feature` objects or feature names as
-                strings to be selected.
+            features: A list of `Feature` objects or feature names as strings to be selected.
 
         Returns:
-            `Query`: A query object with the selected features of the feature group.
+            A query object with the selected features of the feature group.
         """
         return query.Query(
             left_feature_group=self,
@@ -564,13 +554,11 @@ class FeatureGroupBase:
     def select_except(
         self, features: Optional[List[Union[str, feature.Feature]]] = None
     ) -> query.Query:
-        """Select all features including primary key and event time feature
-        of the feature group except provided `features` and return a query object.
+        """Select all features including primary key and event time feature of the feature group except provided `features` and return a query object.
 
-        The query can be used to construct joins of feature groups or create a
-        feature view with a subset of features of the feature group.
+        The query can be used to construct joins of feature groups or create a feature view with a subset of features of the feature group.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -595,12 +583,12 @@ class FeatureGroupBase:
             ```
 
         Parameters:
-            features: A list of `Feature` objects or feature names as
-                strings to be excluded from the selection. Defaults to [],
-                selecting all features.
+            features:
+                A list of `Feature` objects or feature names as strings to be excluded from the selection.
+                `None` or `[]` selects all features.
 
         Returns:
-            `Query`: A query object with the selected features of the feature group.
+            A query object with the selected features of the feature group.
         """
         if features:
             except_features = [
@@ -621,7 +609,8 @@ class FeatureGroupBase:
         """Apply filter to the feature group.
 
         Selects all features and returns the resulting `Query` with the applied filter.
-        !!! example
+
+        Example:
             ```python
             from hsfs.feature import Feature
 
@@ -634,16 +623,16 @@ class FeatureGroupBase:
             fg.filter(Feature("weekly_sales") > 1000)
             ```
 
-        If you are planning to join the filtered feature group later on with another
-        feature group, make sure to select the filtered feature explicitly from the
-        respective feature group:
-        !!! example
+        If you are planning to join the filtered feature group later on with another feature group, make sure to select the filtered feature explicitly from the respective feature group:
+
+        Example:
             ```python
             fg.filter(fg.feature1 == 1).show(10)
             ```
 
         Composite filters require parenthesis and symbols for logical operands (e.g. `&`, `|`, ...):
-        !!! example
+
+        Example:
             ```python
             fg.filter((fg.feature1 == 1) | (fg.feature2 >= 2))
             ```
@@ -652,17 +641,18 @@ class FeatureGroupBase:
             f: Filter object.
 
         Returns:
-            `Query`. The query object with the applied filter.
+            The query object with the applied filter.
         """
         return self.select_all().filter(f)
 
     def add_tag(self, name: str, value: Any) -> None:
         """Attach a tag to a feature group.
 
-        A tag consists of a <name,value> pair. Tag names are unique identifiers across the whole cluster.
-        The value of a tag can be any valid json - primitives, arrays or json objects.
+        A tag consists of a name-value pair.
+        Tag names are unique identifiers across the whole cluster.
+        The value of a tag can be any valid json -- primitives, arrays or json objects.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -678,7 +668,7 @@ class FeatureGroupBase:
             value: Value of the tag to be added.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
 
         self._feature_group_engine.add_tag(self, name, value)
@@ -686,7 +676,7 @@ class FeatureGroupBase:
     def delete_tag(self, name: str) -> None:
         """Delete a tag attached to a feature group.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -701,14 +691,14 @@ class FeatureGroupBase:
             name: Name of the tag to be removed.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._feature_group_engine.delete_tag(self, name)
 
     def get_tag(self, name: str) -> Optional[tag.Tag]:
         """Get the tags of a feature group.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -723,10 +713,10 @@ class FeatureGroupBase:
             name: Name of the tag to get.
 
         Returns:
-            tag value or `None` if it does not exist.
+            Tag value or `None` if it does not exist.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._feature_group_engine.get_tag(self, name)
 
@@ -734,53 +724,54 @@ class FeatureGroupBase:
         """Retrieves all tags attached to a feature group.
 
         Returns:
-            `Dict[str, obj]` of tags.
+            The dictionary of tags.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._feature_group_engine.get_tags(self)
 
     def get_parent_feature_groups(self) -> Optional[explicit_provenance.Links]:
         """Get the parents of this feature group, based on explicit provenance.
-        Parents are feature groups or external feature groups. These feature
-        groups can be accessible, deleted or inaccessible.
-        For deleted and inaccessible feature groups, only minimal information is
-        returned.
+
+        Parents are feature groups or external feature groups.
+        These feature groups can be accessible, deleted or inaccessible.
+        For deleted and inaccessible feature groups, only minimal information is returned.
 
         Returns:
-            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
+            Object containing the section of provenance graph requested or `None` if it does not exist.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._feature_group_engine.get_parent_feature_groups(self)
 
     def get_storage_connector_provenance(self) -> Optional[explicit_provenance.Links]:
         """Get the parents of this feature group, based on explicit provenance.
-        Parents are storage connectors. These storage connector can be accessible,
-        deleted or inaccessible.
-        For deleted and inaccessible storage connector, only minimal information is
-        returned.
+
+        Parents are storage connectors.
+        These storage connector can be accessible, deleted or inaccessible.
+        For deleted and inaccessible storage connector, only minimal information is returned.
 
         Returns:
-            `Links`: the storage connector used to generate this feature group or `None` if it does not exist.
+            The storage connector used to generate this feature group or `None` if it does not exist.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._feature_group_engine.get_storage_connector_provenance(self)
 
     def get_storage_connector(self) -> Optional["sc.StorageConnector"]:
-        """Get the storage connector using this feature group, based on explicit
-        provenance. Only the accessible storage connector is returned.
-        For more items use the base method - get_storage_connector_provenance
+        """Get the storage connector using this feature group, based on explicit provenance.
+
+        Only the accessible storage connector is returned.
+        For more items use the base method, see [`get_storage_connector_provenance`][hsfs.feature_group.FeatureGroup.get_storage_connector_provenance].
 
         Returns:
-            `StorageConnector`: Storage connector or `None` if it does not exist.
+            Storage connector or `None` if it does not exist.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         storage_connector_provenance = self.get_storage_connector_provenance()
 
@@ -798,32 +789,32 @@ class FeatureGroupBase:
             return None
 
     def get_generated_feature_views(self) -> Optional[explicit_provenance.Links]:
-        """Get the generated feature view using this feature group, based on explicit
-        provenance. These feature views can be accessible or inaccessible. Explicit
-        provenance does not track deleted generated feature view links, so deleted
-        will always be empty.
+        """Get the generated feature view using this feature group, based on explicit provenance.
+
+        These feature views can be accessible or inaccessible.
+        Explicit provenance does not track deleted generated feature view links, so deleted will always be empty.
         For inaccessible feature views, only a minimal information is returned.
 
         Returns:
-            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
+            Object containing the section of provenance graph requested or `None` if it does not exist.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._feature_group_engine.get_generated_feature_views(self)
 
     def get_generated_feature_groups(self) -> Optional[explicit_provenance.Links]:
-        """Get the generated feature groups using this feature group, based on explicit
-        provenance. These feature groups can be accessible or inaccessible. Explicit
-        provenance does not track deleted generated feature group links, so deleted
-        will always be empty.
+        """Get the generated feature groups using this feature group, based on explicit provenance.
+
+        These feature groups can be accessible or inaccessible.
+        Explicit provenance does not track deleted generated feature group links, so deleted will always be empty.
         For inaccessible feature groups, only a minimal information is returned.
 
         Returns:
-            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
+            Object containing the section of provenance graph requested or `None` if it does not exist.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._feature_group_engine.get_generated_feature_groups(self)
 
@@ -832,7 +823,7 @@ class FeatureGroupBase:
 
         There are several ways to access features of a feature group:
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -846,18 +837,16 @@ class FeatureGroupBase:
             fg.get_feature("feature1")
             ```
 
-        !!! note
-            Attribute access to features works only for non-reserved names. For example
-            features named `id` or `name` will not be accessible via `fg.name`, instead
-            this will return the name of the feature group itself. Fall back on using
-            the `get_feature` method.
+        Note:
+            Attribute access to features works only for non-reserved names.
+            For example, features named `id` or `name` will not be accessible via `fg.name`, instead this will return the name of the feature group itself.
+            Fall back on using the `get_feature` method.
 
-        # Arguments:
+        Parameters:
             name: The name of the feature to retrieve
 
-        # Returns:
-            Feature: The feature object or `None` if it does not exist.
-
+        Returns:
+            The feature object or `None` if it does not exist.
         """
         try:
             return self.__getitem__(name)
@@ -869,10 +858,9 @@ class FeatureGroupBase:
     ) -> Union[FeatureGroup, ExternalFeatureGroup, SpineGroup, FeatureGroupBase]:
         """Update the statistics configuration of the feature group.
 
-        Change the `statistics_config` object and persist the changes by calling
-        this method.
+        Change the `statistics_config` object and persist the changes by calling this method.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -884,11 +872,11 @@ class FeatureGroupBase:
             ```
 
         Returns:
-            `FeatureGroup`. The updated metadata object of the feature group.
+            The updated metadata object of the feature group.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-            `hopsworks.client.exceptions.FeatureStoreException`: If statistics are not supported for this feature group type
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.FeatureStoreException: If statistics are not supported for this feature group type.
         """
         self._check_statistics_support()  # raises an error if stats not supported
         self._feature_group_engine.update_statistics_config(self)
@@ -899,7 +887,7 @@ class FeatureGroupBase:
     ) -> Union[FeatureGroupBase, FeatureGroup, ExternalFeatureGroup, SpineGroup]:
         """Update the description of the feature group.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -910,18 +898,18 @@ class FeatureGroupBase:
             fg.update_description(description="Much better description.")
             ```
 
-        !!! info "Safe update"
-            This method updates the feature group description safely. In case of failure
-            your local metadata object will keep the old description.
+        Inof: Safe update
+            This method updates the feature group description safely.
+            In case of failure your local metadata object will keep the old description.
 
         Parameters:
             description: New description string.
 
         Returns:
-            `FeatureGroup`. The updated feature group object.
+            The updated feature group object.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._feature_group_engine.update_description(self, description)
         return self
@@ -931,7 +919,7 @@ class FeatureGroupBase:
     ) -> Union[FeatureGroupBase, ExternalFeatureGroup, SpineGroup, FeatureGroup]:
         """Update the notification topic name of the feature group.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -942,19 +930,20 @@ class FeatureGroupBase:
             fg.update_notification_topic_name(notification_topic_name="notification_topic_name")
             ```
 
-        !!! info "Safe update"
-            This method updates the feature group notification topic name safely. In case of failure
-            your local metadata object will keep the old notification topic name.
+        Info: Safe update
+            This method updates the feature group notification topic name safely.
+            In case of failure your local metadata object will keep the old notification topic name.
 
         Parameters:
-            notification_topic_name: Name of the topic used for sending notifications when entries
-                are inserted or updated on the online feature store. If set to None no notifications are sent.
+            notification_topic_name:
+                Name of the topic used for sending notifications when entries are inserted or updated on the online feature store.
+                If set to None no notifications are sent.
 
         Returns:
-            `FeatureGroup`. The updated feature group object.
+            The updated feature group object.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._feature_group_engine.update_notification_topic_name(
             self, notification_topic_name
@@ -966,7 +955,7 @@ class FeatureGroupBase:
     ) -> Union[FeatureGroupBase, FeatureGroup, ExternalFeatureGroup, SpineGroup]:
         """Deprecate the feature group.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -977,18 +966,18 @@ class FeatureGroupBase:
             fg.update_deprecated(deprecate=True)
             ```
 
-        !!! info "Safe update"
-            This method updates the feature group safely. In case of failure
-            your local metadata object will be kept unchanged.
+        Info: Safe update
+            This method updates the feature group safely.
+            In case of failure your local metadata object will be kept unchanged.
 
         Parameters:
-            deprecate: Boolean value identifying if the feature group should be deprecated. Defaults to True.
+            deprecate: Whether the feature group should be deprecated.
 
         Returns:
-            `FeatureGroup`. The updated feature group object.
+            The updated feature group object.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._feature_group_engine.update_deprecated(self, deprecate)
         return self
@@ -1000,20 +989,17 @@ class FeatureGroupBase:
 
         Currently it's only supported to update the description of a feature.
 
-        !!! danger "Unsafe update"
-            Note that if you use an existing `Feature` object of the schema in the
-            feature group metadata object, this might leave your metadata object in a
-            corrupted state if the update fails.
+        Danger: Unsafe update
+            Note that if you use an existing `Feature` object of the schema in the feature group metadata object, this might leave your metadata object in a corrupted state if the update fails.
 
         Parameters:
-            features: `Feature` or list of features. A feature object or list thereof to
-                be updated.
+            features: A feature object or list thereof to be updated.
 
         Returns:
-            `FeatureGroup`. The updated feature group object.
+            The updated feature group object.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         new_features = []
         if isinstance(features, feature.Feature):
@@ -1042,7 +1028,7 @@ class FeatureGroupBase:
     ) -> Union[FeatureGroupBase, FeatureGroup, ExternalFeatureGroup, SpineGroup]:
         """Update the description of a single feature in this feature group.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -1050,11 +1036,13 @@ class FeatureGroupBase:
             # get the Feature Group instance
             fg = fs.get_or_create_feature_group(...)
 
-            fg.update_feature_description(feature_name="min_temp",
-                                          description="Much better feature description.")
+            fg.update_feature_description(
+                feature_name="min_temp",
+                description="Much better feature description.",
+            )
             ```
 
-        !!! info "Safe update"
+        Info: Safe update
             This method updates the feature description safely. In case of failure
             your local metadata object will keep the old description.
 
@@ -1063,10 +1051,10 @@ class FeatureGroupBase:
             description: New description string.
 
         Returns:
-            `FeatureGroup`. The updated feature group object.
+            The updated feature group object.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         f_copy = copy.deepcopy(self[feature_name])
         f_copy.description = description
@@ -1078,7 +1066,7 @@ class FeatureGroupBase:
     ) -> Union[FeatureGroupBase, FeatureGroup, ExternalFeatureGroup, SpineGroup]:
         """Append features to the schema of the feature group.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -1095,25 +1083,23 @@ class FeatureGroupBase:
             fg.append_features(features)
             ```
 
-        !!! info "Safe append"
+        Info: Safe append
             This method appends the features to the feature group description safely.
-            In case of failure your local metadata object will contain the correct
-            schema.
+            In case of failure your local metadata object will contain the correct schema.
 
-        It is only possible to append features to a feature group. Removing
-        features is considered a breaking change. Note that feature views built on
-        top of this feature group will not read appended feature data. Create a new
-        feature view based on an updated query via `fg.select` to include the new features.
+        It is only possible to append features to a feature group.
+        Removing features is considered a breaking change.
+        Note that feature views built on top of this feature group will not read appended feature data.
+        Create a new feature view based on an updated query via `fg.select` to include the new features.
 
         Parameters:
-            features: Feature or list. A feature object or list thereof to append to
-                the schema of the feature group.
+            features: A feature object or list thereof to append to the schema of the feature group.
 
         Returns:
-            `FeatureGroup`. The updated feature group object.
+            The updated feature group object.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         new_features = []
         if isinstance(features, feature.Feature):
@@ -1146,7 +1132,7 @@ class FeatureGroupBase:
     ]:
         """Return the expectation suite attached to the feature group if it exists.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -1158,16 +1144,15 @@ class FeatureGroupBase:
             ```
 
         Parameters:
-            ge_type: If `True` returns a native Great Expectation type, Hopsworks
-                custom type otherwise. Conversion can be performed via the `to_ge_type()`
-                method on hopsworks type. Defaults to `True` if Great Expectations is installed,
-                else `False`.
+            ge_type:
+                If `True` returns a native Great Expectation type, Hopsworks custom type otherwise.
+                Conversion can be performed via the `to_ge_type()` method on hopsworks type.
 
         Returns:
-            `ExpectationSuite`. The expectation suite attached to the feature group or `None` if it does not exist.
+            The expectation suite attached to the feature group or `None` if it does not exist.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         # Avoid throwing an error if Feature Group not initialised.
         if self._id:
@@ -1191,11 +1176,12 @@ class FeatureGroupBase:
         hsfs.expectation_suite.ExpectationSuite,
         great_expectations.core.ExpectationSuite,
     ]:
-        """Attach an expectation suite to a feature group and saves it for future use. If an expectation
-        suite is already attached, it is replaced. Note that the provided expectation suite is modified
-        inplace to include expectationId fields.
+        """Attach an expectation suite to a feature group and saves it for future use.
 
-        !!! example
+        If an expectation suite is already attached, it is replaced.
+        Note that the provided expectation suite is modified inplace to include expectationId fields.
+
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -1208,15 +1194,18 @@ class FeatureGroupBase:
 
         Parameters:
             expectation_suite: The expectation suite to attach to the Feature Group.
-            overwrite: If an Expectation Suite is already attached, overwrite it.
+            overwrite:
+                If an Expectation Suite is already attached, overwrite it.
                 The new suite will have its own validation history, but former reports are preserved.
-            run_validation: Set whether the expectation_suite will run on ingestion
-            validation_ingestion_policy: Set the policy for ingestion to the Feature Group.
+            run_validation: Set whether the expectation_suite will run on ingestion.
+            validation_ingestion_policy:
+                Set the policy for ingestion to the Feature Group.
+
                 - "STRICT" only allows DataFrame passing validation to be inserted into Feature Group.
                 - "ALWAYS" always insert the DataFrame to the Feature Group, irrespective of overall validation result.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         if HAS_GREAT_EXPECTATIONS and isinstance(
             expectation_suite, great_expectations.core.ExpectationSuite
@@ -1259,7 +1248,7 @@ class FeatureGroupBase:
     def delete_expectation_suite(self) -> None:
         """Delete the expectation suite attached to the Feature Group.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -1271,7 +1260,7 @@ class FeatureGroupBase:
             ```
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         if self.get_expectation_suite() is not None:
             self._expectation_suite_engine.delete(self._expectation_suite.id)
@@ -1284,7 +1273,7 @@ class FeatureGroupBase:
     ]:
         """Return the latest validation report attached to the Feature Group if it exists.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -1296,16 +1285,15 @@ class FeatureGroupBase:
             ```
 
         Parameters:
-            ge_type: If `True` returns a native Great Expectation type, Hopsworks
-                custom type otherwise. Conversion can be performed via the `to_ge_type()`
-                method on hopsworks type. Defaults to `True` if Great Expectations is installed,
-                else `False`.
+            ge_type:
+                If `True` returns a native Great Expectation type, Hopsworks custom type otherwise.
+                Conversion can be performed via the `to_ge_type()` method on hopsworks type.
 
         Returns:
-            `ValidationReport`. The latest validation report attached to the Feature Group or `None` if it does not exist.
+            The latest validation report attached to the Feature Group or `None` if it does not exist.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._validation_report_engine.get_last(ge_type=ge_type)
 
@@ -1318,7 +1306,7 @@ class FeatureGroupBase:
     ]:
         """Return the latest validation report attached to the feature group if it exists.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -1330,17 +1318,15 @@ class FeatureGroupBase:
             ```
 
         Parameters:
-            ge_type: If `True` returns a native Great Expectation type, Hopsworks
-                custom type otherwise. Conversion can be performed via the `to_ge_type()`
-                method on hopsworks type. Defaults to `True` if Great Expectations is installed,
-                else `False`.
-
+            ge_type:
+                If `True` returns a native Great Expectation type, Hopsworks custom type otherwise.
+                Conversion can be performed via the `to_ge_type()` method on hopsworks type.
         Returns:
-            Union[List[`ValidationReport`], `ValidationReport`]. All validation reports attached to the feature group.
+            All validation reports attached to the feature group.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-            `hopsworks.client.exceptions.FeatureStoreException`: If feature group is not registered with Hopsworks
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.FeatureStoreException: If feature group is not registered with Hopsworks.
         """
         if self._id:
             return self._validation_report_engine.get_all(ge_type=ge_type)
@@ -1356,14 +1342,16 @@ class FeatureGroupBase:
             ValidationReport,
             great_expectations.core.expectation_validation_result.ExpectationSuiteValidationResult,
         ],
-        ingestion_result: Literal["unknown", "experiment", "fg_data"] = "UNKNOWN",
+        ingestion_result: Literal[
+            "UNKNOWN", "INGESTED", "REJECTED", "EXPERIMENT", "FG_DATA"
+        ] = "UNKNOWN",
         ge_type: bool = HAS_GREAT_EXPECTATIONS,
     ) -> Union[
         ValidationReport, great_expectations.core.ExpectationSuiteValidationResult
     ]:
         """Save validation report to hopsworks platform along previous reports of the same Feature Group.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -1380,20 +1368,17 @@ class FeatureGroupBase:
 
         Parameters:
             validation_report: The validation report to attach to the Feature Group.
-            ingestion_result: Specify the fate of the associated data, defaults
-                to "UNKNOWN". Supported options are  "UNKNOWN", "INGESTED", "REJECTED",
-                "EXPERIMENT", "FG_DATA". Use "INGESTED" or "REJECTED" for validation
-                of DataFrames to be inserted in the Feature Group. Use "EXPERIMENT"
-                for testing and development and "FG_DATA" when validating data
-                already in the Feature Group.
-            ge_type: If `True` returns a native Great Expectation type, Hopsworks
-                custom type otherwise. Conversion can be performed via the `to_ge_type()`
-                method on hopsworks type. Defaults to `True` if Great Expectations is installed,
-                else `False`.
+            ingestion_result:
+                Specify the fate of the associated data, defaults to `"UNKNOWN"`.
+                Use `"INGESTED"` or `"REJECTED"` for validation of DataFrames to be inserted in the Feature Group.
+                Use `"EXPERIMENT"` for testing and development and `"FG_DATA"` when validating data already in the Feature Group.
+            ge_type:
+                If `True` returns a native Great Expectation type, Hopsworks custom type otherwise.
+                Conversion can be performed via the `to_ge_type()` method on hopsworks type.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-            `hopsworks.client.exceptions.FeatureStoreException`: If feature group is not registered with Hopsworks
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.FeatureStoreException: If feature group is not registered with Hopsworks.
         """
         if self._id:
             if HAS_GREAT_EXPECTATIONS and isinstance(
@@ -1427,7 +1412,7 @@ class FeatureGroupBase:
         start_validation_time: Union[str, int, datetime, date, None] = None,
         end_validation_time: Union[str, int, datetime, date, None] = None,
         filter_by: List[
-            Literal["ingested", "rejected", "unknown", "fg_data", "experiment"]
+            Literal["INGESTED", "REJECTED", "FG_DATA", "EXPERIMENT", "UNKNOWN"]
         ] = None,
         ge_type: bool = HAS_GREAT_EXPECTATIONS,
     ) -> Union[
@@ -1436,34 +1421,37 @@ class FeatureGroupBase:
     ]:
         """Fetch validation history of an Expectation specified by its id.
 
-        !!! example
-        ```python3
-        validation_history = fg.get_validation_history(
-            expectation_id=1,
-            filter_by=["REJECTED", "UNKNOWN"],
-            start_validation_time="2022-01-01 00:00:00",
-            end_validation_time=datetime.datetime.now(),
-            ge_type=False
-        )
-        ```
+        Example:
+            ```python3
+            validation_history = fg.get_validation_history(
+                expectation_id=1,
+                filter_by=["REJECTED", "UNKNOWN"],
+                start_validation_time="2022-01-01 00:00:00",
+                end_validation_time=datetime.datetime.now(),
+                ge_type=False,
+            )
+            ```
 
         Parameters:
-            expectation_id: id of the Expectation for which to fetch the validation history
-            filter_by: list of ingestion_result category to keep. Ooptions are "INGESTED", "REJECTED", "FG_DATA", "EXPERIMENT", "UNKNOWN".
-            start_validation_time: fetch only validation result posterior to the provided time, inclusive.
-            Supported format include timestamps(int), datetime, date or string formatted to be datutils parsable. See examples above.
-            end_validation_time: fetch only validation result prior to the provided time, inclusive.
-            Supported format include timestamps(int), datetime, date or string formatted to be datutils parsable. See examples above.
-            ge_type: If `True` returns a native Great Expectation type, Hopsworks
-                custom type otherwise. Conversion can be performed via the `to_ge_type()`
-                method on hopsworks type. Defaults to `True` if Great Expectations is installed,
-                else `False`.
+            expectation_id: ID of the Expectation for which to fetch the validation history.
+            filter_by: List of ingestion_result category to keep.
+            start_validation_time:
+                Fetch only validation result posterior to the provided time, inclusive.
+                Supported format include timestamps(int), datetime, date or string formatted to be datutils parsable.
+                See examples above.
+            end_validation_time:
+                Fetch only validation result prior to the provided time, inclusive.
+                Supported format include timestamps(int), datetime, date or string formatted to be datutils parsable.
+                See examples above.
+            ge_type:
+                If `True` returns a native Great Expectation type, Hopsworks custom type otherwise.
+                Conversion can be performed via the `to_ge_type()` method on hopsworks type.
 
         Returns:
-            Union[List[`ValidationResult`], List[`ExpectationValidationResult`]] A list of validation result connected to the expectation_id
+            A list of validation result connected to the expectation_id
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         if self._id:
             return self._validation_result_engine.get_validation_history(
@@ -1485,11 +1473,11 @@ class FeatureGroupBase:
             Union[pd.DataFrame, TypeVar("pyspark.sql.DataFrame")]  # noqa: F821
         ] = None,
         expectation_suite: Optional[hsfs.expectation_suite.ExpectationSuite] = None,
-        save_report: Optional[bool] = False,
+        save_report: bool = False,
         validation_options: Optional[Dict[str, Any]] = None,
         ingestion_result: Literal[
-            "unknown", "ingested", "rejected", "fg_data", "experiement"
-        ] = "unknown",
+            "UNKNOWN", "INGESTED", "REJECTED", "EXPERIMENT", "FG_DATA"
+        ] = "UNKNOWN",
         ge_type: bool = True,
     ) -> Union[
         great_expectations.core.ExpectationSuiteValidationResult, ValidationReport, None
@@ -1499,7 +1487,7 @@ class FeatureGroupBase:
         Runs the expectation suite attached to the feature group against the provided dataframe.
         Raise an error if the great_expectations package is not installed.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -1512,23 +1500,24 @@ class FeatureGroupBase:
 
         Parameters:
             dataframe: The dataframe to run the data validation expectations against.
-            expectation_suite: Optionally provide an Expectation Suite to override the
-                one that is possibly attached to the feature group. This is useful for
-                testing new Expectation suites. When an extra suite is provided, the results
-                will never be persisted. Defaults to `None`.
-            validation_options: Additional validation options as key-value pairs, defaults to `{}`.
-                * key `run_validation` boolean value, set to `False` to skip validation temporarily on ingestion.
-                * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
-            ingestion_result: Specify the fate of the associated data, defaults
-                to "UNKNOWN". Supported options are  "UNKNOWN", "INGESTED", "REJECTED",
-                "EXPERIMENT", "FG_DATA". Use "INGESTED" or "REJECTED" for validation
-                of DataFrames to be inserted in the Feature Group. Use "EXPERIMENT"
-                for testing and development and "FG_DATA" when validating data
-                already in the Feature Group.
-            save_report: Whether to save the report to the backend. This is only possible if the Expectation suite
-                is initialised and attached to the Feature Group. Defaults to False.
+            expectation_suite:
+                Optionally provide an Expectation Suite to override the one that is possibly attached to the feature group.
+                This is useful for testing new Expectation suites.
+                When an extra suite is provided, the results will never be persisted.
+            validation_options:
+                Additional validation options as key-value pairs.
+
+                - Key `"run_validation"` is a boolean value, set to `False` to skip validation temporarily on ingestion.
+                - Key `"ge_validate_kwargs"` is a dictionary containing kwargs for the validate method of Great Expectations.
+
+            ingestion_result:
+                Specify the fate of the associated data.
+                Use `"INGESTED"` or `"REJECTED"` for validation of DataFrames to be inserted in the Feature Group.
+                Use `"EXPERIMENT"` for testing and development and `"FG_DATA"` when validating data already in the Feature Group.
+            save_report:
+                Whether to save the report to the backend.
+                This is only possible if the Expectation suite is initialised and attached to the Feature Group.
             ge_type: Whether to return a Great Expectations object or Hopsworks own abstraction.
-                Defaults to `True` if Great Expectations is installed, else `False`.
 
         Returns:
             A Validation Report produced by Great Expectations.
@@ -1576,12 +1565,12 @@ class FeatureGroupBase:
         config_id: Optional[int] = None,
     ) -> Union[fmc.FeatureMonitoringConfig, List[fmc.FeatureMonitoringConfig], None]:
         """Fetch all feature monitoring configs attached to the feature group, or fetch by name or feature name only.
-        If no arguments is provided the method will return all feature monitoring configs
-        attached to the feature group, meaning all feature monitoring configs that are attach
-        to a feature in the feature group. If you wish to fetch a single config, provide the
-        its name. If you wish to fetch all configs attached to a particular feature, provide
-        the feature name.
-        !!! example
+
+        If no arguments are provided the method will return all feature monitoring configs attached to the feature group, meaning all feature monitoring configs that are attach to a feature in the feature group.
+        If you wish to fetch a single config, provide the its name.
+        If you wish to fetch all configs attached to a particular feature, provide the feature name.
+
+        Example:
             ```python3
             # fetch your feature group
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -1601,22 +1590,18 @@ class FeatureGroupBase:
 
         Parameters:
             name: If provided fetch only the feature monitoring config with the given name.
-                Defaults to None.
             feature_name: If provided, fetch only configs attached to a particular feature.
-                Defaults to None.
             config_id: If provided, fetch only the feature monitoring config with the given id.
-                Defaults to None.
 
         Returns:
-            Union[`FeatureMonitoringConfig`, List[`FeatureMonitoringConfig`], None]
-                A list of feature monitoring configs. If name provided,
-                returns either a single config or `None` if not found.
+            A list of feature monitoring configs.
+            If `name` is provided, returns either a single config or `None` if not found.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-            `hopsworks.client.exceptions.FeatureStoreException`: If feature group is not registered with Hopsworks
-            `ValueError`: if both name and feature_name are provided.
-            `TypeError`: if name or feature_name are not string or None.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.FeatureStoreException: If feature group is not registered with Hopsworks.
+            ValueError: If both name and feature_name are provided.
+            TypeError: If name or feature_name are not string or None.
         """
         if not self._id:
             raise FeatureStoreException(
@@ -1635,11 +1620,11 @@ class FeatureGroupBase:
         config_id: Optional[int] = None,
         start_time: Optional[Union[int, str, datetime, date]] = None,
         end_time: Optional[Union[int, str, datetime, date]] = None,
-        with_statistics: Optional[bool] = True,
+        with_statistics: bool = True,
     ) -> List[fmr.FeatureMonitoringResult]:
         """Fetch feature monitoring history for a given feature monitoring config.
 
-        !!! example
+        Example:
             ```python3
             # fetch your feature group
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -1661,27 +1646,21 @@ class FeatureGroupBase:
 
         Parameters:
             config_name: The name of the feature monitoring config to fetch history for.
-                Defaults to None.
             config_id: The id of the feature monitoring config to fetch history for.
-                Defaults to None.
             start_time: The start date of the feature monitoring history to fetch.
-                Defaults to None.
             end_time: The end date of the feature monitoring history to fetch.
-                Defaults to None.
-            with_statistics: Whether to include statistics in the feature monitoring history.
-                Defaults to True. If False, only metadata about the monitoring will be fetched.
+            with_statistics:
+                Whether to include statistics in the feature monitoring history.
+                If `False`, only metadata about the monitoring will be fetched.
 
         Returns:
-            List[`FeatureMonitoringResult`]
-                A list of feature monitoring results containing the monitoring metadata
-                as well as the computed statistics for the detection and reference window
-                if requested.
+            A list of feature monitoring results containing the monitoring metadata as well as the computed statistics for the detection and reference window if requested.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-            `hopsworks.client.exceptions.FeatureStoreException`: If feature group is not registered with Hopsworks
-            `ValueError`: if both config_name and config_id are provided.
-            `TypeError`: if config_name or config_id are not respectively string, int or None.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.FeatureStoreException: If feature group is not registered with Hopsworks.
+            ValueError: If both config_name and config_id are provided.
+            TypeError: If config_name or config_id are not respectively string, int or None.
         """
         if not self._id:
             raise FeatureStoreException(
@@ -1707,10 +1686,10 @@ class FeatureGroupBase:
     ) -> fmc.FeatureMonitoringConfig:
         """Run a job to compute statistics on snapshot of feature data on a schedule.
 
-        !!! experimental
+        Experimental:
             Public API is subject to change, this feature is not suitable for production use-cases.
 
-        !!! example
+        Example:
             ```python3
             # fetch feature group
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -1729,23 +1708,26 @@ class FeatureGroupBase:
             ```
 
         Parameters:
-            name: Name of the feature monitoring configuration.
-                name must be unique for all configurations attached to the feature group.
-            feature_name: Name of the feature to monitor. If not specified, statistics
-                will be computed for all features.
+            name:
+                Name of the feature monitoring configuration.
+                The name must be unique for all configurations attached to the feature group.
+            feature_name:
+                Name of the feature to monitor.
+                If not specified, statistics will be computed for all features.
             description: Description of the feature monitoring configuration.
             start_date_time: Start date and time from which to start computing statistics.
             end_date_time: End date and time at which to stop computing statistics.
-            cron_expression: Cron expression to use to schedule the job. The cron expression
-                must be in UTC and follow the Quartz specification. Default is '0 0 12 ? * * *',
-                every day at 12pm UTC.
+            cron_expression:
+                Cron expression to use to schedule the job.
+                The cron expression must be in UTC and follow the Quartz specification.
+                The default value means "every day at 12pm UTC".
 
         Returns:
-            `FeatureMonitoringConfig` Configuration with minimal information about the feature monitoring.
-                Additional information are required before feature monitoring is enabled.
+            Configuration with minimal information about the feature monitoring.
+            Additional information are required before feature monitoring is enabled.
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If feature group is not registered with Hopsworks
+            hopsworks.client.exceptions.FeatureStoreException: If feature group is not registered with Hopsworks.
         """
         if not self._id:
             raise FeatureStoreException(
@@ -1773,10 +1755,10 @@ class FeatureGroupBase:
     ) -> fmc.FeatureMonitoringConfig:
         """Enable feature monitoring to compare statistics on snapshots of feature data over time.
 
-        !!! experimental
+        Experimental:
             Public API is subject to change, this feature is not suitable for production use-cases.
 
-        !!! example
+        Example:
             ```python3
             # fetch feature group
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -1802,22 +1784,24 @@ class FeatureGroupBase:
             ```
 
         Parameters:
-            name: Name of the feature monitoring configuration.
-                name must be unique for all configurations attached to the feature group.
+            name:
+                Name of the feature monitoring configuration.
+                The name must be unique for all configurations attached to the feature group.
             feature_name: Name of the feature to monitor.
             description: Description of the feature monitoring configuration.
             start_date_time: Start date and time from which to start computing statistics.
             end_date_time: End date and time at which to stop computing statistics.
-            cron_expression: Cron expression to use to schedule the job. The cron expression
-                must be in UTC and follow the Quartz specification. Default is '0 0 12 ? * * *',
-                every day at 12pm UTC.
+            cron_expression:
+                Cron expression to use to schedule the job.
+                The cron expression must be in UTC and follow the Quartz specification.
+                The default value means "every day at 12pm UTC".
 
         Returns:
-            `FeatureMonitoringConfig` Configuration with minimal information about the feature monitoring.
-                Additional information are required before feature monitoring is enabled.
+            Configuration with minimal information about the feature monitoring.
+            Additional information are required before feature monitoring is enabled.
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If feature group is not registered with Hopsworks
+            hopsworks.client.exceptions.FeatureStoreException: If feature group is not registered with Hopsworks.
         """
         if not self._id:
             raise FeatureStoreException(
@@ -1858,11 +1842,10 @@ class FeatureGroupBase:
 
     @property
     def statistics_config(self) -> StatisticsConfig:
-        """Statistics configuration object defining the settings for statistics
-        computation of the feature group.
+        """Statistics configuration object defining the settings for statistics computation of the feature group.
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If statistics are not supported for this feature group type
+            hopsworks.client.exceptions.FeatureStoreException: If statistics are not supported for this feature group type.
         """
         self._check_statistics_support()  # raises an error if stats not supported
         return self._statistics_config
@@ -1889,19 +1872,17 @@ class FeatureGroupBase:
             )
 
     def get_latest_online_ingestion(self) -> online_ingestion.OnlineIngestion:
-        """
-        Retrieve the latest online ingestion operation for this feature group.
+        """Retrieve the latest online ingestion operation for this feature group.
 
-        This method fetches metadata about the most recent online ingestion job,
-        including its status and progress, if available.
+        This method fetches metadata about the most recent online ingestion job, including its status and progress, if available.
 
         Returns:
-            `OnlineIngestion`: The latest OnlineIngestion object for this feature group.
+            The latest OnlineIngestion object for this feature group.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
 
-        !!! example
+        Example:
             ```python
             fg = fs.get_feature_group("my_fg", 1)
             latest_ingestion = fg.get_latest_online_ingestion()
@@ -1912,22 +1893,20 @@ class FeatureGroupBase:
         )
 
     def get_online_ingestion(self, id) -> online_ingestion.OnlineIngestion:
-        """
-        Retrieve a specific online ingestion operation by its ID for this feature group.
+        """Retrieve a specific online ingestion operation by its ID for this feature group.
 
-        This method fetches metadata about a particular online ingestion job,
-        including its status and progress, if available.
+        This method fetches metadata about a particular online ingestion job, including its status and progress, if available.
 
         Parameters:
             id: The unique identifier of the online ingestion operation.
 
         Returns:
-            `OnlineIngestion`: The OnlineIngestion object with the specified ID.
+            The OnlineIngestion object with the specified ID.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
 
-        !!! example
+        Example:
             ```python
             fg = fs.get_feature_group("my_fg", 1)
             ingestion = fg.get_online_ingestion(123)
@@ -1980,7 +1959,7 @@ class FeatureGroupBase:
         """Get the latest computed statistics for the whole feature group.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._check_statistics_support()  # raises an error if stats not supported
         return self._statistics_engine.get(self)
@@ -2005,7 +1984,7 @@ class FeatureGroupBase:
 
         If `computation_time` is `None`, the most recent statistics are returned.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -2017,16 +1996,17 @@ class FeatureGroupBase:
             ```
 
         Parameters:
-            computation_time: Date and time when statistics were computed. Defaults to `None`. Strings should
-                be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`,
-                or `%Y-%m-%d %H:%M:%S.%f`.
+            computation_time:
+                Date and time when statistics were computed.
+                Strings should be formatted in one of the following formats: `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
             feature_names: List of feature names of which statistics are retrieved.
+
         Returns:
             `Statistics`. Statistics object or `None` if it does not exist.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-            `hopsworks.client.exceptions.FeatureStoreException`: If statistics are not supported for this feature group type
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.FeatureStoreException: If statistics are not supported for this feature group type.
         """
         self._check_statistics_support()  # raises an error if stats not supported
         return self._statistics_engine.get(
@@ -2042,7 +2022,7 @@ class FeatureGroupBase:
 
         If `computation_time` is `None`, all the statistics metadata are returned.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -2054,17 +2034,17 @@ class FeatureGroupBase:
             ```
 
         Parameters:
-            computation_time: Date and time when statistics were computed. Defaults to `None`. Strings should
-                be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`,
-                or `%Y-%m-%d %H:%M:%S.%f`.
+            computation_time:
+                Date and time when statistics were computed.
+                Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
             feature_names: List of feature names of which statistics are retrieved.
 
         Returns:
-            `Statistics`. Statistics object or `None` if it does not exist.
+            Statistics object or `None` if it does not exist.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-            `hopsworks.client.exceptions.FeatureStoreException`: If statistics are not supported for this feature group type
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.FeatureStoreException: If statistics are not supported for this feature group type.
         """
         self._check_statistics_support()  # raises an error if stats not supported
         return self._statistics_engine.get_all(
@@ -2072,12 +2052,11 @@ class FeatureGroupBase:
         )
 
     def compute_statistics(self) -> None:
-        """Recompute the statistics for the feature group and save them to the
-        feature store.
-        Statistics are only computed for data in the offline storage of the feature
-        group.
+        """Recompute the statistics for the feature group and save them to the feature store.
 
-        !!! example
+        Statistics are only computed for data in the offline storage of the feature group.
+
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -2088,12 +2067,9 @@ class FeatureGroupBase:
             statistics_metadata = fg.compute_statistics()
             ```
 
-        Returns:
-            `Statistics`. The statistics metadata object.
-
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-            `hopsworks.client.exceptions.FeatureStoreException`: If statistics are not supported for this feature group type
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.FeatureStoreException: If statistics are not supported for this feature group type.
         """
         self._check_statistics_support()  # raises an error if stats not supported
         if self.statistics_config.enabled:
@@ -2111,15 +2087,16 @@ class FeatureGroupBase:
                 stacklevel=1,
             )
 
-    def get_alerts(self):
+    def get_alerts(self) -> List[FeatureGroupAlert]:
         """Get all alerts for this feature group.
 
         Returns:
-            `List[FeatureGroupAlert]`: The list of FeatureGroupAlerts.
-        Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            The list of FeatureGroupAlerts.
 
-        !!! Example
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+
+        Example:
             ```python
             # Get all alerts
             alerts = fg.get_alerts()
@@ -2130,17 +2107,19 @@ class FeatureGroupBase:
             feature_group_id=self._id,
         )
 
-    def get_alert(self, alert_id: int):
+    def get_alert(self, alert_id: int) -> FeatureGroupAlert:
         """Get an alert for this feature group by ID.
 
         Parameters:
-            alert_id: The id of the alert to get.
-        Returns:
-            `FeatureGroupAlert`: The FeatureGroupAlert object.
-        Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            alert_id: The ID of the alert to get.
 
-        !!! Example
+        Returns:
+            The FeatureGroupAlert object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+
+        Example:
             ```python
             # Get a specific alert
             alert = fg.get_alert(alert_id=1)
@@ -2155,23 +2134,31 @@ class FeatureGroupBase:
     def create_alert(
         self,
         receiver: str,
-        status: str,
-        severity: str,
-    ):
+        status: Literal[
+            "feature_validation_success",
+            "feature_validation_warning",
+            "feature_validation_failure",
+            "feature_monitor_shift_undetected",
+            "feature_monitor_shift_detected",
+        ],
+        severity: Literal["info", "warning", "critical"],
+    ) -> FeatureGroupAlert:
         """Create an alert for this feature group.
 
         Parameters:
-            receiver: str. The receiver of the alert.
-            status: str. The status that will trigger the alert. Can be "feature_validation_success", "feature_validation_warning", "feature_validation_failure", "feature_monitor_shift_undetected", "feature_monitor_shift_detected".
-            severity: str. The severity of the alert. Can be "info", "warning" or "critical".
+            receiver: The receiver of the alert.
+            status: The status that will trigger the alert.
+            severity: The severity of the alert.
+
         Returns:
             The created FeatureGroupAlert object.
-        Raises:
-            `ValueError`: If the status is not valid.
-            `ValueError`: If the severity is not valid.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
 
-        !!! Example
+        Raises:
+            ValueError: If the status is not valid.
+            ValueError: If the severity is not valid.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+
+        Example:
             ```python
             fg.create_alert(
                 receiver="email",
@@ -2451,7 +2438,7 @@ class FeatureGroupBase:
         The value is always returned in seconds, regardless of how it was originally specified.
 
         Returns:
-            int: The TTL value in seconds, or None if no TTL is set.
+            The TTL value in seconds, or `None` if no TTL is set.
         """
         return self._ttl
 
@@ -2459,13 +2446,16 @@ class FeatureGroupBase:
     def ttl(self, new_ttl: Optional[Union[int, float, timedelta]]) -> None:
         """Set the time-to-live duration for features in this group.
 
+        The value is stored internally in seconds.
+
         Parameters:
-            new_ttl: The new TTL value. Can be specified as:
+            new_ttl:
+                The new TTL value.
+                Can be specified as:
+
                 - An integer or float representing seconds
                 - A timedelta object
-                - None to remove TTL
-
-        The value will be stored internally in seconds.
+                - `None` to remove TTL
         """
         if new_ttl is not None:
             if isinstance(new_ttl, timedelta):
@@ -2480,7 +2470,7 @@ class FeatureGroupBase:
         """Get whether TTL (time-to-live) is enabled for this feature group.
 
         Returns:
-            bool: True if TTL is enabled, False otherwise
+            `True` if TTL is enabled, `False` otherwise
         """
         return self._ttl_enabled
 
@@ -2489,7 +2479,7 @@ class FeatureGroupBase:
         """Set whether TTL (time-to-live) is enabled for this feature group.
 
         Parameters:
-            enabled: Boolean indicating whether TTL should be enabled
+            enabled: Whether TTL should be enabled.
         """
         self._ttl_enabled = enabled
 
@@ -2500,7 +2490,7 @@ class FeatureGroupBase:
         """Enable or update the time-to-live (TTL) configuration of the feature group.
         If ttl is not set, the feature group will be enabled with the last TTL value being set.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -2518,21 +2508,24 @@ class FeatureGroupBase:
             fg.enable_ttl()
             ```
 
-        !!! info "Safe update"
-            This method updates the TTL configuration safely. In case of failure
-            your local metadata object will keep the old configuration.
+        Info: Safe update
+            This method updates the TTL configuration safely.
+            In case of failure your local metadata object will keep the old configuration.
 
         Parameters:
-            ttl: Optional new TTL value. Can be specified as:
+            ttl:
+                Optional new TTL value.
+                Can be specified as:
+
                 - An integer or float representing seconds
                 - A timedelta object
-                - None to keep current value
+                - `None` to keep current value
 
         Returns:
-            `FeatureGroup`. The updated feature group object.
+            The updated feature group object.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._feature_group_engine.update_ttl(self, ttl, True)
         return self
@@ -2540,7 +2533,7 @@ class FeatureGroupBase:
     def disable_ttl(self) -> "FeatureGroup":
         """Disable the time-to-live (TTL) configuration of the feature group.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -2552,15 +2545,15 @@ class FeatureGroupBase:
             fg.disable_ttl()
             ```
 
-        !!! info "Safe update"
-            This method updates the TTL configuration safely. In case of failure
-            your local metadata object will keep the old configuration.
+        Info: Safe update
+            This method updates the TTL configuration safely.
+            In case of failure your local metadata object will keep the old configuration.
 
         Returns:
-            `FeatureGroup`. The updated feature group object.
+            The updated feature group object.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._feature_group_engine.update_ttl(self, None, False)
         return self
@@ -2831,13 +2824,15 @@ class FeatureGroup(FeatureGroupBase):
     def _sort_transformation_functions(
         transformation_functions: List[TransformationFunction],
     ) -> List[TransformationFunction]:
-        """
-        Function that sorts transformation functions in the order of the output column names.
+        """Function that sorts transformation functions in the order of the output column names.
+
         The list of transformation functions are sorted based on the output columns names to maintain consistent ordering.
+
         Parameters:
-            transformation_functions:  `List[TransformationFunction]`. List of transformation functions to be sorted
+            transformation_functions: List of transformation functions to be sorted.
+
         Returns:
-            `List[TransformationFunction]`: List of transformation functions to be sorted
+            The sorted list of transformation functions.
         """
         return sorted(transformation_functions, key=lambda x: x.output_column_names[0])
 
@@ -2845,7 +2840,9 @@ class FeatureGroup(FeatureGroupBase):
         self,
         wallclock_time: Optional[Union[str, int, datetime, date]] = None,
         online: bool = False,
-        dataframe_type: str = "default",
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
         read_options: Optional[dict] = None,
     ) -> Union[
         pd.DataFrame,
@@ -2855,17 +2852,13 @@ class FeatureGroup(FeatureGroupBase):
         TypeVar("pyspark.RDD"),
         pl.DataFrame,
     ]:
-        """
-        Read the feature group into a dataframe.
+        """Read the feature group into a dataframe.
 
-        Reads the feature group by default from the offline storage as Spark DataFrame
-        on Hopsworks and Databricks, and as Pandas dataframe on AWS Sagemaker and pure
-        Python environments.
+        Reads the feature group by default from the offline storage as Spark DataFrame on Hopsworks and Databricks, and as Pandas dataframe on AWS Sagemaker and pure Python environments.
 
-        Set `online` to `True` to read from the online storage, or change
-        `dataframe_type` to read as a different format.
+        Set `online` to `True` to read from the online storage, or change `dataframe_type` to read as a different format.
 
-        !!! example "Read feature group as of latest state:"
+        Example: Reading feature group as of latest state
             ```python
             # connect to the Feature Store
             fs = ...
@@ -2875,42 +2868,43 @@ class FeatureGroup(FeatureGroupBase):
             fg.read()
             ```
 
-        !!! example "Read feature group as of specific point in time:"
+        Example: Reading feature group as of specific point in time:
             ```python
             fg = fs.get_or_create_feature_group(...)
             fg.read("2020-10-20 07:34:11")
             ```
 
         Parameters:
-            wallclock_time: If specified will retrieve feature group as of specific point in time. Defaults to `None`.
-                If not specified, will return as of most recent time.
-                Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`,
-                or `%Y-%m-%d %H:%M:%S.%f`.
-            online: bool, optional. If `True` read from online feature store, defaults
-                to `False`.
-            dataframe_type: str, optional. The type of the returned dataframe.
-                Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
-                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
-            read_options: Additional options as key/value pairs to pass to the execution engine.
+            wallclock_time:
+                If specified, retrieves feature group as of specific point in time.
+                If not specified, returns as of most recent time.
+                Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+            online: If `True`, read from online feature store.
+            dataframe_type:
+                The type of the returned dataframe.
+                By default, maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
+            read_options:
+                Additional options as key/value pairs to pass to the execution engine.
+
                 For spark engine: Dictionary of read options for Spark.
+
                 For python engine:
-                * key `"arrow_flight_config"` to pass a dictionary of arrow flight configurations.
-                  For example: `{"arrow_flight_config": {"timeout": 900}}`
-                * key `"pandas_types"` and value `True` to retrieve columns as
-                  [Pandas nullable types](https://pandas.pydata.org/docs/user_guide/integer_na.html)
-                  rather than numpy/object(string) types (experimental).
-                Defaults to `{}`.
+                - key `"arrow_flight_config"` to pass a dictionary of arrow flight configurations.
+                  For example: `{"arrow_flight_config": {"timeout": 900}}`.
+                - key `"pandas_types"` and value `True` to retrieve columns as [Pandas nullable types](https://pandas.pydata.org/docs/user_guide/integer_na.html) rather than numpy/object(string) types (experimental).
 
         Returns:
-            `DataFrame`: The spark dataframe containing the feature data.
-            `pyspark.DataFrame`. A Spark DataFrame.
-            `pandas.DataFrame`. A Pandas DataFrame.
-            `polars.DataFrame`. A Polars DataFrame.
-            `numpy.ndarray`. A two-dimensional Numpy array.
-            `list`. A two-dimensional Python list.
+            One of the following:
+
+            - `DataFrame`: The spark dataframe containing the feature data.
+            - `pyspark.DataFrame`: A Spark DataFrame.
+            - `pandas.DataFrame`: A Pandas DataFrame.
+            - `polars.DataFrame`: A Polars DataFrame.
+            - `numpy.ndarray`: A two-dimensional Numpy array.
+            - `list`: A two-dimensional Python list.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: No data is available for feature group with this commit date, If time travel enabled.
+            hopsworks.client.exceptions.RestAPIError: No data is available for feature group with this commit date, if time travel enabled.
         """
         if wallclock_time and self._time_travel_format is None:
             raise FeatureStoreException(
@@ -2962,33 +2956,33 @@ class FeatureGroup(FeatureGroupBase):
     ]:
         """Reads updates of this feature that occurred between specified points in time.
 
-        !!! warning "Deprecated"
-                    `read_changes` method is deprecated. Use
-                    `as_of(end_wallclock_time, exclude_until=start_wallclock_time).read(read_options=read_options)`
-                    instead.
+        Warning: Deprecated
+            `read_changes` method is deprecated.
+            Use `as_of(end_wallclock_time, exclude_until=start_wallclock_time).read(read_options=read_options)` instead.
 
-        !!! warning "Pyspark/Spark Only"
-            Apache HUDI exclusively supports Time Travel and Incremental Query via Spark Context
+        Warning: Pyspark/Spark Only
+            Apache HUDI exclusively supports Time Travel and Incremental Query via Spark Context.
 
-        !!! warning
+        Warning:
             This function only works for feature groups with time_travel_format='HUDI'.
 
         Parameters:
-            start_wallclock_time: Start time of the time travel query. Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`,
-                `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
-            end_wallclock_time: End time of the time travel query. Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`,
-                `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
-            read_options: Additional options as key/value pairs to pass to the execution engine.
-                For spark engine: Dictionary of read options for Spark.
-                Defaults to `{}`.
+            start_wallclock_time:
+                Start time of the time travel query.
+                Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+            end_wallclock_time:
+                End time of the time travel query.
+                Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+            read_options:
+                Additional options as key/value pairs to pass to the execution engine.
+                For spark engine, it is a dictionary of read options for Spark.
 
         Returns:
-            `DataFrame`. The spark dataframe containing the incremental changes of
-            feature data.
+            The spark dataframe containing the incremental changes of feature data.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: No data is available for feature group with this commit date.
-            `hopsworks.client.exceptions.FeatureStoreException`: If the feature group does not have `HUDI` time travel format
+            hopsworks.client.exceptions.RestAPIError: No data is available for feature group with this commit date.
+            hopsworks.client.exceptions.FeatureStoreException: If the feature group does not have `HUDI` time travel format.
         """
         return (
             self.select_all()
@@ -3004,27 +2998,27 @@ class FeatureGroup(FeatureGroupBase):
         filter: Optional[Union[Filter, Logic]] = None,
         options: Optional[dict] = None,
     ) -> List[Tuple[float, List[Any]]]:
-        """
-        Finds the nearest neighbors for a given embedding in the vector database.
+        """Finds the nearest neighbors for a given embedding in the vector database.
 
-        If `filter` is specified, or if embedding feature is stored in default project index,
-        the number of results returned may be less than k. Try using a large value of k and extract the top k
-        items from the results if needed.
+        If `filter` is specified, or if embedding feature is stored in default project index, the number of results returned may be less than k.
+        Try using a large value of k and extract the top k items from the results if needed.
 
         Parameters:
             embedding: The target embedding for which neighbors are to be found.
-            col: The column name used to compute similarity score. Required only if there
-            are multiple embeddings (optional).
-            k: The number of nearest neighbors to retrieve (default is 10).
-            filter: A filter expression to restrict the search space (optional).
-            options: The options used for the request to the vector database.
+            col:
+                The column name used to compute similarity score.
+                Required only if there are multiple embeddings.
+            k: The number of nearest neighbors to retrieve.
+            filter: A filter expression to restrict the search space.
+            options:
+                The options used for the request to the vector database.
                 The keys are attribute values of the `hsfs.core.opensearch.OpensearchRequestOption` class.
 
         Returns:
             A list of tuples representing the nearest neighbors.
             Each tuple contains: `(The similarity score, A list of feature values)`
 
-        !!! Example
+        Example:
             ```
             embedding_index = EmbeddingIndex()
             embedding_index.add_embedding(name="user_vector", dimension=3)
@@ -3063,10 +3057,10 @@ class FeatureGroup(FeatureGroupBase):
             for result in results
         ]
 
-    def show(self, n: int, online: Optional[bool] = False) -> List[List[Any]]:
+    def show(self, n: int, online: bool = False) -> List[List[Any]]:
         """Show the first `n` rows of the feature group.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -3079,9 +3073,8 @@ class FeatureGroup(FeatureGroupBase):
             ```
 
         Parameters:
-            n: int. Number of rows to show.
-            online: bool, optional. If `True` read from online feature store, defaults
-                to `False`.
+            n: Number of rows to show.
+            online: If `True` read from online feature store.
         """
         engine.get_instance().set_job_group(
             "Fetching Feature group",
@@ -3110,61 +3103,51 @@ class FeatureGroup(FeatureGroupBase):
     ]:
         """Persist the metadata and materialize the feature group to the feature store.
 
-        !!! warning "Changed in 3.3.0"
+        Warning: Changed in 3.3.0
             `insert` and `save` methods are now async by default in non-spark clients.
             To achieve the old behaviour, set `wait` argument to `True`.
 
         Calling `save` creates the metadata for the feature group in the feature store.
-        If a Pandas DataFrame, Polars DatFrame, RDD or Ndarray is provided, the data is written to the
-        online/offline feature store as specified.
-        By default, this writes the feature group to the offline storage, and if
-        `online_enabled` for the feature group, also to the online feature store.
-        The `features` dataframe can be a Spark DataFrame or RDD, a Pandas DataFrame,
-        or a two-dimensional Numpy array or a two-dimensional Python nested list.
+        If a Pandas DataFrame, Polars DatFrame, RDD or Ndarray is provided, the data is written to the online/offline feature store as specified.
+        By default, this writes the feature group to the offline storage, and if `online_enabled` for the feature group, also to the online feature store.
+        The `features` dataframe can be a Spark DataFrame or RDD, a Pandas DataFrame, or a two-dimensional Numpy array or a two-dimensional Python nested list.
+
         Parameters:
-            features: Pandas DataFrame, Polars DataFrame, RDD, Ndarray or a list of features. Features to be saved.
-                This argument is optional if the feature list is provided in the create_feature_group or
-                in the get_or_create_feature_group method invokation.
-            write_options: Additional write options as key-value pairs, defaults to `{}`.
-                When using the `python` engine, write_options can contain the
-                following entries:
-                * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
-                  to configure the Hopsworks Job used to write data into the
-                  feature group.
-                * key `wait_for_job` and value `True` or `False` to configure
-                  whether or not to the save call should return only
-                  after the Hopsworks Job has finished. By default it does not wait.
-                * key `wait_for_online_ingestion` and value `True` or `False` to configure
-                  whether or not to the save call should return only
-                  after the Hopsworks online ingestion has finished. By default it does not wait.
-                * key `start_offline_backfill` and value `True` or `False` to configure
-                  whether or not to start the materialization job to write data to the offline
-                  storage. `start_offline_backfill` is deprecated. Use `start_offline_materialization` instead.
-                * key `start_offline_materialization` and value `True` or `False` to configure
-                  whether or not to start the materialization job to write data to the offline
-                  storage. By default the materialization job gets started immediately.
-                * key `kafka_producer_config` and value an object of type [properties](https://docs.confluent.io/platform/current/clients/librdkafka/html/md_CONFIGURATION.htmln)
-                  used to configure the Kafka client. To optimize for throughput in high latency connection, consider
-                  changing the [producer properties](https://docs.confluent.io/cloud/current/client-apps/optimizing/throughput.html#producer).
-                * key `internal_kafka` and value `True` or `False` in case you established
-                  connectivity from you Python environment to the internal advertised
-                  listeners of the Hopsworks Kafka Cluster. Defaults to `False` and
-                  will use external listeners when connecting from outside of Hopsworks.
-            validation_options: Additional validation options as key-value pairs, defaults to `{}`.
-                * key `run_validation` boolean value, set to `False` to skip validation temporarily on ingestion.
-                * key `save_report` boolean value, set to `False` to skip upload of the validation report to Hopsworks.
-                * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
-                * key `schema_validation` boolean value, set to `True` to validate the schema.
-            wait: Wait for job and online ingestion to finish before returning, defaults to `False`.
+            features:
+                Features to be saved.
+                This argument is optional if the feature list is provided in the `create_feature_group` or in the `get_or_create_feature_group` method invokation.
+            write_options:
+                Additional write options as key-value pairs.
+
+                When using the `python` engine, write_options can contain the following entries:
+                - key `spark` and value an object of type [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration) to configure the Hopsworks Job used to write data into the feature group.
+                - key `wait_for_job` and value `True` or `False` to configure whether or not to the save call should return only after the Hopsworks Job has finished.
+                  By default it does not wait.
+                - key `wait_for_online_ingestion` and value `True` or `False` to configure whether or not to the save call should return only after the Hopsworks online ingestion has finished.
+                  By default it does not wait.
+                - key `start_offline_backfill` and value `True` or `False` to configure whether or not to start the materialization job to write data to the offline storage. `start_offline_backfill` is deprecated.
+                  Use `start_offline_materialization` instead.
+                - key `start_offline_materialization` and value `True` or `False` to configure whether or not to start the materialization job to write data to the offline storage.
+                  By default the materialization job gets started immediately.
+                - key `kafka_producer_config` and value an object of type [properties](https://docs.confluent.io/platform/current/clients/librdkafka/html/md_CONFIGURATION.htmln) used to configure the Kafka client.
+                  To optimize for throughput in high latency connection, consider changing the [producer properties](https://docs.confluent.io/cloud/current/client-apps/optimizing/throughput.html#producer).
+                - key `internal_kafka` and value `True` or `False` in case you established connectivity from you Python environment to the internal advertised listeners of the Hopsworks Kafka Cluster.
+                  Defaults to `False` and will use external listeners when connecting from outside of Hopsworks.
+            validation_options:
+                Additional validation options as key-value pairs.
+                - key `run_validation` boolean value, set to `False` to skip validation temporarily on ingestion.
+                - key `save_report` boolean value, set to `False` to skip upload of the validation report to Hopsworks.
+                - key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
+                - key `schema_validation` boolean value, set to `True` to validate the schema.
+            wait:
+                Wait for job and online ingestion to finish before returning.
                 Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
 
         Returns:
-            `Job`: When using the `python` engine, it returns the Hopsworks Job
-                that was launched to ingest the feature group data.
+            When using the `python` engine, it returns the Hopsworks Job that was launched to ingest the feature group data.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         if (
             (features is None and len(self._features) > 0)
@@ -3259,7 +3242,7 @@ class FeatureGroup(FeatureGroupBase):
             List[list],
         ],
         overwrite: bool = False,
-        operation: Optional[str] = "upsert",
+        operation: Literal["insert", "upsert"] = "upsert",
         storage: Optional[str] = None,
         write_options: Optional[Dict[str, Any]] = None,
         validation_options: Optional[Dict[str, Any]] = None,
@@ -3267,28 +3250,22 @@ class FeatureGroup(FeatureGroupBase):
         transformation_context: Dict[str, Any] = None,
         transform: bool = True,
     ) -> Tuple[Optional[Job], Optional[ValidationReport]]:
-        """Persist the metadata and materialize the feature group to the feature store
-        or insert data from a dataframe into the existing feature group.
+        """Persist the metadata and materialize the feature group to the feature store or insert data from a dataframe into the existing feature group.
 
-        Incrementally insert data to a feature group or overwrite all data contained in the feature group. By
-        default, the data is inserted into the offline storage as well as the online storage if the feature group is
-        `online_enabled=True`.
+        Incrementally insert data to a feature group or overwrite all data contained in the feature group.
+        By default, the data is inserted into the offline storage as well as the online storage if the feature group is `online_enabled=True`.
 
-        The `features` dataframe can be a Spark DataFrame or RDD, a Pandas DataFrame, a Polars DataFrame
-        or a two-dimensional Numpy array or a two-dimensional Python nested list.
-        If statistics are enabled, statistics are recomputed for the entire feature
-        group.
-        If feature group's time travel format is `HUDI` then `operation` argument can be
-        either `insert` or `upsert`.
+        The `features` dataframe can be a Spark DataFrame or RDD, a Pandas DataFrame, a Polars DataFrame or a two-dimensional Numpy array or a two-dimensional Python nested list.
+        If statistics are enabled, statistics are recomputed for the entire feature group.
+        If feature group's time travel format is `HUDI` then `operation` argument can be either `insert` or `upsert`.
 
-        If feature group doesn't exist the insert method will create the necessary metadata the first time it is
-        invoked and writes the specified `features` dataframe as feature group to the online/offline feature store.
+        If feature group doesn't exist the insert method will create the necessary metadata the first time it is invoked and writes the specified `features` dataframe as feature group to the online/offline feature store.
 
-        !!! warning "Changed in 3.3.0"
+        Warning: Changed in 3.3.0
             `insert` and `save` methods are now async by default in non-spark clients.
             To achieve the old behaviour, set `wait` argument to `True`.
 
-        !!! example "Upsert new feature data with time travel format `HUDI`"
+        Example: Upsert new feature data with time travel format `HUDI`
             ```python
             # connect to the Feature Store
             fs = ...
@@ -3305,7 +3282,7 @@ class FeatureGroup(FeatureGroupBase):
             fg.insert(df_bitcoin_processed)
             ```
 
-        !!! example "Async insert"
+        Example: Async insert
             ```python
             # connect to the Feature Store
             fs = ...
@@ -3333,61 +3310,56 @@ class FeatureGroup(FeatureGroupBase):
             ```
 
         Parameters:
-            features: Pandas DataFrame, Polars DataFrame, RDD, Ndarray, list. Features to be saved.
-            overwrite: Drop all data in the feature group before
-                inserting new data. This does not affect metadata, defaults to False.
+            features: Features to be saved.
+            overwrite:
+                Drop all data in the feature group before inserting new data.
+                This does not affect metadata.
             operation: Apache Hudi operation type `"insert"` or `"upsert"`.
-                Defaults to `"upsert"`.
-            storage: Overwrite default behaviour, write to offline
-                storage only with `"offline"` or online only with `"online"`, defaults
-                to `None` (If the streaming APIs are enabled, specifying the storage option is not supported).
-            write_options: Additional write options as key-value pairs, defaults to `{}`.
-                When using the `python` engine, write_options can contain the
-                following entries:
-                * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
-                  to configure the Hopsworks Job used to write data into the
-                  feature group.
-                * key `wait_for_job` and value `True` or `False` to configure
-                  whether or not to the insert call should return only
-                  after the Hopsworks Job has finished. By default it waits.
-                * key `wait_for_online_ingestion` and value `True` or `False` to configure
-                  whether or not to the save call should return only
-                  after the Hopsworks online ingestion has finished. By default it does not wait.
-                * key `start_offline_backfill` and value `True` or `False` to configure
-                  whether or not to start the materialization job to write data to the offline
-                  storage. `start_offline_backfill` is deprecated. Use `start_offline_materialization` instead.
-                * key `start_offline_materialization` and value `True` or `False` to configure
-                  whether or not to start the materialization job to write data to the offline
-                  storage. By default the materialization job gets started immediately.
-                * key `kafka_producer_config` and value an object of type [properties](https://docs.confluent.io/platform/current/clients/librdkafka/html/md_CONFIGURATION.htmln)
-                  used to configure the Kafka client. To optimize for throughput in high latency connection consider
-                  changing [producer properties](https://docs.confluent.io/cloud/current/client-apps/optimizing/throughput.html#producer).
-                * key `internal_kafka` and value `True` or `False` in case you established
-                  connectivity from you Python environment to the internal advertised
-                  listeners of the Hopsworks Kafka Cluster. Defaults to `False` and
-                  will use external listeners when connecting from outside of Hopsworks.
-            validation_options: Additional validation options as key-value pairs, defaults to `{}`.
-                * key `run_validation` boolean value, set to `False` to skip validation temporarily on ingestion.
-                * key `save_report` boolean value, set to `False` to skip upload of the validation report to Hopsworks.
-                * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
-                * key `fetch_expectation_suite` a boolean value, by default `True`, to control whether the expectation
-                   suite of the feature group should be fetched before every insert.
-                * key `schema_validation` boolean value, set to `True` to validate the schema.
-            wait: Wait for job and online ingestion to finish before returning, defaults to `False`.
+            storage:
+                Overwrite default behaviour, write to offline storage only with `"offline"` or online only with `"online"`.
+                If the streaming APIs are enabled, specifying the storage option is not supported.
+            write_options:
+                Additional write options as key-value pairs.
+
+                When using the `python` engine, write_options can contain the following entries:
+                - key `spark` and value an object of type [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration) to configure the Hopsworks Job used to write data into the feature group.
+                - key `wait_for_job` and value `True` or `False` to configure whether or not to the insert call should return only after the Hopsworks Job has finished. By default it waits.
+                - key `wait_for_online_ingestion` and value `True` or `False` to configure whether or not to the save call should return only after the Hopsworks online ingestion has finished. By default it does not wait.
+                - key `start_offline_backfill` and value `True` or `False` to configure whether or not to start the materialization job to write data to the offline storage.
+                  `start_offline_backfill` is deprecated.
+                  Use `start_offline_materialization` instead.
+                - key `start_offline_materialization` and value `True` or `False` to configure whether or not to start the materialization job to write data to the offline storage.
+                  By default the materialization job gets started immediately.
+                - key `kafka_producer_config` and value an object of type [properties](https://docs.confluent.io/platform/current/clients/librdkafka/html/md_CONFIGURATION.htmln) used to configure the Kafka client.
+                  To optimize for throughput in high latency connection consider changing [producer properties](https://docs.confluent.io/cloud/current/client-apps/optimizing/throughput.html#producer).
+                - key `internal_kafka` and value `True` or `False` in case you established connectivity from you Python environment to the internal advertised listeners of the Hopsworks Kafka Cluster.
+                  Defaults to `False` and will use external listeners when connecting from outside of Hopsworks.
+            validation_options:
+                Additional validation options as key-value pairs.
+                - key `run_validation` boolean value, set to `False` to skip validation temporarily on ingestion.
+                - key `save_report` boolean value, set to `False` to skip upload of the validation report to Hopsworks.
+                - key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
+                - key `fetch_expectation_suite` a boolean value, by default `True`, to control whether the expectation suite of the feature group should be fetched before every insert.
+                - key `schema_validation` boolean value, set to `True` to validate the schema.
+            wait:
+                Wait for job and online ingestion to finish before returning.
                 Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-            transform: `bool`. When set to `False`, the dataframe is inserted without applying any on-demand transformations. In this case, all required on-demand features must already exist in the provided dataframe. Defaults to `True`.
+            transformation_context:
+                A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution.
+            transform:
+                When set to `False`, the dataframe is inserted without applying any on-demand transformations
+                In this case, all required on-demand features must already exist in the provided dataframe.
 
         Returns:
-            (`Job`, `ValidationReport`) A tuple with job information if python engine is used and the validation report if validation is enabled.
+            Job: The job information if python engine is used.
+            ValidationReport: The validation report if validation is enabled.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: e.g fail to create feature group, dataframe schema does not match
-                existing feature group schema, etc.
-            `hsfs.client.exceptions.DataValidationException`: If data validation fails and the expectation
-                suite `validation_ingestion_policy` is set to `STRICT`. Data is NOT ingested.
+            hopsworks.client.exceptions.RestAPIError: e.g., fail to create feature group, dataframe schema does not match existing feature group schema, etc.
+            hsfs.client.exceptions.DataValidationException:
+                If data validation fails and the expectation suite `validation_ingestion_policy` is set to `STRICT`.
+                Data is NOT ingested.
         """
         if storage and self.stream:
             warnings.warn(
@@ -3451,7 +3423,7 @@ class FeatureGroup(FeatureGroupBase):
             ]
         ] = None,
         overwrite: bool = False,
-        operation: Optional[str] = "upsert",
+        operation: Literal["insert", "upsert"] = "upsert",
         storage: Optional[str] = None,
         write_options: Optional[Dict[str, Any]] = None,
         validation_options: Optional[Dict[str, Any]] = None,
@@ -3461,21 +3433,17 @@ class FeatureGroup(FeatureGroupBase):
         Tuple[Optional[Job], Optional[ValidationReport]],
         feature_group_writer.FeatureGroupWriter,
     ]:
-        """Get FeatureGroupWriter for optimized multi part inserts or call this method
-        to start manual multi part optimized inserts.
+        """Get FeatureGroupWriter for optimized multi part inserts or call this method to start manual multi part optimized inserts.
 
-        In use cases where very small batches (1 to 1000) rows per Dataframe need
-        to be written to the feature store repeatedly, it might be inefficient to use
-        the standard `feature_group.insert()` method as it performs some background
-        actions to update the metadata of the feature group object first.
+        In use cases where very small batches (1 to 1000) rows per Dataframe need to be written to the feature store repeatedly, it might be inefficient to use the standard `feature_group.insert()` method as it performs some background actions to update the metadata of the feature group object first.
 
-        For these cases, the feature group provides the `multi_part_insert` API,
-        which is optimized for writing many small Dataframes after another.
+        For these cases, the feature group provides the `multi_part_insert` API, which is optimized for writing many small Dataframes after another.
 
         There are two ways to use this API:
-        !!! example "Python Context Manager"
-            Using the Python `with` syntax you can acquire a FeatureGroupWriter
-            object that implements the same `multi_part_insert` API.
+
+        Example: Python Context Manager
+            Using the Python `with` syntax you can acquire a FeatureGroupWriter object that implements the same `multi_part_insert` API.
+
             ```python
             feature_group = fs.get_or_create_feature_group("fg_name", version=1)
 
@@ -3485,15 +3453,13 @@ class FeatureGroup(FeatureGroupBase):
                     small_batch_df = ...
                     writer.insert(small_batch_df)
             ```
-            The writer batches the small Dataframes and transmits them to Hopsworks
-            efficiently.
-            When exiting the context, the feature group writer is sure to exit
-            only once all the rows have been transmitted.
 
-        !!! example "Multi part insert with manual context management"
-            Instead of letting Python handle the entering and exiting of the
-            multi part insert context, you can start and finalize the context
-            manually.
+            The writer batches the small Dataframes and transmits them to Hopsworks efficiently.
+            When exiting the context, the feature group writer is sure to exit only once all the rows have been transmitted.
+
+        Example: Multi part insert with manual context management
+            Instead of letting Python handle the entering and exiting of the multi part insert context, you can start and finalize the context manually.
+
             ```python
             feature_group = fs.get_or_create_feature_group("fg_name", version=1)
 
@@ -3505,63 +3471,55 @@ class FeatureGroup(FeatureGroupBase):
             # have been transmitted
             feature_group.finalize_multi_part_insert()
             ```
-            Note that the first call to `multi_part_insert` initiates the context
-            and be sure to finalize it. The `finalize_multi_part_insert` is a
-            blocking call that returns once all rows have been transmitted.
 
-            Once you are done with the multi part insert, it is good practice to
-            start the materialization job in order to write the data to the offline
-            storage:
+            Note that the first call to `multi_part_insert` initiates the context and be sure to finalize it.
+            The `finalize_multi_part_insert` is a blocking call that returns once all rows have been transmitted.
+
+            Once you are done with the multi part insert, it is good practice to start the materialization job in order to write the data to the offline storage:
+
             ```python
             feature_group.materialization_job.run(await_termination=True)
             ```
 
         Parameters:
-            features: Pandas DataFrame, Polars DataFrame, RDD, Ndarray, list. Features to be saved.
-            overwrite: Drop all data in the feature group before
-                inserting new data. This does not affect metadata, defaults to False.
+            features: Features to be saved.
+            overwrite:
+                Drop all data in the feature group before inserting new data.
+                This does not affect metadata.
             operation: Apache Hudi operation type `"insert"` or `"upsert"`.
-                Defaults to `"upsert"`.
-            storage: Overwrite default behaviour, write to offline
-                storage only with `"offline"` or online only with `"online"`, defaults
-                to `None`.
-            write_options: Additional write options as key-value pairs, defaults to `{}`.
-                When using the `python` engine, write_options can contain the
-                following entries:
-                * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
-                  to configure the Hopsworks Job used to write data into the
-                  feature group.
-                * key `wait_for_job` and value `True` or `False` to configure
-                  whether or not to the insert call should return only
-                  after the Hopsworks Job has finished. By default it waits.
-                * key `start_offline_backfill` and value `True` or `False` to configure
-                  whether or not to start the materialization job to write data to the offline
-                  storage. `start_offline_backfill` is deprecated. Use `start_offline_materialization` instead.
-                * key `start_offline_materialization` and value `True` or `False` to configure
-                  whether or not to start the materialization job to write data to the offline
-                  storage. By default the materialization job does not get started automatically
-                  for multi part inserts.
-                * key `kafka_producer_config` and value an object of type [properties](https://docs.confluent.io/platform/current/clients/librdkafka/html/md_CONFIGURATION.htmln)
-                  used to configure the Kafka client. To optimize for throughput in high latency connection consider
-                  changing [producer properties](https://docs.confluent.io/cloud/current/client-apps/optimizing/throughput.html#producer).
-                * key `internal_kafka` and value `True` or `False` in case you established
-                  connectivity from you Python environment to the internal advertised
-                  listeners of the Hopsworks Kafka Cluster. Defaults to `False` and
-                  will use external listeners when connecting from outside of Hopsworks.
+            storage: Overwrite default behaviour, write to offline storage only with `"offline"` or online only with `"online"`.
+            write_options:
+                Additional write options as key-value pairs.
+                When using the `python` engine, write_options can contain the following entries:
+                - key `spark` and value an object of type [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration) to configure the Hopsworks Job used to write data into the feature group.
+                - key `wait_for_job` and value `True` or `False` to configure whether or not to the insert call should return only after the Hopsworks Job has finished.
+                  By default it waits.
+                - key `start_offline_backfill` and value `True` or `False` to configure whether or not to start the materialization job to write data to the offline storage.
+                  `start_offline_backfill` is deprecated.
+                  Use `start_offline_materialization` instead.
+                - key `start_offline_materialization` and value `True` or `False` to configure whether or not to start the materialization job to write data to the offline storage.
+                  By default the materialization job does not get started automatically for multi part inserts.
+                - key `kafka_producer_config` and value an object of type [properties](https://docs.confluent.io/platform/current/clients/librdkafka/html/md_CONFIGURATION.htmln) used to configure the Kafka client.
+                  To optimize for throughput in high latency connection consider changing [producer properties](https://docs.confluent.io/cloud/current/client-apps/optimizing/throughput.html#producer).
+                - key `internal_kafka` and value `True` or `False` in case you established connectivity from you Python environment to the internal advertised listeners of the Hopsworks Kafka Cluster.
+                  Defaults to `False` and will use external listeners when connecting from outside of Hopsworks.
             validation_options: Additional validation options as key-value pairs, defaults to `{}`.
-                * key `run_validation` boolean value, set to `False` to skip validation temporarily on ingestion.
-                * key `save_report` boolean value, set to `False` to skip upload of the validation report to Hopsworks.
-                * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
-                * key `fetch_expectation_suite` a boolean value, by default `False` for multi part inserts,
-                   to control whether the expectation suite of the feature group should be fetched before every insert.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-            transform: `bool`. When set to `False`, the dataframe is inserted without applying any on-demand transformations. In this case, all required on-demand features must already exist in the provided dataframe. Defaults to `True`.
+                - key `run_validation` boolean value, set to `False` to skip validation temporarily on ingestion.
+                - key `save_report` boolean value, set to `False` to skip upload of the validation report to Hopsworks.
+                - key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
+                - key `fetch_expectation_suite` a boolean value, by default `False` for multi part inserts, to control whether the expectation suite of the feature group should be fetched before every insert.
+            transformation_context:
+                A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution.
+            transform:
+                When set to `False`, the dataframe is inserted without applying any on-demand transformations.
+                In this case, all required on-demand features must already exist in the provided dataframe.
 
         Returns:
-            (`Job`, `ValidationReport`) A tuple with job information if python engine is used and the validation report if validation is enabled.
-            `FeatureGroupWriter` When used as a context manager with Python `with` statement.
+            One of:
+
+            - A tuple with job information if python engine is used and the validation report if validation is enabled, or
+            - `FeatureGroupWriter` when used as a context manager with Python `with` statement.
         """
         self._multi_part_insert = True
         multi_part_writer = feature_group_writer.FeatureGroupWriter(self)
@@ -3581,13 +3539,11 @@ class FeatureGroup(FeatureGroupBase):
             )
 
     def finalize_multi_part_insert(self) -> None:
-        """Finalizes and exits the multi part insert context opened by `multi_part_insert`
-        in a blocking fashion once all rows have been transmitted.
+        """Finalizes and exits the multi part insert context opened by `multi_part_insert` in a blocking fashion once all rows have been transmitted.
 
-        !!! example "Multi part insert with manual context management"
-            Instead of letting Python handle the entering and exiting of the
-            multi part insert context, you can start and finalize the context
-            manually.
+        Example: Multi part insert with manual context management
+            Instead of letting Python handle the entering and exiting of the multi part insert context, you can start and finalize the context manually.
+
             ```python
             feature_group = fs.get_or_create_feature_group("fg_name", version=1)
 
@@ -3599,9 +3555,9 @@ class FeatureGroup(FeatureGroupBase):
             # have been transmitted
             feature_group.finalize_multi_part_insert()
             ```
-            Note that the first call to `multi_part_insert` initiates the context
-            and be sure to finalize it. The `finalize_multi_part_insert` is a
-            blocking call that returns once all rows have been transmitted.
+
+            Note that the first call to `multi_part_insert` initiates the context and be sure to finalize it.
+            The `finalize_multi_part_insert` is a blocking call that returns once all rows have been transmitted.
         """
         if self._kafka_producer is not None:
             self._kafka_producer.flush()
@@ -3615,7 +3571,7 @@ class FeatureGroup(FeatureGroupBase):
         self,
         features: TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
         query_name: Optional[str] = None,
-        output_mode: Optional[str] = "append",
+        output_mode: Literal["append", "complete", "update"] = "append",
         await_termination: bool = False,
         timeout: Optional[int] = None,
         checkpoint_dir: Optional[str] = None,
@@ -3625,11 +3581,9 @@ class FeatureGroup(FeatureGroupBase):
     ) -> TypeVar("StreamingQuery"):
         """Ingest a Spark Structured Streaming Dataframe to the online feature store.
 
-        This method creates a long running Spark Streaming Query, you can control the
-        termination of the query through the arguments.
+        This method creates a long running Spark Streaming Query, you can control the termination of the query through the arguments.
 
-        It is possible to stop the returned query with the `.stop()` and check its
-        status with `.isActive`.
+        It is possible to stop the returned query with the `.stop()` and check its status with `.isActive`.
 
         To get a list of all active queries, use:
 
@@ -3640,47 +3594,45 @@ class FeatureGroup(FeatureGroupBase):
         [q.name for q in sqm.active]
         ```
 
-        !!! warning "Engine Support"
+        Warning: Engine Support
             **Spark only**
 
             Stream ingestion using Pandas/Python as engine is currently not supported.
             Python/Pandas has no notion of streaming.
 
-        !!! warning "Data Validation Support"
-            `insert_stream` does not perform any data validation using Great Expectations
-            even when a expectation suite is attached.
+        Warning: Data Validation Support
+            `insert_stream` does not perform any data validation using Great Expectations even when a expectation suite is attached.
 
         Parameters:
             features: Features in Streaming Dataframe to be saved.
-            query_name: It is possible to optionally specify a name for the query to
-                make it easier to recognise in the Spark UI. Defaults to `None`.
-            output_mode: Specifies how data of a streaming DataFrame/Dataset is
-                written to a streaming sink. (1) `"append"`: Only the new rows in the
-                streaming DataFrame/Dataset will be written to the sink. (2)
-                `"complete"`: All the rows in the streaming DataFrame/Dataset will be
-                written to the sink every time there is some update. (3) `"update"`:
-                only the rows that were updated in the streaming DataFrame/Dataset will
-                be written to the sink every time there are some updates.
-                If the query doesn't contain aggregations, it will be equivalent to
-                append mode. Defaults to `"append"`.
-            await_termination: Waits for the termination of this query, either by
-                query.stop() or by an exception. If the query has terminated with an
-                exception, then the exception will be thrown. If timeout is set, it
-                returns whether the query has terminated or not within the timeout
-                seconds. Defaults to `False`.
+            query_name: It is possible to optionally specify a name for the query to make it easier to recognise in the Spark UI.
+            output_mode:
+                Specifies how data of a streaming DataFrame/Dataset is written to a streaming sink.
+
+                - `"append"`: Only the new rows in the streaming DataFrame/Dataset will be written to the sink.
+                - `"complete"`: All the rows in the streaming DataFrame/Dataset will be written to the sink every time there is some update.
+                - `"update"`: Only the rows that were updated in the streaming DataFrame/Dataset will be written to the sink every time there are some updates.
+                  If the query doesn't contain aggregations, it will be equivalent to append mode.
+
+            await_termination:
+                Waits for the termination of this query, either by query.stop() or by an exception.
+                If the query has terminated with an exception, then the exception will be thrown.
+                If timeout is set, it returns whether the query has terminated or not within the timeout seconds.
             timeout: Only relevant in combination with `await_termination=True`.
-                Defaults to `None`.
-            checkpoint_dir: Checkpoint directory location. This will be used to as a reference to
-                from where to resume the streaming job. If `None` then hsfs will construct as
-                "insert_stream_" + online_topic_name. Defaults to `None`.
-                write_options: Additional write options for Spark as key-value pairs.
-                Defaults to `{}`.
-            transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-            transform: `bool`. When set to `False`, the dataframe is inserted without applying any on-demand transformations. In this case, all required on-demand features must already exist in the provided dataframe. Defaults to `True`.
+            checkpoint_dir:
+                Checkpoint directory location.
+                This will be used to as a reference to from where to resume the streaming job.
+                If `None` then hsfs will construct as "insert_stream_" + online_topic_name.
+            write_options: Additional write options for Spark as key-value pairs.
+            transformation_context:
+                A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                These variables must be explicitly defined as parameters in the transformation function to be accessible during execution.
+            transform:
+                When set to `False`, the dataframe is inserted without applying any on-demand transformations.
+                In this case, all required on-demand features must already exist in the provided dataframe.
 
         Returns:
-            `StreamingQuery`: Spark Structured Streaming Query object.
+            Spark Structured Streaming Query object.
         """
         if (
             not engine.get_instance().is_spark_dataframe(features)
@@ -3721,10 +3673,11 @@ class FeatureGroup(FeatureGroupBase):
         wallclock_time: Optional[Union[str, int, datetime, date]] = None,
         limit: Optional[int] = None,
     ) -> Dict[str, Dict[str, str]]:
-        """Retrieves commit timeline for this feature group. This method can only be used
-        on time travel enabled feature groups
+        """Retrieves commit timeline for this feature group.
 
-        !!! example
+        This method can only be used on time travel enabled feature groups
+
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -3736,18 +3689,17 @@ class FeatureGroup(FeatureGroupBase):
             ```
 
         Parameters:
-            wallclock_time: Commit details as of specific point in time. Defaults to `None`.
-                 Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`,
-                `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
-            limit: Number of commits to retrieve. Defaults to `None`.
+            wallclock_time:
+                Commit details as of specific point in time.
+                Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+            limit: Number of commits to retrieve.
 
         Returns:
-            `Dict[str, Dict[str, str]]`. Dictionary object of commit metadata timeline, where Key is commit id and value
-            is `Dict[str, str]` with key value pairs of date committed on, number of rows updated, inserted and deleted.
+            Dictionary object of commit metadata timeline, where Key is commit id and value is `Dict[str, str]` with key value pairs of date committed on, number of rows updated, inserted and deleted.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-            `hopsworks.client.exceptions.FeatureStoreException`: If the feature group does not have `HUDI` time travel format
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.FeatureStoreException: If the feature group does not have `HUDI` time travel format.
         """
         return self._feature_group_engine.commit_details(self, wallclock_time, limit)
 
@@ -3756,15 +3708,16 @@ class FeatureGroup(FeatureGroupBase):
         delete_df: TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
         write_options: Optional[Dict[Any, Any]] = None,
     ) -> None:
-        """Drops records present in the provided DataFrame and commits it as update to this
-        Feature group. This method can only be used on feature groups stored as HUDI or DELTA.
+        """Drops records present in the provided DataFrame and commits it as update to this Feature group.
+
+        This method can only be used on feature groups stored as HUDI or DELTA.
 
         Parameters:
             delete_df: dataFrame containing records to be deleted.
-            write_options: User provided write options. Defaults to `{}`.
+            write_options: User provided write options.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._feature_group_engine.commit_delete(self, delete_df, write_options or {})
 
@@ -3773,9 +3726,10 @@ class FeatureGroup(FeatureGroupBase):
         retention_hours: int = None,
     ) -> None:
         """Vacuum files that are no longer referenced by a Delta table and are older than the retention threshold.
+
         This method can only be used on feature groups stored as DELTA.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -3785,11 +3739,14 @@ class FeatureGroup(FeatureGroupBase):
 
             commit_details = fg.delta_vacuum(retention_hours = 168)
             ```
+
         Parameters:
-            retention_hours: User provided retention period. The default retention threshold for the files is 7 days.
+            retention_hours:
+                User provided retention period.
+                The default retention threshold for the files is 7 days.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._feature_group_engine.delta_vacuum(self, retention_hours)
 
@@ -3800,15 +3757,14 @@ class FeatureGroup(FeatureGroupBase):
     ) -> "query.Query":
         """Get Query object to retrieve all features of the group at a point in the past.
 
-        !!! warning "Pyspark/Spark Only"
+        Warning: Pyspark/Spark Only
             Apache HUDI exclusively supports Time Travel and Incremental Query via Spark Context
 
-        This method selects all features in the feature group and returns a Query object
-        at the specified point in time. Optionally, commits before a specified point in time can be
-        excluded from the query. The Query can then either be read into a Dataframe
-        or used further to perform joins or construct a training dataset.
+        This method selects all features in the feature group and returns a Query object at the specified point in time.
+        Optionally, commits before a specified point in time can be excluded from the query.
+        The Query can then either be read into a Dataframe or used further to perform joins or construct a training dataset.
 
-        !!! example "Reading features at a specific point in time:"
+        Example: Reading features at a specific point in time
             ```python
             # connect to the Feature Store
             fs = ...
@@ -3820,32 +3776,30 @@ class FeatureGroup(FeatureGroupBase):
             fg.as_of("2020-10-20 07:34:11").read().show()
             ```
 
-        !!! example "Reading commits incrementally between specified points in time:"
+        Example: Reading commits incrementally between specified points in time
             ```python
             fg.as_of("2020-10-20 07:34:11", exclude_until="2020-10-19 07:34:11").read().show()
             ```
 
         The first parameter is inclusive while the latter is exclusive.
-        That means, in order to query a single commit, you need to query that commit time
-        and exclude everything just before the commit.
+        That means, in order to query a single commit, you need to query that commit time and exclude everything just before the commit.
 
-        !!! example "Reading only the changes from a single commit"
+        Example: Reading only the changes from a single commit
             ```python
             fg.as_of("2020-10-20 07:31:38", exclude_until="2020-10-20 07:31:37").read().show()
             ```
 
-        When no wallclock_time is given, the latest state of features is returned. Optionally, commits before
-        a specified point in time can still be excluded.
+        When no wallclock_time is given, the latest state of features is returned. Optionally, commits before a specified point in time can still be excluded.
 
-        !!! example "Reading the latest state of features, excluding commits before a specified point in time:"
+        Example: Reading the latest state of features, excluding commits before a specified point in time
             ```python
             fg.as_of(None, exclude_until="2020-10-20 07:31:38").read().show()
             ```
 
         Note that the interval will be applied to all joins in the query.
-        If you want to query different intervals for different feature groups in
-        the query, you have to apply them in a nested fashion:
-        !!! example
+        If you want to query different intervals for different feature groups in the query, you have to apply them in a nested fashion:
+
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -3858,33 +3812,33 @@ class FeatureGroup(FeatureGroupBase):
                 .join(fg2.select_all().as_of("2020-10-20", exclude_until="2020-10-19"))
             ```
 
-        If instead you apply another `as_of` selection after the join, all
-        joined feature groups will be queried with this interval:
-        !!! example
+        If instead you apply another `as_of` selection after the join, all joined feature groups will be queried with this interval:
+
+        Example:
             ```python
             fg1.select_all().as_of("2020-10-20", exclude_until="2020-10-19")  # as_of is not applied
                 .join(fg2.select_all().as_of("2020-10-20", exclude_until="2020-10-15"))  # as_of is not applied
                 .as_of("2020-10-20", exclude_until="2020-10-19")
             ```
 
-        !!! warning
+        Warning:
             This function only works for feature groups with time_travel_format='HUDI'.
 
-        !!! warning
+        Warning:
             Excluding commits via exclude_until is only possible within the range of the Hudi active timeline.
             By default, Hudi keeps the last 20 to 30 commits in the active timeline.
-            If you need to keep a longer active timeline, you can overwrite the options:
-            `hoodie.keep.min.commits` and `hoodie.keep.max.commits`
-            when calling the `insert()` method.
+            If you need to keep a longer active timeline, you can overwrite the options: `hoodie.keep.min.commits` and `hoodie.keep.max.commits` when calling the `insert()` method.
 
         Parameters:
-            wallclock_time: Read data as of this point in time. Strings should be formatted in one of the
-                following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, or `%Y-%m-%d %H:%M:%S`.
-            exclude_until: Exclude commits until this point in time. String should be formatted in one of the
-                following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, or `%Y-%m-%d %H:%M:%S`.
+            wallclock_time:
+                Read data as of this point in time.
+                Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, or `%Y-%m-%d %H:%M:%S`.
+            exclude_until:
+                Exclude commits until this point in time.
+                Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, or `%Y-%m-%d %H:%M:%S`.
 
         Returns:
-            `Query`. The query object with the applied time travel condition.
+            The query object with the applied time travel condition.
         """
         return self.select_all().as_of(
             wallclock_time=wallclock_time, exclude_until=exclude_until
@@ -3896,12 +3850,14 @@ class FeatureGroup(FeatureGroupBase):
         to_commit_time: Optional[Union[str, int, datetime, date]] = None,
         feature_names: Optional[List[str]] = None,
     ) -> Optional[Union["Statistics", List["Statistics"]]]:
-        """Returns the statistics computed on a specific commit window for this feature group. If time travel is not enabled, it raises an exception.
+        """Returns the statistics computed on a specific commit window for this feature group.
+
+        If time travel is not enabled, it raises an exception.
 
         If `from_commit_time` is `None`, the commit window starts from the first commit.
         If `to_commit_time` is `None`, the commit window ends at the last commit.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -3909,18 +3865,21 @@ class FeatureGroup(FeatureGroupBase):
             fg = fs.get_or_create_feature_group(...)
             fg_statistics = fg.get_statistics_by_commit_window(from_commit_time=None, to_commit_time=None)
             ```
+
         Parameters:
-            to_commit_time: Date and time of the last commit of the window. Defaults to `None`. Strings should
-                be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`,
-                or `%Y-%m-%d %H:%M:%S.%f`.
-            from_commit_time: Date and time of the first commit of the window. Defaults to `None`. Strings should
-                be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`,
-                or `%Y-%m-%d %H:%M:%S.%f`.
+            to_commit_time:
+                Date and time of the last commit of the window. Defaults to `None`.
+                Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+            from_commit_time:
+                Date and time of the first commit of the window. Defaults to `None`.
+                Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
             feature_names: List of feature names of which statistics are retrieved.
+
         Returns:
-            `Statistics`. Statistics object or `None` if it does not exist.
+            Statistics object or `None` if it does not exist.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         if not self._is_time_travel_enabled():
             raise ValueError("Time travel is not enabled for this feature group")
@@ -3934,24 +3893,18 @@ class FeatureGroup(FeatureGroupBase):
     def compute_statistics(
         self, wallclock_time: Optional[Union[str, int, datetime, date]] = None
     ) -> None:
-        """Recompute the statistics for the feature group and save them to the
-        feature store.
+        """Recompute the statistics for the feature group and save them to the feature store.
 
-        Statistics are only computed for data in the offline storage of the feature
-        group.
+        Statistics are only computed for data in the offline storage of the feature group.
 
         Parameters:
-            wallclock_time: If specified will recompute statistics on
-                feature group as of specific point in time. If not specified then will compute statistics
-                as of most recent time of this feature group. Defaults to `None`. Strings should
-                be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`,
-                or `%Y-%m-%d %H:%M:%S.%f`.
-
-        Returns:
-            `Statistics`. The statistics metadata object.
+            wallclock_time:
+                If specified will recompute statistics on feature group as of specific point in time.
+                If not specified then will compute statistics as of most recent time of this feature group.
+                Strings should be formatted in one of the following formats `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         if self.statistics_config.enabled:
             if self._is_time_travel_enabled() or wallclock_time is not None:
@@ -4058,7 +4011,7 @@ class FeatureGroup(FeatureGroupBase):
     def json(self) -> str:
         """Get specific Feature Group metadata in json format.
 
-        !!! example
+        Example:
             ```python
             fg.json()
             ```
@@ -4068,7 +4021,7 @@ class FeatureGroup(FeatureGroupBase):
     def to_dict(self) -> Dict[str, Any]:
         """Get structured info about specific Feature Group in python dictionary format.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -4455,13 +4408,12 @@ class ExternalFeatureGroup(FeatureGroupBase):
 
         External Feature Groups contains metadata about feature data in an external storage system.
         External storage system are usually offline, meaning feature values cannot be retrieved in real-time.
-        In order to use the feature values for real-time use-cases, you can insert them
-        in Hopsoworks Online Feature Store via this method.
+        In order to use the feature values for real-time use-cases, you can insert them in Hopsoworks Online Feature Store via this method.
 
-        The Online Feature Store has a single-entry per primary key value, meaining that providing a new value with
-        for a given primary key will overwrite the existing value. No record of the previous value is kept.
+        The Online Feature Store has a single-entry per primary key value, meaining that providing a new value with for a given primary key will overwrite the existing value.
+        No record of the previous value is kept.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -4476,47 +4428,45 @@ class ExternalFeatureGroup(FeatureGroupBase):
             fg.insert(feature_values)
             ```
 
-        !!! Note
-            Data Validation via Great Expectation is supported if you have attached an expectation suite to
-            your External Feature Group. However, as opposed to regular Feature Groups, this can lead to
-            discrepancies between the data in the external storage system and the online feature store.
+        Note:
+            Data Validation via Great Expectation is supported if you have attached an expectation suite to your External Feature Group.
+            However, as opposed to regular Feature Groups, this can lead to discrepancies between the data in the external storage system and the online feature store.
 
         Parameters:
-            features: DataFrame, RDD, Ndarray, list. Features to be saved.
-            write_options: Additional write options as key-value pairs, defaults to `{}`.
-                When using the `python` engine, write_options can contain the
-                following entries:
-                * key `wait_for_job` and value `True` or `False` to configure
-                  whether or not to the insert call should return only
-                  after the Hopsworks Job has finished. By default it waits.
-                * key `wait_for_online_ingestion` and value `True` or `False` to configure
-                  whether or not to the save call should return only
-                  after the Hopsworks online ingestion has finished. By default it does not wait.
-                * key `kafka_producer_config` and value an object of type [properties](https://docs.confluent.io/platform/current/clients/librdkafka/html/md_CONFIGURATION.htmln)
-                  used to configure the Kafka client. To optimize for throughput in high latency connection consider
-                  changing [producer properties](https://docs.confluent.io/cloud/current/client-apps/optimizing/throughput.html#producer).
-                * key `internal_kafka` and value `True` or `False` in case you established
-                  connectivity from you Python environment to the internal advertised
-                  listeners of the Hopsworks Kafka Cluster. Defaults to `False` and
-                  will use external listeners when connecting from outside of Hopsworks.
-            validation_options: Additional validation options as key-value pairs, defaults to `{}`.
-                * key `run_validation` boolean value, set to `False` to skip validation temporarily on ingestion.
-                * key `save_report` boolean value, set to `False` to skip upload of the validation report to Hopsworks.
-                * key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
-                * key `fetch_expectation_suite` a boolean value, by default `True`, to control whether the expectation
-                   suite of the feature group should be fetched before every insert.
-            wait: Wait for job and online ingestion to finish before returning, defaults to `False`.
+            features: Features to be saved.
+            write_options:
+                Additional write options as key-value pairs.
+
+                When using the `python` engine, write_options can contain the following entries:
+
+                - key `wait_for_job` and value `True` or `False` to configure whether or not to the insert call should return only after the Hopsworks Job has finished.
+                  By default it waits.
+                - key `wait_for_online_ingestion` and value `True` or `False` to configure whether or not to the save call should return only after the Hopsworks online ingestion has finished.
+                  By default it does not wait.
+                - key `kafka_producer_config` and value an object of type [properties](https://docs.confluent.io/platform/current/clients/librdkafka/html/md_CONFIGURATION.htmln) used to configure the Kafka client.
+                  To optimize for throughput in high latency connection consider changing [producer properties](https://docs.confluent.io/cloud/current/client-apps/optimizing/throughput.html#producer).
+                - key `internal_kafka` and value `True` or `False` in case you established connectivity from you Python environment to the internal advertised listeners of the Hopsworks Kafka Cluster.
+                  Defaults to `False` and will use external listeners when connecting from outside of Hopsworks.
+
+            validation_options:
+                Additional validation options as key-value pairs.
+
+                - key `run_validation` boolean value, set to `False` to skip validation temporarily on ingestion.
+                - key `save_report` boolean value, set to `False` to skip upload of the validation report to Hopsworks.
+                - key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
+                - key `fetch_expectation_suite` a boolean value, by default `True`, to control whether the expectation suite of the feature group should be fetched before every insert.
+            wait:
+                Wait for job and online ingestion to finish before returning.
                 Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
 
         Returns:
-            Tuple(None, `ge.core.ExpectationSuiteValidationResult`) The validation report if validation is enabled.
+            The validation report if validation is enabled.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: e.g fail to create feature group, dataframe schema does not match
-                existing feature group schema, etc.
-            `hsfs.client.exceptions.DataValidationException`: If data validation fails and the expectation
-                suite `validation_ingestion_policy` is set to `STRICT`. Data is NOT ingested.
-
+            hopsworks.client.exceptions.RestAPIError: e.g., fail to create feature group, dataframe schema does not match existing feature group schema, etc.
+            hsfs.client.exceptions.DataValidationException:
+                If data validation fails and the expectation suite `validation_ingestion_policy` is set to `STRICT`.
+                Data is NOT ingested.
         """
         feature_dataframe = engine.get_instance().convert_to_default_dataframe(features)
 
@@ -4553,7 +4503,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
 
     def read(
         self,
-        dataframe_type: str = "default",
+        dataframe_type: Literal["default", "spark","pandas", "polars", "numpy", "python"] = "default",
         online: bool = False,
         read_options: Optional[Dict[str, Any]] = None,
     ) -> Union[
@@ -4565,7 +4515,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
     ]:
         """Get the feature group as a DataFrame.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -4576,32 +4526,30 @@ class ExternalFeatureGroup(FeatureGroupBase):
             df = fg.read()
             ```
 
-        !!! warning "Engine Support"
+        Warning: Engine Support
             **Spark only**
 
-            Reading an External Feature Group directly into a Pandas Dataframe using
-            Python/Pandas as Engine is not supported, however, you can use the
-            Query API to create Feature Views/Training Data containing External
-            Feature Groups.
+            Reading an External Feature Group directly into a Pandas Dataframe using Python/Pandas as Engine is not supported, however, you can use the Query API to create Feature Views/Training Data containing External Feature Groups.
 
         Parameters:
-            dataframe_type: str, optional. The type of the returned dataframe.
-                Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
-                Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
-            online: bool, optional. If `True` read from online feature store, defaults
-                to `False`.
+            dataframe_type:
+                The type of the returned dataframe.
+                By default, maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
+            online: If `True` read from online feature store.
             read_options: Additional options as key/value pairs to pass to the spark engine.
-                Defaults to `None`.
+
         Returns:
-            `DataFrame`: The spark dataframe containing the feature data.
-            `pyspark.DataFrame`. A Spark DataFrame.
-            `pandas.DataFrame`. A Pandas DataFrame.
-            `numpy.ndarray`. A two-dimensional Numpy array.
-            `list`. A two-dimensional Python list.
+            One of:
+
+            - `DataFrame`: The spark dataframe containing the feature data.
+            - `pyspark.DataFrame`: A Spark DataFrame.
+            - `pandas.DataFrame`: A Pandas DataFrame.
+            - `numpy.ndarray`: A two-dimensional Numpy array.
+            - `list`: A two-dimensional Python list.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-            `hopsworks.client.exceptions.FeatureStoreException`: If trying to read an external feature group directly in
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.FeatureStoreException: If trying to read an external feature group directly in.
         """
 
         if (
@@ -4634,7 +4582,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
     def show(self, n: int, online: bool = False) -> List[List[Any]]:
         """Show the first `n` rows of the feature group.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -4647,9 +4595,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
             ```
 
         Parameters:
-            n: int. Number of rows to show.
-            online: bool, optional. If `True` read from online feature store, defaults
-                to `False`.
+            n: Number of rows to show.
+            online: If `True` read from online feature store.
         """
         engine.get_instance().set_job_group(
             "Fetching Feature group",
@@ -4667,26 +4614,27 @@ class ExternalFeatureGroup(FeatureGroupBase):
         filter: Optional[Union[Filter, Logic]] = None,
         options: Optional[dict] = None,
     ) -> List[Tuple[float, List[Any]]]:
-        """
-        Finds the nearest neighbors for a given embedding in the vector database.
+        """Finds the nearest neighbors for a given embedding in the vector database.
 
-        If `filter` is specified, or if embedding feature is stored in default project index,
-        the number of results returned may be less than k. Try using a large value of k and extract the top k
-        items from the results if needed.
+        If `filter` is specified, or if embedding feature is stored in default project index, the number of results returned may be less than k.
+        Try using a large value of k and extract the top k items from the results if needed.
 
         Parameters:
             embedding: The target embedding for which neighbors are to be found.
-            col: The column name used to compute similarity score. Required only if there
-            are multiple embeddings (optional).
-            k: The number of nearest neighbors to retrieve (default is 10).
-            filter: A filter expression to restrict the search space (optional).
-            options: The options used for the request to the vector database.
+            col:
+                The column name used to compute similarity score.
+                Required only if there are multiple embeddings.
+            k: The number of nearest neighbors to retrieve.
+            filter: A filter expression to restrict the search space.
+            options:
+                The options used for the request to the vector database.
                 The keys are attribute values of the `hsfs.core.opensearch.OpensearchRequestOption` class.
+
         Returns:
             A list of tuples representing the nearest neighbors.
-            Each tuple contains: `(The similarity score, A list of feature values)`
+            Each tuple contains: `(The similarity score, A list of feature values)`.
 
-        !!! Example
+        Example:
             ```
             embedding_index = EmbeddingIndex()
             embedding_index.add_embedding(name="user_vector", dimension=3)

@@ -185,60 +185,65 @@ class Execution:
             return True
         return None
 
-    def download_logs(self, path=None):
-        """Download stdout and stderr logs for the execution
-        Example for downloading and printing the logs
+    def download_logs(self, path: str | None = None) -> tuple[str | None, str | None]:
+        """Download stdout and stderr logs for the execution.
 
-        ```python
+        Example: Downloading and printing the logs
+            ```python
+            # Download logs
+            out_log_path, err_log_path = execution.download_logs()
 
-        # Download logs
-        out_log_path, err_log_path = execution.download_logs()
+            out_fd = open(out_log_path, "r")
+            print(out_fd.read())
 
-        out_fd = open(out_log_path, "r")
-        print(out_fd.read())
-
-        err_fd = open(err_log_path, "r")
-        print(err_fd.read())
-
-        ```
+            err_fd = open(err_log_path, "r")
+            print(err_fd.read())
+            ```
 
         Parameters:
-            path: path to download the logs. must be `str`
+            path: path to download the logs.
+
         Returns:
-            `str`. Path to downloaded log for stdout.
-            `str`. Path to downloaded log for stderr.
+            stdout: Path to downloaded log for stdout.
+            stderr: Path to downloaded log for stderr.
         """
         return self._execution_engine.download_logs(self, path)
 
     @usage.method_logger
     def delete(self):
-        """Delete the execution
-        !!! danger "Potentially dangerous operation"
+        """Delete the execution.
+
+        Danger: Potentially dangerous operation
             This operation deletes the execution.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._execution_api._delete(self._job.name, self.id)
 
     @usage.method_logger
     def stop(self):
-        """Stop the execution
-        !!! danger "Potentially dangerous operation"
+        """Stop the execution.
+
+        Danger: Potentially dangerous operation
             This operation stops the execution.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._execution_api._stop(self.job_name, self.id)
 
-    def await_termination(self, timeout: Optional[float] = None):
+    def await_termination(self, timeout: float | None = None):
         """Wait until execution terminates.
 
-
         Parameters:
-            timeout: the maximum waiting time in seconds, if `None` the waiting time is unbounded; defaults to `None`. Note: the actual waiting time may be bigger by approximately 3 seconds.
+            timeout:
+                The maximum waiting time in seconds.
+                If `None` the waiting time is unbounded.
+                **Note**: the actual waiting time may be bigger by approximately 3 seconds.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         x = self._execution_engine.wait_until_finished(self._job, self, timeout)
         if x.final_status == "KILLED":

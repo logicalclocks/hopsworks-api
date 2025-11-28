@@ -40,7 +40,6 @@ class JobApi:
         """Create a new job or update an existing one.
 
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
@@ -52,15 +51,17 @@ class JobApi:
         spark_config['appPath'] = "/Resources/my_app.py"
 
         job = job_api.create_job("my_spark_job", spark_config)
-
         ```
+
         Parameters:
             name: Name of the job.
             config: Configuration of the job.
+
         Returns:
-            `Job`: The Job object
+            The created job.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client.get_instance()
 
@@ -84,10 +85,12 @@ class JobApi:
 
         Parameters:
             name: Name of the job.
+
         Returns:
-            `Job`: The Job object or `None` if it does not exist.
+            The Job object or `None` if it does not exist.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client.get_instance()
         path_params = [
@@ -106,9 +109,10 @@ class JobApi:
         """Get all jobs.
 
         Returns:
-            `List[Job]`: List of Job objects
+            List of all jobs.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client.get_instance()
         path_params = [
@@ -122,29 +126,33 @@ class JobApi:
         )
 
     @usage.method_logger
-    def exists(self, name: str):
+    def exists(self, name: str) -> bool:
         """Check if a job exists.
 
         Parameters:
             name: Name of the job.
+
         Returns:
-            `bool`: True if the job exists, otherwise False
+            `True` if the job exists, otherwise `False`.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         job = self.get_job(name)
         return job is not None
 
     @usage.method_logger
-    def get_configuration(self, type: str):
+    def get_configuration(self, type: Literal["SPARK", "PYSPARK", "PYTHON", "DOCKER", "FLINK"]) -> dict:
         """Get configuration for the specific job type.
 
         Parameters:
-            type: Type of the job. Currently, supported types include: SPARK, PYSPARK, PYTHON, DOCKER, FLINK.
+            type: The job type to retrieve the configuration of.
+
         Returns:
-            `dict`: Default job configuration
+            The default job configuration for the specific job type.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client.get_instance()
         path_params = [
@@ -160,8 +168,9 @@ class JobApi:
 
     def _delete(self, job):
         """Delete the job and all executions.
-        :param job: metadata object of job to delete
-        :type job: Job
+
+        Parameters:
+            job: Metadata object of job to delete.
         """
         _client = client.get_instance()
         path_params = [
@@ -172,14 +181,15 @@ class JobApi:
         ]
         _client._send_request("DELETE", path_params)
 
-    def _update_job(self, name: str, config: dict):
+    def _update_job(self, name: str, config: dict) -> job.Job:
         """Update the job.
-        :param name: name of the job
-        :type name: str
-        :param config: new job configuration
-        :type config: dict
-        :return: The updated Job object
-        :rtype: Job
+
+        Parameters:
+            name: Name of the job.
+            config: New job configuration.
+
+        Returns:
+            The updated Job object.
         """
         _client = client.get_instance()
 

@@ -116,9 +116,10 @@ class EmbeddingFeature:
     Parameters:
         name: The name of the embedding feature.
         dimension: The dimensionality of the embedding feature.
-        similarity_function_type: The type of similarity function used for the embedding feature.
-          Available functions are `L2`, `COSINE`, and `DOT_PRODUCT`.
-          (default is `SimilarityFunctionType.L2`).
+        similarity_function_type:
+            The type of similarity function used for the embedding feature.
+            Available functions are `L2`, `COSINE`, and `DOT_PRODUCT`.
+            Defaults to `SimilarityFunctionType.L2`.
         model: `hsml.model.Model` A Model in hsml.
         feature_group: The feature group object that contains the embedding feature.
         embedding_index: `EmbeddingIndex` The index for managing embedding features.
@@ -236,18 +237,19 @@ class EmbeddingFeature:
 
 
 class EmbeddingIndex:
-    """
-    Represents an index for managing embedding features.
+    """Represents an index for managing embedding features.
 
     Parameters:
-        index_name: The name of the embedding index. The name of the project index is used if not provided.
-        features: A list of `EmbeddingFeature` objects for the features that
-            contain embeddings that should be indexed for similarity search.
-        col_prefix: The prefix to be added to column names when using project index.
+        index_name:
+            The name of the embedding index.
+            The name of the project index is used if not provided.
+        features: A list of `EmbeddingFeature` objects for the features that contain embeddings that should be indexed for similarity search.
+        col_prefix:
+            The prefix to be added to column names when using project index.
             It is managed by Hopsworks and should not be provided.
 
-    !!! Example
-        ```
+    Example:
+        ```python
         embedding_index = EmbeddingIndex()
         embedding_index.add_embedding(name="user_vector", dimension=256)
         embeddings = embedding_index.get_embeddings()
@@ -278,39 +280,36 @@ class EmbeddingIndex:
         ] = SimilarityFunctionType.L2,
         model=None,
     ):
-        """
-        Adds a new embedding feature to the index.
+        """Adds a new embedding feature to the index.
 
         Example:
-        ```
-        embedding_index = EmbeddingIndex()
-        embedding_index.add_embedding(name="user_vector", dimension=256)
+            ```python
+            embedding_index = EmbeddingIndex()
+            embedding_index.add_embedding(name="user_vector", dimension=256)
 
-        # Attach a hsml model to the embedding feature
-        embedding_index = EmbeddingIndex()
-        embedding_index.add_embedding(name="user_vector", dimension=256, model=hsml_model)
-        ```
+            # Attach a hsml model to the embedding feature
+            embedding_index = EmbeddingIndex()
+            embedding_index.add_embedding(name="user_vector", dimension=256, model=hsml_model)
+            ```
 
         Parameters:
             name: The name of the embedding feature.
             dimension: The dimensionality of the embedding feature.
             similarity_function_type: The type of similarity function to be used.
-            model (hsml.model.Model, optional): The hsml model used to generate the embedding.
-                Defaults to None.
+            model: `hsml.model.Model | None` The hsml model used to generate the embedding.
         """
         self._features[name] = EmbeddingFeature(
             name, dimension, similarity_function_type, model=model
         )
 
-    def get_embedding(self, name):
-        """
-        Returns the `hsfs.embedding.EmbeddingFeature` object associated with the feature name.
+    def get_embedding(self, name: str) -> EmbeddingFeature:
+        """Get `EmbeddingFeature` associated with the feature name.
 
         Parameters:
-            name (str): The name of the embedding feature.
+            name: The name of the embedding feature.
 
         Returns:
-            `hsfs.embedding.EmbeddingFeature` object
+            The `EmbeddingFeature` associated with the name.
         """
         feat = self._features.get(name)
         if feat:
@@ -318,32 +317,31 @@ class EmbeddingIndex:
             feat.embedding_index = self
         return feat
 
-    def get_embeddings(self):
-        """
-        Returns the list of `hsfs.embedding.EmbeddingFeature` objects associated with the index.
+    def get_embeddings(self) -> list[EmbeddingFeature]:
+        """Returns the list of `EmbeddingFeature` objects associated with the index.
 
         Returns:
-            A list of `hsfs.embedding.EmbeddingFeature` objects
+            All embedding features in the index.
         """
         for feat in self._features.values():
             feat.feature_group = self._feature_group
             feat.embedding_index = self
         return self._features.values()
 
-    def count(self, options: map = None):
-        """
-        Count the number of records in the feature group.
+    def count(self, options: map = None) -> int:
+        """Count the number of records in the feature group.
 
         Parameters:
-            options: The options used for the request to the vector database.
-                The keys are attribute values of the `hsfs.core.opensearch.OpensearchRequestOption` class.
+            options:
+                The options used for the request to the vector database.
+                The keys are attribute values of [`OpensearchRequestOption`][hsfs.core.opensearch.OpensearchRequestOption].
 
         Returns:
-            `int`: The number of records in the feature group.
+            The number of records in the feature group.
 
         Raises:
-            `ValueError`: If the feature group is not initialized.
-            `hopsworks.client.exceptions.FeatureStoreException`: If an error occurs during the count operation.
+            ValueError: If the feature group is not initialized.
+            hopsworks.client.exceptions.FeatureStoreException: If an error occurs during the count operation.
         """
         if self._vector_db_client is None:
             self._vector_db_client = VectorDbClient(self._feature_group.select_all())
@@ -385,12 +383,11 @@ class EmbeddingIndex:
         """Serialize the EmbeddingIndex object to a JSON string."""
         return json.dumps(self, cls=util.Encoder)
 
-    def to_dict(self):
-        """
-        Convert the EmbeddingIndex object to a dictionary.
+    def to_dict(self) -> dict:
+        """Convert the EmbeddingIndex object to a dictionary.
 
         Returns:
-            `dict`: A dictionary representation of the EmbeddingIndex object.
+            A dictionary representation of the EmbeddingIndex object.
         """
         return {
             "indexName": self._index_name,

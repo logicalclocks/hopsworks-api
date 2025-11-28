@@ -15,6 +15,7 @@
 #
 
 import time
+from typing import Literal
 
 from hopsworks_common import client, usage, util
 from hopsworks_common.core import execution_api, flink_cluster_api
@@ -71,7 +72,6 @@ class FlinkCluster:
         """Start the flink cluster and wait until it reaches RUNNING state.
 
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
@@ -82,10 +82,12 @@ class FlinkCluster:
 
         flink_cluster.start()
         ```
+
         Parameters:
             await_time: defaults to 1800 seconds to account for auto-scale mechanisms.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
 
         if self._count_ongoing_executions() > 0:
@@ -122,10 +124,10 @@ class FlinkCluster:
         self._execution_id = execution.id
         return self
 
-    def get_jobs(self):
+    def get_jobs(self) -> list[dict]:
         """Get jobs from the flink cluster.
-        ```python
 
+        ```python
         # log in to hopsworks
         import hopsworks
         project = hopsworks.login()
@@ -139,19 +141,20 @@ class FlinkCluster:
         ```
 
         Returns:
-            `List[Dict]`: The array of dicts with flink job id and status of the job.
+            The array of dictionaries with flink job id and status of the job.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
 
         return self._flink_cluster_api._get_jobs(
             self._get_execution(assert_running=True)
         )
 
-    def get_job(self, job_id):
+    def get_job(self, job_id) -> dict:
         """Get specific job from the flink cluster.
-        ```python
 
+        ```python
         # log in to hopsworks
         import hopsworks
         project = hopsworks.login()
@@ -166,11 +169,13 @@ class FlinkCluster:
         ```
 
         Parameters:
-            job_id: id of the job within this cluster
+            job_id: ID of the job within this cluster.
+
         Returns:
-            `Dict`: Dict with flink job id and status of the job.
+            A dictionary with flink job id and status of the job.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
 
         return self._flink_cluster_api._get_job(
@@ -180,8 +185,8 @@ class FlinkCluster:
     @usage.method_logger
     def stop_job(self, job_id):
         """Stop specific job in the flink cluster.
-        ```python
 
+        ```python
         # log in to hopsworks
         import hopsworks
         project = hopsworks.login()
@@ -196,16 +201,18 @@ class FlinkCluster:
         ```
 
         Parameters:
-            job_id: id of the job within this flink cluster.
+            job_id: ID of the job within this flink cluster.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._flink_cluster_api._stop_job(
             self._get_execution(assert_running=True), job_id
         )
 
-    def get_jars(self):
+    def get_jars(self) -> list[dict]:
         """Get already uploaded jars from the flink cluster.
+
         ```python
         # log in to hopsworks
         import hopsworks
@@ -220,9 +227,10 @@ class FlinkCluster:
         ```
 
         Returns:
-            `List[Dict]`: The array of dicts with jar metadata.
+            The array of dictionaries with jar metadata.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._flink_cluster_api._get_jars(
             self._get_execution(assert_running=True)
@@ -230,6 +238,7 @@ class FlinkCluster:
 
     def upload_jar(self, jar_file):
         """Upload jar file to the flink cluster.
+
         ```python
         # log in to hopsworks
         import hopsworks
@@ -246,8 +255,9 @@ class FlinkCluster:
 
         Parameters:
             jar_file: path to the jar file.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
 
         self._flink_cluster_api._upload_jar(
@@ -255,8 +265,9 @@ class FlinkCluster:
         )
 
     @usage.method_logger
-    def submit_job(self, jar_id, main_class, job_arguments=None):
+    def submit_job(self, jar_id, main_class, job_arguments=None) -> str:
         """Submit job using the specific jar file uploaded to the flink cluster.
+
         ```python
         # log in to hopsworks
         import hopsworks
@@ -279,23 +290,39 @@ class FlinkCluster:
         ```
 
         Parameters:
-            jar_id: id if the jar file
-            main_class: path to the main class of the jar file
-            job_arguments: Job arguments (if any), defaults to none.
+            jar_id: ID of the jar file.
+            main_class: Path to the main class of the jar file.
+            job_arguments: Job arguments, if any.
+
         Returns:
-            `str`:  job id.
+            Job ID.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
 
         return self._flink_cluster_api._submit_job(
             self._get_execution(assert_running=True), jar_id, main_class, job_arguments
         )
 
-    def job_state(self, job_id):
+    def job_state(
+        self, job_id
+    ) -> Literal[
+        "INITIALIZING",
+        "CREATED",
+        "RUNNING",
+        "FAILING",
+        "FAILED",
+        "CANCELLING",
+        "CANCELED",
+        "FINISHED",
+        "RESTARTING",
+        "SUSPENDED",
+        "RECONCILING",
+    ]:
         """Gets state of the job submitted to the flink cluster.
-        ```python
 
+        ```python
         # log in to hopsworks
         import hopsworks
         project = hopsworks.login()
@@ -310,12 +337,13 @@ class FlinkCluster:
         ```
 
         Parameters:
-            job_id: id of the job within this flink cluster
+            job_id: ID of the job within this flink cluster.
+
         Returns:
-            `str`: status of the job. Possible states:  "INITIALIZING", "CREATED", "RUNNING", "FAILING", "FAILED",
-            "CANCELLING", "CANCELED",  "FINISHED", "RESTARTING", "SUSPENDED", "RECONCILING".
+            Status of the job.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
 
         return self._flink_cluster_api._job_state(
@@ -325,8 +353,8 @@ class FlinkCluster:
     @usage.method_logger
     def stop(self):
         """Stop this cluster.
-        ```python
 
+        ```python
         # log in to hopsworks
         import hopsworks
         project = hopsworks.login()
@@ -340,7 +368,7 @@ class FlinkCluster:
         ```
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         exec = self._get_execution(assert_running=False)
         if exec is None or exec.success is not None:

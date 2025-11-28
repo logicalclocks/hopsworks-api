@@ -25,6 +25,7 @@ from typing import Optional
 
 from hopsworks_common.client.exceptions import JobExecutionException, RestAPIError
 from hopsworks_common.core import dataset_api, execution_api
+from python.hopsworks_common.execution import Execution
 
 
 class ExecutionEngine:
@@ -92,17 +93,21 @@ class ExecutionEngine:
                     raise e
         return download_path
 
-    def wait_until_finished(self, job, execution, timeout: Optional[float] = None):
+    def wait_until_finished(self, job, execution, timeout: Optional[float] = None) -> Execution | None:
         """Wait until execution terminates.
 
         Parameters:
-            job: job of the execution
-            execution: execution to monitor
-            timeout: the maximum waiting time in seconds, if `None` the waiting time is unbounded; defaults to `None`. Note: the actual waiting time may be bigger by approximately 3 seconds.
+            job: Job of the execution.
+            execution: Execution to monitor.
+            timeout:
+                The maximum waiting time in seconds, if `None` the waiting time is unbounded.
+                **Note**: the actual waiting time may be bigger by approximately 3 seconds.
+
         Returns:
-            `Optional[Execution]`: The final execution or `None` if the timeout is exceeded.
+            The final execution or `None` if the timeout is exceeded.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         start_time = datetime.now()
 

@@ -144,19 +144,14 @@ class ExpectationSuite:
         """Used to create a Hopsworks Expectation Suite instance from a great_expectations instance.
 
         Parameters:
-            ge_expectation_suite: great_expectations.core.ExpectationSuite
-                The great_expectations ExpectationSuite instance to convert to a Hopsworks ExpectationSuite.
-            run_validation: bool
-                Whether to run validation on inserts when the expectation suite is attached.
-            validation_ingestion_policy: str
-                The validation ingestion policy to use when the expectation suite is attached. Defaults to "ALWAYS".
-                Options are "STRICT" or "ALWAYS".
-            id: int
-                The id of the expectation suite in Hopsworks. If not provided, a new expectation suite will be created.
-            feature_store_id: int
-                The id of the feature store of the feature group to which the expectation suite belongs.
-            feature_group_id: int
-                The id of the feature group to which the expectation suite belongs.
+            ge_expectation_suite: The great_expectations ExpectationSuite instance to convert to a Hopsworks ExpectationSuite.
+            run_validation: Whether to run validation on inserts when the expectation suite is attached.
+            validation_ingestion_policy: The validation ingestion policy to use when the expectation suite is attached.
+            id:
+                The id of the expectation suite in Hopsworks.
+                If not provided, a new expectation suite will be created.
+            feature_store_id: The id of the feature store of the feature group to which the expectation suite belongs.
+            feature_group_id: The id of the feature group to which the expectation suite belongs.
 
         Returns:
             Hopsworks Expectation Suite instance.
@@ -280,13 +275,13 @@ class ExpectationSuite:
         Convert different representation of expectation to Hopsworks GeExpectation type.
 
         Parameters:
-            expectation: An expectation to convert to Hopsworks GeExpectation type
+            expectation: An expectation to convert to Hopsworks GeExpectation type.
 
         Returns:
-            An expectation converted to Hopsworks GeExpectation type
+            An expectation converted to Hopsworks GeExpectation type.
 
         Raises:
-            `TypeError`
+            TypeError: If the expectation type is not supported.
         """
         if HAS_GREAT_EXPECTATIONS and isinstance(
             expectation, great_expectations.core.ExpectationConfiguration
@@ -304,10 +299,9 @@ class ExpectationSuite:
     def get_expectation(
         self, expectation_id: int, ge_type: bool = HAS_GREAT_EXPECTATIONS
     ) -> Union[GeExpectation, great_expectations.core.ExpectationConfiguration]:
-        """
-        Fetch expectation with expectation_id from the backend.
+        """Fetch expectation with expectation_id from the backend.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -320,16 +314,15 @@ class ExpectationSuite:
             ```
 
         Parameters:
-            expectation_id: Id of the expectation to fetch from the backend.
-            ge_type: Whether to return native Great Expectations object or Hopsworks abstraction,
-                defaults to True if great_expectations is installed else false.
+            expectation_id: ID of the expectation to fetch from the backend.
+            ge_type: Whether to return native Great Expectations object or Hopsworks abstraction.
 
         Returns:
-            The expectation with expectation_id registered in the backend.
+            The expectation with `expectation_id` registered in the backend.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-            `hopsworks.client.exceptions.FeatureStoreException`: If the expectation suite is not registered yet
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.FeatureStoreException: If the expectation suite is not registered yet.
         """
         if self.id and self._expectation_engine:
             if ge_type:
@@ -348,10 +341,9 @@ class ExpectationSuite:
         ],
         ge_type: bool = HAS_GREAT_EXPECTATIONS,
     ) -> Union[GeExpectation, great_expectations.core.ExpectationConfiguration]:
-        """
-        Append an expectation to the local suite or in the backend if attached to a Feature Group.
+        """Append an expectation to the local suite or in the backend if attached to a Feature Group.
 
-        !!! example
+        Example:
             ```python
             # check if the minimum value of specific column is within a range of 0 and 1
             expectation_suite.add_expectation(
@@ -377,17 +369,17 @@ class ExpectationSuite:
                 )
             )
             ```
+
         Parameters:
             expectation: The new expectation object.
-            ge_type: Whether to return native Great Expectations object or Hopsworks abstraction,
-                defaults to True if great_expectations is installed else false.
+            ge_type: Whether to return native Great Expectations object or Hopsworks abstraction.
 
         Returns:
             The new expectation attached to the Feature Group.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-            `hopsworks.client.exceptions.FeatureStoreException`: If the expectation suite is not registered yet
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.FeatureStoreException: If the expectation suite is not registered yet.
         """
         if self.id:
             converted_expectation = self._convert_expectation(expectation=expectation)
@@ -411,25 +403,25 @@ class ExpectationSuite:
         ],
         ge_type: bool = HAS_GREAT_EXPECTATIONS,
     ) -> Union[GeExpectation, great_expectations.core.ExpectationConfiguration]:
-        """
-        Update an expectation from the suite locally or from the backend if attached to a Feature Group.
+        """Update an expectation from the suite locally or from the backend if attached to a Feature Group.
 
-        !!! example
+        Example:
             ```python
             updated_expectation = expectation_suite.replace_expectation(new_expectation_object)
             ```
 
         Parameters:
-            expectation: The updated expectation object. The meta field should contain an expectationId field.
-            ge_type: Whether to return native Great Expectations object or Hopsworks abstraction,
-                defaults to True if great_expectations is installed else false.
+            expectation:
+                The updated expectation object.
+                The meta field should contain an expectationId field.
+            ge_type: Whether to return native Great Expectations object or Hopsworks abstraction.
 
         Returns:
             The updated expectation attached to the Feature Group.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-            `hopsworks.client.exceptions.FeatureStoreException`: If the expectation suite is not registered yet
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.FeatureStoreException: If the expectation suite is not registered yet.
         """
         if self.id:
             converted_expectation = self._convert_expectation(expectation=expectation)
@@ -451,20 +443,21 @@ class ExpectationSuite:
             )
 
     def remove_expectation(self, expectation_id: Optional[int] = None) -> None:
-        """
-        Remove an expectation from the suite locally and from the backend if attached to a Feature Group.
+        """Remove an expectation from the suite locally and from the backend if attached to a Feature Group.
 
-        !!! example
+        Example:
             ```python
             expectation_suite.remove_expectation(expectation_id=123)
             ```
 
         Parameters:
-            expectation_id: Id of the expectation to remove. The expectation will be deleted both locally and from the backend.
+            expectation_id:
+                ID of the expectation to remove.
+                The expectation will be deleted both locally and from the backend.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-            `hopsworks.client.exceptions.FeatureStoreException`: If the expectation suite is not registered yet
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.FeatureStoreException: If the expectation suite is not registered yet.
         """
         if self.id:
             self._expectation_engine.delete(expectation_id=expectation_id)
@@ -557,8 +550,8 @@ class ExpectationSuite:
     def validation_ingestion_policy(self) -> Literal["always", "strict"]:
         """Whether to ingest a df based on the validation result.
 
-        "strict" : ingest df only if all expectations succeed,
-        "always" : always ingest df, even if one or more expectations fail
+        - `"strict"`: ingest df only if all expectations succeed, or
+        - `"always"`: always ingest df, even if one or more expectations fail.
         """
         return self._validation_ingestion_policy
 
