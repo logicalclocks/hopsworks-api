@@ -4,3 +4,5 @@ To create a Feature group, use [`FeatureStore.create_feature_group`][hsfs.featur
 You can retrieve an existing feature group with [`FeatureStore.get_feature_group`][hsfs.feature_store.FeatureStore.get_feature_group].
 
 ::: hsfs.feature_group.FeatureGroup
+    options:
+      inherited_members: true
