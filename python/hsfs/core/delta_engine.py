@@ -379,9 +379,11 @@ class DeltaEngine:
             is_delta_table = False
 
         if not is_delta_table:
-            configuration = (write_options or {}).get(
-                self.DELTA_ENABLE_CHANGE_DATA_FEED, "true"
-            )
+            configuration = {
+                self.DELTA_ENABLE_CHANGE_DATA_FEED: (write_options or {}).get(
+                    self.DELTA_ENABLE_CHANGE_DATA_FEED, "true"
+                )
+            }
             deltars_write(
                 location,
                 dataset,
