@@ -1823,11 +1823,11 @@ class TestPython:
 
         # Verify DeltaEngine was called with correct parameters
         mock_delta_engine.assert_called_once_with(
-            fg.feature_store_id,
-            fg.feature_store_name,
-            fg,
-            None,
-            None,
+            feature_store_id=fg.feature_store_id,
+            feature_store_name=fg.feature_store_name,
+            delta_fg=fg,
+            spark_session=None,
+            spark_context=None,
         )
 
         # Verify save_delta_fg was called with correct parameters
