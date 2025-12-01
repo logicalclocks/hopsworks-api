@@ -391,6 +391,7 @@ def offline_fg_materialization(
         deduped_df,
         storage="offline",
         transform=False,
+        write_options=write_options,
         validation_options={"schema_validation": False},
     )
 
