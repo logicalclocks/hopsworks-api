@@ -22,7 +22,7 @@ import posixpath
 import re
 import warnings
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, TypeVar, Union
+from typing import Any, Dict, List, Literal, Optional, TypeVar, Union
 
 import humps
 import pandas as pd
@@ -31,6 +31,8 @@ from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import engine
 from hsfs.core import data_source as ds
 from hsfs.core import data_source_api, storage_connector_api
+from python.hsfs.core.explicit_provenance import Links
+from python.hsfs.feature_group import FeatureGroup
 
 
 if HAS_NUMPY:
@@ -154,7 +156,7 @@ class StorageConnector(ABC):
         data_format: Optional[str] = None,
         options: Optional[Dict[str, Any]] = None,
         path: Optional[str] = None,
-        dataframe_type: str = "default",
+        dataframe_type: Literal["default", "spark","pandas", "polars", "numpy", "python"] = "default",
     ) -> Union[
         TypeVar("pyspark.sql.DataFrame"),
         TypeVar("pyspark.RDD"),
@@ -164,24 +166,23 @@ class StorageConnector(ABC):
     ]:
         """Reads a query or a path into a dataframe using the storage connector.
 
-        Note, paths are only supported for object stores like S3, HopsFS and ADLS, while
-        queries are meant for JDBC or databases like Redshift and Snowflake.
+        Note, paths are only supported for object stores like S3, HopsFS and ADLS, while queries are meant for JDBC or databases like Redshift and Snowflake.
 
         Parameters:
-            query: By default, the storage connector will read the table configured together
-                with the connector, if any. It's possible to overwrite this by passing a SQL
-                query here. Defaults to `None`.
-            data_format: When reading from object stores such as S3, HopsFS and ADLS, specify
-                the file format to be read, e.g. `csv`, `parquet`.
+            query:
+                By default, the storage connector will read the table configured together with the connector, if any.
+                It's possible to overwrite this by passing a SQL query here.
+            data_format: When reading from object stores such as S3, HopsFS and ADLS, specify the file format to be read, e.g., `csv`, `parquet`.
             options: Any additional key/value options to be passed to the connector.
-            path: Path to be read from within the bucket of the storage connector. Not relevant
-                for JDBC or database based connectors such as Snowflake, JDBC or Redshift.
-            dataframe_type: str, optional. The type of the returned dataframe.
-                Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
+            path:
+                Path to be read from within the bucket of the storage connector.
+                Not relevant for JDBC or database based connectors such as Snowflake, JDBC or Redshift.
+            dataframe_type:
+                The type of the returned dataframe.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
 
         Returns:
-            `DataFrame`.
+            The read dataframe.
         """
         return engine.get_instance().read(
             self, data_format, options or {}, path, dataframe_type
@@ -198,34 +199,37 @@ class StorageConnector(ABC):
 
     def connector_options(self) -> Dict[str, Any]:
         """Return prepared options to be passed to an external connector library.
+
         Not implemented for this connector type.
         """
         return {}
 
-    def get_feature_groups_provenance(self):
-        """Get the generated feature groups using this storage connector, based on explicit
-        provenance. These feature groups can be accessible or inaccessible. Explicit
-        provenance does not track deleted generated feature group links, so deleted
-        will always be empty.
+    def get_feature_groups_provenance(self) -> Links:
+        """Get the generated feature groups using this storage connector, based on explicit provenance.
+
+        These feature groups can be accessible or inaccessible.
+
+        Explicit provenance does not track deleted generated feature group links, so deleted will always be empty.
         For inaccessible feature groups, only a minimal information is returned.
 
         Returns:
-            `Links`: the feature groups generated using this storage connector or `None` if none were created
+            The feature groups generated using this storage connector or `None` if none were created.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         links = self._storage_connector_api.get_feature_groups_provenance(self)
         if not links.is_empty():
             return links
 
-    def get_feature_groups(self):
-        """Get the feature groups using this storage connector, based on explicit
-        provenance. Only the accessible feature groups are returned.
-        For more items use the base method - get_feature_groups_provenance
+    def get_feature_groups(self) -> list[FeatureGroup]:
+        """Get the feature groups using this storage connector, based on explicit rovenance.
+
+        Only the accessible feature groups are returned.
+        For more items use the base method, see get_feature_groups_provenance.
 
         Returns:
-            `List[FeatureGroup]`: List of feature groups.
+            List of feature groups.
         """
         feature_groups_provenance = self.get_feature_groups_provenance()
 
@@ -295,8 +299,7 @@ class HopsFSConnector(StorageConnector):
         self._dataset_name = dataset_name
 
     def spark_options(self) -> Dict[str, Any]:
-        """Return prepared options to be passed to Spark, based on the additional
-        arguments.
+        """Return prepared options to be passed to Spark, based on the additional arguments.
         """
         return {}
 
@@ -412,7 +415,7 @@ class S3Connector(StorageConnector):
         ```
 
         Parameters:
-            path: Path to prepare for reading from cloud storage. Defaults to `None`.
+            path: Path to prepare for reading from cloud storage.
         """
         self.refetch()
         return engine.get_instance().setup_storage_connector(self, path)
@@ -452,7 +455,7 @@ class S3Connector(StorageConnector):
         data_format: Optional[str] = None,
         options: Optional[Dict[str, Any]] = None,
         path: str = "",
-        dataframe_type: str = "default",
+        dataframe_type: Literal["default", "spark", "pandas", "polars", "numpy", "python"] = "default",
     ) -> Union[
         TypeVar("pyspark.sql.DataFrame"),
         TypeVar("pyspark.RDD"),
@@ -462,16 +465,15 @@ class S3Connector(StorageConnector):
     ]:
         """Reads a query or a path into a dataframe using the storage connector.
 
-        Note, paths are only supported for object stores like S3, HopsFS and ADLS, while
-        queries are meant for JDBC or databases like Redshift and Snowflake.
+        Note, paths are only supported for object stores like S3, HopsFS and ADLS, while queries are meant for JDBC or databases like Redshift and Snowflake.
 
         Parameters:
             query: Not relevant for S3 connectors.
             data_format: The file format of the files to be read, e.g. `csv`, `parquet`.
             options: Any additional key/value options to be passed to the S3 connector.
             path: Path within the bucket to be read.
-            dataframe_type: str, optional. The type of the returned dataframe.
-                Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
+            dataframe_type:
+                The type of the returned dataframe.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
 
         Returns:
