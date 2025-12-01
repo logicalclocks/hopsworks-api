@@ -77,17 +77,15 @@ def udf(
     drop: Optional[Union[str, List[str]]] = None,
     mode: Literal["default", "python", "pandas"] = "default",
 ) -> "HopsworksUdf":
-    """
-    Create an User Defined Function that can be and used within the Hopsworks Feature Store to create transformation functions.
+    """Create an User Defined Function that can be and used within the Hopsworks Feature Store to create transformation functions.
 
-    Hopsworks UDF's are user defined functions that executes as 'pandas_udf' when executing
-    in spark engine and as pandas functions in the python engine. The pandas udf/pandas functions
-    gets as inputs pandas Series's and can provide as output a pandas Series or a pandas DataFrame.
-    A Hopsworks udf is defined using the `hopsworks_udf` decorator. The outputs of the defined UDF
-    must be mentioned in the decorator as a list of python types.
+    Hopsworks UDF's are user defined functions that executes as 'pandas_udf' when executing in spark engine and as pandas functions in the python engine.
+    The pandas udf/pandas functions gets as inputs pandas Series's and can provide as output a pandas Series or a pandas DataFrame.
+    A Hopsworks udf is defined using the `hopsworks_udf` decorator.
+    The outputs of the defined UDF must be mentioned in the decorator as a list of python types.
 
 
-    !!! example
+    Example:
         ```python
         from hopsworks import udf
 
@@ -97,15 +95,15 @@ def udf(
         ```
 
     Parameters:
-        return_type: `Union[List[type], type]`. The output types of the defined UDF
-        drop: `Optional[Union[str, List[str]]]`. The features to be dropped after application of transformation functions. Default's to None.
-        mode: `Literal["default", "python", "pandas"]`. The exection mode of the UDF. Default's to 'default'
+        return_type: The output types of the defined UDF.
+        drop: The features to be dropped after application of transformation functions.
+        mode: The exection mode of the UDF.
 
     Returns:
-        `HopsworksUdf`: The metadata object for hopsworks UDF's.
+        The metadata object for hopsworks UDF's.
 
     Raises:
-        `hopsworks.client.exceptions.FeatureStoreException` : If unable to create UDF.
+        hopsworks.client.exceptions.FeatureStoreException: If unable to create UDF.
     """
 
     def wrapper(func: Callable) -> HopsworksUdf:
@@ -122,14 +120,13 @@ def udf(
 
 @dataclass
 class TransformationFeature:
-    """
-    Mapping of feature names to their corresponding statistics argument names in the code.
+    """Mapping of feature names to their corresponding statistics argument names in the code.
 
     The statistic_argument_name for a feature name would be None if the feature does not need statistics.
 
     Parameters:
-        feature_name : `str`. Name of the feature.
-        statistic_argument_name : `str`. Name of the statistics argument in the code for the feature specified in the feature name.
+        feature_name: Name of the feature.
+        statistic_argument_name: Name of the statistics argument in the code for the feature specified in the feature name.
     """
 
     feature_name: str
@@ -144,24 +141,22 @@ class TransformationFeature:
 
 @typechecked
 class HopsworksUdf:
-    """
-    Meta data for user defined functions.
+    """Meta data for user defined functions.
 
     Stores meta data required to execute the user defined function in both spark and python engine.
-    The class generates uses the metadata to dynamically generate user defined functions based on the
-    engine it is executed in.
+    The class generates uses the metadata to dynamically generate user defined functions based on the engine it is executed in.
 
     Parameters:
-        func : `Union[Callable, str]`. The transformation function object or the source code of the transformation function.
-        return_types : `Union[List[type], type, List[str], str]`. A python type or a list of python types that denotes the data types of the columns output from the transformation functions.
-        name : `Optional[str]`. Name of the transformation function.
-        transformation_features : `Optional[List[TransformationFeature]]`. A list of objects of `TransformationFeature` that maps the feature used for transformation to their corresponding statistics argument names if any
-        transformation_function_argument_names : `Optional[List[str]]`. The argument names of the transformation function.
-        dropped_argument_names : `Optional[List[str]]`. The arguments to be dropped from the finial DataFrame after the transformation functions are applied.
-        dropped_feature_names : `Optional[List[str]]`. The feature name corresponding to the arguments names that are dropped
-        feature_name_prefix: `Optional[str]`. Prefixes if any used in the feature view.
-        output_column_names: `Optional[List[str]]`. The names of the output columns returned from the transformation function.
-        generate_output_col_names: `bool`. Generate default output column names for the transformation function. Default's to True.
+        func: The transformation function object or the source code of the transformation function.
+        return_types: A python type or a list of python types that denotes the data types of the columns output from the transformation functions.
+        name: Name of the transformation function.
+        transformation_features: A list of objects of `TransformationFeature` that maps the feature used for transformation to their corresponding statistics argument names if any.
+        transformation_function_argument_names: The argument names of the transformation function.
+        dropped_argument_names: The arguments to be dropped from the finial DataFrame after the transformation functions are applied.
+        dropped_feature_names: The feature name corresponding to the arguments names that are dropped.
+        feature_name_prefix: Prefixes if any used in the feature view.
+        output_column_names: The names of the output columns returned from the transformation function.
+        generate_output_col_names: Generate default output column names for the transformation function.
     """
 
     # Mapping for converting python types to spark types - required for creating pandas UDF's.
@@ -266,13 +261,14 @@ class HopsworksUdf:
         transformation_feature: List[str],
         feature_name_prefix: str,
     ) -> List[str]:
-        """
-        Function that converts dropped features to a list and validates if the dropped feature is present in the transformation function
+        """Function that converts dropped features to a list and validates if the dropped feature is present in the transformation function.
+
         Parameters:
-            dropped_features: `Union[str, List[str]]`. Features of be dropped.
-            transformation_feature: `List[str]`. Features to be transformed in the UDF
+            dropped_features: Features of be dropped.
+            transformation_feature: Features to be transformed in the UDF.
+
         Returns:
-            `List[str]`: A list of features to be dropped.
+            A list of features to be dropped.
         """
         if not dropped_features:
             return None
@@ -303,14 +299,13 @@ class HopsworksUdf:
     def _validate_and_convert_output_types(
         output_types: Union[List[type], List[str]],
     ) -> List[str]:
-        """
-        Function that takes in a type or list of types validates if it is supported and return a list of strings
+        """Function that takes in a type or list of types validates if it is supported and return a list of strings.
 
         Parameters:
-            output_types: `list`. List of python types.
+            output_types: List of python types.
 
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException` : If any of the output type is invalid
+            hopsworks.client.exceptions.FeatureStoreException: If any of the output type is invalid.
         """
         convert_output_types = []
         output_types = (
@@ -336,10 +331,10 @@ class HopsworksUdf:
         """Function that extracts the imports used in the python file specified in the path.
 
         Parameters:
-            path: `str`. Path to python file from which imports are to be extracted.
+            path: Path to python file from which imports are to be extracted.
 
         Returns:
-            `List[str]`: A list of string that contains the import statement using in the file.
+            A list of string that contains the import statement using in the file.
         """
         imports = []
         with open(path) as fh:
@@ -363,15 +358,15 @@ class HopsworksUdf:
 
     @staticmethod
     def _extract_source_code(udf_function: Callable) -> str:
-        """
-        Function to extract the source code of the function along with the imports used in the file.
+        """Function to extract the source code of the function along with the imports used in the file.
 
         The module imports cannot be extracted if the function is defined in a jupyter notebook.
 
         Parameters:
-            udf_function: `Callable`. Function for which the source code must be extracted.
+            udf_function: Function for which the source code must be extracted.
+
         Returns:
-            `str`: a string that contains the source code of function along with the extracted module imports.
+            A string that contains the source code of function along with the extracted module imports.
         """
         try:
             module_imports = HopsworksUdf._get_module_imports(
@@ -390,18 +385,17 @@ class HopsworksUdf:
         return source_code
 
     @staticmethod
-    def _parse_function_signature(source_code: str) -> Tuple[List[str], str, int, int]:
-        """
-        Function to parse the source code to extract the argument along with the start and end line of the function signature
+    def _parse_function_signature(source_code: str) -> tuple[list[str], str, int, int]:
+        """Function to parse the source code to extract the argument along with the start and end line of the function signature.
 
         Parameters:
-            source_code: `str`. Source code of a function.
-        Returns:
-            `List[str]`: List of function arguments
-            `str`: function signature
-            `int`: starting line number of function signature
-            `int`: ending line number of function signature
+            source_code: Source code of a function.
 
+        Returns:
+            list[str]: List of function arguments.
+            str: Function signature.
+            int: Starting line number of function signature.
+            int: Ending line number of function signature.
         """
         source_code = source_code.split("\n")
 
@@ -439,13 +433,13 @@ class HopsworksUdf:
 
     @staticmethod
     def _extract_function_arguments(function: Callable) -> List[TransformationFeature]:
-        """
-        Function to extract the argument names from a provided function source code.
+        """Function to extract the argument names from a provided function source code.
 
         Parameters:
-            source_code: `Callable`. The function for which the value are to be extracted.
+            source_code: The function for which the value are to be extracted.
+
         Returns:
-            `List[TransformationFeature]`: List of TransformationFeature that provide a mapping from feature names to corresponding statistics parameters if any is present.
+            List of TransformationFeature that provide a mapping from feature names to corresponding statistics parameters if any is present.
         """
         arg_list = []
         statistics = None
@@ -483,13 +477,13 @@ class HopsworksUdf:
 
     @staticmethod
     def _format_source_code(source_code: str) -> Tuple[str, str]:
-        """
-        Function that parses the existing source code to remove statistics parameter and remove all decorators and type hints from the function source code.
+        """Function that parses the existing source code to remove statistics parameter and remove all decorators and type hints from the function source code.
 
         Parameters:
-            source_code: `str`. Source code of a function.
+            source_code: Source code of a function.
+
         Returns:
-            `Tuple[str, str]`: Tuple that contains Source code that does not contain any decorators, type hints or statistics parameters and the module imports
+            Tuple that contains Source code that does not contain any decorators, type hints or statistics parameters and the module imports
         """
 
         arg_list, signature, _, signature_end_line = (
@@ -510,11 +504,10 @@ class HopsworksUdf:
         return modified_source, module_imports
 
     def _create_pandas_udf_return_schema_from_list(self) -> str:
-        """
-        Function that creates the return schema required for executing the defined UDF's as pandas UDF's in Spark.
+        """Function that creates the return schema required for executing the defined UDF's as pandas UDF's in Spark.
 
         Returns:
-            `str`: DDL-formatted type string that denotes the return types of the user defined function.
+            DDL-formatted type string that denotes the return types of the user defined function.
         """
         if len(self.return_types) > 1:
             return ", ".join(
@@ -527,10 +520,12 @@ class HopsworksUdf:
             return self.return_types[0]
 
     def _prepare_transformation_function_scope(self, **kwargs) -> Dict[str, Any]:
-        """
-        Function that prepares the scope for the transformation function to be executed. This scope would include any variable that are required to be injected into the transformation function.
+        """Function that prepares the scope for the transformation function to be executed.
 
-        By default the output column names, transformation statistics and transformation context are injected into the scope if they are required by the transformation function. Any additional arguments can be passed as kwargs.
+        This scope would include any variable that are required to be injected into the transformation function.
+
+        By default the output column names, transformation statistics and transformation context are injected into the scope if they are required by the transformation function.
+        Any additional arguments can be passed as kwargs.
         """
         # Shallow copy of scope performed because updating statistics argument of scope must not affect other instances.
         scope = __import__("__main__").__dict__.copy()
@@ -549,14 +544,15 @@ class HopsworksUdf:
         return scope
 
     def python_udf_wrapper(self, rename_outputs) -> Callable:
-        """
-        Function that creates a dynamic wrapper function for the defined udf. The wrapper function would be used to specify column names, in spark engines and to localize timezones.
+        """Function that creates a dynamic wrapper function for the defined udf.
+
+        The wrapper function would be used to specify column names, in spark engines and to localize timezones.
 
         The renames is done so that the column names match the schema expected by spark when multiple columns are returned in a spark udf.
         The wrapper function would be available in the main scope of the program.
 
         Returns:
-            `Callable`: A wrapper function that renames outputs of the User defined function into specified output column names.
+            A wrapper function that renames outputs of the User defined function into specified output column names.
         """
         # Check if any output is of date time type.
         date_time_output_index = [
@@ -621,14 +617,13 @@ class HopsworksUdf:
         return eval("wrapper", scope)
 
     def pandas_udf_wrapper(self) -> Callable:
-        """
-        Function that creates a dynamic wrapper function for the defined udf that renames the columns output by the UDF into specified column names.
+        """Function that creates a dynamic wrapper function for the defined udf that renames the columns output by the UDF into specified column names.
 
         The renames is done so that the column names match the schema expected by spark when multiple columns are returned in a pandas udf.
         The wrapper function would be available in the main scope of the program.
 
         Returns:
-            `Callable`: A wrapper function that renames outputs of the User defined function into specified output column names.
+            A wrapper function that renames outputs of the User defined function into specified output column names.
         """
 
         date_time_output_columns = [
@@ -698,15 +693,16 @@ def renaming_wrapper(*args):
         return eval("renaming_wrapper", scope)
 
     def __call__(self, *features: List[str]) -> "HopsworksUdf":
-        """
-        Set features to be passed as arguments to the user defined functions
+        """Set features to be passed as arguments to the user defined functions.
 
         Parameters:
-            features: Name of features to be passed to the User Defined function
+            features: Name of features to be passed to the User Defined function.
+
         Returns:
-            `HopsworksUdf`: Meta data class for the user defined function.
+            Meta data class for the user defined function.
+
         Raises:
-            `hopsworks.client.exceptions.FeatureStoreException`: If the provided number of features do not match the number of arguments in the defined UDF or if the provided feature names are not strings.
+            hopsworks.client.exceptions.FeatureStoreException: If the provided number of features do not match the number of arguments in the defined UDF or if the provided feature names are not strings.
         """
 
         if len(features) != len(self.transformation_features):
@@ -787,10 +783,9 @@ def renaming_wrapper(*args):
             )
 
     def _validate_transformation_context(self, transformation_context: Dict[str, Any]):
-        """
-        Function that checks if the context variables provided to the transformation function is valid.
+        """Function that checks if the context variables provided to the transformation function is valid.
 
-        it checks if context variables are defined as a dictionary.
+        It checks if context variables are defined as a dictionary.
         """
         if not isinstance(transformation_context, dict):
             raise FeatureStoreException(
@@ -806,24 +801,28 @@ def renaming_wrapper(*args):
         ]
 
     def get_udf(self, online: bool = False) -> Callable:
-        """
-        Function that checks the current engine type, execution type and returns the appropriate UDF.
+        """Function that checks the current engine type, execution type and returns the appropriate UDF.
 
-        If the execution mode is : "default":
-            - In the `spark` engine : During inference a spark udf is returned otherwise a spark pandas_udf is returned.
-            - In the `python` engine : During inference a python udf is returned otherwise a pandas udf is returned.
-        If the execution mode is : "pandas":
-            - In the `spark` engine : Always returns a spark pandas udf.
-            - In the `python` engine : Always returns a pandas udf.
-        If the execution mode is : "python":
-            - In the `spark` engine : Always returns a spark udf.
-            - In the `python` engine : Always returns a python udf.
+        If the execution mode is `"default"`:
+
+        - In the `spark` engine: During inference a spark udf is returned otherwise a spark pandas_udf is returned.
+        - In the `python` engine: During inference a python udf is returned otherwise a pandas udf is returned.
+
+        If the execution mode is `"pandas"`:
+
+        - In the `spark` engine: Always returns a spark pandas udf.
+        - In the `python` engine: Always returns a pandas udf.
+
+        If the execution mode is `"python"`:
+
+        - In the `spark` engine: Always returns a spark udf.
+        - In the `python` engine: Always returns a python udf.
 
         Parameters:
-            inference: `bool`. Specify if udf required for online inference.
+            inference: Specify if udf required for online inference.
 
         Returns:
-            `Callable`: Pandas UDF in the spark engine otherwise returns a python function for the UDF.
+            Pandas UDF in the spark engine otherwise returns a python function for the UDF.
         """
 
         if (
@@ -855,11 +854,10 @@ def renaming_wrapper(*args):
                 )
 
     def to_dict(self) -> Dict[str, Any]:
-        """
-        Convert class into a dictionary.
+        """Convert class into a dictionary.
 
         Returns:
-            `Dict`: Dictionary that contains all data required to json serialize the object.
+            Dictionary that contains all data required to json serialize the object.
         """
         backend_version = client.get_connection().backend_version
 
@@ -883,11 +881,10 @@ def renaming_wrapper(*args):
         }
 
     def json(self) -> str:
-        """
-        Convert class into its json serialized form.
+        """Convert class into its json serialized form.
 
         Returns:
-            `str`: Json serialized object.
+            JSON serialized object.
         """
         return json.dumps(self, cls=util.Encoder)
 
@@ -895,13 +892,13 @@ def renaming_wrapper(*args):
     def from_response_json(
         cls: "HopsworksUdf", json_dict: Dict[str, Any]
     ) -> "HopsworksUdf":
-        """
-        Function that constructs the class object from its json serialization.
+        """Function that constructs the class object from its json serialization.
 
         Parameters:
-            json_dict: `Dict[str, Any]`. Json serialized dictionary for the class.
+            json_dict: JSON serialized dictionary for the class.
+
         Returns:
-            `HopsworksUdf`: Json deserialized class object.
+            JSON deserialized class object.
         """
 
         json_decamelized = humps.decamelize(json_dict)
@@ -1000,7 +997,7 @@ def renaming_wrapper(*args):
 
     @property
     def return_types(self) -> List[str]:
-        """Get the output types of the UDF"""
+        """Get the output types of the UDF."""
         # Update the number of outputs for one hot encoder to match the number of unique values for the feature
         if self.function_name == "one_hot_encoder" and self.transformation_statistics:
             self.update_return_type_one_hot()
@@ -1008,24 +1005,24 @@ def renaming_wrapper(*args):
 
     @property
     def function_name(self) -> str:
-        """Get the function name of the UDF"""
+        """Get the function name of the UDF."""
         return self._function_name
 
     @property
     def statistics_required(self) -> bool:
-        """Get if statistics for any feature is required by the UDF"""
+        """Get if statistics for any feature is required by the UDF."""
         return bool(self.statistics_features)
 
     @property
     def transformation_statistics(
         self,
     ) -> Optional[TransformationStatistics]:
-        """Feature statistics required for the defined UDF"""
+        """Feature statistics required for the defined UDF."""
         return self._statistics
 
     @property
     def output_column_names(self) -> List[str]:
-        """Output columns names of the transformation function"""
+        """Output columns names of the transformation function."""
         if self._feature_name_prefix:
             return [
                 self._feature_name_prefix + output_col_name
@@ -1063,13 +1060,13 @@ def renaming_wrapper(*args):
 
     @property
     def feature_name_prefix(self) -> Optional[str]:
-        """The feature name prefix that needs to be added to the feature names"""
+        """The feature name prefix that needs to be added to the feature names."""
         return self._feature_name_prefix
 
     @property
     def statistics_features(self) -> List[str]:
         """
-        List of feature names that require statistics
+        List of feature names that require statistics.
         """
         return [
             transformation_feature.feature_name
@@ -1090,7 +1087,7 @@ def renaming_wrapper(*args):
     @property
     def _statistics_argument_names(self) -> List[str]:
         """
-        List of argument names required for statistics
+        List of argument names required for statistics.
         """
         return [
             transformation_feature.statistic_argument_name
@@ -1119,6 +1116,7 @@ def renaming_wrapper(*args):
     def transformation_context(self) -> Dict[str, Any]:
         """
         Dictionary that contains the context variables required for the UDF.
+
         These context variables passed to the UDF during execution.
         """
         return self._transformation_context if self._transformation_context else {}

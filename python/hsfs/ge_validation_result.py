@@ -204,12 +204,12 @@ class ValidationResult:
     def validation_time(
         self, validation_time: Union[str, int, datetime.datetime, datetime.date, None]
     ) -> None:
-        """
-        Time at which validation was run using Great Expectations.
+        """Time at which validation was run using Great Expectations.
 
         Parameters:
-            validation_time: The time at which validation was performed.
-            Supported format include timestamps(int), datetime, date or string formatted to be datutils parsable.
+            validation_time:
+                The time at which validation was performed.
+                Supported format include timestamps(int), datetime, date or string formatted to be datutils parsable.
         """
         if isinstance(validation_time, str):
             try:
