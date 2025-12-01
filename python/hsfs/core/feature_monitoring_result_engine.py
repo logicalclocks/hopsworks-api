@@ -31,11 +31,11 @@ from hsfs.core.job_api import JobApi
 class FeatureMonitoringResultEngine:
     """Logic and helper methods to deal with results from a feature monitoring job.
 
-    Attributes:
-        feature_store_id: int. Id of the respective Feature Store.
-        feature_group_id: int. Id of the feature group, if monitoring a feature group.
-        feature_view_name: str. Name of the feature view, if monitoring a feature view.
-        feature_view_version: int. Version of the feature view, if monitoring a feature view.
+    Parameters:
+        feature_store_id: ID of the respective Feature Store.
+        feature_group_id: ID of the feature group, if monitoring a feature group.
+        feature_view_name: Name of the feature view, if monitoring a feature view.
+        feature_view_version: Version of the feature view, if monitoring a feature view.
     """
 
     def __init__(

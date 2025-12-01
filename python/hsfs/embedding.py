@@ -30,15 +30,15 @@ class SimilarityFunctionType:
     """
     Enumeration class representing different types of similarity functions.
 
-    # Attributes
-        L2 (str): Represents L2 norm similarity function.
-        COSINE (str): Represents cosine similarity function.
-        DOT_PRODUCT (str): Represents dot product similarity function.
+    Parameters:
+        L2: Represents L2 norm similarity function.
+        COSINE: Represents cosine similarity function.
+        DOT_PRODUCT: Represents dot product similarity function.
     """
 
-    L2 = "l2_norm"
-    COSINE = "cosine"
-    DOT_PRODUCT = "dot_product"
+    L2: str = "l2_norm"
+    COSINE: str = "cosine"
+    DOT_PRODUCT: str = "dot_product"
 
     def __init__(self) -> None:
         # Fix for the doc

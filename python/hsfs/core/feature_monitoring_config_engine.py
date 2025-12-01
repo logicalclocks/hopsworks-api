@@ -49,11 +49,11 @@ class FeatureMonitoringConfigEngine:
         to run the feature monitoring job, including taking a monitoring window configuration
         and fetching the associated data.
 
-        Attributes:
-            feature_store_id: int. Id of the respective Feature Store.
-            feature_group_id: int. Id of the feature group, if monitoring a feature group.
-            feature_view_name: str. Name of the feature view, if monitoring a feature view.
-            feature_view_version: int. Version of the feature view, if monitoring a feature view.
+        Parameters:
+            feature_store_id: ID of the respective Feature Store.
+            feature_group_id: ID of the feature group, if monitoring a feature group.
+            feature_view_name: Name of the feature view, if monitoring a feature view.
+            feature_view_version: Version of the feature view, if monitoring a feature view.
         """
         self._feature_store_id = feature_store_id
         self._feature_group_id = feature_group_id
