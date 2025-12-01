@@ -314,7 +314,7 @@ class Query:
     def show(self, n: int, online: bool = False) -> List[List[Any]]:
         """Show the first N rows of the Query.
 
-        !!! example "Show the first 10 rows"
+        Example: Show the first 10 rows
             ```python
             fg1 = fs.get_feature_group("...")
             fg2 = fs.get_feature_group("...")
@@ -352,7 +352,7 @@ class Query:
         If no join keys are specified, Hopsworks will use the maximal matching subset of
         the primary keys of the feature groups you are joining.
 
-        !!! example "Join two feature groups"
+        Example: Join two feature groups
             ```python
             fg1 = fs.get_feature_group("...")
             fg2 = fs.get_feature_group("...")
@@ -360,7 +360,7 @@ class Query:
             query = fg1.select_all().join(fg2.select_all())
             ```
 
-        !!! example "More complex join"
+        Example: More complex join
             ```python
             fg1 = fs.get_feature_group("...")
             fg2 = fs.get_feature_group("...")
@@ -416,14 +416,14 @@ class Query:
         specified point in time can be excluded from the query. The Query can then either be read into a Dataframe
         or used further to perform joins or construct a training dataset.
 
-        !!! example "Reading features at a specific point in time:"
+        Example: Reading features at a specific point in time
             ```python
             fs = connection.get_feature_store();
             query = fs.get_feature_group("example_feature_group", 1).select_all()
             query.as_of("2020-10-20 07:34:11").read().show()
             ```
 
-        !!! example "Reading commits incrementally between specified points in time:"
+        Example: Reading commits incrementally between specified points in time
             ```python
             fs = connection.get_feature_store();
             query = fs.get_feature_group("example_feature_group", 1).select_all()
@@ -434,7 +434,7 @@ class Query:
         That means, in order to query a single commit, you need to query that commit time
         and exclude everything just before the commit.
 
-        !!! example "Reading only the changes from a single commit"
+        Example: Reading only the changes from a single commit
             ```python
             fs = connection.get_feature_store();
             query = fs.get_feature_group("example_feature_group", 1).select_all()
@@ -444,7 +444,7 @@ class Query:
         When no wallclock_time is given, the latest state of features is returned. Optionally, commits before
         a specified point in time can still be excluded.
 
-        !!! example "Reading the latest state of features, excluding commits before a specified point in time"
+        Example: Reading the latest state of features, excluding commits before a specified point in time
             ```python
             fs = connection.get_feature_store();
             query = fs.get_feature_group("example_feature_group", 1).select_all()
@@ -519,7 +519,7 @@ class Query:
         """Apply filter to the feature group.
 
         Selects all features and returns the resulting `Query` with the applied filter.
-        !!! example
+        Example:
             ```python
 
             from hsfs.feature import Feature
@@ -541,7 +541,7 @@ class Query:
         query.filter((fg.feature1 == 1) | (fg.feature2 >= 2))
         ```
 
-        !!! example "Filters are fully compatible with joins"
+        Example: Filters are fully compatible with joins
             ```python
             fg1 = fs.get_feature_group("...")
             fg2 = fs.get_feature_group("...")
@@ -553,7 +553,7 @@ class Query:
                 .filter((fg1.location_id == 10) | (fg1.location_id == 20))
             ```
 
-        !!! example "Filters can be applied at any point of the query"
+        Example: Filters can be applied at any point of the query
             ```python
             fg1 = fs.get_feature_group("...")
             fg2 = fs.get_feature_group("...")
@@ -672,7 +672,7 @@ class Query:
         It does not fully deserialize the message as the usecase is to
         send it straight back to Hopsworks to read the content of the query
 
-        Arguments:
+        Parameters:
             json_dict (str): a json string containing a query object
 
         Returns:
@@ -686,7 +686,7 @@ class Query:
 
     def to_string(self, online: bool = False, arrow_flight: bool = False) -> str:
         """
-        !!! example
+        Example:
             ```python
             fg1 = fs.get_feature_group("...")
             fg2 = fs.get_feature_group("...")

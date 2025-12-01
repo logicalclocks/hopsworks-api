@@ -1235,11 +1235,11 @@ class VectorServer:
     ) -> str:
         """Check if the requested client is initialised as well as deciding which client to use based on default.
 
-        # Arguments:
+        Parameters:
             force_rest_client: bool. user specified override to use rest_client.
             force_sql_client: bool. user specified override to use sql_client.
 
-        # Returns:
+        Returns:
             An enum specifying the client to be used.
         """
         if force_rest_client and force_sql_client:
@@ -1625,7 +1625,7 @@ class VectorServer:
         Currently timestamp which are in the database are returned as string. Whereas
         passed features which were given as datetime are returned as integer timestamp.
 
-        # Arguments:
+        Parameters:
             timestamp_value: The timestamp value to be handled, either as int or str.
         """
         if timestamp_value is None:

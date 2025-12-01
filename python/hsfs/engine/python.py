@@ -1943,10 +1943,11 @@ class Engine:
         In case the feature log is a list of lists, list of numpy arrays, list of dictionaries, pandas dataframe, polars dataframe, pandas series or a polars series it is directly converted to a pandas dataframe.
         If the feature_log is `None` and cols are provided an empty dataframe with the provided columns is returned.
 
-        # Arguments:
+        Parameters:
             feature_log `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame, List[Dict[str, Any]], Dict[str, Any]]`: Feature log provided by the user.
             cols `List[str]`: List of expected features in the logging dataframe.
-        # Returns:
+
+        Returns:
             `pd.DataFrame`: A pandas dataframe with the feature log that contains the expected features.
         """
         if feature_log is None and cols:
@@ -1983,7 +1984,7 @@ class Engine:
 
         If the feature_log provided is a list then it is considered as a single feature (column).
 
-        # Arguments:
+        Parameters:
             feature_log `Union[List[List[Any]], List[Any]]`: List of features/labels provided for logging.
             cols `List[str]`: List of expected features in the logging dataframe.
         """
@@ -2174,7 +2175,7 @@ class Engine:
 
         The function
 
-        # Arguments:
+        Parameters:
             logging_data : Feature log provided by the user.
             logging_feature_group_features : List of features in the logging feature group.
             logging_feature_group_feature_names: `List[str]`. The names of the logging feature group features.
@@ -2193,7 +2194,8 @@ class Engine:
             model_col_name : Name of the model column.
             training_dataset_version : Version of the training dataset.
             hsml_model : Name of the model.
-        # Returns:
+
+        Returns:
             `pd.DataFrame`: A pandas dataframe with all the logging components.
             `List[str]`: Names of additional logging features passed in the Logging Dataframe.
             `List[str]`: Names of missing logging features passed in the Logging Dataframe.
@@ -2506,7 +2508,7 @@ class Engine:
         """
         Function that combines all the logging components into a single list of dictionaries that can be logged to send to the inference logger side cart for writing to the feature store.
 
-        # Arguments:
+        Parameters:
             logging_data : Feature log provided by the user.
             logging_feature_group_features : List of features in the logging feature group.
             logging_feature_group_feature_names: `List[str]`. The names of the logging feature group features.
@@ -2526,7 +2528,8 @@ class Engine:
             training_dataset_version : Version of the training dataset.
             model_name : Name of the model.
             model_version : Version of the model.
-        # Returns:
+
+        Returns:
             `List[Dict[str, Any]]`: A list of dictionaries with all the logging components
         """
         _, label_columns, _ = predictions
@@ -2762,10 +2765,10 @@ class Engine:
 
         Both Pandas and Polars dataframes are supported in the Python Engine.
 
-        # Arguments:
+        Parameters:
             dataframe `Any`: A dataframe to check.
 
-        # Returns:
+        Returns:
             `bool`: True if the dataframe is supported, False otherwise.
         """
         if (HAS_POLARS and isinstance(dataframe, pl.DataFrame)) or (

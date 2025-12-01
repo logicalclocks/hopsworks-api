@@ -224,7 +224,7 @@ class FeatureMonitoringConfig:
         row_percentage: Optional[float] = None,
     ) -> "FeatureMonitoringConfig":
         """Sets the detection window of data to compute statistics on.
-        !!! example
+        Example:
             ```python
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -277,7 +277,7 @@ class FeatureMonitoringConfig:
     ) -> "FeatureMonitoringConfig":
         """Sets the reference window of data to compute statistics on.
         See also `with_reference_value(...)` and `with_reference_training_dataset(...)` for other reference options.
-        !!! example
+        Example:
             ```python
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -320,7 +320,7 @@ class FeatureMonitoringConfig:
     ) -> "FeatureMonitoringConfig":
         """Sets the reference value to compare statistics with.
         See also `with_reference_window(...)` and `with_reference_training_dataset(...)` for other reference options.
-        !!! example
+        Example:
             ```python
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -352,7 +352,7 @@ class FeatureMonitoringConfig:
     ) -> "FeatureMonitoringConfig":
         """Sets the reference training dataset to compare statistics with.
         See also `with_reference_value(...)` and `with_reference_window(...)` for other reference options.
-        !!! example
+        Example:
             ```python
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -387,7 +387,7 @@ class FeatureMonitoringConfig:
         relative: Optional[bool] = False,
     ) -> "FeatureMonitoringConfig":
         """Sets the statistics comparison criteria for feature monitoring with a reference window.
-        !!! example
+        Example:
             ```python
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -427,7 +427,7 @@ class FeatureMonitoringConfig:
 
     def save(self):
         """Saves the feature monitoring configuration.
-        !!! example
+        Example:
             ```python
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -458,7 +458,7 @@ class FeatureMonitoringConfig:
 
     def update(self):
         """Updates allowed fields of the saved feature monitoring configuration.
-        !!! example
+        Example:
             ```python
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -475,7 +475,7 @@ class FeatureMonitoringConfig:
 
     def run_job(self):
         """Trigger the feature monitoring job which computes and compares statistics on the detection and reference windows.
-        !!! example
+        Example:
             ```python3
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -505,7 +505,7 @@ class FeatureMonitoringConfig:
 
     def get_job(self):
         """Get the feature monitoring job which computes and compares statistics on the detection and reference windows.
-        !!! example
+        Example:
             ```python3
             # Fetch registered config by name via feature group or feature view
             my_monitoring_config = fg.get_feature_monitoring_configs(name="my_monitoring_config")
@@ -531,7 +531,7 @@ class FeatureMonitoringConfig:
 
     def delete(self):
         """Deletes the feature monitoring configuration.
-        !!! example
+        Example:
             ```python
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -552,7 +552,7 @@ class FeatureMonitoringConfig:
 
     def disable(self):
         """Disables the schedule of the feature monitoring job.
-        !!! example
+        Example:
             ```python
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -569,7 +569,7 @@ class FeatureMonitoringConfig:
     def enable(self):
         """Enables the schedule of the feature monitoring job.
         The scheduler can be configured via the `job_schedule` property.
-        !!! example
+        Example:
             ```python
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -606,7 +606,8 @@ class FeatureMonitoringConfig:
     ) -> List["FeatureMonitoringResult"]:
         """
         Fetch the history of the computed statistics and comparison results for this configuration.
-        !!! example
+
+        Example:
             ```python3
             # Fetch your feature group or feature view
             fg = fs.get_feature_group(name="my_feature_group", version=1)
@@ -618,10 +619,12 @@ class FeatureMonitoringConfig:
                 end_time="2021-01-31",
             )
             ```
-        # Args:
+
+        Parameters:
             start_time: The start time of the time range to fetch the history for.
             end_time: The end time of the time range to fetch the history for.
             with_statistics: Whether to include the computed statistics in the results.
+
         Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
         """

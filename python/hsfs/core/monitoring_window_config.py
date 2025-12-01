@@ -79,7 +79,7 @@ class MonitoringWindowConfig:
     ):
         """Configuration to define the slice of data to compute statistics on.
 
-        !!! example
+        Example:
             ```python3
             # Detection or reference window
             ## Rolling Time Window

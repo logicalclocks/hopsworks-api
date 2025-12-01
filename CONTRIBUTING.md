@@ -210,7 +210,7 @@ The `new_template.md` file should contain a tag to identify the place at which t
 
 Some extra content here.
 
-!!! example
+Example:
     ```python
     import xyz
     ```

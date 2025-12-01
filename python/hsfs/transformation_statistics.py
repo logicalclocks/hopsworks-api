@@ -162,7 +162,7 @@ class FeatureTransformationStatistics:
     def distinctness(self) -> Optional[float]:
         """Fraction of distinct values of a feature over the number of all its values. Distinct values occur at least once.
 
-        !!! note "Example"
+        Note: Example
             $[a, a, b]$ contains two distinct values $a$ and $b$, so distinctness is $2/3$.
         """
         return self._distinctness
@@ -172,7 +172,7 @@ class FeatureTransformationStatistics:
         """Entropy is a measure of the level of information contained in an event (feature value) when considering all possible events (all feature values).
         Entropy is estimated using observed value counts as the negative sum of (value_count/total_count) * log(value_count/total_count).
 
-        !!! note "Example"
+        Note: Example
             $[a, b, b, c, c]$ has three distinct values with counts $[1, 2, 2]$.
 
             Entropy is then $(-1/5*log(1/5)-2/5*log(2/5)-2/5*log(2/5)) = 1.055$.
@@ -183,7 +183,7 @@ class FeatureTransformationStatistics:
     def uniqueness(self) -> Optional[float]:
         """Fraction of unique values over the number of all values of a column. Unique values occur exactly once.
 
-        !!! note "Example"
+        Note: Example
             $[a, a, b]$ contains one unique value $b$, so uniqueness is $1/3$.
         """
         return self._uniqueness
@@ -231,7 +231,7 @@ class TransformationStatistics:
         *features: `str`.
             The features for which training dataset statistics need to be computed.
 
-    !!! example
+    Example:
         ```python
         # Defining transformation statistics
         transformation_statistics = TransformationStatistics("feature1", "feature2")

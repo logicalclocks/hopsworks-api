@@ -69,7 +69,7 @@ class OnlineStoreRestClientApi:
         to missing. The "features" field will be a list with the primary key values and None/null for the
         feature values.
 
-        # Arguments:
+        Parameters:
             payload: The payload to send to the RonDB REST Server Feature Store API.
                 The payload should contains the following fields:
                     - "featureStoreName": The name of the feature store in which the feature view is registered.
@@ -80,14 +80,14 @@ class OnlineStoreRestClientApi:
                         Keys are "featureName" and "featureType" and values are boolean.
                     - "passedFeatures": A dictionary with the feature names as keys and the values to substitute for this specific vector.
 
-        # Returns:
+        Returns:
             The response json containing the feature vector as well as status information
             and optionally descriptive metadata about the features. It contains the following fields:
                 - "status": The status pertinent to this single feature vector. Allowed values are "COMPLETE", "MISSING" and "ERROR".
                 - "features": A list of the feature values.
                 - "metadata": A list of dictionaries with metadata for each feature. The order should match the order of the features.
 
-        # Raises:
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the response status code is not 200.
                 - 400: Requested Metadata does not exist
                 - 401: Access denied. API key does not give access to the feature store (e.g feature store not shared with user),
@@ -113,7 +113,7 @@ class OnlineStoreRestClientApi:
         Check the RonDB Rest Server documentation for more details:
         https://docs.hopsworks.ai/latest/user_guides/fs/feature_view/feature-server
 
-        # Arguments:
+        Parameters:
             payload: The payload to send to the RonDB REST Server Feature Store API.
             The payload should contains the following fields:
                 - "featureStoreName": The name of the feature store in which the feature view is registered.
@@ -125,14 +125,14 @@ class OnlineStoreRestClientApi:
                 - "metadataOptions": Whether to include feature metadata in the response.
                     Keys are "featureName" and "featureType" and values are boolean.
 
-        # Returns:
+        Returns:
             The response json containing the feature vector as well as status information
             and optionally descriptive metadata about the features. It contains the following fields:
                 - "status": A list of the status for each feature vector retrieval. Allowed values are "COMPLETE", "MISSING" and "ERROR".
                 - "features": A list containing list of the feature values for each feature_vector.
                 - "metadata": A list of dictionaries with metadata for each feature. The order should match the order of the features.
 
-        # Raises:
+        Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the response status code is not 200.
                 - 400: Requested Metadata does not exist
                 - 401: Access denied. API key does not give access to the feature store (e.g feature store not shared with user),

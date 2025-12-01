@@ -51,7 +51,7 @@ class ModelServing:
         Getting a deployment from Model Serving means getting its metadata handle
         so you can subsequently operate on it (e.g., start or stop).
 
-        !!! example
+        Example:
             ```python
             # login and get Hopsworks Model Serving handle using .login() and .get_model_serving()
 
@@ -73,7 +73,7 @@ class ModelServing:
     def get_deployment(self, name: str = None) -> Optional[Deployment]:
         """Get a deployment by name from Model Serving.
 
-        !!! example
+        Example:
             ```python
             # login and get Hopsworks Model Serving handle using .login() and .get_model_serving()
 
@@ -101,7 +101,7 @@ class ModelServing:
         self, model: Model = None, status: str = None
     ) -> List[Deployment]:
         """Get all deployments from model serving.
-        !!! example
+        Example:
             ```python
             # login into Hopsworks using hopsworks.login()
 
@@ -174,7 +174,7 @@ class ModelServing:
     ) -> Predictor:
         """Create a Predictor metadata object.
 
-        !!! example
+        Example:
             ```python
             # login into Hopsworks using hopsworks.login()
 
@@ -192,7 +192,7 @@ class ModelServing:
             my_deployment = my_predictor.deploy()
             ```
 
-        !!! note "Lazy"
+        Note: Lazy
             This method is lazy and does not persist any metadata or deploy any model on its own.
             To create a deployment using this predictor, call the `deploy()` method.
 
@@ -242,7 +242,7 @@ class ModelServing:
     ) -> Transformer:
         """Create a Transformer metadata object.
 
-        !!! example
+        Example:
             ```python
             # login into Hopsworks using hopsworks.login()
 
@@ -278,7 +278,7 @@ class ModelServing:
             my_transformer = Transformer(script_file)
             ```
 
-        !!! example "Create a deployment with the transformer"
+        Example: Create a deployment with the transformer
             ```python
 
             my_predictor = ms.create_predictor(transformer=my_transformer)
@@ -289,7 +289,7 @@ class ModelServing:
             my_deployment.save()
             ```
 
-        !!! note "Lazy"
+        Note: Lazy
             This method is lazy and does not persist any metadata or deploy any transformer. To create a deployment using this transformer, set it in the `predictor.transformer` property.
 
         Parameters:
@@ -316,7 +316,7 @@ class ModelServing:
     ) -> Predictor:
         """Create an Entrypoint metadata object.
 
-        !!! example
+        Example:
             ```python
             # login into Hopsworks using hopsworks.login()
 
@@ -328,7 +328,7 @@ class ModelServing:
             my_deployment = my_endpoint.deploy()
             ```
 
-        !!! note "Lazy"
+        Note: Lazy
             This method is lazy and does not persist any metadata or deploy any endpoint on its own.
             To create a deployment using this endpoint, call the `deploy()` method.
 
@@ -366,7 +366,7 @@ class ModelServing:
     ) -> Deployment:
         """Create a Deployment metadata object.
 
-        !!! example
+        Example:
             ```python
             # login into Hopsworks using hopsworks.login()
 
@@ -385,7 +385,7 @@ class ModelServing:
             my_deployment.save()
             ```
 
-        !!! example "Using the model object"
+        Example: Using the model object
             ```python
             # login into Hopsworks using hopsworks.login()
 
@@ -400,7 +400,7 @@ class ModelServing:
             my_deployment.get_state().describe()
             ```
 
-        !!! example "Using the Model Serving handle"
+        Example: Using the Model Serving handle
             ```python
             # login into Hopsworks using hopsworks.login()
 
@@ -420,7 +420,7 @@ class ModelServing:
             my_deployment.get_state().describe()
             ```
 
-        !!! note "Lazy"
+        Note: Lazy
             This method is lazy and does not persist any metadata or deploy any model. To create a deployment, call the `save()` method.
 
         Parameters:

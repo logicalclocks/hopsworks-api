@@ -196,7 +196,7 @@ class Deployment:
         """Send inference requests to the deployment.
            One of data or inputs parameters must be set. If both are set, inputs will be ignored.
 
-        !!! example
+        Example:
             ```python
             # login into Hopsworks using hopsworks.login()
 

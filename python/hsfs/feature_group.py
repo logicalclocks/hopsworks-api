@@ -458,7 +458,7 @@ class FeatureGroupBase:
             +------------+------------+------------+
             ```
 
-            !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = hopsworks.login().get_feature_store()
@@ -2342,7 +2342,7 @@ class FeatureGroupBase:
         """Returns the names of all features with a complex data type in this
         feature group.
 
-        !!! example
+        Example:
             ```python
             complex_dtype_features = fg.get_complex_features()
             ```

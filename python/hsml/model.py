@@ -182,7 +182,7 @@ class Model:
     def delete(self):
         """Delete the model
 
-        !!! danger "Potentially dangerous operation"
+        Danger: Potentially dangerous operation
             This operation drops all metadata associated with **this version** of the
             model **and** deletes the model files.
 
@@ -211,7 +211,7 @@ class Model:
     ) -> deployment.Deployment:
         """Deploy the model.
 
-        !!! example
+        Example:
             ```python
 
             import hopsworks

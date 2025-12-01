@@ -1187,9 +1187,9 @@ class FeatureViewEngine:
         """
         Function that checks the primary keys from the query object and returns them as a list.
 
-        #Arguments:
-            fv_query_obj : `Query`. Query object from which the primary keys are extracted.
-            check_duplicate : `bool`. Flag to check if the primary keys are duplicated in the query.
+        Parameters:
+            fv_query_obj: Query object from which the primary keys are extracted.
+            check_duplicate: Flag to check if the primary keys are duplicated in the query.
         """
         root_feature_group_selected_features_name = {
             feature.name for feature in query._left_features
@@ -1220,9 +1220,9 @@ class FeatureViewEngine:
         """
         Function that checks the event times from the query object and returns them as a list.
 
-        #Arguments:
-            fv_query_obj : `Query`. Query object from which the event times are extracted.
-            check_duplicate : `bool`. Flag to check if the event times are duplicated in the query.
+        Parameters:
+            fv_query_obj: Query object from which the event times are extracted.
+            check_duplicate: Flag to check if the event times are duplicated in the query.
         """
         root_feature_group_selected_features_name = {
             feature.name for feature in query._left_features
@@ -1266,10 +1266,11 @@ class FeatureViewEngine:
         """
         Function to extract features from a logging dataframe.
 
-        #Arguments:
-            feature_view_obj: `feature_view.FeatureView`. The feature view object for which logging features are to be extracted.
-            dataframes: `List[Union[pd.DataFrame, pl.DataFrame, TypeVar("pyspark.sql.DataFrame")]]`. The dataframes from which logging features are to be extracted.
-        #Returns:
+        Parameters:
+            feature_view_obj: The feature view object for which logging features are to be extracted.
+            dataframes: The dataframes from which logging features are to be extracted.
+
+        Returns:
             `List[feature.Feature]`. List of features extracted from the logging feature view provided.
         """
         logging_features = []
@@ -1300,11 +1301,11 @@ class FeatureViewEngine:
         """
         Function to enable feature logging for a feature view. This function creates logging feature groups for the feature view.
 
-        #Arguments:
-            fv : `FeatureView`. Feature view object to enable feature logging for.
-            extra_log_columns : `List[feature.Feature]`. List of features to be logged.
+        Parameters:
+            fv: Feature view object to enable feature logging for.
+            extra_log_columns: List of features to be logged.
 
-        #Returns:
+        Returns:
             `FeatureView`. Feature view object with feature logging enabled.
         """
         logging_features = (

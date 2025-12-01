@@ -168,7 +168,7 @@ class KafkaTopic:
     @usage.method_logger
     def delete(self):
         """Delete the topic
-        !!! danger "Potentially dangerous operation"
+        Danger: Potentially dangerous operation
             This operation deletes the topic.
         Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request

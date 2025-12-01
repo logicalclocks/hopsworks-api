@@ -109,7 +109,7 @@ class OnlineStoreSqlClient:
         """
         Fetch prepared statement for feature vector retrival from the backend.
 
-        # Arguments:
+        Parameters:
             entity : FeatureView or TrainingDataset object to fetch prepared statements for.
             inference_helper_columns : Fetch prepared statements for inference helper columns.
             with_logging_meta_data : Fetch prepared statements to include logging meta data.

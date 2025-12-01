@@ -1973,7 +1973,7 @@ class Engine:
 
         If the feature_log provided is a list then it is considered as a single feature (column).
 
-        # Arguments:
+        Parameters:
             feature_log `Union[List[List[Any]], List[Any]]`: List of features/labels provided for logging.
             cols `List[str]`: List of expected features in the logging dataframe.
         """
@@ -2329,10 +2329,10 @@ class Engine:
 
         Both Pandas and Spark dataframes are supported in the Spark Engine.
 
-        # Arguments:
+        Parameters:
             dataframe `Any`: A dataframe to check.
 
-        # Returns:
+        Returns:
             `bool`: True if the dataframe is supported, False otherwise.
         """
         if isinstance(dataframe, DataFrame) or isinstance(dataframe, pd.DataFrame):

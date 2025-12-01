@@ -38,10 +38,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         """
         Function to update feature group schema based on the on demand transformation available in the feature group.
 
-        # Arguments:
-            feature_group: fg.FeatureGroup. The feature group for which the schema has to be updated.
-            features: List[feature.Feature]. List of features currently in the feature group
-        # Returns:
+        Parameters:
+            feature_group: The feature group for which the schema has to be updated.
+            features: List of features currently in the feature group.
+
+        Returns:
             Updated list of features. That has on-demand features and removes dropped features.
         """
         if not feature_group.transformation_functions:

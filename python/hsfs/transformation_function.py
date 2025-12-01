@@ -106,7 +106,7 @@ class TransformationFunction:
     def save(self) -> None:
         """Save a transformation function into the backend.
 
-        !!! example
+        Example:
             ```python
             # import hopsworks udf decorator
             from hopworks import udf
@@ -131,7 +131,7 @@ class TransformationFunction:
     def delete(self) -> None:
         """Delete transformation function from backend.
 
-        !!! example
+        Example:
             ```python
             # import hopsworks udf decorator
             from hopworks import udf

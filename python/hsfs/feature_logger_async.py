@@ -73,8 +73,8 @@ class AsyncWorkerThread(threading.Thread):
         """
         Function to submit a task to the queue from a different thread so that it can be processed by workers.
 
-        # Arguments:
-            task: `Tuple[dict, dict]`. Tuple that contains untransformed and transformed features to be logged.
+        Parameters:
+            task: Tuple that contains untransformed and transformed features to be logged.
         """
         if self._stop_event.is_set():
             _logger.error("Cannot submit task. Workers are stopped.")
@@ -87,9 +87,9 @@ class AsyncWorkerThread(threading.Thread):
         """
         Function to initialize workers as tasks in the event loop.
 
-        # Arguments:
-            num_worker: `int`. Number of workers to be initialized.
-            worker_function: `Callable`. Function to be run by the workers.
+        Parameters:
+            num_worker: Number of workers to be initialized.
+            worker_function: Function to be run by the workers.
         """
         for _ in range(num_workers):
             worker = self._event_loop.create_task(self._worker(worker_function))
@@ -114,7 +114,7 @@ class AsyncWorkerThread(threading.Thread):
         """
         Function to run the worker function in the event loop, until a None has been submitted to the queue.
 
-        # Arguments:
+        Parameters:
             worker_function: `Callable`. Function to be run by the workers.
         """
         while True:

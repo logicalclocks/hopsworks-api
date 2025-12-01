@@ -76,7 +76,7 @@ class KafkaSchema:
     @usage.method_logger
     def delete(self):
         """Delete the schema
-        !!! danger "Potentially dangerous operation"
+        Danger: Potentially dangerous operation
             This operation deletes the schema.
         Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request

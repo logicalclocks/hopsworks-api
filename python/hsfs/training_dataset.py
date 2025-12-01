@@ -848,7 +848,7 @@ class TrainingDataset(TrainingDatasetBase):
             the data will not be deleted, but you will not be able to track it anymore
             from the Feature Store.
 
-        !!! danger "Potentially dangerous operation"
+        Danger: Potentially dangerous operation
             This operation drops all metadata associated with **this version** of the
             training dataset **and** and the materialized data in HopsFS.
 

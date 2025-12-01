@@ -244,7 +244,7 @@ class FeatureView:
     def delete(self) -> None:
         """Delete current feature view, all associated metadata and training data.
 
-        !!! example
+        Example:
             ```python
             # get feature store instance
             fs = ...
@@ -256,7 +256,7 @@ class FeatureView:
             feature_view.delete()
             ```
 
-        !!! danger "Potentially dangerous operation"
+        Danger: Potentially dangerous operation
             This operation drops all metadata associated with **this version** of the
             feature view **and** related training dataset **and** materialized data in HopsFS.
 
@@ -1693,7 +1693,7 @@ class FeatureView:
         The training data is split into train and test set at random or according to time ranges.
         The training data can be retrieved by calling `feature_view.get_train_test_split`.
 
-        !!! example "Create random splits"
+        Example: Create random splits
             ```python
             # get feature store instance
             fs = ...
@@ -1710,7 +1710,7 @@ class FeatureView:
             )
             ```
 
-        !!! example "Create time series splits by specifying date as string"
+        Example: Create time series splits by specifying date as string
             ```python
             # get feature store instance
             fs = ...
@@ -1736,7 +1736,7 @@ class FeatureView:
             )
             ```
 
-        !!! example "Create time series splits by specifying date as datetime object"
+        Example: Create time series splits by specifying date as datetime object
             ```python
             # get feature store instance
             fs = ...
@@ -1765,7 +1765,7 @@ class FeatureView:
             )
             ```
 
-        !!! example "Write training dataset to external storage"
+        Example: Write training dataset to external storage
             ```python
             # get feature store instance
             fs = ...
@@ -1975,7 +1975,7 @@ class FeatureView:
         The training data is split into train, validation, and test set at random or according to time range.
         The training data can be retrieved by calling `feature_view.get_train_validation_test_split`.
 
-        !!! example "Create random splits"
+        Example: Create random splits
             ```python
             # get feature store instance
             fs = ...
@@ -1992,7 +1992,7 @@ class FeatureView:
             )
             ```
 
-        !!! example "Create time series splits by specifying date as string"
+        Example: Create time series splits by specifying date as string
             ```python
             # get feature store instance
             fs = ...
@@ -2022,7 +2022,7 @@ class FeatureView:
             )
             ```
 
-        !!! example "Create time series splits by specifying date as datetime object"
+        Example: Create time series splits by specifying date as datetime object
             ```python
             # get feature store instance
             fs = ...
@@ -2055,7 +2055,7 @@ class FeatureView:
             )
             ```
 
-        !!! example "Write training dataset to external storage"
+        Example: Write training dataset to external storage
             ```python
             # get feature store instance
             fs = ...
@@ -2237,7 +2237,7 @@ class FeatureView:
         """
         Recreate a training dataset.
 
-        !!! example
+        Example:
             ```python
             # get feature store instance
             fs = ...
@@ -2331,7 +2331,7 @@ class FeatureView:
         This returns the training data in memory and does not materialise data in storage.
         The training data can be recreated by calling `feature_view.get_training_data` with the metadata created.
 
-        !!! example "Create random splits"
+        Example: Create random splits
             ```python
             # get feature store instance
             fs = ...
@@ -2345,7 +2345,7 @@ class FeatureView:
             )
             ```
 
-        !!! example "Create time-series based splits"
+        Example: Create time-series based splits
             ```python
             # get feature store instance
             fs = ...
@@ -2489,7 +2489,7 @@ class FeatureView:
         The training data is split into train and test set at random or according to time ranges.
         The training data can be recreated by calling `feature_view.get_train_test_split` with the metadata created.
 
-        !!! example "Create random train/test splits"
+        Example: Create random train/test splits
             ```python
             # get feature store instance
             fs = ...
@@ -2503,7 +2503,7 @@ class FeatureView:
             )
             ```
 
-        !!! example "Create time-series train/test splits"
+        Example: Create time-series train/test splits
             ```python
             # get feature store instance
             fs = ...
@@ -2683,7 +2683,7 @@ class FeatureView:
         The training data is split into train, validation, and test set at random or according to time ranges.
         The training data can be recreated by calling `feature_view.get_train_validation_test_split` with the metadata created.
 
-        !!! example
+        Example:
             ```python
             # get feature store instance
             fs = ...
@@ -2698,7 +2698,7 @@ class FeatureView:
             )
             ```
 
-        !!! example "Time Series split"
+        Example: Time Series split
             ```python
             # get feature store instance
             fs = ...
@@ -2894,7 +2894,7 @@ class FeatureView:
         Get training data created by `feature_view.create_training_data`
         or `feature_view.training_data`.
 
-        !!! example
+        Example:
             ```python
             # get feature store instance
             fs = ...
@@ -2968,7 +2968,7 @@ class FeatureView:
         Get training data created by `feature_view.create_train_test_split`
         or `feature_view.train_test_split`.
 
-        !!! example
+        Example:
             ```python
             # get feature store instance
             fs = ...
@@ -3043,7 +3043,7 @@ class FeatureView:
         Get training data created by `feature_view.create_train_validation_test_split`
         or `feature_view.train_validation_test_split`.
 
-        !!! example
+        Example:
             ```python
             # get feature store instance
             fs = ...
@@ -3103,7 +3103,7 @@ class FeatureView:
     def get_training_datasets(self) -> List["training_dataset.TrainingDatasetBase"]:
         """Returns the metadata of all training datasets created with this feature view.
 
-        !!! example
+        Example:
             ```python
             # get feature store instance
             fs = ...
@@ -3133,7 +3133,7 @@ class FeatureView:
         """
         Get statistics of a training dataset.
 
-        !!! example
+        Example:
             ```python
             # get feature store instance
             fs = ...
@@ -3168,7 +3168,7 @@ class FeatureView:
     ) -> None:
         """Attach a tag to a training dataset.
 
-        !!! example
+        Example:
             ```python
             # get feature store instance
             fs = ...
@@ -3202,7 +3202,7 @@ class FeatureView:
     ) -> Optional[tag.Tag]:
         """Get the tags of a training dataset.
 
-        !!! example
+        Example:
             ```python
             # get feature store instance
             fs = ...
@@ -3237,7 +3237,7 @@ class FeatureView:
     ) -> Dict[str, tag.Tag]:
         """Returns all tags attached to a training dataset.
 
-        !!! example
+        Example:
             ```python
             # get feature store instance
             fs = ...
@@ -3267,7 +3267,7 @@ class FeatureView:
     ) -> None:
         """Delete a tag attached to a training dataset.
 
-        !!! example
+        Example:
             ```python
             # get feature store instance
             fs = ...
@@ -3297,7 +3297,7 @@ class FeatureView:
     def purge_training_data(self, training_dataset_version: int) -> None:
         """Delete a training dataset (data only).
 
-        !!! example
+        Example:
             ```python
             # get feature store instance
             fs = ...
@@ -3325,7 +3325,7 @@ class FeatureView:
     def purge_all_training_data(self) -> None:
         """Delete all training datasets (data only).
 
-        !!! example
+        Example:
             ```python
             # get feature store instance
             fs = ...
@@ -3348,7 +3348,7 @@ class FeatureView:
     def delete_training_dataset(self, training_dataset_version: int) -> None:
         """Delete a training dataset. This will delete both metadata and training data.
 
-        !!! example
+        Example:
             ```python
             # get feature store instance
             fs = ...
@@ -3378,7 +3378,7 @@ class FeatureView:
     def delete_all_training_datasets(self) -> None:
         """Delete all training datasets. This will delete both metadata and training data.
 
-        !!! example
+        Example:
             ```python
             # get feature store instance
             fs = ...
@@ -3411,7 +3411,7 @@ class FeatureView:
         to a feature in the feature view. If you wish to fetch a single config, provide the
         its name. If you wish to fetch all configs attached to a particular feature, provide
         the feature name.
-        !!! example
+        Example:
             ```python3
             # fetch your feature view
             fv = fs.get_feature_view(name="my_feature_view", version=1)
@@ -3462,7 +3462,7 @@ class FeatureView:
         with_statistics: Optional[bool] = True,
     ) -> List["fmr.FeatureMonitoringResult"]:
         """Fetch feature monitoring history for a given feature monitoring config.
-        !!! example
+        Example:
             ```python3
             # fetch your feature view
             fv = fs.get_feature_view(name="my_feature_group", version=1)
@@ -3526,7 +3526,7 @@ class FeatureView:
         """Run a job to compute statistics on snapshot of feature data on a schedule.
         !!! experimental
             Public API is subject to change, this feature is not suitable for production use-cases.
-        !!! example
+        Example:
             ```python3
             # fetch feature view
             fv = fs.get_feature_view(name="my_feature_view", version=1)
@@ -3586,7 +3586,7 @@ class FeatureView:
         """Enable feature monitoring to compare statistics on snapshots of feature data over time.
         !!! experimental
             Public API is subject to change, this feature is not suitable for production use-cases.
-        !!! example
+        Example:
             ```python3
             # fetch feature view
             fg = fs.get_feature_view(name="my_feature_view", version=1)
@@ -3677,7 +3677,7 @@ class FeatureView:
         severity: str,
     ):
         """Create an alert for this feature view.
-        !!! example
+        Example:
             ```python
             # get feature store instance
             fs = ...
@@ -3878,7 +3878,7 @@ class FeatureView:
             extra_log_columns: `Union[Feature, List[Dict[str, str]]]` Additional columns to be logged. Any duplicate columns will be ignored.
 
 
-        !!! example "Enable feature logging"
+        Example: Enable feature logging
             ```python
             # get feature store instance
             fs = ...
@@ -3890,7 +3890,7 @@ class FeatureView:
             feature_view.enable_logging()
             ```
 
-        !!! example "Enable feature logging and add extra log columns"
+        Example: Enable feature logging and add extra log columns
             ```python
             # get feature store instance
             fs = ...
@@ -4037,7 +4037,7 @@ class FeatureView:
         Returns:
             `list[Job]` job information for feature insertion if python engine is used
 
-        !!! example "Implicitly Logging Batch Data and Predictions with all Logging metadata"
+        Example: Implicitly Logging Batch Data and Predictions with all Logging metadata
             ```python
 
             df = fv.get_batch_data(logging_data=True)
@@ -4047,7 +4047,7 @@ class FeatureView:
             feature_view.log(df, predictions=predictions)
             ```
 
-        !!! example "Implicitly Logging Feature Vectors and Predictions with all Logging metadata"
+        Example: Implicitly Logging Feature Vectors and Predictions with all Logging metadata
             ```python
 
             feature_vector = fv.get_feature_vector({"pk": 1}, logging_data=True)
@@ -4057,7 +4057,7 @@ class FeatureView:
             feature_view.log(feature_vector, predictions=predictions)
             ```
 
-        !!! example "Logging DataFrames with Predictions"
+        Example: Logging DataFrames with Predictions
             ```python
 
             df = fv.get_batch_data()
@@ -4067,7 +4067,7 @@ class FeatureView:
             feature_view.log(df, predictions=predictions)
             ```
 
-        !!! example "Explicit Logging of untransformed and transformed Features"
+        Example: Explicit Logging of untransformed and transformed Features
             ```python
             serving_keys = [{"pk": 1}]
             untransformed_feature_vector = fv.get_feature_vectors({"pk": 1})

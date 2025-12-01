@@ -48,7 +48,7 @@ class OnlineStoreRestClientEngine:
         """Initialize the Online Store Rest Client Engine. This class contains the logic to mediate
         the interaction between the python client and the RonDB Rest Server Feature Store API.
 
-        # Arguments:
+        Parameters:
             feature_store_name: The name of the feature store in which the feature view is registered.
             feature_view_name: The name of the feature view from which to retrieve the feature vector.
             feature_view_version: The version of the feature view from which to retrieve the feature vector.
@@ -124,7 +124,7 @@ class OnlineStoreRestClientEngine:
         Check the RonDB Rest Server Feature Store API documentation for more details:
         https://docs.hopsworks.ai/latest/user_guides/fs/feature_view/feature-server
 
-        # Arguments:
+        Parameters:
             validate_passed_features: Whether to validate the passed features against
                 the feature view schema on the RonDB Server.
             include_detailed_status: Whether to include detailed status information in the response.
@@ -163,10 +163,10 @@ class OnlineStoreRestClientEngine:
     def decode_rdrs_feature_values(self, feature_values: List[Any]) -> List[Any]:
         """Decode binary and date values from the RonDB Rest Server response.
 
-        # Arguments:
+        Parameters:
             feature_values: List of feature values from the RonDB Rest Server
 
-        # Returns:
+        Returns:
             List of decoded feature values with binary values base64 decoded and date strings
             converted to datetime.date objects
         """
@@ -204,7 +204,7 @@ class OnlineStoreRestClientEngine:
         Check the RonDB Rest Server Feature Store API documentation for more details:
         https://docs.hopsworks.ai/latest/user_guides/fs/feature_view/feature-server
 
-        # Arguments:
+        Parameters:
             entry: A dictionary with the feature names as keys and the primary key as values.
             passed_features: A dictionary with the feature names as keys and the values to substitute for this specific vector.
             metadata_options: Whether to include feature metadata in the response.
@@ -213,7 +213,7 @@ class OnlineStoreRestClientEngine:
             inference_helpers_only: Whether to return only the inference helper columns.
             return_type: The type of the return value. Either "feature_value_dict", "feature_value_list" or "response_json".
 
-        # Returns:
+        Returns:
             The response json containing the feature vector as well as status information
             and optionally descriptive metadata about the features. It contains the following fields:
                 - "status": The status pertinent to this single feature vector. One of COMPLETE, MISSING or ERROR.
@@ -223,9 +223,9 @@ class OnlineStoreRestClientEngine:
                 - "detailedStatus": A list of dictionaries with detailed status information for each read operations.
                     Keys include operationId, featureGroupId, httpStatus and message.
 
-        # Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the server response status code is not 200.
-            `ValueError`: If the length of the feature values and metadata in the reponse does not match.
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the server response status code is not 200.
+            ValueError: If the length of the feature values and metadata in the reponse does not match.
         """
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
@@ -273,7 +273,7 @@ class OnlineStoreRestClientEngine:
         Check the RonDB Rest Server Feature Store API documentation for more details:
         https://docs.hopsworks.ai/latest/user_guides/fs/feature_view/feature-server
 
-        # Arguments:
+        Parameters:
             entries: A list of dictionaries with the feature names as keys and the primary key as values.
             passed_features: A list of dictionaries with the feature names as keys and the values to substitute.
                 Note that the list should be ordered in the same way as the entries list.
@@ -283,7 +283,7 @@ class OnlineStoreRestClientEngine:
             helpers_only: Whether to return only the inference helper columns.
             return_type: The type of the return value. Either "feature_value_dict", "feature_value_list" or "response_json".
 
-        # Returns:
+        Returns:
             The response json containing the feature vector as well as status information
             and optionally descriptive metadata about the features. It contains the following fields:
                 - "status": A list of the status for each feature vector retrieval.
@@ -294,9 +294,9 @@ class OnlineStoreRestClientEngine:
                 - "detailedStatus": A list of dictionaries with detailed status information for each read operations.
                     Keys include operationId, featureGroupId, httpStatus and message.
 
-        # Raises:
-            `hsfs.client.exceptions.RestAPIError`: If the server response status code is not 200.
-            `ValueError`: If the length of the passed features does not match the length of the entries.
+        Raises:
+            hsfs.client.exceptions.RestAPIError: If the server response status code is not 200.
+            ValueError: If the length of the passed features does not match the length of the entries.
         """
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
@@ -360,7 +360,7 @@ class OnlineStoreRestClientEngine:
         When RonDB Server encounter an error it may send a null value for the feature vector. This function
         will handle this case and return a dictionary with None values for all feature names.
 
-        # Arguments:
+        Parameters:
             row_feature_values: A list of the feature values.
             drop_missing: Whether to drop missing features from the feature vector. Relies on detailed status.
             detailed_status: A list of dictionaries with detailed status information for each read operations.
@@ -368,7 +368,7 @@ class OnlineStoreRestClientEngine:
             helpers_only: Whether to return only the inference helper columns.
             return_type: The type of the return value. Either "feature_value_dict" or "feature_value_list".
 
-        # Returns:
+        Returns:
             A dictionary with the feature names as keys and the feature values as values. Values types are not guaranteed to
             match the feature type in the metadata. Timestamp SQL types are converted to python datetime.
         """

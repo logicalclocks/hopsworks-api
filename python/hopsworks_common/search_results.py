@@ -384,9 +384,10 @@ class FeatureResult(FeaturestoreResult):
         """
         Get the feature group instance associated with this feature.
 
-        # Returns:
+        Returns:
             FeatureGroup: The feature group instance.
-        # Raises:
+
+        Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._feature_group_api.get(
@@ -397,9 +398,10 @@ class FeatureResult(FeaturestoreResult):
         """
         Get the feature instance associated with this feature result.
 
-        # Returns:
+        Returns:
             Feature: The feature instance.
-        # Raises:
+
+        Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         fg = self._feature_group_api.get(
@@ -472,9 +474,10 @@ class FeatureGroupResult(FeaturestoreResult):
         """
         Get the feature group instance associated with this feature group result.
 
-        # Returns:
+        Returns:
             FeatureGroup: The feature group instance.
-        # Raises:
+
+        Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         from hsfs.core import feature_group_api
@@ -522,9 +525,10 @@ class FeatureViewResult(FeaturestoreResult):
         """
         Get the feature view instance associated with this feature view result.
 
-        # Returns:
+        Returns:
             FeatureView: The feature view instance.
-        # Raises:
+
+        Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         from hsfs.core import feature_view_api
@@ -572,9 +576,10 @@ class TrainingDatasetResult(FeaturestoreResult):
         """
         Get the training dataset instance associated with this training dataset result.
 
-        # Returns:
+        Returns:
             TrainingDataset: The training dataset instance.
-        # Raises:
+
+        Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         from hsfs.core import training_dataset_api

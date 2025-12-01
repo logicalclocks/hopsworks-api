@@ -108,7 +108,7 @@ class Predictor(DeployableComponent):
     def deploy(self):
         """Create a deployment for this predictor and persists it in the Model Serving.
 
-        !!! example
+        Example:
             ```python
 
             import hopsworks

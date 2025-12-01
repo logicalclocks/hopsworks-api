@@ -82,7 +82,7 @@ class Feature:
     def to_dict(self) -> Dict[str, Any]:
         """Get structured info about specific Feature in python dictionary format.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -118,11 +118,11 @@ class Feature:
         - Otherwise, if a prefix is provided, it returns the feature name prefixed accordingly.
         - If neither condition applies, it returns the feature’s original name.
 
-        # Args:
+        Parameters:
             feature_group (FeatureGroup, optional): The feature group context in which the name is being used.
             prefix (str, optional): A prefix to prepend to the feature name if applicable.
 
-        # Returns:
+        Returns:
             str: The fully qualified feature name.
         """
         if self.use_fully_qualified_name:
@@ -157,7 +157,7 @@ class Feature:
     def is_complex(self) -> bool:
         """Returns true if the feature has a complex type.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
