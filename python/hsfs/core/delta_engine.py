@@ -28,13 +28,13 @@ from hopsworks_common.core.constants import HAS_POLARS
 from hopsworks_common.core.type_systems import convert_offline_type_to_pyarrow_type
 from hsfs import feature_group, feature_group_commit, util
 from hsfs.core import feature_group_api, variable_api
-from python.hsfs.constructor import hudi_feature_group_alias
 
 
 if TYPE_CHECKING:
     import pandas as pd
     import polars as pl
     import pyarrow as pa
+    from hsfs.constructor import hudi_feature_group_alias
 
 # Note: Avoid importing optional Delta dependencies at module import time.
 # They are imported on-demand inside methods to provide friendly errors only
