@@ -1825,7 +1825,7 @@ class TestPython:
         mock_delta_engine.assert_called_once_with(
             feature_store_id=fg.feature_store_id,
             feature_store_name=fg.feature_store_name,
-            delta_fg=fg,
+            feature_group=fg,
             spark_session=None,
             spark_context=None,
         )
