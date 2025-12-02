@@ -4173,7 +4173,7 @@ class FeatureView:
             limit: Maximum number of entries to retrieve. Defaults to None.
             transformed: Whether to include transformed logs. Defaults to False.
 
-        # Example
+        Example:
             ```python
             # get log timeline
             log_timeline = feature_view.get_log_timeline(limit=10)
@@ -4219,7 +4219,7 @@ class FeatureView:
             model_name: `Optional[str]`. Name of the model to filter the log entries. If `model` is provided, this parameter will be ignored.
             model_version: `Optional[int]`. Version of the model to filter the log entries. If `model` is provided, this parameter will be ignored.
 
-        # Example
+        Example:
             ```python
             # read all log entries
             log_entries = feature_view.read_log()
@@ -4257,7 +4257,7 @@ class FeatureView:
     def pause_logging(self) -> None:
         """Pause scheduled materialization job for the current feature view.
 
-        # Example
+        Example:
             ```python
             # pause logging
             feature_view.pause_logging()
@@ -4271,7 +4271,7 @@ class FeatureView:
     def resume_logging(self) -> None:
         """Resume scheduled materialization job for the current feature view.
 
-        # Example
+        Example:
             ```python
             # resume logging
             feature_view.resume_logging()
@@ -4291,7 +4291,7 @@ class FeatureView:
             wait: Whether to wait for the materialization to complete. Defaults to False.
             transformed: Whether to materialize transformed or untrasformed logs. Defaults to None, in which case the returned list contains a job for materialization of transformed features and then a job for untransformed features. Otherwise the list contains only transformed jobs if transformed is True and untransformed jobs if it is False.
 
-        # Example
+        Example:
             ```python
             # materialize log
             materialization_result = feature_view.materialize_log(wait=True)
@@ -4314,7 +4314,7 @@ class FeatureView:
         Parameters:
             transformed: Whether to delete transformed logs. Defaults to None. Delete both transformed and untransformed logs.
 
-        # Example
+        Example:
             ```python
             # delete log
             feature_view.delete_log()
@@ -4331,7 +4331,7 @@ class FeatureView:
     def create_feature_logger(self):
         """Create an asynchronous feature logger for logging features in Hopsworks serving deployments.
 
-        # Example
+        Example:
             ```python
             # get feature logger
             feature_logger = feature_view.create_feature_logger()
@@ -4431,7 +4431,8 @@ class FeatureView:
             training_dataset_version: Specifies the version of the training dataset for which the schema should be generated.
                 By default, this is set to None. However, if the `one_hot_encoder` transformation function is used, the training dataset version must be provided.
                 This is because the schema will then depend on the statistics of the training data used.
-        # Example
+
+        Example:
             ```python
             schema = feature_view.get_training_dataset_schema(training_dataset_version=1)
             ```
