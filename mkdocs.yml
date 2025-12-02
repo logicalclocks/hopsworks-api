@@ -77,8 +77,6 @@ nav:
       - Transformer: transformer_api.md
   - Contributing: CONTRIBUTING.md
 
-# TODO: use mkdocs-multirepo-plugin to sync the rest of this file once it works
-
 theme:
   name: material
   icon:
