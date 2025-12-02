@@ -3169,6 +3169,9 @@ class FeatureGroup(FeatureGroupBase):
                   connectivity from you Python environment to the internal advertised
                   listeners of the Hopsworks Kafka Cluster. Defaults to `False` and
                   will use external listeners when connecting from outside of Hopsworks.
+                * key `delta.enableChangeDataFeed` set to a *string* value of true or false to enable or
+                  disable cdf operations on the feature group delta table. Set to true by default on Feature
+                  Group creation.
             validation_options: Additional validation options as key-value pairs, defaults to `{}`.
                 * key `run_validation` boolean value, set to `False` to skip validation temporarily on ingestion.
                 * key `save_report` boolean value, set to `False` to skip upload of the validation report to Hopsworks.
@@ -3184,6 +3187,18 @@ class FeatureGroup(FeatureGroupBase):
         # Raises
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
+        if write_options is None:
+            write_options = {}
+        if all(
+            [
+                not self._id,
+                self.time_travel_format == "DELTA",
+                write_options.get("delta.enableChangeDataFeed") != "false",
+            ]
+        ):
+            # New delta FG allow for change data capture query
+            write_options["delta.enableChangeDataFeed"] = "true"
+
         if (
             (features is None and len(self._features) > 0)
             or (
@@ -3228,21 +3243,10 @@ class FeatureGroup(FeatureGroupBase):
 
         user_version = self._version
 
-        if write_options is None:
-            write_options = {}
         if "wait_for_job" not in write_options:
             write_options["wait_for_job"] = wait
         if "wait_for_online_ingestion" not in write_options:
             write_options["wait_for_online_ingestion"] = wait
-        if all(
-            [
-                not self._id,
-                self.time_travel_format == "DELTA",
-                write_options.get("delta.enableChangeDataFeed") != "false",
-            ]
-        ):
-            # New delta FG allow for change data capture query
-            write_options["delta.enableChangeDataFeed"] = "true"
 
         # fg_job is used only if the python engine is used
         fg_job, ge_report = self._feature_group_engine.save(

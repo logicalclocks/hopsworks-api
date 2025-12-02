@@ -496,13 +496,19 @@ class DeltaEngine:
         _logger.debug("Creating new PyArrow Table with modified columns")
         return pa.Table.from_arrays(new_cols, names=table.column_names)
 
-    def save_empty_delta_table_pyspark(self):
+    def save_empty_delta_table_pyspark(self, write_options=None):
         """
         Create an empty Delta table with the schema from the feature group features.
 
         This method builds a DDL schema string from the feature group's features
         and creates an empty DataFrame with that schema, then writes it to the
         feature group location using Delta format.
+
+        # Arguments
+            write_options: Optional dictionary of write options for Delta.
+                * key `delta.enableChangeDataFeed` set to a *string* value of true or false to enable or
+                disable cdf operations on the feature group delta table. Set to true by default on FG created
+                after 4.6
         """
         # Build DDL schema string from features
         ddl_fields = []
@@ -520,9 +526,9 @@ class DeltaEngine:
         # Create empty DataFrame using the DDL string
         empty_df = self._spark_session.createDataFrame([], ddl_schema)
 
-        self._write_delta_dataset(empty_df, {})
+        self._write_delta_dataset(empty_df, write_options or {})
 
-    def save_empty_delta_table_python(self):
+    def save_empty_delta_table_python(self, write_options=None):
         """
         Create an empty Delta table with the schema from the feature group features using delta-rs.
 
@@ -531,6 +537,12 @@ class DeltaEngine:
         location using delta-rs write_deltalake.
 
         Supports simple types, array types, and struct types.
+
+        # Arguments
+            write_options: Optional dictionary of write options for Delta.
+                * key `delta.enableChangeDataFeed` set to a *string* value of true or false to enable or
+                disable cdf operations on the feature group delta table. Set to true by default on FG created
+                after 4.6
         """
         try:
             import pyarrow as pa
@@ -565,13 +577,13 @@ class DeltaEngine:
         # Create empty PyArrow table from schema
         empty_arrow_table = pyarrow_schema.empty_table()
 
-        self._write_delta_rs_dataset(empty_arrow_table)
+        self._write_delta_rs_dataset(empty_arrow_table, write_options=write_options)
 
-    def save_empty_table(self):
+    def save_empty_table(self, write_options=None):
         if self._spark_session is not None:
-            self.save_empty_delta_table_pyspark()
+            self.save_empty_delta_table_pyspark(write_options=write_options)
         else:
-            self.save_empty_delta_table_python()
+            self.save_empty_delta_table_python(write_options=write_options)
 
     def vacuum(self, retention_hours: int):
         location = self._feature_group.prepare_spark_location()
@@ -588,7 +600,7 @@ class DeltaEngine:
             f"Generating merge query for feature group {self._feature_group.name} v{self._feature_group.version} from source alias {source_alias} and updates alias {updates_alias}"
         )
         merge_query_list = []
-        primary_key = self._feature_group.primary_key
+        primary_key = self._feature_group.primary_key.copy()
 
         # add event time to primary key for upserts
         if self._feature_group.event_time is not None:
