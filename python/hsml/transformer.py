@@ -23,6 +23,32 @@ from hsml.resources import TransformerResources
 from hsml.scaling_config import TransformerScalingConfig
 
 
+def env_vars_dict_to_list(d: dict | None) -> list | None:
+    """Convert a dict of env vars to the backend wire format (list of "KEY=VALUE")."""
+    if not d:
+        return None
+    return [f"{k}={v}" for k, v in d.items()]
+
+
+def env_vars_list_to_dict(items: list | None) -> dict | None:
+    """Parse the backend wire format (list of "KEY=VALUE") into a dict.
+
+    Lenient: malformed entries (non-string, no `=`, empty key) are dropped, matching
+    the backend's `HopsUtils.parseEnvVars` / `ReservedEnvVars.findReserved` behaviour.
+    """
+    if not items:
+        return None
+    out: dict[str, str] = {}
+    for entry in items:
+        if not isinstance(entry, str):
+            continue
+        eq = entry.find("=")
+        if eq <= 0:
+            continue
+        out[entry[:eq]] = entry[eq + 1 :]
+    return out
+
+
 @public
 class Transformer(DeployableComponent):
     """Metadata object representing a transformer to be used in a predictor."""
@@ -42,6 +68,7 @@ class Transformer(DeployableComponent):
         script_file: str,
         resources: TransformerResources | dict | Default | None = None,  # base
         scaling_configuration: TransformerScalingConfig | dict | Default | None = None,
+        env_vars: dict[str, str] | None = None,
         **kwargs,
     ):
         resources = (
@@ -64,6 +91,8 @@ class Transformer(DeployableComponent):
         super().__init__(
             script_file, resources, scaling_configuration=self._scaling_configuration
         )
+
+        self._env_vars = env_vars
 
     @public
     def describe(self):
@@ -97,8 +126,12 @@ class Transformer(DeployableComponent):
 
     @classmethod
     def from_json(cls, json_decamelized):
-        sf, rc, sc = cls.extract_fields_from_json(json_decamelized)
-        return Transformer(sf, rc, scaling_configuration=sc) if sf is not None else None
+        sf, rc, sc, ev = cls.extract_fields_from_json(json_decamelized)
+        return (
+            Transformer(sf, rc, scaling_configuration=sc, env_vars=ev)
+            if sf is not None
+            else None
+        )
 
     @classmethod
     def extract_fields_from_json(cls, json_decamelized):
@@ -106,18 +139,35 @@ class Transformer(DeployableComponent):
             json_decamelized, ["transformer", "script_file"]
         )
         if sf is None:
-            return None, None, None
+            return None, None, None, None
         sc = TransformerScalingConfig.from_json(json_decamelized)
         rc = TransformerResources.from_json(json_decamelized)
-        return sf, rc, sc
+        ev = env_vars_list_to_dict(
+            json_decamelized.pop("transformer_env_vars", None)
+        )
+        return sf, rc, sc, ev
 
     def update_from_response_json(self, json_dict):
         json_decamelized = humps.decamelize(json_dict)
-        self.__init__(*self.extract_fields_from_json(json_decamelized))
+        sf, rc, sc, ev = self.extract_fields_from_json(json_decamelized)
+        self.__init__(sf, rc, scaling_configuration=sc, env_vars=ev)
         return self
 
     def to_dict(self):
-        return {"transformer": self._script_file, **self._resources.to_dict()}
+        d = {"transformer": self._script_file, **self._resources.to_dict()}
+        if self._env_vars:
+            d["transformerEnvVars"] = env_vars_dict_to_list(self._env_vars)
+        return d
+
+    @public
+    @property
+    def env_vars(self):
+        """Environment variables of the transformer."""
+        return self._env_vars
+
+    @env_vars.setter
+    def env_vars(self, env_vars: dict[str, str] | None):
+        self._env_vars = env_vars
 
     def __repr__(self):
         return f"Transformer({self._script_file!r})"
