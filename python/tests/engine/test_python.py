@@ -1823,16 +1823,16 @@ class TestPython:
 
         # Verify DeltaEngine was called with correct parameters
         mock_delta_engine.assert_called_once_with(
-            fg.feature_store_id,
-            fg.feature_store_name,
-            fg,
-            None,
-            None,
+            feature_store_id=fg.feature_store_id,
+            feature_store_name=fg.feature_store_name,
+            feature_group=fg,
+            spark_session=None,
+            spark_context=None,
         )
 
         # Verify save_delta_fg was called with correct parameters
         mock_delta_engine.return_value.save_delta_fg.assert_called_once_with(
-            test_dataframe, {}, None
+            test_dataframe, write_options={}, validation_id=None
         )
 
     def test_save_dataframe_delta_calls_check_duplicate_records(self, mocker):
