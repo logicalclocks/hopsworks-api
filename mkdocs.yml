@@ -61,20 +61,20 @@ nav:
     - Online Ingestion Result: online_ingestion_result.md
   - Machine Learning API:
     - Model Registry:
-      - Model: model-registry/model_api.md
-      - Model Registry: model-registry/model_registry_api.md
-      - Model Schema: model-registry/model_schema_api.md
-      - Provenance Links: model-registry/links_api.md
+      - Model: model_api.md
+      - Model Registry: model_registry_api.md
+      - Model Schema: model_schema_api.md
+      - Provenance Links: model_links.md
     - Model Serving:
-      - Deployment: model-serving/deployment_api.md
-      - Deployment state: model-serving/predictor_state_api.md
-      - Deployment state condition: model-serving/predictor_state_condition_api.md
-      - Inference Batcher: model-serving/inference_batcher_api.md
-      - Inference Logger: model-serving/inference_logger_api.md
-      - Model Serving: model-serving/model_serving_api.md
-      - Predictor: model-serving/predictor_api.md
-      - Resources: model-serving/resources_api.md
-      - Transformer: model-serving/transformer_api.md
+      - Deployment: deployment_api.md
+      - Deployment state: predictor_state_api.md
+      - Deployment state condition: predictor_state_condition_api.md
+      - Inference Batcher: inference_batcher_api.md
+      - Inference Logger: inference_logger_api.md
+      - Model Serving: model_serving_api.md
+      - Predictor: predictor_api.md
+      - Resources: resources_api.md
+      - Transformer: transformer_api.md
   - Contributing: CONTRIBUTING.md
 
 # TODO: use mkdocs-multirepo-plugin to sync the rest of this file once it works
