@@ -27,9 +27,9 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Uni
 
 if TYPE_CHECKING:
     import great_expectations
+    from hsfs.constructor import hudi_feature_group_alias
     from pyspark.rdd import RDD
     from pyspark.sql import DataFrame
-    from python.hsfs.constructor import hudi_feature_group_alias
 
 import pandas as pd
 import tzlocal
