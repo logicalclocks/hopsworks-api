@@ -89,12 +89,17 @@ def _is_no_commits_found_error(exception):
 
 
 def _is_no_metadata_found_error(exception):
-    return isinstance(
-        exception, pyarrow._flight.FlightServerError
-    ) and any(
+    return isinstance(exception, pyarrow._flight.FlightServerError) and any(
         msg in str(exception)
         for msg in ["No hudi properties found", "No delta logs found"]
     )
+
+
+def _is_no_data_found_error(exception):
+    # Error message: 'No data found for featuregroup fg_read_uvbhz.fg_polars_online_true_1. Detail: Failed....
+    return isinstance(
+        exception, pyarrow._flight.FlightServerError
+    ) and "No data found" in str(exception)
 
 
 def _should_retry_healthcheck(exception):
@@ -425,7 +430,11 @@ class ArrowFlightClient:
                         raise FeatureStoreException(
                             "Hopsworks Query Service is busy right now. Please try again later."
                         ) from e
-                    elif _is_no_commits_found_error(e) or _is_no_metadata_found_error(e):
+                    elif (
+                        _is_no_commits_found_error(e)
+                        or _is_no_metadata_found_error(e)
+                        or _is_no_data_found_error(e)
+                    ):
                         raise FeatureStoreException(str(e).split("Details:")[0]) from e
                     else:
                         raise FeatureStoreException(user_message) from e
@@ -550,7 +559,9 @@ class ArrowFlightClient:
             fg_connector = _serialize_featuregroup_connector(
                 fg, query, on_demand_fg_aliases
             )
-            features[fg_name] = [{"name": feat.name, "type": feat.type} for feat in fg.features]
+            features[fg_name] = [
+                {"name": feat.name, "type": feat.type} for feat in fg.features
+            ]
             connectors[fg_name] = fg_connector
         filters = _serialize_filter_expression(query.filters, query)
 
@@ -679,9 +690,13 @@ def _get_connector_options(fg):
         }
         if connector.password:
             option_map["password"] = connector.password
-        else:
+        elif connector.token:
             option_map["authenticator"] = "oauth"
             option_map["token"] = connector.token
+        else:
+            option_map["snowflake_private_key"] = connector.private_key
+            option_map["passphrase"] = connector.passphrase
+
         if connector.warehouse:
             option_map["warehouse"] = connector.warehouse
         if connector.application:

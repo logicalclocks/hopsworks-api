@@ -26,11 +26,14 @@ from typing import Any, Dict, List, Optional, TypeVar, Union
 
 import humps
 import pandas as pd
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
 from hopsworks_common import client
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import engine
 from hsfs.core import data_source as ds
 from hsfs.core import data_source_api, storage_connector_api
+from hsfs.core import data_source_data as dsd
 
 
 if HAS_NUMPY:
@@ -146,6 +149,11 @@ class StorageConnector(ABC):
         pass
 
     def prepare_spark(self, path: Optional[str] = None) -> Optional[str]:
+        """Prepare Spark to use this Storage Connector.
+
+        # Arguments
+            path: Path to prepare for reading from cloud storage. Defaults to `None`.
+        """
         return path
 
     def read(
@@ -241,10 +249,46 @@ class StorageConnector(ABC):
         else:
             return []
 
-    def get_databases(self):
+    def get_databases(self) -> list[str]:
+        """
+        Retrieve the list of available databases.
+
+        !!! example
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            sc = fs.get_storage_connector("conn_name")
+
+            databases = sc.get_databases()
+            ```
+
+        Returns:
+            list[str]: A list of database names available in the storage connector.
+        """
         return self._data_source_api.get_databases(self._featurestore_id, self._name)
 
-    def get_tables(self, database: str):
+    def get_tables(self, database: str = None) -> list[ds.DataSource]:
+        """
+        Retrieve the list of tables from the specified database.
+
+        !!! example
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            sc = fs.get_storage_connector("conn_name")
+
+            tables = sc.get_tables("database_name")
+            ```
+
+        Args:
+            database (str, optional): The name of the database to list tables from.
+                If not provided, the default database is used.
+
+        Returns:
+            list[DataSource]: A list of DataSource objects representing the tables.
+        """
         if not database:
             if self.type == StorageConnector.REDSHIFT:
                 database = self.database_name
@@ -263,12 +307,54 @@ class StorageConnector(ABC):
             self._featurestore_id, self._name, database
         )
 
-    def get_data(self, data_source: ds.DataSource):
+    def get_data(self, data_source: ds.DataSource) -> dsd.DataSourceData:
+        """
+        Retrieve the data from the data source.
+
+        !!! example
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            sc = fs.get_storage_connector("conn_name")
+
+            tables = sc.get_tables("database_name")
+
+            data = sc.get_data(tables[0])
+            ```
+
+        Args:
+            data_source (DataSource): The data source to retrieve data from.
+
+        Returns:
+            DataSourceData: An object containing the data retrieved from the data source.
+        """
         return self._data_source_api.get_data(
             self._featurestore_id, self._name, data_source
         )
 
-    def get_metadata(self, data_source: ds.DataSource):
+    def get_metadata(self, data_source: ds.DataSource) -> dict:
+        """
+        Retrieve metadata information about the data source.
+
+        !!! example
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            sc = fs.get_storage_connector("conn_name")
+
+            tables = sc.get_tables("database_name")
+
+            metadata = sc.get_metadata(tables[0])
+            ```
+
+        Args:
+            data_source (DataSource): The data source to retrieve metadata from.
+
+        Returns:
+            dict: A dictionary containing metadata about the data source.
+        """
         return self._data_source_api.get_metadata(
             self._featurestore_id, self._name, data_source
         )
@@ -391,6 +477,10 @@ class S3Connector(StorageConnector):
 
     @property
     def arguments(self) -> Optional[Dict[str, Any]]:
+        """Additional spark options for the S3 connector, passed as a dictionary.
+        These are set using the `Spark Options` field in the UI when creating the connector.
+        Example: `{"fs.s3a.endpoint": "s3.eu-west-1.amazonaws.com", "fs.s3a.path.style.access": "true"}`
+        """
         return self._arguments
 
     def spark_options(self) -> Dict[str, str]:
@@ -876,6 +966,8 @@ class SnowflakeConnector(StorageConnector):
         warehouse: Optional[str] = None,
         application: Optional[Any] = None,
         sf_options: Optional[Dict[str, Any]] = None,
+        private_key: Optional[str] = None,
+        passphrase: Optional[str] = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
@@ -891,6 +983,8 @@ class SnowflakeConnector(StorageConnector):
         self._table = table
         self._role = role
         self._application = application
+        self._private_key = private_key
+        self._passphrase = passphrase
 
         self._options = (
             {opt["name"]: opt["value"] for opt in sf_options} if sf_options else {}
@@ -956,6 +1050,16 @@ class SnowflakeConnector(StorageConnector):
         """Additional options for the Snowflake storage connector"""
         return self._options
 
+    @property
+    def private_key(self) -> Optional[str]:
+        """Path to the private key file for key pair authentication."""
+        return self._private_key
+
+    @property
+    def passphrase(self) -> Optional[str]:
+        """Passphrase for the private key file."""
+        return self._passphrase
+
     def snowflake_connector_options(self) -> Optional[Dict[str, Any]]:
         """Alias for `connector_options`"""
         return self.connector_options()
@@ -999,9 +1103,14 @@ class SnowflakeConnector(StorageConnector):
         props["sfUser"] = self._user
         if self._password:
             props["sfPassword"] = self._password
-        else:
+        elif self._token:
             props["sfAuthenticator"] = "oauth"
             props["sfToken"] = self._token
+        elif self._private_key:
+            private_key_content = self._read_private_key()
+            if private_key_content:
+                props["pem_private_key"] = private_key_content
+
         if self._warehouse:
             props["sfWarehouse"] = self._warehouse
         if self._application:
@@ -1012,6 +1121,29 @@ class SnowflakeConnector(StorageConnector):
             props["dbtable"] = self._table
 
         return props
+
+    def _read_private_key(self) -> Optional[str]:
+        """Reads the private key from the specified key path."""
+        p_key = serialization.load_pem_private_key(
+            self._private_key.encode(),
+            password=self._passphrase.encode() if self._passphrase else None,
+            backend=default_backend(),
+        )
+
+        private_key_bytes = p_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+        private_key_content = private_key_bytes.decode("UTF-8")
+        # remove both regular and encrypted PEM headers, e.g.
+        # -----BEGIN PRIVATE KEY----- and -----BEGIN ENCRYPTED PRIVATE KEY-----
+        private_key_content = re.sub(
+            r"-*\s*(BEGIN|END)(?: ENCRYPTED)? PRIVATE KEY-*\r?\n",
+            "",
+            private_key_content,
+        ).replace("\n", "")
+        return private_key_content
 
     def read(
         self,
@@ -1043,6 +1175,13 @@ class SnowflakeConnector(StorageConnector):
         # Returns
             `DataFrame`.
         """
+
+        # validate engine supports connector type
+        if not engine.get_instance().is_connector_type_supported(self.type):
+            raise NotImplementedError(
+                "Snowflake connector not yet supported for engine: " + engine.get_type()
+            )
+
         options = (
             {**self.spark_options(), **options}
             if options is not None
@@ -1056,6 +1195,9 @@ class SnowflakeConnector(StorageConnector):
         return engine.get_instance().read(
             self, self.SNOWFLAKE_FORMAT, options, None, dataframe_type
         )
+
+    def prepare_spark(self, path=None):
+        return engine.get_instance().setup_storage_connector(self, path)
 
 
 class JdbcConnector(StorageConnector):

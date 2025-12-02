@@ -353,15 +353,20 @@ def offline_fg_materialization(
     # de-duplicate records
     # timestamp cannot be relied on to order the records in case of duplicates, if they are produced together they would have the same timestamp.
     # Instead use offset to order the records, they are strictly increasing within a partition and since we use primary keys for generating Kafka message keys duplicates are guaranteed to be in the same partition.
-    partition_columns = [f"value.{key}" for key in entity.primary_key]
-    if entity.event_time:
-        partition_columns.append(f"value.{entity.event_time}")
-    window = Window.partitionBy(partition_columns).orderBy(col("offset").desc())
-    deduped_df = (
-        deserialized_df.withColumn("row_num", row_number().over(window))
-        .filter("row_num = 1")
-        .drop("row_num")
-    )
+    if entity.primary_key:
+        partition_columns = [f"value.{key}" for key in entity.primary_key]
+        if entity.event_time:
+            partition_columns.append(f"value.{entity.event_time}")
+        if entity.partition_key:
+            partition_columns.extend([f"value.{key}" for key in entity.partition_key])
+        window = Window.partitionBy(partition_columns).orderBy(col("offset").desc())
+        deduped_df = (
+            deserialized_df.withColumn("row_num", row_number().over(window))
+            .filter("row_num = 1")
+            .drop("row_num")
+        )
+    else:
+        deduped_df = deserialized_df
 
     # get only the feature values (remove kafka metadata)
     deduped_df = deduped_df.select("value.*")
@@ -378,12 +383,17 @@ def offline_fg_materialization(
         offset_dict[f"{entity._online_topic_name}"][f"{offset_row.partition}"] = (
             offset_row.offset + 1
         )
-
     # insert data
     entity.stream = False  # to make sure we dont write to kafka
 
     # Do not apply transformation function at this point since the data written to Kafka already has transformations applied.
-    entity.insert(deduped_df, storage="offline", transform=False)
+    entity.insert(
+        deduped_df,
+        storage="offline",
+        transform=False,
+        write_options=write_options,
+        validation_options={"schema_validation": False},
+    )
 
     # save offsets
     offset_df = spark.createDataFrame([offset_dict])

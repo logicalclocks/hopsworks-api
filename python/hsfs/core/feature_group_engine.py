@@ -106,10 +106,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group.embedding_index, dataframe_features
         )
 
-        if (
-            feature_group.online_enabled
-            and not feature_group.embedding_index
-            and validation_options.get("online_schema_validation", True)
+        if not validation_options or (
+            validation_options.get(
+                "online_schema_validation", True
+            )  # for backwards compatibility
+            and validation_options.get("schema_validation", True)
         ):
             # validate df schema
             dataframe_features = DataFrameValidator().validate_schema(
@@ -189,10 +190,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group.embedding_index, dataframe_features
         )
 
-        if (
-            feature_group.online_enabled
-            and not feature_group.embedding_index
-            and validation_options.get("online_schema_validation", True)
+        if not validation_options or (
+            validation_options.get(
+                "online_schema_validation", True
+            )  # for backwards compatibility
+            and validation_options.get("schema_validation", True)
         ):
             # validate df schema
             dataframe_features = DataFrameValidator().validate_schema(
@@ -286,13 +288,18 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
     @staticmethod
     def _get_spark_session_and_context():
         if isinstance(engine.get_instance(), engine.spark.Engine):
-            return engine.get_instance()._spark_session, engine.get_instance()._spark_context
+            return (
+                engine.get_instance()._spark_session,
+                engine.get_instance()._spark_context,
+            )
         else:
             return None, None
 
     @staticmethod
     def commit_delete(feature_group, delete_df, write_options):
-        spark_session, spark_context = FeatureGroupEngine._get_spark_session_and_context()
+        spark_session, spark_context = (
+            FeatureGroupEngine._get_spark_session_and_context()
+        )
         if feature_group.time_travel_format == "DELTA":
             delta_engine_instance = delta_engine.DeltaEngine(
                 feature_group.feature_store_id,
@@ -315,7 +322,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
     @staticmethod
     def delta_vacuum(feature_group, retention_hours):
         if feature_group.time_travel_format == "DELTA":
-            spark_session, spark_context = FeatureGroupEngine._get_spark_session_and_context()
+            spark_session, spark_context = (
+                FeatureGroupEngine._get_spark_session_and_context()
+            )
 
             delta_engine_instance = delta_engine.DeltaEngine(
                 feature_group.feature_store_id,
@@ -478,6 +487,10 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
     def save_feature_group_metadata(
         self, feature_group, dataframe_features, write_options
     ):
+        feature_schema_available = (
+            feature_group.features is not None and len(feature_group.features) > 0
+        )
+
         # this means FG doesn't exist and should create the new one
         if len(feature_group.features) == 0:
             # User didn't provide a schema; extract it from the dataframe
@@ -524,6 +537,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             )
 
         self._feature_group_api.save(feature_group)
+
+        if feature_schema_available:
+            # create empty table to write feature schema to table path
+            self.save_empty_table(feature_group, write_options=write_options)
+
         print(
             "Feature Group created successfully, explore it at \n"
             + util.get_feature_group_url(
@@ -544,3 +562,24 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         self._feature_group_api.update_metadata(
             feature_group, copy_feature_group, "updateMetadata"
         )
+
+    def save_empty_table(self, feature_group, write_options=None):
+        # If time travel format is DELTA, an empty table is needed to be created
+        # such that the feature schema is written to the table and
+        # the subsequent writes in python can refer to that schema.
+        if (
+            feature_group.time_travel_format is not None
+            and feature_group.time_travel_format.upper() == "DELTA"
+        ):
+            spark_session, spark_context = (
+                FeatureGroupEngine._get_spark_session_and_context()
+            )
+
+            delta_engine_instance = delta_engine.DeltaEngine(
+                feature_group.feature_store_id,
+                feature_group.feature_store_name,
+                feature_group,
+                spark_session,
+                spark_context,
+            )
+            delta_engine_instance.save_empty_table(write_options=write_options)

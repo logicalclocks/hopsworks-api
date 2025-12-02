@@ -238,9 +238,13 @@ def get_hudi_datestr_from_timestamp(timestamp: int) -> str:
 
 
 def get_delta_datestr_from_timestamp(timestamp: int) -> str:
-    return datetime.fromtimestamp(timestamp / 1000, timezone.utc).strftime(
-        "%Y-%m-%d %H:%M:%S.%f"
-    )[:-3]
+    # It does not work to add the Z in the strftime function
+    return (
+        datetime.fromtimestamp(timestamp / 1000, timezone.utc).strftime(
+            "%Y-%m-%d %H:%M:%S.%f"
+        )[:-3]
+        + "Z"
+    )
 
 
 def convert_event_time_to_timestamp(
@@ -380,7 +384,7 @@ def run_with_loading_animation(message: str, func: Callable, *args, **kwargs) ->
         if not end:
             print(f"\rError: {message}           ", end="\n")
         else:
-            print(f"\rFinished: {message} ({(end-start):.2f}s) ", end="\n")
+            print(f"\rFinished: {message} ({(end - start):.2f}s) ", end="\n")
 
 
 def get_feature_group_url(feature_store_id: int, feature_group_id: int) -> str:
