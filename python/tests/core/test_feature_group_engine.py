@@ -184,7 +184,7 @@ class TestFeatureGroupEngine:
             "spark",
             "context",
         )
-        delta_engine_mock.save_empty_table.assert_called_once_with()
+        delta_engine_mock.save_empty_table.assert_called_once_with(write_options=None)
 
     def test_save_empty_table_noop_for_non_delta(self, mocker):
         # Arrange
@@ -1464,7 +1464,7 @@ class TestFeatureGroupEngine:
         ] == "Feature Group created successfully, explore it at \n{}".format(
             feature_group_url
         )
-        mock_save_empty_table.assert_called_once_with(fg)
+        mock_save_empty_table.assert_called_once_with(fg, write_options=None)
 
     def test_save_feature_group_metadata_primary_partition_precombine(self, mocker):
         # Arrange
