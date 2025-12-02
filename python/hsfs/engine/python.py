@@ -598,7 +598,12 @@ class Engine:
         pass
 
     def register_delta_temporary_table(
-        self, delta_fg_alias, feature_store_id, feature_store_name, read_options
+        self,
+        delta_fg_alias,
+        feature_store_id,
+        feature_store_name,
+        read_options,
+        is_cdc_query: bool = False,
     ):
         # No op to avoid query failure
         pass
@@ -651,7 +656,7 @@ class Engine:
         exact_uniqueness: bool = True,
     ) -> str:
         # TODO: add statistics for correlations, histograms and exact_uniqueness
-        _logger.info("Profiling dataframe in Python Engine")
+        _logger.info("Computing insert statistics")
         if HAS_POLARS and (
             isinstance(df, pl.DataFrame) or isinstance(df, pl.dataframe.frame.DataFrame)
         ):
@@ -1077,13 +1082,17 @@ class Engine:
         elif engine.get_type() == "python":
             if feature_group.time_travel_format == "DELTA":
                 delta_engine_instance = delta_engine.DeltaEngine(
-                    feature_group.feature_store_id,
-                    feature_group.feature_store_name,
-                    feature_group,
-                    None,
-                    None,
+                    feature_store_id=feature_group.feature_store_id,
+                    feature_store_name=feature_group.feature_store_name,
+                    feature_group=feature_group,
+                    spark_context=None,
+                    spark_session=None,
                 )
-                delta_engine_instance.save_delta_fg(dataframe, {}, validation_id)
+                delta_engine_instance.save_delta_fg(
+                    dataframe,
+                    write_options=offline_write_options,
+                    validation_id=validation_id,
+                )
         else:
             # for backwards compatibility
             return self.legacy_save_dataframe(
@@ -1842,6 +1851,20 @@ class Engine:
                 high=False,
             )
             now = datetime.now(timezone.utc)
+            assert (
+                feature_group.materialization_job is not None
+            ), "Materialization job is not defined. Cannot start materialization job."
+            if isinstance(offline_write_options, dict) and (
+                (spark_compute_config := offline_write_options.get("spark", None))
+                is not None
+            ):
+                _logger.debug(
+                    "Updating materialization job with user provided spark configurations."
+                )
+                for key, value in spark_compute_config.items():
+                    feature_group.materialization_job.config[key] = value
+                feature_group.materialization_job.save()
+
             feature_group.materialization_job.run(
                 args=feature_group.materialization_job.config.get("defaultArgs", "")
                 + (
@@ -1876,6 +1899,20 @@ class Engine:
                 # don't provide the current offsets (read from where the job last left off)
                 initial_check_point = ""
             # provide the initial_check_point as it will reduce the read amplification of materialization job
+            assert (
+                feature_group.materialization_job is not None
+            ), "Materialization job is not defined. Cannot start materialization job."
+            if isinstance(offline_write_options, dict) and (
+                (spark_compute_config := offline_write_options.get("spark", None))
+                is not None
+            ):
+                _logger.debug(
+                    "Updating materialization job with user provided spark configurations."
+                )
+                for key, value in spark_compute_config.items():
+                    feature_group.materialization_job.config[key] = value
+                feature_group.materialization_job.save()
+
             feature_group.materialization_job.run(
                 args=feature_group.materialization_job.config.get("defaultArgs", "")
                 + (
@@ -1997,9 +2034,9 @@ class Engine:
             provided_len = len(feature_log[0])
         else:
             provided_len = 1
-        assert provided_len == len(cols), (
-            f"Expecting {len(cols)} features/labels but {provided_len} provided."
-        )
+        assert provided_len == len(
+            cols
+        ), f"Expecting {len(cols)} features/labels but {provided_len} provided."
 
     @staticmethod
     def get_logging_metadata(
