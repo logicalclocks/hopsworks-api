@@ -3234,6 +3234,15 @@ class FeatureGroup(FeatureGroupBase):
             write_options["wait_for_job"] = wait
         if "wait_for_online_ingestion" not in write_options:
             write_options["wait_for_online_ingestion"] = wait
+        if all(
+            [
+                not self._id,
+                self.time_travel_format == "DELTA",
+                write_options.get("delta.enableChangeDataFeed") != "false",
+            ]
+        ):
+            # New delta FG allow for change data capture query
+            write_options["delta.enableChangeDataFeed"] = "true"
 
         # fg_job is used only if the python engine is used
         fg_job, ge_report = self._feature_group_engine.save(
