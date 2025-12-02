@@ -423,7 +423,7 @@ class TestDeltaEngine:
         engine.save_empty_table()
 
         # Assert
-        pyspark_mock.assert_called_once_with()
+        pyspark_mock.assert_called_once_with(write_options=None)
         python_mock.assert_not_called()
 
     def test_save_empty_table_uses_python_path(self, mocker):
@@ -438,7 +438,7 @@ class TestDeltaEngine:
         engine.save_empty_table()
 
         # Assert
-        python_mock.assert_called_once_with()
+        python_mock.assert_called_once_with(write_options=None)
         pyspark_mock.assert_not_called()
 
     def test_delete_record_importerror_rs_deltalake_missing(self, mocker, monkeypatch):
@@ -504,24 +504,29 @@ class TestDeltaEngine:
 
     @pytest.mark.parametrize("input_precision", ["s", "ms", "us", "ns"])
     @pytest.mark.parametrize("target_precision", ["s", "ms", "us", "ns"])
-    def test_prepare_df_for_delta_all_precisions(self, input_precision, target_precision):
+    def test_prepare_df_for_delta_all_precisions(
+        self, input_precision, target_precision
+    ):
         # Arrange
         import pyarrow as pa
-        ts_values = pd.to_datetime([
-            "2025-01-01 00:00:00.123456789",
-            "2025-01-02 00:00:00.987654321",
-            "2025-01-03 00:00:00.555555555",
-        ])
+
+        ts_values = pd.to_datetime(
+            [
+                "2025-01-01 00:00:00.123456789",
+                "2025-01-02 00:00:00.987654321",
+                "2025-01-03 00:00:00.555555555",
+            ]
+        )
         ts_values = ts_values.astype(f"datetime64[{input_precision}]")
 
-        df = pd.DataFrame({
-            "ts": ts_values,
-            "val": [1.0, 2.5, 3.5],
-            "name": ["a", "b", "c"]
-        })
+        df = pd.DataFrame(
+            {"ts": ts_values, "val": [1.0, 2.5, 3.5], "name": ["a", "b", "c"]}
+        )
 
         # Act
-        table = DeltaEngine._prepare_df_for_delta(df, timestamp_precision=target_precision)
+        table = DeltaEngine._prepare_df_for_delta(
+            df, timestamp_precision=target_precision
+        )
 
         # Assert
         assert isinstance(table, pa.Table)

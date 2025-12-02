@@ -123,11 +123,20 @@ class Query:
                 else:
                     fs_query.register_external()
 
+                # In delta cdc queries return duplicate rows for upserts with old and new values
+                # as well as deleted rows. To avoid this, we set is_cdc_query to True to filter out
+                # on the cdc metadata columns.
+                if self.left_feature_group_start_time:
+                    is_cdc_query = True
+                else:
+                    is_cdc_query = False
+
                 # Register on hudi/delta feature groups as temporary tables
                 fs_query.register_delta_tables(
-                    self._feature_store_id,
-                    self._feature_store_name,
-                    read_options,
+                    feature_store_id=self._feature_store_id,
+                    feature_store_name=self._feature_store_name,
+                    read_options=read_options,
+                    is_cdc_query=is_cdc_query,
                 )
 
                 fs_query.register_hudi_tables(
@@ -184,7 +193,9 @@ class Query:
 
             for feature in join_features:
                 ambiguous_feature_feature_group_mapping[feature] = (
-                    ambiguous_feature_feature_group_mapping.get(feature, set()).union(
+                    ambiguous_feature_feature_group_mapping.get(
+                        feature, set()
+                    ).union(
                         [
                             f"{query._left_feature_group.name} version {query._left_feature_group.version}"
                         ]
