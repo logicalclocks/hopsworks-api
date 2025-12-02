@@ -184,7 +184,7 @@ class TestFeatureGroupEngine:
             "spark",
             "context",
         )
-        delta_engine_mock.save_empty_table.assert_called_once_with()
+        delta_engine_mock.save_empty_table.assert_called_once_with(write_options=None)
 
     def test_save_empty_table_noop_for_non_delta(self, mocker):
         # Arrange
