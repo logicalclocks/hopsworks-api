@@ -540,7 +540,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
         if feature_schema_available:
             # create empty table to write feature schema to table path
-            self.save_empty_table(feature_group)
+            self.save_empty_table(feature_group, write_options=write_options)
 
         print(
             "Feature Group created successfully, explore it at \n"
@@ -563,7 +563,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def save_empty_table(self, feature_group):
+    def save_empty_table(self, feature_group, write_options=None):
         # If time travel format is DELTA, an empty table is needed to be created
         # such that the feature schema is written to the table and
         # the subsequent writes in python can refer to that schema.
@@ -582,4 +582,4 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 spark_session,
                 spark_context,
             )
-            delta_engine_instance.save_empty_table()
+            delta_engine_instance.save_empty_table(write_options=write_options)

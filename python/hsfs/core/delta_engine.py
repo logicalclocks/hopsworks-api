@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import os
 import warnings
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 from urllib.parse import urlparse
 
 from hopsworks.core import project_api
@@ -25,9 +26,15 @@ from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import HAS_POLARS
 from hopsworks_common.core.type_systems import convert_offline_type_to_pyarrow_type
-from hsfs import feature_group_commit, util
+from hsfs import feature_group, feature_group_commit, util
 from hsfs.core import feature_group_api, variable_api
 
+
+if TYPE_CHECKING:
+    import pandas as pd
+    import polars as pl
+    import pyarrow as pa
+    from hsfs.constructor import hudi_feature_group_alias
 
 # Note: Avoid importing optional Delta dependencies at module import time.
 # They are imported on-demand inside methods to provide friendly errors only
@@ -38,12 +45,14 @@ _logger = logging.getLogger(__name__)
 class DeltaEngine:
     DELTA_SPARK_FORMAT = "delta"
     DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT = "timestampAsOf"
+    DELTA_ENABLE_CHANGE_DATA_FEED = "delta.enableChangeDataFeed"
+    DELTA_DOT_PREFIX = "delta."
 
     def __init__(
         self,
-        feature_store_id,
-        feature_store_name,
-        feature_group,
+        feature_store_id: int,
+        feature_store_name: str,
+        feature_group: feature_group.FeatureGroup,
         spark_session,
         spark_context,
     ):
@@ -66,7 +75,12 @@ class DeltaEngine:
         self._project_api = project_api.ProjectApi()
         self._setup_delta_rs()
 
-    def save_delta_fg(self, dataset, write_options, validation_id=None):
+    def save_delta_fg(
+        self,
+        dataset: Union[pd.DataFrame, pa.Table, pl.DataFrame],
+        write_options: Optional[Dict[str, Any]],
+        validation_id: Optional[int] = None,
+    ) -> feature_group_commit.FeatureGroupCommit:
         if self._spark_session is not None:
             _logger.debug(
                 f"Saving Delta dataset using spark to feature group {self._feature_group.name} v{self._feature_group.version}"
@@ -76,22 +90,46 @@ class DeltaEngine:
             _logger.debug(
                 f"Saving Delta dataset using delta-rs to feature group {self._feature_group.name} v{self._feature_group.version}"
             )
-            fg_commit = self._write_delta_rs_dataset(dataset)
+            fg_commit = self._write_delta_rs_dataset(
+                dataset, write_options=write_options
+            )
         fg_commit.validation_id = validation_id
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
-    def register_temporary_table(self, delta_fg_alias, read_options):
+    def register_temporary_table(
+        self,
+        delta_fg_alias,
+        read_options: Optional[Dict[str, Any]] = None,
+        is_cdc_query: bool = False,
+    ):
         location = self._feature_group.prepare_spark_location()
         _logger.debug(
             f"Registering temporary table for Delta feature group {self._feature_group.name} v{self._feature_group.version} at location {location}"
         )
 
-        delta_options = self._setup_delta_read_opts(delta_fg_alias, read_options)
-        self._spark_session.read.format(self.DELTA_SPARK_FORMAT).options(
-            **delta_options
-        ).load(location).createOrReplaceTempView(delta_fg_alias.alias)
+        delta_options = self._setup_delta_read_opts(
+            delta_fg_alias, read_options=read_options
+        )
+        if not is_cdc_query:
+            self._spark_session.read.format(self.DELTA_SPARK_FORMAT).options(
+                **delta_options
+            ).load(location).createOrReplaceTempView(delta_fg_alias.alias)
+        else:
+            from pyspark.sql.functions import col
 
-    def _setup_delta_read_opts(self, delta_fg_alias, read_options):
+            # CDC query - remove duplicates for upserts and do not include deleted rows
+            # to match behavior of other engines
+            self._spark_session.read.format(self.DELTA_SPARK_FORMAT).options(
+                **delta_options
+            ).load(location).filter(
+                col("_change_type").isin("update_postimage", "insert")
+            ).createOrReplaceTempView(delta_fg_alias.alias)
+
+    def _setup_delta_read_opts(
+        self,
+        delta_fg_alias: hudi_feature_group_alias.HudiFeatureGroupAlias,
+        read_options: Optional[Dict[str, Any]] = None,
+    ):
         delta_options = {}
         if delta_fg_alias.left_feature_group_end_timestamp is None and (
             delta_fg_alias.left_feature_group_start_timestamp is None
@@ -110,9 +148,29 @@ class DeltaEngine:
             delta_options = {
                 self.DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT: _delta_commit_end_time,
             }
+        elif delta_fg_alias.left_feature_group_start_timestamp is not None:
+            # change data feed query with start and end time
+            _delta_commit_start_time = util.get_delta_datestr_from_timestamp(
+                delta_fg_alias.left_feature_group_start_timestamp,
+            )
+
+            delta_options = {
+                "readChangeFeed": "true",
+                "startingTimestamp": _delta_commit_start_time,
+            }
+            if delta_fg_alias.left_feature_group_end_timestamp is not None:
+                _delta_commit_end_time = util.get_delta_datestr_from_timestamp(
+                    delta_fg_alias.left_feature_group_end_timestamp,
+                )
+                delta_options["endingTimestamp"] = _delta_commit_end_time
 
         if read_options:
-            delta_options.update(read_options)
+            for key in read_options.keys():
+                if isinstance(key, str) and key.startswith(self.DELTA_DOT_PREFIX):
+                    # delta read options do not have the "delta." prefix
+                    delta_options[key[len(self.DELTA_DOT_PREFIX) :]] = read_options[key]
+                else:
+                    delta_options[key] = read_options[key]
 
         _logger.debug(
             f"Delta read options for feature group {self._feature_group.name} v{self._feature_group.version}: {delta_options}"
@@ -269,7 +327,9 @@ class DeltaEngine:
             _logger.debug(f"Internal client, using delta-rs location: {location}")
             return location
 
-    def _write_delta_rs_dataset(self, dataset):
+    def _write_delta_rs_dataset(
+        self, dataset, write_options: Optional[Dict[str, Any]] = None
+    ):
         """
         Write a dataset to a Delta table using delta-rs.
 
@@ -319,10 +379,29 @@ class DeltaEngine:
             is_delta_table = False
 
         if not is_delta_table:
+            configuration = {
+                self.DELTA_ENABLE_CHANGE_DATA_FEED: (write_options or {}).get(
+                    self.DELTA_ENABLE_CHANGE_DATA_FEED, "true"
+                )
+            }
             deltars_write(
-                location, dataset, partition_by=self._feature_group.partition_key
+                location,
+                dataset,
+                partition_by=self._feature_group.partition_key,
+                configuration=configuration,
             )
         else:
+            if (
+                isinstance(write_options, dict)
+                and self.DELTA_ENABLE_CHANGE_DATA_FEED in write_options.keys()
+            ):
+                fg_source_table.alter.set_table_properties(
+                    {
+                        self.DELTA_ENABLE_CHANGE_DATA_FEED: write_options.get(
+                            self.DELTA_ENABLE_CHANGE_DATA_FEED
+                        )
+                    }
+                )
             source_alias = (
                 f"{self._feature_group.name}_{self._feature_group.version}_source"
             )
@@ -391,7 +470,9 @@ class DeltaEngine:
             col = table.column(i)
             if pa.types.is_timestamp(field.type):
                 _precision_order = {"s": 0, "ms": 1, "us": 2, "ns": 3}
-                if _precision_order.get(timestamp_precision, -1) < _precision_order.get(field.type.unit, -1):
+                if _precision_order.get(timestamp_precision, -1) < _precision_order.get(
+                    field.type.unit, -1
+                ):
                     warnings.warn(
                         f"Casting timestamp column '{field.name}' from '{field.type.unit}'"
                         f" to '{timestamp_precision}' will lose precision.",
@@ -415,13 +496,19 @@ class DeltaEngine:
         _logger.debug("Creating new PyArrow Table with modified columns")
         return pa.Table.from_arrays(new_cols, names=table.column_names)
 
-    def save_empty_delta_table_pyspark(self):
+    def save_empty_delta_table_pyspark(self, write_options=None):
         """
         Create an empty Delta table with the schema from the feature group features.
 
         This method builds a DDL schema string from the feature group's features
         and creates an empty DataFrame with that schema, then writes it to the
         feature group location using Delta format.
+
+        # Arguments
+            write_options: Optional dictionary of write options for Delta.
+                * key `delta.enableChangeDataFeed` set to a *string* value of true or false to enable or
+                disable cdf operations on the feature group delta table. Set to true by default on FG created
+                after 4.6
         """
         # Build DDL schema string from features
         ddl_fields = []
@@ -439,9 +526,9 @@ class DeltaEngine:
         # Create empty DataFrame using the DDL string
         empty_df = self._spark_session.createDataFrame([], ddl_schema)
 
-        self._write_delta_dataset(empty_df, {})
+        self._write_delta_dataset(empty_df, write_options or {})
 
-    def save_empty_delta_table_python(self):
+    def save_empty_delta_table_python(self, write_options=None):
         """
         Create an empty Delta table with the schema from the feature group features using delta-rs.
 
@@ -450,6 +537,12 @@ class DeltaEngine:
         location using delta-rs write_deltalake.
 
         Supports simple types, array types, and struct types.
+
+        # Arguments
+            write_options: Optional dictionary of write options for Delta.
+                * key `delta.enableChangeDataFeed` set to a *string* value of true or false to enable or
+                disable cdf operations on the feature group delta table. Set to true by default on FG created
+                after 4.6
         """
         try:
             import pyarrow as pa
@@ -484,13 +577,13 @@ class DeltaEngine:
         # Create empty PyArrow table from schema
         empty_arrow_table = pyarrow_schema.empty_table()
 
-        self._write_delta_rs_dataset(empty_arrow_table)
+        self._write_delta_rs_dataset(empty_arrow_table, write_options=write_options)
 
-    def save_empty_table(self):
+    def save_empty_table(self, write_options=None):
         if self._spark_session is not None:
-            self.save_empty_delta_table_pyspark()
+            self.save_empty_delta_table_pyspark(write_options=write_options)
         else:
-            self.save_empty_delta_table_python()
+            self.save_empty_delta_table_python(write_options=write_options)
 
     def vacuum(self, retention_hours: int):
         location = self._feature_group.prepare_spark_location()
@@ -507,7 +600,7 @@ class DeltaEngine:
             f"Generating merge query for feature group {self._feature_group.name} v{self._feature_group.version} from source alias {source_alias} and updates alias {updates_alias}"
         )
         merge_query_list = []
-        primary_key = self._feature_group.primary_key
+        primary_key = self._feature_group.primary_key.copy()
 
         # add event time to primary key for upserts
         if self._feature_group.event_time is not None:
