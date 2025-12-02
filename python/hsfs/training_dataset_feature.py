@@ -97,7 +97,7 @@ class TrainingDatasetFeature:
     def type(self):
         """Data type of the feature in the feature store.
 
-        !!! danger "Not a Python type"
+        Warning: Not a Python type
             This type property is not to be confused with Python types.
             The type property represents the actual data type of the feature in
             the feature store.

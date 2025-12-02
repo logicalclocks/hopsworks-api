@@ -253,7 +253,7 @@ class Query:
         It is possible to specify the storage (online/offline) to read from and the
         type of the output DataFrame (Spark, Pandas, Numpy, Python Lists).
 
-        !!! warning "External Feature Group Engine Support"
+        Warning: External Feature Group Engine Support
             **Spark only**
 
             Reading a Query containing an External Feature Group directly into a
@@ -409,7 +409,7 @@ class Query:
     ) -> Query:
         """Perform time travel on the given Query.
 
-        !!! warning "Pyspark/Spark Only"
+        Warning: Pyspark/Spark Only
             Apache HUDI exclusively supports Time Travel and Incremental Query via Spark Context
 
         This method returns a new Query object at the specified point in time. Optionally, commits before a
@@ -467,10 +467,10 @@ class Query:
             .as_of(..., ...)
         ```
 
-        !!! warning
+        Warning:
             This function only works for queries on feature groups with time_travel_format='HUDI'.
 
-        !!! warning
+        Warning:
             Excluding commits via exclude_until is only possible within the range of the Hudi active timeline.
             By default, Hudi keeps the last 20 to 30 commits in the active timeline.
             If you need to keep a longer active timeline, you can overwrite the options:
@@ -503,7 +503,7 @@ class Query:
         wallclock_end_time: Union[str, int, date, datetime],
     ) -> Query:
         """
-        !!! warning "Deprecated"
+        Warning: Deprecated
         `pull_changes` method is deprecated. Use
         `as_of(end_wallclock_time, exclude_until=start_wallclock_time) instead.
         """

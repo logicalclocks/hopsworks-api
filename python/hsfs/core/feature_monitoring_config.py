@@ -290,7 +290,7 @@ class FeatureMonitoringConfig:
             ).compare_on(...).save()
             ```
 
-        !!! warning "Provide a comparison configuration"
+        Warning: Provide a comparison configuration
             You must provide a comparison configuration via `compare_on()` before saving the feature monitoring config.
 
         Parameters:
@@ -332,7 +332,7 @@ class FeatureMonitoringConfig:
             ).compare_on(...).save()
             ```
 
-        !!! warning "Provide a comparison configuration"
+        Warning: Provide a comparison configuration
             You must provide a comparison configuration via `compare_on()` before saving the feature monitoring config.
 
         Parameters:
@@ -365,7 +365,7 @@ class FeatureMonitoringConfig:
             ).compare_on(...).save()
             ```
 
-        !!! warning "Provide a comparison configuration"
+        Warning: Provide a comparison configuration
             You must provide a comparison configuration via `compare_on()` before saving the feature monitoring config.
 
         Parameters:
@@ -404,7 +404,7 @@ class FeatureMonitoringConfig:
             ).save()
             ```
 
-        !!! note
+        Note:
             Detection window and reference window/value/training_dataset must be set prior to comparison configuration.
 
         Parameters:
@@ -485,7 +485,7 @@ class FeatureMonitoringConfig:
             my_monitoring_config.run_job()
             ```
 
-        !!! info
+        Info:
             The feature monitoring job will be triggered asynchronously and the method will return immediately.
             Calling this method does not affect the ongoing schedule.
 
@@ -670,8 +670,8 @@ class FeatureMonitoringConfig:
         """The name of the feature to monitor. If not set, all features of the
         Feature Group or Feature View are monitored, only available for scheduled statistics.
 
-        !!! info "This property is read-only"
-
+        Info:
+            This property is read-only
         """
         return self._feature_name
 
@@ -681,7 +681,8 @@ class FeatureMonitoringConfig:
         A Feature Group or Feature View cannot have multiple feature monitoring configurations with the same name. The name of
         a feature monitoring configuration is limited to 63 characters.
 
-        !!! info "This property is read-only once the feature monitoring configuration has been saved."
+        Info:
+            This property is read-only once the feature monitoring configuration has been saved.
         """
         return self._name
 
@@ -739,7 +740,8 @@ class FeatureMonitoringConfig:
             - STATISTICS_COMPUTATION if no reference window (and, therefore, comparison config) is provided
             - STATISTICS_COMPARISON if a reference window (and, therefore, comparison config) is provided.
 
-        !!! info "This property is read-only."
+        Info:
+            This property is read-only.
         """
         return self._feature_monitoring_type
 

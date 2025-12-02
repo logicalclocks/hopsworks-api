@@ -418,7 +418,7 @@ class Predictor(DeployableComponent):
     def artifact_version(self):
         """Artifact version deployed by the predictor.
 
-        !!! warning "Deprecated"
+        Warning: Deprecated
             Artifact versions are deprecated in favor of deployment versions.
         """
         return self._version

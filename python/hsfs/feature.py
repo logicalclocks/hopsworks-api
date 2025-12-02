@@ -193,7 +193,7 @@ class Feature:
     def type(self) -> Optional[str]:
         """Data type of the feature in the offline feature store.
 
-        !!! danger "Not a Python type"
+        Warning: Not a Python type
             This type property is not to be confused with Python types.
             The type property represents the actual data type of the feature in
             the feature store.
@@ -300,8 +300,8 @@ class Feature:
 
     def contains(self, other: Union[str, List[Any]]) -> "filter.Filter":
         """
-        !!! warning "Deprecated"
-            `contains` method is deprecated. Use `isin` instead.
+        Warning: Deprecated
+            `contains` method is deprecated. Use [`isin`][hsfs.feature.Feature.isin] instead.
         """
         return self.isin(other)
 

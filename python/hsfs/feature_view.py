@@ -1341,6 +1341,7 @@ class FeatureView:
 
         Returns:
             `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
+
         Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -1789,7 +1790,7 @@ class FeatureView:
             )
             ```
 
-        !!! info "Data Formats"
+        Info: Data Formats
             The feature store currently supports the following data formats for
             training datasets:
 
@@ -1803,7 +1804,7 @@ class FeatureView:
 
             Currently not supported petastorm, hdf5 and npy file formats.
 
-        !!! warning "Warning, the following code will fail because category column contains sparse values and training dataset may not have all values available in test split."
+        Warning: Warning, the following code will fail because category column contains sparse values and training dataset may not have all values available in test split.
             ```python
             import pandas as pd
 
@@ -1834,7 +1835,7 @@ class FeatureView:
             # Output: KeyError: 'category_c'
             ```
 
-        !!! warning "Spine Groups/Dataframes"
+        Warning: Spine Groups/Dataframes
             Spine groups and dataframes are currently only supported with the Spark engine and
             Spark dataframes.
 
@@ -2081,7 +2082,7 @@ class FeatureView:
             )
             ```
 
-        !!! info "Data Formats"
+        Info: Data Formats
             The feature store currently supports the following data formats for
             training datasets:
 
@@ -2095,7 +2096,7 @@ class FeatureView:
 
             Currently not supported petastorm, hdf5 and npy file formats.
 
-        !!! warning "Spine Groups/Dataframes"
+        Warning: Spine Groups/Dataframes
             Spine groups and dataframes are currently only supported with the Spark engine and
             Spark dataframes.
 
@@ -2249,11 +2250,11 @@ class FeatureView:
             feature_view.recreate_training_dataset(training_dataset_version=1)
             ```
 
-        !!! info
+        Info:
             If a materialised training data has deleted. Use `recreate_training_dataset()` to
             recreate the training data.
 
-        !!! warning "Spine Groups/Dataframes"
+        Warning: Spine Groups/Dataframes
             Spine groups and dataframes are currently only supported with the Spark engine and
             Spark dataframes.
 
@@ -2291,6 +2292,7 @@ class FeatureView:
         Returns:
             `Job`: When using the `python` engine, it returns the Hopsworks Job
                 that was launched to create the training dataset.
+
         Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -2366,7 +2368,7 @@ class FeatureView:
             )
             ```
 
-        !!! warning "Spine Groups/Dataframes"
+        Warning: Spine Groups/Dataframes
             Spine groups and dataframes are currently only supported with the Spark engine and
             Spark dataframes.
 
@@ -2528,7 +2530,7 @@ class FeatureView:
             )
             ```
 
-        !!! warning "Spine Groups/Dataframes"
+        Warning: Spine Groups/Dataframes
             Spine groups and dataframes are currently only supported with the Spark engine and
             Spark dataframes.
 
@@ -2728,7 +2730,7 @@ class FeatureView:
             )
             ```
 
-        !!! warning "Spine Groups/Dataframes"
+        Warning: Spine Groups/Dataframes
             Spine groups and dataframes are currently only supported with the Spark engine and
             Spark dataframes.
 
@@ -2906,7 +2908,7 @@ class FeatureView:
             features_df, labels_df = feature_view.get_training_data(training_dataset_version=1)
             ```
 
-        !!! warning "External Storage Support"
+        Warning: External Storage Support
             Reading training data that was written to external storage using a Storage
             Connector other than S3 can currently not be read using HSFS APIs with
             Python as Engine, instead you will have to use the storage's native client.
@@ -3411,6 +3413,7 @@ class FeatureView:
         to a feature in the feature view. If you wish to fetch a single config, provide the
         its name. If you wish to fetch all configs attached to a particular feature, provide
         the feature name.
+
         Example:
             ```python3
             # fetch your feature view
@@ -3424,6 +3427,7 @@ class FeatureView:
             # fetch a single feature monitoring config with a particular id
             fm_config = fv.get_feature_monitoring_configs(config_id=1)
             ```
+
         Parameters:
             name: If provided fetch only the feature monitoring config with the given name.
                 Defaults to None.
@@ -3431,11 +3435,13 @@ class FeatureView:
                 Defaults to None.
             config_id: If provided, fetch only the feature monitoring config with the given id.
                 Defaults to None.
+
         Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
             `hopsworks.client.exceptions.FeatureStoreException`: If the feature view is not registered in Hopsworks
             `ValueError`: if both name and feature_name are provided.
             `TypeError`: if name or feature_name are not string or None.
+
         Returns:
             Union[`FeatureMonitoringConfig`, List[`FeatureMonitoringConfig`], None]
                 A list of feature monitoring configs. If name provided,
@@ -3462,6 +3468,7 @@ class FeatureView:
         with_statistics: Optional[bool] = True,
     ) -> List["fmr.FeatureMonitoringResult"]:
         """Fetch feature monitoring history for a given feature monitoring config.
+
         Example:
             ```python3
             # fetch your feature view
@@ -3479,6 +3486,7 @@ class FeatureView:
                 with_statistics=False,
             )
             ```
+
         Parameters:
             config_name: The name of the feature monitoring config to fetch history for.
                 Defaults to None.
@@ -3490,11 +3498,13 @@ class FeatureView:
                 Defaults to None.
             with_statistics: Whether to include statistics in the feature monitoring history.
                 Defaults to True. If False, only metadata about the monitoring will be fetched.
+
         Raises:
             `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
             `hopsworks.client.exceptions.FeatureStoreException`: If the feature view is not registered in Hopsworks
             `ValueError`: if both config_name and config_id are provided.
             `TypeError`: if config_name or config_id are not respectively string, int or None.
+
         Returns:
             List[`FeatureMonitoringResult`]
                 A list of feature monitoring results containing the monitoring metadata
@@ -3524,8 +3534,10 @@ class FeatureView:
         cron_expression: Optional[str] = "0 0 12 ? * * *",
     ) -> "fmc.FeatureMonitoringConfig":
         """Run a job to compute statistics on snapshot of feature data on a schedule.
-        !!! experimental
+
+        Experimental:
             Public API is subject to change, this feature is not suitable for production use-cases.
+
         Example:
             ```python3
             # fetch feature view
@@ -3542,6 +3554,7 @@ class FeatureView:
                 row_percentage=0.1,
             ).save()
             ```
+
         Parameters:
             name: Name of the feature monitoring configuration.
                 name must be unique for all configurations attached to the feature view.
@@ -3553,8 +3566,10 @@ class FeatureView:
             cron_expression: Cron expression to use to schedule the job. The cron expression
                 must be in UTC and follow the Quartz specification. Default is '0 0 12 ? * * *',
                 every day at 12pm UTC.
+
         Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If the feature view is not registered in Hopsworks
+
         Returns:
             `FeatureMonitoringConfig` Configuration with minimal information about the feature monitoring.
                 Additional information are required before feature monitoring is enabled.
@@ -3584,8 +3599,10 @@ class FeatureView:
         cron_expression: Optional[str] = "0 0 12 ? * * *",
     ) -> "fmc.FeatureMonitoringConfig":
         """Enable feature monitoring to compare statistics on snapshots of feature data over time.
-        !!! experimental
+
+        Experimental:
             Public API is subject to change, this feature is not suitable for production use-cases.
+
         Example:
             ```python3
             # fetch feature view
@@ -3608,6 +3625,7 @@ class FeatureView:
                 threshold=0.5,
             ).save()
             ```
+
         Parameters:
             name: Name of the feature monitoring configuration.
                 name must be unique for all configurations attached to the feature group.
@@ -3618,8 +3636,10 @@ class FeatureView:
             cron_expression: Cron expression to use to schedule the job. The cron expression
                 must be in UTC and follow the Quartz specification. Default is '0 0 12 ? * * *',
                 every day at 12pm UTC.
+
         Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If the feature view is not registered in Hopsworks
+
         Returns:
             `FeatureMonitoringConfig` Configuration with minimal information about the feature monitoring.
                 Additional information are required before feature monitoring is enabled.
@@ -3644,6 +3664,7 @@ class FeatureView:
 
         Returns:
             List[FeatureViewAlert] or Alert.
+
         Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request.
         """
@@ -3657,9 +3678,11 @@ class FeatureView:
         """Get an alert for this feature view by ID.
 
         Parameters:
-            alert_id: The id of the alert to get..
+            alert_id: The id of the alert to get.
+
         Returns:
             A single FeatureViewAlert object is returned.
+
         Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request.
         """
@@ -3677,6 +3700,7 @@ class FeatureView:
         severity: str,
     ):
         """Create an alert for this feature view.
+
         Example:
             ```python
             # get feature store instance
@@ -3690,12 +3714,15 @@ class FeatureView:
                 severity="info",
             )
             ```
+
         Parameters:
             receiver: str. The receiver of the alert.
             status: str. The status that will trigger the alert. Can be "feature_monitor_shift_undetected" or "feature_monitor_shift_detected".
             severity: str. The severity of the alert. Can be "info", "warning" or "critical".
+
         Returns:
             The created FeatureViewAlert object.
+
         Raises:
             `ValueError`: If the status is not valid.
             `ValueError`: If the severity is not valid.
@@ -3841,7 +3868,7 @@ class FeatureView:
         """
         Transform the input feature vector by applying Model-dependent transformations attached to the feature view.
 
-        !!! warning "List input must match the schema of the feature view"
+        Warning: List input must match the schema of the feature view
                     If features are provided as a List to the transform function. Make sure that the input are ordered to match the schema
                     in the feature view.
         Parameters:
@@ -3877,7 +3904,6 @@ class FeatureView:
         Parameters:
             extra_log_columns: `Union[Feature, List[Dict[str, str]]]` Additional columns to be logged. Any duplicate columns will be ignored.
 
-
         Example: Enable feature logging
             ```python
             # get feature store instance
@@ -3902,6 +3928,7 @@ class FeatureView:
             feature_view.enable_logging(extra_log_columns=[{"name": "logging_col_1", "type": "string"},
                                                            {"name": "logging_col_2", "type": "int"}])
             ```
+
         Raises:
             `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """

@@ -113,9 +113,13 @@ class Deployment:
         """Delete the deployment
 
         Parameters:
-            force: Force the deletion of the deployment.
-                   If the deployment is running, it will be stopped and deleted automatically.
-                   !!! warn A call to this method does not ask for a second confirmation.
+            force:
+                Force the deletion of the deployment.
+                If the deployment is running, it will be stopped and deleted automatically.
+
+                Warning:
+                    A call to this method does not ask for a second confirmation.
+
         Raises:
             `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
@@ -404,7 +408,7 @@ class Deployment:
     def artifact_version(self):
         """Artifact version deployed by the predictor.
 
-        !!! warning "Deprecated"
+        Warning: Deprecated
             Artifact versions are deprecated in favor of deployment versions.
         """
         return self._predictor.version
@@ -422,7 +426,7 @@ class Deployment:
     def artifact_path(self):
         """Path of the model artifact deployed by the predictor.
 
-        !!! warning "Deprecated"
+        Warning: Deprecated
             Artifact versions are deprecated in favor of deployment versions.
         """
         return self.artifact_files_path

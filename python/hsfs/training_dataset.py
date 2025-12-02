@@ -616,7 +616,7 @@ class TrainingDataset(TrainingDatasetBase):
         lists or Numpy ndarrays.
         From v2.5 onward, filters are saved along with the `Query`.
 
-        !!! warning "Engine Support"
+        Warning: Engine Support
             Creating Training Datasets from Dataframes is only supported using Spark as Engine.
 
         Parameters:
@@ -675,7 +675,7 @@ class TrainingDataset(TrainingDatasetBase):
     ):
         """Insert additional feature data into the training dataset.
 
-        !!! warning "Deprecated"
+        Warning: Deprecated
             `insert` method is deprecated.
 
         This method appends data to the training dataset either from a Feature Store
@@ -842,7 +842,7 @@ class TrainingDataset(TrainingDatasetBase):
     def delete(self):
         """Delete training dataset and all associated metadata.
 
-        !!! note "Drops only HopsFS data"
+        Note: Drops only HopsFS data
             Note that this operation drops only files which were materialized in
             HopsFS. If you used a Storage Connector for a cloud storage such as S3,
             the data will not be deleted, but you will not be able to track it anymore
