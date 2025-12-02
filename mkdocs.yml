@@ -158,6 +158,12 @@ plugins:
             docstring_section_style: spacy
           inventories:
             - https://docs.python.org/3/objects.inv
+            - https://pandas.pydata.org/docs/objects.inv
+            - https://numpy.org/doc/stable/objects.inv
+            - https://docs.python-requests.org/en/latest/objects.inv
+            - https://pydantic-docs.helpmanual.io/objects.inv
+            - https://fastapi.tiangolo.com/objects.inv
+            - https://scikit-learn.org/stable/objects.inv
 
 markdown_extensions:
   - admonition
