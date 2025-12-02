@@ -625,7 +625,7 @@ class TrainingDataset(TrainingDatasetBase):
                 When using the `python` engine, write_options can contain the
                 following entries:
                 * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
+                [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration]
                   to configure the Hopsworks Job used to compute the training dataset.
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the save call should return only
@@ -691,7 +691,7 @@ class TrainingDataset(TrainingDatasetBase):
                 When using the `python` engine, write_options can contain the
                 following entries:
                 * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
+                  [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration]
                   to configure the Hopsworks Job used to compute the training dataset.
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the insert call should return only

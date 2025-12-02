@@ -87,7 +87,6 @@ class Connection:
 
     Clients in external clusters need to connect to the Hopsworks using an API key.
     The API key is generated inside the Hopsworks platform, and requires at least the "project" scope to be able to access a project.
-    For more information, see the [integration guides](../setup.md).
 
     Parameters:
         host:
@@ -508,7 +507,6 @@ class Connection:
 
         Clients in external clusters need to connect to the Hopsworks using an API key.
         The API key is generated inside the Hopsworks platform, and requires at least the "project" scope to be able to access a project.
-        For more information, see the [integration guides](../setup.md).
 
         Parameters:
             host:

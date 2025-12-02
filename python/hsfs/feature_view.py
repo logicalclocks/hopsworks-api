@@ -1615,8 +1615,8 @@ class FeatureView:
 
                 When using the `python` engine, write_options can contain the following entries:
 
-                - key `use_spark` and value `True` to materialize training dataset with Spark instead of [Hopsworks Feature Query Service](https://docs.hopsworks.ai/latest/setup_installation/common/arrow_flight_duckdb/).
-                - key `spark` and value an object of type [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration) to configure the Hopsworks Job used to compute the training dataset.
+                - key `use_spark` and value `True` to materialize training dataset with Spark instead of [Hopsworks Feature Query Service](../../setup_installation/common/arrow_flight_duckdb/).
+                - key `spark` and value an object of type [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration] to configure the Hopsworks Job used to compute the training dataset.
                 - key `wait_for_job` and value `True` or `False` to configure whether or not to the save call should return only after the Hopsworks Job has finished.
                   By default it waits.
 
@@ -1885,9 +1885,9 @@ class FeatureView:
                 When using the `python` engine, write_options can contain the
                 following entries:
                 * key `use_spark` and value `True` to materialize training dataset
-                  with Spark instead of [Hopsworks Feature Query Service](https://docs.hopsworks.ai/latest/setup_installation/common/arrow_flight_duckdb/).
+                  with Spark instead of [Hopsworks Feature Query Service](../../setup_installation/common/arrow_flight_duckdb/).
                 * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
+                [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration]
                   to configure the Hopsworks Job used to compute the training dataset.
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the save call should return only
@@ -2153,9 +2153,9 @@ class FeatureView:
                 When using the `python` engine, write_options can contain the
                 following entries:
                 * key `use_spark` and value `True` to materialize training dataset
-                  with Spark instead of [Hopsworks Feature Query Service](https://docs.hopsworks.ai/latest/setup_installation/common/arrow_flight_duckdb/).
+                  with Spark instead of [Hopsworks Feature Query Service](../../setup_installation/common/arrow_flight_duckdb/).
                 * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
+                [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration]
                   to configure the Hopsworks Job used to compute the training dataset.
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the save call should return only
@@ -2272,9 +2272,9 @@ class FeatureView:
                 When using the `python` engine, write_options can contain the
                 following entries:
                 * key `use_spark` and value `True` to materialize training dataset
-                  with Spark instead of [Hopsworks Feature Query Service](https://docs.hopsworks.ai/latest/setup_installation/common/arrow_flight_duckdb/).
+                  with Spark instead of [Hopsworks Feature Query Service](../../setup_installation/common/arrow_flight_duckdb/).
                 * key `spark` and value an object of type
-                [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
+                [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration]
                   to configure the Hopsworks Job used to compute the training dataset.
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the save call should return only
@@ -2400,7 +2400,7 @@ class FeatureView:
                 * key `"arrow_flight_config"` to pass a dictionary of arrow flight configurations.
                   For example: `{"arrow_flight_config": {"timeout": 900}}`.
                 * key `spark` and value an object of type
-                  [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
+                  [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration]
                   to configure the Hopsworks Job used to compute the training dataset.
                 Defaults to `{}`.
             spine: Spine dataframe with primary key, event time and
@@ -2567,7 +2567,7 @@ class FeatureView:
                 * key `"arrow_flight_config"` to pass a dictionary of arrow flight configurations.
                   For example: `{"arrow_flight_config": {"timeout": 900}}`
                 * key `spark` and value an object of type
-                  [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
+                  [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration]
                   to configure the Hopsworks Job used to compute the training dataset.
                 Defaults to `{}`.
             spine: Spine dataframe with primary key, event time and
@@ -2774,7 +2774,7 @@ class FeatureView:
                 * key `"arrow_flight_config"` to pass a dictionary of arrow flight configurations.
                   For example: `{"arrow_flight_config": {"timeout": 900}}`
                 * key `spark` and value an object of type
-                  [hsfs.core.job_configuration.JobConfiguration](../jobs/#jobconfiguration)
+                  [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration]
                   to configure the Hopsworks Job used to compute the training dataset.
                 Defaults to `{}`.
             spine: Spine dataframe with primary key, event time and

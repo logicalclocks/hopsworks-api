@@ -595,8 +595,8 @@ class FeatureStore:
                 Foreign key is referencing the primary key of another feature group and can be used as joining key.
                 Defaults to empty list `[]`, and the feature group won't have any foreign key.
             embedding_index:
-                [`EmbeddingIndex`](./embedding_index_api.md). If an embedding index is provided, vector database is used as online feature store.
-                This enables similarity search by using [`find_neighbors`](./feature_group_api.md#find_neighbors).
+                [`EmbeddingIndex`][hsfs.embedding.EmbeddingIndex]. If an embedding index is provided, vector database is used as online feature store.
+                This enables similarity search by using [`FeatureGroup.find_neighbors`](hsfs.feature_group.FeatureGroup.find_neighbors).
             hudi_precombine_key:
                 A feature name to be used as a precombine key for the `"HUDI"` feature group.
                 If feature group has time travel format `"HUDI"` and hudi precombine key was not specified then the first primary key of the feature group will be used as hudi precombine key.
@@ -799,8 +799,8 @@ class FeatureStore:
                 Foreign key is referencing the primary key of another feature group and can be used as joining key.
                 Defaults to empty list `[]`, and the feature group won't have any foreign key.
             embedding_index:
-                [`EmbeddingIndex`](./embedding_index_api.md). If an embedding index is provided, vector database is used as online feature store.
-                This enables similarity search by using [`find_neighbors`](./feature_group_api.md#find_neighbors).
+                [`EmbeddingIndex`][hsfs.embedding.EmbeddingIndex]. If an embedding index is provided, vector database is used as online feature store.
+                This enables similarity search by using [`FeatureGroup.find_neighbors`](hsfs.feature_group.FeatureGroup.find_neighbors).
             hudi_precombine_key:
                 A feature name to be used as a precombine key for the `"HUDI"` feature group.
                 If feature group has time travel format `"HUDI"` and hudi precombine key was not specified then the first primary key of the feature group will be used as hudi precombine key.
