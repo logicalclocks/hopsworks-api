@@ -20,9 +20,16 @@ from typing import Any
 from hsfs import engine, feature, util
 from hsfs import feature_group as fg
 from hsfs.client import exceptions
-from hsfs.core import delta_engine, feature_group_base_engine, hudi_engine
+from hsfs.core import (
+    delta_engine,
+    feature_group_base_engine,
+    hudi_engine,
+    job_api,
+)
 from hsfs.core.deltastreamer_jobconf import DeltaStreamerJobConf
 from hsfs.core.schema_validation import DataFrameValidator
+from hsfs.storage_connector import StorageConnector
+from hopsworks_common.core.sink_job_configuration import SinkJobConfiguration
 
 
 class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
@@ -31,6 +38,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
         # cache online feature store connector
         self._online_conn = None
+        self._job_api = job_api.JobApi()
 
     def _update_feature_group_schema_on_demand_transformations(
         self, feature_group: fg.FeatureGroup, features: list[feature.Feature]
@@ -530,7 +538,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 _write_options, _spark_options
             )
 
-        self._feature_group_api.save(feature_group)
+        is_new_feature_group = feature_group.id is None
+        new_fg = self._feature_group_api.save(feature_group)
+        self._create_sink_job_if_needed(new_fg, is_new_feature_group)
 
         if feature_schema_available:
             # create empty table to write feature schema to table path
@@ -577,3 +587,52 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 spark_context,
             )
             delta_engine_instance.save_empty_table(write_options=write_options)
+
+    def _create_sink_job_if_needed(
+        self, feature_group: fg.FeatureGroup, is_new_feature_group: bool
+    ) -> None:
+        if (
+            not is_new_feature_group
+            or not feature_group.sink_enabled
+        ):
+            return
+        self._validate_sink(feature_group)
+        print("Creating sink job...")
+        print("Feature group id:", feature_group.id)
+        print("Feature store id:", feature_group.feature_store_id)
+        print("Storage connector id:", feature_group.storage_connector.id)
+        sink_job_conf = feature_group.sink_job_conf or SinkJobConfiguration()
+        job_name = sink_job_conf.name
+        job_name = job_name or self._get_default_ingestion_job_name(feature_group)
+        kwargs: dict[str, Any] = {}
+        kwargs["featuregroup_id"] = feature_group.id
+        kwargs["featurestore_id"] = feature_group.feature_store_id
+        kwargs["storage_connector_id"] = feature_group.storage_connector.id
+        if (
+            feature_group.storage_connector.type == StorageConnector.REST
+            and feature_group.data_source.rest_endpoint
+        ):
+            kwargs["endpoint_config"] = feature_group.data_source.rest_endpoint.to_dict()
+        sink_job_conf.set_extra_params(**kwargs)
+
+        job = self._job_api.create(job_name, sink_job_conf)
+        print(f"Sink job created successfully, explore it at {job.get_url()}")
+        if sink_job_conf.schedule_config:
+            self._job_api.create_or_update_schedule_job(job_name, sink_job_conf.schedule_config)
+
+    def _validate_sink(self, feature_group: fg.FeatureGroup) -> None:
+        """Validate the feature group for sink"""
+        if not feature_group.sink_enabled:
+            return
+
+        if feature_group.time_travel_format != "DELTA":
+            raise exceptions.FeatureStoreException(
+                "Sink feature is only supported for Delta feature groups."
+            )
+        if feature_group.storage_connector is None:
+            raise exceptions.FeatureStoreException(
+                "Storage connector must be provided for to enable sink."
+            )
+    
+    def _get_default_ingestion_job_name(self, feature_group: fg.FeatureGroup) -> str:
+        return f"{feature_group.storage_connector.name}_to_{util.feature_group_name(feature_group)}"

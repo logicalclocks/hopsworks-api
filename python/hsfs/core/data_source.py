@@ -16,15 +16,14 @@
 from __future__ import annotations
 
 import json
-from typing import (
-    Any,
-)
+from typing import Any
 
 import humps
 from hopsworks_common import util
 from hsfs import (
     storage_connector as sc,
 )
+from hsfs.core.rest_endpoint import RestEndpointConfig
 
 
 class DataSource:
@@ -37,6 +36,9 @@ class DataSource:
         group: str | None = None,
         table: str | None = None,
         path: str | None = None,
+        metrics: list[str] | None = None,
+        dimensions: list[str] | None = None,
+        rest_endpoint: RestEndpointConfig | dict | None = None,
         **kwargs,
     ):
         self._query = query
@@ -44,6 +46,13 @@ class DataSource:
         self._group = group
         self._table = table
         self._path = path
+        self._metrics = metrics or []
+        self._dimensions = dimensions or []
+        self._rest_endpoint = (
+            RestEndpointConfig.from_response_json(rest_endpoint)
+            if isinstance(rest_endpoint, dict)
+            else rest_endpoint
+        )
 
     @classmethod
     def from_response_json(cls, json_dict: dict[str, Any]) -> list[DataSource]:
@@ -64,6 +73,11 @@ class DataSource:
             "group": self._group,
             "table": self._table,
             "path": self._path,
+            "metrics": self._metrics,
+            "dimensions": self._dimensions,
+            "restEndpoint": (
+                self._rest_endpoint.to_dict() if self._rest_endpoint else None
+            ),
         }
 
     def json(self):
@@ -108,6 +122,30 @@ class DataSource:
     @path.setter
     def path(self, path: str) -> None:
         self._path = path
+
+    @property
+    def metrics(self) -> list[str]:
+        return self._metrics
+
+    @metrics.setter
+    def metrics(self, metrics: list[str]) -> None:
+        self._metrics = metrics
+
+    @property
+    def dimensions(self) -> list[str]:
+        return self._dimensions
+
+    @dimensions.setter
+    def dimensions(self, dimensions: list[str]) -> None:
+        self._dimensions = dimensions
+
+    @property
+    def rest_endpoint(self) -> RestEndpointConfig | None:
+        return self._rest_endpoint
+
+    @rest_endpoint.setter
+    def rest_endpoint(self, rest_endpoint: RestEndpointConfig) -> None:
+        self._rest_endpoint = rest_endpoint
 
     def _update_storage_connector(self, storage_connector: sc.StorageConnector):
         """Update the storage connector configuration using DataSource.
