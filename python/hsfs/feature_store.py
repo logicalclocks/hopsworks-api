@@ -521,6 +521,8 @@ class FeatureStore:
         ttl: float | timedelta | None = None,
         ttl_enabled: bool | None = None,
         online_disk: bool | None = None,
+        sink_enabled: bool | None = False,
+        sink_job_conf: dict[str, Any] | None = None,
     ) -> feature_group.FeatureGroup:
         """Create a feature group metadata object.
 
@@ -648,7 +650,12 @@ class FeatureStore:
                 When set to True data will be stored on disk, instead of in memory.
                 Overrides online_config.table_space.
                 Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
-
+            sink_enabled:
+                Enable automatic ingestion from the configured data source using a sink job.
+            sink_job_conf:
+                Optional configuration describing the sink job to create when `sink_enabled` is True.
+                Accepts either a job configuration object or a dictionary with a `job_conf` entry
+                plus optional `name` and `job_schedule` values.
         Returns:
             The feature group metadata object.
         """
@@ -683,6 +690,8 @@ class FeatureStore:
             ttl=ttl,
             ttl_enabled=ttl_enabled,
             online_disk=online_disk,
+            sink_enabled=sink_enabled,
+            sink_job_conf=sink_job_conf,
         )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -720,6 +729,8 @@ class FeatureStore:
         ttl: float | timedelta | None = None,
         ttl_enabled: bool | None = None,
         online_disk: bool | None = None,
+        sink_enabled: bool | None = False,
+        sink_job_conf: dict[str, Any] | None = None,
     ) -> (
         feature_group.FeatureGroup
         | feature_group.ExternalFeatureGroup
@@ -841,6 +852,10 @@ class FeatureStore:
                 When set to True data will be stored on disk, instead of in memory.
                 Overrides online_config.table_space.
                 Defaults to using cluster wide configuration 'featurestore_online_tablespace' to identify tablespace for disk storage.
+            sink_enabled:
+                Enable copying data from the configured data source to the feature group.
+            sink_job_conf:
+                Optional configuration describing the sink job to create when `sink_enabled` is True.
 
         Returns:
             The feature group metadata object.
@@ -878,6 +893,8 @@ class FeatureStore:
                 ttl=ttl,
                 ttl_enabled=ttl_enabled,
                 online_disk=online_disk,
+                sink_enabled=sink_enabled,
+                sink_job_conf=sink_job_conf,
             )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -1208,6 +1225,8 @@ class FeatureStore:
             ttl=ttl,
             ttl_enabled=ttl_enabled,
             online_disk=online_disk,
+            sink_enabled=sink_enabled,
+            sink_job_conf=sink_job_conf,
         )
         feature_group_object.feature_store = self
         return feature_group_object
