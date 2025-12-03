@@ -15,6 +15,7 @@
 #
 
 import math
+from typing import Union
 
 import pandas as pd
 from hsfs.hopsworks_udf import udf
@@ -25,26 +26,78 @@ feature_statistics = TransformationStatistics("feature")
 
 
 @udf(float, drop=["feature"])
-def min_max_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
+def min_max_scaler(
+    feature: Union[pd.Series, int, float],
+    statistics: TransformationStatistics = feature_statistics,
+) -> Union[pd.Series, int, float]:
+    """
+    Scales the feature to the range [0, 1] using the min and max values of the feature in the training data.
+
+    # Arguments
+    feature: `Union[pd.Series, int, float]`. The feature to scale between 0 and 1.
+    statistics: `TransformationStatistics`. The training dataset statistics of the feature, this is computed and passed automatically by Hopsworks when the transformation function is executed.
+
+    # Returns
+    `pd.Series`. The scaled feature.
+    """
     return (feature - statistics.feature.min) / (
         statistics.feature.max - statistics.feature.min
     )
 
 
 @udf(float, drop=["feature"])
-def standard_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
+def standard_scaler(
+    feature: Union[pd.Series, int, float],
+    statistics: TransformationStatistics = feature_statistics,
+) -> Union[pd.Series, int, float]:
+    """
+    Standardize features by transforming the feature to have a mean of 0 and a standard deviation of 1.
+
+    # Arguments
+    feature: `Union[pd.Series, int, float]`. The feature to standardize.
+    statistics: `TransformationStatistics`. The training dataset statistics of the feature, this is computed and passed automatically by Hopsworks when the transformation function is executed.
+
+    # Returns
+    `pd.Series`. The scaled feature.
+    """
     return (feature - statistics.feature.mean) / statistics.feature.stddev
 
 
 @udf(float, drop=["feature"])
-def robust_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
+def robust_scaler(
+    feature: Union[pd.Series, int, float],
+    statistics: TransformationStatistics = feature_statistics,
+) -> Union[pd.Series, int, float]:
+    """
+    Robust scale features by transforming the feature to have a median of 0 and a interquartile range of 1.
+
+    # Arguments
+    feature: `Union[pd.Series, int, float]`. The feature to robust scale.
+    statistics: `TransformationStatistics`. The training dataset statistics of the feature, this is computed and passed automatically by Hopsworks when the transformation function is executed.
+
+    # Returns
+    `pd.Series`. The scaled feature.
+    """
     return (feature - statistics.feature.percentiles[49]) / (
         statistics.feature.percentiles[74] - statistics.feature.percentiles[24]
     )
 
 
 @udf(int, drop=["feature"], mode="pandas")
-def label_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
+def label_encoder(
+    feature: Union[pd.Series, str],
+    statistics: TransformationStatistics = feature_statistics,
+) -> Union[pd.Series, int]:
+    """
+    Encode categorical features into numerical features.
+
+    # Arguments
+    feature: `Union[pd.Series, str]`. The feature to encode.
+    statistics: `TransformationStatistics`. The training dataset statistics of the feature, this is computed and passed automatically by Hopsworks when the transformation function is executed.
+
+    # Returns
+    `pd.Series`. The encoded feature.
+    """
     unique_data = sorted([value for value in statistics.feature.unique_values])
     value_to_index = {value: index for index, value in enumerate(unique_data)}
     # Unknown categories not present in training dataset are encoded as -1.
@@ -57,7 +110,20 @@ def label_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Serie
 
 
 @udf(bool, drop=["feature"], mode="pandas")
-def one_hot_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
+def one_hot_encoder(
+    feature: Union[pd.Series, str],
+    statistics: TransformationStatistics = feature_statistics,
+) -> pd.DataFrame:
+    """
+    Encode categorical features as a one-hot numeric array.
+
+    # Arguments
+    feature: `Union[pd.Series, str]`. The feature to encode.
+    statistics: `TransformationStatistics`. The training dataset statistics of the feature, this is computed and passed automatically by Hopsworks when the transformation function is executed.
+
+    # Returns
+    `pd.DataFrame`. A pandas dataframe with the one-hot encoded features.
+    """
     unique_data = [value for value in statistics.feature.unique_values]
 
     # One hot encode features. Re-indexing to set missing categories to False and drop categories not in training data statistics.

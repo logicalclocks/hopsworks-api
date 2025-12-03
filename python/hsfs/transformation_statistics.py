@@ -17,38 +17,17 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
-from typing import Any, Dict, Mapping, Optional, Union
+from typing import Any, Dict, List, Mapping, Optional, Union
 
 import humps
 
 
-@dataclass
 class FeatureTransformationStatistics:
     """
-    Data class that contains all the statistics parameters that can be used for transformations inside a custom transformation function.
-    """
+    Class that stores the statistics for a single feature that is used inside a transformation function.
 
-    feature_name: str
-    count: int = None
-    # for any feature type
-    completeness: Optional[float] = None
-    num_non_null_values: Optional[int] = None
-    num_null_values: Optional[int] = None
-    approx_num_distinct_values: Optional[int] = None
-    # for numerical features
-    min: Optional[float] = None
-    max: Optional[float] = None
-    sum: Optional[float] = None
-    mean: Optional[float] = None
-    stddev: Optional[float] = None
-    percentiles: Optional[Mapping[str, float]] = None
-    # with exact uniqueness
-    distinctness: Optional[float] = None
-    entropy: Optional[float] = None
-    uniqueness: Optional[float] = None
-    exact_num_distinct_values: Optional[int] = None
-    extended_statistics: Optional[Union[dict, str]] = None
+    These statistics are computed when a training dataset is generated from a feature view.
+    """
 
     def __init__(
         self,
@@ -100,67 +79,72 @@ class FeatureTransformationStatistics:
 
     @property
     def feature_name(self) -> str:
-        """Name of the feature."""
+        """The name of the feature that is associated with the statistics."""
         return self._feature_name
 
     @property
     def count(self) -> int:
-        """Number of values."""
+        """The count that denotes the number of values of the feature in the training data."""
         return self._count
 
     @property
     def completeness(self) -> Optional[float]:
-        """Fraction of non-null values in a column."""
+        """The fraction of non-null values for the feature in the training data."""
         return self._completeness
 
     @property
     def num_non_null_values(self) -> Optional[int]:
-        """Number of non-null values."""
+        """The count that denotes the number of non-null values for the feature in the training data."""
         return self._num_non_null_values
 
     @property
     def num_null_values(self) -> Optional[int]:
-        """Number of null values."""
+        """Number of null values of the feature in the training data."""
         return self._num_null_values
 
     @property
     def approx_num_distinct_values(self) -> Optional[int]:
-        """Approximate number of distinct values."""
+        """Approximate number of distinct values of the feature in the training data."""
         return self._approx_num_distinct_values
 
     @property
     def min(self) -> Optional[float]:
-        """Minimum value."""
+        """The minimum value of the feature in the training data."""
         return self._min
 
     @property
     def max(self) -> Optional[float]:
-        """Maximum value."""
+        """The maximum value of the feature in the training data."""
         return self._max
 
     @property
     def sum(self) -> Optional[float]:
-        """Sum of all feature values."""
+        """The sum of all values of the feature in the training data."""
         return self._sum
 
     @property
     def mean(self) -> Optional[float]:
-        """Mean value."""
+        """The average value of all the values of the feature in the training data."""
         return self._mean
 
     @property
     def stddev(self) -> Optional[float]:
-        """Standard deviation of the feature values."""
+        """Standard deviation of all the values of the feature in the training data."""
         return self._stddev
 
     @property
-    def percentiles(self) -> Optional[Mapping[str, float]]:
-        """Percentiles."""
+    def percentiles(self) -> Optional[List[float]]:
+        """Percentiles of the feature in the training data. Percentiles are the values below which a given percentage of data points in a dataset fall.
+
+        The percentiles are stored as a list of 100 values, one for each percentile.
+        !!! note "Example"
+            The 50th percentile is the value below which 50% of the data points in the training data falls is in the 49th index of the list.
+        """
         return self._percentiles
 
     @property
     def distinctness(self) -> Optional[float]:
-        """Fraction of distinct values of a feature over the number of all its values. Distinct values occur at least once.
+        """Fraction of distinct values over the total number of values of the feature in the training data. Distinct values occur at least once.
 
         !!! note "Example"
             $[a, a, b]$ contains two distinct values $a$ and $b$, so distinctness is $2/3$.
@@ -169,9 +153,10 @@ class FeatureTransformationStatistics:
 
     @property
     def entropy(self) -> Optional[float]:
-        """Entropy is a measure of the level of information contained in an event (feature value) when considering all possible events (all feature values).
-        Entropy is estimated using observed value counts as the negative sum of (value_count/total_count) * log(value_count/total_count).
+        """Entropy of the feature in the training data.
 
+        Entropy is a measure of the level of information contained in an event (feature value) when considering all possible events (all feature values).
+        Entropy is estimated using observed value counts as the negative sum of (value_count/total_count) * log(value_count/total_count).
         !!! note "Example"
             $[a, b, b, c, c]$ has three distinct values with counts $[1, 2, 2]$.
 
@@ -181,7 +166,7 @@ class FeatureTransformationStatistics:
 
     @property
     def uniqueness(self) -> Optional[float]:
-        """Fraction of unique values over the number of all values of a column. Unique values occur exactly once.
+        """Fraction of unique values over the total number of values of the feature in the training data. Unique values occur exactly once.
 
         !!! note "Example"
             $[a, a, b]$ contains one unique value $b$, so uniqueness is $1/3$.
@@ -190,27 +175,27 @@ class FeatureTransformationStatistics:
 
     @property
     def exact_num_distinct_values(self) -> Optional[int]:
-        """Exact number of distinct values."""
+        """Exact number of distinct values of the feature in the training data."""
         return self._exact_num_distinct_values
 
     @property
     def correlations(self) -> Optional[dict]:
-        """Correlations of feature values."""
+        """The Correlations of feature values with other features in the training data."""
         return self._correlations
 
     @property
     def histogram(self) -> Optional[dict]:
-        """Histogram of feature values."""
+        """Histogram of all the values of the feature in the training data."""
         return self._histogram
 
     @property
     def kll(self) -> Optional[dict]:
-        """KLL of feature values."""
+        """KLL of all the values of the feature in the training data."""
         return self._kll
 
     @property
     def unique_values(self) -> Optional[dict]:
-        """Number of Unique Values."""
+        """Number of unique values of the feature in the training data."""
         return self._unique_values
 
     @classmethod
@@ -248,9 +233,31 @@ class TransformationStatistics:
         )
 
     def init_statistics(self, feature_name: str) -> FeatureTransformationStatistics:
+        """
+        Initializes the FeatureTransformationStatistics object for a specific feature with default values.
+
+        # Arguments
+            feature_name: `str`.
+                The name of the feature for which the statistics are to be initialized.
+
+        # Returns
+            `FeatureTransformationStatistics`.
+            The FeatureTransformationStatistics object for the feature.
+        """
         return FeatureTransformationStatistics(feature_name=feature_name)
 
     def set_statistics(self, feature_name: str, statistics: Dict[str, Any]) -> None:
+        """
+        Sets the statistics for a specific feature.
+
+        This function is used to overwrite the default values of the FeatureTransformationStatistics object for a specific feature with the values computed from the training data.
+
+        # Arguments
+            feature_name: `str`.
+                The name of the feature for which the statistics are to be set.
+            statistics: `Dict[str, Any]`.
+                The statistics for the feature.
+        """
         self.__dict__[feature_name] = (
             FeatureTransformationStatistics.from_response_json(statistics)
         )
