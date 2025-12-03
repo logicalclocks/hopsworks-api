@@ -48,9 +48,9 @@ def robust_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Serie
     If IQR is zero (constant feature), the function centers the data by the
     median without scaling to avoid division by zero.
     """
-    q1 = statistics.feature.percentiles[25]
-    q2 = statistics.feature.percentiles[50]
-    q3 = statistics.feature.percentiles[75]
+    q1 = statistics.feature.percentiles[24]
+    q2 = statistics.feature.percentiles[49]
+    q3 = statistics.feature.percentiles[74]
     iqr = q3 - q1
 
     scaled_feature = feature.astype("float64")
@@ -168,9 +168,9 @@ def equal_frequency_binner(
     - NaN inputs remain NaN.
     """
     s = feature.astype("float64")
-    q1 = statistics.feature.percentiles[25]
-    q2 = statistics.feature.percentiles[50]
-    q3 = statistics.feature.percentiles[75]
+    q1 = statistics.feature.percentiles[24]
+    q2 = statistics.feature.percentiles[49]
+    q3 = statistics.feature.percentiles[74]
 
     # Check if we have valid quartiles
     if any(pd.isna([q1, q2, q3])):
@@ -217,9 +217,9 @@ def quantile_binner(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
 
     # Use quartiles: 25th, 50th, 75th percentiles
     p = statistics.feature.percentiles
-    q25 = p[25]  # Q1
-    q50 = p[50]  # Q2 (median)
-    q75 = p[75]  # Q3
+    q25 = p[24]  # Q1
+    q50 = p[49]  # Q2 (median)
+    q75 = p[74]  # Q3
 
     # Check if we have valid quartiles
     if any(pd.isna([q25, q50, q75])):
@@ -325,7 +325,7 @@ def rank_normalizer(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
     return pd.Series(result, index=feature.index)
 
 
-@udf(float, mode="pandas")
+@udf(float, drop=["feature"], mode="pandas")
 def winsorize(
     feature: pd.Series, statistics=feature_statistics, context: dict | None = None
 ) -> pd.Series:
@@ -341,7 +341,6 @@ def winsorize(
     numerical_feature = feature.astype("float64")
     percentiles = statistics.feature.percentiles
 
-    print("1")
     # Defaults: 1 and 99 percentiles
     p_low = 1
     p_high = 99
@@ -349,20 +348,16 @@ def winsorize(
         p_low = context.get("p_low", p_low)
         p_high = context.get("p_high", p_high)
 
-    print("2")
     try:
         li = int(round(float(p_low)))
         ui = int(round(float(p_high)))
     except Exception:
         li, ui = 1, 99
 
-    print("3")
     # Bound indices
     max_idx = len(percentiles) - 1
     li = max(0, min(max_idx, li))
     ui = max(0, min(max_idx, ui))
-
-    print("4")
 
     # Ensure li < ui
     if li >= ui:
@@ -371,16 +366,12 @@ def winsorize(
     lower = percentiles[li]
     upper = percentiles[ui]
 
-    print("5")
     # Invalid bounds → return unchanged
     if pd.isna(lower) or pd.isna(upper) or lower > upper:
         return numerical_feature
 
-    print("6")
-    # Winsorize (no rows dropped)
-    clipped = numerical_feature.where(numerical_feature >= lower, lower).where(
-        numerical_feature <= upper, upper
-    )
+    # Winsorize (no rows dropped), preserving NaN values
+    clipped = numerical_feature.clip(lower=lower, upper=upper)
 
     return pd.Series(clipped, index=feature.index)
 
