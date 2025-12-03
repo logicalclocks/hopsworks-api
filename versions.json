@@ -3,15 +3,15 @@
     "version": "4.6.0-RC0",
     "title": "4.6.0-RC0",
     "aliases": [
-      "4.6",
-      "latest"
+      "4.6"
     ]
   },
   {
     "version": "4.5.0-RC8",
     "title": "4.5.0-RC8",
     "aliases": [
-      "4.5"
+      "4.5",
+      "latest"
     ]
   },
   {
