@@ -21,3 +21,5 @@ from .feature_group import FeatureGroupTools  # noqa: F401
 from .feature_store import FeatureStoreTools  # noqa: F401
 from .jobs import JobTools  # noqa: F401
 from .project import ProjectTools  # noqa: F401
+from .unix import UnixTools
+from .brewer import BrewerTools  # noqa: F401
