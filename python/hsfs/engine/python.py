@@ -1553,7 +1553,7 @@ class Engine:
             spark_job_configuration=spark_job_configuration,
         )
 
-    def add_file(self, file: Optional[str]) -> Optional[str]:
+    def add_file(self, file: Optional[str], distribute=True) -> Optional[str]:
         if not file:
             return file
 
