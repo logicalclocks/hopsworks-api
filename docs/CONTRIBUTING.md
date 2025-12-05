@@ -103,7 +103,7 @@ Never write "do not do ..." without explaining the reasons behind these restrict
 
 Overall, think about what information the user of the API would need to know in order to use it correctly and effectively, and provide that information in the docstrings in a concise and precise manner.
 
-##### Technicalities
+##### Technical Details
 
 Always place a sentence per line for clear git diffs.
 
