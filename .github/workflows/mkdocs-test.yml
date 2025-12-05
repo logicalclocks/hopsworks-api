@@ -56,8 +56,5 @@ jobs:
           git config --global user.name Mike
           git config --global user.email mike@docs.hopsworks.ai
 
-      - name: Copy CONTRIBUTING.md
-        run: cp CONTRIBUTING.md docs/
-
       - name: Generate the docs with mike
         run: mike deploy ${{ env.DEV_VERSION }} dev -u
