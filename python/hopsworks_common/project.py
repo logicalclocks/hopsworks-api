@@ -79,8 +79,7 @@ class Project:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     @property
     def id(self):
@@ -357,8 +356,7 @@ class Project:
     def __repr__(self):
         if self._description is not None:
             return f"Project({self._name!r}, {self._owner!r}, {self._description!r})"
-        else:
-            return f"Project({self._name!r}, {self._owner!r})"
+        return f"Project({self._name!r}, {self._owner!r})"
 
     def get_url(self):
         path = "/p/" + str(self.id)

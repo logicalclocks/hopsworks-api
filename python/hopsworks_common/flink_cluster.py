@@ -367,10 +367,9 @@ class FlinkCluster:
         exec = self._get_execution(assert_running=False)
         if exec is None or exec.success is not None:
             return
-        else:
-            self._flink_cluster_api._stop_execution(
-                self._get_execution(assert_running=False)
-            )
+        self._flink_cluster_api._stop_execution(
+            self._get_execution(assert_running=False)
+        )
 
     @property
     def id(self):
@@ -403,8 +402,7 @@ class FlinkCluster:
         current_exec = self._get_execution(assert_running=False)
         if current_exec is not None:
             return current_exec.state
-        else:
-            return None
+        return None
 
     def get_url(self):
         _client = client.get_instance()

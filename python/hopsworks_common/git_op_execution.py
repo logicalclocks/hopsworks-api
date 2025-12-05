@@ -108,10 +108,9 @@ class GitOpExecution:
         """
         if self.state is not None and self.state.upper() in constants.GIT.ERROR_STATES:
             return False
-        elif (
+        if (
             self.state is not None
             and self.state.upper() in constants.GIT.SUCCESS_STATES
         ):
             return True
-        else:
-            return None
+        return None

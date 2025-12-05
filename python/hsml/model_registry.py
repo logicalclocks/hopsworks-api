@@ -148,8 +148,7 @@ class ModelRegistry:
         )
         if isinstance(model, list) and len(model) > 0:
             return model[0]
-        else:
-            return None
+        return None
 
     @property
     def project_name(self):

@@ -60,8 +60,7 @@ class _EmailConfig:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     @property
     def to(self) -> Optional[str]:
@@ -124,8 +123,7 @@ class _SlackConfig:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     @property
     def channel(self) -> Optional[str]:
@@ -195,8 +193,7 @@ class _PagerDutyConfig:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     @property
     def service_key(self) -> Optional[str]:
@@ -265,8 +262,7 @@ class _WebhookConfig:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     @property
     def url(self) -> Optional[str]:
@@ -333,10 +329,8 @@ class AlertReceiver:
         if "count" in json_decamelized:
             if "items" in json_decamelized:
                 return [cls(**receiver) for receiver in json_decamelized["items"]]
-            else:
-                return []
-        else:
-            return cls(**json_decamelized)
+            return []
+        return cls(**json_decamelized)
 
     @property
     def name(self) -> Optional[str]:
@@ -397,6 +391,7 @@ class AlertReceiver:
             return self._pager_duty_configs
         if self._webhook_configs:
             return self._webhook_configs
+        return None
 
     def __repr__(self):
         return f"AlertReceiver({self._name!r}, {self._get_config()!r})"

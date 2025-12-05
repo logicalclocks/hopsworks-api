@@ -152,6 +152,5 @@ class TrainingDatasetFeature:
     def __repr__(self):
         if self._feature_group:
             return f"Training Dataset Feature({self._name!r}, {self._type!r}, {self._index!r}, {self._label}, {self._feature_group_feature_name}, {self._feature_group.id!r}, {self.on_demand_transformation_function})"
-        else:
-            # Feature group will be empty and index will be null if the training dataset feature is generated using model dependent transformations.
-            return f"Training Dataset Feature({self._name!r}, {self._type!r}, {self._index!r}, {self._label}, {self.on_demand_transformation_function})"
+        # Feature group will be empty and index will be null if the training dataset feature is generated using model dependent transformations.
+        return f"Training Dataset Feature({self._name!r}, {self._type!r}, {self._index!r}, {self._label}, {self.on_demand_transformation_function})"

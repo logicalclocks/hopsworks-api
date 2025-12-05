@@ -43,13 +43,14 @@ class EventEncoder(json.JSONEncoder):
         if isinstance(obj, bytes):
             # Convert bytes to a base64-encoded string
             return base64.b64encode(obj).decode("utf-8")
-        elif isinstance(obj, datetime):
+        if isinstance(obj, datetime):
             obj = obj.replace(tzinfo=timezone.utc)
             return obj.isoformat()
-        elif isinstance(obj, date):
+        if isinstance(obj, date):
             # Convert to days since Unix epoch
             epoch = datetime.date(1970, 1, 1)
             return (obj - epoch).days
+        return None
 
 
 class AsyncWorkerThread(threading.Thread):

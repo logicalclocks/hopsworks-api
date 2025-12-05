@@ -179,10 +179,9 @@ class Predictor(DeployableComponent):
     def _infer_model_server(cls, model_framework):
         if model_framework == MODEL.FRAMEWORK_TENSORFLOW:
             return PREDICTOR.MODEL_SERVER_TF_SERVING
-        elif model_framework == MODEL.FRAMEWORK_LLM:
+        if model_framework == MODEL.FRAMEWORK_LLM:
             return PREDICTOR.MODEL_SERVER_VLLM
-        else:
-            return PREDICTOR.MODEL_SERVER_PYTHON
+        return PREDICTOR.MODEL_SERVER_PYTHON
 
     @classmethod
     def _get_default_serving_tool(cls):
@@ -240,14 +239,13 @@ class Predictor(DeployableComponent):
             if len(json_decamelized) == 0:
                 return []
             return [cls.from_json(predictor) for predictor in json_decamelized]
-        else:
-            if "count" in json_decamelized:
-                if json_decamelized["count"] == 0:
-                    return []
-                return [
-                    cls.from_json(predictor) for predictor in json_decamelized["items"]
-                ]
-            return cls.from_json(json_decamelized)
+        if "count" in json_decamelized:
+            if json_decamelized["count"] == 0:
+                return []
+            return [
+                cls.from_json(predictor) for predictor in json_decamelized["items"]
+            ]
+        return cls.from_json(json_decamelized)
 
     @classmethod
     def from_json(cls, json_decamelized):

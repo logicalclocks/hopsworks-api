@@ -127,8 +127,7 @@ class ExpectationSuite:
                 cls(**expectation_suite)
                 for expectation_suite in json_decamelized["items"]
             ]
-        else:
-            return cls(**json_decamelized)
+        return cls(**json_decamelized)
 
     @classmethod
     @uses_great_expectations
@@ -200,8 +199,7 @@ class ExpectationSuite:
 
         if decamelize:
             return humps.decamelize(the_dict)
-        else:
-            return the_dict
+        return the_dict
 
     def json(self) -> str:
         return json.dumps(self, cls=util.Encoder)
@@ -286,14 +284,13 @@ class ExpectationSuite:
             expectation, great_expectations.core.ExpectationConfiguration
         ):
             return GeExpectation(**expectation.to_json_dict())
-        elif isinstance(expectation, GeExpectation):
+        if isinstance(expectation, GeExpectation):
             return expectation
-        elif isinstance(expectation, dict):
+        if isinstance(expectation, dict):
             return GeExpectation(**expectation)
-        else:
-            raise TypeError(
-                "Expectation of type {} is not supported.".format(type(expectation))
-            )
+        raise TypeError(
+            "Expectation of type {} is not supported.".format(type(expectation))
+        )
 
     def get_expectation(
         self, expectation_id: int, ge_type: bool = HAS_GREAT_EXPECTATIONS
@@ -326,12 +323,10 @@ class ExpectationSuite:
         if self.id and self._expectation_engine:
             if ge_type:
                 return self._expectation_engine.get(expectation_id).to_ge_type()
-            else:
-                return self._expectation_engine.get(expectation_id)
-        else:
-            raise FeatureStoreException(
-                initialise_expectation_suite_for_single_expectation_api_message
-            )
+            return self._expectation_engine.get(expectation_id)
+        raise FeatureStoreException(
+            initialise_expectation_suite_for_single_expectation_api_message
+        )
 
     def add_expectation(
         self,
@@ -388,12 +383,10 @@ class ExpectationSuite:
             self.expectations = self._expectation_engine.get_expectations_by_suite_id()
             if ge_type:
                 return converted_expectation.to_ge_type()
-            else:
-                return converted_expectation
-        else:
-            raise FeatureStoreException(
-                initialise_expectation_suite_for_single_expectation_api_message
-            )
+            return converted_expectation
+        raise FeatureStoreException(
+            initialise_expectation_suite_for_single_expectation_api_message
+        )
 
     def replace_expectation(
         self,
@@ -434,12 +427,10 @@ class ExpectationSuite:
 
             if ge_type:
                 return converted_expectation.to_ge_type()
-            else:
-                return converted_expectation
-        else:
-            raise FeatureStoreException(
-                initialise_expectation_suite_for_single_expectation_api_message
-            )
+            return converted_expectation
+        raise FeatureStoreException(
+            initialise_expectation_suite_for_single_expectation_api_message
+        )
 
     def remove_expectation(self, expectation_id: Optional[int] = None) -> None:
         """Remove an expectation from the suite locally and from the backend if attached to a Feature Group.

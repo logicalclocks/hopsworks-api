@@ -198,14 +198,12 @@ class TransformationFunction:
                     )
             if json_decamelized["count"] == 1:
                 return cls(**json_decamelized["items"][0])
-            else:
-                return [cls(**tffn_dto) for tffn_dto in json_decamelized["items"]]
-        else:
-            if json_decamelized.get("hopsworks_udf", False):
-                json_decamelized["hopsworks_udf"] = HopsworksUdf.from_response_json(
-                    json_decamelized["hopsworks_udf"]
-                )
-            return cls(**json_decamelized)
+            return [cls(**tffn_dto) for tffn_dto in json_decamelized["items"]]
+        if json_decamelized.get("hopsworks_udf", False):
+            json_decamelized["hopsworks_udf"] = HopsworksUdf.from_response_json(
+                json_decamelized["hopsworks_udf"]
+            )
+        return cls(**json_decamelized)
 
     def update_from_response_json(
         self, json_dict: Dict[str, Any]
@@ -402,10 +400,9 @@ class TransformationFunction:
     def __repr__(self):
         if self.transformation_type == TransformationType.MODEL_DEPENDENT:
             return f"Model-Dependent Transformation Function : {repr(self.__hopsworks_udf)}"
-        elif self.transformation_type == TransformationType.ON_DEMAND:
+        if self.transformation_type == TransformationType.ON_DEMAND:
             return f"On-Demand Transformation Function : {repr(self.__hopsworks_udf)}"
-        else:
-            return f"Transformation Function : {repr(self.__hopsworks_udf)}"
+        return f"Transformation Function : {repr(self.__hopsworks_udf)}"
 
     def __eq__(self, other):
         return self.to_dict() == other.to_dict()

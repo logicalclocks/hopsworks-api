@@ -85,16 +85,16 @@ class Statistics:
     ) -> Optional[List[FeatureDescriptiveStatistics]]:
         if desc_statistics is None:
             return None
-        elif isinstance(desc_statistics, FeatureDescriptiveStatistics):
+        if isinstance(desc_statistics, FeatureDescriptiveStatistics):
             return [desc_statistics]
-        elif isinstance(desc_statistics, dict) and "items" not in desc_statistics:
+        if isinstance(desc_statistics, dict) and "items" not in desc_statistics:
             return [FeatureDescriptiveStatistics.from_response_json(desc_statistics)]
-        elif isinstance(desc_statistics, dict) and "items" in desc_statistics:
+        if isinstance(desc_statistics, dict) and "items" in desc_statistics:
             return [
                 FeatureDescriptiveStatistics.from_response_json(fds)
                 for fds in desc_statistics["items"]
             ]
-        elif isinstance(desc_statistics, list):
+        if isinstance(desc_statistics, list):
             return [
                 (
                     fds
@@ -103,10 +103,9 @@ class Statistics:
                 )
                 for fds in desc_statistics
             ]
-        else:
-            raise ValueError(
-                "Descriptive statistics must be a FeatureDescriptiveStatistics object or a dictionary"
-            )
+        raise ValueError(
+            "Descriptive statistics must be a FeatureDescriptiveStatistics object or a dictionary"
+        )
 
     def _parse_split_statistics(
         self,
@@ -133,10 +132,8 @@ class Statistics:
         if "count" in json_decamelized:
             if json_decamelized["count"] == 0 or len(json_decamelized["items"]) == 0:
                 return None
-            else:
-                return [cls(**config) for config in json_decamelized["items"]]
-        else:
-            return cls(**json_decamelized)
+            return [cls(**config) for config in json_decamelized["items"]]
+        return cls(**json_decamelized)
 
     def to_dict(self) -> Dict[str, Any]:
         # fg_id, fv_name, fv_version and td_version are already defined in the URI

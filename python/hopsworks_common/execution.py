@@ -71,12 +71,11 @@ class Execution:
         json_decamelized = humps.decamelize(json_dict)
         if "count" not in json_decamelized:
             return cls(**json_decamelized, job=job)
-        elif json_decamelized["count"] == 0:
+        if json_decamelized["count"] == 0:
             return []
-        else:
-            return [
-                cls(**execution, job=job) for execution in json_decamelized["items"]
-            ]
+        return [
+            cls(**execution, job=job) for execution in json_decamelized["items"]
+        ]
 
     def update_from_response_json(self, json_dict):
         json_decamelized = humps.decamelize(json_dict)
@@ -175,11 +174,11 @@ class Execution:
         if not is_yarn_job:
             if self.state in constants.JOBS.ERROR_STATES:
                 return False
-            elif self.state in constants.JOBS.SUCCESS_STATES:
+            if self.state in constants.JOBS.SUCCESS_STATES:
                 return True
         if self.final_status in constants.JOBS.ERROR_STATES:
             return False
-        elif self.final_status in constants.JOBS.SUCCESS_STATES:
+        if self.final_status in constants.JOBS.SUCCESS_STATES:
             return True
         return None
 
@@ -246,11 +245,11 @@ class Execution:
         x = self._execution_engine.wait_until_finished(self._job, self, timeout)
         if x.final_status == "KILLED":
             raise JobExecutionException("The Hopsworks Job was stopped")
-        elif x.final_status == "FAILED":
+        if x.final_status == "FAILED":
             raise JobExecutionException(
                 "The Hopsworks Job failed, use the Hopsworks UI to access the job logs"
             )
-        elif x.final_status == "FRAMEWORK_FAILURE":
+        if x.final_status == "FRAMEWORK_FAILURE":
             raise JobExecutionException(
                 "The Hopsworks Job monitoring failed, could not determine the final status"
             )

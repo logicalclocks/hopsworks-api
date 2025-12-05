@@ -418,8 +418,7 @@ class Model:
             if json_decamelized["count"] == 0:
                 return []
             return [util.set_model_class(model) for model in json_decamelized["items"]]
-        else:
-            return util.set_model_class(json_decamelized)
+        return util.set_model_class(json_decamelized)
 
     def update_from_response_json(self, json_dict):
         json_decamelized = humps.decamelize(json_dict)
@@ -531,6 +530,7 @@ class Model:
             return self._model_engine.read_file(
                 model_instance=self, resource=self._program
             )
+        return None
 
     @program.setter
     def program(self, program):

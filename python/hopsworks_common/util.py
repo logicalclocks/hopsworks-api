@@ -78,10 +78,9 @@ class NumpyEncoder(json.JSONEncoder):
         if isinstance(obj, np.ndarray):
             if obj.dtype == np.object:
                 return [self.convert(x)[0] for x in obj.tolist()]
-            elif obj.dtype == np.bytes_:
+            if obj.dtype == np.bytes_:
                 return np.vectorize(encode_binary)(obj), True
-            else:
-                return obj.tolist(), True
+            return obj.tolist(), True
 
         if isinstance(obj, datetime) or (HAS_PANDAS and isinstance(obj, pd.Timestamp)):
             return obj.isoformat(), True
@@ -97,8 +96,7 @@ class NumpyEncoder(json.JSONEncoder):
         res, converted = self.convert(obj)
         if converted:
             return res
-        else:
-            return super().default(obj)
+        return super().default(obj)
 
 
 VALID_EMBEDDING_TYPE = {
@@ -161,23 +159,20 @@ def append_feature_store_suffix(name: str) -> str:
     name = name.lower()
     if name.endswith(FEATURE_STORE_NAME_SUFFIX):
         return name
-    else:
-        return name + FEATURE_STORE_NAME_SUFFIX
+    return name + FEATURE_STORE_NAME_SUFFIX
 
 
 def strip_feature_store_suffix(name: str) -> str:
     name = name.lower()
     if name.endswith(FEATURE_STORE_NAME_SUFFIX):
         return name[: -1 * len(FEATURE_STORE_NAME_SUFFIX)]
-    else:
-        return name
+    return name
 
 
 def get_dataset_type(path: str) -> Literal["HIVEDB", "DATASET"]:
     if re.match(r"^(?:hdfs://|)/apps/hive/warehouse/*", path):
         return "HIVEDB"
-    else:
-        return "DATASET"
+    return "DATASET"
 
 
 def check_timestamp_format_from_date_string(input_date: str) -> Tuple[str, str]:
@@ -252,7 +247,7 @@ def convert_event_time_to_timestamp(
         return None
     if isinstance(event_time, str):
         return get_timestamp_from_date_string(event_time)
-    elif hasattr(event_time, "to_pydatetime"):
+    if hasattr(event_time, "to_pydatetime"):
         # only pandas Timestamp has to_pydatetime method out of the accepted event_time types
         # convert to unix epoch time in milliseconds.
         event_time = event_time.to_pydatetime()
@@ -260,28 +255,27 @@ def convert_event_time_to_timestamp(
         if event_time.tzinfo is None:
             event_time = event_time.replace(tzinfo=timezone.utc)
         return int(event_time.timestamp() * 1000)
-    elif isinstance(event_time, datetime):
+    if isinstance(event_time, datetime):
         # convert to unix epoch time in milliseconds.
         if event_time.tzinfo is None:
             event_time = event_time.replace(tzinfo=timezone.utc)
         return int(event_time.timestamp() * 1000)
-    elif isinstance(event_time, date):
+    if isinstance(event_time, date):
         # convert to unix epoch time in milliseconds.
         event_time = datetime(*event_time.timetuple()[:7])
         if event_time.tzinfo is None:
             event_time = event_time.replace(tzinfo=timezone.utc)
         return int(event_time.timestamp() * 1000)
-    elif isinstance(event_time, int):
+    if isinstance(event_time, int):
         if event_time == 0:
             raise ValueError("Event time should be greater than 0.")
         # jdbc supports timestamp precision up to second only.
         if len(str(event_time)) <= 10:
             event_time = event_time * 1000
         return event_time
-    else:
-        raise ValueError(
-            "Given event time should be in `datetime`, `date`, `str` or `int` type"
-        )
+    raise ValueError(
+        "Given event time should be in `datetime`, `date`, `str` or `int` type"
+    )
 
 
 def get_hostname_replaced_url(sub_path: str) -> str:
@@ -400,8 +394,7 @@ def get_feature_group_url(feature_store_id: int, feature_group_id: int) -> str:
 def is_runtime_notebook():
     if "ipykernel" in sys.modules:
         return True
-    else:
-        return False
+    return False
 
 
 class VersionWarning(Warning):
@@ -436,16 +429,14 @@ def convert_to_abs(path, current_proj_name):
     abs_project_prefix = "/Projects/{}".format(current_proj_name)
     if not path.startswith(abs_project_prefix):
         return abs_project_prefix + "/" + path
-    else:
-        return path
+    return path
 
 
 def convert_to_project_rel_path(path, current_proj_name):
     abs_project_prefix = "/Projects/{}".format(current_proj_name)
     if path.startswith(abs_project_prefix):
         return path.replace(abs_project_prefix, "")
-    else:
-        return path
+    return path
 
 
 def validate_job_conf(config, project_name):
@@ -456,7 +447,7 @@ def validate_job_conf(config, project_name):
         and "appPath" not in config
     ):
         raise JobException("'appPath' not set in job configuration")
-    elif "appPath" in config and not config["appPath"].startswith("hdfs://"):
+    if "appPath" in config and not config["appPath"].startswith("hdfs://"):
         config["appPath"] = "hdfs://" + convert_to_abs(config["appPath"], project_name)
 
     # If PYSPARK application set the mainClass, if SPARK validate there is a mainClass set
@@ -516,14 +507,13 @@ def set_model_class(model):
         return TorchModel(**model)
     if framework == MODEL.FRAMEWORK_SKLEARN:
         return SkLearnModel(**model)
-    elif framework == MODEL.FRAMEWORK_PYTHON:
+    if framework == MODEL.FRAMEWORK_PYTHON:
         return PyModel(**model)
-    elif framework == MODEL.FRAMEWORK_LLM:
+    if framework == MODEL.FRAMEWORK_LLM:
         return LLMModel(**model)
-    else:
-        raise ValueError(
-            "framework {} is not a supported framework".format(str(framework))
-        )
+    raise ValueError(
+        "framework {} is not a supported framework".format(str(framework))
+    )
 
 
 def input_example_to_json(input_example):
@@ -532,14 +522,12 @@ def input_example_to_json(input_example):
     if isinstance(input_example, np.ndarray):
         if input_example.size > 0:
             return _handle_tensor_input(input_example)
-        else:
-            raise ValueError(
-                "input_example of type {} can not be empty".format(type(input_example))
-            )
-    elif isinstance(input_example, dict):
+        raise ValueError(
+            "input_example of type {} can not be empty".format(type(input_example))
+        )
+    if isinstance(input_example, dict):
         return _handle_dict_input(input_example)
-    else:
-        return _handle_dataframe_input(input_example)
+    return _handle_dataframe_input(input_example)
 
 
 def _handle_tensor_input(input_tensor):
@@ -550,28 +538,24 @@ def _handle_dataframe_input(input_ex):
     if HAS_PANDAS and isinstance(input_ex, pd.DataFrame):
         if not input_ex.empty:
             return input_ex.iloc[0].tolist()
-        else:
-            raise ValueError(
-                "input_example of type {} can not be empty".format(type(input_ex))
-            )
-    elif HAS_PANDAS and isinstance(input_ex, pd.Series):
+        raise ValueError(
+            "input_example of type {} can not be empty".format(type(input_ex))
+        )
+    if HAS_PANDAS and isinstance(input_ex, pd.Series):
         if not input_ex.empty:
             return input_ex.tolist()
-        else:
-            raise ValueError(
-                "input_example of type {} can not be empty".format(type(input_ex))
-            )
-    elif isinstance(input_ex, list):
+        raise ValueError(
+            "input_example of type {} can not be empty".format(type(input_ex))
+        )
+    if isinstance(input_ex, list):
         if len(input_ex) > 0:
             return input_ex
-        else:
-            raise ValueError(
-                "input_example of type {} can not be empty".format(type(input_ex))
-            )
-    else:
-        raise TypeError(
-            "{} is not a supported input example type".format(type(input_ex))
+        raise ValueError(
+            "input_example of type {} can not be empty".format(type(input_ex))
         )
+    raise TypeError(
+        "{} is not a supported input example type".format(type(input_ex))
+    )
 
 
 def _handle_dict_input(input_ex):
@@ -586,13 +570,12 @@ def compress(archive_out_path, archive_name, path_to_archive):
         return shutil.make_archive(
             os.path.join(archive_out_path, archive_name), "gztar", path_to_archive
         )
-    else:
-        return shutil.make_archive(
-            os.path.join(archive_out_path, archive_name),
-            "gztar",
-            os.path.dirname(path_to_archive),
-            os.path.basename(path_to_archive),
-        )
+    return shutil.make_archive(
+        os.path.join(archive_out_path, archive_name),
+        "gztar",
+        os.path.dirname(path_to_archive),
+        os.path.basename(path_to_archive),
+    )
 
 
 def decompress(archive_file_path, extract_dir=None):
@@ -670,6 +653,9 @@ def get_predictor_for_model(model, **kwargs):
             model_server=PREDICTOR.MODEL_SERVER_PYTHON,
             **kwargs,
         )
+    raise TypeError(
+        "model is of type {}, but an instance of {} class is expected".format(type(model), BaseModel)
+    )
 
 
 def get_predictor_for_server(name: str, script_file: str, **kwargs):
@@ -920,9 +906,8 @@ class AsyncTaskThread(threading.Thread):
 
         if isinstance(task.result, Exception):
             raise task.result
-        else:
-            # Return the result of the task.
-            return task.result
+        # Return the result of the task.
+        return task.result
 
     @property
     def event_loop(self) -> asyncio.AbstractEventLoop:

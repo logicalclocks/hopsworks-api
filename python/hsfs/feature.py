@@ -129,10 +129,9 @@ class Feature:
             return util.generate_fully_qualified_feature_name(
                 feature_group=feature_group, feature_name=self._name
             )
-        elif prefix:
+        if prefix:
             return prefix + self._name
-        else:
-            return self._name
+        return self._name
 
     @property
     def use_fully_qualified_name(self) -> bool:
@@ -276,8 +275,7 @@ class Feature:
             return datetime.fromtimestamp(
                 util.convert_event_time_to_timestamp(value) / 1000
             ).strftime("%Y-%m-%d %H:%M:%S")
-        else:
-            return value
+        return value
 
     def __lt__(self, other) -> "filter.Filter":
         return filter.Filter(self, filter.Filter.LT, self._get_filter_value(other))

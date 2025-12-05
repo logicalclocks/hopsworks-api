@@ -31,8 +31,7 @@ class AlertStatus:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
@@ -83,10 +82,8 @@ class TriggeredAlert:
         if "count" in json_decamelized:
             if "items" in json_decamelized:
                 return [cls(**receiver) for receiver in json_decamelized["items"]]
-            else:
-                return []
-        else:
-            return cls(**json_decamelized)
+            return []
+        return cls(**json_decamelized)
 
     @property
     def labels(self):

@@ -47,8 +47,7 @@ class GitRemote:
             if json_decamelized["count"] == 0:
                 return []
             return [cls(**remote) for remote in json_decamelized["items"]]
-        else:
-            return cls(**json_decamelized)
+        return cls(**json_decamelized)
 
     @property
     def name(self):

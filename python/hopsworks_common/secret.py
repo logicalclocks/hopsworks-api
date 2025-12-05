@@ -104,8 +104,7 @@ class Secret:
     def __repr__(self):
         if self._owner is not None:
             return f"Secret({self._name!r}, {self._visibility!r}, {self._owner!r})"
-        else:
-            return f"Secret({self._name!r}, {self._visibility!r})"
+        return f"Secret({self._name!r}, {self._visibility!r})"
 
     def get_url(self):
         path = "/account/secrets"

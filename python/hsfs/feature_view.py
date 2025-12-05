@@ -1369,8 +1369,7 @@ class FeatureView:
         models.sort(key=lambda model: model.created, reverse=True)
         if models:
             return models[0]
-        else:
-            return None
+        return None
 
     def get_models(self, training_dataset_version: Optional[int] = None) -> List[Model]:
         """Get the generated models using this feature view, based on explicit provenance.
@@ -1392,8 +1391,7 @@ class FeatureView:
         )
         if models and models.accessible:
             return models.accessible
-        else:
-            return []
+        return []
 
     def get_models_provenance(
         self, training_dataset_version: Optional[int] = None

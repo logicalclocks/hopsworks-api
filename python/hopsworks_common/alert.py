@@ -45,10 +45,8 @@ class Alert:
         if "count" in json_decamelized:
             if "items" in json_decamelized:
                 return [cls(**receiver) for receiver in json_decamelized["items"]]
-            else:
-                return []
-        else:
-            return cls(**json_decamelized)
+            return []
+        return cls(**json_decamelized)
 
     @property
     def id(self) -> Optional[int]:

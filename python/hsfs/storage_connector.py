@@ -204,7 +204,7 @@ class StorageConnector(ABC):
         """
         return {}
 
-    def get_feature_groups_provenance(self) -> Links:
+    def get_feature_groups_provenance(self) -> Links | None:
         """Get the generated feature groups using this storage connector, based on explicit provenance.
 
         These feature groups can be accessible or inaccessible.
@@ -221,6 +221,7 @@ class StorageConnector(ABC):
         links = self._storage_connector_api.get_feature_groups_provenance(self)
         if not links.is_empty():
             return links
+        return None
 
     def get_feature_groups(self) -> list[FeatureGroup]:
         """Get the feature groups using this storage connector, based on explicit rovenance.
@@ -242,8 +243,7 @@ class StorageConnector(ABC):
 
         if feature_groups_provenance and feature_groups_provenance.accessible:
             return feature_groups_provenance.accessible
-        else:
-            return []
+        return []
 
     def get_databases(self):
         return self._data_source_api.get_databases(self._featurestore_id, self._name)
@@ -780,8 +780,7 @@ class AdlsConnector(StorageConnector):
             return "abfss://{}@{}.dfs.core.windows.net".format(
                 self.container_name, self.account_name
             )
-        else:
-            return "adl://{}.azuredatalakestore.net".format(self.account_name)
+        return "adl://{}.azuredatalakestore.net".format(self.account_name)
 
     def spark_options(self) -> Dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional arguments."""
@@ -1594,8 +1593,7 @@ class GcsConnector(StorageConnector):
     def _get_path(self, sub_path: str) -> Optional[str]:
         if sub_path:
             return os.path.join(self.path, sub_path)
-        else:
-            return self.path
+        return self.path
 
     def spark_options(self) -> Dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional arguments."""
@@ -1767,12 +1765,11 @@ class BigQueryConnector(StorageConnector):
 
     def connector_options(self) -> Dict[str, Any]:
         """Return options to be passed to an external BigQuery connector library."""
-        props = {
+        return {
             "key_path": self._key_path,
             "project_id": self._parent_project,
             "dataset_id": self._dataset,
         }
-        return props
 
     def spark_options(self) -> Dict[str, Any]:
         """Return spark options to be set for BigQuery spark connector."""

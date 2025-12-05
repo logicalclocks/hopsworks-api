@@ -62,8 +62,7 @@ class Environment:
         json_decamelized = humps.decamelize(json_dict)
         if "count" in json_decamelized:
             return [cls(**env) for env in json_decamelized["items"]]
-        else:
-            return cls(**json_decamelized)
+        return cls(**json_decamelized)
 
     @property
     def python_version(self):

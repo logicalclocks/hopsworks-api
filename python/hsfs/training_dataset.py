@@ -226,18 +226,17 @@ class TrainingDatasetBase:
     def _infer_training_dataset_type(self, connector_type):
         if connector_type == StorageConnector.HOPSFS or connector_type is None:
             return self.HOPSFS
-        elif (
+        if (
             connector_type == StorageConnector.S3
             or connector_type == StorageConnector.ADLS
             or connector_type == StorageConnector.GCS
         ):
             return self.EXTERNAL
-        else:
-            raise TypeError(
-                "Storage connectors of type {} are currently not supported for training datasets.".format(
-                    connector_type
-                )
+        raise TypeError(
+            "Storage connectors of type {} are currently not supported for training datasets.".format(
+                connector_type
             )
+        )
 
     def to_dict(self):
         return {
@@ -432,8 +431,7 @@ class TrainingDatasetBase:
             raise ValueError(
                 "Training dataset type should be one of , ".join(valid_type)
             )
-        else:
-            self._training_dataset_type = training_dataset_type
+        self._training_dataset_type = training_dataset_type
 
     @property
     def validation_size(self):
@@ -755,10 +753,10 @@ class TrainingDataset(TrainingDatasetBase):
                 return registered_stats
             if self.splits:
                 return self._statistics_engine.compute_and_save_split_statistics(self)
-            else:
-                return self._statistics_engine.compute_and_save_statistics(
-                    self, self.read()
-                )
+            return self._statistics_engine.compute_and_save_statistics(
+                self, self.read()
+            )
+        return None
 
     def show(self, n: int, split: str = None):
         """Show the first `n` rows of the training dataset.
@@ -876,11 +874,11 @@ class TrainingDataset(TrainingDatasetBase):
                 cls._rewrite_location(td)
                 tds.append(cls(**td))
             return tds
-        else:  # backwards compatibility
-            for td in json_decamelized:
-                _ = td.pop("type")
-                cls._rewrite_location(td)
-            return [cls(**td) for td in json_decamelized]
+        # backwards compatibility
+        for td in json_decamelized:
+            _ = td.pop("type")
+            cls._rewrite_location(td)
+        return [cls(**td) for td in json_decamelized]
 
     @classmethod
     def from_response_json_single(cls, json_dict):

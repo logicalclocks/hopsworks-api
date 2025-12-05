@@ -48,8 +48,7 @@ class GitProvider:
         json_decamelized = humps.decamelize(json_dict)
         if len(json_decamelized["items"]) == 0:
             return []
-        else:
-            return [cls(**provider) for provider in json_decamelized["items"]]
+        return [cls(**provider) for provider in json_decamelized["items"]]
 
     @property
     def username(self):

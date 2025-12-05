@@ -47,10 +47,8 @@ class AlertRoute:
         if "count" in json_decamelized:
             if "items" in json_decamelized:
                 return [cls(**route) for route in json_decamelized["items"]]
-            else:
-                return []
-        else:
-            return cls(**json_decamelized)
+            return []
+        return cls(**json_decamelized)
 
     @property
     def groupBy(self) -> Optional[list]:
@@ -92,7 +90,7 @@ class AlertRoute:
 
     def to_dict(self):
         """Return the alert route as a dictionary."""
-        dict = {
+        return {
             "group_by": self._groupBy,
             "group_wait": self._groupWait,
             "group_interval": self._groupInterval,
@@ -101,7 +99,6 @@ class AlertRoute:
             "match": self._match,
             "match_re": self._matchRe,
         }
-        return dict
 
     def __str__(self):
         return self.json()

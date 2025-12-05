@@ -53,7 +53,7 @@ class ServingKey:
         if json_dict is None:
             return None
         json_decamelized = humps.decamelize(json_dict)
-        serving_key = cls(
+        return cls(
             feature_name=json_decamelized.get("feature_name", None),
             join_index=json_decamelized.get("join_index", None),
             feature_group=FeatureGroupBase.from_response_json(
@@ -63,7 +63,6 @@ class ServingKey:
             prefix=json_decamelized.get("prefix", ""),
             join_on=json_decamelized.get("join_on", None),
         )
-        return serving_key
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -91,10 +90,8 @@ class ServingKey:
         if self._required:
             if self._ignore_prefix:
                 return self._feature_name
-            else:
-                return self._prefix + self._feature_name
-        else:
-            return self._join_on
+            return self._prefix + self._feature_name
+        return self._join_on
 
     @property
     def feature_name(self) -> str:

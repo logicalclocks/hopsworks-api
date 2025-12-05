@@ -256,7 +256,7 @@ class Connection:
                 "No project name provided. Please provide a project name or"
                 " set a project when login or creating the connection."
             )
-        elif not _client._project_name:
+        if not _client._project_name:
             self._provide_project(name)
         elif not name:
             name = client.get_instance()._project_name

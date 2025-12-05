@@ -43,10 +43,9 @@ class KafkaSchema:
         json_decamelized = humps.decamelize(json_dict)
         if "count" not in json_decamelized:
             return cls(**json_decamelized)
-        elif json_decamelized["count"] == 0:
+        if json_decamelized["count"] == 0:
             return []
-        else:
-            return [cls(**kafka_topic) for kafka_topic in json_decamelized["items"]]
+        return [cls(**kafka_topic) for kafka_topic in json_decamelized["items"]]
 
     def update_from_response_json(self, json_dict):
         json_decamelized = humps.decamelize(json_dict)

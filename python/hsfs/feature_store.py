@@ -1377,21 +1377,20 @@ class FeatureStore:
             spine.dataframe = dataframe
             spine.feature_store = self
             return spine
-        else:
-            spine = feature_group.SpineGroup(
-                name=name,
-                version=version,
-                description=description,
-                primary_key=primary_key or [],
-                foreign_key=foreign_key or [],
-                event_time=event_time,
-                features=features or [],
-                dataframe=dataframe,
-                featurestore_id=self._id,
-                featurestore_name=self._name,
-            )
-            spine.feature_store = self
-            return spine._save()
+        spine = feature_group.SpineGroup(
+            name=name,
+            version=version,
+            description=description,
+            primary_key=primary_key or [],
+            foreign_key=foreign_key or [],
+            event_time=event_time,
+            features=features or [],
+            dataframe=dataframe,
+            featurestore_id=self._id,
+            featurestore_name=self._name,
+        )
+        spine.feature_store = self
+        return spine._save()
 
     def create_training_dataset(
         self,

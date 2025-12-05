@@ -46,10 +46,9 @@ class UDFExecutionMode(Enum):
     def get_current_execution_mode(self, online):
         if self == UDFExecutionMode.DEFAULT and online:
             return UDFExecutionMode.PYTHON
-        elif self == UDFExecutionMode.DEFAULT and not online:
+        if self == UDFExecutionMode.DEFAULT and not online:
             return UDFExecutionMode.PANDAS
-        else:
-            return self
+        return self
 
     @staticmethod
     def from_string(execution_mode: str):
@@ -103,13 +102,12 @@ def udf(
     """
 
     def wrapper(func: Callable) -> HopsworksUdf:
-        udf = HopsworksUdf(
+        return HopsworksUdf(
             func=func,
             return_types=return_type,
             dropped_argument_names=drop,
             execution_mode=UDFExecutionMode.from_string(mode),
         )
-        return udf
 
     return wrapper
 
@@ -376,9 +374,7 @@ class HopsworksUdf:
             )
 
         function_code = inspect.getsource(udf_function)
-        source_code = "\n".join(module_imports) + "\n" + function_code
-
-        return source_code
+        return "\n".join(module_imports) + "\n" + function_code
 
     @staticmethod
     def _parse_function_signature(source_code: str) -> tuple[list[str], str, int, int]:
@@ -468,8 +464,7 @@ class HopsworksUdf:
                 TransformationFeature(arg, arg if arg in statistics._features else None)
                 for arg in arg_list
             ]
-        else:
-            return [TransformationFeature(arg, None) for arg in arg_list]
+        return [TransformationFeature(arg, None) for arg in arg_list]
 
     @staticmethod
     def _format_source_code(source_code: str) -> Tuple[str, str]:
@@ -511,8 +506,7 @@ class HopsworksUdf:
                     for i in range(len(self.return_types))
                 ]
             )
-        else:
-            return self.return_types[0]
+        return self.return_types[0]
 
     def _prepare_transformation_function_scope(self, **kwargs) -> Dict[str, Any]:
         """Function that prepares the scope for the transformation function to be executed.
@@ -821,27 +815,28 @@ def renaming_wrapper(*args):
         ):
             if engine.get_type() in ["python", "training"] or online:
                 return self.pandas_udf_wrapper()
-            else:
-                from pyspark.sql.functions import pandas_udf
+            from pyspark.sql.functions import pandas_udf
 
-                return pandas_udf(
-                    f=self.pandas_udf_wrapper(),
-                    returnType=self._create_pandas_udf_return_schema_from_list(),
-                )
-        elif (
+            return pandas_udf(
+                f=self.pandas_udf_wrapper(),
+                returnType=self._create_pandas_udf_return_schema_from_list(),
+            )
+        if (
             self.execution_mode.get_current_execution_mode(online)
             == UDFExecutionMode.PYTHON
         ):
             if engine.get_type() in ["python", "training"] or online:
                 # Renaming into correct column names done within Python engine since a wrapper does not work for polars dataFrames.
                 return self.python_udf_wrapper(rename_outputs=False)
-            else:
-                from pyspark.sql.functions import udf as pyspark_udf
+            from pyspark.sql.functions import udf as pyspark_udf
 
-                return pyspark_udf(
-                    f=self.python_udf_wrapper(rename_outputs=True),
-                    returnType=self._create_pandas_udf_return_schema_from_list(),
-                )
+            return pyspark_udf(
+                f=self.python_udf_wrapper(rename_outputs=True),
+                returnType=self._create_pandas_udf_return_schema_from_list(),
+            )
+        raise ValueError(
+            f"Invalid execution mode '{self.execution_mode}' for UDF '{self.function_name}'."
+        )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert class into a dictionary.
@@ -1017,8 +1012,7 @@ def renaming_wrapper(*args):
                 self._feature_name_prefix + output_col_name
                 for output_col_name in self._output_column_names
             ]
-        else:
-            return self._output_column_names
+        return self._output_column_names
 
     @property
     def transformation_features(self) -> List[str]:
@@ -1029,11 +1023,10 @@ def renaming_wrapper(*args):
                 for transformation_feature in self._transformation_features
             ]
 
-        else:
-            return [
-                transformation_feature.feature_name
-                for transformation_feature in self._transformation_features
-            ]
+        return [
+            transformation_feature.feature_name
+            for transformation_feature in self._transformation_features
+        ]
 
     @property
     def unprefixed_transformation_features(self) -> List[str]:
@@ -1082,8 +1075,7 @@ def renaming_wrapper(*args):
                 self._feature_name_prefix + dropped_feature
                 for dropped_feature in self._dropped_features
             ]
-        else:
-            return self._dropped_features
+        return self._dropped_features
 
     @property
     def execution_mode(self) -> UDFExecutionMode:

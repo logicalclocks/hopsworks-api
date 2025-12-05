@@ -68,8 +68,7 @@ class GeExpectation:
                 cls(**expectation_suite)
                 for expectation_suite in json_decamelized["items"]
             ]
-        else:
-            return cls(**json_decamelized)
+        return cls(**json_decamelized)
 
     @classmethod
     def from_ge_type(
@@ -95,8 +94,7 @@ class GeExpectation:
 
         if decamelize:
             return humps.decamelize(the_dict)
-        else:
-            return the_dict
+        return the_dict
 
     def json(self) -> str:
         return json.dumps(self, cls=util.Encoder)
@@ -122,8 +120,7 @@ class GeExpectation:
         """Id of the expectation, set by backend."""
         if self._id:
             return self._id
-        else:
-            return None
+        return None
 
     @id.setter
     def id(self, id):

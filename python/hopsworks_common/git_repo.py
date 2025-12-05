@@ -68,8 +68,7 @@ class GitRepo:
             if json_decamelized["count"] == 0:
                 return []
             return [cls(**repo) for repo in json_decamelized["items"]]
-        else:
-            return cls(**json_decamelized)
+        return cls(**json_decamelized)
 
     @property
     def id(self):

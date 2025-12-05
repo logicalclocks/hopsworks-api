@@ -39,8 +39,7 @@ class GitFileStatus:
             if json_decamelized["count"] == 0:
                 return []
             return [cls(**file_status) for file_status in json_decamelized["items"]]
-        else:
-            return cls(**json_decamelized)
+        return cls(**json_decamelized)
 
     @property
     def file(self):

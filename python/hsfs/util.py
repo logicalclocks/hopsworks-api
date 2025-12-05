@@ -70,10 +70,11 @@ def validate_feature(
 ) -> feature.Feature:
     if isinstance(ft, feature.Feature):
         return ft
-    elif isinstance(ft, str):
+    if isinstance(ft, str):
         return feature.Feature(ft)
-    elif isinstance(ft, dict):
+    if isinstance(ft, dict):
         return feature.Feature(**ft)
+    raise TypeError("Feature must be a string, Feature object, or dictionary.")
 
 
 def parse_features(
@@ -83,10 +84,9 @@ def parse_features(
 ) -> List[feature.Feature]:
     if isinstance(feature_names, (str, feature.Feature)):
         return [validate_feature(feature_names)]
-    elif isinstance(feature_names, list) and len(feature_names) > 0:
+    if isinstance(feature_names, list) and len(feature_names) > 0:
         return [validate_feature(feat) for feat in feature_names]
-    else:
-        return []
+    return []
 
 
 def build_serving_keys_from_prepared_statements(

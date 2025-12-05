@@ -342,37 +342,35 @@ def _prompt_project(valid_connection, project, is_app):
         if len(saas_projects) == 0:
             if is_app:
                 raise ProjectException("Could not find any project")
-            else:
-                return None
-        elif len(saas_projects) == 1:
+            return None
+        if len(saas_projects) == 1:
             return saas_projects[0]
-        else:
+        while True:
+            print("\nMultiple projects found. \n")
+            for index in range(len(saas_projects)):
+                print("\t (" + str(index + 1) + ") " + saas_projects[index].name)
             while True:
-                print("\nMultiple projects found. \n")
-                for index in range(len(saas_projects)):
-                    print("\t (" + str(index + 1) + ") " + saas_projects[index].name)
-                while True:
-                    project_index = input(
-                        "\nEnter number corresponding to the project to use: "
-                    )
-                    # Handle invalid input type
+                project_index = input(
+                    "\nEnter number corresponding to the project to use: "
+                )
+                # Handle invalid input type
+                try:
+                    project_index = int(project_index)
+                    # Handle negative indexing
+                    if project_index <= 0:
+                        print("Invalid input, must be greater than or equal to 1")
+                        continue
+                    # Handle index out of range
                     try:
-                        project_index = int(project_index)
-                        # Handle negative indexing
-                        if project_index <= 0:
-                            print("Invalid input, must be greater than or equal to 1")
-                            continue
-                        # Handle index out of range
-                        try:
-                            return saas_projects[project_index - 1]
-                        except IndexError:
-                            print(
-                                "Invalid input, should be an integer from the list of projects."
-                            )
-                    except ValueError:
+                        return saas_projects[project_index - 1]
+                    except IndexError:
                         print(
                             "Invalid input, should be an integer from the list of projects."
                         )
+                except ValueError:
+                    print(
+                        "Invalid input, should be an integer from the list of projects."
+                    )
     else:
         try:
             return valid_connection._project_api._get_project(project)
@@ -457,7 +455,7 @@ def create_project(
     global _connected_project
 
     if not _is_connection_active():
-        raise NoHopsworksConnectionError()
+        raise NoHopsworksConnectionError
 
     new_project = _hw_connection._project_api._create_project(
         name, description, feature_store_topic
@@ -472,12 +470,12 @@ def create_project(
             )
         )
         return _connected_project
-    else:
-        print(
-            "You are already using the project {}, to access the new project use hopsworks.login(..., project='{}')".format(
-                _connected_project.name, new_project.name
-            )
+    print(
+        "You are already using the project {}, to access the new project use hopsworks.login(..., project='{}')".format(
+            _connected_project.name, new_project.name
         )
+    )
+    return None
 
 
 def get_secrets_api() -> secret_api.SecretsApi:
@@ -488,7 +486,7 @@ def get_secrets_api() -> secret_api.SecretsApi:
     """
     global _secrets_api
     if not _is_connection_active():
-        raise NoHopsworksConnectionError()
+        raise NoHopsworksConnectionError
     return _secrets_api
 
 

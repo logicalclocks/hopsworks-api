@@ -116,8 +116,7 @@ class FeatureStoreActivity:
             return [
                 cls.from_response_json(activity) for activity in response_json["items"]
             ]
-        else:
-            return cls(**humps.decamelize(response_json))
+        return cls(**humps.decamelize(response_json))
 
     def to_dict(self) -> Dict[str, Any]:
         activity_dict = {

@@ -57,8 +57,7 @@ class User:
             ):
                 json_decamelized.pop(key)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     def json(self) -> str:
         return json.dumps(self, cls=util.Encoder)

@@ -86,8 +86,7 @@ class ValidationReport:
                 cls(**validation_report)
                 for validation_report in json_decamelized["items"]
             ]
-        else:
-            return cls(**json_decamelized)
+        return cls(**json_decamelized)
 
     def json(self) -> str:
         return json.dumps(self, cls=util.Encoder)

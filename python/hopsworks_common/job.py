@@ -80,14 +80,13 @@ class Job:
                 json_decamelized["config"] = config
                 jobs.append(cls(**json_decamelized))
             return jobs
-        elif "id" not in json_dict:
+        if "id" not in json_dict:
             return []
-        else:
-            # Job config should not be decamelized when updated
-            config = json_dict.pop("config")
-            json_decamelized = humps.decamelize(json_dict)
-            json_decamelized["config"] = config
-            return cls(**json_decamelized)
+        # Job config should not be decamelized when updated
+        config = json_dict.pop("config")
+        json_decamelized = humps.decamelize(json_dict)
+        json_decamelized["config"] = config
+        return cls(**json_decamelized)
 
     @property
     def id(self):
@@ -185,8 +184,7 @@ class Job:
         )
         if await_termination:
             return self._execution_engine.wait_until_finished(self, execution)
-        else:
-            return execution
+        return execution
 
     def get_state(
         self,

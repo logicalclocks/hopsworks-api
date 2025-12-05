@@ -35,8 +35,7 @@ class Creator:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     @property
     def username(self) -> str:
@@ -86,8 +85,7 @@ class Tag:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     @property
     def key(self) -> str:
@@ -125,8 +123,7 @@ class FeatureHighlights:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     @property
     def name(self) -> str:
@@ -179,8 +176,7 @@ class Highlight:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     @property
     def name(self) -> str:
@@ -262,8 +258,7 @@ class FeaturestoreResult:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     @property
     def name(self) -> str:
@@ -622,8 +617,7 @@ class FeaturestoreSearchResultBase:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     @property
     def featuregroups(self) -> Optional[list]:

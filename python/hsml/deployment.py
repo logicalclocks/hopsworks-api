@@ -47,7 +47,7 @@ class Deployment:
 
         if self._predictor is None:
             raise ModelServingException("A predictor is required")
-        elif not isinstance(self._predictor, predictor_mod.Predictor):
+        if not isinstance(self._predictor, predictor_mod.Predictor):
             raise ValueError(
                 "The predictor provided is not an instance of the Predictor class"
             )
@@ -299,8 +299,7 @@ class Deployment:
                 cls.from_predictor(predictor_instance)
                 for predictor_instance in predictors
             ]
-        else:
-            return cls.from_predictor(predictors)
+        return cls.from_predictor(predictors)
 
     @classmethod
     def from_predictor(cls, predictor_instance):

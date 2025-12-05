@@ -396,13 +396,12 @@ class FeatureGroupBase:
 
         if removed_keys:
             return self.select_except(removed_keys)
-        else:
-            return query.Query(
-                left_feature_group=self,
-                left_features=self._features,
-                feature_store_name=self._feature_store_name,
-                feature_store_id=self._feature_store_id,
-            )
+        return query.Query(
+            left_feature_group=self,
+            left_features=self._features,
+            feature_store_name=self._feature_store_name,
+            feature_store_id=self._feature_store_id,
+        )
 
     def select_features(self) -> query.Query:
         """Select all the features in the feature group and return a query object.
@@ -602,8 +601,7 @@ class FeatureGroupBase:
                 feature_store_name=self._feature_store_name,
                 feature_store_id=self._feature_store_id,
             )
-        else:
-            return self.select_all()
+        return self.select_all()
 
     def filter(self, f: Union[filter.Filter, filter.Logic]) -> query.Query:
         """Apply filter to the feature group.
@@ -784,8 +782,7 @@ class FeatureGroupBase:
 
         if storage_connector_provenance and storage_connector_provenance.accessible:
             return storage_connector_provenance.accessible[0]
-        else:
-            return None
+        return None
 
     def get_generated_feature_views(self) -> Optional[explicit_provenance.Links]:
         """Get the generated feature view using this feature group, based on explicit provenance.
@@ -1159,8 +1156,7 @@ class FeatureGroupBase:
 
         if self._expectation_suite is not None and ge_type is True:
             return self._expectation_suite.to_ge_type()
-        else:
-            return self._expectation_suite
+        return self._expectation_suite
 
     def save_expectation_suite(
         self,
@@ -1330,10 +1326,9 @@ class FeatureGroupBase:
         """
         if self._id:
             return self._validation_report_engine.get_all(ge_type=ge_type)
-        else:
-            raise FeatureStoreException(
-                "Only Feature Group registered with Hopsworks can fetch validation reports."
-            )
+        raise FeatureStoreException(
+            "Only Feature Group registered with Hopsworks can fetch validation reports."
+        )
 
     def save_validation_report(
         self,
@@ -1401,10 +1396,9 @@ class FeatureGroupBase:
             return self._validation_report_engine.save(
                 validation_report=report, ge_type=ge_type
             )
-        else:
-            raise FeatureStoreException(
-                "Only Feature Group registered with Hopsworks can upload validation reports."
-            )
+        raise FeatureStoreException(
+            "Only Feature Group registered with Hopsworks can upload validation reports."
+        )
 
     def get_validation_history(
         self,
@@ -1461,10 +1455,9 @@ class FeatureGroupBase:
                 filter_by=filter_by or [],
                 ge_type=ge_type,
             )
-        else:
-            raise FeatureStoreException(
-                "Only Feature Group registered with Hopsworks can fetch validation history."
-            )
+        raise FeatureStoreException(
+            "Only Feature Group registered with Hopsworks can fetch validation history."
+        )
 
     @uses_great_expectations
     def validate(
@@ -1837,8 +1830,7 @@ class FeatureGroupBase:
         feature = [f for f in self.__getattribute__("_features") if f.name == name]
         if len(feature) == 1:
             return feature[0]
-        else:
-            raise KeyError(f"'FeatureGroup' object has no feature called '{name}'.")
+        raise KeyError(f"'FeatureGroup' object has no feature called '{name}'.")
 
     @property
     def statistics_config(self) -> StatisticsConfig:
@@ -2197,10 +2189,10 @@ class FeatureGroupBase:
         if feature_name is None:
             self._event_time = None
             return
-        elif isinstance(feature_name, str):
+        if isinstance(feature_name, str):
             self._event_time = util.autofix_feature_name(feature_name, warn=True)
             return
-        elif isinstance(feature_name, list) and len(feature_name) == 1:
+        if isinstance(feature_name, list) and len(feature_name) == 1:
             if isinstance(feature_name[0], str):
                 warnings.warn(
                     "Providing event_time as a single-element list is deprecated"
@@ -2364,10 +2356,11 @@ class FeatureGroupBase:
             ) from e
         return schema_s
 
-    def _get_feature_avro_schema(self, feature_name: str) -> str:
+    def _get_feature_avro_schema(self, feature_name: str) -> str | None:
         for field in json.loads(self.avro_schema)["fields"]:
             if field["name"] == feature_name:
                 return json.dumps(field["type"])
+        return None
 
     @property
     def features(self) -> List["feature.Feature"]:
@@ -2382,7 +2375,7 @@ class FeatureGroupBase:
     def _are_statistics_missing(self, statistics: Statistics) -> bool:
         if not self.statistics_config.enabled:
             return False
-        elif statistics is None:
+        if statistics is None:
             return True
         if (
             self.statistics_config.histograms
@@ -2808,16 +2801,14 @@ class FeatureGroup(FeatureGroupBase):
         if fmt is None:
             if not FeatureGroup._has_deltalake():
                 return "HUDI"
-            else:
-                return "DELTA"
+            return "DELTA"
         return fmt
 
     @staticmethod
     def _has_deltalake():
         if engine.get_type() == "python":
             return HAS_DELTALAKE_PYTHON
-        else:
-            return HAS_DELTALAKE_SPARK
+        return HAS_DELTALAKE_SPARK
 
     @staticmethod
     def _sort_transformation_functions(
@@ -2909,7 +2900,7 @@ class FeatureGroup(FeatureGroupBase):
             raise FeatureStoreException(
                 "Time travel format is not set for the feature group, cannot read as of specific point in time."
             )
-        elif wallclock_time and engine.get_type() == "python":
+        if wallclock_time and engine.get_type() == "python":
             raise FeatureStoreException(
                 "Python environments does not support incremental queries. "
                 "Read feature group without timestamp to retrieve latest snapshot or switch to "
@@ -2933,12 +2924,11 @@ class FeatureGroup(FeatureGroupBase):
                     read_options or {},
                 )
             )
-        else:
-            return self.select_all().read(
-                online,
-                dataframe_type,
-                read_options or {},
-            )
+        return self.select_all().read(
+            online,
+            dataframe_type,
+            read_options or {},
+        )
 
     def read_changes(
         self,
@@ -3538,18 +3528,17 @@ class FeatureGroup(FeatureGroupBase):
         multi_part_writer = feature_group_writer.FeatureGroupWriter(self)
         if features is None:
             return multi_part_writer
-        else:
-            # go through writer to avoid setting multi insert defaults again
-            return multi_part_writer.insert(
-                features,
-                overwrite,
-                operation,
-                storage,
-                write_options or {},
-                validation_options or {},
-                transformation_context,
-                transform=transform,
-            )
+        # go through writer to avoid setting multi insert defaults again
+        return multi_part_writer.insert(
+            features,
+            overwrite,
+            operation,
+            storage,
+            write_options or {},
+            validation_options or {},
+            transformation_context,
+            transform=transform,
+        )
 
     def finalize_multi_part_insert(self) -> None:
         """Finalizes and exits the multi part insert context opened by `multi_part_insert` in a blocking fashion once all rows have been transmitted.
@@ -3654,32 +3643,31 @@ class FeatureGroup(FeatureGroupBase):
             raise TypeError(
                 "Features have to be a streaming type spark dataframe. Use `insert()` method instead."
             )
-        else:
-            # lower casing feature names
-            feature_dataframe = engine.get_instance().convert_to_default_dataframe(
-                features
-            )
-            warnings.warn(
-                (
-                    "Stream ingestion for feature group `{}`, with version"
-                    " `{}` will not compute statistics."
-                ).format(self._name, self._version),
-                util.StatisticsWarning,
-                stacklevel=1,
-            )
+        # lower casing feature names
+        feature_dataframe = engine.get_instance().convert_to_default_dataframe(
+            features
+        )
+        warnings.warn(
+            (
+                "Stream ingestion for feature group `{}`, with version"
+                " `{}` will not compute statistics."
+            ).format(self._name, self._version),
+            util.StatisticsWarning,
+            stacklevel=1,
+        )
 
-            return self._feature_group_engine.insert_stream(
-                self,
-                feature_dataframe,
-                query_name,
-                output_mode,
-                await_termination,
-                timeout,
-                checkpoint_dir,
-                write_options or {},
-                transformation_context=transformation_context,
-                transform=transform,
-            )
+        return self._feature_group_engine.insert_stream(
+            self,
+            feature_dataframe,
+            query_name,
+            output_mode,
+            await_termination,
+            timeout,
+            checkpoint_dir,
+            write_options or {},
+            transformation_context=transformation_context,
+            transform=transform,
+        )
 
     def commit_details(
         self,
@@ -4149,24 +4137,22 @@ class FeatureGroup(FeatureGroupBase):
         """Get the Job object reference for the materialization job for this Feature Group."""
         if self._materialization_job is not None:
             return self._materialization_job
-        else:
-            feature_group_name = util.feature_group_name(self)
-            job_suffix_list = ["materialization", "backfill"]
-            for job_suffix in job_suffix_list:
-                job_name = "{}_offline_fg_{}".format(feature_group_name, job_suffix)
-                for _ in range(3):  # retry starting job
-                    try:
-                        self._materialization_job = job_api.JobApi().get(job_name)
-                        return self._materialization_job
-                    except RestAPIError as e:
-                        if e.response.status_code == 404:
-                            if e.response.json().get("errorCode", "") == 130009:
-                                break  # no need to retry, since no such job exists
-                            else:
-                                time.sleep(1)  # backoff and then retry
-                                continue
-                        raise e
-            raise FeatureStoreException("No materialization job was found")
+        feature_group_name = util.feature_group_name(self)
+        job_suffix_list = ["materialization", "backfill"]
+        for job_suffix in job_suffix_list:
+            job_name = "{}_offline_fg_{}".format(feature_group_name, job_suffix)
+            for _ in range(3):  # retry starting job
+                try:
+                    self._materialization_job = job_api.JobApi().get(job_name)
+                    return self._materialization_job
+                except RestAPIError as e:
+                    if e.response.status_code == 404:
+                        if e.response.json().get("errorCode", "") == 130009:
+                            break  # no need to retry, since no such job exists
+                        time.sleep(1)  # backoff and then retry
+                        continue
+                    raise e
+        raise FeatureStoreException("No materialization job was found")
 
     @property
     def statistics(self) -> "Statistics":
@@ -4233,15 +4219,13 @@ class FeatureGroup(FeatureGroupBase):
                     "You can checkout the full job schedule for the materialization job using `.materialization_job.job_schedule`"
                 )
                 return job.job_schedule.cron_expression
-            else:
-                warnings.warn(
-                    "No schedule found for the materialization job. Use `job = fg.materialization_job` "
-                    "to get the full job object and edit the schedule",
-                    stacklevel=1,
-                )
-                return None
-        else:
-            return self._offline_backfill_every_hr
+            warnings.warn(
+                "No schedule found for the materialization job. Use `job = fg.materialization_job` "
+                "to get the full job object and edit the schedule",
+                stacklevel=1,
+            )
+            return None
+        return self._offline_backfill_every_hr
 
     @offline_backfill_every_hr.setter
     def offline_backfill_every_hr(
@@ -4252,8 +4236,7 @@ class FeatureGroup(FeatureGroupBase):
                 "This property is read-only for existing Feature Groups. "
                 "Use `job = fg.materialization_job` to get the full job object and edit the schedule"
             )
-        else:
-            self._offline_backfill_every_hr = new_offline_backfill_every_hr
+        self._offline_backfill_every_hr = new_offline_backfill_every_hr
 
 
 @typechecked
