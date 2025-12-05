@@ -430,7 +430,7 @@ class TrainingDatasetBase:
         valid_type = [self.IN_MEMORY, self.HOPSFS, self.EXTERNAL]
         if training_dataset_type not in valid_type:
             raise ValueError(
-                "Training dataset type should be one of " ", ".join(valid_type)
+                "Training dataset type should be one of , ".join(valid_type)
             )
         else:
             self._training_dataset_type = training_dataset_type

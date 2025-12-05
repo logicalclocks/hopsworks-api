@@ -95,12 +95,12 @@ class ExpectationSuite:
         ] = None
 
         if self.id:
-            assert (
-                self._feature_store_id is not None
-            ), "feature_store_id should not be None if expectation suite id is provided"
-            assert (
-                self._feature_group_id is not None
-            ), "feature_group_id should not be None if expectation suite id is provided"
+            assert self._feature_store_id is not None, (
+                "feature_store_id should not be None if expectation suite id is provided"
+            )
+            assert self._feature_group_id is not None, (
+                "feature_group_id should not be None if expectation suite id is provided"
+            )
             self._expectation_engine = ExpectationEngine(
                 feature_store_id=self._feature_store_id,
                 feature_group_id=self._feature_group_id,

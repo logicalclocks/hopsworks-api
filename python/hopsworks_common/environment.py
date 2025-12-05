@@ -81,7 +81,9 @@ class Environment:
         return self._description
 
     @usage.method_logger
-    def install_wheel(self, path: str, await_installation: Optional[bool] = True) -> Library:
+    def install_wheel(
+        self, path: str, await_installation: Optional[bool] = True
+    ) -> Library:
         """Install a python library packaged in a wheel file.
 
         ```python

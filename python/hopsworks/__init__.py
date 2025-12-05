@@ -84,7 +84,8 @@ def login(
     api_key_file: str | None = None,
     hostname_verification: bool = False,
     trust_store_path: str | None = None,
-    engine: Literal["spark", "python", "training", "spark-no-metastore", "spark-delta"] | None = None,
+    engine: Literal["spark", "python", "training", "spark-no-metastore", "spark-delta"]
+    | None = None,
 ) -> project.Project:
     """Connect to [Serverless Hopsworks](https://app.hopsworks.ai) by calling the `hopsworks.login()` function with no arguments.
 
@@ -430,7 +431,9 @@ def _initialize_module_apis():
     _secrets_api = secret_api.SecretsApi()
 
 
-def create_project(name: str, description: str | None = None, feature_store_topic: str | None = None) -> project.Project | None:
+def create_project(
+    name: str, description: str | None = None, feature_store_topic: str | None = None
+) -> project.Project | None:
     """Create a new project.
 
     Warning: Not supported

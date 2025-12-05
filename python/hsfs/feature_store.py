@@ -435,7 +435,9 @@ class FeatureStore:
     def sql(
         self,
         query: str,
-        dataframe_type: Literal["default", "spark","pandas", "polars", "numpy", "python"] = "default",
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
         online: bool = False,
         read_options: Optional[dict] = None,
     ) -> Union[pd.DataFrame, pd.Series, np.ndarray, pl.DataFrame]:

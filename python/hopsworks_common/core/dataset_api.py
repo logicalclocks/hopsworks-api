@@ -24,7 +24,7 @@ import os
 import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
-from typing import List, Literal, Optional, Type, Union
+from typing import Literal, Optional, Type, Union
 
 from hopsworks_common import client, tag, usage, util
 from hopsworks_common.client.exceptions import DatasetException, RestAPIError

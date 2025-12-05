@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import warnings
 from datetime import datetime, timezone
-from typing import List, Literal, Optional
+from typing import Literal, Optional
 
 import humps
 from hopsworks_common import alert, client, usage, util

@@ -288,7 +288,7 @@ class TransformationFunction:
             output_col_names = [self.__hopsworks_udf.function_name]
         else:
             if self.transformation_type == TransformationType.MODEL_DEPENDENT:
-                _BASE_COLUMN_NAME = f'{self.__hopsworks_udf.function_name}_{"_".join(self.__hopsworks_udf.transformation_features)}_'
+                _BASE_COLUMN_NAME = f"{self.__hopsworks_udf.function_name}_{'_'.join(self.__hopsworks_udf.transformation_features)}_"
             elif self.transformation_type == TransformationType.ON_DEMAND:
                 _BASE_COLUMN_NAME = (
                     self.__hopsworks_udf.function_name
@@ -316,7 +316,7 @@ class TransformationFunction:
                 # Slicing the output column names
                 for index, output_col_name in enumerate(output_col_names):
                     output_col_names[index] = (
-                        f"{output_col_name[:FEATURES.MAX_LENGTH_NAME-(len(output_col_names) + 1)]}_{str(index)}"
+                        f"{output_col_name[: FEATURES.MAX_LENGTH_NAME - (len(output_col_names) + 1)]}_{str(index)}"
                         if len(output_col_name) > FEATURES.MAX_LENGTH_NAME
                         else output_col_name
                     )

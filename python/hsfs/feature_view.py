@@ -1124,7 +1124,9 @@ class FeatureView:
         primary_key: bool = False,
         event_time: bool = False,
         inference_helper_columns: bool = False,
-        dataframe_type: Literal["default", "spark","pandas", "polars", "numpy", "python"] = "default",
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
         transformed: Optional[bool] = True,
         transformation_context: Dict[str, Any] = None,
         logging_data: bool = False,

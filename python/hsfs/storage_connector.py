@@ -156,7 +156,9 @@ class StorageConnector(ABC):
         data_format: Optional[str] = None,
         options: Optional[Dict[str, Any]] = None,
         path: Optional[str] = None,
-        dataframe_type: Literal["default", "spark","pandas", "polars", "numpy", "python"] = "default",
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
     ) -> Union[
         TypeVar("pyspark.sql.DataFrame"),
         TypeVar("pyspark.RDD"),
@@ -299,8 +301,7 @@ class HopsFSConnector(StorageConnector):
         self._dataset_name = dataset_name
 
     def spark_options(self) -> Dict[str, Any]:
-        """Return prepared options to be passed to Spark, based on the additional arguments.
-        """
+        """Return prepared options to be passed to Spark, based on the additional arguments."""
         return {}
 
     def _get_path(self, sub_path: str) -> str:
@@ -455,7 +456,9 @@ class S3Connector(StorageConnector):
         data_format: Optional[str] = None,
         options: Optional[Dict[str, Any]] = None,
         path: str = "",
-        dataframe_type: Literal["default", "spark", "pandas", "polars", "numpy", "python"] = "default",
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
     ) -> Union[
         TypeVar("pyspark.sql.DataFrame"),
         TypeVar("pyspark.RDD"),
@@ -1540,7 +1543,8 @@ class GcsConnector(StorageConnector):
 
     The storage connector uses the Google `gcs-connector-hadoop` behind the scenes. For more information, check out [Google Cloud Storage Connector for Spark and Hadoop](
     https://github.com/GoogleCloudDataproc/hadoop-connectors/tree/master/gcs#google-cloud-storage-connector-for-spark-and-hadoop 'google-cloud-storage-connector-for-spark-and-hadoop').
-"""
+    """
+
     type = StorageConnector.GCS
     GS_FS_PREFIX = "gs://"  # Google Storage Filesystem prefix
 
@@ -1699,6 +1703,7 @@ class BigQueryConnector(StorageConnector):
     To read more about the spark connector, like the spark options or usage, check [Apache Spark SQL connector for Google BigQuery](https://github.com/GoogleCloudDataproc/spark-bigquery-connector#usage
     'github.com/GoogleCloudDataproc/spark-bigquery-connector').
     """
+
     type = StorageConnector.BIGQUERY
     BIGQUERY_FORMAT = "bigquery"
     BIGQ_CREDENTIALS = "credentials"

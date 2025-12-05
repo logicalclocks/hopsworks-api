@@ -4517,7 +4517,9 @@ class ExternalFeatureGroup(FeatureGroupBase):
 
     def read(
         self,
-        dataframe_type: Literal["default", "spark","pandas", "polars", "numpy", "python"] = "default",
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
         online: bool = False,
         read_options: Optional[Dict[str, Any]] = None,
     ) -> Union[

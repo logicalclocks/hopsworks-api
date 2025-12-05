@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import json
-from typing import Optional
 
 import humps
 from hopsworks_common import client, constants, usage, util

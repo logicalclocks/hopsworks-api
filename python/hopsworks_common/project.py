@@ -311,7 +311,16 @@ class Project:
         return self._alerts_api.create_project_alert(receiver, status, severity, "Jobs")
 
     def create_featurestore_alert(
-        self, receiver: str, status: Literal["feature_validation_success", "feature_validation_warning", "feature_validation_failure", "feature_monitor_shift_undetected", "feature_monitor_shift_detected"], severity: Literal["critical", "warning", "info"]
+        self,
+        receiver: str,
+        status: Literal[
+            "feature_validation_success",
+            "feature_validation_warning",
+            "feature_validation_failure",
+            "feature_monitor_shift_undetected",
+            "feature_monitor_shift_detected",
+        ],
+        severity: Literal["critical", "warning", "info"],
     ) -> alert.ProjectAlert:
         """Create an alert for feature validation and monitoring in this project.
 

@@ -15,7 +15,7 @@
 #
 
 import json
-from typing import List, Optional
+from typing import Optional
 
 from hopsworks_common import client, decorators, environment, usage
 from hopsworks_common.engine import environment_engine
