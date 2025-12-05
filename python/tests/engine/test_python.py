@@ -3253,14 +3253,27 @@ class TestPython:
         assert mock_ingestion_job_conf.call_count == 1
         assert mock_ingestion_job_conf.call_args[1]["write_options"] == {"test": 2}
 
-    def test_add_file(self):
+    @pytest.mark.parametrize(
+        "distribute_arg",
+        [
+            None,  # Test without providing distribute argument (uses default)
+            True,  # Test with distribute=True
+            False,  # Test with distribute=False
+        ],
+    )
+    def test_add_file(self, distribute_arg):
         # Arrange
         python_engine = python.Engine()
 
         file = None
 
         # Act
-        result = python_engine.add_file(file=file)
+        if distribute_arg is None:
+            # Call without distribute argument
+            result = python_engine.add_file(file=file)
+        else:
+            # Call with distribute argument
+            result = python_engine.add_file(file=file, distribute=distribute_arg)
 
         # Assert
         assert result == file
