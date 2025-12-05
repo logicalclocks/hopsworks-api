@@ -252,6 +252,7 @@ class FeatureMonitoringConfig:
                 row_percentage=0.1,
             ).with_reference_window(...).compare_on(...).save()
             ```
+
         Parameters:
             time_offset: The time offset from the current time to the start of the time window.
             window_length: The length of the time window.
@@ -295,7 +296,7 @@ class FeatureMonitoringConfig:
                 time_offset="1w",
                 window_length="1d",
             ).compare_on(...).save()
-            ```.
+            ```
 
         Warning: Provide a comparison configuration
             You must provide a comparison configuration via `compare_on()` before saving the feature monitoring config.
@@ -340,7 +341,7 @@ class FeatureMonitoringConfig:
             my_monitoring_config.with_reference_value(
                 value=0.0,
             ).compare_on(...).save()
-            ```.
+            ```
 
         Warning: Provide a comparison configuration
             You must provide a comparison configuration via `compare_on()` before saving the feature monitoring config.
@@ -376,7 +377,7 @@ class FeatureMonitoringConfig:
             my_monitoring_config.with_reference_training_dataset(
                 training_dataset_version=3,
             ).compare_on(...).save()
-            ```.
+            ```
 
         Warning: Provide a comparison configuration
             You must provide a comparison configuration via `compare_on()` before saving the feature monitoring config.
@@ -417,7 +418,7 @@ class FeatureMonitoringConfig:
                 threshold=1.0,
                 relative=True,
             ).save()
-            ```.
+            ```
 
         Note:
             Detection window and reference window/value/training_dataset must be set prior to comparison configuration.
@@ -453,6 +454,7 @@ class FeatureMonitoringConfig:
                 name="my_monitoring_config",
             ).save()
             ```
+
         Returns:
             `FeatureMonitoringConfig`. The saved FeatureMonitoringConfig object.
         """
@@ -486,6 +488,7 @@ class FeatureMonitoringConfig:
             my_monitoring_config.detection_window.row_percentage = 10
             my_monitoring_config.update()
             ```
+
         Returns:
             `FeatureMonitoringConfig`. The updated FeatureMonitoringConfig object.
         """
@@ -502,7 +505,7 @@ class FeatureMonitoringConfig:
             my_monitoring_config = fg.get_feature_monitoring_configs(name="my_monitoring_config")
             # Trigger the feature monitoring job once
             my_monitoring_config.run_job()
-            ```.
+            ```
 
         Info:
             The feature monitoring job will be triggered asynchronously and the method will return immediately.
@@ -563,6 +566,7 @@ class FeatureMonitoringConfig:
             # Delete the feature monitoring config
             my_monitoring_config.delete()
             ```
+
         Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
         """
@@ -585,6 +589,7 @@ class FeatureMonitoringConfig:
             # Disable the feature monitoring config
             my_monitoring_config.disable()
             ```
+
         Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
         """
@@ -604,6 +609,7 @@ class FeatureMonitoringConfig:
             # Enable the feature monitoring config
             my_monitoring_config.enable()
             ```
+
         Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If the feature monitoring config has not been saved.
         """
