@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import re
-from typing import Optional, Tuple
 
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
@@ -38,14 +37,15 @@ class VariableApi:
     def get_variable(self, variable: str):
         """Get the configured value of a variable.
 
-        # Arguments
+        Parameters:
             variable: Name of the variable.
-        # Returns
-            The variable's value
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        """
 
+        Returns:
+            The variable's value.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
         _client = client.get_instance()
 
         path_params = ["variables", variable]
@@ -53,17 +53,18 @@ class VariableApi:
 
         return domain["successMessage"]
 
-    def get_version(self, software: str) -> Optional[str]:
+    def get_version(self, software: str) -> str | None:
         """Get version of a software component.
 
-        # Arguments
+        Parameters:
             software: Name of the software.
-        # Returns
-            The software's version, if the software is available, otherwise `None`.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        """
 
+        Returns:
+            The software's version, if the software is available, otherwise `None`.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
         _client = client.get_instance()
 
         path_params = ["variables", "versions"]
@@ -76,15 +77,16 @@ class VariableApi:
 
     def parse_major_and_minor(
         self, backend_version: str
-    ) -> Tuple[Optional[str], Optional[str]]:
+    ) -> tuple[str | None, str | None]:
         """Extract major and minor version from full version.
 
-        # Arguments
+        Parameters:
             backend_version: The full version.
-        # Returns
-            (major, minor): The pair of major and minor parts of the version, or (None, None) if the version format is incorrect.
-        """
 
+        Returns:
+            major: The major part of the version, or `None` if the version format is incorrect.
+            minor: The minor part of the version, or `None` if the version format is incorrect.
+        """
         version_pattern = r"(\d+)\.(\d+)"
         matches = re.match(version_pattern, backend_version)
 
@@ -95,32 +97,34 @@ class VariableApi:
     def get_data_science_profile_enabled(self) -> bool:
         """Check if data science profile is enabled on the backend.
 
-        # Returns
-            `True`: If data science profile is enabled, `False` otherwise.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Returns:
+            `True` if data science profile is enabled, `False` otherwise.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self.get_variable("enable_data_science_profile") == "true"
 
     def get_flyingduck_enabled(self) -> bool:
         """Check if Flying Duck is enabled on the backend.
 
-        # Returns
-            `True`: If flying duck is available, `False` otherwise.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Returns:
+            `True` if flying duck is available, `False` otherwise.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self.get_variable("enable_flyingduck") == "true"
 
     def get_loadbalancer_external_domain(self, service: str) -> str:
         """Get domain loadbalancer for a service.
 
-        # Returns
-            `str`: The domain of external loadbalancer for a service, if it is set up.
+        Returns:
+            The domain of external loadbalancer for a service, if it is set up.
 
-        # Raises
-            `hopsworks.client.exceptions.FeatureStoreException`: If variable is not set in Hopsworks Cluster Configuration.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If variable is not set in Hopsworks Cluster Configuration.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         try:
             return self.get_variable(f"loadbalancer_external_domain_{service}")
@@ -131,14 +135,13 @@ class VariableApi:
                     f"loadbalancer_external_domain_{service}. "
                     "The variable is either not set or empty in Hopsworks cluster configuration."
                 ) from err
-            else:
-                raise err
+            raise err
 
     def get_service_discovery_domain(self) -> str:
         """Get domain of service discovery server.
 
-        # Returns
-            `str`: The domain of service discovery server, if it is set up, otherwise empty string `""`.
+        Returns:
+            The domain of service discovery server, if it is set up, otherwise empty string `""`.
         """
         try:
             return self.get_variable("service_discovery_domain")
@@ -148,8 +151,8 @@ class VariableApi:
     def get_featurestore_online_tablespace(self) -> str:
         """Get domain of featurestore online tablespace.
 
-        # Returns
-            `str`: The name of featurestore online tablespace, if it is set up, otherwise hopsworks default tablespace `ts_1`.
+        Returns:
+            The name of featurestore online tablespace, if it is set up, otherwise hopsworks default tablespace `ts_1`.
         """
         try:
             tablespace = self.get_variable("featurestore_online_tablespace")

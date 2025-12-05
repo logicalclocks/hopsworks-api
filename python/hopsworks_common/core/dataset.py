@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
 import humps
 
@@ -27,17 +27,17 @@ class Dataset:
         id,
         name,
         dataset_type,
-        attributes: Dict[str, Any],
+        attributes: dict[str, Any],
         **kwargs,
     ) -> None:
         self._id = id
         self._name = name
-        self._description = kwargs.get("description", None)
+        self._description = kwargs.get("description")
         self._dataset_type = dataset_type
         self._path = attributes["path"]
 
     @classmethod
-    def from_response_json(cls, json_dict: Dict[str, Any]) -> List[Dataset]:
+    def from_response_json(cls, json_dict: dict[str, Any]) -> list[Dataset]:
         json_decamelized = humps.decamelize(json_dict)["items"]
         for dataset in json_decamelized:
             _ = dataset.pop("type", None)

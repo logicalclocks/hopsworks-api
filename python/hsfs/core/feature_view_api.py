@@ -15,7 +15,7 @@
 #
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import RestAPIError
@@ -89,19 +89,18 @@ class FeatureViewApi:
         )
 
     @decorators.catch_not_found("hsfs.feature_view.FeatureView", fallback_return=[])
-    def get_by_name(self, name: str) -> List[feature_view.FeatureView]:
-        """
-        Get a feature view from the backend using its name.
+    def get_by_name(self, name: str) -> list[feature_view.FeatureView]:
+        """Get a feature view from the backend using its name.
 
-        # Arguments
+        Parameters:
             name `str`: Name of the feature view.
 
-        # Returns
+        Returns:
             `List[FeatureView]`: A list that contains all version of the feature view.
 
-        # Raises
-            `ValueError`: If the feature group associated with the feature view cannot be found.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Raises:
+            ValueError: If the feature group associated with the feature view cannot be found.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         path = self._base_path + [name]
         try:
@@ -120,24 +119,22 @@ class FeatureViewApi:
                     " Some feature groups used in the query may have been deleted. You can clean up this feature view on the UI"
                     " or `FeatureView.clean`."
                 ) from e
-            else:
-                raise e
+            raise e
 
     @decorators.catch_not_found("hsfs.feature_view.FeatureView", fallback_return=None)
     def get_by_name_version(self, name: str, version: int) -> feature_view.FeatureView:
-        """
-        Get a feature view from the backend using both name and version
+        """Get a feature view from the backend using both name and version.
 
-        # Arguments
+        Parameters:
             name `str`: Name of feature view.
             version `version`: Version of the feature view.
 
-        # Returns
+        Returns:
             `FeatureView`
 
-        # Raises
-            `ValueError`: If the feature group associated with the feature view cannot be found.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Raises:
+            ValueError: If the feature group associated with the feature view cannot be found.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         path = self._base_path + [name, self._VERSION, version]
         try:
@@ -155,12 +152,11 @@ class FeatureViewApi:
                     " Some feature groups used in the query may have been deleted. You can clean up this feature view on the UI"
                     " or `FeatureView.clean`."
                 ) from e
-            else:
-                raise e
+            raise e
 
     def get_all(
         self, latest_version_only: bool = True, with_features: bool = False
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         path = self._base_path
         query_params = {}
         if latest_version_only:
@@ -185,16 +181,16 @@ class FeatureViewApi:
         self,
         name: str,
         version: int,
-        start_time: Optional[int],
-        end_time: Optional[int],
-        training_dataset_version: Optional[int] = None,
+        start_time: int | None,
+        end_time: int | None,
+        training_dataset_version: int | None = None,
         with_label: bool = False,
         primary_keys: bool = False,
         event_time: bool = False,
         inference_helper_columns: bool = False,
         training_helper_columns: bool = False,
         is_python_engine: bool = False,
-    ) -> "query.Query":
+    ) -> query.Query:
         path = self._base_path + [
             name,
             self._VERSION,
@@ -227,11 +223,10 @@ class FeatureViewApi:
         batch: bool,
         inference_helper_columns: bool,
         logging_meta_data: bool = False,
-    ) -> List["serving_prepared_statement.ServingPreparedStatement"]:
-        """
-        Get the prepared statement for fetching feature vectors.
+    ) -> list[serving_prepared_statement.ServingPreparedStatement]:
+        """Get the prepared statement for fetching feature vectors.
 
-        # Arguments
+        Parameters:
             name : `str`. Name of the feature view.
             version : `int`. Version of the feature view.
             batch : `bool`. Whether to get the prepared statement for batch feature vector retrieval.
@@ -258,8 +253,8 @@ class FeatureViewApi:
         self,
         name: str,
         version: int,
-        training_dataset_obj: "training_dataset.TrainingDataset",
-    ) -> "training_dataset.TrainingDataset":
+        training_dataset_obj: training_dataset.TrainingDataset,
+    ) -> training_dataset.TrainingDataset:
         path = self.get_training_data_base_path(name, version)
         headers = {"content-type": "application/json"}
         return training_dataset_obj.update_from_response_json(
@@ -270,7 +265,7 @@ class FeatureViewApi:
 
     def get_training_dataset_by_version(
         self, name: str, version: int, training_dataset_version: int
-    ) -> "training_dataset.TrainingDataset":
+    ) -> training_dataset.TrainingDataset:
         path = self.get_training_data_base_path(name, version, training_dataset_version)
         return training_dataset.TrainingDataset.from_response_json_single(
             self._client._send_request("GET", path)
@@ -278,7 +273,7 @@ class FeatureViewApi:
 
     def get_training_datasets(
         self, name: str, version: int
-    ) -> List["training_dataset.TrainingDataset"]:
+    ) -> list[training_dataset.TrainingDataset]:
         path = self.get_training_data_base_path(name, version)
         return training_dataset.TrainingDataset.from_response_json(
             self._client._send_request("GET", path)
@@ -289,7 +284,7 @@ class FeatureViewApi:
         name: str,
         version: int,
         training_dataset_version: int,
-        td_app_conf: "training_dataset_job_conf.TrainingDatasetJobConf",
+        td_app_conf: training_dataset_job_conf.TrainingDatasetJobConf,
     ) -> job.Job:
         path = self.get_training_data_base_path(
             name, version, training_dataset_version
@@ -325,8 +320,8 @@ class FeatureViewApi:
         return self._client._send_request("DELETE", path)
 
     def get_training_data_base_path(
-        self, name: str, version: int, training_data_version: Optional[int] = None
-    ) -> List[Union[str, int]]:
+        self, name: str, version: int, training_data_version: int | None = None
+    ) -> list[str | int]:
         if training_data_version:
             return self._base_path + [
                 name,
@@ -336,27 +331,27 @@ class FeatureViewApi:
                 self._VERSION,
                 training_data_version,
             ]
-        else:
-            return self._base_path + [
-                name,
-                self._VERSION,
-                version,
-                self._TRAINING_DATASET,
-            ]
+        return self._base_path + [
+            name,
+            self._VERSION,
+            version,
+            self._TRAINING_DATASET,
+        ]
 
     def get_parent_feature_groups(
         self, name: str, version: int
     ) -> explicit_provenance.Links:
         """Get the parents of this feature view, based on explicit provenance.
+
         Parents are feature groups or external feature groups. These feature
         groups can be accessible, deleted or inaccessible.
         For deleted and inaccessible feature groups, only a minimal information is
         returned.
 
-        # Arguments
+        Parameters:
             feature_view_instance: Metadata object of feature view.
 
-        # Returns
+        Returns:
             `ExplicitProvenance.Links`: the feature groups used to generated this
             feature view
         """
@@ -384,20 +379,21 @@ class FeatureViewApi:
         self,
         feature_view_name: str,
         feature_view_version: int,
-        training_dataset_version: Optional[int] = None,
-    ) -> "explicit_provenance.Links":
-        """Get the generated models using this feature view, based on explicit
-        provenance. These models can be accessible or inaccessible. Explicit
+        training_dataset_version: int | None = None,
+    ) -> explicit_provenance.Links:
+        """Get the generated models using this feature view, based on explicit provenance.
+
+        These models can be accessible or inaccessible. Explicit
         provenance does not track deleted generated model links, so deleted
         will always be empty.
         For inaccessible models, only a minimal information is returned.
 
-        # Arguments
+        Parameters:
             feature_view_name: Filter generated models based on feature view name.
             feature_view_version: Filter generated models based on feature view version.
             training_dataset_version: Filter generated models based on the used training dataset version.
 
-        # Returns
+        Returns:
             `ExplicitProvenance.Links`: the models generated using this feature
             group
         """

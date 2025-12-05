@@ -13,9 +13,9 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import json
-from typing import Dict, List, Union
 
 from hsml import (
     client,
@@ -46,7 +46,6 @@ class ServingApi:
         :return: deployment metadata object
         :rtype: Deployment
         """
-
         _client = client.get_instance()
         path_params = [
             "project",
@@ -70,7 +69,6 @@ class ServingApi:
         :return: deployment metadata object
         :rtype: Deployment
         """
-
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "serving"]
         query_params = {"name": name}
@@ -89,7 +87,6 @@ class ServingApi:
         :return: model metadata objects
         :rtype: List[Deployment]
         """
-
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "serving"]
         query_params = {
@@ -113,7 +110,6 @@ class ServingApi:
         :return: inference endpoints for the current project.
         :rtype: List[InferenceEndpoint]
         """
-
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "inference", "endpoints"]
         endpoints_json = _client._send_request("GET", path_params)
@@ -127,7 +123,6 @@ class ServingApi:
         :return: updated metadata object of the deployment
         :rtype: Deployment
         """
-
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "serving"]
         headers = {"content-type": "application/json"}
@@ -145,12 +140,11 @@ class ServingApi:
         return deployment_instance
 
     def post(self, deployment_instance, action: str):
-        """Perform an action on the deployment
+        """Perform an action on the deployment.
 
         :param action: action to perform on the deployment (i.e., START or STOP)
         :type action: str
         """
-
         _client = client.get_instance()
         path_params = [
             "project",
@@ -167,7 +161,6 @@ class ServingApi:
         :param deployment_instance: metadata object of the deployment to delete
         :type deployment_instance: Deployment
         """
-
         _client = client.get_instance()
         path_params = [
             "project",
@@ -178,14 +171,13 @@ class ServingApi:
         return _client._send_request("DELETE", path_params)
 
     def get_state(self, deployment_instance):
-        """Get the state of a given deployment
+        """Get the state of a given deployment.
 
         :param deployment_instance: metadata object of the deployment to get state of
         :type deployment_instance: Deployment
         :return: predictor state
         :rtype: PredictorState
         """
-
         _client = client.get_instance()
         path_params = [
             "project",
@@ -197,14 +189,13 @@ class ServingApi:
         return predictor_state.PredictorState.from_response_json(deployment_json)
 
     def reset_changes(self, deployment_instance):
-        """Reset a given deployment to the original values in the Hopsworks instance
+        """Reset a given deployment to the original values in the Hopsworks instance.
 
         :param deployment_instance: metadata object of the deployment to reset
         :type deployment_instance: Deployment
         :return: deployment with reset values
         :rtype: Deployment
         """
-
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "serving"]
         query_params = {"name": deployment_instance.name}
@@ -220,10 +211,10 @@ class ServingApi:
     def send_inference_request(
         self,
         deployment_instance,
-        data: Union[Dict, List[InferInput]],
+        data: dict | list[InferInput],
         through_hopsworks: bool = False,
-    ) -> Union[Dict, List[InferOutput]]:
-        """Send inference requests to a deployment with a certain id
+    ) -> dict | list[InferOutput]:
+        """Send inference requests to a deployment with a certain id.
 
         :param deployment_instance: metadata object of the deployment to be used for the prediction
         :type deployment_instance: Deployment
@@ -239,18 +230,15 @@ class ServingApi:
             return self._send_inference_request_via_rest_protocol(
                 deployment_instance, data, through_hopsworks
             )
-        else:
-            # gRPC protocol, use the deployment grpc channel
-            return self._send_inference_request_via_grpc_protocol(
-                deployment_instance, data
-            )
+        # gRPC protocol, use the deployment grpc channel
+        return self._send_inference_request_via_grpc_protocol(deployment_instance, data)
 
     def _send_inference_request_via_rest_protocol(
         self,
         deployment_instance,
-        data: Dict,
+        data: dict,
         through_hopsworks: bool = False,
-    ) -> Dict:
+    ) -> dict:
         headers = {"content-type": "application/json"}
         if through_hopsworks:
             # use Hopsworks client
@@ -289,8 +277,8 @@ class ServingApi:
         )
 
     def _send_inference_request_via_grpc_protocol(
-        self, deployment_instance, data: List[InferInput]
-    ) -> List[InferOutput]:
+        self, deployment_instance, data: list[InferInput]
+    ) -> list[InferOutput]:
         # get grpc channel
         if deployment_instance._grpc_channel is None:
             # The gRPC channel is lazily initialized. The first call to deployment.predict() will initialize
@@ -324,12 +312,11 @@ class ServingApi:
         return _client._create_grpc_channel(service_hostname)
 
     def is_kserve_installed(self):
-        """Check if kserve is installed
+        """Check if kserve is installed.
 
         :return: whether kserve is installed
         :rtype: bool
         """
-
         _client = client.get_instance()
         path_params = ["variables", "kube_kserve_installed"]
         kserve_installed = _client._send_request("GET", path_params)
@@ -339,8 +326,7 @@ class ServingApi:
         )
 
     def get_num_instances_limits(self):
-        """Get number of instances limits for model serving"""
-
+        """Get number of instances limits for model serving."""
         _client = client.get_instance()
 
         path_params = ["variables", "kube_serving_min_num_instances"]
@@ -355,8 +341,7 @@ class ServingApi:
         ]
 
     def get_knative_domain(self):
-        """Get the domain used by knative"""
-
+        """Get the domain used by knative."""
         _client = client.get_instance()
 
         path_params = ["variables", "kube_knative_domain_name"]
@@ -365,7 +350,7 @@ class ServingApi:
         return domain["successMessage"]
 
     def get_logs(self, deployment_instance, component, tail):
-        """Get the logs of a deployment
+        """Get the logs of a deployment.
 
         :param deployment_instance: metadata object of the deployment to get logs from
         :type deployment_instance: Deployment
@@ -376,7 +361,6 @@ class ServingApi:
         :return: deployment logs
         :rtype: DeployableComponentLogs
         """
-
         _client = client.get_instance()
         path_params = [
             "project",
@@ -393,7 +377,7 @@ class ServingApi:
     def _get_inference_request_host_header(
         self, project_namespace: str, deployment_name: str, domain: str
     ):
-        return "{}.{}.{}".format(deployment_name, project_namespace, domain).lower()
+        return f"{deployment_name}.{project_namespace}.{domain}".lower()
 
     def _get_hopsworks_inference_path(self, project_id: int, deployment_instance):
         return [

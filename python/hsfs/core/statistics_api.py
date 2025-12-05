@@ -15,7 +15,7 @@
 #
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from hopsworks_common import client
 from hsfs import feature_group, feature_view, statistics, training_dataset
@@ -36,14 +36,12 @@ class StatisticsApi:
 
     def post(
         self,
-        metadata_instance: Union[
-            feature_view.FeatureView,
-            training_dataset.TrainingDataset,
-            feature_group.FeatureGroup,
-        ],
+        metadata_instance: feature_view.FeatureView
+        | training_dataset.TrainingDataset
+        | feature_group.FeatureGroup,
         stats: statistics.Statistics,
-        training_dataset_version: Optional[int],
-    ) -> Optional[statistics.Statistics]:
+        training_dataset_version: int | None,
+    ) -> statistics.Statistics | None:
         _client = client.get_instance()
         path_params = self.get_path(metadata_instance, training_dataset_version)
 
@@ -57,19 +55,17 @@ class StatisticsApi:
 
     def get(
         self,
-        metadata_instance: Union[
-            feature_view.FeatureView,
-            training_dataset.TrainingDataset,
-            feature_group.FeatureGroup,
-        ],
-        computation_time: Optional[int] = None,
-        start_commit_time: Optional[int] = None,
-        end_commit_time: Optional[int] = None,
-        feature_names: List[str] = None,
-        row_percentage: Optional[float] = None,
-        before_transformation: Optional[bool] = None,
-        training_dataset_version: Optional[int] = None,
-    ) -> Optional[statistics.Statistics]:
+        metadata_instance: feature_view.FeatureView
+        | training_dataset.TrainingDataset
+        | feature_group.FeatureGroup,
+        computation_time: int | None = None,
+        start_commit_time: int | None = None,
+        end_commit_time: int | None = None,
+        feature_names: list[str] = None,
+        row_percentage: float | None = None,
+        before_transformation: bool | None = None,
+        training_dataset_version: int | None = None,
+    ) -> statistics.Statistics | None:
         """Get single statistics of an entity.
 
         :param metadata_instance: metadata object of the instance to get statistics of
@@ -120,19 +116,17 @@ class StatisticsApi:
 
     def get_all(
         self,
-        metadata_instance: Union[
-            feature_view.FeatureView,
-            training_dataset.TrainingDataset,
-            feature_group.FeatureGroup,
-        ],
-        computation_time: Optional[int] = None,
-        start_commit_time: Optional[int] = None,
-        end_commit_time: Optional[int] = None,
-        feature_names: Optional[List[str]] = None,
-        row_percentage: Optional[float] = None,
-        before_transformation: Optional[bool] = None,
-        training_dataset_version: Optional[int] = None,
-    ) -> Optional[List[statistics.Statistics]]:
+        metadata_instance: feature_view.FeatureView
+        | training_dataset.TrainingDataset
+        | feature_group.FeatureGroup,
+        computation_time: int | None = None,
+        start_commit_time: int | None = None,
+        end_commit_time: int | None = None,
+        feature_names: list[str] | None = None,
+        row_percentage: float | None = None,
+        before_transformation: bool | None = None,
+        training_dataset_version: int | None = None,
+    ) -> list[statistics.Statistics] | None:
         """Get all statistics of an entity.
 
         :param metadata_instance: metadata object of the instance to get statistics of
@@ -181,12 +175,10 @@ class StatisticsApi:
 
     def compute(
         self,
-        metadata_instance: Union[
-            training_dataset.TrainingDataset,
-            feature_view.FeatureView,
-            feature_group.FeatureGroup,
-        ],
-        training_dataset_version: Optional[int] = None,
+        metadata_instance: training_dataset.TrainingDataset
+        | feature_view.FeatureView
+        | feature_group.FeatureGroup,
+        training_dataset_version: int | None = None,
     ) -> job.Job:
         """Compute statistics for an entity.
 
@@ -203,13 +195,11 @@ class StatisticsApi:
 
     def get_path(
         self,
-        metadata_instance: Union[
-            training_dataset.TrainingDataset,
-            feature_group.FeatureGroup,
-            feature_view.FeatureView,
-        ],
-        training_dataset_version: Optional[int] = None,
-    ) -> List[Union[str, int]]:
+        metadata_instance: training_dataset.TrainingDataset
+        | feature_group.FeatureGroup
+        | feature_view.FeatureView,
+        training_dataset_version: int | None = None,
+    ) -> list[str | int]:
         """Get statistics path.
 
         :param metadata_instance: metadata object of the instance to compute statistics for
@@ -236,36 +226,35 @@ class StatisticsApi:
                     training_dataset_version,
                 ]
             return path + ["statistics"]
-        else:
-            return [
-                "project",
-                _client._project_id,
-                "featurestores",
-                self._feature_store_id,
-                self._entity_type,
-                metadata_instance.id,
-                "statistics",
-            ]
+        return [
+            "project",
+            _client._project_id,
+            "featurestores",
+            self._feature_store_id,
+            self._entity_type,
+            metadata_instance.id,
+            "statistics",
+        ]
 
     def _extract_single_stats(
-        self, stats: Union[statistics.Statistics, List[statistics.Statistics]]
-    ) -> Optional[statistics.Statistics]:
+        self, stats: statistics.Statistics | list[statistics.Statistics]
+    ) -> statistics.Statistics | None:
         return stats[0] if isinstance(stats, list) else stats
 
     def _build_get_query_params(
         self,
-        computation_time: Optional[int] = None,
-        start_commit_time: Optional[int] = None,
-        end_commit_time: Optional[int] = None,
+        computation_time: int | None = None,
+        start_commit_time: int | None = None,
+        end_commit_time: int | None = None,
         filter_eq_times: bool = False,
-        feature_names: Optional[List[str]] = None,
-        row_percentage: Optional[float] = None,
-        before_transformation: Optional[bool] = None,
-        training_dataset_version: Optional[int] = None,
+        feature_names: list[str] | None = None,
+        row_percentage: float | None = None,
+        before_transformation: bool | None = None,
+        training_dataset_version: int | None = None,
         offset: int = 0,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         with_content: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Build query parameters for statistics requests.
 
         :param computation_time: Time at which statistics where computed
@@ -289,14 +278,14 @@ class StatisticsApi:
         :param with_content: Whether include feature descriptive statistics in the response or not
         :type with_content: bool
         """
-        query_params: dict[str, Union[int, str, List[str]]] = {"offset": offset}
+        query_params: dict[str, int | str | list[str]] = {"offset": offset}
         if limit is not None:
             query_params["limit"] = limit
         if with_content:
             query_params["fields"] = "content"
 
-        sorts: List[str] = []
-        filters: List[str] = []
+        sorts: list[str] = []
+        filters: list[str] = []
 
         # filters and sorts
 

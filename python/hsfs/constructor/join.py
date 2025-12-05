@@ -15,7 +15,7 @@
 #
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import humps
 from hsfs import util
@@ -35,12 +35,12 @@ class Join:
 
     def __init__(
         self,
-        query: "query.Query",
-        on: Optional[List[str]],
-        left_on: Optional[List[str]],
-        right_on: Optional[List[str]],
-        join_type: Optional[str],
-        prefix: Optional[str],
+        query: query.Query,
+        on: list[str] | None,
+        left_on: list[str] | None,
+        right_on: list[str] | None,
+        join_type: str | None,
+        prefix: str | None,
         **kwargs,
     ) -> None:
         self._query = query
@@ -50,7 +50,7 @@ class Join:
         self._join_type = join_type or self.LEFT
         self._prefix = prefix
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "query": self._query,
             "on": self._on,
@@ -61,7 +61,7 @@ class Join:
         }
 
     @classmethod
-    def from_response_json(cls, json_dict: Dict[str, Any]) -> "Join":
+    def from_response_json(cls, json_dict: dict[str, Any]) -> Join:
         json_decamelized = humps.decamelize(json_dict)
 
         return cls(
@@ -74,13 +74,13 @@ class Join:
         )
 
     @property
-    def query(self) -> "query.Query":
+    def query(self) -> query.Query:
         return self._query
 
     @query.setter
-    def query(self, query: "query.Query") -> None:
+    def query(self, query: query.Query) -> None:
         self._query = query
 
     @property
-    def prefix(self) -> Optional[str]:
+    def prefix(self) -> str | None:
         return self._prefix

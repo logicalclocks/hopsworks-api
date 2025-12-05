@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import warnings
 from datetime import datetime, timezone
-from typing import List, Literal, Optional
+from typing import Literal
 
 import humps
 from hopsworks_common import alert, client, usage, util
@@ -80,58 +80,57 @@ class Job:
                 json_decamelized["config"] = config
                 jobs.append(cls(**json_decamelized))
             return jobs
-        elif "id" not in json_dict:
+        if "id" not in json_dict:
             return []
-        else:
-            # Job config should not be decamelized when updated
-            config = json_dict.pop("config")
-            json_decamelized = humps.decamelize(json_dict)
-            json_decamelized["config"] = config
-            return cls(**json_decamelized)
+        # Job config should not be decamelized when updated
+        config = json_dict.pop("config")
+        json_decamelized = humps.decamelize(json_dict)
+        json_decamelized["config"] = config
+        return cls(**json_decamelized)
 
     @property
     def id(self):
-        """Id of the job"""
+        """Id of the job."""
         return self._id
 
     @property
     def name(self):
-        """Name of the job"""
+        """Name of the job."""
         return self._name
 
     @property
     def creation_time(self):
-        """Date of creation for the job"""
+        """Date of creation for the job."""
         return self._creation_time
 
     @property
     def config(self):
-        """Configuration for the job"""
+        """Configuration for the job."""
         return self._config
 
     @config.setter
     def config(self, config: dict):
-        """Update configuration for the job"""
+        """Update configuration for the job."""
         self._config = config
 
     @property
     def job_type(self):
-        """Type of the job"""
+        """Type of the job."""
         return self._job_type
 
     @property
     def creator(self):
-        """Creator of the job"""
+        """Creator of the job."""
         return self._creator
 
     @property
     def job_schedule(self):
-        """Return the Job schedule"""
+        """Return the Job schedule."""
         return self._job_schedule
 
     @property
     def executions(self):
-        """List of executions for the job"""
+        """List of executions for the job."""
         return self._executions
 
     @property
@@ -141,7 +140,7 @@ class Job:
 
     @property
     def config(self):
-        """Configuration for the job"""
+        """Configuration for the job."""
         return self._config
 
     @usage.method_logger
@@ -150,7 +149,7 @@ class Job:
 
         Run the job, by default awaiting its completion, with the option of passing runtime arguments.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -171,10 +170,11 @@ class Job:
             out_log_path, err_log_path = execution.download_logs()
             ```
 
-        # Arguments
+        Parameters:
             args: Optional runtime arguments for the job.
-            await_termination: Identifies if the client should wait for the job to complete, defaults to True.
-        # Returns
+            await_termination: Identifies if the client should wait for the job to complete.
+
+        Returns:
             `Execution`: The execution object for the submitted run.
         """
         if self._is_materialization_running(args):
@@ -186,19 +186,34 @@ class Job:
         )
         if await_termination:
             return self._execution_engine.wait_until_finished(self, execution)
-        else:
-            return execution
+        return execution
 
-    def get_state(self):
+    def get_state(
+        self,
+    ) -> Literal[
+        "UNDEFINED",
+        "INITIALIZING",
+        "INITIALIZATION_FAILED",
+        "FINISHED",
+        "RUNNING",
+        "ACCEPTED",
+        "FAILED",
+        "KILLED",
+        "NEW",
+        "NEW_SAVING",
+        "SUBMITTED",
+        "AGGREGATING_LOGS",
+        "FRAMEWORK_FAILURE",
+        "STARTING_APP_MASTER",
+        "APP_MASTER_START_FAILED",
+        "GENERATING_SECURITY_MATERIAL",
+        "CONVERTING_NOTEBOOK",
+    ]:
         """Get the state of the job.
 
-        # Returns
-            `state`. Current state of the job, which can be one of the following:
-            `INITIALIZING`, `INITIALIZATION_FAILED`, `FINISHED`, `RUNNING`, `ACCEPTED`,
-            `FAILED`, `KILLED`, `NEW`, `NEW_SAVING`, `SUBMITTED`, `AGGREGATING_LOGS`,
-            `FRAMEWORK_FAILURE`, `STARTING_APP_MASTER`, `APP_MASTER_START_FAILED`,
-            `GENERATING_SECURITY_MATERIAL`, `CONVERTING_NOTEBOOK`. If no executions are found for the job,
-            a warning is raised and it returns `UNDEFINED`.
+        Returns:
+            The current state of the job.
+            If no executions are found for the job, a warning is raised and it returns `UNDEFINED`.
         """
         last_execution = self._job_api.last_execution(self)
         if len(last_execution) != 1:
@@ -219,11 +234,9 @@ class Job:
     ]:
         """Get the final state of the job.
 
-        # Returns
-            `final_state`. Final state of the job, which can be one of the following:
-            `UNDEFINED`, `FINISHED`, `FAILED`, `KILLED`, `FRAMEWORK_FAILURE`,
-            `APP_MASTER_START_FAILED`, `INITIALIZATION_FAILED`. `UNDEFINED` indicates
-             that the job is still running.
+        Returns:
+            The final state of the job.
+            `UNDEFINED` indicates that the job is still running.
         """
         last_execution = self._job_api.last_execution(self)
         if len(last_execution) != 1:
@@ -234,15 +247,16 @@ class Job:
     def get_executions(self):
         """Retrieves all executions for the job ordered by submission time.
 
-        # Returns
-            `List[Execution]`: list of Execution objects
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Returns:
+            `List[Execution]`: List of Execution objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._execution_api._get_all(self)
 
     @usage.method_logger
-    def save(self):
+    def save(self) -> Job:
         """Save the job.
 
         This function should be called after changing a property such as the job configuration to save it persistently.
@@ -251,18 +265,21 @@ class Job:
         job.config['appPath'] = "Resources/my_app.py"
         job.save()
         ```
-        # Returns
-            `Job`: The updated job object.
+
+        Returns:
+            The updated job object.
         """
         return self._job_api._update_job(self.name, self.config)
 
     @usage.method_logger
     def delete(self):
-        """Delete the job
-        !!! danger "Potentially dangerous operation"
+        """Delete the job.
+
+        Danger: Potentially dangerous operation
             This operation deletes the job and all executions.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._job_api._delete(self)
 
@@ -290,7 +307,7 @@ class Job:
                 return True
         return False
 
-    def _wait_for_job(self, await_termination=True, timeout: Optional[float] = None):
+    def _wait_for_job(self, await_termination=True, timeout: float | None = None):
         # If the user passed the wait_for_job option consider it,
         # otherwise use the default True
         if await_termination:
@@ -308,7 +325,7 @@ class Job:
         cron_expression: str,
         start_time: datetime = None,
         end_time: datetime = None,
-    ):
+    ) -> JobSchedule:
         """Schedule the execution of the job.
 
         If a schedule for this job already exists, the method updates it.
@@ -324,12 +341,19 @@ class Job:
         print(job.job_schedule.next_execution_date_time)
         ```
 
-        # Arguments
-            cron_expression: The quartz cron expression
-            start_time: The schedule start time in UTC. If None, the current time is used. The start_time can be a value in the past.
-            end_time: The schedule end time in UTC. If None, the schedule will continue running indefinitely. The end_time can be a value in the past.
-        # Returns
-            `JobSchedule`: The schedule of the job
+        Parameters:
+            cron_expression: The quartz cron expression.
+            start_time:
+                The schedule start time in UTC.
+                If `None`, the current time is used.
+                The `start_time` can be a value in the past.
+            end_time:
+                The schedule end time in UTC.
+                If `None`, the schedule will continue running indefinitely.
+                The `end_time` can be a value in the past.
+
+        Returns:
+            The schedule of the job
         """
         job_schedule = JobSchedule(
             id=self._job_schedule.id if self._job_schedule else None,
@@ -345,13 +369,13 @@ class Job:
 
     @usage.method_logger
     def unschedule(self):
-        """Unschedule the exceution of a Job"""
+        """Unschedule the exceution of a Job."""
         self._job_api._delete_schedule_job(self._name)
         self._job_schedule = None
 
     @usage.method_logger
     def resume_schedule(self):
-        """Resumes the schedule of a Job execution"""
+        """Resumes the schedule of a Job execution."""
         if self._job_schedule is None:
             raise JobException("No schedule found for job")
 
@@ -366,7 +390,7 @@ class Job:
 
     @usage.method_logger
     def pause_schedule(self):
-        """Pauses the schedule of a Job execution"""
+        """Pauses the schedule of a Job execution."""
         if self._job_schedule is None:
             raise JobException("No schedule found for job")
 
@@ -380,13 +404,14 @@ class Job:
         return self._update_schedule(job_schedule)
 
     @usage.method_logger
-    def get_alerts(self) -> List[alert.JobAlert]:
+    def get_alerts(self) -> list[alert.JobAlert]:
         """Get all alerts for the job.
 
-        # Returns
-            `List[JobAlert]`: list of JobAlert objects
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Returns:
+            List of JobAlert objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._alerts_api.get_job_alerts(self._name)
 
@@ -394,12 +419,14 @@ class Job:
     def get_alert(self, alert_id: int) -> alert.JobAlert:
         """Get an alert for the job by ID.
 
-        # Arguments
-            alert_id: ID of the alert
-        # Returns
-            `JobAlert`: the JobAlert object
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Parameters:
+            alert_id: ID of the alert.
+
+        Returns:
+            The JobAlert object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._alerts_api.get_job_alert(self._name, alert_id)
 
@@ -407,8 +434,8 @@ class Job:
     def create_alert(
         self,
         receiver: str,
-        status: str,
-        severity: str,
+        status: Literal["long_running", "failed", "finished", "killed"],
+        severity: Literal["critical", "warning", "info"],
     ) -> alert.JobAlert:
         """Create an alert for the job.
 
@@ -420,16 +447,18 @@ class Job:
             severity="critical"
         )
         ```
-        # Arguments
-            receiver: The receiver of the alert
-            status: The status of the alert. Valid values are "long_running", "failed", "finished", "killed"
-            severity: The severity of the alert. Valid values are "critical", "warning", "info"
-        # Returns
-            `JobAlert`: The created JobAlert object
-        # Raises
-            `ValueError`: If the status is not valid.
-            `ValueError`: If the severity is not valid.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Parameters:
+            receiver: The receiver of the alert.
+            status: The status of the alert.
+            severity: The severity of the alert.
+
+        Returns:
+            The created JobAlert object.
+
+        Raises:
+            ValueError: If `status` or `severity` is not valid.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._alerts_api.create_job_alert(self._name, receiver, status, severity)
 
@@ -449,7 +478,7 @@ class Job:
         return f"Job({self._name!r}, {self._job_type!r})"
 
     def get_url(self):
-        """Get url to the job in Hopsworks"""
+        """Get url to the job in Hopsworks."""
         _client = client.get_instance()
         path = "/p/" + str(_client._project_id) + "/jobs/named/" + self.name
         return util.get_hostname_replaced_url(path)

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from typing import Any, Dict, Optional
+from typing import Any
 
 from hopsworks_common.core import variable_api
 from hsfs.core.constants import HAS_AIOMYSQL, HAS_SQLALCHEMY
@@ -32,7 +32,7 @@ if HAS_AIOMYSQL:
 
 
 def create_mysql_engine(
-    online_conn: Any, external: bool, options: Optional[Dict[str, Any]] = None
+    online_conn: Any, external: bool, options: dict[str, Any] | None = None
 ) -> Any:
     online_options = online_conn.spark_options()
     # Here we are replacing the first part of the string returned by Hopsworks,
@@ -47,7 +47,7 @@ def create_mysql_engine(
         host = variable_api.VariableApi().get_loadbalancer_external_domain("mysqld")
         online_options["url"] = re.sub(
             "://[0-9a-zA-Z.]+:",
-            "://{}:".format(host),
+            f"://{host}:",
             online_options["url"],
         )
 
@@ -71,16 +71,15 @@ def create_mysql_engine(
     elif "pool_recycle" not in options:
         options["pool_recycle"] = 3600
     # default connection pool size kept by engine is 5
-    sql_alchemy_engine = create_engine(sql_alchemy_conn_str, **options)
-    return sql_alchemy_engine
+    return create_engine(sql_alchemy_conn_str, **options)
 
 
 async def create_async_engine(
     online_conn: Any,
     external: bool,
     default_min_size: int,
-    options: Optional[Dict[str, Any]] = None,
-    hostname: Optional[str] = None,
+    options: dict[str, Any] | None = None,
+    hostname: str | None = None,
 ) -> Any:
     try:
         loop = asyncio.get_running_loop()
@@ -104,7 +103,7 @@ async def create_async_engine(
         options = {}
 
     # create a aiomysql connection pool
-    pool = await async_create_engine(
+    return await async_create_engine(
         host=hostname,
         port=3306,
         user=online_options["user"],
@@ -116,4 +115,3 @@ async def create_async_engine(
         pool_recycle=options.get("pool_recycle", 14400),
         autocommit=options.get("autocommit", True),
     )
-    return pool

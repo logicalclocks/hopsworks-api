@@ -94,6 +94,7 @@ class ProjectResources:
 
         Args:
             name (str): The name of the project.
+            ctx (Context | None): The MCP context, provided automatically.
 
         Returns:
             Project: The project details or an error message.

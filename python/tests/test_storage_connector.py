@@ -125,7 +125,7 @@ class TestS3Connector:
         result = sc._get_path("some/location")
 
         # assert
-        assert "s3://test-bucket/some/location" == result
+        assert result == "s3://test-bucket/some/location"
 
     def test_get_path_storage_connector_with_path(self, mocker):
         mocker.patch("hsfs.engine.get_instance", return_value=spark.Engine())
@@ -141,7 +141,7 @@ class TestS3Connector:
         result = sc._get_path("some/location")
 
         # assert
-        assert "s3://test-bucket/abc/def/some/location" == result
+        assert result == "s3://test-bucket/abc/def/some/location"
 
 
 class TestRedshiftConnector:

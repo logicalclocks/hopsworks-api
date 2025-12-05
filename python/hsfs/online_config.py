@@ -15,19 +15,17 @@
 #
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
 import humps
 
 
 class OnlineConfig:
-    """
-    Metadata object used to provide online Feature Store configuration information for a feature group.
-    """
+    """Metadata object used to provide online Feature Store configuration information for a feature group."""
 
     def __init__(
         self,
-        online_comments: List[str] = None,
+        online_comments: list[str] = None,
         table_space: str = None,
         **kwargs,
     ):
@@ -35,7 +33,7 @@ class OnlineConfig:
         self._table_space = table_space
 
     @classmethod
-    def from_response_json(cls, json_dict: Dict[str, Any]) -> "OnlineConfig":
+    def from_response_json(cls, json_dict: dict[str, Any]) -> OnlineConfig:
         if json_dict is None:
             return None
 
@@ -49,12 +47,12 @@ class OnlineConfig:
         }
 
     @property
-    def online_comments(self) -> List[str]:
+    def online_comments(self) -> list[str]:
         """List of comments applied to online feature store table."""
         return self._online_comments
 
     @online_comments.setter
-    def online_comments(self, online_comments: List[str]) -> None:
+    def online_comments(self, online_comments: list[str]) -> None:
         self._online_comments = online_comments
 
     @property

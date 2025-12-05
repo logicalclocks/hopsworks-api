@@ -13,9 +13,9 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import json
-from typing import Optional
 
 import humps
 from hopsworks_common import util
@@ -35,8 +35,7 @@ class Creator:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     @property
     def username(self) -> str:
@@ -86,8 +85,7 @@ class Tag:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     @property
     def key(self) -> str:
@@ -125,8 +123,7 @@ class FeatureHighlights:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     @property
     def name(self) -> str:
@@ -179,8 +176,7 @@ class Highlight:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     @property
     def name(self) -> str:
@@ -193,17 +189,17 @@ class Highlight:
         return self._description
 
     @property
-    def features(self) -> Optional[list]:
+    def features(self) -> list | None:
         """List of features."""
         return self._features
 
     @property
-    def tags(self) -> Optional[list]:
+    def tags(self) -> list | None:
         """List of tags."""
         return self._tags
 
     @property
-    def other_xattrs(self) -> Optional[dict]:
+    def other_xattrs(self) -> dict | None:
         """Other xattrs."""
         return self._other_xattrs
 
@@ -262,8 +258,7 @@ class FeaturestoreResult:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     @property
     def name(self) -> str:
@@ -301,17 +296,17 @@ class FeaturestoreResult:
         return self._parent_project_name
 
     @property
-    def access_projects(self) -> Optional[dict]:
+    def access_projects(self) -> dict | None:
         """Projects that can access this result."""
         return self._access_projects
 
     @property
-    def highlights(self) -> Optional[Highlight]:
+    def highlights(self) -> Highlight | None:
         """Highlights of the result."""
         return self._highlights
 
     @property
-    def creator(self) -> Optional[Creator]:
+    def creator(self) -> Creator | None:
         """Creator of the result."""
         return self._creator
 
@@ -381,12 +376,12 @@ class FeatureResult(FeaturestoreResult):
         self._feature_group_api = feature_group_api.FeatureGroupApi()
 
     def get_feature_group(self):
-        """
-        Get the feature group instance associated with this feature.
+        """Get the feature group instance associated with this feature.
 
-        # Returns:
+        Returns:
             FeatureGroup: The feature group instance.
-        # Raises:
+
+        Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._feature_group_api.get(
@@ -394,12 +389,12 @@ class FeatureResult(FeaturestoreResult):
         )
 
     def get_feature(self):
-        """
-        Get the feature instance associated with this feature result.
+        """Get the feature instance associated with this feature result.
 
-        # Returns:
+        Returns:
             Feature: The feature instance.
-        # Raises:
+
+        Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         fg = self._feature_group_api.get(
@@ -469,12 +464,12 @@ class FeatureGroupResult(FeaturestoreResult):
         )
 
     def get_feature_group(self):
-        """
-        Get the feature group instance associated with this feature group result.
+        """Get the feature group instance associated with this feature group result.
 
-        # Returns:
+        Returns:
             FeatureGroup: The feature group instance.
-        # Raises:
+
+        Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         from hsfs.core import feature_group_api
@@ -519,12 +514,12 @@ class FeatureViewResult(FeaturestoreResult):
         )
 
     def get_feature_view(self):
-        """
-        Get the feature view instance associated with this feature view result.
+        """Get the feature view instance associated with this feature view result.
 
-        # Returns:
+        Returns:
             FeatureView: The feature view instance.
-        # Raises:
+
+        Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         from hsfs.core import feature_view_api
@@ -569,12 +564,12 @@ class TrainingDatasetResult(FeaturestoreResult):
         )
 
     def get_training_dataset(self):
-        """
-        Get the training dataset instance associated with this training dataset result.
+        """Get the training dataset instance associated with this training dataset result.
 
-        # Returns:
+        Returns:
             TrainingDataset: The training dataset instance.
-        # Raises:
+
+        Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         from hsfs.core import training_dataset_api
@@ -622,66 +617,65 @@ class FeaturestoreSearchResultBase:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     @property
-    def featuregroups(self) -> Optional[list]:
+    def featuregroups(self) -> list | None:
         """List of FeatureGroupResult."""
         return self._featuregroups
 
     @property
-    def feature_views(self) -> Optional[list]:
+    def feature_views(self) -> list | None:
         """List of FeatureViewResult."""
         return self._feature_views
 
     @property
-    def trainingdatasets(self) -> Optional[list]:
+    def trainingdatasets(self) -> list | None:
         """List of TrainingDatasetResult."""
         return self._trainingdatasets
 
     @property
-    def features(self) -> Optional[list]:
+    def features(self) -> list | None:
         """List of FeatureResult."""
         return self._features
 
     @property
-    def featuregroups_from(self) -> Optional[list]:
+    def featuregroups_from(self) -> list | None:
         """Results from offset."""
         return self._featuregroups_from
 
     @property
-    def featuregroups_total(self) -> Optional[list]:
+    def featuregroups_total(self) -> list | None:
         """Total feature groups found."""
         return self._featuregroups_total
 
     @property
-    def feature_views_from(self) -> Optional[list]:
+    def feature_views_from(self) -> list | None:
         """Results from offset."""
         return self._feature_views_from
 
     @property
-    def feature_views_total(self) -> Optional[list]:
+    def feature_views_total(self) -> list | None:
         """Total feature views found."""
         return self._feature_views_total
 
     @property
-    def trainingdatasets_from(self) -> Optional[list]:
+    def trainingdatasets_from(self) -> list | None:
         """Results from offset."""
         return self._trainingdatasets_from
 
     @property
-    def trainingdatasets_total(self) -> Optional[list]:
+    def trainingdatasets_total(self) -> list | None:
         """Total training datasets found."""
         return self._trainingdatasets_total
 
     @property
-    def features_from(self) -> Optional[list]:
+    def features_from(self) -> list | None:
         """Features from offset."""
         return self._features_from
 
     @property
-    def features_total(self) -> Optional[list]:
+    def features_total(self) -> list | None:
         """Total features found."""
         return self._features_total
 
@@ -952,13 +946,11 @@ class FeaturestoreSearchResultByTagKey(FeaturestoreSearchResultBase):
                 if "highlights" in fg
                 and "tags" in fg["highlights"]
                 and any(
-                    [
-                        "<em>" in val.split(":")[0]
-                        for tag in fg["highlights"]["tags"]
-                        if "value" in tag and isinstance(tag["value"], str)
-                        for val in tag["value"].split(",")
-                        if ":" in val
-                    ]
+                    "<em>" in val.split(":")[0]
+                    for tag in fg["highlights"]["tags"]
+                    if "value" in tag and isinstance(tag["value"], str)
+                    for val in tag["value"].split(",")
+                    if ":" in val
                 )
             ]
             if featuregroups
@@ -974,13 +966,11 @@ class FeaturestoreSearchResultByTagKey(FeaturestoreSearchResultBase):
                     "value" in tag and tag["value"] for tag in fv["highlights"]["tags"]
                 )
                 and any(
-                    [
-                        "<em>" in val.split(":")[0]
-                        for tag in fv["highlights"]["tags"]
-                        if "value" in tag and isinstance(tag["value"], str)
-                        for val in tag["value"].split(",")
-                        if ":" in val
-                    ]
+                    "<em>" in val.split(":")[0]
+                    for tag in fv["highlights"]["tags"]
+                    if "value" in tag and isinstance(tag["value"], str)
+                    for val in tag["value"].split(",")
+                    if ":" in val
                 )
             ]
             if feature_views
@@ -996,13 +986,11 @@ class FeaturestoreSearchResultByTagKey(FeaturestoreSearchResultBase):
                     "value" in tag and tag["value"] for tag in td["highlights"]["tags"]
                 )
                 and any(
-                    [
-                        "<em>" in val.split(":")[0]
-                        for tag in td["highlights"]["tags"]
-                        if "value" in tag and isinstance(tag["value"], str)
-                        for val in tag["value"].split(",")
-                        if ":" in val
-                    ]
+                    "<em>" in val.split(":")[0]
+                    for tag in td["highlights"]["tags"]
+                    if "value" in tag and isinstance(tag["value"], str)
+                    for val in tag["value"].split(",")
+                    if ":" in val
                 )
             ]
             if trainingdatasets
@@ -1018,13 +1006,11 @@ class FeaturestoreSearchResultByTagKey(FeaturestoreSearchResultBase):
                     "value" in tag and tag["value"] for tag in f["highlights"]["tags"]
                 )
                 and any(
-                    [
-                        "<em>" in val.split(":")[0]
-                        for tag in f["highlights"]["tags"]
-                        if "value" in tag and isinstance(tag["value"], str)
-                        for val in tag["value"].split(",")
-                        if ":" in val
-                    ]
+                    "<em>" in val.split(":")[0]
+                    for tag in f["highlights"]["tags"]
+                    if "value" in tag and isinstance(tag["value"], str)
+                    for val in tag["value"].split(",")
+                    if ":" in val
                 )
             ]
             if features
@@ -1070,13 +1056,11 @@ class FeaturestoreSearchResultByTagValue(FeaturestoreSearchResultBase):
                 if "highlights" in fg
                 and "tags" in fg["highlights"]
                 and any(
-                    [
-                        "<em>" in val.split(":")[1]
-                        for tag in fg["highlights"]["tags"]
-                        if "value" in tag and isinstance(tag["value"], str)
-                        for val in tag["value"].split(",")
-                        if ":" in val
-                    ]
+                    "<em>" in val.split(":")[1]
+                    for tag in fg["highlights"]["tags"]
+                    if "value" in tag and isinstance(tag["value"], str)
+                    for val in tag["value"].split(",")
+                    if ":" in val
                 )
             ]
             if featuregroups
@@ -1089,13 +1073,11 @@ class FeaturestoreSearchResultByTagValue(FeaturestoreSearchResultBase):
                 if "highlights" in fv
                 and "tags" in fv["highlights"]
                 and any(
-                    [
-                        "<em>" in val.split(":")[1]
-                        for tag in fv["highlights"]["tags"]
-                        if "value" in tag and isinstance(tag["value"], str)
-                        for val in tag["value"].split(",")
-                        if ":" in val
-                    ]
+                    "<em>" in val.split(":")[1]
+                    for tag in fv["highlights"]["tags"]
+                    if "value" in tag and isinstance(tag["value"], str)
+                    for val in tag["value"].split(",")
+                    if ":" in val
                 )
             ]
             if feature_views
@@ -1108,13 +1090,11 @@ class FeaturestoreSearchResultByTagValue(FeaturestoreSearchResultBase):
                 if "highlights" in td
                 and "tags" in td["highlights"]
                 and any(
-                    [
-                        "<em>" in val.split(":")[1]
-                        for tag in td["highlights"]["tags"]
-                        if "value" in tag and isinstance(tag["value"], str)
-                        for val in tag["value"].split(",")
-                        if ":" in val
-                    ]
+                    "<em>" in val.split(":")[1]
+                    for tag in td["highlights"]["tags"]
+                    if "value" in tag and isinstance(tag["value"], str)
+                    for val in tag["value"].split(",")
+                    if ":" in val
                 )
             ]
             if trainingdatasets
@@ -1127,13 +1107,11 @@ class FeaturestoreSearchResultByTagValue(FeaturestoreSearchResultBase):
                 if "highlights" in f
                 and "tags" in f["highlights"]
                 and any(
-                    [
-                        "<em>" in val.split(":")[1]
-                        for tag in f["highlights"]["tags"]
-                        if "value" in tag and isinstance(tag["value"], str)
-                        for val in tag["value"].split(",")
-                        if ":" in val
-                    ]
+                    "<em>" in val.split(":")[1]
+                    for tag in f["highlights"]["tags"]
+                    if "value" in tag and isinstance(tag["value"], str)
+                    for val in tag["value"].split(",")
+                    if ":" in val
                 )
             ]
             if features
@@ -1239,17 +1217,17 @@ class FeatureGroupSearchResult:
         self._featuregroups_total = result.featuregroups_total
 
     @property
-    def featuregroups(self) -> Optional[list]:
+    def featuregroups(self) -> list | None:
         """List of FeatureGroupResult."""
         return self._featuregroups
 
     @property
-    def featuregroups_from(self) -> Optional[list]:
+    def featuregroups_from(self) -> list | None:
         """Result from offset."""
         return self._featuregroups_from
 
     @property
-    def featuregroups_total(self) -> Optional[list]:
+    def featuregroups_total(self) -> list | None:
         """Total feature groups found."""
         return self._featuregroups_total
 
@@ -1277,17 +1255,17 @@ class FeatureViewSearchResult:
         self._feature_views_total = result.feature_views_total
 
     @property
-    def feature_views(self) -> Optional[list]:
+    def feature_views(self) -> list | None:
         """List of FeatureViewResult."""
         return self._feature_views
 
     @property
-    def feature_views_from(self) -> Optional[list]:
+    def feature_views_from(self) -> list | None:
         """Result from offset."""
         return self._feature_views_from
 
     @property
-    def feature_views_total(self) -> Optional[list]:
+    def feature_views_total(self) -> list | None:
         """Total feature views found."""
         return self._feature_views_total
 
@@ -1315,17 +1293,17 @@ class FeatureSearchResult:
         self._features_total = result.features_total
 
     @property
-    def features(self) -> Optional[list]:
+    def features(self) -> list | None:
         """List of FeatureResult."""
         return self._features
 
     @property
-    def features_from(self) -> Optional[list]:
+    def features_from(self) -> list | None:
         """Result from offset."""
         return self._features_from
 
     @property
-    def features_total(self) -> Optional[list]:
+    def features_total(self) -> list | None:
         """Total features found."""
         return self._features_total
 
@@ -1353,17 +1331,17 @@ class TrainingDatasetSearchResult:
         self._trainingdatasets_total = result.trainingdatasets_total
 
     @property
-    def trainingdatasets(self) -> Optional[list]:
+    def trainingdatasets(self) -> list | None:
         """List of TrainingDatasetResult."""
         return self._trainingdatasets
 
     @property
-    def trainingdatasets_from(self) -> Optional[list]:
+    def trainingdatasets_from(self) -> list | None:
         """Result from offset."""
         return self._trainingdatasets_from
 
     @property
-    def trainingdatasets_total(self) -> Optional[list]:
+    def trainingdatasets_total(self) -> list | None:
         """Total training datasets found."""
         return self._trainingdatasets_total
 

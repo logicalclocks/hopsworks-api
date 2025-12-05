@@ -69,6 +69,7 @@ class FeatureStoreResources:
 
         Args:
             name (str): The name of the feature store.
+            ctx: The MCP context, provided automatically.
 
         Returns:
             FeatureStore: The feature store information or an error message.

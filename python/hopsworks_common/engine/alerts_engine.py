@@ -13,11 +13,11 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import logging
 import time
 from datetime import datetime
-from typing import List, Optional
 
 from hopsworks_common import alert_receiver, alert_route, client
 
@@ -26,17 +26,20 @@ class AlertsEngine:
     def __init__(self):
         self._log = logging.getLogger(__name__)
 
-    def await_receiver(self, receiver_name, timeout: Optional[float] = 120):
-        """
-        Waits for a receiver to be created. This is useful when creating a new receiver
-        and you want to ensure that it is available before proceeding with other operations.
-        :param receiver_name: The name of the receiver to wait for.
-        :type receiver_name: str
-        :param timeout: The maximum time to wait for the receiver to be created, in seconds.
-        :type timeout: float
-        :raises TimeoutError: If the receiver is not created within the specified timeout.
-        :return: The created receiver.
-        :rtype: AlertReceiver
+    def await_receiver(
+        self, receiver_name, timeout: float | None = 120
+    ) -> alert_receiver.AlertReceiver:
+        """Waits for a receiver to be created. This is useful when creating a new receiver and you want to ensure that it is available before proceeding with other operations.
+
+        Parameters:
+            receiver_name: The name of the receiver to wait for.
+            timeout: The maximum time to wait for the receiver to be created, in seconds.
+
+        Returns:
+            The created receiver.
+
+        Raises:
+            TimeoutError: If the receiver is not created within the specified timeout.
         """
         if receiver_name is None:
             raise ValueError("Receiver name cannot be None.")
@@ -79,18 +82,20 @@ class AlertsEngine:
         return None
 
     def await_route(
-        self, receiver_name: str, match: List[dict], timeout: Optional[float] = 120
-    ):
-        """
-        Waits for a route to be created. This is useful when creating a new route
-        and you want to ensure that it is available before proceeding with other operations.
-        :param receiver_name: The name of the receiver to wait for.
-        :match: The match criteria for the route.
-        :param timeout: The maximum time to wait for the route to be created, in seconds.
-        :type timeout: float
-        :raises TimeoutError: If the route is not created within the specified timeout.
-        :return: The created route.
-        :rtype: AlertRoute
+        self, receiver_name: str, match: list[dict], timeout: float | None = 120
+    ) -> alert_route.AlertRoute:
+        """Waits for a route to be created. This is useful when creating a new route and you want to ensure that it is available before proceeding with other operations.
+
+        Parameters:
+            receiver_name: The name of the receiver to wait for.
+            match: The match criteria for the route.
+            timeout: The maximum time to wait for the route to be created, in seconds.
+
+        Returns:
+            The created route.
+
+        Raises:
+            TimeoutError: If the route is not created within the specified timeout.
         """
         if receiver_name is None:
             raise ValueError("Receiver name cannot be None.")
@@ -113,7 +118,7 @@ class AlertsEngine:
         self._log.info("Route created.")
         return route
 
-    def _get_route(self, name: str, match: List[dict]):
+    def _get_route(self, name: str, match: list[dict]):
         _client = client.get_instance()
         # should only wait for project receivers
         if not name.startswith(f"{_client._project_name}__"):

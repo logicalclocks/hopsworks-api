@@ -66,7 +66,7 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
         if not feature_group.online_enabled:
             raise FeatureStoreException(
                 "Online storage is not enabled for this feature group. External feature groups can only store data in"
-                + " online storage. To create an offline only external feature group, use the `save` method."
+                " online storage. To create an offline only external feature group, use the `save` method."
             )
 
         schema = engine.get_instance().parse_schema_feature_group(feature_dataframe)
@@ -96,8 +96,8 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
             )
             raise DataValidationException(
                 "Data validation failed while validation ingestion policy set to strict, "
-                + f"insertion to {feature_group.name} was aborted.\n"
-                + f"You can check a summary or download your report at {feature_group_url}"
+                f"insertion to {feature_group.name} was aborted.\n"
+                f"You can check a summary or download your report at {feature_group_url}"
             )
 
         return (

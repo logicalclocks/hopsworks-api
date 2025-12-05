@@ -15,7 +15,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import humps
 
@@ -23,22 +23,22 @@ import humps
 class Inode:
     def __init__(
         self,
-        attributes: Dict[str, Any],
-        href: Optional[str] = None,
-        zip_state: Optional[str] = None,
-        tags: Optional[Dict[str, Any]] = None,
+        attributes: dict[str, Any],
+        href: str | None = None,
+        zip_state: str | None = None,
+        tags: dict[str, Any] | None = None,
         **kwargs,
     ) -> None:
-        self._name = attributes.get("name", None)
+        self._name = attributes.get("name")
         self._dir = attributes.get("dir", False)
-        self._owner = attributes.get("owner", None)
-        self._path = attributes.get("path", None)
-        self._permission = attributes.get("permission", None)
-        self._modification_time = attributes.get("modification_time", None)
-        self._under_construction = attributes.get("under_construction", None)
+        self._owner = attributes.get("owner")
+        self._path = attributes.get("path")
+        self._permission = attributes.get("permission")
+        self._modification_time = attributes.get("modification_time")
+        self._under_construction = attributes.get("under_construction")
 
     @classmethod
-    def from_response_json(cls, json_dict: Dict[str, Any]) -> List[Inode]:
+    def from_response_json(cls, json_dict: dict[str, Any]) -> list[Inode]:
         json_decamelized = humps.decamelize(json_dict)["items"]
         for inode in json_decamelized:
             _ = inode.pop("type", None)

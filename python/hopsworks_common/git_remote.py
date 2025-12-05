@@ -47,25 +47,24 @@ class GitRemote:
             if json_decamelized["count"] == 0:
                 return []
             return [cls(**remote) for remote in json_decamelized["items"]]
-        else:
-            return cls(**json_decamelized)
+        return cls(**json_decamelized)
 
     @property
     def name(self):
-        """Name of the remote"""
+        """Name of the remote."""
         return self._name
 
     @property
     def url(self):
-        """Url of the remote"""
+        """Url of the remote."""
         return self._url
 
     @usage.method_logger
     def delete(self):
         """Remove the git remote from the repo.
 
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         self._git_remote_api._delete(self._repo_id, self.name)
 

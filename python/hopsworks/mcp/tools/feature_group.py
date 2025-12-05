@@ -13,12 +13,18 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import hopsworks
-from fastmcp import Context
 from hopsworks.mcp.models.feature_group import FeatureGroup, FeatureGroups
 from hopsworks.mcp.utils.tags import TAGS
 from hopsworks_common import client
+
+
+if TYPE_CHECKING:
+    from fastmcp import Context
 
 
 class FeatureGroupTools:
@@ -34,8 +40,7 @@ class FeatureGroupTools:
         )
 
     def _get_feature_groups(self, feature_store, name: str = None) -> FeatureGroups:
-        """
-        Helper method to retrieve feature groups from a feature store.
+        """Helper method to retrieve feature groups from a feature store.
 
         Args:
             feature_store: The feature store instance.
@@ -93,15 +98,16 @@ class FeatureGroupTools:
 
     async def get_feature_groups_in_current_project(
         self,
-        feature_store_project_name: str = None,
+        feature_store_project_name: str | None = None,
         name: str | None = None,
-        ctx: Context = None,
+        ctx: Context | None = None,
     ):
         """Get the feature groups for the current project.
 
-        Args:
+        Parameters:
             feature_store_project_name: Project name of the feature store. If None, uses the default project feature store.
             name: The name of the feature group to retrieve. If None, retrieves all feature groups
+            ctx: The MCP context, provided automatically.
 
         Returns:
             FeatureGroups: List of feature groups in the current project.
@@ -117,16 +123,17 @@ class FeatureGroupTools:
     async def get_feature_groups(
         self,
         project_name: str,
-        feature_store_project_name: str = None,
+        feature_store_project_name: str | None = None,
         name: str | None = None,
-        ctx: Context = None,
+        ctx: Context | None = None,
     ):
         """Get the feature groups for a specific project.
 
-        Args:
+        Parameters:
             project_name: The name of the project.
             feature_store_project_name: Project name of the feature store. If None, uses the default project feature store.
             name: The name of the feature group to retrieve. If None, retrieves all feature groups.
+            ctx: The MCP context, provided automatically.
 
         Returns:
             FeatureGroups: List of feature groups in the specified project.

@@ -76,30 +76,30 @@ class JobSchedule:
 
     @property
     def id(self):
-        """Return the schedule id"""
+        """Return the schedule id."""
         return self._id
 
     @property
     def start_date_time(self):
-        """Return the schedule start time"""
+        """Return the schedule start time."""
         return self._start_date_time
 
     @property
     def end_date_time(self):
-        """Return the schedule end time"""
+        """Return the schedule end time."""
         return self._end_date_time
 
     @property
     def enabled(self):
-        """Return whether the schedule is enabled or not"""
+        """Return whether the schedule is enabled or not."""
         return self._enabled
 
     @property
     def cron_expression(self):
-        """Return the schedule cron expression"""
+        """Return the schedule cron expression."""
         return self._cron_expression
 
     @property
     def next_execution_date_time(self):
-        """Return the next execution time"""
+        """Return the next execution time."""
         return self._next_execution_date_time

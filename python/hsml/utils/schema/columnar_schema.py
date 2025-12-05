@@ -14,16 +14,15 @@
 #   limitations under the License.
 #
 
+import contextlib
 import importlib
 
 import pandas
 from hsml.utils.schema.column import Column
 
 
-try:
+with contextlib.suppress(ImportError):
     import pyspark
-except ImportError:
-    pass
 
 
 class ColumnarSchema:
@@ -48,7 +47,7 @@ class ColumnarSchema:
             self.columns = self._convert_td_to_schema(columnar_obj)
         else:
             raise TypeError(
-                "{} is not supported in a columnar schema.".format(type(columnar_obj))
+                f"{type(columnar_obj)} is not supported in a columnar schema."
             )
 
     def _convert_list_to_schema(self, columnar_obj):
@@ -99,8 +98,6 @@ class ColumnarSchema:
         if "type" in columnar_obj:
             type = columnar_obj["type"]
         else:
-            raise ValueError(
-                "Mandatory 'type' key missing from entry {}".format(columnar_obj)
-            )
+            raise ValueError(f"Mandatory 'type' key missing from entry {columnar_obj}")
 
         return Column(type, name=name, description=description)

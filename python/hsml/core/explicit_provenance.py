@@ -17,7 +17,6 @@
 import json
 import logging
 from enum import Enum
-from typing import Set
 
 import humps
 
@@ -63,7 +62,7 @@ class Artifact:
 
     @property
     def version(self):
-        """Version of the artifact"""
+        """Version of the artifact."""
         return self._version
 
     def __str__(self):
@@ -128,36 +127,32 @@ class Links:
 
     @property
     def deleted(self):
-        """List of [Artifact objects] which contains
-        minimal information (name, version) about the entities
-        (feature views, training datasets) they represent.
+        """List of [Artifact objects] which contains minimal information (name, version) about the entities (feature views, training datasets) they represent.
+
         These entities have been removed from the feature store.
         """
         return self._deleted
 
     @property
     def inaccessible(self):
-        """List of [Artifact objects] which contains
-        minimal information (name, version) about the entities
-        (feature views, training datasets) they represent.
-        These entities exist in the feature store, however the user
-        does not have access to them anymore.
+        """List of [Artifact objects] which contains minimal information (name, version) about the entities (feature views, training datasets) they represent.
+
+        These entities exist in the feature store, however the user does not have access to them anymore.
         """
         return self._inaccessible
 
     @property
     def accessible(self):
-        """List of [FeatureView|TrainingDataset objects] objects
-        which are part of the provenance graph requested. These entities
-        exist in the feature store and the user has access to them.
+        """List of [FeatureView|TrainingDataset objects] objects which are part of the provenance graph requested.
+
+        These entities exist in the feature store and the user has access to them.
         """
         return self._accessible
 
     @property
     def faulty(self):
-        """List of [Artifact objects] which contains
-        minimal information (name, version) about the entities
-        (feature views, training datasets) they represent.
+        """List of [Artifact objects] which contains minimal information (name, version) about the entities (feature views, training datasets) they represent.
+
         These entities exist in the feature store, however they are corrupted.
         """
         return self._faulty
@@ -191,13 +186,13 @@ class Links:
     def get_one_accessible_parent(links):
         if links is None:
             _logger.info("There is no parent information")
-            return
-        elif links.inaccessible or links.deleted:
+            return None
+        if links.inaccessible or links.deleted:
             _logger.info(
                 "The parent is deleted or inaccessible. For more details get the full provenance from `_provenance` method"
             )
             return None
-        elif links.accessible:
+        if links.accessible:
             if len(links.accessible) > 1:
                 msg = "Backend inconsistency - provenance returned more than one parent"
                 raise Exception(msg)
@@ -206,12 +201,11 @@ class Links:
                 msg = "The returned object is not a valid object. For more details get the full provenance from `_provenance` method"
                 raise Exception(msg)
             return parent
-        else:
-            _logger.info("There is no parent information")
-            return None
+        _logger.info("There is no parent information")
+        return None
 
     @staticmethod
-    def __parse_feature_views(links_json: dict, artifacts: Set[str]):
+    def __parse_feature_views(links_json: dict, artifacts: set[str]):
         from hsfs import feature_view
         from hsfs.core import explicit_provenance as hsfs_explicit_provenance
 
@@ -252,7 +246,7 @@ class Links:
         return links
 
     @staticmethod
-    def __parse_training_datasets(links_json: dict, artifacts: Set[str]):
+    def __parse_training_datasets(links_json: dict, artifacts: set[str]):
         from hsfs import training_dataset
         from hsfs.core import explicit_provenance as hsfs_explicit_provenance
 
@@ -286,18 +280,18 @@ class Links:
 
     @staticmethod
     def from_response_json(json_dict: dict, direction: Direction, artifact: Type):
-        """Parse explicit links from json response. There are three types of
-        Links: UpstreamFeatureGroups, DownstreamFeatureGroups, DownstreamFeatureViews
+        """Parse explicit links from json response.
 
-        # Arguments
+        There are three types of Links: UpstreamFeatureGroups, DownstreamFeatureGroups, DownstreamFeatureViews.
+
+        Parameters:
             links_json: json response from the explicit provenance endpoint
             direction: subset of links to parse - UPSTREAM/DOWNSTREAM
             type: subset of links to parse - FEATURE_VIEW/TRAINING_DATASET/MODEL
 
-        # Returns
+        Returns:
             A ProvenanceLink object for the selected parse type.
         """
-
         import importlib.util
 
         if not importlib.util.find_spec("hsfs"):
@@ -319,10 +313,9 @@ class Links:
 
         hopsworks._connected_project.get_feature_store()
 
-        links = Links.__from_response_json_feature_store_artifacts(
+        return Links.__from_response_json_feature_store_artifacts(
             json_dict, direction, artifact
         )
-        return links
 
     @staticmethod
     def __from_response_json_feature_store_artifacts(
@@ -337,12 +330,13 @@ class Links:
                         "FEATURE_VIEW",
                     },
                 )
-            elif artifact == Links.Type.TRAINING_DATASET:
+            if artifact == Links.Type.TRAINING_DATASET:
                 return Links.__parse_training_datasets(
                     links_json["upstream"], {"TRAINING_DATASET"}
                 )
         else:
             return Links()
+        return None
 
 
 class ProvenanceEncoder(json.JSONEncoder):
@@ -354,23 +348,22 @@ class ProvenanceEncoder(json.JSONEncoder):
                 "deleted": obj.deleted,
                 "faulty": obj.faulty,
             }
-        else:
-            import importlib.util
+        import importlib.util
 
-            if importlib.util.find_spec("hsfs"):
-                from hsfs import feature_view
-                from hsfs.core import explicit_provenance as hsfs_explicit_provenance
+        if importlib.util.find_spec("hsfs"):
+            from hsfs import feature_view
+            from hsfs.core import explicit_provenance as hsfs_explicit_provenance
 
-                if isinstance(
-                    obj,
-                    (
-                        feature_view.FeatureView,
-                        hsfs_explicit_provenance.Artifact,
-                    ),
-                ):
-                    return {
-                        "feature_store_name": obj.feature_store_name,
-                        "name": obj.name,
-                        "version": obj.version,
-                    }
-            return json.JSONEncoder.default(self, obj)
+            if isinstance(
+                obj,
+                (
+                    feature_view.FeatureView,
+                    hsfs_explicit_provenance.Artifact,
+                ),
+            ):
+                return {
+                    "feature_store_name": obj.feature_store_name,
+                    "name": obj.name,
+                    "version": obj.version,
+                }
+        return json.JSONEncoder.default(self, obj)

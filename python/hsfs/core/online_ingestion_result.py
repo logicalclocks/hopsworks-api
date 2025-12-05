@@ -16,15 +16,14 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict
+from typing import Any
 
 import humps
 from hopsworks_common import util
 
 
 class OnlineIngestionResult:
-    """
-    Metadata object used to provide Online Ingestion Batch Result information.
+    """Metadata object used to provide Online Ingestion Batch Result information.
 
     This class encapsulates the result of a single batch operation during online ingestion,
     including the ingestion ID, status, and number of rows processed.
@@ -37,10 +36,9 @@ class OnlineIngestionResult:
         rows: int = None,
         **kwargs,
     ):
-        """
-        Initialize an OnlineIngestionResult object.
+        """Initialize an OnlineIngestionResult object.
 
-        # Arguments
+        Parameters:
             online_ingestion_id (int, optional): The unique identifier for the online ingestion batch.
             status (str, optional): The status of the ingestion batch (e.g., "UPSERTED", "FAILED").
             rows (int, optional): The number of rows processed in this batch.
@@ -50,14 +48,13 @@ class OnlineIngestionResult:
         self._rows = rows
 
     @classmethod
-    def from_response_json(cls, json_dict: Dict[str, Any]) -> "OnlineIngestionResult":
-        """
-        Create an OnlineIngestionResult object (or list of objects) from a JSON response.
+    def from_response_json(cls, json_dict: dict[str, Any]) -> OnlineIngestionResult:
+        """Create an OnlineIngestionResult object (or list of objects) from a JSON response.
 
-        # Arguments
+        Parameters:
             json_dict (Dict[str, Any]): The JSON dictionary from the API response.
 
-        # Returns
+        Returns:
             OnlineIngestionResult or List[OnlineIngestionResult] or None: The created object(s), or None if input is None.
         """
         if json_dict is None:
@@ -67,18 +64,16 @@ class OnlineIngestionResult:
 
         if "count" not in json_decamelized:
             return cls(**json_decamelized)
-        elif json_decamelized["count"] == 1:
+        if json_decamelized["count"] == 1:
             return cls(**json_decamelized["items"][0])
-        elif json_decamelized["count"] > 1:
+        if json_decamelized["count"] > 1:
             return [cls(**item) for item in json_decamelized["items"]]
-        else:
-            return None
+        return None
 
     def to_dict(self):
-        """
-        Convert the OnlineIngestionResult object to a dictionary.
+        """Convert the OnlineIngestionResult object to a dictionary.
 
-        # Returns
+        Returns:
             dict: Dictionary representation of the object.
         """
         return {
@@ -88,40 +83,36 @@ class OnlineIngestionResult:
         }
 
     def json(self):
-        """
-        Serialize the OnlineIngestionResult object to a JSON string.
+        """Serialize the OnlineIngestionResult object to a JSON string.
 
-        # Returns
+        Returns:
             str: JSON string representation of the object.
         """
         return json.dumps(self, cls=util.Encoder)
 
     @property
     def online_ingestion_id(self) -> int:
-        """
-        Get the unique identifier for the online ingestion batch.
+        """Get the unique identifier for the online ingestion batch.
 
-        # Returns
+        Returns:
             int: The online ingestion batch ID.
         """
         return self._online_ingestion_id
 
     @property
     def status(self) -> str:
-        """
-        Get the status of the ingestion batch.
+        """Get the status of the ingestion batch.
 
-        # Returns
+        Returns:
             str: The status of the batch (e.g., "UPSERTED", "FAILED").
         """
         return self._status
 
     @property
     def rows(self) -> int:
-        """
-        Get the number of rows processed in this batch.
+        """Get the number of rows processed in this batch.
 
-        # Returns
+        Returns:
             int: The number of rows.
         """
         return self._rows

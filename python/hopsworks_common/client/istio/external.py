@@ -49,7 +49,7 @@ class Client(istio.Client):
         self._connected = False
 
     def replace_public_host(self, url):
-        """no need to replace as we are already in external client"""
+        """No need to replace as we are already in external client."""
         return url
 
     def _is_external(self):

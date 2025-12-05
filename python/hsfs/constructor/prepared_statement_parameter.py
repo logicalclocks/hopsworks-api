@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Optional
+from typing import Any
 
 import humps
 from hsfs import util
@@ -24,10 +24,10 @@ from hsfs import util
 class PreparedStatementParameter:
     def __init__(
         self,
-        name: Optional[str] = None,
-        index: Optional[int] = None,
-        type: Optional[str] = None,
-        href: Optional[str] = None,
+        name: str | None = None,
+        index: int | None = None,
+        type: str | None = None,
+        href: str | None = None,
         **kwargs,
     ) -> None:
         self._name = name
@@ -35,13 +35,13 @@ class PreparedStatementParameter:
 
     @classmethod
     def from_response_json(
-        cls, json_dict: Dict[str, Any]
+        cls, json_dict: dict[str, Any]
     ) -> PreparedStatementParameter:
         json_decamelized = humps.decamelize(json_dict)
         return cls(**json_decamelized)
 
     def update_from_response_json(
-        self, json_dict: Dict[str, Any]
+        self, json_dict: dict[str, Any]
     ) -> PreparedStatementParameter:
         json_decamelized = humps.decamelize(json_dict)
         self.__init__(**json_decamelized)
@@ -50,24 +50,24 @@ class PreparedStatementParameter:
     def json(self) -> str:
         return json.dumps(self, cls=util.Encoder)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {"name": self._name, "index": self._index}
 
     def __repr__(self) -> str:
         return humps.decamelize(json.dumps(self.to_dict(), sort_keys=True, indent=4))
 
     @property
-    def name(self) -> Optional[str]:
+    def name(self) -> str | None:
         return self._name
 
     @property
-    def index(self) -> Optional[int]:
+    def index(self) -> int | None:
         return self._index
 
     @name.setter
-    def name(self, name: Optional[str]) -> None:
+    def name(self, name: str | None) -> None:
         self._name = name
 
     @index.setter
-    def prepared_statement_index(self, index: Optional[int]) -> None:
+    def prepared_statement_index(self, index: int | None) -> None:
         self._index = index

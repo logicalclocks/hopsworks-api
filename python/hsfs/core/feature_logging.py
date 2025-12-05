@@ -1,25 +1,28 @@
-import datetime
+from __future__ import annotations
+
 import json
 import warnings
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
 
 import humps
 from hsfs import feature_group, util
 from hsfs.feature import Feature
 
 
+if TYPE_CHECKING:
+    import datetime
+
+
 class LoggingMetaData:
-    """
-    Class that holds the data for feature logging.
-    """
+    """Class that holds the data for feature logging."""
 
     def __init__(self):
-        self.untransformed_features: Optional[list[list[Any]]] = []
+        self.untransformed_features: list[list[Any]] | None = []
         self.transformed_features: list[list[Any]] = []
-        self.serving_keys: list[Dict[str, Any]] = []
-        self.request_parameters: list[Dict[str, Any]] = []
+        self.serving_keys: list[dict[str, Any]] = []
+        self.request_parameters: list[dict[str, Any]] = []
         self.event_time: list[datetime.datetime] = []
-        self.inference_helper: list[Dict[str, Any]] = []
+        self.inference_helper: list[dict[str, Any]] = []
 
     def __repr__(self):
         return (
@@ -38,14 +41,13 @@ class FeatureLogging:
     def __init__(
         self,
         id: int = None,
-        transformed_features: "feature_group.FeatureGroup" = None,
-        untransformed_features: "feature_group.FeatureGroup" = None,
-        extra_logging_columns: Optional[List[Feature]] = None,
+        transformed_features: feature_group.FeatureGroup = None,
+        untransformed_features: feature_group.FeatureGroup = None,
+        extra_logging_columns: list[Feature] | None = None,
     ):
-        """
-        DTO class for feature logging.
+        """DTO class for feature logging.
 
-        # Arguments
+        Parameters:
             id : `int`. Id of the feature logging object.
             transformed_features : `FeatureGroup`. The feature group containing the transformed features. As of Hopsworks 4.6, transformed and untransformed features are logged in the same feature group. This feature group is maintained for backward compatibility.
             untransformed_features : `FeatureGroup`. The feature group containing the untransformed features.
@@ -57,7 +59,7 @@ class FeatureLogging:
         self._extra_logging_columns = extra_logging_columns
 
     @classmethod
-    def from_response_json(cls, json_dict: Dict[str, Any]) -> "FeatureLogging":
+    def from_response_json(cls, json_dict: dict[str, Any]) -> FeatureLogging:
         from hsfs.feature_group import FeatureGroup  # avoid circular import
 
         json_decamelized = humps.decamelize(json_dict)
@@ -87,22 +89,22 @@ class FeatureLogging:
         return self
 
     @property
-    def transformed_features(self) -> "feature_group.FeatureGroup":
+    def transformed_features(self) -> feature_group.FeatureGroup:
         return self._transformed_features
 
     @property
-    def untransformed_features(self) -> "feature_group.FeatureGroup":
+    def untransformed_features(self) -> feature_group.FeatureGroup:
         return self._untransformed_features
 
     @property
-    def extra_logging_columns(self) -> Optional[List[Feature]]:
+    def extra_logging_columns(self) -> list[Feature] | None:
         return self._extra_logging_columns
 
-    def get_feature_group(self, transformed: Optional[bool] = None):
+    def get_feature_group(self, transformed: bool | None = None):
         if transformed is not None:
             warnings.warn(
                 "Providing ´transformed´ while fetching logging feature group is deprecated"
-                + " and will be dropped in future versions. Transformed and untransformed features are now logged in the same feature group.",
+                " and will be dropped in future versions. Transformed and untransformed features are now logged in the same feature group.",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -110,8 +112,7 @@ class FeatureLogging:
             if self._transformed_features is None:
                 return self._untransformed_features
             return self._transformed_features
-        else:
-            return self._untransformed_features
+        return self._untransformed_features
 
     @property
     def id(self) -> str:
@@ -125,7 +126,7 @@ class FeatureLogging:
             "extraLoggingColumns": self._extra_logging_columns,
         }
 
-    def json(self) -> Dict[str, Any]:
+    def json(self) -> dict[str, Any]:
         return json.dumps(self, cls=util.Encoder)
 
     def __repr__(self):

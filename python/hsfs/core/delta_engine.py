@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import os
 import warnings
-from typing import TYPE_CHECKING, Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 from hopsworks.core import project_api
@@ -77,9 +77,9 @@ class DeltaEngine:
 
     def save_delta_fg(
         self,
-        dataset: Union[pd.DataFrame, pa.Table, pl.DataFrame],
-        write_options: Optional[Dict[str, Any]],
-        validation_id: Optional[int] = None,
+        dataset: pd.DataFrame | pa.Table | pl.DataFrame,
+        write_options: dict[str, Any] | None,
+        validation_id: int | None = None,
     ) -> feature_group_commit.FeatureGroupCommit:
         if self._spark_session is not None:
             _logger.debug(
@@ -99,7 +99,7 @@ class DeltaEngine:
     def register_temporary_table(
         self,
         delta_fg_alias,
-        read_options: Optional[Dict[str, Any]] = None,
+        read_options: dict[str, Any] | None = None,
         is_cdc_query: bool = False,
     ):
         location = self._feature_group.prepare_spark_location()
@@ -128,7 +128,7 @@ class DeltaEngine:
     def _setup_delta_read_opts(
         self,
         delta_fg_alias: hudi_feature_group_alias.HudiFeatureGroupAlias,
-        read_options: Optional[Dict[str, Any]] = None,
+        read_options: dict[str, Any] | None = None,
     ):
         delta_options = {}
         if delta_fg_alias.left_feature_group_end_timestamp is None and (
@@ -165,7 +165,7 @@ class DeltaEngine:
                 delta_options["endingTimestamp"] = _delta_commit_end_time
 
         if read_options:
-            for key in read_options.keys():
+            for key in read_options:
                 if isinstance(key, str) and key.startswith(self.DELTA_DOT_PREFIX):
                     # delta read options do not have the "delta." prefix
                     delta_options[key[len(self.DELTA_DOT_PREFIX) :]] = read_options[key]
@@ -210,27 +210,26 @@ class DeltaEngine:
             raise FeatureStoreException(
                 f"Feature group {self._feature_group.name} is not DELTA enabled "
             )
-        else:
-            source_alias = (
-                f"{self._feature_group.name}_{self._feature_group.version}_source"
-            )
-            updates_alias = (
-                f"{self._feature_group.name}_{self._feature_group.version}_updates"
-            )
-            merge_query_str = self._generate_merge_query(source_alias, updates_alias)
+        source_alias = (
+            f"{self._feature_group.name}_{self._feature_group.version}_source"
+        )
+        updates_alias = (
+            f"{self._feature_group.name}_{self._feature_group.version}_updates"
+        )
+        merge_query_str = self._generate_merge_query(source_alias, updates_alias)
 
-            if self._spark_session is not None:
-                fg_source_table.alias(source_alias).merge(
-                    delete_df.alias(updates_alias), merge_query_str
-                ).whenMatchedDelete().execute()
-            else:
-                fg_source_table.merge(
-                    source=delete_df,
-                    predicate=merge_query_str,
-                    source_alias=updates_alias,
-                    target_alias=source_alias,
-                ).when_matched_delete().execute()
-            fg_commit = self._get_last_commit_metadata(self._spark_session, location)
+        if self._spark_session is not None:
+            fg_source_table.alias(source_alias).merge(
+                delete_df.alias(updates_alias), merge_query_str
+            ).whenMatchedDelete().execute()
+        else:
+            fg_source_table.merge(
+                source=delete_df,
+                predicate=merge_query_str,
+                source_alias=updates_alias,
+                target_alias=source_alias,
+            ).when_matched_delete().execute()
+        fg_commit = self._get_last_commit_metadata(self._spark_session, location)
         return self._feature_group_api.commit(self._feature_group, fg_commit)
 
     def _write_delta_dataset(self, dataset, write_options):
@@ -300,10 +299,9 @@ class DeltaEngine:
                 raise FeatureStoreException(
                     "Failed to write to delta table in external cluster. Cannot get user name for project."
                 )
-            else:
-                project_username = f"{_client.project_name}__{user_name}"
-                _logger.debug(f"Setting LIBHDFS_DEFAULT_USER to {project_username}")
-                os.environ["LIBHDFS_DEFAULT_USER"] = project_username
+            project_username = f"{_client.project_name}__{user_name}"
+            _logger.debug(f"Setting LIBHDFS_DEFAULT_USER to {project_username}")
+            os.environ["LIBHDFS_DEFAULT_USER"] = project_username
 
     def _get_delta_rs_location(self):
         _client = client.get_instance()
@@ -328,10 +326,9 @@ class DeltaEngine:
             return location
 
     def _write_delta_rs_dataset(
-        self, dataset, write_options: Optional[Dict[str, Any]] = None
+        self, dataset, write_options: dict[str, Any] | None = None
     ):
-        """
-        Write a dataset to a Delta table using delta-rs.
+        """Write a dataset to a Delta table using delta-rs.
 
         Supports pyarrow.Table, polars.DataFrame, and pandas.DataFrame as input.
 
@@ -393,7 +390,7 @@ class DeltaEngine:
         else:
             if (
                 isinstance(write_options, dict)
-                and self.DELTA_ENABLE_CHANGE_DATA_FEED in write_options.keys()
+                and self.DELTA_ENABLE_CHANGE_DATA_FEED in write_options
             ):
                 fg_source_table.alter.set_table_properties(
                     {
@@ -497,8 +494,7 @@ class DeltaEngine:
         return pa.Table.from_arrays(new_cols, names=table.column_names)
 
     def save_empty_delta_table_pyspark(self, write_options=None):
-        """
-        Create an empty Delta table with the schema from the feature group features.
+        """Create an empty Delta table with the schema from the feature group features.
 
         This method builds a DDL schema string from the feature group's features
         and creates an empty DataFrame with that schema, then writes it to the
@@ -529,8 +525,7 @@ class DeltaEngine:
         self._write_delta_dataset(empty_df, write_options or {})
 
     def save_empty_delta_table_python(self, write_options=None):
-        """
-        Create an empty Delta table with the schema from the feature group features using delta-rs.
+        """Create an empty Delta table with the schema from the feature group features using delta-rs.
 
         This method converts feature types directly to PyArrow types without requiring Spark,
         creates an empty PyArrow table with that schema, and writes it to the feature group
@@ -618,8 +613,8 @@ class DeltaEngine:
 
     @staticmethod
     def _get_last_commit_metadata(spark_context, base_path):
-        """
-        Retrieve oldest and last data-changing commits (MERGE/WRITE) from a Delta table.
+        """Retrieve oldest and last data-changing commits (MERGE/WRITE) from a Delta table.
+
         Uses shared filtering logic for both Spark and delta-rs.
         """
         data_ops = ["MERGE", "WRITE"]
@@ -721,7 +716,7 @@ class DeltaEngine:
             f"Commit metrics {commit_timestamp} - inserted: {rows_inserted}, updated: {rows_updated}, deleted: {rows_deleted}"
         )
 
-        fg_commit = feature_group_commit.FeatureGroupCommit(
+        return feature_group_commit.FeatureGroupCommit(
             commitid=None,
             commit_date_string=commit_date_string,
             commit_time=commit_timestamp,
@@ -730,5 +725,3 @@ class DeltaEngine:
             rows_deleted=rows_deleted,
             last_active_commit_time=oldest_commit_timestamp,
         )
-
-        return fg_commit

@@ -19,7 +19,7 @@ from hsml.predictor import Predictor
 
 
 class Predictor(Predictor):
-    """Configuration for a predictor running with the vLLM backend"""
+    """Configuration for a predictor running with the vLLM backend."""
 
     def __init__(self, **kwargs):
         kwargs["model_framework"] = MODEL.FRAMEWORK_LLM

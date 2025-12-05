@@ -26,7 +26,7 @@ __version__ = version.__version__
 
 
 def ml_formatwarning(message, category, filename, lineno, line=None):
-    return "{}: {}\n".format(category.__name__, message)
+    return f"{category.__name__}: {message}\n"
 
 
 warnings.formatwarning = ml_formatwarning

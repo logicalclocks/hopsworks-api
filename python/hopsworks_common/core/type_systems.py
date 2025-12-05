@@ -19,7 +19,7 @@ from __future__ import annotations
 import ast
 import datetime
 import decimal
-from typing import TYPE_CHECKING, Literal, NewType, Optional, Union
+from typing import TYPE_CHECKING, Literal, NewType
 
 import pytz
 from hopsworks_common.core.constants import (
@@ -92,8 +92,7 @@ else:
 if HAS_PYARROW:
 
     def convert_offline_type_to_pyarrow_type(offline_type: str):
-        """
-        Convert an offline type string to a PyArrow type.
+        """Convert an offline type string to a PyArrow type.
 
         Supports simple types (int, bigint, string, etc.), array types (array<type>),
         and struct types (struct<field1:type1,field2:type2>).
@@ -249,23 +248,20 @@ if HAS_PANDAS:
     }
 
 
-def create_extended_type(base_type: type) -> "HopsworksLoggingMetadataType":
-    """
-    This is wrapper function to create a new class that extends the base_type class with a new attribute that can be used to store metadata.
+def create_extended_type(base_type: type) -> HopsworksLoggingMetadataType:
+    """This is wrapper function to create a new class that extends the base_type class with a new attribute that can be used to store metadata.
 
     Args:
         base_type : The base class to extend
     """
 
     class HopsworksLoggingMetadataType(base_type):
-        """
-        This is a class that extends the base_type class with a new attribute `hopsworks_logging_metadata` that can be used to store metadata.
-        """
+        """This is a class that extends the base_type class with a new attribute `hopsworks_logging_metadata` that can be used to store metadata."""
 
         _is_extended_type = True
 
         @property
-        def hopsworks_logging_metadata(self) -> Optional[LoggingMetaData]:
+        def hopsworks_logging_metadata(self) -> LoggingMetaData | None:
             if not hasattr(self, "_hopsworks_logging_metadata"):
                 return None
             return self._hopsworks_logging_metadata
@@ -303,7 +299,7 @@ def convert_pandas_object_type_to_offline_type(arrow_type: str) -> str:
         # figure out sub type
         sub_arrow_type = arrow_type.value_type
         subtype = convert_pandas_dtype_to_offline_type(sub_arrow_type)
-        return "array<{}>".format(subtype)
+        return f"array<{subtype}>"
     if pa.types.is_struct(arrow_type):
         struct_schema = {}
         for index in range(arrow_type.num_fields):
@@ -325,13 +321,9 @@ def cast_pandas_column_to_offline_type(
     offline_type = offline_type.lower()
     if offline_type == "timestamp":
         return pd.to_datetime(feature_column, utc=True).dt.tz_localize(None)
-    elif offline_type == "date":
+    if offline_type == "date":
         return pd.to_datetime(feature_column, utc=True).dt.date
-    elif (
-        offline_type.startswith("array<")
-        or offline_type.startswith("struct<")
-        or offline_type == "boolean"
-    ):
+    if offline_type.startswith(("array<", "struct<")) or offline_type == "boolean":
         return feature_column.apply(
             lambda x: (ast.literal_eval(x) if isinstance(x, str) else x)
             if (
@@ -343,17 +335,15 @@ def cast_pandas_column_to_offline_type(
             )
             else None
         )
-    elif offline_type == "string":
+    if offline_type == "string":
         return feature_column.apply(lambda x: str(x) if x is not None else None)
-    elif offline_type.startswith("decimal"):
+    if offline_type.startswith("decimal"):
         return feature_column.apply(
             lambda x: decimal.Decimal(x) if (x is not None) else None
         )
-    else:
-        if offline_type in pandas_offline_dtype_mapping:
-            return feature_column.astype(pandas_offline_dtype_mapping[offline_type])
-        else:
-            return feature_column  # handle gracefully, just return the column as-is
+    if offline_type in pandas_offline_dtype_mapping:
+        return feature_column.astype(pandas_offline_dtype_mapping[offline_type])
+    return feature_column  # handle gracefully, just return the column as-is
 
 
 @uses_polars
@@ -364,38 +354,33 @@ def cast_polars_column_to_offline_type(
     if offline_type == "timestamp":
         # convert (if tz!=UTC) to utc, then make timezone unaware
         return feature_column.cast(pl.Datetime(time_zone=None))
-    elif offline_type == "date":
+    if offline_type == "date":
         return feature_column.cast(pl.Date)
-    elif (
-        offline_type.startswith("array<")
-        or offline_type.startswith("struct<")
-        or offline_type == "boolean"
-    ):
+    if offline_type.startswith(("array<", "struct<")) or offline_type == "boolean":
         return feature_column.map_elements(
             lambda x: (ast.literal_eval(x) if isinstance(x, str) else x)
             if (x is not None and x != "")
             else None
         )
-    elif offline_type == "string":
+    if offline_type == "string":
         return feature_column.map_elements(lambda x: str(x) if x is not None else None)
-    elif offline_type.startswith("decimal"):
+    if offline_type.startswith("decimal"):
         return feature_column.map_elements(
             lambda x: decimal.Decimal(x) if (x is not None) else None
         )
-    else:
-        if offline_type in polars_offline_dtype_mapping:
-            return feature_column.cast(polars_offline_dtype_mapping[offline_type])
-        else:
-            return feature_column  # handle gracefully, just return the column as-is
+    if offline_type in polars_offline_dtype_mapping:
+        return feature_column.cast(polars_offline_dtype_mapping[offline_type])
+    return feature_column  # handle gracefully, just return the column as-is
 
 
 def cast_column_to_offline_type(
-    feature_column: Union[pd.Series, pl.Series], offline_type: str
+    feature_column: pd.Series | pl.Series, offline_type: str
 ) -> pd.Series:
     if isinstance(feature_column, pd.Series):
         return cast_pandas_column_to_offline_type(feature_column, offline_type.lower())
-    elif HAS_POLARS and isinstance(feature_column, pl.Series):
+    if HAS_POLARS and isinstance(feature_column, pl.Series):
         return cast_polars_column_to_offline_type(feature_column, offline_type.lower())
+    return None
 
 
 def cast_column_to_online_type(
@@ -405,28 +390,23 @@ def cast_column_to_online_type(
     if online_type == "timestamp":
         # convert (if tz!=UTC) to utc, then make timezone unaware
         return pd.to_datetime(feature_column, utc=True).dt.tz_localize(None)
-    elif online_type == "date":
+    if online_type == "date":
         return pd.to_datetime(feature_column, utc=True).dt.date
-    elif online_type.startswith("varchar") or online_type == "text":
+    if online_type.startswith("varchar") or online_type == "text":
         return feature_column.apply(lambda x: str(x) if x is not None else None)
-    elif online_type == "boolean":
+    if online_type == "boolean":
         return feature_column.apply(
             lambda x: (ast.literal_eval(x) if isinstance(x, str) else x)
             if (x is not None and x != "")
             else None
         )
-    elif online_type.startswith("decimal"):
+    if online_type.startswith("decimal"):
         return feature_column.apply(
             lambda x: decimal.Decimal(x) if (x is not None) else None
         )
-    else:
-        if online_type in pandas_online_dtype_mapping:
-            casted_feature = feature_column.astype(
-                pandas_online_dtype_mapping[online_type]
-            )
-            return casted_feature
-        else:
-            return feature_column  # handle gracefully, just return the column as-is
+    if online_type in pandas_online_dtype_mapping:
+        return feature_column.astype(pandas_online_dtype_mapping[online_type])
+    return feature_column  # handle gracefully, just return the column as-is
 
 
 def convert_simple_pandas_dtype_to_offline_type(arrow_type: str) -> str:
@@ -453,28 +433,27 @@ def translate_legacy_spark_type(
 ]:
     if output_type == "StringType()":
         return "STRING"
-    elif output_type == "BinaryType()":
+    if output_type == "BinaryType()":
         return "BINARY"
-    elif output_type == "ByteType()":
+    if output_type == "ByteType()":
         return "BYTE"
-    elif output_type == "ShortType()":
+    if output_type == "ShortType()":
         return "SHORT"
-    elif output_type == "IntegerType()":
+    if output_type == "IntegerType()":
         return "INT"
-    elif output_type == "LongType()":
+    if output_type == "LongType()":
         return "LONG"
-    elif output_type == "FloatType()":
+    if output_type == "FloatType()":
         return "FLOAT"
-    elif output_type == "DoubleType()":
+    if output_type == "DoubleType()":
         return "DOUBLE"
-    elif output_type == "TimestampType()":
+    if output_type == "TimestampType()":
         return "TIMESTAMP"
-    elif output_type == "DateType()":
+    if output_type == "DateType()":
         return "DATE"
-    elif output_type == "BooleanType()":
+    if output_type == "BooleanType()":
         return "BOOLEAN"
-    else:
-        return "STRING"  # handle gracefully, and return STRING type, the default for spark udfs
+    return "STRING"  # handle gracefully, and return STRING type, the default for spark udfs
 
 
 def convert_spark_type_to_offline_type(spark_type_string: str) -> str:
@@ -482,30 +461,29 @@ def convert_spark_type_to_offline_type(spark_type_string: str) -> str:
         spark_type_string = translate_legacy_spark_type(spark_type_string)
     if spark_type_string == "STRING":
         return "STRING"
-    elif spark_type_string == "BINARY":
+    if spark_type_string == "BINARY":
         return "BINARY"
-    elif spark_type_string == "BYTE":
+    if (
+        spark_type_string == "BYTE"
+        or spark_type_string == "SHORT"
+        or spark_type_string == "INT"
+    ):
         return "INT"
-    elif spark_type_string == "SHORT":
-        return "INT"
-    elif spark_type_string == "INT":
-        return "INT"
-    elif spark_type_string == "LONG":
+    if spark_type_string == "LONG":
         return "BIGINT"
-    elif spark_type_string == "FLOAT":
+    if spark_type_string == "FLOAT":
         return "FLOAT"
-    elif spark_type_string == "DOUBLE":
+    if spark_type_string == "DOUBLE":
         return "DOUBLE"
-    elif spark_type_string == "TIMESTAMP":
+    if spark_type_string == "TIMESTAMP":
         return "TIMESTAMP"
-    elif spark_type_string == "DATE":
+    if spark_type_string == "DATE":
         return "DATE"
-    elif spark_type_string == "BOOLEAN":
+    if spark_type_string == "BOOLEAN":
         return "BOOLEAN"
-    else:
-        raise ValueError(
-            f"Return type {spark_type_string} not supported for transformation functions."
-        )
+    raise ValueError(
+        f"Return type {spark_type_string} not supported for transformation functions."
+    )
 
 
 def infer_spark_type(output_type):
@@ -519,30 +497,29 @@ def infer_spark_type(output_type):
 
     if output_type in (str, "str", "string"):
         return "STRING"
-    elif output_type in (bytes, "binary"):
+    if output_type in (bytes, "binary"):
         return "BINARY"
-    elif output_type in (np.int8, "int8", "byte", "tinyint"):
+    if output_type in (np.int8, "int8", "byte", "tinyint"):
         return "BYTE"
-    elif output_type in (np.int16, "int16", "short", "smallint"):
+    if output_type in (np.int16, "int16", "short", "smallint"):
         return "SHORT"
-    elif output_type in (int, "int", "integer", np.int32):
+    if output_type in (int, "int", "integer", np.int32):
         return "INT"
-    elif output_type in (np.int64, "int64", "long", "bigint"):
+    if output_type in (np.int64, "int64", "long", "bigint"):
         return "LONG"
-    elif output_type in (float, "float"):
+    if output_type in (float, "float"):
         return "FLOAT"
-    elif output_type in (np.float64, "float64", "double"):
+    if output_type in (np.float64, "float64", "double"):
         return "DOUBLE"
-    elif output_type in (
+    if output_type in (
         datetime.datetime,
         np.datetime64,
         "datetime",
         "timestamp",
     ):
         return "TIMESTAMP"
-    elif output_type in (datetime.date, "date"):
+    if output_type in (datetime.date, "date"):
         return "DATE"
-    elif output_type in (bool, "boolean", "bool"):
+    if output_type in (bool, "boolean", "bool"):
         return "BOOLEAN"
-    else:
-        raise TypeError("Not supported type %s." % output_type)
+    raise TypeError(f"Not supported type {output_type}.")

@@ -15,8 +15,6 @@
 #
 from __future__ import annotations
 
-from typing import List
-
 from hopsworks_common import client
 from hsfs.ge_expectation import GeExpectation
 
@@ -26,12 +24,13 @@ class ExpectationApi:
         self, feature_store_id: int, feature_group_id: int, expectation_suite_id: int
     ):
         """Expectation Suite endpoints for the featuregroup resource.
+
         :param feature_store_id: id of the respective Feature Store
         :type feature_store_id: int
         :param feature_group_id: id of the respective Feature Group
         :type feature_group_id: int
         :param expectation_suite_id: id of the respective Expectation Suite
-        :type expectation_suite_id: int
+        :type expectation_suite_id: int.
         """
         self._feature_store_id = feature_store_id
         self._feature_group_id = feature_group_id
@@ -39,8 +38,9 @@ class ExpectationApi:
 
     def create(self, expectation: GeExpectation) -> GeExpectation:
         """Create an expectation suite attached to a Feature Group.
+
         :param expectation: Expectation object to be appended to an Expectation Suite
-        :type expectation: `GeExpectation`
+        :type expectation: `GeExpectation`.
 
         :return: expectation
         :rtype: `GeExpectation`
@@ -66,8 +66,9 @@ class ExpectationApi:
 
     def update(self, expectation: GeExpectation) -> GeExpectation:
         """Update an Expectation of an Expectation Suite attached to a Feature Group.
+
         :param expectation: Expectation object to be appended to an Expectation Suite
-        :type expectation: `GeExpectation`
+        :type expectation: `GeExpectation`.
 
         :return: expectation
         :rtype: `GeExpectation`
@@ -94,8 +95,9 @@ class ExpectationApi:
 
     def delete(self, expectation_id: int) -> None:
         """Delete the Expectation with expectation_id from the Expectation Suite attached to a Feature Group.
+
         :param expectation_id: id of the Expectation to delete
-        :type expectation_id: `int`
+        :type expectation_id: `int`.
         """
         _client = client.get_instance()
         path_params = [
@@ -137,7 +139,7 @@ class ExpectationApi:
             _client._send_request("GET", path_params)
         )
 
-    def get_expectations_by_suite_id(self) -> List[GeExpectation]:
+    def get_expectations_by_suite_id(self) -> list[GeExpectation]:
         """Get an expectation attached to a feature group.
 
         :return: expectation

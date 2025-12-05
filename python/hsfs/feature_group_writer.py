@@ -15,16 +15,17 @@
 #
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
-
-import pandas as pd
-from hopsworks_common.core.constants import HAS_NUMPY
-from hsfs.core.job import Job
-from hsfs.validation_report import ValidationReport
+from typing import TYPE_CHECKING, Any, TypeVar
 
 
-if HAS_NUMPY:
-    import numpy as np
+if TYPE_CHECKING:
+    from hopsworks_common.core.constants import HAS_NUMPY
+
+    if HAS_NUMPY:
+        import numpy as np
+    import pandas as pd
+    from hsfs.core.job import Job
+    from hsfs.validation_report import ValidationReport
 
 
 class FeatureGroupWriter:
@@ -36,21 +37,19 @@ class FeatureGroupWriter:
 
     def insert(
         self,
-        features: Union[
-            pd.DataFrame,
-            TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
-            TypeVar("pyspark.RDD"),  # noqa: F821
-            np.ndarray,
-            List[list],
-        ],
-        overwrite: Optional[bool] = False,
-        operation: Optional[str] = "upsert",
-        storage: Optional[str] = None,
-        write_options: Optional[Dict[str, Any]] = None,
-        validation_options: Optional[Dict[str, Any]] = None,
-        transformation_context: Dict[str, Any] = None,
+        features: pd.DataFrame
+        | TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | np.ndarray
+        | list[list],
+        overwrite: bool | None = False,
+        operation: str | None = "upsert",
+        storage: str | None = None,
+        write_options: dict[str, Any] | None = None,
+        validation_options: dict[str, Any] | None = None,
+        transformation_context: dict[str, Any] = None,
         transform: bool = True,
-    ) -> Tuple[Optional[Job], Optional[ValidationReport]]:
+    ) -> tuple[Job | None, ValidationReport | None]:
         if validation_options is None:
             validation_options = {}
         if write_options is None:

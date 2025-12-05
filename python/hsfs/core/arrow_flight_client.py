@@ -21,7 +21,7 @@ import json
 import logging
 import warnings
 from functools import wraps
-from typing import Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 from hopsworks_common.core.constants import HAS_PYARROW, pyarrow_not_installed_message
 
@@ -36,11 +36,14 @@ from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
 from hsfs import feature_group
-from hsfs.constructor import query
 from hsfs.core.variable_api import VariableApi
 from hsfs.storage_connector import StorageConnector
 from pyarrow.flight import FlightServerError
 from retrying import retry
+
+
+if TYPE_CHECKING:
+    from hsfs.constructor import query
 
 
 if HAS_POLARS:
@@ -103,8 +106,9 @@ def _is_no_data_found_error(exception):
 
 
 def _should_retry_healthcheck(exception):
-    return isinstance(exception, pyarrow._flight.FlightUnavailableError) or isinstance(
-        exception, pyarrow._flight.FlightTimedOutError
+    return isinstance(
+        exception,
+        (pyarrow._flight.FlightUnavailableError, pyarrow._flight.FlightTimedOutError),
     )
 
 
@@ -115,13 +119,14 @@ def _should_retry_certificate_registration(exception):
 
 
 # Avoid unnecessary client init
-def is_data_format_supported(data_format: str, read_options: Optional[Dict[str, Any]]):
-    if data_format not in ArrowFlightClient.SUPPORTED_FORMATS:
+def is_data_format_supported(data_format: str, read_options: dict[str, Any] | None):
+    if (
+        data_format not in ArrowFlightClient.SUPPORTED_FORMATS
+        or read_options
+        and read_options.get("use_spark", False)
+    ):
         return False
-    elif read_options and read_options.get("use_spark", False):
-        return False
-    else:
-        return get_instance()._should_be_used()
+    return get_instance()._should_be_used()
 
 
 def _is_query_supported_rec(query: query.Query):
@@ -155,13 +160,14 @@ def _is_query_supported_rec(query: query.Query):
     return supported
 
 
-def is_query_supported(query: query.Query, read_options: Optional[Dict[str, Any]]):
-    if read_options and read_options.get("use_spark", False):
+def is_query_supported(query: query.Query, read_options: dict[str, Any] | None):
+    if (
+        read_options
+        and read_options.get("use_spark", False)
+        or not _is_query_supported_rec(query)
+    ):
         return False
-    elif not _is_query_supported_rec(query):
-        return False
-    else:
-        return get_instance()._should_be_used()
+    return get_instance()._should_be_used()
 
 
 class ArrowFlightClient:
@@ -191,13 +197,12 @@ class ArrowFlightClient:
         )
 
         self._enabled_on_cluster: bool = False
-        self._host_url: Optional[str] = None
-        self._connection: Optional[pyarrow.flight.FlightClient] = None
+        self._host_url: str | None = None
+        self._connection: pyarrow.flight.FlightClient | None = None
         if disabled_for_session:
             self._disable_for_session(on_purpose=True)
             return
-        else:
-            self._disabled_for_session: bool = False
+        self._disabled_for_session: bool = False
 
         self._client = client.get_instance()
         self._variable_api: VariableApi = VariableApi()
@@ -205,7 +210,7 @@ class ArrowFlightClient:
             self._variable_api.get_service_discovery_domain()
         )
 
-        self._certificates_json: Optional[str] = None
+        self._certificates_json: str | None = None
 
         try:
             self._check_cluster_service_enabled()
@@ -261,7 +266,7 @@ class ArrowFlightClient:
             _logger.exception(e)
             self._enabled_on_cluster = False
 
-    def _retrieve_host_url(self) -> Optional[str]:
+    def _retrieve_host_url(self) -> str | None:
         _logger.debug("Retrieving host URL.")
         if client._is_external():
             external_domain = self._variable_api.get_loadbalancer_external_domain(
@@ -281,7 +286,7 @@ class ArrowFlightClient:
         return host_url
 
     def _disable_for_session(
-        self, message: Optional[str] = None, on_purpose: bool = False
+        self, message: str | None = None, on_purpose: bool = False
     ) -> None:
         self._disabled_for_session = True
         if on_purpose:
@@ -344,6 +349,7 @@ class ArrowFlightClient:
             version = res.body.to_pybytes()
             _logger.debug(f"The HQS server is of version {version}.")
             return version
+        return None
 
     def _should_be_used(self):
         if not self._enabled_on_cluster:
@@ -365,9 +371,9 @@ class ArrowFlightClient:
         _logger.debug("Extracting client certificates.")
         with open(self._client._get_ca_chain_path(), "rb") as f:
             tls_root_certs = f.read()
-        with open(self._client._get_client_cert_path(), "r") as f:
+        with open(self._client._get_client_cert_path()) as f:
             cert_chain = f.read()
-        with open(self._client._get_client_key_path(), "r") as f:
+        with open(self._client._get_client_key_path()) as f:
             private_key = f.read()
         return tls_root_certs, cert_chain, private_key
 
@@ -426,18 +432,17 @@ class ArrowFlightClient:
                     ):
                         instance._register_certificates()
                         return func(instance, *args, **kw)
-                    elif _is_feature_query_service_queue_full_error(e):
+                    if _is_feature_query_service_queue_full_error(e):
                         raise FeatureStoreException(
                             "Hopsworks Query Service is busy right now. Please try again later."
                         ) from e
-                    elif (
+                    if (
                         _is_no_commits_found_error(e)
                         or _is_no_metadata_found_error(e)
                         or _is_no_data_found_error(e)
                     ):
                         raise FeatureStoreException(str(e).split("Details:")[0]) from e
-                    else:
-                        raise FeatureStoreException(user_message) from e
+                    raise FeatureStoreException(user_message) from e
 
             return afs_error_handler_wrapper
 
@@ -476,8 +481,7 @@ class ArrowFlightClient:
             if not HAS_POLARS:
                 raise ModuleNotFoundError(polars_not_installed_message)
             return pl.from_arrow(reader.read_all())
-        else:
-            return reader.read_pandas()
+        return reader.read_pandas()
 
     # retry is handled in get_dataset
     @_handle_afs_exception(user_message=READ_ERROR)
@@ -565,39 +569,36 @@ class ArrowFlightClient:
             connectors[fg_name] = fg_connector
         filters = _serialize_filter_expression(query.filters, query)
 
-        query = {
+        return {
             "query_string": _translate_to_duckdb(query, query_str),
             "features": features,
             "filters": filters,
             "connectors": connectors,
         }
-        return query
 
     def is_enabled(self):
-        if self._disabled_for_session or not self._enabled_on_cluster:
-            return False
-        return True
+        return not (self._disabled_for_session or not self._enabled_on_cluster)
 
     @property
-    def timeout(self) -> Union[int, float]:
+    def timeout(self) -> int | float:
         """Timeout in seconds for Hopsworks Query Service do_get or do_action operations, not including the healthcheck."""
         return self._timeout
 
     @timeout.setter
-    def timeout(self, value: Union[int, float]) -> None:
+    def timeout(self, value: float) -> None:
         self._timeout = value
 
     @property
-    def health_check_timeout(self) -> Union[int, float]:
+    def health_check_timeout(self) -> int | float:
         """Timeout in seconds for the healthcheck operation."""
         return self._health_check_timeout
 
     @health_check_timeout.setter
-    def health_check_timeout(self, value: Union[int, float]) -> None:
+    def health_check_timeout(self, value: float) -> None:
         self._health_check_timeout = value
 
     @property
-    def host_url(self) -> Optional[str]:
+    def host_url(self) -> str | None:
         """URL of Hopsworks Query Service."""
         return self._host_url
 
@@ -780,10 +781,9 @@ def _serialize_logic(logic, query, short_name):
 def _serialize_filter_or_logic(filter, logic, query, short_name):
     if filter:
         return _serialize_filter(filter, query, short_name)
-    elif logic:
+    if logic:
         return _serialize_logic(logic, query, short_name)
-    else:
-        return None
+    return None
 
 
 def _serialize_filter(filter, query, short_name):

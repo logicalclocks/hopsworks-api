@@ -13,26 +13,30 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
-from datetime import date, datetime
-from typing import Optional, Union
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
+
+
+if TYPE_CHECKING:
+    from datetime import date, datetime
 
 
 class FeatureGroup(BaseModel):
     """Model representing a feature group in Hopsworks MCP."""
 
-    id: Optional[int] = None
-    name: Optional[str]
-    version: Optional[int]
-    featurestore_id: Optional[int]
-    location: Optional[str]
-    event_time: Optional[Union[str, int, date, datetime]] = None
+    id: int | None = None
+    name: str | None
+    version: int | None
+    featurestore_id: int | None
+    location: str | None
+    event_time: str | int | date | datetime | None = None
     online_enabled: bool = False
-    online_topic_name: Optional[str] = None
-    topic_name: Optional[str] = None
-    notification_topic_name: Optional[str] = None
+    online_topic_name: str | None = None
+    topic_name: str | None = None
+    notification_topic_name: str | None = None
     deprecated: bool = False
 
 

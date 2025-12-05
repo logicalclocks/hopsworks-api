@@ -13,14 +13,18 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
-from typing import Optional, Union
+from typing import TYPE_CHECKING
 
-import numpy
-import pandas
 from hopsworks_common import usage
 from hsml.llm.model import Model
-from hsml.model_schema import ModelSchema
+
+
+if TYPE_CHECKING:
+    import numpy
+    import pandas
+    from hsml.model_schema import ModelSchema
 
 
 _mr = None
@@ -29,24 +33,26 @@ _mr = None
 @usage.method_logger
 def create_model(
     name: str,
-    version: Optional[int] = None,
-    metrics: Optional[dict] = None,
-    description: Optional[str] = None,
-    input_example: Optional[
-        Union[pandas.DataFrame, pandas.Series, numpy.ndarray, list]
-    ] = None,
-    model_schema: Optional[ModelSchema] = None,
+    version: int | None = None,
+    metrics: dict | None = None,
+    description: str | None = None,
+    input_example: pandas.DataFrame
+    | pandas.Series
+    | numpy.ndarray
+    | list
+    | None = None,
+    model_schema: ModelSchema | None = None,
     feature_view=None,
-    training_dataset_version: Optional[int] = None,
+    training_dataset_version: int | None = None,
 ):
     """Create an LLM model metadata object.
 
-    !!! note "Lazy"
+    Note: Lazy
         This method is lazy and does not persist any metadata or uploads model artifacts in the
         model registry on its own. To save the model object and the model artifacts, call the `save()` method with a
         local file path to the directory containing the model artifacts.
 
-    # Arguments
+    Parameters:
         name: Name of the model to create.
         version: Optionally version of the model to create, defaults to `None` and
             will create the model with incremented version from the last
@@ -59,7 +65,7 @@ def create_model(
         feature_view: Optionally a feature view object returned by querying the feature store. If the feature view is not provided, the model will not have access to provenance.
         training_dataset_version: Optionally a training dataset version. If training dataset version is not provided, but the feature view is provided, the training dataset version used will be the last accessed training dataset of the feature view, within the code/notebook that reads the feature view and training dataset and then creates the model.
 
-    # Returns
+    Returns:
         `Model`. The model metadata object.
     """
     model = Model(

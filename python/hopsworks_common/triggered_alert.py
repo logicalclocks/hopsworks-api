@@ -31,8 +31,7 @@ class AlertStatus:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
@@ -83,54 +82,52 @@ class TriggeredAlert:
         if "count" in json_decamelized:
             if "items" in json_decamelized:
                 return [cls(**receiver) for receiver in json_decamelized["items"]]
-            else:
-                return []
-        else:
-            return cls(**json_decamelized)
+            return []
+        return cls(**json_decamelized)
 
     @property
     def labels(self):
-        """return the labels of the alert"""
+        """Return the labels of the alert."""
         return self._labels
 
     @property
     def annotations(self):
-        """return the annotations of the alert"""
+        """Return the annotations of the alert."""
         return self._annotations
 
     @property
     def receivers(self):
-        """return the receivers of the alert"""
+        """Return the receivers of the alert."""
         return self._receivers
 
     @property
     def fingerprint(self):
-        """return the fingerprint of the alert"""
+        """Return the fingerprint of the alert."""
         return self._fingerprint
 
     @property
     def starts_at(self):
-        """return the start time of the alert"""
+        """Return the start time of the alert."""
         return self._starts_at
 
     @property
     def ends_at(self):
-        """return the end time of the alert"""
+        """Return the end time of the alert."""
         return self._ends_at
 
     @property
     def updated_at(self):
-        """return the update time of the alert"""
+        """Return the update time of the alert."""
         return self._updated_at
 
     @property
     def generatorurl(self):
-        """return the generator URL of the alert"""
+        """Return the generator URL of the alert."""
         return self._generatorurl
 
     @property
     def status(self):
-        """return the status of the alert"""
+        """Return the status of the alert."""
         return self._status
 
     def json(self):

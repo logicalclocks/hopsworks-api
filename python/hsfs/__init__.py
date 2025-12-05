@@ -38,7 +38,7 @@ connection = Connection.connection
 
 
 def fs_formatwarning(message, category, filename, lineno, line=None):
-    return "{}: {}\n".format(category.__name__, message)
+    return f"{category.__name__}: {message}\n"
 
 
 warnings.formatwarning = fs_formatwarning

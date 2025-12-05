@@ -13,6 +13,8 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
+
 import asyncio
 import base64
 import itertools
@@ -22,7 +24,7 @@ import threading
 import traceback
 import uuid
 from datetime import date, datetime, timezone
-from typing import Any, Callable, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable
 
 from hsfs.core.feature_logging_client import (
     get_instance as get_feature_logging_client,
@@ -32,7 +34,10 @@ from hsfs.core.feature_logging_client import (
 )
 from hsfs.core.kafka_engine import encode_row, get_writer_function
 from hsfs.feature_logger import FeatureLogger
-from hsfs.feature_view import FeatureView
+
+
+if TYPE_CHECKING:
+    from hsfs.feature_view import FeatureView
 
 
 _logger = logging.getLogger(__name__)
@@ -43,19 +48,18 @@ class EventEncoder(json.JSONEncoder):
         if isinstance(obj, bytes):
             # Convert bytes to a base64-encoded string
             return base64.b64encode(obj).decode("utf-8")
-        elif isinstance(obj, datetime):
+        if isinstance(obj, datetime):
             obj = obj.replace(tzinfo=timezone.utc)
             return obj.isoformat()
-        elif isinstance(obj, date):
+        if isinstance(obj, date):
             # Convert to days since Unix epoch
             epoch = datetime.date(1970, 1, 1)
             return (obj - epoch).days
+        return None
 
 
 class AsyncWorkerThread(threading.Thread):
-    """
-    Thread class to run an asyncio event loop in a separate thread. The event loop is used to run async workers that processes logs.
-    """
+    """Thread class to run an asyncio event loop in a separate thread. The event loop is used to run async workers that processes logs."""
 
     def __init__(
         self, group=None, target=None, name=None, args=..., kwargs=None, *, daemon=None
@@ -69,12 +73,11 @@ class AsyncWorkerThread(threading.Thread):
             threading.Event()
         )  # Stop event to stop input of new tasks after a close has been called.
 
-    def submit_task(self, task: Tuple[dict, dict]):
-        """
-        Function to submit a task to the queue from a different thread so that it can be processed by workers.
+    def submit_task(self, task: tuple[dict, dict]):
+        """Function to submit a task to the queue from a different thread so that it can be processed by workers.
 
-        # Arguments:
-            task: `Tuple[dict, dict]`. Tuple that contains untransformed and transformed features to be logged.
+        Parameters:
+            task: Tuple that contains untransformed and transformed features to be logged.
         """
         if self._stop_event.is_set():
             _logger.error("Cannot submit task. Workers are stopped.")
@@ -84,21 +87,18 @@ class AsyncWorkerThread(threading.Thread):
             )
 
     def _initialize_workers(self, num_workers: int, worker_function: Callable):
-        """
-        Function to initialize workers as tasks in the event loop.
+        """Function to initialize workers as tasks in the event loop.
 
-        # Arguments:
-            num_worker: `int`. Number of workers to be initialized.
-            worker_function: `Callable`. Function to be run by the workers.
+        Parameters:
+            num_worker: Number of workers to be initialized.
+            worker_function: Function to be run by the workers.
         """
         for _ in range(num_workers):
             worker = self._event_loop.create_task(self._worker(worker_function))
             self._workers.append(worker)
 
     def run(self):
-        """
-        Thread functions that runs the event loop in the thread and close the event loop with feature logging after the loop is stopped.
-        """
+        """Thread functions that runs the event loop in the thread and close the event loop with feature logging after the loop is stopped."""
         asyncio.set_event_loop(self._event_loop)
 
         # Run the event loop
@@ -111,10 +111,9 @@ class AsyncWorkerThread(threading.Thread):
         self._event_loop.close()
 
     async def _worker(self, worker_function: Callable):
-        """
-        Function to run the worker function in the event loop, until a None has been submitted to the queue.
+        """Function to run the worker function in the event loop, until a None has been submitted to the queue.
 
-        # Arguments:
+        Parameters:
             worker_function: `Callable`. Function to be run by the workers.
         """
         while True:
@@ -127,9 +126,7 @@ class AsyncWorkerThread(threading.Thread):
             self._tasks_queue.task_done()
 
     def close(self):
-        """
-        Function to stop any more tasks from being submitted and start the graceful stop of the thread.
-        """
+        """Function to stop any more tasks from being submitted and start the graceful stop of the thread."""
         # Stop any more tasks from being submitted using the stop event.
         self._stop_event.set()
 
@@ -137,9 +134,7 @@ class AsyncWorkerThread(threading.Thread):
         asyncio.run_coroutine_threadsafe(self.finalize_event_loop(), self._event_loop)
 
     async def finalize_event_loop(self):
-        """
-        Function that gracefully stops the event loop by stopping the workers and waiting for all tasks to be processed.
-        """
+        """Function that gracefully stops the event loop by stopping the workers and waiting for all tasks to be processed."""
         # Stop workers
         for _ in range(len(self._workers)):
             await self._tasks_queue.put(None)  # Poison pill to stop workers
@@ -162,7 +157,7 @@ class AsyncFeatureLogger(FeatureLogger):
         namespace,
         deployment_name,
         max_concurrent_tasks=5,
-        feature_logger_config: Optional[dict[str, Any]] = None,
+        feature_logger_config: dict[str, Any] | None = None,
     ):
         self._max_concurrent_tasks = max_concurrent_tasks
         self._feature_view: FeatureView = None
@@ -287,8 +282,6 @@ class AsyncFeatureLogger(FeatureLogger):
         return encode_row(complex_feature_encoder, feature_encoder, features)
 
     def close(self):
-        """
-        Close the async feature logger.
-        """
+        """Close the async feature logger."""
         # Close the async worker thread
         self._async_worker_thread.close()

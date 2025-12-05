@@ -29,7 +29,7 @@ import threading
 import time
 import warnings
 from datetime import date, datetime, timezone
-from typing import TYPE_CHECKING, Any, Callable, Dict, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Literal
 from urllib.parse import urljoin, urlparse
 
 import humps
@@ -53,7 +53,7 @@ if TYPE_CHECKING:
 
 
 class Encoder(json.JSONEncoder):
-    def default(self, o: Any) -> Dict[str, Any]:
+    def default(self, o: Any) -> dict[str, Any]:
         try:
             return o.to_dict()
         except AttributeError:
@@ -62,8 +62,8 @@ class Encoder(json.JSONEncoder):
 
 class NumpyEncoder(json.JSONEncoder):
     """Special json encoder for numpy types.
-    Note that some numpy types doesn't have native python equivalence,
-    hence json.dumps will raise TypeError.
+
+    Note that some numpy types doesn't have native python equivalence, hence json.dumps will raise TypeError.
     In this case, you'll need to convert your numpy types into its closest python equivalence.
     """
 
@@ -78,14 +78,13 @@ class NumpyEncoder(json.JSONEncoder):
         if isinstance(obj, np.ndarray):
             if obj.dtype == np.object:
                 return [self.convert(x)[0] for x in obj.tolist()]
-            elif obj.dtype == np.bytes_:
+            if obj.dtype == np.bytes_:
                 return np.vectorize(encode_binary)(obj), True
-            else:
-                return obj.tolist(), True
+            return obj.tolist(), True
 
         if isinstance(obj, datetime) or (HAS_PANDAS and isinstance(obj, pd.Timestamp)):
             return obj.isoformat(), True
-        if isinstance(obj, bytes) or isinstance(obj, bytearray):
+        if isinstance(obj, (bytes, bytearray)):
             return encode_binary(obj), True
         if isinstance(obj, np.generic):
             return obj.item(), True
@@ -97,8 +96,7 @@ class NumpyEncoder(json.JSONEncoder):
         res, converted = self.convert(obj)
         if converted:
             return res
-        else:
-            return super().default(obj)
+        return super().default(obj)
 
 
 VALID_EMBEDDING_TYPE = {
@@ -112,7 +110,7 @@ VALID_EMBEDDING_TYPE = {
 def validate_embedding_feature_type(embedding_index, schema):
     if not embedding_index or not schema:
         return
-    feature_type_map = dict([(feat.name, feat.type) for feat in schema])
+    feature_type_map = {feat.name: feat.type for feat in schema}
     for embedding in embedding_index.get_embeddings():
         feature_type = feature_type_map.get(embedding.name)
         if feature_type not in VALID_EMBEDDING_TYPE:
@@ -126,18 +124,14 @@ def autofix_feature_name(name: str, warn: bool = False) -> str:
     # replace spaces with underscores and enforce lower case
     if warn and contains_uppercase(name):
         warnings.warn(
-            "The feature name `{}` contains upper case letters. "
-            "Feature names are sanitized to lower case in the feature store.".format(
-                name
-            ),
+            f"The feature name `{name}` contains upper case letters. "
+            "Feature names are sanitized to lower case in the feature store.",
             stacklevel=1,
         )
     if warn and contains_whitespace(name):
         warnings.warn(
-            "The feature name `{}` contains spaces. "
-            "Feature names are sanitized to use underscore '_' in the feature store.".format(
-                name
-            ),
+            f"The feature name `{name}` contains spaces. "
+            "Feature names are sanitized to use underscore '_' in the feature store.",
             stacklevel=1,
         )
     return name.lower().replace(" ", "_")
@@ -161,26 +155,23 @@ def append_feature_store_suffix(name: str) -> str:
     name = name.lower()
     if name.endswith(FEATURE_STORE_NAME_SUFFIX):
         return name
-    else:
-        return name + FEATURE_STORE_NAME_SUFFIX
+    return name + FEATURE_STORE_NAME_SUFFIX
 
 
 def strip_feature_store_suffix(name: str) -> str:
     name = name.lower()
     if name.endswith(FEATURE_STORE_NAME_SUFFIX):
         return name[: -1 * len(FEATURE_STORE_NAME_SUFFIX)]
-    else:
-        return name
+    return name
 
 
 def get_dataset_type(path: str) -> Literal["HIVEDB", "DATASET"]:
     if re.match(r"^(?:hdfs://|)/apps/hive/warehouse/*", path):
         return "HIVEDB"
-    else:
-        return "DATASET"
+    return "DATASET"
 
 
-def check_timestamp_format_from_date_string(input_date: str) -> Tuple[str, str]:
+def check_timestamp_format_from_date_string(input_date: str) -> tuple[str, str]:
     date_format_patterns = {
         r"^([0-9]{4})([0-9]{2})([0-9]{2})$": "%Y%m%d",
         r"^([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{2})$": "%Y%m%d%H",
@@ -248,15 +239,18 @@ def get_delta_datestr_from_timestamp(timestamp: int) -> str:
 
 
 def convert_event_time_to_timestamp(
-    event_time: Optional[
-        Union[str, pd._libs.tslibs.timestamps.Timestamp, datetime, date, int]
-    ],
-) -> Optional[int]:
+    event_time: str
+    | pd._libs.tslibs.timestamps.Timestamp
+    | datetime
+    | date
+    | int
+    | None,
+) -> int | None:
     if not event_time:
         return None
     if isinstance(event_time, str):
         return get_timestamp_from_date_string(event_time)
-    elif hasattr(event_time, "to_pydatetime"):
+    if hasattr(event_time, "to_pydatetime"):
         # only pandas Timestamp has to_pydatetime method out of the accepted event_time types
         # convert to unix epoch time in milliseconds.
         event_time = event_time.to_pydatetime()
@@ -264,36 +258,37 @@ def convert_event_time_to_timestamp(
         if event_time.tzinfo is None:
             event_time = event_time.replace(tzinfo=timezone.utc)
         return int(event_time.timestamp() * 1000)
-    elif isinstance(event_time, datetime):
+    if isinstance(event_time, datetime):
         # convert to unix epoch time in milliseconds.
         if event_time.tzinfo is None:
             event_time = event_time.replace(tzinfo=timezone.utc)
         return int(event_time.timestamp() * 1000)
-    elif isinstance(event_time, date):
+    if isinstance(event_time, date):
         # convert to unix epoch time in milliseconds.
         event_time = datetime(*event_time.timetuple()[:7])
         if event_time.tzinfo is None:
             event_time = event_time.replace(tzinfo=timezone.utc)
         return int(event_time.timestamp() * 1000)
-    elif isinstance(event_time, int):
+    if isinstance(event_time, int):
         if event_time == 0:
             raise ValueError("Event time should be greater than 0.")
         # jdbc supports timestamp precision up to second only.
         if len(str(event_time)) <= 10:
             event_time = event_time * 1000
         return event_time
-    else:
-        raise ValueError(
-            "Given event time should be in `datetime`, `date`, `str` or `int` type"
-        )
+    raise ValueError(
+        "Given event time should be in `datetime`, `date`, `str` or `int` type"
+    )
 
 
 def get_hostname_replaced_url(sub_path: str) -> str:
-    """
-    construct and return an url with public hopsworks hostname and sub path
-    :param self:
-    :param sub_path: url sub-path after base url
-    :return: href url
+    """Construct and return an url with public hopsworks hostname and sub path.
+
+    Parameters:
+        sub_path: URL sub-path after base URL.
+
+    Returns:
+        href url.
     """
     href = urljoin(client.get_instance()._base_url, sub_path)
     url_parsed = client.get_instance().replace_public_host(urlparse(href))
@@ -304,7 +299,7 @@ def verify_attribute_key_names(
     feature_group_obj,  #  FeatureGroup | ExternalFeatureGroup | SpineGroup
     external_feature_group: bool = False,
 ) -> None:
-    feature_names = set(feat.name for feat in feature_group_obj.features)
+    feature_names = {feat.name for feat in feature_group_obj.features}
     if feature_group_obj.primary_key:
         diff = set(feature_group_obj.primary_key) - feature_names
         if diff:
@@ -312,11 +307,13 @@ def verify_attribute_key_names(
                 f"Provided primary key(s) {','.join(diff)} doesn't exist in feature dataframe"
             )
 
-    if feature_group_obj.event_time:
-        if feature_group_obj.event_time not in feature_names:
-            raise FeatureStoreException(
-                f"Provided event_time feature {feature_group_obj.event_time} doesn't exist in feature dataframe"
-            )
+    if (
+        feature_group_obj.event_time
+        and feature_group_obj.event_time not in feature_names
+    ):
+        raise FeatureStoreException(
+            f"Provided event_time feature {feature_group_obj.event_time} doesn't exist in feature dataframe"
+        )
 
     if not external_feature_group:
         if feature_group_obj.partition_key:
@@ -326,27 +323,27 @@ def verify_attribute_key_names(
                     f"Provided partition key(s) {','.join(diff)} doesn't exist in feature dataframe"
                 )
 
-        if feature_group_obj.hudi_precombine_key:
-            if feature_group_obj.hudi_precombine_key not in feature_names:
-                raise FeatureStoreException(
-                    f"Provided hudi precombine key {feature_group_obj.hudi_precombine_key} "
-                    f"doesn't exist in feature dataframe"
-                )
+        if (
+            feature_group_obj.hudi_precombine_key
+            and feature_group_obj.hudi_precombine_key not in feature_names
+        ):
+            raise FeatureStoreException(
+                f"Provided hudi precombine key {feature_group_obj.hudi_precombine_key} "
+                f"doesn't exist in feature dataframe"
+            )
 
 
 def get_job_url(href: str) -> str:
-    """Use the endpoint returned by the API to construct the UI url for jobs
+    """Use the endpoint returned by the API to construct the UI url for jobs.
 
-    Args:
-        href (str): the endpoint returned by the API
+    Parameters:
+        href: the endpoint returned by the API
     """
     url = urlparse(href)
     url_splits = url.path.split("/")
     project_id = url_splits[4]
     job_name = url_splits[6]
-    ui_url = url._replace(
-        path="p/{}/jobs/named/{}/executions".format(project_id, job_name)
-    )
+    ui_url = url._replace(path=f"p/{project_id}/jobs/named/{job_name}/executions")
     ui_url = client.get_instance().replace_public_host(ui_url)
     return ui_url.geturl()
 
@@ -400,10 +397,7 @@ def get_feature_group_url(feature_store_id: int, feature_group_id: int) -> str:
 
 
 def is_runtime_notebook():
-    if "ipykernel" in sys.modules:
-        return True
-    else:
-        return False
+    return "ipykernel" in sys.modules
 
 
 class VersionWarning(Warning):
@@ -435,19 +429,17 @@ class FeatureGroupWarning(Warning):
 
 
 def convert_to_abs(path, current_proj_name):
-    abs_project_prefix = "/Projects/{}".format(current_proj_name)
+    abs_project_prefix = f"/Projects/{current_proj_name}"
     if not path.startswith(abs_project_prefix):
         return abs_project_prefix + "/" + path
-    else:
-        return path
+    return path
 
 
 def convert_to_project_rel_path(path, current_proj_name):
-    abs_project_prefix = "/Projects/{}".format(current_proj_name)
+    abs_project_prefix = f"/Projects/{current_proj_name}"
     if path.startswith(abs_project_prefix):
         return path.replace(abs_project_prefix, "")
-    else:
-        return path
+    return path
 
 
 def validate_job_conf(config, project_name):
@@ -458,7 +450,7 @@ def validate_job_conf(config, project_name):
         and "appPath" not in config
     ):
         raise JobException("'appPath' not set in job configuration")
-    elif "appPath" in config and not config["appPath"].startswith("hdfs://"):
+    if "appPath" in config and not config["appPath"].startswith("hdfs://"):
         config["appPath"] = "hdfs://" + convert_to_abs(config["appPath"], project_name)
 
     # If PYSPARK application set the mainClass, if SPARK validate there is a mainClass set
@@ -518,14 +510,11 @@ def set_model_class(model):
         return TorchModel(**model)
     if framework == MODEL.FRAMEWORK_SKLEARN:
         return SkLearnModel(**model)
-    elif framework == MODEL.FRAMEWORK_PYTHON:
+    if framework == MODEL.FRAMEWORK_PYTHON:
         return PyModel(**model)
-    elif framework == MODEL.FRAMEWORK_LLM:
+    if framework == MODEL.FRAMEWORK_LLM:
         return LLMModel(**model)
-    else:
-        raise ValueError(
-            "framework {} is not a supported framework".format(str(framework))
-        )
+    raise ValueError(f"framework {str(framework)} is not a supported framework")
 
 
 def input_example_to_json(input_example):
@@ -534,14 +523,12 @@ def input_example_to_json(input_example):
     if isinstance(input_example, np.ndarray):
         if input_example.size > 0:
             return _handle_tensor_input(input_example)
-        else:
-            raise ValueError(
-                "input_example of type {} can not be empty".format(type(input_example))
-            )
-    elif isinstance(input_example, dict):
+        raise ValueError(
+            f"input_example of type {type(input_example)} can not be empty"
+        )
+    if isinstance(input_example, dict):
         return _handle_dict_input(input_example)
-    else:
-        return _handle_dataframe_input(input_example)
+    return _handle_dataframe_input(input_example)
 
 
 def _handle_tensor_input(input_tensor):
@@ -552,28 +539,16 @@ def _handle_dataframe_input(input_ex):
     if HAS_PANDAS and isinstance(input_ex, pd.DataFrame):
         if not input_ex.empty:
             return input_ex.iloc[0].tolist()
-        else:
-            raise ValueError(
-                "input_example of type {} can not be empty".format(type(input_ex))
-            )
-    elif HAS_PANDAS and isinstance(input_ex, pd.Series):
+        raise ValueError(f"input_example of type {type(input_ex)} can not be empty")
+    if HAS_PANDAS and isinstance(input_ex, pd.Series):
         if not input_ex.empty:
             return input_ex.tolist()
-        else:
-            raise ValueError(
-                "input_example of type {} can not be empty".format(type(input_ex))
-            )
-    elif isinstance(input_ex, list):
+        raise ValueError(f"input_example of type {type(input_ex)} can not be empty")
+    if isinstance(input_ex, list):
         if len(input_ex) > 0:
             return input_ex
-        else:
-            raise ValueError(
-                "input_example of type {} can not be empty".format(type(input_ex))
-            )
-    else:
-        raise TypeError(
-            "{} is not a supported input example type".format(type(input_ex))
-        )
+        raise ValueError(f"input_example of type {type(input_ex)} can not be empty")
+    raise TypeError(f"{type(input_ex)} is not a supported input example type")
 
 
 def _handle_dict_input(input_ex):
@@ -588,13 +563,12 @@ def compress(archive_out_path, archive_name, path_to_archive):
         return shutil.make_archive(
             os.path.join(archive_out_path, archive_name), "gztar", path_to_archive
         )
-    else:
-        return shutil.make_archive(
-            os.path.join(archive_out_path, archive_name),
-            "gztar",
-            os.path.dirname(path_to_archive),
-            os.path.basename(path_to_archive),
-        )
+    return shutil.make_archive(
+        os.path.join(archive_out_path, archive_name),
+        "gztar",
+        os.path.dirname(path_to_archive),
+        os.path.basename(path_to_archive),
+    )
 
 
 def decompress(archive_file_path, extract_dir=None):
@@ -608,27 +582,21 @@ def validate_metrics(metrics):
     if metrics is not None:
         if not isinstance(metrics, dict):
             raise TypeError(
-                "provided metrics is of instance {}, expected a dict".format(
-                    type(metrics)
-                )
+                f"provided metrics is of instance {type(metrics)}, expected a dict"
             )
 
         for metric in metrics:
             # Validate key is a string
             if not isinstance(metric, string_types):
                 raise TypeError(
-                    "provided metrics key is of instance {}, expected a string".format(
-                        type(metric)
-                    )
+                    f"provided metrics key is of instance {type(metric)}, expected a string"
                 )
             # Validate value is a number
             try:
                 float(metrics[metric])
             except ValueError as err:
                 raise ValueError(
-                    "{} is not a number, only numbers can be attached as metadata for models.".format(
-                        str(metrics[metric])
-                    )
+                    f"{str(metrics[metric])} is not a number, only numbers can be attached as metadata for models."
                 ) from err
 
 
@@ -651,9 +619,7 @@ def get_predictor_for_model(model, **kwargs):
 
     if not isinstance(model, BaseModel):
         raise ValueError(
-            "model is of type {}, but an instance of {} class is expected".format(
-                type(model), BaseModel
-            )
+            f"model is of type {type(model)}, but an instance of {BaseModel} class is expected"
         )
 
     if type(model) is TFModel:
@@ -672,6 +638,9 @@ def get_predictor_for_model(model, **kwargs):
             model_server=PREDICTOR.MODEL_SERVER_PYTHON,
             **kwargs,
         )
+    raise TypeError(
+        f"model is of type {type(model)}, but an instance of {BaseModel} class is expected"
+    )
 
 
 def get_predictor_for_server(name: str, script_file: str, **kwargs):
@@ -734,7 +703,7 @@ def get_obj_from_json(obj, cls):
         if isinstance(obj, Default):
             return cls()
         raise ValueError(
-            "Object of type {} cannot be converted to class {}".format(type(obj), cls)
+            f"Object of type {type(obj)} cannot be converted to class {cls}"
         )
     return obj
 
@@ -759,16 +728,15 @@ def feature_view_to_json(obj):
 def generate_fully_qualified_feature_name(
     feature_group: feature_group.FeatureGroup, feature_name: str
 ):
-    """
-    Generate the fully qualified feature name for a feature. The fully qualified name is created by concatenating
-    the project name, feature group name, feature group version and feature name.
+    """Generate the fully qualified feature name for a feature.
+
+    The fully qualified name is created by concatenating the project name, feature group name, feature group version and feature name.
     """
     return f"{feature_group._get_project_name()}_{feature_group.name}_{feature_group.version}_{feature_name}"
 
 
 class AsyncTask:
-    """
-    Generic class to represent an async task.
+    """Generic class to represent an async task.
 
     Args:
         func (Callable): The function to run asynchronously.
@@ -783,7 +751,7 @@ class AsyncTask:
     def __init__(
         self,
         task_function: Callable,
-        task_args: Tuple = (),
+        task_args: tuple = (),
         requires_connection_pool=None,
         **kwargs,
     ):
@@ -796,9 +764,7 @@ class AsyncTask:
 
     @property
     def result(self) -> Any:
-        """
-        The result of the async task.
-        """
+        """The result of the async task."""
         return self._result
 
     @result.setter
@@ -807,9 +773,7 @@ class AsyncTask:
 
     @property
     def event(self) -> threading.Event:
-        """
-        The event that will be set when the async task is finished.
-        """
+        """The event that will be set when the async task is finished."""
         return self._event
 
     @event.setter
@@ -818,26 +782,22 @@ class AsyncTask:
 
     @property
     def requires_connection_pool(self) -> bool:
-        """
-        Whether the task requires a connection pool.
-        """
+        """Whether the task requires a connection pool."""
         return self._requires_connection_pool
 
 
 class AsyncTaskThread(threading.Thread):
-    """
-    Generic thread class that can be used to run async tasks in a separate thread.
+    """Generic thread class that can be used to run async tasks in a separate thread.
+
     The thread will create its own event loop and run submitted tasks in that loop.
 
     The thread also store and fetches a connection pool that can be used by the async tasks.
 
-    # Args:
+    Parameters:
         connection_pool_initializer (Callable): A function that initializes a connection pool.
         connection_pool_params (Tuple): The parameters to pass to the connection pool initializer.
         *thread_args: Arguments to be passed to the thread.
         **thread_kwargs: Key word arguments to be passed to the thread.
-
-    # Properties:
         event_loop (asyncio.AbstractEventLoop): The event loop used by the thread.
         task_queue (queue.Queue[AsyncTask]): The queue used to submit tasks to the thread.
         connection_pool: The connection pool used
@@ -847,7 +807,7 @@ class AsyncTaskThread(threading.Thread):
         self,
         connection_pool_initializer: Callable = None,
         connection_test: Callable = None,
-        connection_pool_params: Tuple = (),
+        connection_pool_params: tuple = (),
         *thread_args,
         **thread_kwargs,
     ):
@@ -857,14 +817,12 @@ class AsyncTaskThread(threading.Thread):
         self.stop_event = threading.Event()
         self._connection_pool_initializer: Callable = connection_pool_initializer
         self._connection_test_function: Callable = connection_test
-        self._connection_pool_params: Tuple = connection_pool_params
+        self._connection_pool_params: tuple = connection_pool_params
         self._connection_pool = None
         self.daemon = True  # Setting the thread as a daemon thread by default, so it will be terminated when the main thread is terminated.
 
     async def execute_task(self):
-        """
-        Execute the async tasks for the queue.
-        """
+        """Execute the async tasks for the queue."""
         asyncio.set_event_loop(self._event_loop)
 
         while not self.stop_event.is_set():
@@ -896,17 +854,13 @@ class AsyncTaskThread(threading.Thread):
                 task.event.set()
 
     def stop(self):
-        """
-        Stop the thread and close the event loop.
-        """
+        """Stop the thread and close the event loop."""
         self.stop_event.set()
         self._event_loop.stop()
         self._event_loop.close()
 
     def run(self):
-        """
-        Execute the async tasks for the queue.
-        """
+        """Execute the async tasks for the queue."""
         asyncio.set_event_loop(self._event_loop)
         # Initialize the connection pool by using loop.run_until_complete to make sure the connection pool is initialized before the event loop starts running forever.
         if self._connection_pool_initializer:
@@ -918,9 +872,7 @@ class AsyncTaskThread(threading.Thread):
             self._event_loop.run_forever()
         except Exception as e:
             print(
-                "An error occurred in the async task thread the event loop has been closed: {}".format(
-                    str(e)
-                )
+                f"An error occurred in the async task thread the event loop has been closed: {str(e)}"
             )
             self._event_loop.stop()
             self._event_loop.close()
@@ -929,9 +881,7 @@ class AsyncTaskThread(threading.Thread):
             self._event_loop.close()
 
     def submit(self, task: AsyncTask):
-        """
-        Submit a async task to the thread and block until the execution of the function is completed.
-        """
+        """Submit a async task to the thread and block until the execution of the function is completed."""
         # Submit a task to the queue.
         self.task_queue.put(task)
         # Block the execution until the task is finished.
@@ -939,27 +889,20 @@ class AsyncTaskThread(threading.Thread):
 
         if isinstance(task.result, Exception):
             raise task.result
-        else:
-            # Return the result of the task.
-            return task.result
+        # Return the result of the task.
+        return task.result
 
     @property
     def event_loop(self) -> asyncio.AbstractEventLoop:
-        """
-        The event loop used by the thread.
-        """
+        """The event loop used by the thread."""
         return self._event_loop
 
     @property
     def task_queue(self) -> queue.Queue[AsyncTask]:
-        """
-        The queue used to submit tasks to the thread.
-        """
+        """The queue used to submit tasks to the thread."""
         return self._task_queue
 
     @property
     def connection_pool(self):
-        """
-        The connection pool used by the thread.
-        """
+        """The connection pool used by the thread."""
         return self._connection_pool

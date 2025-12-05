@@ -13,20 +13,25 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import hopsworks
-from fastmcp import Context
 from hopsworks.mcp.models.job import Jobs, to_base_model_job
 from hopsworks.mcp.utils.tags import TAGS
 from hopsworks_common import client
+
+
+if TYPE_CHECKING:
+    from fastmcp import Context
 
 
 class JobTools:
     """Tools for managing jobs in Hopsworks."""
 
     def __init__(self, mcp):
-        """
-        Initialize the JobTools with the MCP server instance.
+        """Initialize the JobTools with the MCP server instance.
 
         Args:
             mcp: The MCP server instance
@@ -55,11 +60,12 @@ class JobTools:
             total=jobs["count"] if "count" in jobs else len(jobs),
         )
 
-    async def get_jobs(self, project_name: str, ctx: Context = None):
+    async def get_jobs(self, project_name: str, ctx: Context | None = None):
         """Get the jobs for a specific project.
 
-        Args:
+        Parameters:
             project_name: The name of the project to retrieve jobs from.
+            ctx: The MCP context, provided automatically.
 
         Returns:
             Jobs: List of jobs in the specified project.

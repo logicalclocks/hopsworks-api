@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import json
-from typing import Optional
 
 import humps
 from hopsworks_common import usage, util
@@ -30,9 +29,9 @@ class KafkaTopic:
 
     def __init__(
         self,
-        name: Optional[str] = KAFKA_TOPIC.CREATE,
-        num_of_replicas: Optional[int] = None,
-        num_of_partitions: Optional[int] = None,
+        name: str | None = KAFKA_TOPIC.CREATE,
+        num_of_replicas: int | None = None,
+        num_of_partitions: int | None = None,
         schema_name=None,
         schema_version=None,
         schema_content=None,
@@ -43,8 +42,8 @@ class KafkaTopic:
         expand=None,
         items=None,
         count=None,
-        num_replicas: Optional[int] = None,
-        num_partitions: Optional[int] = None,
+        num_replicas: int | None = None,
+        num_partitions: int | None = None,
         **kwargs,
     ):
         self._name = name
@@ -73,16 +72,12 @@ class KafkaTopic:
             if name == KAFKA_TOPIC.CREATE:
                 if num_replicas is None:
                     print(
-                        "Setting number of replicas to default value '{}'".format(
-                            KAFKA_TOPIC.NUM_REPLICAS
-                        )
+                        f"Setting number of replicas to default value '{KAFKA_TOPIC.NUM_REPLICAS}'"
                     )
                     num_replicas = KAFKA_TOPIC.NUM_REPLICAS
                 if num_partitions is None:
                     print(
-                        "Setting number of partitions to default value '{}'".format(
-                            KAFKA_TOPIC.NUM_PARTITIONS
-                        )
+                        f"Setting number of partitions to default value '{KAFKA_TOPIC.NUM_PARTITIONS}'"
                     )
                     num_partitions = KAFKA_TOPIC.NUM_PARTITIONS
         elif name is None or name == KAFKA_TOPIC.NONE:
@@ -96,10 +91,9 @@ class KafkaTopic:
         json_decamelized = humps.decamelize(json_dict)
         if "count" not in json_decamelized:
             return cls.from_json(json_decamelized)
-        elif json_decamelized["count"] == 0:
+        if json_decamelized["count"] == 0:
             return []
-        else:
-            return [cls.from_json(jd) for jd in json_decamelized["items"]]
+        return [cls.from_json(jd) for jd in json_decamelized["items"]]
 
     @classmethod
     def from_json(cls, json_decamelized):
@@ -161,18 +155,20 @@ class KafkaTopic:
 
     @property
     def schema(self):
-        """Schema for the topic"""
+        """Schema for the topic."""
         return self._kafka_api._get_schema_details(
             self._schema_name, self._schema_version
         )
 
     @usage.method_logger
     def delete(self):
-        """Delete the topic
-        !!! danger "Potentially dangerous operation"
+        """Delete the topic.
+
+        Danger: Potentially dangerous operation
             This operation deletes the topic.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         self._kafka_api._delete_topic(self.name)
 

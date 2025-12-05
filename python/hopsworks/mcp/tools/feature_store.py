@@ -13,12 +13,18 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import hopsworks
-from fastmcp import Context
 from hopsworks.mcp.models.feature_store import FeatureStore
 from hopsworks.mcp.utils.tags import TAGS
 from hopsworks_common import client
+
+
+if TYPE_CHECKING:
+    from fastmcp import Context
 
 
 class FeatureStoreTools:
@@ -39,11 +45,14 @@ class FeatureStoreTools:
         )
 
     async def get_feature_store_in_current_project(
-        self, name: str = None, ctx: Context = None
+        self, name: str | None = None, ctx: Context | None = None
     ) -> FeatureStore:
         """Get the feature store for the current project.
-        Args:
-            name (str): The name of the feature store to retrieve. If None, retrieves the default feature store.
+
+        Parameters:
+            name: The name of the feature store to retrieve. If None, retrieves the default feature store.
+            ctx: The MCP context, provided automatically.
+
         Returns:
             FeatureStore: The feature store information for the current project or an error message.
         """
@@ -64,13 +73,14 @@ class FeatureStoreTools:
         )
 
     async def get_feature_store(
-        self, project_name: str, name: str = None, ctx: Context = None
+        self, project_name: str, name: str | None = None, ctx: Context | None = None
     ) -> FeatureStore:
         """Get the feature store for a specific project.
 
-        Args:
-            project_name (str): The name of the project to get the feature store for.
-            name (str): The name of the feature store to retrieve. If None, retrieves the default feature store.
+        Parameters:
+            project_name: The name of the project to get the feature store for.
+            name: The name of the feature store to retrieve. If None, retrieves the default feature store.
+            ctx: The MCP context, provided automatically.
 
         Returns:
             FeatureStore: The feature store information for the specified project or an error message.

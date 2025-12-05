@@ -26,30 +26,21 @@ class EnvironmentEngine:
         while len(commands) > 0 and not self._is_final_status(commands[0]):
             time.sleep(5)
             library = self._poll_commands_library(environment_name, library_name)
-            if library is None:
-                commands = []
-            else:
-                commands = library._commands
+            commands = [] if library is None else library._commands
 
     def await_environment_command(self, environment_name):
         commands = [command.Command(status="ONGOING")]
         while len(commands) > 0 and not self._is_final_status(commands[0]):
             time.sleep(5)
             environment = self._poll_commands_environment(environment_name)
-            if environment is None:
-                commands = []
-            else:
-                commands = environment._commands
+            commands = [] if environment is None else environment._commands
 
     def _is_final_status(self, command):
         if command.status == "FAILED":
             raise EnvironmentException(
-                "Command failed with stacktrace: \n{}".format(command.error_message)
+                f"Command failed with stacktrace: \n{command.error_message}"
             )
-        elif command.status == "SUCCESS":
-            return True
-        else:
-            return False
+        return command.status == "SUCCESS"
 
     def _poll_commands_library(self, environment_name, library_name):
         _client = client.get_instance()

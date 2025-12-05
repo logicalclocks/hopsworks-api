@@ -15,7 +15,7 @@
 #
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 import humps
 from hsfs import feature_group as feature_group_module
@@ -24,10 +24,10 @@ from hsfs import feature_group as feature_group_module
 class HudiFeatureGroupAlias:
     def __init__(
         self,
-        feature_group: Dict[str, Any],
+        feature_group: dict[str, Any],
         alias: str,
-        left_feature_group_end_timestamp: Optional[int] = None,
-        left_feature_group_start_timestamp: Optional[int] = None,
+        left_feature_group_end_timestamp: int | None = None,
+        left_feature_group_start_timestamp: int | None = None,
         **kwargs,
     ) -> None:
         self._feature_group = feature_group_module.FeatureGroup.from_response_json(
@@ -38,12 +38,12 @@ class HudiFeatureGroupAlias:
         self._left_feature_group_end_timestamp = left_feature_group_end_timestamp
 
     @classmethod
-    def from_response_json(cls, json_dict: Dict[str, Any]) -> HudiFeatureGroupAlias:
+    def from_response_json(cls, json_dict: dict[str, Any]) -> HudiFeatureGroupAlias:
         json_decamelized = humps.decamelize(json_dict)
         return cls(**json_decamelized)
 
     @property
-    def feature_group(self) -> "feature_group_module.FeatureGroup":
+    def feature_group(self) -> feature_group_module.FeatureGroup:
         return self._feature_group
 
     @property
@@ -51,9 +51,9 @@ class HudiFeatureGroupAlias:
         return self._alias
 
     @property
-    def left_feature_group_start_timestamp(self) -> Optional[int]:
+    def left_feature_group_start_timestamp(self) -> int | None:
         return self._left_feature_group_start_timestamp
 
     @property
-    def left_feature_group_end_timestamp(self) -> Optional[int]:
+    def left_feature_group_end_timestamp(self) -> int | None:
         return self._left_feature_group_end_timestamp

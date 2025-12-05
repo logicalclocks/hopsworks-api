@@ -39,30 +39,31 @@ class GitFileStatus:
             if json_decamelized["count"] == 0:
                 return []
             return [cls(**file_status) for file_status in json_decamelized["items"]]
-        else:
-            return cls(**json_decamelized)
+        return cls(**json_decamelized)
 
     @property
     def file(self):
-        """Path to the file"""
+        """Path to the file."""
         return self._file
 
     @property
     def status(self):
-        """Status of the file
-        Unmodified         StatusCode = ' '
-        Untracked          StatusCode = '?'
-        Modified           StatusCode = 'M'
-        Added              StatusCode = 'A'
-        Deleted            StatusCode = 'D'
-        Renamed            StatusCode = 'R'
-        Copied             StatusCode = 'C'
-        UpdatedButUnmerged StatusCode = 'U'"""
+        """Status of the file.
+
+        Unmodified         | StatusCode = ' '
+        Untracked          | StatusCode = '?'
+        Modified           | StatusCode = 'M'
+        Added              | StatusCode = 'A'
+        Deleted            | StatusCode = 'D'
+        Renamed            | StatusCode = 'R'
+        Copied             | StatusCode = 'C'
+        UpdatedButUnmerged | StatusCode = 'U'
+        """
         return self._status
 
     @property
     def extra(self):
-        """Extra contains additional information, such as the previous name in a rename"""
+        """Extra contains additional information, such as the previous name in a rename."""
         return self._extra
 
     def json(self):

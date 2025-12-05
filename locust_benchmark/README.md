@@ -58,53 +58,55 @@ This section illustrates how to quickly run locust in a single process, see the 
 
 #### Creating feature group for lookups
 
-1. Save the previously created API key in a file named `.api_key`
+01. Save the previously created API key in a file named `.api_key`
 
-```bash
-echo "[YOUR KEY]" > .api_key
-```
+    ```bash
+    echo "[YOUR KEY]" > .api_key
+    ```
 
-2. Now we need to configure the test, for that modify the `hopsworks_config.json` template:
+02. Now we need to configure the test, for that modify the `hopsworks_config.json` template:
 
-```json
-{
-    "host": "[UUID].cloud.hopsworks.ai",
-    "port": 443,
-    "project": "test",
-    "external": false,
-    "rows": 100000,
-    "schema_repetitions": 1,
-    "recreate_feature_group": true,
-    "batch_size": 100
-}
-```
+    ```json
+    {
+        "host": "[UUID].cloud.hopsworks.ai",
+        "port": 443,
+        "project": "test",
+        "external": false,
+        "rows": 100000,
+        "schema_repetitions": 1,
+        "recreate_feature_group": true,
+        "batch_size": 100
+    }
+    ```
 
-- `host`: Domain name of your Hopsworks cluster.
-- `port`: optional, for managed.hopsworks.ai it should be `443`.
-- `project`: the project to run the benchmark in.
-- `external`: if you are not running the benchmark suite from the same VPC as Hopsworks, set this to `true`.
-- `rows`: Number of rows/unique primary key values in the feature group used for lookup benchmarking.
-- `schema_repetitions`: This controls the number of features for the lookup. One schema repetition will result in 10 features plus primary key. Five repetitions will result in 50 features plus primary key.
-- `recreate_feature_group`: This controls if the previous feature group should be dropped and recreated. Set this to true when rerunning the benchmark with different size of rows or schema repetitions.
-- `batch_size`: This is relevant for the actual benchmark and controls how many feature vectors are looked up in the batch benchmark.
-- `tablespace`: (Optional) If set creates a feature group using on-disk data.
+    - `host`: Domain name of your Hopsworks cluster.
+    - `port`: optional, for managed.hopsworks.ai it should be `443`.
+    - `project`: the project to run the benchmark in.
+    - `external`: if you are not running the benchmark suite from the same VPC as Hopsworks, set this to `true`.
+    - `rows`: Number of rows/unique primary key values in the feature group used for lookup benchmarking.
+    - `schema_repetitions`: This controls the number of features for the lookup. One schema repetition will result in 10 features plus primary key. Five repetitions will result in 50 features plus primary key.
+    - `recreate_feature_group`: This controls if the previous feature group should be dropped and recreated. Set this to true when rerunning the benchmark with different size of rows or schema repetitions.
+    - `batch_size`: This is relevant for the actual benchmark and controls how many feature vectors are looked up in the batch benchmark.
+    - `tablespace`: (Optional) If set creates a feature group using on-disk data.
 
-3. Create the feature group
+03. Create the feature group
 
-```bash
-python create_feature_group.py
-```
+    ```bash
+    python create_feature_group.py
+    ```
 
-Note, the `recreate_feature_group` only matters if you rerun the `create_feature_group.py` script.
+    Note, the `recreate_feature_group` only matters if you rerun the `create_feature_group.py` script.
 
 #### Run one process locust benchmark
 
 You are now ready to run the load test:
+
 ```bash
 locust -f locustfile.py --headless -u 4 -r 1 -t 30 -s 1 --html=result.html
 ```
 
 Options:
+
 - `u`: number of users sharing the python process
 - `r`: spawn rate of the users in seconds, it will launch one user every `r` seconds until there are `u` users
 - `t`: total time to run the test for
@@ -125,13 +127,12 @@ locust -f locustfile.py MySQLFeatureVectorBatchLookup --headless -u 4 -r 1 -t 30
 
 As you will see already with 4 users, the single core tends to be saturated and locust will print a warning.
 
-
-
-```
+```plaintext
 [2023-03-09 12:02:11,304] ip-10-0-0-187/WARNING/root: CPU usage above 90%! This may constrain your throughput and may even give inconsistent response time measurements! See https://docs.locust.io/en/stable/running-distributed.html for how to distribute the load over multiple CPU cores or machines
 ```
 
 First we need to install docker, for which we will use [the provided convenience script](https://docs.docker.com/engine/install/ubuntu/#install-using-the-convenience-script), however, you can use any other method too:
+
 ```bash
 curl -fsSL https://get.docker.com -o get-docker.sh
 sudo sh get-docker.sh

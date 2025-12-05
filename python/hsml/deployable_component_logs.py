@@ -22,10 +22,10 @@ from hopsworks_common import util
 class DeployableComponentLogs:
     """Server logs of a deployable component (predictor or transformer).
 
-    # Arguments
+    Parameters:
         name: Deployment instance name.
         content: actual logs
-    # Returns
+    Returns:
         `DeployableComponentLogs`. Server logs of a deployable component
     """
 

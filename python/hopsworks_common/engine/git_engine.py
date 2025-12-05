@@ -26,20 +26,18 @@ class GitEngine:
         self._git_op_execution_api = git_op_execution_api.GitOpExecutionApi()
         self._log = logging.getLogger(__name__)
 
-    def execute_op_blocking(self, git_op, command):
-        """Poll a git execution status until it reaches a terminal state
-        :param git_op: git execution to monitor
-        :type git_op: GitOpExecution
-        :param command: git operation running
-        :type command: str
-        :return: The final GitOpExecution object
-        :rtype: GitOpExecution
-        """
+    def execute_op_blocking(self, git_op, command: str):
+        """Poll a git execution status until it reaches a terminal state.
 
+        Parameters:
+            git_op (GitOpExecution): git execution to monitor.
+            command: git operation running.
+
+        Returns:
+            The final GitOpExecution object.
+        """
         while git_op.success is None:
-            self._log.info(
-                "Running command {}, current status {}".format(command, git_op.state)
-            )
+            self._log.info(f"Running command {command}, current status {git_op.state}")
             git_op = self._git_op_execution_api._get_execution(
                 git_op.repository.id, git_op.id
             )
@@ -47,11 +45,8 @@ class GitEngine:
 
         if git_op.success is False:
             raise GitException(
-                "Git command failed with the message: {}".format(
-                    git_op.command_result_message
-                )
+                f"Git command failed with the message: {git_op.command_result_message}"
             )
-        else:
-            self._log.info("Git command {} finished".format(command))
+        self._log.info(f"Git command {command} finished")
 
         return git_op

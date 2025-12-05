@@ -32,7 +32,6 @@ class Client(base.Client):
     @abstractmethod
     def __init__(self):
         """To be implemented by clients."""
-        pass
 
     def _get_verify(self, verify, trust_store_path):
         """Get verification method for sending inference requests to Istio.
@@ -52,18 +51,15 @@ class Client(base.Client):
         if verify == "true":
             if trust_store_path is not None:
                 return trust_store_path
-            else:
-                return True
+            return True
 
         return False
 
-    def _get_host_port_pair(self):
-        """
-        Removes "http or https" from the rest endpoint and returns a list
-        [endpoint, port], where endpoint is on the format /path.. without http://
+    def _get_host_port_pair(self) -> tuple[str, str]:
+        """Removes "http or https" from the rest endpoint and returns a list [endpoint, port], where endpoint is on the format /path.. without http://.
 
-        :return: a list [endpoint, port]
-        :rtype: list
+        Returns:
+            a tuple (endpoint, port)
         """
         endpoint = self._base_url
         if endpoint.startswith("http"):

@@ -1,7 +1,5 @@
 class TAGS:
-    """
-    This class contains constants for different tag types used in the system.
-    """
+    """This class contains constants for different tag types used in the system."""
 
     AUTH = "auth"
     PROJECT = "project"

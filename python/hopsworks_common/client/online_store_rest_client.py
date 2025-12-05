@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 from warnings import warn
 
 import requests
@@ -34,10 +34,10 @@ _online_store_rest_client = None
 
 
 def init_or_reset_online_store_rest_client(
-    transport: Optional[
-        Union[requests.adapters.HTTPAdapter, requests.adapters.BaseAdapter]
-    ] = None,
-    optional_config: Optional[Dict[str, Any]] = None,
+    transport: requests.adapters.HTTPAdapter
+    | requests.adapters.BaseAdapter
+    | None = None,
+    optional_config: dict[str, Any] | None = None,
     reset_client: bool = False,
 ):
     global _online_store_rest_client
@@ -53,7 +53,7 @@ def init_or_reset_online_store_rest_client(
         if _logger.isEnabledFor(logging.WARNING):
             _logger.warning(
                 "Online Store Rest Client is already initialised. To reset connection or/and override configuration, "
-                + "use reset_online_store_rest_client flag.",
+                "use reset_online_store_rest_client flag.",
                 stacklevel=2,
             )
 
@@ -90,23 +90,22 @@ class OnlineStoreRestClientSingleton:
 
     def __init__(
         self,
-        transport: Optional[
-            Union[requests.adapaters.HTTPadapter, requests.adapters.BaseAdapter]
-        ] = None,
-        optional_config: Optional[Dict[str, Any]] = None,
+        transport: requests.adapaters.HTTPadapter
+        | requests.adapters.BaseAdapter
+        | None = None,
+        optional_config: dict[str, Any] | None = None,
     ):
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
                 f"Initialising Online Store Rest Client {'with optional configuration' if optional_config else ''}."
             )
-        if optional_config:
-            if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug(f"Optional Config: {optional_config!r}")
+        if optional_config and _logger.isEnabledFor(logging.DEBUG):
+            _logger.debug(f"Optional Config: {optional_config!r}")
         self._check_hopsworks_connection()
         self.variable_api = variable_api.VariableApi()
         self._auth: client.auth.OnlineStoreKeyAuth
         self._session: requests.Session
-        self._current_config: Dict[str, Any]
+        self._current_config: dict[str, Any]
         self._base_url: furl
         self._setup_rest_client(
             transport=transport,
@@ -117,18 +116,17 @@ class OnlineStoreRestClientSingleton:
 
     def reset_client(
         self,
-        transport: Optional[
-            Union[requests.adapters.HttpAdapter, requests.adapters.BaseAdapter]
-        ] = None,
-        optional_config: Optional[Dict[str, Any]] = None,
+        transport: requests.adapters.HttpAdapter
+        | requests.adapters.BaseAdapter
+        | None = None,
+        optional_config: dict[str, Any] | None = None,
     ):
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
                 f"Resetting Online Store Rest Client {'with optional configuration' if optional_config else ''}."
             )
-        if optional_config:
-            if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug(f"Optional Config: {optional_config}")
+        if optional_config and _logger.isEnabledFor(logging.DEBUG):
+            _logger.debug(f"Optional Config: {optional_config}")
         self._check_hopsworks_connection()
         if hasattr(self, "_session") and self._session:
             if _logger.isEnabledFor(logging.DEBUG):
@@ -138,15 +136,15 @@ class OnlineStoreRestClientSingleton:
         self._setup_rest_client(
             transport=transport,
             optional_config=optional_config,
-            use_current_config=False if optional_config else True,
+            use_current_config=not optional_config,
         )
 
     def _setup_rest_client(
         self,
-        transport: Optional[
-            Union[requests.adapters.HttpAdapter, requests.adapters.BaseAdapter]
-        ] = None,
-        optional_config: Optional[Dict[str, Any]] = None,
+        transport: requests.adapters.HttpAdapter
+        | requests.adapters.BaseAdapter
+        | None = None,
+        optional_config: dict[str, Any] | None = None,
         use_current_config: bool = True,
     ):
         if _logger.isEnabledFor(logging.DEBUG):
@@ -178,7 +176,7 @@ class OnlineStoreRestClientSingleton:
         else:
             raise ValueError(
                 "Use the init_or_reset_online_store_connection method with reset_connection flag set "
-                + "to True to reset the online_store_client_connection"
+                "to True to reset the online_store_client_connection"
             )
         if transport is not None:
             if _logger.isEnabledFor(logging.DEBUG):
@@ -218,7 +216,7 @@ class OnlineStoreRestClientSingleton:
             "Online Store REST Client Configuration failed to initialise."
         )
 
-    def _get_default_client_config(self) -> Dict[str, Any]:
+    def _get_default_client_config(self) -> dict[str, Any]:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
                 "Retrieving default configuration for Online Store REST Client."
@@ -227,7 +225,7 @@ class OnlineStoreRestClientSingleton:
         default_config.update(self._get_default_dynamic_parameters_config())
         return default_config
 
-    def _get_default_static_parameters_config(self) -> Dict[str, Any]:
+    def _get_default_static_parameters_config(self) -> dict[str, Any]:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
                 "Retrieving default static configuration for Online Store REST Client."
@@ -242,7 +240,7 @@ class OnlineStoreRestClientSingleton:
 
     def _get_default_dynamic_parameters_config(
         self,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
                 "Retrieving default dynamic configuration for Online Store REST Client."
@@ -286,30 +284,29 @@ class OnlineStoreRestClientSingleton:
                     f"External Online Store REST Client : Default RonDB Rest Server endpoint: {default_url}"
                 )
             return default_url
-        else:
-            if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug(
-                    "Internal Online Store REST Client : Retrieving RonDB Rest Server endpoint via service discovery."
-                )
-            service_discovery_domain = self.variable_api.get_service_discovery_domain()
-            if service_discovery_domain == "":
-                raise FeatureStoreException(
-                    "Client could not get Online Store hostname from service_discovery_domain. "
-                    "The variable is either not set or empty in Hopsworks cluster configuration."
-                )
-            default_url = f"https://rdrs.service.{service_discovery_domain}:{self._DEFAULT_ONLINE_STORE_REST_CLIENT_PORT}"
-            if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug(
-                    f"Internal Online Store REST Client : Default RonDB Rest Server endpoint: {default_url}"
-                )
-            return default_url
+        if _logger.isEnabledFor(logging.DEBUG):
+            _logger.debug(
+                "Internal Online Store REST Client : Retrieving RonDB Rest Server endpoint via service discovery."
+            )
+        service_discovery_domain = self.variable_api.get_service_discovery_domain()
+        if service_discovery_domain == "":
+            raise FeatureStoreException(
+                "Client could not get Online Store hostname from service_discovery_domain. "
+                "The variable is either not set or empty in Hopsworks cluster configuration."
+            )
+        default_url = f"https://rdrs.service.{service_discovery_domain}:{self._DEFAULT_ONLINE_STORE_REST_CLIENT_PORT}"
+        if _logger.isEnabledFor(logging.DEBUG):
+            _logger.debug(
+                f"Internal Online Store REST Client : Default RonDB Rest Server endpoint: {default_url}"
+            )
+        return default_url
 
     def send_request(
         self,
         method: str,
-        path_params: List[str],
-        headers: Optional[Dict[str, Any]] = None,
-        data: Optional[str] = None,
+        path_params: list[str],
+        headers: dict[str, Any] | None = None,
+        data: str | None = None,
     ) -> requests.Response:
         url = self._base_url.copy()
         url.path.segments.extend(path_params)
@@ -340,7 +337,7 @@ class OnlineStoreRestClientSingleton:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Hopsworks connection is active.")
 
-    def _set_auth(self, optional_config: Optional[Dict[str, Any]] = None) -> None:
+    def _set_auth(self, optional_config: dict[str, Any] | None = None) -> None:
         """Set authentication object for the Online Store REST Client.
 
         RonDB Rest Server uses Hopsworks Api Key to authenticate requests via the X-API-KEY header by default.
@@ -375,7 +372,7 @@ class OnlineStoreRestClientSingleton:
         else:
             raise FeatureStoreException(
                 "RonDB Rest Server uses Hopsworks Api Key to authenticate request."
-                + f"Provide a configuration with the {self.API_KEY} key."
+                f"Provide a configuration with the {self.API_KEY} key."
             )
 
     def is_connected(self):
@@ -404,16 +401,17 @@ class OnlineStoreRestClientSingleton:
     def base_url(self) -> furl:
         """Base URL for the Online Store REST API.
 
-        This the url of the RonDB REST Server and should not be confused with the Opensearch Vector DB which also serves as an Online Store for features belonging to Feature Group containing embeddings."""
+        This the url of the RonDB REST Server and should not be confused with the Opensearch Vector DB which also serves as an Online Store for features belonging to Feature Group containing embeddings.
+        """
         return self._base_url
 
     @property
-    def current_config(self) -> Dict[str, Any]:
+    def current_config(self) -> dict[str, Any]:
         """Current configuration of the Online Store REST Client."""
         return self._current_config
 
     @property
-    def auth(self) -> "client.auth.OnlineStoreKeyAuth":
+    def auth(self) -> client.auth.OnlineStoreKeyAuth:
         """Authentication object used to authenticate requests to the Online Store REST API.
 
         Extends the requests.auth.AuthBase class.

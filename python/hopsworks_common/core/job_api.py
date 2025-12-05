@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Literal
 
 from hopsworks_common import (
     client,
@@ -28,10 +28,13 @@ from hopsworks_common import (
     usage,
     util,
 )
-from hopsworks_common.core import (
-    ingestion_job_conf,
-    job_configuration,
-)
+
+
+if TYPE_CHECKING:
+    from hopsworks_common.core import (
+        ingestion_job_conf,
+        job_configuration,
+    )
 
 
 class JobApi:
@@ -40,7 +43,6 @@ class JobApi:
         """Create a new job or update an existing one.
 
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
@@ -52,15 +54,17 @@ class JobApi:
         spark_config['appPath'] = "/Resources/my_app.py"
 
         job = job_api.create_job("my_spark_job", spark_config)
-
         ```
-        # Arguments
+
+        Parameters:
             name: Name of the job.
             config: Configuration of the job.
-        # Returns
-            `Job`: The Job object
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Returns:
+            The created job.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client.get_instance()
 
@@ -79,15 +83,17 @@ class JobApi:
 
     @usage.method_logger
     @decorators.catch_not_found("hopsworks_common.job.Job", fallback_return=None)
-    def get_job(self, name: str) -> Optional[job.Job]:
+    def get_job(self, name: str) -> job.Job | None:
         """Get a job.
 
-        # Arguments
+        Parameters:
             name: Name of the job.
-        # Returns
-            `Job`: The Job object or `None` if it does not exist.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Returns:
+            The Job object or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client.get_instance()
         path_params = [
@@ -102,13 +108,14 @@ class JobApi:
         )
 
     @usage.method_logger
-    def get_jobs(self) -> List[job.Job]:
+    def get_jobs(self) -> list[job.Job]:
         """Get all jobs.
 
-        # Returns
-            `List[Job]`: List of Job objects
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Returns:
+            List of all jobs.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client.get_instance()
         path_params = [
@@ -122,29 +129,35 @@ class JobApi:
         )
 
     @usage.method_logger
-    def exists(self, name: str):
+    def exists(self, name: str) -> bool:
         """Check if a job exists.
 
-        # Arguments
+        Parameters:
             name: Name of the job.
-        # Returns
-            `bool`: True if the job exists, otherwise False
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Returns:
+            `True` if the job exists, otherwise `False`.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         job = self.get_job(name)
         return job is not None
 
     @usage.method_logger
-    def get_configuration(self, type: str):
+    def get_configuration(
+        self, type: Literal["SPARK", "PYSPARK", "PYTHON", "DOCKER", "FLINK"]
+    ) -> dict:
         """Get configuration for the specific job type.
 
-        # Arguments
-            type: Type of the job. Currently, supported types include: SPARK, PYSPARK, PYTHON, DOCKER, FLINK.
-        # Returns
-            `dict`: Default job configuration
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Parameters:
+            type: The job type to retrieve the configuration of.
+
+        Returns:
+            The default job configuration for the specific job type.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client.get_instance()
         path_params = [
@@ -160,8 +173,9 @@ class JobApi:
 
     def _delete(self, job):
         """Delete the job and all executions.
-        :param job: metadata object of job to delete
-        :type job: Job
+
+        Parameters:
+            job: Metadata object of job to delete.
         """
         _client = client.get_instance()
         path_params = [
@@ -172,14 +186,15 @@ class JobApi:
         ]
         _client._send_request("DELETE", path_params)
 
-    def _update_job(self, name: str, config: dict):
+    def _update_job(self, name: str, config: dict) -> job.Job:
         """Update the job.
-        :param name: name of the job
-        :type name: str
-        :param config: new job configuration
-        :type config: dict
-        :return: The updated Job object
-        :rtype: Job
+
+        Parameters:
+            name: Name of the job.
+            config: New job configuration.
+
+        Returns:
+            The updated Job object.
         """
         _client = client.get_instance()
 
@@ -220,9 +235,8 @@ class JobApi:
     def create(
         self,
         name: str,
-        job_conf: Union[
-            job_configuration.JobConfiguration, ingestion_job_conf.IngestionJobConf
-        ],
+        job_conf: job_configuration.JobConfiguration
+        | ingestion_job_conf.IngestionJobConf,
     ) -> job.Job:
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "jobs", name]
@@ -265,7 +279,7 @@ class JobApi:
 
     @usage.method_logger
     def create_or_update_schedule_job(
-        self, name: str, schedule_config: Dict[str, Any]
+        self, name: str, schedule_config: dict[str, Any]
     ) -> job_schedule.JobSchedule:
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "jobs", name, "schedule", "v2"]

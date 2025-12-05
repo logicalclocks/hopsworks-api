@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Callable, Dict, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Literal
 
 from hopsworks_common import client
 from hopsworks_common.core.constants import (
@@ -58,7 +58,7 @@ if TYPE_CHECKING:
 @uses_confluent_kafka
 def init_kafka_consumer(
     feature_store_id: int,
-    offline_write_options: Dict[str, Any],
+    offline_write_options: dict[str, Any],
 ) -> Consumer:
     # setup kafka consumer
     consumer_config = get_kafka_config(feature_store_id, offline_write_options)
@@ -69,11 +69,11 @@ def init_kafka_consumer(
 
 
 def init_kafka_resources(
-    feature_group: Union[FeatureGroup, ExternalFeatureGroup],
-    offline_write_options: Dict[str, Any],
-    num_entries: Optional[int] = None,
-) -> Tuple[
-    Producer, Dict[str, bytes], Dict[str, Callable[..., bytes]], Callable[..., bytes] :
+    feature_group: FeatureGroup | ExternalFeatureGroup,
+    offline_write_options: dict[str, Any],
+    num_entries: int | None = None,
+) -> tuple[
+    Producer, dict[str, bytes], dict[str, Callable[..., bytes]], Callable[..., bytes] :
 ]:
     # this function is a caching wrapper around _init_kafka_resources
     if feature_group._multi_part_insert and feature_group._kafka_producer:
@@ -95,11 +95,11 @@ def init_kafka_resources(
 
 
 def _init_kafka_resources(
-    feature_group: Union[FeatureGroup, ExternalFeatureGroup],
-    offline_write_options: Dict[str, Any],
-    num_entries: Optional[int] = None,
-) -> Tuple[
-    Producer, Dict[str, bytes], Dict[str, Callable[..., bytes]], Callable[..., bytes] :
+    feature_group: FeatureGroup | ExternalFeatureGroup,
+    offline_write_options: dict[str, Any],
+    num_entries: int | None = None,
+) -> tuple[
+    Producer, dict[str, bytes], dict[str, Callable[..., bytes]], Callable[..., bytes] :
 ]:
     # setup kafka producer
     producer = init_kafka_producer(
@@ -114,8 +114,8 @@ def _init_kafka_resources(
 
 
 def get_writer_function(
-    feature_group: Union[FeatureGroup, ExternalFeatureGroup],
-) -> Tuple[Dict[str, Callable[..., bytes]], Callable[..., bytes]]:
+    feature_group: FeatureGroup | ExternalFeatureGroup,
+) -> tuple[dict[str, Callable[..., bytes]], Callable[..., bytes]]:
     # setup complex feature writers
     feature_writers = {
         feature: get_encoder_func(feature_group._get_feature_avro_schema(feature))
@@ -127,9 +127,9 @@ def get_writer_function(
 
 
 def get_headers(
-    feature_group: Union[FeatureGroup, ExternalFeatureGroup],
-    num_entries: Optional[int] = None,
-) -> Dict[str, bytes]:
+    feature_group: FeatureGroup | ExternalFeatureGroup,
+    num_entries: int | None = None,
+) -> dict[str, bytes]:
     # custom headers for hopsworks onlineFS
     headers = {
         "projectId": str(feature_group.feature_store.project_id).encode("utf8"),
@@ -152,7 +152,7 @@ def get_headers(
 @uses_confluent_kafka
 def init_kafka_producer(
     feature_store_id: int,
-    offline_write_options: Dict[str, Any],
+    offline_write_options: dict[str, Any],
 ) -> Producer:
     # setup kafka producer
     return Producer(get_kafka_config(feature_store_id, offline_write_options))
@@ -162,14 +162,14 @@ def init_kafka_producer(
 def kafka_get_offsets(
     topic_name: str,
     feature_store_id: int,
-    offline_write_options: Dict[str, Any],
+    offline_write_options: dict[str, Any],
     high: bool,
 ) -> str:
     consumer = init_kafka_consumer(feature_store_id, offline_write_options)
     topics = consumer.list_topics(
         timeout=offline_write_options.get("kafka_timeout", 6)
     ).topics
-    if topic_name in topics.keys():
+    if topic_name in topics:
         # topic exists
         offsets = ""
         tuple_value = int(high)
@@ -189,7 +189,7 @@ def kafka_produce(
     key: str,
     encoded_row: bytes,
     topic_name: str,
-    headers: Dict[str, bytes],
+    headers: dict[str, bytes],
     acked: callable,
     debug_kafka: bool = False,
 ) -> None:
@@ -210,14 +210,14 @@ def kafka_produce(
             break
         except BufferError as e:
             if debug_kafka:
-                print("Caught: {}".format(e))
+                print(f"Caught: {e}")
             # backoff for 1 second
             producer.poll(1)
 
 
 def encode_complex_features(
-    feature_writers: Dict[str, callable], row: Dict[str, Any]
-) -> Dict[str, Any]:
+    feature_writers: dict[str, callable], row: dict[str, Any]
+) -> dict[str, Any]:
     for feature_name, writer in feature_writers.items():
         with BytesIO() as outf:
             writer(row[feature_name], outf)
@@ -245,7 +245,7 @@ def encode_row(complex_feature_writers, writer, row):
     # possible optimizaiton: make it based on type so we don't need to loop over
     # all keys in the row
     if isinstance(row, dict):
-        for k in row.keys():
+        for k in row:
             # for avro to be able to serialize them, they need to be python data types
             if HAS_NUMPY and isinstance(row[k], np.ndarray):
                 row[k] = row[k].tolist()
@@ -260,15 +260,14 @@ def encode_row(complex_feature_writers, writer, row):
     # encode feature row
     with BytesIO() as outf:
         writer(row, outf)
-        encoded_row = outf.getvalue()
-    return encoded_row
+        return outf.getvalue()
 
 
 def get_kafka_config(
     feature_store_id: int,
-    write_options: Optional[Dict[str, Any]] = None,
+    write_options: dict[str, Any] | None = None,
     engine: Literal["spark", "confluent"] = "confluent",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     if write_options is None:
         write_options = {}
     external = client._is_external() and not write_options.get("internal_kafka", False)
@@ -288,8 +287,8 @@ def get_kafka_config(
 
 @uses_confluent_kafka
 def build_ack_callback_and_optional_progress_bar(
-    n_rows: int, is_multi_part_insert: bool, offline_write_options: Dict[str, Any]
-) -> Tuple[Callable, Optional[tqdm]]:
+    n_rows: int, is_multi_part_insert: bool, offline_write_options: dict[str, Any]
+) -> tuple[Callable, tqdm | None]:
     if not is_multi_part_insert:
         progress_bar = tqdm(
             total=n_rows,
@@ -304,7 +303,7 @@ def build_ack_callback_and_optional_progress_bar(
     def acked(err: Exception, msg: Any) -> None:
         if err is not None:
             if offline_write_options.get("debug_kafka", False):
-                print("Failed to deliver message: %s: %s" % (str(msg), str(err)))
+                print(f"Failed to deliver message: {str(msg)}: {str(err)}")
             if err.code() in [
                 KafkaError.TOPIC_AUTHORIZATION_FAILED,
                 KafkaError._MSG_TIMED_OUT,

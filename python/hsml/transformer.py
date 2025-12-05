@@ -12,8 +12,7 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
-
-from typing import Optional, Union
+from __future__ import annotations
 
 import humps
 from hopsworks_common import client, util
@@ -28,7 +27,7 @@ class Transformer(DeployableComponent):
     def __init__(
         self,
         script_file: str,
-        resources: Optional[Union[TransformerResources, dict, Default]] = None,  # base
+        resources: TransformerResources | dict | Default | None = None,  # base
         **kwargs,
     ):
         resources = (
@@ -48,12 +47,15 @@ class Transformer(DeployableComponent):
 
     @classmethod
     def _validate_resources(cls, resources):
-        if resources is not None:
+        if (
+            resources is not None
+            and resources.num_instances != 0
+            and client.is_scale_to_zero_required()
+        ):
             # ensure scale-to-zero for kserve deployments when required
-            if resources.num_instances != 0 and client.is_scale_to_zero_required():
-                raise ValueError(
-                    "Scale-to-zero is required for KServe deployments in this cluster. Please, set the number of transformer instances to 0."
-                )
+            raise ValueError(
+                "Scale-to-zero is required for KServe deployments in this cluster. Please, set the number of transformer instances to 0."
+            )
         return resources
 
     @classmethod

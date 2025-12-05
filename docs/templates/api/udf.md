@@ -1,3 +1,0 @@
-# Transformation Functions API
-
-{{udf}}

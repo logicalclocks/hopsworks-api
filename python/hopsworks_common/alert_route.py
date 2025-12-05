@@ -13,9 +13,9 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import json
-from typing import Optional
 
 import humps
 from hopsworks_common import util
@@ -47,43 +47,41 @@ class AlertRoute:
         if "count" in json_decamelized:
             if "items" in json_decamelized:
                 return [cls(**route) for route in json_decamelized["items"]]
-            else:
-                return []
-        else:
-            return cls(**json_decamelized)
+            return []
+        return cls(**json_decamelized)
 
     @property
-    def groupBy(self) -> Optional[list]:
+    def groupBy(self) -> list | None:
         """The labels by which incoming alerts are grouped together."""
         return self._groupBy
 
     @property
-    def groupWait(self) -> Optional[str]:
+    def groupWait(self) -> str | None:
         """How long to initially wait to send a notification for a group."""
         return self._groupWait
 
     @property
-    def groupInterval(self) -> Optional[str]:
+    def groupInterval(self) -> str | None:
         """How long to wait before sending a notification about new alerts that are added to a group."""
         return self._groupInterval
 
     @property
-    def repeatInterval(self) -> Optional[str]:
+    def repeatInterval(self) -> str | None:
         """How long to wait before sending a notification again if it has already been sent successfully."""
         return self._repeatInterval
 
     @property
-    def receiver(self) -> Optional[str]:
+    def receiver(self) -> str | None:
         """The receiver to send notifications to."""
         return self._receiver
 
     @property
-    def match(self) -> Optional[dict]:
+    def match(self) -> dict | None:
         """A set of equality matchers an alert has to fulfill to match the node."""
         return self._match
 
     @property
-    def matchRe(self) -> Optional[dict]:
+    def matchRe(self) -> dict | None:
         """A set of regex-matchers an alert has to fulfill to match the node."""
         return self._matchRe
 
@@ -91,8 +89,8 @@ class AlertRoute:
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        """return the alert route as a dictionary"""
-        dict = {
+        """Return the alert route as a dictionary."""
+        return {
             "group_by": self._groupBy,
             "group_wait": self._groupWait,
             "group_interval": self._groupInterval,
@@ -101,7 +99,6 @@ class AlertRoute:
             "match": self._match,
             "match_re": self._matchRe,
         }
-        return dict
 
     def __str__(self):
         return self.json()

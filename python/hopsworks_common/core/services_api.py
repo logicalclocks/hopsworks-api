@@ -16,13 +16,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from hopsworks_common import client
 
 
 class ServicesApi:
-    def get_service(self, service: str) -> Dict[str, Any]:
+    def get_service(self, service: str) -> dict[str, Any]:
         _client = client.get_instance()
         path_params = [
             "services",

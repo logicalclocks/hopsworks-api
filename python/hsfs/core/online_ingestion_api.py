@@ -15,16 +15,18 @@
 #
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import TYPE_CHECKING
 
 from hopsworks_common import client
-from hsfs import feature_group as fg_mod
 from hsfs.core import online_ingestion
 
 
+if TYPE_CHECKING:
+    from hsfs import feature_group as fg_mod
+
+
 class OnlineIngestionApi:
-    """
-    API class for managing online ingestion operations.
+    """API class for managing online ingestion operations.
 
     This class provides methods to create and retrieve online ingestion operations,
     interacting with the Hopsworks backend.
@@ -35,17 +37,16 @@ class OnlineIngestionApi:
         feature_group_instance: fg_mod.FeatureGroup,
         online_ingestion_instance: online_ingestion.OnlineIngestion,
     ) -> online_ingestion.OnlineIngestion:
-        """
-        Create a new online ingestion operation for a feature group.
+        """Create a new online ingestion operation for a feature group.
 
         This method sends a request to the backend to start an online ingestion job
         for the specified feature group.
 
-        # Arguments
+        Parameters:
             feature_group_instance (FeatureGroup): The feature group for which to create the ingestion.
             online_ingestion_instance (OnlineIngestion): The OnlineIngestion object containing ingestion details.
 
-        # Returns
+        Returns:
             OnlineIngestion: The created OnlineIngestion object with metadata from the backend.
         """
         _client = client.get_instance()
@@ -73,21 +74,20 @@ class OnlineIngestionApi:
     def get_online_ingestion(
         self,
         feature_group_instance: fg_mod.FeatureGroup,
-        query_params: Optional[Dict[str, str]] = None,
+        query_params: dict[str, str] | None = None,
     ) -> online_ingestion.OnlineIngestion:
-        """
-        Retrieve online ingestion operations for a feature group.
+        """Retrieve online ingestion operations for a feature group.
 
         This method fetches metadata about online ingestion jobs for the specified feature group.
         You can filter the results using query parameters, such as retrieving the latest job
         or a job by its ID.
 
-        # Arguments
+        Parameters:
             feature_group_instance (FeatureGroup): The feature group for which to retrieve ingestion jobs.
             query_params (Optional[Dict[str, str]]): Optional query parameters for filtering results,
                 e.g., {"filter_by": "LATEST"} or {"filter_by": "ID:123"}.
 
-        # Returns
+        Returns:
             OnlineIngestion: The OnlineIngestion object(s) matching the query.
         """
         _client = client.get_instance()

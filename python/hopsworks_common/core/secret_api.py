@@ -13,10 +13,10 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import getpass
 import json
-from typing import List, Optional
 
 from hopsworks_common import client, decorators, secret
 from hopsworks_common.core import project_api
@@ -28,13 +28,13 @@ class SecretsApi:
     ):
         self._project_api = project_api.ProjectApi()
 
-    def get_secrets(self) -> List[secret.Secret]:
-        """Get all secrets
+    def get_secrets(self) -> list[secret.Secret]:
+        """Get all secrets.
 
-        # Returns
+        Returns:
             `List[Secret]`: List of all accessible secrets
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = [
@@ -46,16 +46,20 @@ class SecretsApi:
         )
 
     @decorators.catch_not_found("hopsworks_common.secret.Secret", fallback_return=None)
-    def get_secret(self, name: str, owner: str = None) -> Optional[secret.Secret]:
+    def get_secret(self, name: str, owner: str = None) -> secret.Secret | None:
         """Get a secret.
 
-        # Arguments
+        Parameters:
             name: Name of the secret.
-            owner: username of the owner for a secret shared with the current project. Users can find their username in the Account Settings > Profile section.
-        # Returns
-            `Secret`: The Secret object or `None` if it does not exist.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            owner:
+                Username of the owner for a secret shared with the current project.
+                Users can find their username in the Account Settings > Profile section.
+
+        Returns:
+            The Secret object or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client.get_instance()
         query_params = None
@@ -79,23 +83,25 @@ class SecretsApi:
 
     def get(self, name: str, owner: str = None) -> str:
         """Get the secret's value.
-        If the secret does not exist, it prompts the user to create the secret if the application is running interactively
 
-        # Arguments
+        If the secret does not exist, it prompts the user to create the secret if the application is running interactively.
+
+        Parameters:
             name: Name of the secret.
-            owner: email of the owner for a secret shared with the current project.
-        # Returns
-            `str`: The secret value
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            owner: Email of the owner for a secret shared with the current project.
+
+        Returns:
+            The secret value.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         secret_obj = self.get_secret(name=name, owner=owner)
         if secret_obj:
             return secret_obj.value
-        else:
-            secret_input = getpass.getpass(
-                prompt="\nCould not find secret, enter value here to create it: "
-            )
+        secret_input = getpass.getpass(
+            prompt="\nCould not find secret, enter value here to create it: "
+        )
         return self.create_secret(name, secret_input).value
 
     def create_secret(
@@ -104,7 +110,6 @@ class SecretsApi:
         """Create a new secret.
 
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
@@ -112,16 +117,18 @@ class SecretsApi:
         secrets_api = hopsworks.get_secrets_api()
 
         secret = secrets_api.create_secret("my_secret", "Fk3MoPlQXCQvPo")
-
         ```
-        # Arguments
+
+        Parameters:
             name: Name of the secret.
             value: The secret value.
             project: Name of the project to share the secret with.
-        # Returns
-            `Secret`: The Secret object
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Returns:
+            The Secret object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client.get_instance()
 
@@ -151,8 +158,9 @@ class SecretsApi:
 
     def _delete(self, name: str):
         """Delete the secret.
-        :param name: name of the secret
-        :type name: Secret
+
+        Parameters:
+            name: Name of the secret.
         """
         _client = client.get_instance()
         path_params = [

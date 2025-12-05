@@ -19,7 +19,7 @@ import hopsworks_common.client.istio.grpc.inference_client as inference_client
 import hopsworks_common.client.istio.grpc.proto.grpc_predict_v2_pb2 as grpc__predict__v2__pb2
 
 
-class GRPCInferenceServiceStub(object):
+class GRPCInferenceServiceStub:
     """Inference Server GRPC endpoints."""
 
     def __init__(self, channel):
@@ -70,13 +70,11 @@ class GRPCInferenceServiceStub(object):
         )
 
 
-class GRPCInferenceServiceServicer(object):
+class GRPCInferenceServiceServicer:
     """Inference Server GRPC endpoints."""
 
     def ServerLive(self, request, context):
-        """The ServerLive API indicates if the inference server is able to receive
-        and respond to metadata and inference requests.
-        """
+        """The ServerLive API indicates if the inference server is able to receive and respond to metadata and inference requests."""
         context.set_code(inference_client.StatusCode.UNIMPLEMENTED)
         context.set_details("Method not implemented!")
         raise NotImplementedError("Method not implemented!")
@@ -94,7 +92,9 @@ class GRPCInferenceServiceServicer(object):
         raise NotImplementedError("Method not implemented!")
 
     def ServerMetadata(self, request, context):
-        """The ServerMetadata API provides information about the server. Errors are
+        """The ServerMetadata API provides information about the server.
+
+        Errors are
         indicated by the google.rpc.Status returned for the request. The OK code
         indicates success and other codes indicate failure.
         """
@@ -103,7 +103,9 @@ class GRPCInferenceServiceServicer(object):
         raise NotImplementedError("Method not implemented!")
 
     def ModelMetadata(self, request, context):
-        """The per-model metadata API provides information about a model. Errors are
+        """The per-model metadata API provides information about a model.
+
+        Errors are
         indicated by the google.rpc.Status returned for the request. The OK code
         indicates success and other codes indicate failure.
         """
@@ -112,7 +114,9 @@ class GRPCInferenceServiceServicer(object):
         raise NotImplementedError("Method not implemented!")
 
     def ModelInfer(self, request, context):
-        """The ModelInfer API performs inference using the specified model. Errors are
+        """The ModelInfer API performs inference using the specified model.
+
+        Errors are
         indicated by the google.rpc.Status returned for the request. The OK code
         indicates success and other codes indicate failure.
         """
@@ -183,7 +187,7 @@ def add_GRPCInferenceServiceServicer_to_server(servicer, server):
 
 
 # This class is part of an EXPERIMENTAL API.
-class GRPCInferenceService(object):
+class GRPCInferenceService:
     """Inference Server GRPC endpoints."""
 
     @staticmethod

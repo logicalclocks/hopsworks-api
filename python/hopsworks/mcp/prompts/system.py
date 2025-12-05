@@ -34,8 +34,7 @@ class SystemPrompts:
         self.prompt = "You are a helpful assistant that can answer questions about Hopsworks and use various tools to assist users."
 
     def get_system_prompt_stateful(self) -> str:
-        """
-        Generates a system prompt for stateful requests.
+        """Generates a system prompt for stateful requests.
 
         Returns:
             str: A system prompt for stateful requests.
@@ -43,8 +42,7 @@ class SystemPrompts:
         return f"{self.prompt} \n Always assume current project and use tools with names that end with in_current_project, if the user does not supply a project name."
 
     def get_system_prompt_stateless(self) -> str:
-        """
-        Generates a system prompt for stateless requests.
+        """Generates a system prompt for stateless requests.
 
         Returns:
             str: A system prompt for stateless requests.

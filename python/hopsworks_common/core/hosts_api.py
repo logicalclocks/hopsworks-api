@@ -16,13 +16,13 @@
 
 from __future__ import annotations
 
-from typing import Any, List
+from typing import Any
 
 from hopsworks_common import client
 
 
 class HostsApi:
-    def get(self) -> List[Any]:
+    def get(self) -> list[Any]:
         _client = client.get_instance()
         path_params = [
             "hosts",

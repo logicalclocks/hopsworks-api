@@ -13,28 +13,32 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import json
 import logging
 import os
 import re
 import warnings
-from typing import Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 import humps
 from hopsworks_common import client, usage, util
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.constants import MODEL_REGISTRY
-from hsml import deployment, tag
 from hsml.core import explicit_provenance
 from hsml.engine import model_engine
-from hsml.inference_batcher import InferenceBatcher
-from hsml.inference_logger import InferenceLogger
 from hsml.model_schema import ModelSchema
 from hsml.predictor import Predictor
-from hsml.resources import PredictorResources
 from hsml.schema import Schema
-from hsml.transformer import Transformer
+
+
+if TYPE_CHECKING:
+    from hsml import deployment, tag
+    from hsml.inference_batcher import InferenceBatcher
+    from hsml.inference_logger import InferenceLogger
+    from hsml.resources import PredictorResources
+    from hsml.transformer import Transformer
 
 
 _logger = logging.getLogger(__name__)
@@ -104,11 +108,11 @@ class Model:
         model_path,
         await_registration=480,
         keep_original_files=False,
-        upload_configuration: Optional[Dict[str, Any]] = None,
+        upload_configuration: dict[str, Any] | None = None,
     ):
         """Persist this model including model files and metadata to the model registry.
 
-        # Arguments
+        Parameters:
             model_path: Local or remote (Hopsworks file system) path to the folder where the model files are located, or path to a specific model file.
             await_registration: Awaiting time for the model to be registered in Hopsworks.
             keep_original_files: If the model files are located in hopsfs, whether to move or copy those files into the Models dataset. Default is False (i.e., model files will be moved)
@@ -119,10 +123,11 @@ class Model:
                 * key `simultaneous_uploads`: number of chunks to upload in parallel. Default 3.
                 * key `max_chunk_retries`: number of times to retry the upload of a chunk in case of failure. Default 1.
 
-        # Returns
+        Returns:
             `Model`: The model metadata object.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
         if self._training_dataset_version is None and self._feature_view is not None:
             if self._feature_view.get_last_accessed_training_dataset() is not None:
@@ -169,49 +174,49 @@ class Model:
     def download(self, local_path=None) -> str:
         """Download the model files.
 
-        # Arguments
+        Parameters:
             local_path: path where to download the model files in the local filesystem
-        # Returns
+        Returns:
             `str`: Absolute path to local folder containing the model files.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
         return self._model_engine.download(model_instance=self, local_path=local_path)
 
     @usage.method_logger
     def delete(self):
-        """Delete the model
+        """Delete the model.
 
-        !!! danger "Potentially dangerous operation"
+        Danger: Potentially dangerous operation
             This operation drops all metadata associated with **this version** of the
             model **and** deletes the model files.
 
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
         self._model_engine.delete(model_instance=self)
 
     @usage.method_logger
     def deploy(
         self,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        artifact_version: Optional[
-            str
-        ] = None,  # deprecated, kept for backward compatibility
-        serving_tool: Optional[str] = None,
-        script_file: Optional[str] = None,
-        config_file: Optional[str] = None,
-        resources: Optional[Union[PredictorResources, dict]] = None,
-        inference_logger: Optional[Union[InferenceLogger, dict]] = None,
-        inference_batcher: Optional[Union[InferenceBatcher, dict]] = None,
-        transformer: Optional[Union[Transformer, dict]] = None,
-        api_protocol: Optional[str] = IE.API_PROTOCOL_REST,
-        environment: Optional[str] = None,
+        name: str | None = None,
+        description: str | None = None,
+        artifact_version: str
+        | None = None,  # deprecated, kept for backward compatibility
+        serving_tool: str | None = None,
+        script_file: str | None = None,
+        config_file: str | None = None,
+        resources: PredictorResources | dict | None = None,
+        inference_logger: InferenceLogger | dict | None = None,
+        inference_batcher: InferenceBatcher | dict | None = None,
+        transformer: Transformer | dict | None = None,
+        api_protocol: str | None = IE.API_PROTOCOL_REST,
+        environment: str | None = None,
     ) -> deployment.Deployment:
         """Deploy the model.
 
-        !!! example
+        Example:
             ```python
 
             import hopsworks
@@ -226,7 +231,7 @@ class Model:
 
             my_deployment = my_model.deploy()
             ```
-        # Arguments
+        Parameters:
             name: Name of the deployment.
             description: Description of the deployment.
             artifact_version: (**Deprecated**) Version number of the model artifact to deploy, `CREATE` to create a new model artifact
@@ -243,13 +248,12 @@ class Model:
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC'). Defaults to 'REST'.
             environment: The inference environment to use.
 
-        # Returns
+        Returns:
             `Deployment`: The deployment metadata object of a new or existing deployment.
 
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
-
         if name is None:
             name = self._get_default_serving_name()
 
@@ -271,26 +275,24 @@ class Model:
         return predictor.deploy()
 
     @usage.method_logger
-    def add_tag(self, name: str, value: Union[str, dict]):
+    def add_tag(self, name: str, value: str | dict):
         """Attach a tag to a model.
 
         A tag consists of a <name,value> pair. Tag names are unique identifiers across the whole cluster.
         The value of a tag can be any valid json - primitives, arrays or json objects.
 
-        # Arguments
+        Parameters:
             name: Name of the tag to be added.
             value: Value of the tag to be added.
 
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to add the tag.
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to add the tag.
         """
         self._model_engine.set_tag(model_instance=self, name=name, value=value)
 
     @usage.method_logger
-    def set_tag(self, name: str, value: Union[str, dict]):
-        """
-        Deprecated: Use add_tag instead.
-        """
+    def set_tag(self, name: str, value: str | dict):
+        """Deprecated: Use add_tag instead."""
         warnings.warn(
             "The set_tag method is deprecated. Please use add_tag instead.",
             DeprecationWarning,
@@ -302,37 +304,41 @@ class Model:
     def delete_tag(self, name: str):
         """Delete a tag attached to a model.
 
-        # Arguments
+        Parameters:
             name: Name of the tag to be removed.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to delete the tag.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to delete the tag.
         """
         self._model_engine.delete_tag(model_instance=self, name=name)
 
-    def get_tag(self, name: str) -> Optional[str]:
+    def get_tag(self, name: str) -> str | None:
         """Get the tags of a model.
 
-        # Arguments
+        Parameters:
             name: Name of the tag to get.
-        # Returns
+
+        Returns:
             tag value or `None` if it does not exist.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the tag.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tag.
         """
         return self._model_engine.get_tag(model_instance=self, name=name)
 
-    def get_tags(self) -> Dict[str, tag.Tag]:
+    def get_tags(self) -> dict[str, tag.Tag]:
         """Retrieves all tags attached to a model.
 
-        # Returns
+        Returns:
             `Dict[str, obj]` of tags.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError` in case the backend fails to retrieve the tags.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case of a server error.
         """
         return self._model_engine.get_tags(model_instance=self)
 
     def get_url(self):
-        """Get url to the model in Hopsworks"""
+        """Get url to the model in Hopsworks."""
         path = (
             "/p/"
             + str(client.get_instance()._project_id)
@@ -345,16 +351,19 @@ class Model:
 
     def get_feature_view(self, init: bool = True, online: bool = False):
         """Get the parent feature view of this model, based on explicit provenance.
+
          Only accessible, usable feature view objects are returned. Otherwise an Exception is raised.
          For more details, call the base method - get_feature_view_provenance
 
-         # Arguments
+         Parameters:
             init: By default this is set to True. If you require a more complex initialization of the feature view for online or batch scenarios, you should set `init` to False to retrieve a non initialized feature view and then call `init_batch_scoring()` or `init_serving()` with the required parameters.
             online: By default this is set to False and the initialization for batch scoring is considered the default scenario. If you set `online` to True, the online scenario is enabled and the `init_serving()` method is called. When inside a deployment, the only available scenario is the online one, thus the parameter is ignored and init_serving is always called (if `init` is set to True). If you want to override this behaviour, you should set `init` to False and proceed with a custom initialization.
-        # Returns
+
+        Returns:
             `FeatureView`: Feature View Object or `None` if it does not exist.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the feature view.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the feature view.
         """
         fv_prov = self.get_feature_view_provenance()
         fv = explicit_provenance.Links.get_one_accessible_parent(fv_prov)
@@ -377,27 +386,29 @@ class Model:
 
     def get_feature_view_provenance(self) -> explicit_provenance.Links:
         """Get the parent feature view of this model, based on explicit provenance.
-        This feature view can be accessible, deleted or inaccessible.
-        For deleted and inaccessible feature views, only a minimal information is
-        returned.
 
-        # Returns
-            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the feature view provenance
+        This feature view can be accessible, deleted or inaccessible.
+        For deleted and inaccessible feature views, only a minimal information is returned.
+
+        Returns:
+            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the feature view provenance.
         """
         return self._model_engine.get_feature_view_provenance(model_instance=self)
 
     def get_training_dataset_provenance(self) -> explicit_provenance.Links:
         """Get the parent training dataset of this model, based on explicit provenance.
-        This training dataset can be accessible, deleted or inaccessible.
-        For deleted and inaccessible training datasets, only a minimal information is
-        returned.
 
-        # Returns
-            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the training dataset provenance
+        This training dataset can be accessible, deleted or inaccessible.
+        For deleted and inaccessible training datasets, only a minimal information is returned.
+
+        Returns:
+            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the training dataset provenance.
         """
         return self._model_engine.get_training_dataset_provenance(model_instance=self)
 
@@ -411,8 +422,7 @@ class Model:
             if json_decamelized["count"] == 0:
                 return []
             return [util.set_model_class(model) for model in json_decamelized["items"]]
-        else:
-            return util.set_model_class(json_decamelized)
+        return util.set_model_class(json_decamelized)
 
     def update_from_response_json(self, json_dict):
         json_decamelized = humps.decamelize(json_dict)
@@ -524,6 +534,7 @@ class Model:
             return self._model_engine.read_file(
                 model_instance=self, resource=self._program
             )
+        return None
 
     @program.setter
     def program(self, program):
@@ -531,7 +542,7 @@ class Model:
 
     @property
     def user(self):
-        """user of the model."""
+        """User of the model."""
         return self._user_full_name
 
     @user.setter
@@ -551,7 +562,7 @@ class Model:
 
     @property
     def framework(self):
-        """framework of the model."""
+        """Framework of the model."""
         return self._framework
 
     @framework.setter
@@ -560,7 +571,7 @@ class Model:
 
     @property
     def model_schema(self):
-        """model schema of the model."""
+        """Model schema of the model."""
         return self._model_engine.read_json(
             model_instance=self, resource="model_schema.json"
         )
@@ -589,21 +600,27 @@ class Model:
 
     @property
     def model_path(self):
-        """path of the model with version folder omitted. Resolves to /Projects/{project_name}/Models/{name}"""
-        return "/Projects/{}/Models/{}".format(self.project_name, self.name)
+        """Path of the model with version folder omitted.
+
+        Resolves to `/Projects/{project_name}/Models/{name}`.
+        """
+        return f"/Projects/{self.project_name}/Models/{self.name}"
 
     @property
     def version_path(self):
-        """path of the model including version folder. Resolves to /Projects/{project_name}/Models/{name}/{version}"""
-        return "{}/{}".format(self.model_path, str(self.version))
+        """Path of the model including version folder.
+
+        Resolves to `/Projects/{project_name}/Models/{name}/{version}`.
+        """
+        return f"{self.model_path}/{str(self.version)}"
 
     @property
     def model_files_path(self):
-        """path of the model files including version and files folder. Resolves to /Projects/{project_name}/Models/{name}/{version}/Files"""
-        return "{}/{}".format(
-            self.version_path,
-            MODEL_REGISTRY.MODEL_FILES_DIR_NAME,
-        )
+        """Path of the model files including version and files folder.
+
+        Resolves to `/Projects/{project_name}/Models/{name}/{version}/Files`.
+        """
+        return f"{self.version_path}/{MODEL_REGISTRY.MODEL_FILES_DIR_NAME}"
 
     @property
     def shared_registry_project_name(self):

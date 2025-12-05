@@ -38,8 +38,8 @@ from retrying import retry
 
 
 def _is_timeout(exception):
-    return isinstance(exception, urllib3.exceptions.ReadTimeoutError) or isinstance(
-        exception, ConnectionTimeout
+    return isinstance(
+        exception, (urllib3.exceptions.ReadTimeoutError, ConnectionTimeout)
     )
 
 
@@ -69,8 +69,7 @@ def _handle_opensearch_exception(func):
                 raise FeatureStoreException(
                     OpenSearchClientSingleton.TIMEOUT_ERROR_MSG
                 ) from e
-            else:
-                raise e
+            raise e
 
     return error_handler_wrapper
 
@@ -92,8 +91,7 @@ class OpensearchRequestOption:
 
     @classmethod
     def get_options(cls, options: dict):
-        """
-        Construct a map of options for the request to the vector database.
+        """Construct a map of options for the request to the vector database.
 
         Args:
             options (dict): The options used for the request to the vector database.
@@ -126,8 +124,7 @@ class OpensearchRequestOption:
                 else:
                     new_options[option] = value
             return new_options
-        else:
-            return default_option
+        return default_option
 
 
 class OpenSearchClientSingleton:
@@ -139,7 +136,7 @@ class OpenSearchClientSingleton:
 
     def __new__(cls):
         if not cls._instance:
-            cls._instance = super(OpenSearchClientSingleton, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
             cls._instance._opensearch_client = None
             cls._instance._setup_opensearch_client()
         return cls._instance

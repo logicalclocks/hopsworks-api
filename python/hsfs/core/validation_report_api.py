@@ -15,8 +15,6 @@
 #
 from __future__ import annotations
 
-from typing import List, Union
-
 from hopsworks_common import client
 from hsfs.core.variable_api import VariableApi
 from hsfs.validation_report import ValidationReport
@@ -113,7 +111,7 @@ class ValidationReportApi:
             _client._send_request("GET", path_params, query_params, headers=headers)
         )
 
-    def get_all(self) -> Union[List[ValidationReport], ValidationReport]:
+    def get_all(self) -> list[ValidationReport] | ValidationReport:
         """Get the validation report attached to a featuregroup.
 
         :return: validation report

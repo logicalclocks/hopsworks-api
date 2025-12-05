@@ -23,13 +23,14 @@ from hopsworks_common.client.exceptions import RestAPIError
 
 
 class ProjectApi:
-    def _exists(self, name: str):
+    def _exists(self, name: str) -> bool:
         """Check if a project exists.
 
-        # Arguments
+        Parameters:
             name: Name of the project.
-        # Returns
-            `bool`: True if project exists, otherwise False
+
+        Returns:
+            `True` if project exists, otherwise `False`.
         """
         try:
             self._get_project(name)
@@ -37,13 +38,14 @@ class ProjectApi:
         except RestAPIError:
             return False
 
-    def _get_owned_projects(self):
-        """Get all projects owned by the current user
+    def _get_owned_projects(self) -> list[project.Project]:
+        """Get all projects owned by the current user.
 
-        # Returns
-            `List[Project]`: List of Project objects
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If unable to get the project teams
+        Returns:
+            List of Project objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If unable to get the project teams.
         """
         project_team_json = self._get_project_teams()
         projects = []
@@ -57,13 +59,14 @@ class ProjectApi:
                     projects.append(self._get_project(project_team["project"]["name"]))
         return projects
 
-    def _get_project_teams(self):
+    def _get_project_teams(self) -> str:
         """Get all project teams for this user.
 
-        # Returns
-            `str`: List of Project teams
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If unable to get the project teams
+        Returns:
+            List of Project teams.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If unable to get the project teams.
         """
         _client = client.get_instance()
         path_params = [
@@ -71,13 +74,14 @@ class ProjectApi:
         ]
         return _client._send_request("GET", path_params)
 
-    def _get_projects(self):
+    def _get_projects(self) -> list[project.Project]:
         """Get all projects accessible by the user.
 
-        # Returns
-            `List[Project]`: List of Project objects
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If unable to get the projects
+        Returns:
+            List of Project objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If unable to get the projects.
         """
         project_team_json = self._get_project_teams()
         projects = []
@@ -85,15 +89,17 @@ class ProjectApi:
             projects.append(self._get_project(project_team["project"]["name"]))
         return projects
 
-    def _get_project(self, name: str):
+    def _get_project(self, name: str) -> project.Project:
         """Get a project.
 
-        # Arguments
+        Parameters:
             name: Name of the project.
-        # Returns
-            `Project`: The Project object
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If unable to get the project
+
+        Returns:
+            The Project object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If unable to get the project.
         """
         _client = client.get_instance()
         path_params = [
@@ -106,17 +112,19 @@ class ProjectApi:
 
     def _create_project(
         self, name: str, description: str = None, feature_store_topic: str = None
-    ):
+    ) -> project.Project:
         """Create a new project.
 
-        # Arguments
+        Parameters:
             name: Name of the project.
             description: Description of the project.
             feature_store_topic: Feature store topic name.
-        # Returns
-            `Project`: The Project object
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If unable to create the project
+
+        Returns:
+            The Project object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If unable to create the project.
         """
         _client = client.get_instance()
 
@@ -156,5 +164,4 @@ class ProjectApi:
         projects = self._get_project_teams()
         if projects:
             return projects[0]["user"]
-        else:
-            return {}
+        return {}

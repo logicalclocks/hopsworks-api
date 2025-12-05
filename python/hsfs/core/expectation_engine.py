@@ -15,10 +15,13 @@
 #
 from __future__ import annotations
 
-from typing import Optional
+from typing import TYPE_CHECKING
 
 from hsfs.core import expectation_api
-from hsfs.ge_expectation import GeExpectation
+
+
+if TYPE_CHECKING:
+    from hsfs.ge_expectation import GeExpectation
 
 
 class ExpectationEngine:
@@ -48,7 +51,7 @@ class ExpectationEngine:
     def update(self, expectation: GeExpectation) -> GeExpectation:
         return self._expectation_api.update(expectation)
 
-    def get(self, expectation_id: int) -> Optional[GeExpectation]:
+    def get(self, expectation_id: int) -> GeExpectation | None:
         return self._expectation_api.get(expectation_id)
 
     def delete(self, expectation_id: int) -> None:
@@ -62,10 +65,9 @@ class ExpectationEngine:
     def check_for_id(self, expectation: GeExpectation) -> None:
         if expectation.id:
             return
+        if "expectationId" in expectation.meta:
+            expectation.id = int(expectation.meta["expectationId"])
         else:
-            if "expectationId" in expectation.meta.keys():
-                expectation.id = int(expectation.meta["expectationId"])
-            else:
-                raise ValueError(
-                    "The provided expectation has no id. Either set the id field or populate the meta field with an expectationId keyword."
-                )
+            raise ValueError(
+                "The provided expectation has no id. Either set the id field or populate the meta field with an expectationId keyword."
+            )

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 import humps
 from hopsworks_common import util
@@ -26,29 +26,29 @@ from hopsworks_common import util
 
 @dataclass
 class User:
-    email: Optional[str] = None
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    href: Optional[str] = None
-    username: Optional[str] = None
-    status: Optional[str] = None
-    secret: Optional[str] = None
-    chosen_password: Optional[str] = None
-    repeated_password: Optional[str] = None
-    tos: Optional[bool] = None
-    two_factor: Optional[bool] = None
-    user_account_type: Optional[str] = None
-    tours_state: Optional[bool] = None
-    max_num_projects: Optional[int] = None
-    test_user: Optional[bool] = None
-    num_active_projects: Optional[int] = None
-    num_remaining_projects: Optional[int] = None
+    email: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    href: str | None = None
+    username: str | None = None
+    status: str | None = None
+    secret: str | None = None
+    chosen_password: str | None = None
+    repeated_password: str | None = None
+    tos: bool | None = None
+    two_factor: bool | None = None
+    user_account_type: str | None = None
+    tours_state: bool | None = None
+    max_num_projects: int | None = None
+    test_user: bool | None = None
+    num_active_projects: int | None = None
+    num_remaining_projects: int | None = None
 
     @classmethod
-    def from_response_json(cls, json_dict: Optional[Dict[str, Any]]) -> Optional[User]:
+    def from_response_json(cls, json_dict: dict[str, Any] | None) -> User | None:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
-            if "firstname" in json_decamelized.keys():
+            if "firstname" in json_decamelized:
                 json_decamelized["first_name"] = json_decamelized.pop("firstname")
                 json_decamelized["last_name"] = json_decamelized.pop("lastname")
             # Remove keys that are not part of the dataclass
@@ -57,11 +57,10 @@ class User:
             ):
                 json_decamelized.pop(key)
             return cls(**json_decamelized)
-        else:
-            return None
+        return None
 
     def json(self) -> str:
         return json.dumps(self, cls=util.Encoder)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)

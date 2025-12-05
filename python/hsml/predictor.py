@@ -12,9 +12,9 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
+from __future__ import annotations
 
 import json
-from typing import Optional, Union
 
 import humps
 from hopsworks_common import client, util
@@ -46,24 +46,20 @@ class Predictor(DeployableComponent):
         model_path: str = None,
         model_version: int = None,
         model_framework: str = None,  # MODEL.FRAMEWORK
-        serving_tool: Optional[str] = None,
-        script_file: Optional[str] = None,
-        config_file: Optional[str] = None,
-        resources: Optional[Union[PredictorResources, dict, Default]] = None,  # base
-        inference_logger: Optional[
-            Union[InferenceLogger, dict, Default]
-        ] = None,  # base
-        inference_batcher: Optional[
-            Union[InferenceBatcher, dict, Default]
-        ] = None,  # base
-        transformer: Optional[Union[Transformer, dict, Default]] = None,
-        id: Optional[int] = None,
-        version: Optional[int] = None,
-        description: Optional[str] = None,
-        created_at: Optional[str] = None,
-        creator: Optional[str] = None,
-        api_protocol: Optional[str] = INFERENCE_ENDPOINTS.API_PROTOCOL_REST,
-        environment: Optional[str] = None,
+        serving_tool: str | None = None,
+        script_file: str | None = None,
+        config_file: str | None = None,
+        resources: PredictorResources | dict | Default | None = None,  # base
+        inference_logger: InferenceLogger | dict | Default | None = None,  # base
+        inference_batcher: InferenceBatcher | dict | Default | None = None,  # base
+        transformer: Transformer | dict | Default | None = None,
+        id: int | None = None,
+        version: int | None = None,
+        description: str | None = None,
+        created_at: str | None = None,
+        creator: str | None = None,
+        api_protocol: str | None = INFERENCE_ENDPOINTS.API_PROTOCOL_REST,
+        environment: str | None = None,
         project_namespace: str = None,
         **kwargs,
     ):
@@ -108,7 +104,7 @@ class Predictor(DeployableComponent):
     def deploy(self):
         """Create a deployment for this predictor and persists it in the Model Serving.
 
-        !!! example
+        Example:
             ```python
 
             import hopsworks
@@ -130,10 +126,9 @@ class Predictor(DeployableComponent):
             print(my_deployment.get_state())
             ```
 
-        # Returns
+        Returns:
             `Deployment`. The deployment metadata object of a new or existing deployment.
         """
-
         _deployment = deployment.Deployment(
             predictor=self, name=self._name, description=self._description
         )
@@ -146,7 +141,7 @@ class Predictor(DeployableComponent):
         util.pretty_print(self)
 
     def _set_state(self, state: PredictorState):
-        """Set the state of the predictor"""
+        """Set the state of the predictor."""
         self._state = state
 
     @classmethod
@@ -180,10 +175,9 @@ class Predictor(DeployableComponent):
     def _infer_model_server(cls, model_framework):
         if model_framework == MODEL.FRAMEWORK_TENSORFLOW:
             return PREDICTOR.MODEL_SERVER_TF_SERVING
-        elif model_framework == MODEL.FRAMEWORK_LLM:
+        if model_framework == MODEL.FRAMEWORK_LLM:
             return PREDICTOR.MODEL_SERVER_VLLM
-        else:
-            return PREDICTOR.MODEL_SERVER_PYTHON
+        return PREDICTOR.MODEL_SERVER_PYTHON
 
     @classmethod
     def _get_default_serving_tool(cls):
@@ -196,16 +190,16 @@ class Predictor(DeployableComponent):
 
     @classmethod
     def _validate_resources(cls, resources, serving_tool):
-        if resources is not None:
+        if (
+            resources is not None
+            and serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
+            and resources.num_instances != 0
+            and client.is_scale_to_zero_required()
+        ):
             # ensure scale-to-zero for kserve deployments when required
-            if (
-                serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
-                and resources.num_instances != 0
-                and client.is_scale_to_zero_required()
-            ):
-                raise ValueError(
-                    "Scale-to-zero is required for KServe deployments in this cluster. Please, set the number of instances to 0."
-                )
+            raise ValueError(
+                "Scale-to-zero is required for KServe deployments in this cluster. Please, set the number of instances to 0."
+            )
         return resources
 
     @classmethod
@@ -241,14 +235,11 @@ class Predictor(DeployableComponent):
             if len(json_decamelized) == 0:
                 return []
             return [cls.from_json(predictor) for predictor in json_decamelized]
-        else:
-            if "count" in json_decamelized:
-                if json_decamelized["count"] == 0:
-                    return []
-                return [
-                    cls.from_json(predictor) for predictor in json_decamelized["items"]
-                ]
-            return cls.from_json(json_decamelized)
+        if "count" in json_decamelized:
+            if json_decamelized["count"] == 0:
+                return []
+            return [cls.from_json(predictor) for predictor in json_decamelized["items"]]
+        return cls.from_json(json_decamelized)
 
     @classmethod
     def from_json(cls, json_decamelized):
@@ -330,15 +321,15 @@ class Predictor(DeployableComponent):
             "projectNamespace": self._project_namespace,
         }
         if self.model_name is not None:
-            json = {**json, **{"modelName": self._model_name}}
+            json = {**json, "modelName": self._model_name}
         if self.model_path is not None:
-            json = {**json, **{"modelPath": self._model_path}}
+            json = {**json, "modelPath": self._model_path}
         if self.model_version is not None:
-            json = {**json, **{"modelVersion": self._model_version}}
+            json = {**json, "modelVersion": self._model_version}
         if self.model_framework is not None:
-            json = {**json, **{"modelFramework": self._model_framework}}
+            json = {**json, "modelFramework": self._model_framework}
         if self.environment is not None:
-            json = {**json, **{"environmentDTO": {"name": self._environment}}}
+            json = {**json, "environmentDTO": {"name": self._environment}}
         if self._resources is not None:
             json = {**json, **self._resources.to_dict()}
         if self._inference_logger is not None:
@@ -418,13 +409,13 @@ class Predictor(DeployableComponent):
     def artifact_version(self):
         """Artifact version deployed by the predictor.
 
-        !!! warning "Deprecated"
+        Warning: Deprecated
             Artifact versions are deprecated in favor of deployment versions.
         """
         return self._version
 
     @artifact_version.setter
-    def artifact_version(self, artifact_version: Union[int, str]):
+    def artifact_version(self, artifact_version: int | str):
         pass  # do nothing, kept for backward compatibility
 
     @property
@@ -441,17 +432,10 @@ class Predictor(DeployableComponent):
 
     @property
     def artifact_path(self):
-        """Path of the model artifact deployed by the predictor. Resolves to /Projects/{project_name}/Models/{name}/{version}/Artifacts/{artifact_version}/{name}_{version}_{artifact_version}.zip"""
+        """Path of the model artifact deployed by the predictor. Resolves to /Projects/{project_name}/Models/{name}/{version}/Artifacts/{artifact_version}/{name}_{version}_{artifact_version}.zip."""
         # TODO: Deprecated
-        artifact_name = "{}_{}_{}.zip".format(
-            self._model_name, str(self._model_version), str(self._artifact_version)
-        )
-        return "{}/{}/Artifacts/{}/{}".format(
-            self._model_path,
-            str(self._model_version),
-            str(self._artifact_version),
-            artifact_name,
-        )
+        artifact_name = f"{self._model_name}_{str(self._model_version)}_{str(self._artifact_version)}.zip"
+        return f"{self._model_path}/{str(self._model_version)}/Artifacts/{str(self._artifact_version)}/{artifact_name}"
 
     @property
     def model_server(self):
@@ -479,6 +463,7 @@ class Predictor(DeployableComponent):
     @property
     def config_file(self):
         """Model server configuration file passed to the model deployment.
+
         It can be accessed via `CONFIG_FILE_PATH` environment variable from a predictor or transformer script.
         For LLM deployments without a predictor script, this file is used to configure the vLLM engine.
         """
@@ -535,7 +520,7 @@ class Predictor(DeployableComponent):
 
     @property
     def environment(self):
-        """Name of the inference environment"""
+        """Name of the inference environment."""
         return self._environment
 
     @environment.setter
@@ -544,7 +529,7 @@ class Predictor(DeployableComponent):
 
     @property
     def project_namespace(self):
-        """Kubernetes project namespace"""
+        """Kubernetes project namespace."""
         return self._project_namespace
 
     @project_namespace.setter

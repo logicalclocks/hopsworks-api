@@ -15,21 +15,21 @@
 #
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Union
+from typing import TYPE_CHECKING
 
 
 if TYPE_CHECKING:
     import great_expectations
+    from hsfs.validation_report import ValidationReport
 
 from hopsworks_common import client
 from hsfs import util
 from hsfs.core import validation_report_api
 from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
-from hsfs.validation_report import ValidationReport
 
 
 if HAS_GREAT_EXPECTATIONS:
-    import great_expectations
+    pass
 
 
 class ValidationReportEngine:
@@ -57,14 +57,15 @@ class ValidationReportEngine:
         print(f"Validation Report saved successfully, explore a summary at {url}")
         if ge_type:
             return saved_report.to_ge_type()
-        else:
-            return saved_report
+        return saved_report
 
     def get_last(
         self, ge_type: bool = HAS_GREAT_EXPECTATIONS
-    ) -> Union[
-        ValidationReport, great_expectations.core.ExpectationSuiteValidationResult, None
-    ]:
+    ) -> (
+        ValidationReport
+        | great_expectations.core.ExpectationSuiteValidationResult
+        | None
+    ):
         """Get the most recent Validation Report of a Feature Group."""
         url = self._get_validation_report_url()
         print(
@@ -74,17 +75,16 @@ class ValidationReportEngine:
         reports = self._validation_report_api.get_last()
         if len(reports) == 0:
             return None
-        elif len(reports) == 1 and ge_type:
+        if len(reports) == 1 and ge_type:
             return reports[0].to_ge_type()
-        else:
-            return reports[0]
+        return reports[0]
 
     def get_all(
         self, ge_type: bool = HAS_GREAT_EXPECTATIONS
-    ) -> Union[
-        List[ValidationReport],
-        List[great_expectations.core.ExpectationSuiteValidationResult],
-    ]:
+    ) -> (
+        list[ValidationReport]
+        | list[great_expectations.core.ExpectationSuiteValidationResult]
+    ):
         """Get all Validation Report of a Feature Group."""
         url = self._get_validation_report_url()
         print(
@@ -94,14 +94,13 @@ class ValidationReportEngine:
         reports = self._validation_report_api.get_all()
         if ge_type:
             return [report.to_ge_type() for report in reports]
-        else:
-            return reports
+        return reports
 
     def delete(self, validation_report_id: int):
         self._validation_report_api.delete(validation_report_id)
 
     def _get_validation_report_url(self) -> str:
-        """Build url to land on Hopsworks UI page which summarizes validation results"""
+        """Build url to land on Hopsworks UI page which summarizes validation results."""
         sub_path = (
             "/p/"
             + str(client.get_instance()._project_id)

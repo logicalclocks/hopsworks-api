@@ -13,9 +13,10 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 import httpx
 from furl import furl
@@ -27,7 +28,7 @@ _client = None
 
 
 def init_client(
-    config: Optional[Dict[str, Any]] = None,
+    config: dict[str, Any] | None = None,
 ):
     global _client
     if not _client:
@@ -36,7 +37,7 @@ def init_client(
         _logger.warning("Feature Logging Client is already initialized.")
 
 
-def get_instance() -> "FeatureLoggingClientSingleton":
+def get_instance() -> FeatureLoggingClientSingleton:
     global _client
     if _client is None:
         _logger.warning(
@@ -56,7 +57,7 @@ class FeatureLoggingClientSingleton:
 
     def __init__(
         self,
-        config: Optional[Dict[str, Any]] = None,
+        config: dict[str, Any] | None = None,
     ):
         _logger.debug("Initializing Feature Logging Client.")
         self._current_config = self._get_default_client_config()
@@ -83,7 +84,7 @@ class FeatureLoggingClientSingleton:
         url.port = self._current_config.get("port", None)
         return url.url
 
-    def _get_default_client_config(self) -> Dict[str, Any]:
+    def _get_default_client_config(self) -> dict[str, Any]:
         return {
             "scheme": self._DEFAULT_SCHEME,
             "host": self._DEFAULT_HOST,

@@ -16,13 +16,11 @@
 
 from __future__ import annotations
 
-from typing import Union
-
 import hopsworks_common.client as _main
 from hopsworks_common.client.istio import external, hopsworks
 
 
-_client: Union[hopsworks.Client, external.Client, None] = None
+_client: hopsworks.Client | external.Client | None = None
 
 
 def init(host, port, project=None, api_key_value=None, scheme="http"):
@@ -36,6 +34,6 @@ def init(host, port, project=None, api_key_value=None, scheme="http"):
         _client = external.Client(host, port, project, api_key_value, scheme=scheme)
 
 
-def get_instance() -> Union[hopsworks.Client, external.Client, None]:
+def get_instance() -> hopsworks.Client | external.Client | None:
     global _client
     return _client

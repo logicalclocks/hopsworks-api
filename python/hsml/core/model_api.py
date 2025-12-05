@@ -13,9 +13,9 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import json
-from typing import Union
 
 from hsml import client, decorators, model, tag
 from hsml.core import explicit_provenance
@@ -101,7 +101,6 @@ class ModelApi:
         :return: model metadata object
         :rtype: Model
         """
-
         _client = client.get_instance()
         path_params = [
             "project",
@@ -149,7 +148,7 @@ class ModelApi:
         ]
         _client._send_request("DELETE", path_params)
 
-    def set_tag(self, model_instance, name, value: Union[str, dict]):
+    def set_tag(self, model_instance, name, value: str | dict):
         """Attach a name/value tag to a model.
 
         A tag consists of a name/value pair. Tag names are unique identifiers.
@@ -261,17 +260,18 @@ class ModelApi:
 
     def get_feature_view_provenance(self, model_instance):
         """Get the parent feature view of this model, based on explicit provenance.
+
         These feature views can be accessible, deleted or inaccessible.
         For deleted and inaccessible feature views, only a minimal information is returned.
 
-        # Arguments
+        Parameters:
             model_instance: Metadata object of model.
 
-        # Returns
+        Returns:
             `Links`: the feature view used to generate this model or `None` if it does not exist.
 
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`.
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case of a server error.
         """
         _client = client.get_instance()
         path_params = [
@@ -297,20 +297,22 @@ class ModelApi:
         )
         if not links.is_empty():
             return links
+        return None
 
     def get_training_dataset_provenance(self, model_instance):
         """Get the parent training dataset of this model, based on explicit provenance.
+
         These training datasets can be accessible, deleted or inaccessible.
         For deleted and inaccessible training dataset, only a minimal information is returned.
 
-        # Arguments
+        Parameters:
             model_instance: Metadata object of model.
 
-        # Returns
+        Returns:
             `Links`: the training dataset used to generate this model or `None` if it does not exist.
 
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`.
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case of a server error.
         """
         _client = client.get_instance()
         path_params = [
@@ -336,3 +338,4 @@ class ModelApi:
         )
         if not links.is_empty():
             return links
+        return None

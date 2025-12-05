@@ -1,0 +1,3 @@
+# EmbeddingFeature
+
+::: hsfs.embedding.EmbeddingFeature

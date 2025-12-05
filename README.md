@@ -169,6 +169,7 @@ predictions = deployment.predict(data)
 Usage data is collected for improving quality of the library.
 It is turned on by default if the backend is [Hopsworks Serverless](https://c.app.hopsworks.ai).
 To turn it off, use one of the following ways:
+
 ```python
 # use environment variable
 import os
