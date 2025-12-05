@@ -20,25 +20,25 @@
 
     The linting and formatting are done via [ruff](https://docs.astral.sh/ruff/), see `tool.ruff` section of `pyproject.toml` for the configuration.
 
-    - To automate linting and formatting, install [`pre-commit`](https://pre-commit.com/) and then activate its hooks.
-      `pre-commit` is a framework for managing and maintaining multi-language pre-commit hooks.
-      Activate the git hooks with:
+    To automate linting and formatting, install [`pre-commit`](https://pre-commit.com/) and then activate its hooks.
+    `pre-commit` is a framework for managing and maintaining multi-language pre-commit hooks.
+    Activate the git hooks with:
 
-      ```bash
-      pre-commit install
-      ```
+    ```bash
+    pre-commit install
+    ```
 
-      Afterwards, `pre-commit` will run whenever you commit.
-      It is not guaranteed that it will fix all linting problems.
+    Afterwards, `pre-commit` will run whenever you commit.
+    It is not guaranteed that it will fix all linting problems.
 
-    - To run formatting and code-style separately, you can configure your IDE, such as VSCode, to use [the `ruff` extension](https://marketplace.visualstudio.com/items?itemName=charliermarsh.ruff), or run it via the command line:
+    To run formatting and code-style separately, you can configure your IDE, such as VSCode, to use [the `ruff` extension](https://marketplace.visualstudio.com/items?itemName=charliermarsh.ruff), or run it via the command line:
 
-      ```bash
-      # linting
-      ruff check --fix
-      # formatting
-      ruff format
-      ```
+    ```bash
+    # linting
+    ruff check --fix
+    # formatting
+    ruff format
+    ```
 
 ### Python API Reference Documentation
 
