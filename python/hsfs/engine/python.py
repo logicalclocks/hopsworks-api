@@ -1130,7 +1130,7 @@ class Engine:
                 These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Raises:
-            `ValueError`: If the training dataset statistics could not be retrieved.
+            ValueError: If the training dataset statistics could not be retrieved.
         """
         # dataframe_type of list and numpy are prevented here because statistics needs to be computed from the returned dataframe.
         # The daframe is converted into required types in the function split_labels
@@ -1205,7 +1205,7 @@ class Engine:
                 These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Raises:
-            `ValueError`: If the training dataset statistics could not be retrieved.
+            ValueError: If the training dataset statistics could not be retrieved.
         """
         if (
             training_dataset_obj.splits[0].split_type

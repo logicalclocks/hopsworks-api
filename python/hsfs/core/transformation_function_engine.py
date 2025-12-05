@@ -263,7 +263,7 @@ class TransformationFunctionEngine:
             training_dataset_version `int`: The version of the training dataset for which the statistics is to be retrieved.
 
         Raises:
-            `ValueError` : If the statistics are not present in the backend.
+            ValueError : If the statistics are not present in the backend.
         """
         is_stat_required = any(
             tf.hopsworks_udf.statistics_required

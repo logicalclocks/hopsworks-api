@@ -70,7 +70,7 @@ class GitProvider:
         """Remove the git provider configuration.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         self._git_provider_api._delete_provider(self.git_provider, self.host)
 

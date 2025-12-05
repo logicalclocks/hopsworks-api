@@ -36,7 +36,7 @@ class FlinkClusterApi:
             `dict`: Default configuration for the Flink cluster,
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         return self._job_api.get_configuration("FLINK")
 

@@ -34,7 +34,7 @@ class SecretsApi:
         Returns:
             `List[Secret]`: List of all accessible secrets
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = [

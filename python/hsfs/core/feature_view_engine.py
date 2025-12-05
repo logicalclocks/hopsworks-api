@@ -180,8 +180,8 @@ class FeatureViewEngine:
             `Union[FeatureView, List[FeatureView]]`
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-            `ValueError`: If the feature group associated with the feature view cannot be found.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+            ValueError: If the feature group associated with the feature view cannot be found.
         """
         if version:
             fv = self._feature_view_api.get_by_name_version(name, version)

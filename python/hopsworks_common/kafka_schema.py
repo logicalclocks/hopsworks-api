@@ -80,7 +80,7 @@ class KafkaSchema:
             This operation deletes the schema.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         self._kafka_api._delete_subject_version(self.subject, self.version)
 

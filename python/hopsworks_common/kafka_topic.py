@@ -168,7 +168,7 @@ class KafkaTopic:
             This operation deletes the topic.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         self._kafka_api._delete_topic(self.name)
 

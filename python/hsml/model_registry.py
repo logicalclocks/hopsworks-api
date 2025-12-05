@@ -83,7 +83,7 @@ class ModelRegistry:
             `Model`: The model metadata object or `None` if it does not exist.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If unable to retrieve model from the model registry.
+            hopsworks.client.exceptions.RestAPIError: If unable to retrieve model from the model registry.
         """
         if version is None:
             warnings.warn(
@@ -113,7 +113,7 @@ class ModelRegistry:
             `List[Model]`: A list of model metadata objects.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If unable to retrieve model versions from the model registry.
+            hopsworks.client.exceptions.RestAPIError: If unable to retrieve model versions from the model registry.
         """
         return self._model_api.get_models(
             name,
@@ -139,7 +139,7 @@ class ModelRegistry:
             `Model`: The model metadata object or `None` if it does not exist.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If unable to retrieve model from the model registry.
+            hopsworks.client.exceptions.RestAPIError: If unable to retrieve model from the model registry.
         """
         model = self._model_api.get_models(
             name,

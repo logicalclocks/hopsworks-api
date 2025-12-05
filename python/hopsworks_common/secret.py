@@ -91,7 +91,7 @@ class Secret:
             This operation deletes the secret and may break applications using it.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         return self._secret_api._delete(self.name)
 

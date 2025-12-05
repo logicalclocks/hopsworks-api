@@ -99,8 +99,8 @@ class FeatureViewApi:
             `List[FeatureView]`: A list that contains all version of the feature view.
 
         Raises:
-            `ValueError`: If the feature group associated with the feature view cannot be found.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            ValueError: If the feature group associated with the feature view cannot be found.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         path = self._base_path + [name]
         try:
@@ -133,8 +133,8 @@ class FeatureViewApi:
             `FeatureView`
 
         Raises:
-            `ValueError`: If the feature group associated with the feature view cannot be found.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            ValueError: If the feature group associated with the feature view cannot be found.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         path = self._base_path + [name, self._VERSION, version]
         try:

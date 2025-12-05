@@ -70,7 +70,7 @@ class ModelServing:
             `Deployment`: The deployment metadata object or `None` if it does not exist.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If unable to retrieve deployment from model serving.
+            hopsworks.client.exceptions.RestAPIError: If unable to retrieve deployment from model serving.
         """
         return self._serving_api.get_by_id(id)
 
@@ -96,7 +96,7 @@ class ModelServing:
             `Deployment`: The deployment metadata object or `None` if it does not exist.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If unable to retrieve deployment from model serving.
+            hopsworks.client.exceptions.RestAPIError: If unable to retrieve deployment from model serving.
         """
         if name is None and ("DEPLOYMENT_NAME" in os.environ):
             name = os.environ["DEPLOYMENT_NAME"]
@@ -133,7 +133,7 @@ class ModelServing:
             `List[Deployment]`: A list of deployments.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If unable to retrieve deployments from model serving.
+            hopsworks.client.exceptions.RestAPIError: If unable to retrieve deployments from model serving.
         """
         model_name = model._get_default_serving_name() if model is not None else None
         if status is not None:

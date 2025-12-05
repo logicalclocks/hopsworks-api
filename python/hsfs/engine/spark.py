@@ -870,7 +870,7 @@ class Engine:
                 These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Raises:
-            `ValueError`: If the training dataset statistics could not be retrieved.
+            ValueError: If the training dataset statistics could not be retrieved.
         """
         return self.write_training_dataset(
             training_dataset,
@@ -928,7 +928,7 @@ class Engine:
                 These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
 
         Raises:
-            `ValueError`: If the training dataset statistics could not be retrieved.
+            ValueError: If the training dataset statistics could not be retrieved.
         """
         write_options = self.write_options(
             training_dataset.data_format, user_write_options

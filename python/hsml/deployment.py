@@ -80,7 +80,7 @@ class Deployment:
                           the update in the background.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
         self._serving_engine.save(self, await_update)
 
@@ -94,7 +94,7 @@ class Deployment:
                            it deploys in the background.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
         self._serving_engine.start(self, await_status=await_running)
 
@@ -108,7 +108,7 @@ class Deployment:
                            it stopping in the background.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
         self._serving_engine.stop(self, await_status=await_stopped)
 
@@ -125,7 +125,7 @@ class Deployment:
                     A call to this method does not ask for a second confirmation.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
         self._serving_engine.delete(self, force)
 
@@ -136,7 +136,7 @@ class Deployment:
             `PredictorState`. The state of the deployment.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
         return self._serving_engine.get_state(self)
 
@@ -147,7 +147,7 @@ class Deployment:
             `bool`. Whether the deployment is created or not.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
         return (
             self._serving_engine.get_state(self).status
@@ -165,7 +165,7 @@ class Deployment:
             `bool`. Whether the deployment is ready or not.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
         status = self._serving_engine.get_state(self).status
         return (
@@ -184,7 +184,7 @@ class Deployment:
             `bool`. Whether the deployment is stopped or not.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
         status = self._serving_engine.get_state(self).status
         return status == PREDICTOR_STATE.STATUS_STOPPED or (
@@ -235,7 +235,7 @@ class Deployment:
             `dict`. Inference response.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
         return self._serving_engine.predict(self, data, inputs)
 
@@ -253,7 +253,7 @@ class Deployment:
             local_path: path where to download the artifact files in the local filesystem
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
         return self._serving_engine.download_artifact_files(self, local_path=local_path)
 
@@ -265,7 +265,7 @@ class Deployment:
             tail: Number of most recent lines to retrieve from the logs.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
         # validate component
         components = list(util.get_members(DEPLOYABLE_COMPONENT))

@@ -127,7 +127,7 @@ class Model:
             `Model`: The model metadata object.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
         if self._training_dataset_version is None and self._feature_view is not None:
             if self._feature_view.get_last_accessed_training_dataset() is not None:
@@ -180,7 +180,7 @@ class Model:
             `str`: Absolute path to local folder containing the model files.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
         return self._model_engine.download(model_instance=self, local_path=local_path)
 
@@ -193,7 +193,7 @@ class Model:
             model **and** deletes the model files.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
         self._model_engine.delete(model_instance=self)
 
@@ -252,7 +252,7 @@ class Model:
             `Deployment`: The deployment metadata object of a new or existing deployment.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
         if name is None:
             name = self._get_default_serving_name()
@@ -286,7 +286,7 @@ class Model:
             value: Value of the tag to be added.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to add the tag.
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to add the tag.
         """
         self._model_engine.set_tag(model_instance=self, name=name, value=value)
 
@@ -308,7 +308,7 @@ class Model:
             name: Name of the tag to be removed.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to delete the tag.
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to delete the tag.
         """
         self._model_engine.delete_tag(model_instance=self, name=name)
 
@@ -322,7 +322,7 @@ class Model:
             tag value or `None` if it does not exist.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the tag.
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tag.
         """
         return self._model_engine.get_tag(model_instance=self, name=name)
 
@@ -333,7 +333,7 @@ class Model:
             `Dict[str, obj]` of tags.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError` in case the backend fails to retrieve the tags.
+            hopsworks.client.exceptions.RestAPIError in case the backend fails to retrieve the tags.
         """
         return self._model_engine.get_tags(model_instance=self)
 
@@ -363,7 +363,7 @@ class Model:
             `FeatureView`: Feature View Object or `None` if it does not exist.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the feature view.
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the feature view.
         """
         fv_prov = self.get_feature_view_provenance()
         fv = explicit_provenance.Links.get_one_accessible_parent(fv_prov)
@@ -394,7 +394,7 @@ class Model:
             `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the feature view provenance.
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the feature view provenance.
         """
         return self._model_engine.get_feature_view_provenance(model_instance=self)
 
@@ -408,7 +408,7 @@ class Model:
             `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the training dataset provenance.
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the training dataset provenance.
         """
         return self._model_engine.get_training_dataset_provenance(model_instance=self)
 

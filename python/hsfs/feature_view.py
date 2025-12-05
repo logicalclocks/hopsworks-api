@@ -272,7 +272,7 @@ class FeatureView:
             feature view **and** related training dataset **and** materialized data in HopsFS.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         warnings.warn(
             f"All jobs associated to feature view `{self._name}`, version `{self._version}` will be removed.",
@@ -1357,7 +1357,7 @@ class FeatureView:
             `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine.get_parent_feature_groups(self)
 
@@ -1922,7 +1922,7 @@ class FeatureView:
                 that was launched to create the training dataset.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         self._validate_train_test_split(
             test_size=test_size, train_end=train_end, test_start=test_start
@@ -2192,7 +2192,7 @@ class FeatureView:
                 that was launched to create the training dataset.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         self._validate_train_validation_test_split(
             validation_size=validation_size,
@@ -2309,7 +2309,7 @@ class FeatureView:
                 that was launched to create the training dataset.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         td, td_job = self._feature_view_engine.recreate_training_dataset(
             self,
@@ -3135,7 +3135,7 @@ class FeatureView:
             `List[TrainingDatasetBase]` List of training datasets metadata.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine.get_training_datasets(self)
 
@@ -3206,7 +3206,7 @@ class FeatureView:
             value: Value of the tag to be added.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine.add_tag(
             self, name, value, training_dataset_version=training_dataset_version
@@ -3241,7 +3241,7 @@ class FeatureView:
             tag value or `None` if it does not exist.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine.get_tag(
             self, name, training_dataset_version=training_dataset_version
@@ -3271,7 +3271,7 @@ class FeatureView:
             `Dict[str, obj]` of tags.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine.get_tags(
             self, training_dataset_version=training_dataset_version
@@ -3303,7 +3303,7 @@ class FeatureView:
             name: Name of the tag to be removed.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine.delete_tag(
             self, name, training_dataset_version=training_dataset_version
@@ -3329,7 +3329,7 @@ class FeatureView:
             training_dataset_version: Version of the training dataset to be removed.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         if self._last_accessed_training_dataset == training_dataset_version:
             self.update_last_accessed_training_dataset(None)
@@ -3354,7 +3354,7 @@ class FeatureView:
             ```
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         if self._last_accessed_training_dataset is not None:
             self.update_last_accessed_training_dataset(None)
@@ -3382,7 +3382,7 @@ class FeatureView:
             training_dataset_version: Version of the training dataset to be removed.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         if self._last_accessed_training_dataset == training_dataset_version:
             self.update_last_accessed_training_dataset(None)
@@ -3407,7 +3407,7 @@ class FeatureView:
             ```
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         if self._last_accessed_training_dataset is not None:
             self.update_last_accessed_training_dataset(None)
@@ -3450,9 +3450,9 @@ class FeatureView:
                 Defaults to None.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
             `hopsworks.client.exceptions.FeatureStoreException`: If the feature view is not registered in Hopsworks
-            `ValueError`: if both name and feature_name are provided.
+            ValueError: if both name and feature_name are provided.
             `TypeError`: if name or feature_name are not string or None.
 
         Returns:
@@ -3513,9 +3513,9 @@ class FeatureView:
                 Defaults to True. If False, only metadata about the monitoring will be fetched.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
             `hopsworks.client.exceptions.FeatureStoreException`: If the feature view is not registered in Hopsworks
-            `ValueError`: if both config_name and config_id are provided.
+            ValueError: if both config_name and config_id are provided.
             `TypeError`: if config_name or config_id are not respectively string, int or None.
 
         Returns:
@@ -3679,7 +3679,7 @@ class FeatureView:
             List[FeatureViewAlert] or Alert.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._alert_api.get_feature_view_alerts(
             self._feature_store_id,
@@ -3697,7 +3697,7 @@ class FeatureView:
             A single FeatureViewAlert object is returned.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._alert_api.get_feature_view_alert(
             self._feature_store_id,
@@ -3737,9 +3737,9 @@ class FeatureView:
             The created FeatureViewAlert object.
 
         Raises:
-            `ValueError`: If the status is not valid.
-            `ValueError`: If the severity is not valid.
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            ValueError: If the status is not valid.
+            ValueError: If the severity is not valid.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         return self._alert_api.create_feature_view_alert(
             feature_store_id=self._feature_store_id,
@@ -3942,7 +3942,7 @@ class FeatureView:
             ```
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
         fv = self._feature_view_engine.enable_feature_logging(self, extra_log_columns)
         self._feature_logging = self._feature_view_engine.get_feature_logging(fv)
@@ -4103,7 +4103,7 @@ class FeatureView:
             ```
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to log features.
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to log features.
         """
         if not self.logging_enabled:
             warnings.warn(
@@ -4176,7 +4176,7 @@ class FeatureView:
             is `Dict[str, str]` with key value pairs of date committed on, number of rows updated, inserted and deleted.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the log timeline.
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the log timeline.
         """
         return self._feature_view_engine.get_log_timeline(
             self, wallclock_time, limit, transformed
@@ -4228,7 +4228,7 @@ class FeatureView:
             `polars.DataFrame`. A Polars DataFrame.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to read the log entries.
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to read the log entries.
         """
         return self._feature_view_engine.read_feature_logs(
             self,
@@ -4252,7 +4252,7 @@ class FeatureView:
             ```
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to pause feature logging.
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to pause feature logging.
         """
         self._feature_view_engine.pause_logging(self)
 
@@ -4266,7 +4266,7 @@ class FeatureView:
             ```
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to pause feature logging.
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to pause feature logging.
         """
         self._feature_view_engine.resume_logging(self)
 
@@ -4290,7 +4290,7 @@ class FeatureView:
 
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to materialize the log.
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to materialize the log.
         """
         return self._feature_view_engine.materialize_feature_logs(
             self, wait, transformed
@@ -4309,7 +4309,7 @@ class FeatureView:
             ```
 
         Raises:
-             `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to delete the log.
+             hopsworks.client.exceptions.RestAPIError: in case the backend fails to delete the log.
         """
         if self.feature_logging is not None:
             self._feature_view_engine.delete_feature_logs(

@@ -271,7 +271,7 @@ class ModelApi:
             `Links`: the feature view used to generate this model or `None` if it does not exist.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`.
+            hopsworks.client.exceptions.RestAPIError.
         """
         _client = client.get_instance()
         path_params = [
@@ -312,7 +312,7 @@ class ModelApi:
             `Links`: the training dataset used to generate this model or `None` if it does not exist.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`.
+            hopsworks.client.exceptions.RestAPIError.
         """
         _client = client.get_instance()
         path_params = [

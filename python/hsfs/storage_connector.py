@@ -1624,7 +1624,7 @@ class KafkaConnector(StorageConnector):
                 returned. Defaults to `False`.
 
         Raises:
-            `ValueError`: Malformed arguments.
+            ValueError: Malformed arguments.
 
         Returns:
             `StreamingDataframe`: A Spark streaming dataframe.
@@ -1768,7 +1768,7 @@ class GcsConnector(StorageConnector):
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
 
         Raises:
-            `ValueError`: Malformed arguments.
+            ValueError: Malformed arguments.
 
         Returns:
             `Dataframe`: A Spark dataframe.
@@ -1968,7 +1968,7 @@ class BigQueryConnector(StorageConnector):
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
 
         Raises:
-            `ValueError`: Malformed arguments.
+            ValueError: Malformed arguments.
 
         Returns:
             `Dataframe`: A Spark dataframe.

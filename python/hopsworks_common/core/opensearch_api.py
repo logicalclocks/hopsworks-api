@@ -112,7 +112,7 @@ class OpenSearchApi:
         Returns:
             `str`: OpenSearch jwt token
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
         path_params = ["elastic", "jwt", _client._project_id]
