@@ -112,9 +112,7 @@ class InferenceEndpoint:
         if "count" in json_decamelized:
             if json_decamelized["count"] == 0:
                 return []
-            return [
-                cls.from_json(endpoint) for endpoint in json_decamelized["items"]
-            ]
+            return [cls.from_json(endpoint) for endpoint in json_decamelized["items"]]
         return cls.from_json(json_decamelized)
 
     @classmethod

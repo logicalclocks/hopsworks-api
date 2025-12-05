@@ -511,9 +511,7 @@ def set_model_class(model):
         return PyModel(**model)
     if framework == MODEL.FRAMEWORK_LLM:
         return LLMModel(**model)
-    raise ValueError(
-        "framework {} is not a supported framework".format(str(framework))
-    )
+    raise ValueError("framework {} is not a supported framework".format(str(framework)))
 
 
 def input_example_to_json(input_example):
@@ -553,9 +551,7 @@ def _handle_dataframe_input(input_ex):
         raise ValueError(
             "input_example of type {} can not be empty".format(type(input_ex))
         )
-    raise TypeError(
-        "{} is not a supported input example type".format(type(input_ex))
-    )
+    raise TypeError("{} is not a supported input example type".format(type(input_ex)))
 
 
 def _handle_dict_input(input_ex):
@@ -654,7 +650,9 @@ def get_predictor_for_model(model, **kwargs):
             **kwargs,
         )
     raise TypeError(
-        "model is of type {}, but an instance of {} class is expected".format(type(model), BaseModel)
+        "model is of type {}, but an instance of {} class is expected".format(
+            type(model), BaseModel
+        )
     )
 
 

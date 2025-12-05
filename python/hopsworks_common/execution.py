@@ -73,9 +73,7 @@ class Execution:
             return cls(**json_decamelized, job=job)
         if json_decamelized["count"] == 0:
             return []
-        return [
-            cls(**execution, job=job) for execution in json_decamelized["items"]
-        ]
+        return [cls(**execution, job=job) for execution in json_decamelized["items"]]
 
     def update_from_response_json(self, json_dict):
         json_decamelized = humps.decamelize(json_dict)

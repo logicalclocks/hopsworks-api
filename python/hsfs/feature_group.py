@@ -3644,9 +3644,7 @@ class FeatureGroup(FeatureGroupBase):
                 "Features have to be a streaming type spark dataframe. Use `insert()` method instead."
             )
         # lower casing feature names
-        feature_dataframe = engine.get_instance().convert_to_default_dataframe(
-            features
-        )
+        feature_dataframe = engine.get_instance().convert_to_default_dataframe(features)
         warnings.warn(
             (
                 "Stream ingestion for feature group `{}`, with version"
