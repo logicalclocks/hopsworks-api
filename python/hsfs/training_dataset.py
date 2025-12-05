@@ -277,6 +277,7 @@ class TrainingDatasetBase:
 
     @property
     def description(self) -> str | None:
+        # TODO: Add docstring
         return self._description
 
     @description.setter
@@ -402,6 +403,7 @@ class TrainingDatasetBase:
 
     @property
     def event_start_time(self):
+        # TODO: Add docstring
         return self._start_time
 
     @event_start_time.setter
@@ -410,6 +412,7 @@ class TrainingDatasetBase:
 
     @property
     def event_end_time(self):
+        # TODO: Add docstring
         return self._end_time
 
     @event_end_time.setter
@@ -418,6 +421,7 @@ class TrainingDatasetBase:
 
     @property
     def training_dataset_type(self):
+        # TODO: Add docstring
         return self._training_dataset_type
 
     @training_dataset_type.setter
@@ -431,6 +435,7 @@ class TrainingDatasetBase:
 
     @property
     def validation_size(self):
+        # TODO: Add docstring
         return self._validation_size
 
     @validation_size.setter
@@ -439,6 +444,7 @@ class TrainingDatasetBase:
 
     @property
     def test_size(self):
+        # TODO: Add docstring
         return self._test_size
 
     @test_size.setter
@@ -447,6 +453,7 @@ class TrainingDatasetBase:
 
     @property
     def train_start(self):
+        # TODO: Add docstring
         return self._train_start
 
     @train_start.setter
@@ -455,6 +462,7 @@ class TrainingDatasetBase:
 
     @property
     def train_end(self):
+        # TODO: Add docstring
         return self._train_end
 
     @train_end.setter
@@ -463,6 +471,7 @@ class TrainingDatasetBase:
 
     @property
     def validation_start(self):
+        # TODO: Add docstring
         return self._validation_start
 
     @validation_start.setter
@@ -471,6 +480,7 @@ class TrainingDatasetBase:
 
     @property
     def validation_end(self):
+        # TODO: Add docstring
         return self._validation_end
 
     @validation_end.setter
@@ -479,6 +489,7 @@ class TrainingDatasetBase:
 
     @property
     def test_start(self):
+        # TODO: Add docstring
         return self._test_start
 
     @test_start.setter
@@ -487,6 +498,7 @@ class TrainingDatasetBase:
 
     @property
     def test_end(self):
+        # TODO: Add docstring
         return self._test_end
 
     @test_end.setter
@@ -495,6 +507,7 @@ class TrainingDatasetBase:
 
     @property
     def extra_filter(self):
+        # TODO: Add docstring
         return self._extra_filter
 
     @extra_filter.setter
@@ -503,6 +516,7 @@ class TrainingDatasetBase:
 
 
 class TrainingDataset(TrainingDatasetBase):
+    # TODO: Add docstring
     def __init__(
         self,
         name,
@@ -1056,6 +1070,7 @@ class TrainingDataset(TrainingDatasetBase):
 
     @property
     def feature_store_id(self) -> int:
+        """ID of the feature store to which this training dataset belongs."""
         return self._feature_store_id
 
     @property

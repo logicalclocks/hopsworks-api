@@ -598,7 +598,12 @@ class Engine:
         pass
 
     def register_delta_temporary_table(
-        self, delta_fg_alias, feature_store_id, feature_store_name, read_options
+        self,
+        delta_fg_alias,
+        feature_store_id,
+        feature_store_name,
+        read_options,
+        is_cdc_query: bool = False,
     ):
         # No op to avoid query failure
         pass
@@ -651,7 +656,7 @@ class Engine:
         exact_uniqueness: bool = True,
     ) -> str:
         # TODO: add statistics for correlations, histograms and exact_uniqueness
-        _logger.info("Profiling dataframe in Python Engine")
+        _logger.info("Computing insert statistics")
         if HAS_POLARS and (
             isinstance(df, pl.DataFrame) or isinstance(df, pl.dataframe.frame.DataFrame)
         ):
@@ -1059,7 +1064,11 @@ class Engine:
         online_write_options: Dict[str, Any],
         validation_id: Optional[int] = None,
     ) -> Optional[job.Job]:
-        if feature_group.time_travel_format == "DELTA":
+        if (
+            # Only `FeatureGroup` class has time_travel_format property
+            isinstance(feature_group, FeatureGroup)
+            and feature_group.time_travel_format == "DELTA"
+        ):
             self._check_duplicate_records(dataframe, feature_group)
             _logger.debug("No duplicate records found. Proceeding with Delta write.")
 
@@ -1073,13 +1082,17 @@ class Engine:
         elif engine.get_type() == "python":
             if feature_group.time_travel_format == "DELTA":
                 delta_engine_instance = delta_engine.DeltaEngine(
-                    feature_group.feature_store_id,
-                    feature_group.feature_store_name,
-                    feature_group,
-                    None,
-                    None,
+                    feature_store_id=feature_group.feature_store_id,
+                    feature_store_name=feature_group.feature_store_name,
+                    feature_group=feature_group,
+                    spark_context=None,
+                    spark_session=None,
                 )
-                delta_engine_instance.save_delta_fg(dataframe, {}, validation_id)
+                delta_engine_instance.save_delta_fg(
+                    dataframe,
+                    write_options=offline_write_options,
+                    validation_id=validation_id,
+                )
         else:
             # for backwards compatibility
             return self.legacy_save_dataframe(
@@ -1540,7 +1553,7 @@ class Engine:
             spark_job_configuration=spark_job_configuration,
         )
 
-    def add_file(self, file: Optional[str]) -> Optional[str]:
+    def add_file(self, file: Optional[str], distribute=True) -> Optional[str]:
         if not file:
             return file
 

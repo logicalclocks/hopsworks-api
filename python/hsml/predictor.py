@@ -137,7 +137,7 @@ class Predictor(DeployableComponent):
         return _deployment
 
     def describe(self):
-        """Print a description of the predictor."""
+        """Print a JSON description of the predictor."""
         util.pretty_print(self)
 
     def _set_state(self, state: PredictorState):
@@ -420,6 +420,7 @@ class Predictor(DeployableComponent):
 
     @property
     def artifact_files_path(self):
+        """Path of the artifact files deployed by the predictor."""
         # "/Projects/{project_name}/Deployments/{name}/{version}"
         return "{}/{}/{}/{}/{}".format(
             "/Projects",
@@ -427,6 +428,20 @@ class Predictor(DeployableComponent):
             MODEL_SERVING.DEPLOYMENTS_DATASET,
             str(self._name),
             str(self._version),
+        )
+
+    @property
+    def artifact_path(self):
+        """Path of the model artifact deployed by the predictor. Resolves to /Projects/{project_name}/Models/{name}/{version}/Artifacts/{artifact_version}/{name}_{version}_{artifact_version}.zip"""
+        # TODO: Deprecated
+        artifact_name = "{}_{}_{}.zip".format(
+            self._model_name, str(self._model_version), str(self._artifact_version)
+        )
+        return "{}/{}/Artifacts/{}/{}".format(
+            self._model_path,
+            str(self._model_version),
+            str(self._artifact_version),
+            artifact_name,
         )
 
     @property

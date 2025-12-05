@@ -66,6 +66,8 @@ if TYPE_CHECKING:
 
 @typechecked
 class FeatureStore:
+    """Feature Store class used to manage feature store entities, like feature groups and feature views."""
+
     DEFAULT_VERSION = 1
 
     def __init__(

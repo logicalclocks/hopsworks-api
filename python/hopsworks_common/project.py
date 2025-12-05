@@ -359,5 +359,6 @@ class Project:
         return f"Project({self._name!r}, {self._owner!r})"
 
     def get_url(self):
+        """Get url to the project in Hopsworks"""
         path = "/p/" + str(self.id)
         return util.get_hostname_replaced_url(path)

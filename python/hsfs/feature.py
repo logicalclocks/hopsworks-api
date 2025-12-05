@@ -256,6 +256,7 @@ class Feature:
 
     @property
     def feature_group_id(self) -> int | None:
+        """ID of the feature group to which this feature belongs."""
         return self._feature_group_id
 
     @property
@@ -308,9 +309,11 @@ class Feature:
         return self.isin(other)
 
     def isin(self, other: str | list[Any]) -> filter.Filter:
+        """Returns `IN` filter for the feature; replicating the behavior of SQL `IN` clause."""
         return filter.Filter(self, filter.Filter.IN, json.dumps(other))
 
     def like(self, other: Any) -> filter.Filter:
+        """Returns `LIKE` filter for the feature; replicating the behavior of SQL `LIKE` clause."""
         return filter.Filter(self, filter.Filter.LK, other)
 
     def __str__(self) -> str:

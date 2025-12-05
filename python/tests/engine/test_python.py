@@ -1823,16 +1823,16 @@ class TestPython:
 
         # Verify DeltaEngine was called with correct parameters
         mock_delta_engine.assert_called_once_with(
-            fg.feature_store_id,
-            fg.feature_store_name,
-            fg,
-            None,
-            None,
+            feature_store_id=fg.feature_store_id,
+            feature_store_name=fg.feature_store_name,
+            feature_group=fg,
+            spark_session=None,
+            spark_context=None,
         )
 
         # Verify save_delta_fg was called with correct parameters
         mock_delta_engine.return_value.save_delta_fg.assert_called_once_with(
-            test_dataframe, {}, None
+            test_dataframe, write_options={}, validation_id=None
         )
 
     def test_save_dataframe_delta_calls_check_duplicate_records(self, mocker):
@@ -1995,9 +1995,8 @@ class TestPython:
                 validation_id=None,
             )
 
-        assert (
-            exceptions.FeatureStoreException.DUPLICATE_RECORD_ERROR_MESSAGE
-            in str(exc_info.value)
+        assert exceptions.FeatureStoreException.DUPLICATE_RECORD_ERROR_MESSAGE in str(
+            exc_info.value
         )
 
     @pytest.mark.parametrize(
@@ -3254,14 +3253,27 @@ class TestPython:
         assert mock_ingestion_job_conf.call_count == 1
         assert mock_ingestion_job_conf.call_args[1]["write_options"] == {"test": 2}
 
-    def test_add_file(self):
+    @pytest.mark.parametrize(
+        "distribute_arg",
+        [
+            None,  # Test without providing distribute argument (uses default)
+            True,  # Test with distribute=True
+            False,  # Test with distribute=False
+        ],
+    )
+    def test_add_file(self, distribute_arg):
         # Arrange
         python_engine = python.Engine()
 
         file = None
 
         # Act
-        result = python_engine.add_file(file=file)
+        if distribute_arg is None:
+            # Call without distribute argument
+            result = python_engine.add_file(file=file)
+        else:
+            # Call with distribute argument
+            result = python_engine.add_file(file=file, distribute=distribute_arg)
 
         # Assert
         assert result == file

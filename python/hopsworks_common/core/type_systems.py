@@ -28,6 +28,7 @@ from hopsworks_common.core.constants import (
     HAS_PYARROW,
 )
 from hopsworks_common.decorators import uses_polars
+from hsfs.client.exceptions import FeatureStoreException
 
 
 if TYPE_CHECKING:
@@ -87,6 +88,121 @@ if HAS_PYARROW:
     }
 else:
     PYARROW_HOPSWORKS_DTYPE_MAPPING = {}
+
+if HAS_PYARROW:
+
+    def convert_offline_type_to_pyarrow_type(offline_type: str):
+        """
+        Convert an offline type string to a PyArrow type.
+
+        Supports simple types (int, bigint, string, etc.), array types (array<type>),
+        and struct types (struct<field1:type1,field2:type2>).
+
+        # Arguments
+            offline_type: `str`. The offline type string to convert.
+
+        # Returns
+            `pa.DataType`. The corresponding PyArrow type.
+        """
+        offline_type = offline_type.strip().lower()
+
+        # Handle array types: array<type>
+        if offline_type.startswith("array<") and offline_type.endswith(">"):
+            element_type_str = offline_type[
+                6:-1
+            ]  # Extract content between array< and >
+            element_type = convert_offline_type_to_pyarrow_type(element_type_str)
+            return pa.list_(element_type)
+
+        # Handle struct types: struct<field1:type1,field2:type2>
+        if offline_type.startswith("struct<") and offline_type.endswith(">"):
+            struct_content = offline_type[7:-1]  # Extract content between struct< and >
+            fields = []
+            # Parse struct fields: field1:type1,field2:type2
+            # Need to handle nested structs and arrays in field types
+            i = 0
+            while i < len(struct_content):
+                # Find the field name (until colon)
+                field_start = i
+                while i < len(struct_content) and struct_content[i] != ":":
+                    i += 1
+                if i >= len(struct_content):
+                    raise FeatureStoreException(
+                        f"Invalid struct type format: {offline_type}. Missing colon after field name."
+                    )
+                field_name = struct_content[field_start:i].strip()
+                i += 1  # Skip colon
+
+                # Find the field type (handle nested structs/arrays)
+                type_start = i
+                bracket_count = 0
+                angle_bracket_count = 0
+                while i < len(struct_content):
+                    char = struct_content[i]
+                    if char == "," and bracket_count == 0 and angle_bracket_count == 0:
+                        break
+                    if char == "<":
+                        angle_bracket_count += 1
+                    elif char == ">":
+                        angle_bracket_count -= 1
+                    elif char == "(":
+                        bracket_count += 1
+                    elif char == ")":
+                        bracket_count -= 1
+                    i += 1
+
+                field_type_str = struct_content[type_start:i].strip()
+                field_type = convert_offline_type_to_pyarrow_type(field_type_str)
+                fields.append(pa.field(field_name, field_type, nullable=True))
+                if i < len(struct_content):
+                    i += 1  # Skip comma
+
+            return pa.struct(fields)
+
+        # Handle simple types
+        offline_type_lower = offline_type.lower()
+        type_mapping = {
+            "string": pa.string(),
+            "bigint": pa.int64(),
+            "int": pa.int32(),
+            "smallint": pa.int16(),
+            "tinyint": pa.int8(),
+            "float": pa.float32(),
+            "double": pa.float64(),
+            "boolean": pa.bool_(),
+            "timestamp": pa.timestamp("us"),
+            "date": pa.date32(),
+            "binary": pa.binary(),
+        }
+
+        # Handle decimal types: decimal(precision,scale) or just decimal
+        if offline_type_lower.startswith("decimal"):
+            # Try to parse decimal(precision,scale)
+            if "(" in offline_type_lower:
+                # Extract precision and scale
+                start = offline_type_lower.index("(")
+                end = offline_type_lower.index(")")
+                params = offline_type_lower[start + 1 : end].split(",")
+                if len(params) == 2:
+                    precision = int(params[0].strip())
+                    scale = int(params[1].strip())
+                    return pa.decimal128(precision, scale)
+            # Default decimal type
+            return pa.decimal128(10, 0)
+
+        if offline_type_lower in type_mapping:
+            return type_mapping[offline_type_lower]
+
+        raise FeatureStoreException(
+            f"Unsupported offline type: {offline_type}. Cannot convert to PyArrow type."
+        )
+else:
+
+    def convert_offline_type_to_pyarrow_type(offline_type: str):
+        raise FeatureStoreException(
+            "PyArrow is not installed. Cannot convert offline type to PyArrow type."
+        )
+
 
 # python cast column to offline type
 if HAS_POLARS:

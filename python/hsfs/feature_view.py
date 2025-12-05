@@ -117,6 +117,11 @@ _logger = logging.getLogger(__name__)
 
 @typechecked
 class FeatureView:
+    """Metadata class for Hopsworks feature views.
+
+    Feature view is a logical grouping of features, defined by a query over feature groups.
+    """
+
     ENTITY_TYPE = "featureview"
     NOT_FOUND_ERROR_CODE = 270181
 
@@ -238,6 +243,13 @@ class FeatureView:
         self.__extra_logging_column_names = None
 
     def get_last_accessed_training_dataset(self):
+        """Get the last accessed training dataset version used for this feature view.
+
+        !!! note
+            The value does not take into account other connections to Hopsworks.
+            If multiple clients do training datasets operations, each will have its own view of the last accessed dataset.
+            Also, the last accessed training dataset is not necessarily the newest one with the highest version.
+        """
         return self._last_accessed_training_dataset
 
     def delete(self) -> None:
@@ -1440,6 +1452,7 @@ class FeatureView:
         return self._feature_view_engine.delete_tag(self, name)
 
     def update_last_accessed_training_dataset(self, version):
+        """Update the cached last accessed training dataset version."""
         if self._last_accessed_training_dataset is not None:
             _logger.info(
                 f"Provenance cached data - overwriting last accessed/created training dataset from {self._last_accessed_training_dataset} to {version}."
@@ -4628,6 +4641,7 @@ class FeatureView:
 
     @property
     def logging_enabled(self) -> bool:
+        """Whether feature logging is enabled for the feature view."""
         return self._logging_enabled
 
     @logging_enabled.setter
@@ -4636,6 +4650,7 @@ class FeatureView:
 
     @property
     def feature_logging(self) -> FeatureLogging | None:
+        """Feature logging feature groups of this feature view."""
         if self.logging_enabled and self._feature_logging is None:
             self._feature_logging = self._feature_view_engine.get_feature_logging(self)
         return self._feature_logging

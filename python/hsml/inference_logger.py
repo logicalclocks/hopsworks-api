@@ -47,7 +47,7 @@ class InferenceLogger:
         )
 
     def describe(self):
-        """Print a description of the inference logger."""
+        """Print a JSON description of the inference logger."""
         util.pretty_print(self)
 
     @classmethod

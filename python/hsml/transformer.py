@@ -42,7 +42,7 @@ class Transformer(DeployableComponent):
         super().__init__(script_file, resources)
 
     def describe(self):
-        """Print a description of the transformer."""
+        """Print a JSON description of the transformer."""
         util.pretty_print(self)
 
     @classmethod

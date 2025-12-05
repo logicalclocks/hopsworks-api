@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Uni
 
 if TYPE_CHECKING:
     import great_expectations
+    from hsfs.constructor import hudi_feature_group_alias
     from pyspark.rdd import RDD
     from pyspark.sql import DataFrame
 
@@ -234,19 +235,25 @@ class Engine:
         )
 
     def register_delta_temporary_table(
-        self, delta_fg_alias, feature_store_id, feature_store_name, read_options
+        self,
+        delta_fg_alias: hudi_feature_group_alias.HudiFeatureGroupAlias,
+        feature_store_id: int,
+        feature_store_name: str,
+        read_options: Optional[Dict[str, Any]],
+        is_cdc_query: bool = False,
     ):
         delta_engine_instance = delta_engine.DeltaEngine(
-            feature_store_id,
-            feature_store_name,
-            delta_fg_alias.feature_group,
-            self._spark_session,
-            self._spark_context,
+            feature_store_id=feature_store_id,
+            feature_store_name=feature_store_name,
+            feature_group=delta_fg_alias.feature_group,
+            spark_session=self._spark_session,
+            spark_context=self._spark_context,
         )
 
         delta_engine_instance.register_temporary_table(
-            delta_fg_alias,
-            read_options,
+            delta_fg_alias=delta_fg_alias,
+            read_options=read_options,
+            is_cdc_query=is_cdc_query,
         )
 
     def _return_dataframe_type(self, dataframe, dataframe_type):
@@ -539,7 +546,11 @@ class Engine:
         validation_id=None,
     ):
         try:
-            if feature_group.time_travel_format == "DELTA":
+            if (
+                # Only `FeatureGroup class has time_travel_format property
+                isinstance(feature_group, fg_mod.FeatureGroup)
+                and feature_group.time_travel_format == "DELTA"
+            ):
                 self._check_duplicate_records(dataframe, feature_group)
                 _logger.debug(
                     "No duplicate records found. Proceeding with Delta write."

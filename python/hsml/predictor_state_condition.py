@@ -35,6 +35,7 @@ class PredictorStateCondition:
         self._reason = reason
 
     def describe(self):
+        """Print a JSON description of the predictor state condition."""
         util.pretty_print(self)
 
     @classmethod

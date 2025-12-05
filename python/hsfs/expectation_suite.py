@@ -204,6 +204,7 @@ class ExpectationSuite:
 
     @uses_great_expectations
     def to_ge_type(self) -> great_expectations.core.ExpectationSuite:
+        """Convert to Great Expectations ExpectationSuite type."""
         return great_expectations.core.ExpectationSuite(
             expectation_suite_name=self._expectation_suite_name,
             ge_cloud_id=self._ge_cloud_id,

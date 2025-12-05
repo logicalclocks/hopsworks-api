@@ -130,10 +130,12 @@ class Job:
 
     @property
     def executions(self):
+        """List of executions for the job"""
         return self._executions
 
     @property
     def href(self):
+        """The URL of the job in Hopsworks UI, use `get_url` instead."""
         return self._href
 
     @property
@@ -476,6 +478,7 @@ class Job:
         return f"Job({self._name!r}, {self._job_type!r})"
 
     def get_url(self):
+        """Get url to the job in Hopsworks"""
         _client = client.get_instance()
         path = "/p/" + str(_client._project_id) + "/jobs/named/" + self.name
         return util.get_hostname_replaced_url(path)

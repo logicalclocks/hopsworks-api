@@ -262,6 +262,7 @@ class Execution:
         return f"Execution({self._final_status!r}, {self._state!r}, {self._submission_time!r}, {self._args!r})"
 
     def get_url(self):
+        """Get url to view execution details in Hopsworks UI"""
         _client = client.get_instance()
         path = (
             "/p/"

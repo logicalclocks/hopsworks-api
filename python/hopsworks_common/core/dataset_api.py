@@ -310,7 +310,7 @@ class DatasetApi:
                     chunks = []
 
                     if os.path.getsize(local_path) == 0:
-                        chunks.append(Chunk(b'', 1, "pending"))
+                        chunks.append(Chunk(b"", 1, "pending"))
                         all_chunks_processed = True
                     else:
                         for _ in range(simultaneous_chunks):
@@ -620,6 +620,11 @@ class DatasetApi:
 
     @usage.method_logger
     def upload_feature_group(self, feature_group, path, dataframe):
+        """Upload a dataframe to a path in Parquet format using a feature group metadata.
+
+        !!! Note
+            This method is a legacy method kept for backwards-compatibility; do not use it in new code.
+        """
         # Convert the dataframe into PARQUET for upload
         df_parquet = dataframe.to_parquet(index=False)
         parquet_length = len(df_parquet)
@@ -685,11 +690,15 @@ class DatasetApi:
         else:
             cls = inode.Inode
 
-        count, items = self._list_dataset_path(normalized_path, cls, offset=offset, limit=limit)
+        count, items = self._list_dataset_path(
+            normalized_path, cls, offset=offset, limit=limit
+        )
 
         files = []
         for item in items:
-            files.append(util.convert_to_project_rel_path(item.path, _client._project_name))
+            files.append(
+                util.convert_to_project_rel_path(item.path, _client._project_name)
+            )
         return files
 
     @usage.method_logger
@@ -726,6 +735,16 @@ class DatasetApi:
 
     @usage.method_logger
     def read_content(self, path: str, dataset_type: str = "DATASET"):
+        """Read the content of a file.
+
+        # Arguments
+            path: The path to the file to read.
+            dataset_type: The type of dataset, can be `DATASET` or `HIVEDB`; defaults to `DATASET`.
+                `HIVEDB` type is used to read files from Apache Hive.
+
+        # Returns
+            An object with `content` attribute containing the file content as bytes, or `None` if the file was not found.
+        """
         _client = client.get_instance()
 
         path_params = [
