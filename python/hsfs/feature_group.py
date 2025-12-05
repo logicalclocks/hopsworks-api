@@ -4351,6 +4351,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         )
 
         fg.save()
+        ```
         """
         self._feature_group_engine.save(self)
 
@@ -4861,6 +4862,7 @@ class SpineGroup(FeatureGroupBase):
         )
 
         fg._save()
+        ```
         """
         self._feature_group_engine.save(self)
         return self
