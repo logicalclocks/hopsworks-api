@@ -4398,9 +4398,10 @@ class TestSpark:
 
         spark_engine = spark.Engine()
 
-        # Mock dataset API
+        # Mock dataset API and file I/O for distribute=False case
         if distribute_arg is False:
             mock_dataset_api.return_value.read_content.return_value.content = bytes()
+            mocker.patch("builtins.open", mocker.mock_open())
 
         # Act
         if distribute_arg is None:
