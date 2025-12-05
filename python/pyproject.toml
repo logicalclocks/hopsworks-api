@@ -195,8 +195,18 @@ indent-width = 4
 target-version = "py39"
 
 [tool.ruff.lint]
-# 1. Enable flake8-bugbear (`B`) rules, in addition to the defaults.
-select = ["E", "F", "B", "C4", "I", "W", "D2", "D3", "D4"] #, "ANN"]
+select = [
+    "E",
+    "F",
+    "B",
+    "C4",
+    "ISC",
+    "I",
+    "W",
+    "D2",
+    "D3",
+    "D4"
+]
 ignore = [
     "B905",   # zip has no strict kwarg until Python 3.10
     "ANN101", # Missing type annotation for self in method

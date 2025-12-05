@@ -2204,7 +2204,7 @@ class FeatureGroupBase:
             if isinstance(feature_name[0], str):
                 warnings.warn(
                     "Providing event_time as a single-element list is deprecated"
-                    + " and will be dropped in future versions. Provide the feature_name string instead.",
+                    " and will be dropped in future versions. Provide the feature_name string instead.",
                     DeprecationWarning,
                     stacklevel=2,
                 )
@@ -2912,8 +2912,8 @@ class FeatureGroup(FeatureGroupBase):
         elif wallclock_time and engine.get_type() == "python":
             raise FeatureStoreException(
                 "Python environments does not support incremental queries. "
-                + "Read feature group without timestamp to retrieve latest snapshot or switch to "
-                + "environment with Spark Engine."
+                "Read feature group without timestamp to retrieve latest snapshot or switch to "
+                "environment with Spark Engine."
             )
 
         engine.get_instance().set_job_group(
@@ -3189,7 +3189,7 @@ class FeatureGroup(FeatureGroupBase):
         if features is None:
             raise FeatureStoreException(
                 "Feature list not provided in the create_feature_group or get_or_create_feature_group invokations."
-                + " Please provide a list of features or a Dataframe"
+                " Please provide a list of features or a Dataframe"
             )
 
         feature_dataframe = engine.get_instance().convert_to_default_dataframe(features)
@@ -4575,11 +4575,11 @@ class ExternalFeatureGroup(FeatureGroupBase):
         ):
             raise FeatureStoreException(
                 "Reading an External Feature Group directly into a Pandas Dataframe using "
-                + "Python/Pandas as Engine from the external storage system "
-                + "is not supported, however, if the feature group is online enabled, you can read "
-                + "from online storage or you can use the "
-                + "Query API to create Feature Views/Training Data containing External "
-                + "Feature Groups."
+                "Python/Pandas as Engine from the external storage system "
+                "is not supported, however, if the feature group is online enabled, you can read "
+                "from online storage or you can use the "
+                "Query API to create Feature Views/Training Data containing External "
+                "Feature Groups."
             )
         engine.get_instance().set_job_group(
             "Fetching Feature group",

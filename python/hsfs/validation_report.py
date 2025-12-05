@@ -243,7 +243,7 @@ class ValidationReport:
         else:
             raise ValueError(
                 f"Invalid Value {ingestion_result} for ingestion_result."
-                + f"Allowed values are {', '.join(allowed_values)}."
+                f"Allowed values are {', '.join(allowed_values)}."
             )
 
     def __str__(self) -> str:
@@ -252,6 +252,6 @@ class ValidationReport:
     def __repr__(self) -> str:
         return (
             f"ValidationReport(success: {self._success}, "
-            + f"{self._statistics}, {len(self._results)} results"
-            + f" , {self._meta}, {self._full_report_path})"
+            f"{self._statistics}, {len(self._results)} results"
+            f" , {self._meta}, {self._full_report_path})"
         )

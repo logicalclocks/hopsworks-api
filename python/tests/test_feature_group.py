@@ -344,7 +344,7 @@ class TestFeatureGroup:
         assert issubclass(warning_record[0].category, DeprecationWarning)
         assert str(warning_record[0].message) == (
             "Providing event_time as a single-element list is deprecated"
-            + " and will be dropped in future versions. Provide the feature_name string instead."
+            " and will be dropped in future versions. Provide the feature_name string instead."
         )
 
     def test_select_all(self):

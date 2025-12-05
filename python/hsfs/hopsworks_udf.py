@@ -557,18 +557,18 @@ class HopsworksUdf:
         # Function that converts the timestamp to localized timezone
         convert_timstamp_function = (
             "def convert_timezone(date_time_obj : datetime):\n"
-            + "   from datetime import datetime, timezone\n"
-            + "   import tzlocal\n"
-            + "   current_timezone = tzlocal.get_localzone()\n"
-            + "   if date_time_obj and isinstance(date_time_obj, datetime):\n"
-            + "      if date_time_obj.tzinfo is None:\n"
-            + "      # if timestamp is timezone unaware, make sure it's localized to the system's timezone.\n"
-            + "      # otherwise, spark will implicitly convert it to the system's timezone.\n"
-            + "         return date_time_obj.replace(tzinfo=current_timezone)\n"
-            + "      else:\n"
-            + "         return date_time_obj.astimezone(timezone.utc).replace(tzinfo=current_timezone)\n"
-            + "   else:\n"
-            + "      return None\n"
+            "   from datetime import datetime, timezone\n"
+            "   import tzlocal\n"
+            "   current_timezone = tzlocal.get_localzone()\n"
+            "   if date_time_obj and isinstance(date_time_obj, datetime):\n"
+            "      if date_time_obj.tzinfo is None:\n"
+            "      # if timestamp is timezone unaware, make sure it's localized to the system's timezone.\n"
+            "      # otherwise, spark will implicitly convert it to the system's timezone.\n"
+            "         return date_time_obj.replace(tzinfo=current_timezone)\n"
+            "      else:\n"
+            "         return date_time_obj.astimezone(timezone.utc).replace(tzinfo=current_timezone)\n"
+            "   else:\n"
+            "      return None\n"
         )
 
         # Start wrapper function generation
@@ -586,7 +586,7 @@ class HopsworksUdf:
                 code += (
                     "   transformed_features = list(transformed_features)\n"
                     "   for index in _date_time_output_index:\n"
-                    + "      transformed_features[index] = convert_timezone(transformed_features[index])\n"
+                    "      transformed_features[index] = convert_timezone(transformed_features[index])\n"
                 )
             if rename_outputs:
                 # Use a dictionary to rename output to correct column names. This must be for the udf's to be executable in spark.

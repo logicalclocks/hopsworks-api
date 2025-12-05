@@ -247,7 +247,7 @@ class ValidationResult:
         else:
             raise ValueError(
                 f"Invalid Value {ingestion_result} for ingestion_result."
-                + f"Allowed values are {', '.join(allowed_values)}."
+                f"Allowed values are {', '.join(allowed_values)}."
             )
 
     def __str__(self) -> str:

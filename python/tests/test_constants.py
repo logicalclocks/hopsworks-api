@@ -339,20 +339,20 @@ class TestConstants:
 
             assert len(added_cnames) == 0, (
                 f"One or more constants were added under {cname} with names {added_cnames}. "
-                + "If it was intentional, please add/remove/update tests accordingly (not only in this file, "
-                + "but wherever it corresponds)."
+                "If it was intentional, please add/remove/update tests accordingly (not only in this file, "
+                "but wherever it corresponds)."
             )
 
             assert len(removed_cnames) == 0, (
                 f"One or more constants were removed under {cname} with names {removed_cnames}. "
-                + "If it was intentional, please add/remove/update tests accordingly (not only in this file, "
-                + "but wherever it corresponds)."
+                "If it was intentional, please add/remove/update tests accordingly (not only in this file, "
+                "but wherever it corresponds)."
             )
 
             assert const_dict.keys() == expected_constants.keys(), (
                 f"One or more constants under {cname} were modified from {removed_cnames} to {added_cnames}. "
-                + "If it was intentional, please add/remove/update tests accordingly (not only in this file, "
-                + "but wherever it corresponds)."
+                "If it was intentional, please add/remove/update tests accordingly (not only in this file, "
+                "but wherever it corresponds)."
             )
 
             # constant values
@@ -360,14 +360,14 @@ class TestConstants:
                 full_cname = f"{cls.__name__}.{cname}"
                 assert cvalue == const_dict[cname], (
                     f"The constant {full_cname} was modified from {cvalue} to {const_dict[cname]}. "
-                    + "If it was intentional, please add/remove/update tests accordingly (not only in this file, "
-                    + "but wherever it corresponds)."
+                    "If it was intentional, please add/remove/update tests accordingly (not only in this file, "
+                    "but wherever it corresponds)."
                 )
         else:
             # number of values
             assert len(const_dict) == num_values, (
                 f"A constant was added/removed under {cname}. If it was intentional, please "
-                + "add/remove/update tests accordingly (not only in this file, but wherever it corresponds)."
+                "add/remove/update tests accordingly (not only in this file, but wherever it corresponds)."
             )
 
     def _get_contants_name_value_dict(self, cls, prefix=None) -> dict:

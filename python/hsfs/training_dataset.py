@@ -352,7 +352,7 @@ class TrainingDatasetBase:
         else:
             raise TypeError(
                 "The argument `splits` has to be `None` or a dictionary of key, relative size e.g "
-                + "{'train': 0.7, 'test': 0.1, 'validation': 0.2}.\n"
+                "{'train': 0.7, 'test': 0.1, 'validation': 0.2}.\n"
                 + "Got {} with type {}".format(splits, type(splits))
             )
 
