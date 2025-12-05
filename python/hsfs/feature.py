@@ -302,7 +302,7 @@ class Feature:
 
         Warning: Deprecated
             `contains` method is deprecated.
-            Use [`isin`][hsfs.feature.Feature.isin] instead.
+            Use [`Feature.isin`][hsfs.feature.Feature.isin] instead.
 
         Parameters:
             other: A single feature value or a list of feature values.

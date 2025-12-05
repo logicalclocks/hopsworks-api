@@ -172,7 +172,7 @@ def contains(self, other: str | list) -> filter.Filter:
 
     Warning: Deprecated
         `contains` method is deprecated.
-        Use [`isin`][hsfs.feature.Feature.isin] instead.
+        Use [`Feature.isin`][hsfs.feature.Feature.isin] instead.
 
     Parameters:
         other: A single feature value or a list of feature values.
@@ -181,6 +181,48 @@ def contains(self, other: str | list) -> filter.Filter:
         A filter that leaves only the feature values also contained in `other`.
     """
 ```
+
+##### Linking
+
+A good API reference is easy to explore, and links are essential for that.
+
+If you mention other classes, methods, or functions in the docstring, link to them using the following syntax:
+
+```markdown
+[`ClassName`][full.module.path.ClassName]
+[`ClassName.method_name`][full.module.path.ClassName.method_name]
+As a convention, for methods and properties include the class name as well to reduce ambiguity.
+```
+
+Note that you can link entities defined in other libraries as well, like `pandas` or `numpy`.
+
+To link a page of documentation and not an API refeerence object, use a relative link:
+
+```markdown
+[Model Training](../../concepts/mlops/training)
+[Hopsworks On-Premise Installation](../../setup_installation/on_prem/contact_hopsworks)
+```
+
+Always start it with `../..` to escape from the API reference page to the root.
+
+For exaternal links, use the normal Markdown syntax:
+
+```markdown
+[Hopsworks Website](https://www.hopsworks.ai)
+```
+
+##### Summary
+
+- Always document public classes, methods, functions, and modules.
+- Show the intent and provide an insight with your docstrings, avoid tautologies.
+- Do not place a warning without a proper explanation of the reasons behind it.
+- Use proper sentences, starting with a capital letter and ending with a period, question or exclamation mark.
+- Place a sentence per line.
+- Use Google style for docstrings.
+- Provide a link whenever you mention something linkable.
+- Use mkdocs-material admonitions where appropriate.
+- Do not duplicate information that can be extracted from the code signatures.
+- Keep the documentation in the code (docstrings) as complete as possible, and avoid writing custom Markdown text in the files of the `docs` directory.
 
 #### Extending the API Reference
 
@@ -205,18 +247,6 @@ Inside the `new_package.md` file you can use `:::` syntax to include the documen
 You can add more entities as needed using the same include syntax.
 Prefer to include all the information into the docstring, and avoid writting Markdown text inside the markdown files of `docs` directory, except for the main title and the includes.
 We plan to move to fully automatic API reference generation in the future, which would not support custom Markdown text outside the docstrings.
-
-##### Summary
-
-- Always document public classes, methods, functions, and modules.
-- Show the intent and provide an insight with your docstrings, avoid tautologies.
-- Do not place a warning without a proper explanation of the reasons behind it.
-- Use proper sentences, starting with a capital letter and ending with a period, question or exclamation mark.
-- Place a sentence per line.
-- Use Google style for docstrings.
-- Use mkdocs-material admonitions where appropriate.
-- Do not duplicate information that can be extracted from the code signatures.
-- Keep the documentation in the code (docstrings) as complete as possible, and avoid writing custom Markdown text in the files of the `docs` directory.
 
 ## Java Development Setup
 
