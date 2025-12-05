@@ -161,8 +161,9 @@ class EmbeddingFeature:
 
     @property
     def dimenstion(self):
-        """This one is excluded from the docs as the name is misspelled but kept to avoid breaking the API
-        int: The dimensionality of the embedding feature.
+        """The dimensionality of the embedding feature.
+
+        This one is excluded from the docs as the name is misspelled but kept to avoid breaking the API.
         """
         return self._dimension
 

@@ -85,7 +85,8 @@ class Secret:
         return self._owner
 
     def delete(self):
-        """Delete the secret
+        """Delete the secret.
+
         Danger: Potentially dangerous operation
             This operation deletes the secret and may break applications using it.
 

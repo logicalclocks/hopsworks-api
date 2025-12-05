@@ -173,6 +173,7 @@ class Connection:
     @connected
     def get_model_registry(self, project: str = None):
         """Get a reference to a model registry to perform operations on, defaulting to the project's default model registry.
+
         Shared model registries can be retrieved by passing the `project` argument.
 
         Parameters:
@@ -288,6 +289,7 @@ class Connection:
     @connected
     def _check_compatibility(self):
         """Check the compatibility between the client and backend.
+
         Assumes versioning (major.minor.patch).
         A client is considered compatible if the major and minor version matches.
         """

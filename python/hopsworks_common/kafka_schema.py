@@ -75,7 +75,8 @@ class KafkaSchema:
 
     @usage.method_logger
     def delete(self):
-        """Delete the schema
+        """Delete the schema.
+
         Danger: Potentially dangerous operation
             This operation deletes the schema.
 

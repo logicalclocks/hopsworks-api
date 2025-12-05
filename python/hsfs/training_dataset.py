@@ -376,9 +376,7 @@ class TrainingDatasetBase:
 
     @property
     def statistics_config(self):
-        """Statistics configuration object defining the settings for statistics
-        computation of the training dataset.
-        """
+        """Statistics configuration object defining the settings for statistics computation of the training dataset."""
         return self._statistics_config
 
     @statistics_config.setter
@@ -738,9 +736,7 @@ class TrainingDataset(TrainingDatasetBase):
         return self._training_dataset_engine.read(self, split, read_options or {})
 
     def compute_statistics(self):
-        """Compute the statistics for the training dataset and save them to the
-        feature store.
-        """
+        """Compute the statistics for the training dataset and save them to the feature store."""
         if self.statistics_config.enabled and engine.get_type().startswith("spark"):
             try:
                 registered_stats = self._statistics_engine.get(
@@ -1003,8 +999,7 @@ class TrainingDataset(TrainingDatasetBase):
     def init_prepared_statement(
         self, batch: Optional[bool] = None, external: Optional[bool] = None
     ):
-        """Initialise and cache parametrized prepared statement to
-           retrieve feature vector from online feature store.
+        """Initialise and cache parametrized prepared statement to retrieve feature vector from online feature store.
 
         Parameters:
             batch: boolean, optional. If set to True, prepared statements will be

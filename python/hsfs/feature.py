@@ -113,9 +113,10 @@ class Feature:
         self, feature_group: FeatureGroup = None, prefix: str = None
     ) -> str:
         """Returns the name of the feature when used to generated dataframes for training/batch data.
+
         - If the feature is configured to use a fully qualified name, it returns that name.
         - Otherwise, if a prefix is provided, it returns the feature name prefixed accordingly.
-        - If neither condition applies, it returns the feature’s original name.
+        - If neither condition applies, it returns the feature's original name.
 
         Parameters:
             feature_group (FeatureGroup, optional): The feature group context in which the name is being used.
@@ -250,9 +251,7 @@ class Feature:
 
     @property
     def default_value(self) -> Optional[str]:
-        """Default value of the feature as string, if the feature was appended to the
-        feature group.
-        """
+        """Default value of the feature as string, if the feature was appended to the feature group."""
         return self._default_value
 
     @default_value.setter
@@ -299,8 +298,17 @@ class Feature:
         return filter.Filter(self, filter.Filter.GT, self._get_filter_value(other))
 
     def contains(self, other: Union[str, List[Any]]) -> "filter.Filter":
-        """Warning: Deprecated
-        `contains` method is deprecated. Use [`isin`][hsfs.feature.Feature.isin] instead.
+        """Construct a filter similar to SQL's `IN` operator.
+
+        Warning: Deprecated
+            `contains` method is deprecated.
+            Use [`isin`][hsfs.feature.Feature.isin] instead.
+
+        Parameters:
+            other: A single feature value or a list of feature values.
+
+        Returns:
+            A filter that leaves only the feature values also contained in `other`.
         """
         return self.isin(other)
 

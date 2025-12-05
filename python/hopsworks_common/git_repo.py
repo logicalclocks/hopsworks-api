@@ -125,6 +125,7 @@ class GitRepo:
     @usage.method_logger
     def delete(self):
         """Delete the git repo from the filesystem.
+
         Danger: Potentially dangerous operation
             This operation deletes the cloned git repository from the filesystem.
 

@@ -62,8 +62,8 @@ class Encoder(json.JSONEncoder):
 
 class NumpyEncoder(json.JSONEncoder):
     """Special json encoder for numpy types.
-    Note that some numpy types doesn't have native python equivalence,
-    hence json.dumps will raise TypeError.
+
+    Note that some numpy types doesn't have native python equivalence, hence json.dumps will raise TypeError.
     In this case, you'll need to convert your numpy types into its closest python equivalence.
     """
 
@@ -757,8 +757,9 @@ def feature_view_to_json(obj):
 def generate_fully_qualified_feature_name(
     feature_group: feature_group.FeatureGroup, feature_name: str
 ):
-    """Generate the fully qualified feature name for a feature. The fully qualified name is created by concatenating
-    the project name, feature group name, feature group version and feature name.
+    """Generate the fully qualified feature name for a feature.
+
+    The fully qualified name is created by concatenating the project name, feature group name, feature group version and feature name.
     """
     return f"{feature_group._get_project_name()}_{feature_group.name}_{feature_group.version}_{feature_name}"
 
@@ -816,6 +817,7 @@ class AsyncTask:
 
 class AsyncTaskThread(threading.Thread):
     """Generic thread class that can be used to run async tasks in a separate thread.
+
     The thread will create its own event loop and run submitted tasks in that loop.
 
     The thread also store and fetches a connection pool that can be used by the async tasks.

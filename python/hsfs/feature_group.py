@@ -2223,9 +2223,7 @@ class FeatureGroupBase:
     def expectation_suite(
         self,
     ) -> Optional[hsfs.expectation_suite.ExpectationSuite]:
-        """Expectation Suite configuration object defining the settings for
-        data validation of the feature group.
-        """
+        """Expectation Suite configuration object defining the settings for data validation of the feature group."""
         return self._expectation_suite
 
     @expectation_suite.setter
@@ -2340,8 +2338,7 @@ class FeatureGroupBase:
         return self.subject["schema"]
 
     def get_complex_features(self) -> List[str]:
-        """Returns the names of all features with a complex data type in this
-        feature group.
+        """Returns the names of all features with a complex data type in this feature group.
 
         Example:
             ```python
@@ -2489,6 +2486,7 @@ class FeatureGroupBase:
         ttl: Optional[Union[int, float, timedelta]] = None,
     ) -> Union[FeatureGroupBase, FeatureGroup, ExternalFeatureGroup, SpineGroup]:
         """Enable or update the time-to-live (TTL) configuration of the feature group.
+
         If ttl is not set, the feature group will be enabled with the last TTL value being set.
 
         Example:
@@ -4933,9 +4931,7 @@ class SpineGroup(FeatureGroupBase):
     def dataframe(
         self,
     ) -> Optional[Union[pd.DataFrame, TypeVar("pyspark.sql.DataFrame")]]:
-        """Spine dataframe with primary key, event time and
-        label column to use for point in time join when fetching features.
-        """
+        """Spine dataframe with primary key, event time and label column to use for point in time join when fetching features."""
         return self._dataframe
 
     @dataframe.setter

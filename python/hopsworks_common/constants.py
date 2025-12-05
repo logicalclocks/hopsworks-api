@@ -16,10 +16,9 @@
 
 
 class Default:
-    """An object of this class is used in place of optional arguments in
-    cases when passing None should result in an exception or other behaviour.
-    Overwritting None with a default value is undesirable in some cases,
-    and this class solves the problem.
+    """An object of this class is used in place of optional arguments in cases when passing `None` should result in an exception or other behaviour.
+
+    Overwritting `None` with a default value is undesirable in some cases, and this class solves the problem.
     """
 
     def __repr__(self):

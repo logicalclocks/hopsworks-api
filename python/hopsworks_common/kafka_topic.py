@@ -167,7 +167,8 @@ class KafkaTopic:
 
     @usage.method_logger
     def delete(self):
-        """Delete the topic
+        """Delete the topic.
+
         Danger: Potentially dangerous operation
             This operation deletes the topic.
 

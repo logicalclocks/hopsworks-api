@@ -1336,6 +1336,7 @@ class FeatureView:
 
     def get_parent_feature_groups(self) -> Optional["explicit_provenance.Links"]:
         """Get the parents of this feature view, based on explicit provenance.
+
         Parents are feature groups or external feature groups. These feature
         groups can be accessible, deleted or inaccessible.
         For deleted and inaccessible feature groups, only minimal information is
@@ -1693,6 +1694,7 @@ class FeatureView:
     ) -> Tuple[int, job.Job]:
         # TODO: Convert the docstrings from this point on:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
+
         The training data is split into train and test set at random or according to time ranges.
         The training data can be retrieved by calling `feature_view.get_train_test_split`.
 
@@ -1976,6 +1978,7 @@ class FeatureView:
         **kwargs,
     ) -> Tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
+
         The training data is split into train, validation, and test set at random or according to time range.
         The training data can be retrieved by calling `feature_view.get_train_validation_test_split`.
 
@@ -2331,6 +2334,7 @@ class FeatureView:
         Optional[TrainingDatasetDataFrameTypes],  # optional label DataFrame
     ]:
         """Create the metadata for a training dataset and get the corresponding training data from the offline feature store.
+
         This returns the training data in memory and does not materialise data in storage.
         The training data can be recreated by calling `feature_view.get_training_data` with the metadata created.
 
@@ -2488,6 +2492,7 @@ class FeatureView:
         Optional[TrainingDatasetDataFrameTypes],
     ]:
         """Create the metadata for a training dataset and get the corresponding training data from the offline feature store.
+
         This returns the training data in memory and does not materialise data in storage.
         The training data is split into train and test set at random or according to time ranges.
         The training data can be recreated by calling `feature_view.get_train_test_split` with the metadata created.
@@ -2682,6 +2687,7 @@ class FeatureView:
         Optional[TrainingDatasetDataFrameTypes],
     ]:
         """Create the metadata for a training dataset and get the corresponding training data from the offline feature store.
+
         This returns the training data in memory and does not materialise data in storage.
         The training data is split into train, validation, and test set at random or according to time ranges.
         The training data can be recreated by calling `feature_view.get_train_validation_test_split` with the metadata created.
@@ -2893,8 +2899,7 @@ class FeatureView:
         TrainingDatasetDataFrameTypes,
         Optional[TrainingDatasetDataFrameTypes],
     ]:
-        """Get training data created by `feature_view.create_training_data`
-        or `feature_view.training_data`.
+        """Get training data created by `feature_view.create_training_data` or `feature_view.training_data`.
 
         Example:
             ```python
@@ -2967,8 +2972,7 @@ class FeatureView:
         Optional[TrainingDatasetDataFrameTypes],
         Optional[TrainingDatasetDataFrameTypes],
     ]:
-        """Get training data created by `feature_view.create_train_test_split`
-        or `feature_view.train_test_split`.
+        """Get training data created by `feature_view.create_train_test_split` or `feature_view.train_test_split`.
 
         Example:
             ```python
@@ -3042,8 +3046,7 @@ class FeatureView:
         Optional[TrainingDatasetDataFrameTypes],
         Optional[TrainingDatasetDataFrameTypes],
     ]:
-        """Get training data created by `feature_view.create_train_validation_test_split`
-        or `feature_view.train_validation_test_split`.
+        """Get training data created by `feature_view.create_train_validation_test_split` or `feature_view.train_validation_test_split`.
 
         Example:
             ```python
@@ -3409,6 +3412,7 @@ class FeatureView:
         "fmc.FeatureMonitoringConfig", List["fmc.FeatureMonitoringConfig"], None
     ]:
         """Fetch feature monitoring configs attached to the feature view.
+
         If no arguments is provided the method will return all feature monitoring configs
         attached to the feature view, meaning all feature monitoring configs that are attach
         to a feature in the feature view. If you wish to fetch a single config, provide the
@@ -4206,8 +4210,8 @@ class FeatureView:
         pl.DataFrame,
     ]:
         """Read the log entries for the current feature view.
-            Optionally, filter can be applied to start/end time, training dataset version, hsml model,
-            and custom fitler.
+
+        Optionally, filter can be applied to start/end time, training dataset version, hsml model, and custom filter.
 
         Parameters:
             start_time: Start time for the log entries. Can be a string, integer, datetime, or date. Defaults to None.
@@ -4422,6 +4426,7 @@ class FeatureView:
         self, training_dataset_version: Optional[int] = None
     ) -> List[training_dataset_feature.TrainingDatasetFeature]:
         """Function that returns the schema of the training dataset that is generated from a feature view.
+
         It provides the schema of the features after all transformation functions have been applied.
 
         Parameters:
@@ -4616,8 +4621,8 @@ class FeatureView:
 
     @property
     def primary_keys(self) -> Set[str]:
-        """Set of primary key names that is required as keys in input dict object
-        for [`get_feature_vector(s)`](#get_feature_vector) method.
+        """Set of primary key names that is required as keys in input dict object for [`get_feature_vector(s)`](#get_feature_vector) method.
+
         When there are duplicated primary key names and prefix is not defined in the query,
         prefix is generated and prepended to the primary key name in this format
         "fgId_{feature_group_id}_{join_index}" where `join_index` is the order of the join.

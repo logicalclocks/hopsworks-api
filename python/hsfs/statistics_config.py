@@ -67,9 +67,7 @@ class StatisticsConfig:
 
     @property
     def correlations(self):
-        """Enable correlations as an additional statistic to be computed for each
-        feature pair.
-        """
+        """Enable correlations as an additional statistic to be computed for each feature pair."""
         return self._correlations
 
     @correlations.setter
@@ -78,9 +76,7 @@ class StatisticsConfig:
 
     @property
     def histograms(self):
-        """Enable histograms as an additional statistic to be computed for each
-        feature.
-        """
+        """Enable histograms as an additional statistic to be computed for each feature."""
         return self._histograms
 
     @histograms.setter
@@ -89,9 +85,7 @@ class StatisticsConfig:
 
     @property
     def exact_uniqueness(self):
-        """Enable exact uniqueness as an additional statistic to be computed for each
-        feature.
-        """
+        """Enable exact uniqueness as an additional statistic to be computed for each feature."""
         return self._exact_uniqueness
 
     @exact_uniqueness.setter

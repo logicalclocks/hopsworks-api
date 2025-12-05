@@ -396,9 +396,7 @@ class S3Connector(StorageConnector):
         return self._arguments
 
     def spark_options(self) -> Dict[str, str]:
-        """Return prepared options to be passed to Spark, based on the additional
-        arguments.
-        """
+        """Return prepared options to be passed to Spark, based on the additional arguments."""
         return self._arguments
 
     def prepare_spark(self, path: Optional[str] = None) -> Optional[str]:
@@ -635,9 +633,7 @@ class RedshiftConnector(StorageConnector):
         return props
 
     def spark_options(self) -> Dict[str, Any]:
-        """Return prepared options to be passed to Spark, based on the additional
-        arguments.
-        """
+        """Return prepared options to be passed to Spark, based on the additional arguments."""
         connstr = (
             "jdbc:redshift://"
             + self._cluster_identifier
@@ -788,9 +784,7 @@ class AdlsConnector(StorageConnector):
             return "adl://{}.azuredatalakestore.net".format(self.account_name)
 
     def spark_options(self) -> Dict[str, Any]:
-        """Return prepared options to be passed to Spark, based on the additional
-        arguments.
-        """
+        """Return prepared options to be passed to Spark, based on the additional arguments."""
         return self._spark_options
 
     def prepare_spark(self, path: Optional[str] = None) -> Optional[str]:
@@ -828,6 +822,7 @@ class AdlsConnector(StorageConnector):
         pl.DataFrame,
     ]:
         """Reads a path into a dataframe using the storage connector.
+
         Parameters:
             query: Not relevant for ADLS connectors.
             data_format: The file format of the files to be read, e.g. `csv`, `parquet`.
@@ -962,9 +957,9 @@ class SnowflakeConnector(StorageConnector):
         return self.connector_options()
 
     def connector_options(self) -> Optional[Dict[str, Any]]:
-        """In order to use the `snowflake.connector` Python library, this method
-        prepares a Python dictionary with the needed arguments for you to connect to
-        a Snowflake database.
+        """Prepare a Python dictionary with the needed arguments for you to connect to a Snowflake database.
+
+        It is useful for the `snowflake.connector` Python library.
 
         ```python
         import snowflake.connector
@@ -990,9 +985,7 @@ class SnowflakeConnector(StorageConnector):
         return props
 
     def spark_options(self) -> Dict[str, Any]:
-        """Return prepared options to be passed to Spark, based on the additional
-        arguments.
-        """
+        """Return prepared options to be passed to Spark, based on the additional arguments."""
         props = self._options
         props["sfURL"] = self._url
         props["sfSchema"] = self._schema
@@ -1087,16 +1080,14 @@ class JdbcConnector(StorageConnector):
 
     @property
     def arguments(self) -> Optional[Dict[str, Any]]:
-        """Additional JDBC arguments. When running hsfs with PySpark/Spark in Hopsworks,
-        the driver is automatically provided in the classpath but you need to set the `driver` argument to
-        `com.mysql.cj.jdbc.Driver` when creating the Storage Connector.
+        """Additional JDBC arguments.
+
+        When running hsfs with PySpark/Spark in Hopsworks, the driver is automatically provided in the classpath but you need to set the `driver` argument to `com.mysql.cj.jdbc.Driver` when creating the Storage Connector.
         """
         return self._arguments
 
     def spark_options(self) -> Dict[str, Any]:
-        """Return prepared options to be passed to Spark, based on the additional
-        arguments.
-        """
+        """Return prepared options to be passed to Spark, based on the additional arguments."""
         options = (
             {arg.get("name"): arg.get("value") for arg in self._arguments}
             if self._arguments
@@ -1529,6 +1520,7 @@ class KafkaConnector(StorageConnector):
 
 class GcsConnector(StorageConnector):
     """This storage connector provides integration to Google Cloud Storage (GCS).
+
     Once you create a connector in FeatureStore, you can transact data from a GCS bucket into a spark dataframe
     by calling the `read` API.
 
@@ -1606,9 +1598,7 @@ class GcsConnector(StorageConnector):
             return self.path
 
     def spark_options(self) -> Dict[str, Any]:
-        """Return prepared options to be passed to Spark, based on the additional
-        arguments.
-        """
+        """Return prepared options to be passed to Spark, based on the additional arguments."""
         return {}
 
     def read(
@@ -1692,6 +1682,7 @@ class GcsConnector(StorageConnector):
 
 class BigQueryConnector(StorageConnector):
     """The BigQuery storage connector provides integration to Google Cloud BigQuery.
+
     You can use it to run bigquery on your GCP cluster and load results into spark dataframe by calling the `read` API.
 
     Authentication to GCP is handled by uploading the `JSON keyfile for service account` to the Hopsworks Project. For more information
@@ -1949,9 +1940,7 @@ class RdsConnector(StorageConnector):
         return self._arguments
 
     def spark_options(self) -> Dict[str, Any]:
-        """Return prepared options to be passed to Spark, based on the additional
-        arguments.
-        """
+        """Return prepared options to be passed to Spark, based on the additional arguments."""
         return {
             "user": self.user,
             "password": self.password,
