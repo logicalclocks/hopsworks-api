@@ -329,7 +329,7 @@ class EmbeddingIndex:
         Parameters:
             options:
                 The options used for the request to the vector database.
-                The keys are attribute values of [`OpensearchRequestOption`][hsfs.core.opensearch.OpensearchRequestOption].
+                The keys are attribute values of [`OpensearchRequestOption`][hopsworks_common.core.opensearch.OpensearchRequestOption].
 
         Returns:
             The number of records in the feature group.
