@@ -333,7 +333,7 @@ class Model:
             `Dict[str, obj]` of tags.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError in case the backend fails to retrieve the tags.
+            hopsworks.client.exceptions.RestAPIError: In case of a server error.
         """
         return self._model_engine.get_tags(model_instance=self)
 
