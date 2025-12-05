@@ -10,9 +10,8 @@ jobs:
 
     steps:
       - name: Trigger documentation rebuild
-        # TODO: replace aversey with logicalclocks
         run: |
           curl -XPOST -H "Authorization: Bearer ${{ secrets.ACCESS_TOKEN }}" \
             -H "Content-Type: application/json" \
             -d "{\"event_type\": \"trigger-rebuild\", \"client_payload\": {\"branch\": \"${GITHUB_REF#refs/heads/}\"}}" \
-            https://api.github.com/repos/aversey/logicalclocks.github.io/dispatches
+            https://api.github.com/repos/logicalclocks/logicalclocks.github.io/dispatches
