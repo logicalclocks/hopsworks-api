@@ -256,8 +256,7 @@ class StorageConnector(ABC):
         return []
 
     def get_databases(self) -> list[str]:
-        """
-        Retrieve the list of available databases.
+        """Retrieve the list of available databases.
 
         !!! example
             ```python
@@ -275,8 +274,7 @@ class StorageConnector(ABC):
         return self._data_source_api.get_databases(self._featurestore_id, self._name)
 
     def get_tables(self, database: str = None) -> list[ds.DataSource]:
-        """
-        Retrieve the list of tables from the specified database.
+        """Retrieve the list of tables from the specified database.
 
         !!! example
             ```python
@@ -314,8 +312,7 @@ class StorageConnector(ABC):
         )
 
     def get_data(self, data_source: ds.DataSource) -> dsd.DataSourceData:
-        """
-        Retrieve the data from the data source.
+        """Retrieve the data from the data source.
 
         !!! example
             ```python
@@ -340,8 +337,7 @@ class StorageConnector(ABC):
         )
 
     def get_metadata(self, data_source: ds.DataSource) -> dict:
-        """
-        Retrieve metadata information about the data source.
+        """Retrieve metadata information about the data source.
 
         !!! example
             ```python
@@ -482,8 +478,9 @@ class S3Connector(StorageConnector):
     @property
     def arguments(self) -> dict[str, Any] | None:
         """Additional spark options for the S3 connector, passed as a dictionary.
+
         These are set using the `Spark Options` field in the UI when creating the connector.
-        Example: `{"fs.s3a.endpoint": "s3.eu-west-1.amazonaws.com", "fs.s3a.path.style.access": "true"}`
+        Example: `{"fs.s3a.endpoint": "s3.eu-west-1.amazonaws.com", "fs.s3a.path.style.access": "true"}`.
         """
         return self._arguments
 
@@ -955,8 +952,8 @@ class SnowflakeConnector(StorageConnector):
         warehouse: str | None = None,
         application: Any | None = None,
         sf_options: dict[str, Any] | None = None,
-        private_key: Optional[str] = None,
-        passphrase: Optional[str] = None,
+        private_key: str | None = None,
+        passphrase: str | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
@@ -1040,12 +1037,12 @@ class SnowflakeConnector(StorageConnector):
         return self._options
 
     @property
-    def private_key(self) -> Optional[str]:
+    def private_key(self) -> str | None:
         """Path to the private key file for key pair authentication."""
         return self._private_key
 
     @property
-    def passphrase(self) -> Optional[str]:
+    def passphrase(self) -> str | None:
         """Passphrase for the private key file."""
         return self._passphrase
 
@@ -1109,7 +1106,7 @@ class SnowflakeConnector(StorageConnector):
 
         return props
 
-    def _read_private_key(self) -> Optional[str]:
+    def _read_private_key(self) -> str | None:
         """Reads the private key from the specified key path."""
         p_key = serialization.load_pem_private_key(
             self._private_key.encode(),
@@ -1125,12 +1122,11 @@ class SnowflakeConnector(StorageConnector):
         private_key_content = private_key_bytes.decode("UTF-8")
         # remove both regular and encrypted PEM headers, e.g.
         # -----BEGIN PRIVATE KEY----- and -----BEGIN ENCRYPTED PRIVATE KEY-----
-        private_key_content = re.sub(
+        return re.sub(
             r"-*\s*(BEGIN|END)(?: ENCRYPTED)? PRIVATE KEY-*\r?\n",
             "",
             private_key_content,
         ).replace("\n", "")
-        return private_key_content
 
     def read(
         self,
@@ -1162,7 +1158,6 @@ class SnowflakeConnector(StorageConnector):
         Returns:
             `DataFrame`.
         """
-
         # validate engine supports connector type
         if not engine.get_instance().is_connector_type_supported(self.type):
             raise NotImplementedError(

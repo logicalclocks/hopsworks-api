@@ -338,7 +338,7 @@ class Model:
         return self._model_engine.get_tags(model_instance=self)
 
     def get_url(self):
-        """Get url to the model in Hopsworks"""
+        """Get url to the model in Hopsworks."""
         path = (
             "/p/"
             + str(client.get_instance()._project_id)

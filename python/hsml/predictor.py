@@ -432,17 +432,10 @@ class Predictor(DeployableComponent):
 
     @property
     def artifact_path(self):
-        """Path of the model artifact deployed by the predictor. Resolves to /Projects/{project_name}/Models/{name}/{version}/Artifacts/{artifact_version}/{name}_{version}_{artifact_version}.zip"""
+        """Path of the model artifact deployed by the predictor. Resolves to /Projects/{project_name}/Models/{name}/{version}/Artifacts/{artifact_version}/{name}_{version}_{artifact_version}.zip."""
         # TODO: Deprecated
-        artifact_name = "{}_{}_{}.zip".format(
-            self._model_name, str(self._model_version), str(self._artifact_version)
-        )
-        return "{}/{}/Artifacts/{}/{}".format(
-            self._model_path,
-            str(self._model_version),
-            str(self._artifact_version),
-            artifact_name,
-        )
+        artifact_name = f"{self._model_name}_{str(self._model_version)}_{str(self._artifact_version)}.zip"
+        return f"{self._model_path}/{str(self._model_version)}/Artifacts/{str(self._artifact_version)}/{artifact_name}"
 
     @property
     def model_server(self):
