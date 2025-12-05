@@ -1851,6 +1851,20 @@ class Engine:
                 high=False,
             )
             now = datetime.now(timezone.utc)
+            assert (
+                feature_group.materialization_job is not None
+            ), "Materialization job is not defined. Cannot start materialization job."
+            if isinstance(offline_write_options, dict) and (
+                (spark_compute_config := offline_write_options.get("spark", None))
+                is not None
+            ):
+                _logger.debug(
+                    "Updating materialization job with user provided spark configurations."
+                )
+                for key, value in spark_compute_config.items():
+                    feature_group.materialization_job.config[key] = value
+                feature_group.materialization_job.save()
+
             feature_group.materialization_job.run(
                 args=feature_group.materialization_job.config.get("defaultArgs", "")
                 + (
@@ -1885,6 +1899,20 @@ class Engine:
                 # don't provide the current offsets (read from where the job last left off)
                 initial_check_point = ""
             # provide the initial_check_point as it will reduce the read amplification of materialization job
+            assert (
+                feature_group.materialization_job is not None
+            ), "Materialization job is not defined. Cannot start materialization job."
+            if isinstance(offline_write_options, dict) and (
+                (spark_compute_config := offline_write_options.get("spark", None))
+                is not None
+            ):
+                _logger.debug(
+                    "Updating materialization job with user provided spark configurations."
+                )
+                for key, value in spark_compute_config.items():
+                    feature_group.materialization_job.config[key] = value
+                feature_group.materialization_job.save()
+
             feature_group.materialization_job.run(
                 args=feature_group.materialization_job.config.get("defaultArgs", "")
                 + (

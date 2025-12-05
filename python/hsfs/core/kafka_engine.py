@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Callable, Dict, Literal, Optional, Tuple, Union
@@ -55,15 +56,22 @@ if TYPE_CHECKING:
     from hsfs.feature_group import ExternalFeatureGroup, FeatureGroup
 
 
+_logger = logging.getLogger(__name__)
+
+
 @uses_confluent_kafka
 def init_kafka_consumer(
     feature_store_id: int,
     offline_write_options: Dict[str, Any],
 ) -> Consumer:
     # setup kafka consumer
+    _logger.debug("Initializing Kafka consumer.")
     consumer_config = get_kafka_config(feature_store_id, offline_write_options)
     if "group.id" not in consumer_config:
         consumer_config["group.id"] = "hsfs_consumer_group"
+        _logger.debug(
+            f"Setting default 'group.id' for Kafka consumer to '{consumer_config['group.id']}'."
+        )
 
     return Consumer(consumer_config)
 
@@ -77,6 +85,7 @@ def init_kafka_resources(
 ]:
     # this function is a caching wrapper around _init_kafka_resources
     if feature_group._multi_part_insert and feature_group._kafka_producer:
+        _logger.debug("Reusing existing Kafka resources for multi-part insert.")
         return (
             feature_group._kafka_producer,
             feature_group._kafka_headers,
@@ -102,6 +111,7 @@ def _init_kafka_resources(
     Producer, Dict[str, bytes], Dict[str, Callable[..., bytes]], Callable[..., bytes] :
 ]:
     # setup kafka producer
+    _logger.debug("Initializing Kafka resources: producer, headers and writers.")
     producer = init_kafka_producer(
         feature_group.feature_store_id, offline_write_options
     )
@@ -116,12 +126,13 @@ def _init_kafka_resources(
 def get_writer_function(
     feature_group: Union[FeatureGroup, ExternalFeatureGroup],
 ) -> Tuple[Dict[str, Callable[..., bytes]], Callable[..., bytes]]:
-    # setup complex feature writers
+    _logger.debug("Setting up complex feature writers for complex features.")
     feature_writers = {
         feature: get_encoder_func(feature_group._get_feature_avro_schema(feature))
         for feature in feature_group.get_complex_features()
     }
     # setup row writer function
+    _logger.debug("Setting up writer function to serialise row based on Avro schema.")
     writer = get_encoder_func(feature_group._get_encoded_avro_schema())
     return (feature_writers, writer)
 
@@ -146,6 +157,7 @@ def get_headers(
         )
         headers["onlineIngestionId"] = str(online_ingestion_instance.id).encode("utf8")
 
+    _logger.debug(f"Setting up headers for Kafka producer: {headers}")
     return headers
 
 
@@ -154,7 +166,7 @@ def init_kafka_producer(
     feature_store_id: int,
     offline_write_options: Dict[str, Any],
 ) -> Producer:
-    # setup kafka producer
+    _logger.debug("Initializing Kafka producer.")
     return Producer(get_kafka_config(feature_store_id, offline_write_options))
 
 
@@ -165,10 +177,12 @@ def kafka_get_offsets(
     offline_write_options: Dict[str, Any],
     high: bool,
 ) -> str:
+    _logger.debug(f"Getting Kafka offsets for topic '{topic_name}'.")
     consumer = init_kafka_consumer(feature_store_id, offline_write_options)
     topics = consumer.list_topics(
         timeout=offline_write_options.get("kafka_timeout", 6)
     ).topics
+    _logger.debug(f"Retrieved topics from Kafka: {list(topics.keys())}")
     if topic_name in topics.keys():
         # topic exists
         offsets = ""
@@ -179,8 +193,12 @@ def kafka_get_offsets(
             )
             offsets += f",{partition_metadata.id}:{consumer.get_watermark_offsets(partition)[tuple_value]}"
         consumer.close()
+        _logger.debug(f"Offsets for topic '{topic_name}': {offsets}")
 
         return f"{topic_name + offsets}"
+    _logger.debug(
+        f"Topic '{topic_name}' not found in Kafka. Ensure you have the necessary permissions or that the topic exists."
+    )
     return ""
 
 
@@ -272,11 +290,12 @@ def get_kafka_config(
     if write_options is None:
         write_options = {}
     external = client._is_external() and not write_options.get("internal_kafka", False)
-
-    storage_connector = storage_connector_api.StorageConnectorApi().get_kafka_connector(
-        feature_store_id, external
+    _logger.debug(
+        f"Getting {'external' if external else 'internal'} Kafka configuration for engine '{engine}'."
     )
-
+    storage_connector = storage_connector_api.StorageConnectorApi().get_kafka_connector(
+        feature_store_id, external=external
+    )
     if engine == "spark":
         config = storage_connector.spark_options()
         config.update(write_options)
