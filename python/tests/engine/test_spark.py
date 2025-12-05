@@ -4379,8 +4379,17 @@ class TestSpark:
         assert "name" in result.columns
         assert result.schema["name"].dataType == StringType()
 
-    def test_add_file(self, mocker):
+    @pytest.mark.parametrize(
+        "distribute_arg",
+        [
+            None,  # Test without providing distribute argument (uses default)
+            True,  # Test with distribute=True
+            False,  # Test with distribute=False
+        ],
+    )
+    def test_add_file(self, mocker, distribute_arg):
         # Arrange
+        mock_dataset_api = mocker.patch("hsfs.core.dataset_api.DatasetApi")
         mock_pyspark_files_get = mocker.patch("pyspark.files.SparkFiles.get")
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
         mocker.patch("shutil.copy")
@@ -4389,14 +4398,31 @@ class TestSpark:
 
         spark_engine = spark.Engine()
 
+        # Mock dataset API and file I/O for distribute=False case
+        if distribute_arg is False:
+            mock_dataset_api.return_value.read_content.return_value.content = bytes()
+            mocker.patch("builtins.open", mocker.mock_open())
+
         # Act
-        spark_engine.add_file(
-            file="test_file",
-        )
+        if distribute_arg is None:
+            # Call without distribute argument
+            spark_engine.add_file(file="test_file")
+        else:
+            # Call with distribute argument
+            spark_engine.add_file(file="test_file", distribute=distribute_arg)
 
         # Assert
-        mock_add_file.assert_called_once_with("hdfs://test_file")
-        mock_pyspark_files_get.assert_called_once_with("test_file")
+        if distribute_arg is False:
+            # When distribute=False, read_content should be called once
+            mock_dataset_api.return_value.read_content.assert_called_once()
+            # addFile and SparkFiles.get should NOT be called
+            mock_add_file.assert_not_called()
+            mock_pyspark_files_get.assert_not_called()
+        else:
+            # When distribute is True or None (default), addFile should be called
+            mock_dataset_api.return_value.read_content.assert_not_called()
+            mock_add_file.assert_called_once_with("hdfs://test_file")
+            mock_pyspark_files_get.assert_called_once_with("test_file")
 
     def test_add_file_if_present_in_job_configuration(self, mocker):
         # Arrange
