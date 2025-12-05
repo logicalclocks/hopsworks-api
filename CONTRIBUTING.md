@@ -205,7 +205,7 @@ To link a page of documentation and not an API refeerence object, use a relative
 
 Always start it with `../..` to escape from the API reference page to the root.
 
-For exaternal links, use the normal Markdown syntax:
+For external links, use the normal Markdown syntax:
 
 ```markdown
 [Hopsworks Website](https://www.hopsworks.ai)
