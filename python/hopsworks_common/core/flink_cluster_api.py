@@ -13,10 +13,11 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import json
 import os
-from typing import Literal, Optional
+from typing import Literal
 
 from hopsworks_common import client, decorators, flink_cluster, job, usage, util
 from hopsworks_common.client.exceptions import RestAPIError
@@ -33,6 +34,7 @@ class FlinkClusterApi:
 
         Returns:
             `dict`: Default configuration for the Flink cluster,
+
         Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
@@ -74,12 +76,11 @@ class FlinkClusterApi:
                     "This is not a Flink cluster. Please use different name to create new Flink cluster"
                 )
             return _flink_cluster
-        else:
-            # If the job doesn't exists, create a new job
-            if config is None:
-                config = self.get_configuration()
-                config["appName"] = name
-            return self._create_cluster(name, config)
+        # If the job doesn't exists, create a new job
+        if config is None:
+            config = self.get_configuration()
+            config["appName"] = name
+        return self._create_cluster(name, config)
 
     def _create_cluster(self, name: str, config: dict):
         _client = client.get_instance()
@@ -104,7 +105,7 @@ class FlinkClusterApi:
     @decorators.catch_not_found(
         "hopsworks_common.flink_cluster.FlinkCluster", fallback_return=None
     )
-    def get_cluster(self, name: str) -> Optional[flink_cluster.FlinkCluster]:
+    def get_cluster(self, name: str) -> flink_cluster.FlinkCluster | None:
         """Get the job corresponding to the flink cluster.
 
         ```python
@@ -166,7 +167,6 @@ class FlinkClusterApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         _client = client.get_instance()
         path_params = ["hopsworks-api", "flinkmaster", execution.app_id, "jobs", job_id]
         headers = {"content-type": "application/json"}
@@ -199,7 +199,6 @@ class FlinkClusterApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         _client = client.get_instance()
         path_params = ["hopsworks-api", "flinkmaster", execution.app_id, "jobs"]
         headers = {"content-type": "application/json"}
@@ -298,7 +297,6 @@ class FlinkClusterApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         _client = client.get_instance()
         path_params = ["hopsworks-api", "flinkmaster", execution.app_id, "jars"]
         headers = {"content-type": "application/json"}
@@ -331,7 +329,6 @@ class FlinkClusterApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         _client = client.get_instance()
         path_params = [
             "hopsworks-api",
@@ -340,16 +337,17 @@ class FlinkClusterApi:
             "jars",
             "upload",
         ]
-        files = {
-            "jarfile": (
-                os.path.basename(jar_file),
-                open(jar_file, "rb"),
-                "application/x-java-archive",
+        with open(jar_file, "rb") as jar_file_obj:
+            files = {
+                "jarfile": (
+                    os.path.basename(jar_file),
+                    jar_file_obj,
+                    "application/x-java-archive",
+                )
+            }
+            _client._send_request(
+                "POST", path_params, files=files, with_base_path_params=False
             )
-        }
-        _client._send_request(
-            "POST", path_params, files=files, with_base_path_params=False
-        )
         print("Flink Jar uploaded.")
 
     def _submit_job(self, execution, jar_id, main_class, job_arguments) -> str:
@@ -386,7 +384,6 @@ class FlinkClusterApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         _client = client.get_instance()
         # Submit execution
         if job_arguments:
@@ -414,7 +411,7 @@ class FlinkClusterApi:
         )
 
         job_id = response["jobid"]
-        print("Submitted Job Id: {}".format(job_id))
+        print(f"Submitted Job Id: {job_id}")
 
         return job_id
 

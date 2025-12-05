@@ -20,24 +20,23 @@ import time
 import warnings
 from datetime import datetime, timedelta
 from typing import (
+    TYPE_CHECKING,
     Any,
-    Dict,
-    List,
-    Optional,
-    Union,
 )
 
 import humps
 from hopsworks_common import client, util
-from hsfs import feature_group as fg_mod
 from hsfs.core import online_ingestion_result
 from hsfs.core.opensearch import OpenSearchClientSingleton
 from tqdm.auto import tqdm
 
 
+if TYPE_CHECKING:
+    from hsfs import feature_group as fg_mod
+
+
 class OnlineIngestion:
-    """
-    Metadata object used to provide Online Ingestion information for a feature group.
+    """Metadata object used to provide Online Ingestion information for a feature group.
 
     This class encapsulates the state and results of an online ingestion operation,
     including progress tracking and log retrieval.
@@ -45,17 +44,14 @@ class OnlineIngestion:
 
     def __init__(
         self,
-        id: Optional[int] = None,
-        num_entries: Optional[int] = None,
-        results: Union[
-            List[online_ingestion_result.OnlineIngestionResult],
-            List[Dict[str, Any]],
-        ] = None,
+        id: int | None = None,
+        num_entries: int | None = None,
+        results: list[online_ingestion_result.OnlineIngestionResult]
+        | list[dict[str, Any]] = None,
         feature_group: fg_mod.FeatureGroup = None,
         **kwargs,
     ):
-        """
-        Initialize an OnlineIngestion object.
+        """Initialize an OnlineIngestion object.
 
         Parameters:
             id (Optional[int]): The unique identifier for the ingestion operation.
@@ -84,10 +80,9 @@ class OnlineIngestion:
 
     @classmethod
     def from_response_json(
-        cls, json_dict: Dict[str, Any], feature_group: fg_mod.FeatureGroup = None
+        cls, json_dict: dict[str, Any], feature_group: fg_mod.FeatureGroup = None
     ) -> OnlineIngestion:
-        """
-        Create an OnlineIngestion object from a JSON response.
+        """Create an OnlineIngestion object from a JSON response.
 
         Parameters:
             json_dict (Dict[str, Any]): The JSON dictionary from the API response.
@@ -103,26 +98,22 @@ class OnlineIngestion:
 
         if "count" not in json_decamelized:
             return cls(**json_decamelized, feature_group=feature_group)
-        elif json_decamelized["count"] == 1:
+        if json_decamelized["count"] == 1:
             return cls(**json_decamelized["items"][0], feature_group=feature_group)
-        elif json_decamelized["count"] > 1:
+        if json_decamelized["count"] > 1:
             return [
                 cls(**item, feature_group=feature_group)
                 for item in json_decamelized["items"]
             ]
-        else:
-            return None
+        return None
 
     def refresh(self):
-        """
-        Refresh the state of this OnlineIngestion object from the backend.
-        """
+        """Refresh the state of this OnlineIngestion object from the backend."""
         online_ingestion = self.feature_group.get_online_ingestion(self._id)
         self.__dict__.update(online_ingestion.__dict__)
 
     def to_dict(self):
-        """
-        Convert the OnlineIngestion object to a dictionary.
+        """Convert the OnlineIngestion object to a dictionary.
 
         Returns:
             dict: Dictionary representation of the object.
@@ -130,8 +121,7 @@ class OnlineIngestion:
         return {"id": self._id, "numEntries": self._num_entries}
 
     def json(self):
-        """
-        Serialize the OnlineIngestion object to a JSON string.
+        """Serialize the OnlineIngestion object to a JSON string.
 
         Returns:
             str: JSON string representation of the object.
@@ -139,9 +129,8 @@ class OnlineIngestion:
         return json.dumps(self, cls=util.Encoder)
 
     @property
-    def id(self) -> Optional[int]:
-        """
-        Get the unique identifier for the ingestion operation.
+    def id(self) -> int | None:
+        """Get the unique identifier for the ingestion operation.
 
         Returns:
             Optional[int]: The ingestion ID.
@@ -149,9 +138,8 @@ class OnlineIngestion:
         return self._id
 
     @property
-    def num_entries(self) -> Optional[int]:
-        """
-        Get the total number of entries to ingest.
+    def num_entries(self) -> int | None:
+        """Get the total number of entries to ingest.
 
         Returns:
             Optional[int]: The number of entries.
@@ -160,8 +148,7 @@ class OnlineIngestion:
 
     @num_entries.setter
     def num_entries(self, num_entries: int) -> None:
-        """
-        Set the total number of entries to ingest.
+        """Set the total number of entries to ingest.
 
         Parameters:
             num_entries (int): The number of entries.
@@ -171,9 +158,8 @@ class OnlineIngestion:
     @property
     def results(
         self,
-    ) -> List[online_ingestion_result.OnlineIngestionResult]:
-        """
-        Get the list of ingestion results.
+    ) -> list[online_ingestion_result.OnlineIngestionResult]:
+        """Get the list of ingestion results.
 
         Returns:
             List[OnlineIngestionResult]: List of ingestion result objects.
@@ -182,17 +168,15 @@ class OnlineIngestion:
 
     @property
     def feature_group(self) -> fg_mod.FeatureGroup:
-        """
-        Get the feature group associated with this ingestion.
+        """Get the feature group associated with this ingestion.
 
         Returns:
             FeatureGroup: The associated feature group.
         """
         return self._feature_group
 
-    def wait_for_completion(self, options: Dict[str, Any] = None):
-        """
-        Wait for the online ingestion operation to complete, displaying a progress bar.
+    def wait_for_completion(self, options: dict[str, Any] = None):
+        """Wait for the online ingestion operation to complete, displaying a progress bar.
 
         Parameters:
             options (Dict[str, Any], optional): Options for waiting.
@@ -243,8 +227,7 @@ class OnlineIngestion:
                 self.refresh()
 
     def print_logs(self, priority: str = "error", size: int = 20):
-        """
-        Print logs related to the online ingestion operation from OpenSearch.
+        """Print logs related to the online ingestion operation from OpenSearch.
 
         Parameters:
             priority (str, optional): Log priority to filter by (default: "error").

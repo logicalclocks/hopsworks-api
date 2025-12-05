@@ -18,8 +18,6 @@ from __future__ import annotations
 import json
 from typing import (
     Any,
-    Dict,
-    Optional,
 )
 
 import humps
@@ -30,17 +28,15 @@ from hsfs import (
 
 
 class DataSource:
-    """
-    Metadata object used to provide Data source information for a feature group.
-    """
+    """Metadata object used to provide Data source information for a feature group."""
 
     def __init__(
         self,
-        query: Optional[str] = None,
-        database: Optional[str] = None,
-        group: Optional[str] = None,
-        table: Optional[str] = None,
-        path: Optional[str] = None,
+        query: str | None = None,
+        database: str | None = None,
+        group: str | None = None,
+        table: str | None = None,
+        path: str | None = None,
         **kwargs,
     ):
         self._query = query
@@ -50,7 +46,7 @@ class DataSource:
         self._path = path
 
     @classmethod
-    def from_response_json(cls, json_dict: Dict[str, Any]) -> list[DataSource]:
+    def from_response_json(cls, json_dict: dict[str, Any]) -> list[DataSource]:
         if json_dict is None:
             return None  # TODO: change to [] and fix the tests
 
@@ -59,8 +55,7 @@ class DataSource:
         if "items" not in json_decamelized:
             # TODO: change to [cls(**json_decamelized)] and fix the tests
             return cls(**json_decamelized)
-        else:
-            return [cls(**item) for item in json_decamelized["items"]]
+        return [cls(**item) for item in json_decamelized["items"]]
 
     def to_dict(self):
         return {
@@ -75,7 +70,7 @@ class DataSource:
         return json.dumps(self, cls=util.Encoder)
 
     @property
-    def query(self) -> Optional[str]:
+    def query(self) -> str | None:
         return self._query
 
     @query.setter
@@ -83,7 +78,7 @@ class DataSource:
         self._query = query
 
     @property
-    def database(self) -> Optional[str]:
+    def database(self) -> str | None:
         return self._database
 
     @database.setter
@@ -91,7 +86,7 @@ class DataSource:
         self._database = database
 
     @property
-    def group(self) -> Optional[str]:
+    def group(self) -> str | None:
         return self._group
 
     @group.setter
@@ -99,7 +94,7 @@ class DataSource:
         self._group = group
 
     @property
-    def table(self) -> Optional[str]:
+    def table(self) -> str | None:
         return self._table
 
     @table.setter
@@ -107,7 +102,7 @@ class DataSource:
         self._table = table
 
     @property
-    def path(self) -> Optional[str]:
+    def path(self) -> str | None:
         return self._path
 
     @path.setter
@@ -115,8 +110,7 @@ class DataSource:
         self._path = path
 
     def _update_storage_connector(self, storage_connector: sc.StorageConnector):
-        """
-        Update the storage connector configuration using DataSource.
+        """Update the storage connector configuration using DataSource.
 
         This internal method updates the connectors target database, schema,
         and table to match the information stored in the provided DataSource object.
@@ -148,6 +142,5 @@ class DataSource:
                 storage_connector._dataset = self.group
             if self.table:
                 storage_connector._query_table = self.table
-        if storage_connector.type == sc.StorageConnector.RDS:
-            if self.database:
-                storage_connector._database = self.database
+        if storage_connector.type == sc.StorageConnector.RDS and self.database:
+            storage_connector._database = self.database

@@ -13,9 +13,9 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import json
-from typing import Optional
 
 from hopsworks_common import client, decorators, environment, usage
 from hopsworks_common.engine import environment_engine
@@ -29,11 +29,11 @@ class EnvironmentApi:
     def create_environment(
         self,
         name: str,
-        description: Optional[str] = None,
-        base_environment_name: Optional[str] = "python-feature-pipeline",
-        await_creation: Optional[bool] = True,
+        description: str | None = None,
+        base_environment_name: str | None = "python-feature-pipeline",
+        await_creation: bool | None = True,
     ) -> environment.Environment:
-        """Create Python environment for the project
+        """Create Python environment for the project.
 
         ```python
         import hopsworks
@@ -116,8 +116,8 @@ class EnvironmentApi:
     @decorators.catch_not_found(
         "hopsworks_common.environment.Environment", fallback_return=None
     )
-    def get_environment(self, name: str) -> Optional[environment.Environment]:
-        """Get handle for a Python environment in the project
+    def get_environment(self, name: str) -> environment.Environment | None:
+        """Get handle for a Python environment in the project.
 
         ```python
         import hopsworks

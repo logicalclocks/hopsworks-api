@@ -13,10 +13,10 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import getpass
 import json
-from typing import List, Optional
 
 from hopsworks_common import client, decorators, secret
 from hopsworks_common.core import project_api
@@ -28,8 +28,8 @@ class SecretsApi:
     ):
         self._project_api = project_api.ProjectApi()
 
-    def get_secrets(self) -> List[secret.Secret]:
-        """Get all secrets
+    def get_secrets(self) -> list[secret.Secret]:
+        """Get all secrets.
 
         Returns:
             `List[Secret]`: List of all accessible secrets
@@ -46,7 +46,7 @@ class SecretsApi:
         )
 
     @decorators.catch_not_found("hopsworks_common.secret.Secret", fallback_return=None)
-    def get_secret(self, name: str, owner: str = None) -> Optional[secret.Secret]:
+    def get_secret(self, name: str, owner: str = None) -> secret.Secret | None:
         """Get a secret.
 
         Parameters:
@@ -99,10 +99,9 @@ class SecretsApi:
         secret_obj = self.get_secret(name=name, owner=owner)
         if secret_obj:
             return secret_obj.value
-        else:
-            secret_input = getpass.getpass(
-                prompt="\nCould not find secret, enter value here to create it: "
-            )
+        secret_input = getpass.getpass(
+            prompt="\nCould not find secret, enter value here to create it: "
+        )
         return self.create_secret(name, secret_input).value
 
     def create_secret(
@@ -159,8 +158,9 @@ class SecretsApi:
 
     def _delete(self, name: str):
         """Delete the secret.
-        :param name: name of the secret
-        :type name: Secret
+
+        Parameters:
+            name: Name of the secret.
         """
         _client = client.get_instance()
         path_params = [

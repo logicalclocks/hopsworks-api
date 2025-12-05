@@ -15,8 +15,6 @@
 #
 from __future__ import annotations
 
-from typing import List, Optional, Union
-
 from hopsworks_common import client
 from hsfs import decorators, training_dataset
 from hsfs.constructor import fs_query, serving_prepared_statement
@@ -84,16 +82,15 @@ class TrainingDatasetApi:
         )
 
     def get(
-        self, name: str, version: Optional[int]
-    ) -> Union[
-        training_dataset.TrainingDataset, List[training_dataset.TrainingDataset]
-    ]:
+        self, name: str, version: int | None
+    ) -> training_dataset.TrainingDataset | list[training_dataset.TrainingDataset]:
         if version:
             tds = self._get_training_dataset_by_version(name, version)
             if tds:
                 return tds[0]
         else:
             return self._get_all_training_datasets(name)
+        return None
 
     def get_query(
         self,
@@ -122,11 +119,11 @@ class TrainingDatasetApi:
         training_dataset_instance: training_dataset.TrainingDataset,
         td_app_conf: training_dataset_job_conf.TrainingDatasetJobConf,
     ) -> job.Job:
-        """
-        Setup a Hopsworks job to compute the query and write the training dataset
+        """Setup a Hopsworks job to compute the query and write the training dataset.
+
         Args:
-            training_dataset_instance (training_dataset): the metadata instance of the training dataset
-            app_options ([type]): the configuration for the training dataset job application
+            training_dataset_instance: the metadata instance of the training dataset
+            td_app_conf: the configuration for the training dataset job application.
         """
         _client = client.get_instance()
         path_params = [
@@ -195,9 +192,10 @@ class TrainingDatasetApi:
         self, training_dataset_instance: training_dataset.TrainingDataset, batch: bool
     ) -> serving_prepared_statement.ServingPreparedStatement:
         """Get serving prepared statement metadata object for a training dataset.
+
         Args:
             training_dataset_instance (training_dataset): the metadata instance of the training dataset
-            batch: boolean. Weather to retrieve batch serving vector or not
+            batch: boolean. Weather to retrieve batch serving vector or not.
         """
         _client = client.get_instance()
         path_params = [

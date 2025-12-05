@@ -15,7 +15,7 @@
 #
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from hopsworks_common import client
 from hsfs import decorators, storage_connector
@@ -25,7 +25,7 @@ class StorageConnectorApi:
     @decorators.catch_not_found(
         "hsfs.storage_connector.StorageConnector", fallback_return=None
     )
-    def _get(self, feature_store_id: int, name: str) -> Dict[str, Any]:
+    def _get(self, feature_store_id: int, name: str) -> dict[str, Any]:
         """Returning response dict instead of initialized object."""
         _client = client.get_instance()
         path_params = [
@@ -57,14 +57,12 @@ class StorageConnectorApi:
             return storage_connector.StorageConnector.from_response_json(
                 storage_connector_json
             )
+        return None
 
     def refetch(
         self, storage_connector_instance: storage_connector.StorageConnector
     ) -> storage_connector.StorageConnector:
-        """
-        Refetches the storage connector from Hopsworks, in order to update temporary
-        credentials.
-        """
+        """Refetches the storage connector from Hopsworks, in order to update temporary credentials."""
         return storage_connector_instance.update_from_response_json(
             self._get(
                 storage_connector_instance._featurestore_id,
@@ -109,8 +107,9 @@ class StorageConnectorApi:
         )
 
     def get_feature_groups_provenance(self, storage_connector_instance):
-        """Get the generated feature groups using this storage connector, based on explicit
-        provenance. These feature groups can be accessible or inaccessible. Explicit
+        """Get the generated feature groups using this storage connector, based on explicit provenance.
+
+        These feature groups can be accessible or inaccessible. Explicit
         provenance does not track deleted generated feature group links, so deleted
         will always be empty.
         For inaccessible feature groups, only a minimal information is returned.

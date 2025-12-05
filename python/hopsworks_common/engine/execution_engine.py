@@ -21,11 +21,14 @@ import os
 import time
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING
 
 from hopsworks_common.client.exceptions import JobExecutionException, RestAPIError
 from hopsworks_common.core import dataset_api, execution_api
-from python.hopsworks_common.execution import Execution
+
+
+if TYPE_CHECKING:
+    from python.hopsworks_common.execution import Execution
 
 
 class ExecutionEngine:
@@ -34,24 +37,27 @@ class ExecutionEngine:
         self._execution_api = execution_api.ExecutionApi()
         self._log = logging.getLogger(__name__)
 
-    def download_logs(self, execution, path=None):
-        """Download execution logs to current directory
-        :param execution: execution to download logs for
-        :type execution: Execution
-        :param path: path to download the logs
-        :type path: str
-        :return: downloaded stdout and stderr log path
-        :rtype: str, str
-        :raises: JobExecutionException if path is provided but does not exist
+    def download_logs(
+        self, execution: Execution, path: str | None = None
+    ) -> tuple[str | None, str | None]:
+        """Download execution logs to current directory.
+
+        Parameters:
+            execution: execution to download logs for
+            path: path to download the logs
+
+        Returns:
+            downloaded stdout and stderr log path
+
+        Raises:
+            JobExecutionException: if path is provided but does not exist.
         """
         if path is not None and not os.path.exists(path):
-            raise JobExecutionException("Path {} does not exist".format(path))
-        elif path is None:
+            raise JobExecutionException(f"Path {path} does not exist")
+        if path is None:
             path = os.getcwd()
 
-        job_logs_dir = "logs-job-{}-exec-{}_{}".format(
-            execution.job_name, str(execution.id), str(uuid.uuid4())[:16]
-        )
+        job_logs_dir = f"logs-job-{execution.job_name}-exec-{str(execution.id)}_{str(uuid.uuid4())[:16]}"
         download_log_dir = os.path.join(path, job_logs_dir)
 
         if not os.path.exists(download_log_dir):
@@ -93,7 +99,9 @@ class ExecutionEngine:
                     raise e
         return download_path
 
-    def wait_until_finished(self, job, execution, timeout: Optional[float] = None) -> Execution | None:
+    def wait_until_finished(
+        self, job, execution, timeout: float | None = None
+    ) -> Execution | None:
         """Wait until execution terminates.
 
         Parameters:
@@ -133,15 +141,11 @@ class ExecutionEngine:
             if execution_state != updated_execution.state:
                 if is_yarn_job:
                     self._log.info(
-                        "Waiting for execution to finish. Current state: {}. Final status: {}".format(
-                            updated_execution.state, updated_execution.final_status
-                        )
+                        f"Waiting for execution to finish. Current state: {updated_execution.state}. Final status: {updated_execution.final_status}"
                     )
                 else:
                     self._log.info(
-                        "Waiting for execution to finish. Current state: {}".format(
-                            updated_execution.state
-                        )
+                        f"Waiting for execution to finish. Current state: {updated_execution.state}"
                     )
             execution_state = updated_execution.state
 
@@ -163,21 +167,18 @@ class ExecutionEngine:
                 updated_execution.stdout_path
             ) and self._dataset_api.exists(updated_execution.stderr_path)
 
-        if not log_aggregation_files_exist_already:
-            if not timeout or timeout > passed() + 5:
-                time.sleep(5)  # Helps for log aggregation to flush to filesystem
+        if not log_aggregation_files_exist_already and (
+            not timeout or timeout > passed() + 5
+        ):
+            time.sleep(5)  # Helps for log aggregation to flush to filesystem
 
         if is_yarn_job and not updated_execution.success:
             self._log.error(
-                "Execution failed with status: {}. See the logs for more information.".format(
-                    updated_execution.final_status
-                )
+                f"Execution failed with status: {updated_execution.final_status}. See the logs for more information."
             )
         elif not is_yarn_job and not updated_execution.success:
             self._log.error(
-                "Execution failed with status: {}. See the logs for more information.".format(
-                    updated_execution.state
-                )
+                f"Execution failed with status: {updated_execution.state}. See the logs for more information."
             )
         else:
             self._log.info("Execution finished successfully.")

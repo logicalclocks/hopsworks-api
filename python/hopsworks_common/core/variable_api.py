@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import re
-from typing import Optional, Tuple
 
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
@@ -47,7 +46,6 @@ class VariableApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         _client = client.get_instance()
 
         path_params = ["variables", variable]
@@ -55,7 +53,7 @@ class VariableApi:
 
         return domain["successMessage"]
 
-    def get_version(self, software: str) -> Optional[str]:
+    def get_version(self, software: str) -> str | None:
         """Get version of a software component.
 
         Parameters:
@@ -67,7 +65,6 @@ class VariableApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         _client = client.get_instance()
 
         path_params = ["variables", "versions"]
@@ -80,7 +77,7 @@ class VariableApi:
 
     def parse_major_and_minor(
         self, backend_version: str
-    ) -> Tuple[Optional[str], Optional[str]]:
+    ) -> tuple[str | None, str | None]:
         """Extract major and minor version from full version.
 
         Parameters:
@@ -90,7 +87,6 @@ class VariableApi:
             major: The major part of the version, or `None` if the version format is incorrect.
             minor: The minor part of the version, or `None` if the version format is incorrect.
         """
-
         version_pattern = r"(\d+)\.(\d+)"
         matches = re.match(version_pattern, backend_version)
 
@@ -139,8 +135,7 @@ class VariableApi:
                     f"loadbalancer_external_domain_{service}. "
                     "The variable is either not set or empty in Hopsworks cluster configuration."
                 ) from err
-            else:
-                raise err
+            raise err
 
     def get_service_discovery_domain(self) -> str:
         """Get domain of service discovery server.

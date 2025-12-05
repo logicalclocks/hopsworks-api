@@ -16,7 +16,6 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Dict, List, Optional, Tuple, Union
 
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import util
@@ -41,9 +40,9 @@ class FeatureMonitoringResultEngine:
     def __init__(
         self,
         feature_store_id: int,
-        feature_group_id: Optional[int] = None,
-        feature_view_name: Optional[str] = None,
-        feature_view_version: Optional[int] = None,
+        feature_group_id: int | None = None,
+        feature_view_name: str | None = None,
+        feature_view_version: int | None = None,
         **kwargs,
     ):
         if feature_group_id is None:
@@ -73,29 +72,33 @@ class FeatureMonitoringResultEngine:
         self,
         config_id: int,
         feature_name: str,
-        detection_statistics: Optional[FeatureDescriptiveStatistics] = None,
-        reference_statistics: Optional[FeatureDescriptiveStatistics] = None,
-        specific_value: Optional[Union[int, float]] = None,
+        detection_statistics: FeatureDescriptiveStatistics | None = None,
+        reference_statistics: FeatureDescriptiveStatistics | float | None = None,
+        specific_value: float | None = None,
         shift_detected: bool = False,
-        difference: Optional[float] = None,
+        difference: float | None = None,
         raised_exception: bool = False,
-        execution_id: Optional[int] = None,
-        job_name: Optional[str] = None,
+        execution_id: int | None = None,
+        job_name: str | None = None,
     ) -> FeatureMonitoringResult:
         """Build feature monitoring result.
 
         Args:
-            config_id: int. Id of the feature monitoring configuration.
-            execution_id: int. Id of the job execution.
-            detection_statistics: FeatureDescriptiveStatistics. Statistics computed from the detection data.
-            reference_statistics: Optional[Union[FeatureDescriptiveStatistics, int, float]]. Statistics computed from the reference data.
-                Defaults to None if no reference is provided.
-            shift_detected: bool. Whether a shift is detected between the detection and reference window.
+            config_id: ID of the feature monitoring configuration.
+            feature_name: Name of the feature being monitored.
+            detection_statistics: Statistics computed from the detection data.
+            reference_statistics: Statistics computed from the reference data.
+            specific_value: A specific value used as reference.
+            shift_detected:
+                Whether a shift is detected between the detection and reference window.
                 It is used to decide whether to trigger an alert.
-            difference: Optional[float]. Difference between detection statistics and reference statistics.
+            difference: Difference between detection statistics and reference statistics.
+            raised_exception: Whether an exception was raised during monitoring.
+            execution_id: ID of the job execution.
+            job_name: Name of the monitoring job.
 
         Returns:
-            FeatureMonitoringResult. Saved Feature monitoring result.
+            Saved Feature monitoring result.
         """
         monitoring_time = round(
             util.convert_event_time_to_timestamp(datetime.now()), -3
@@ -145,17 +148,10 @@ class FeatureMonitoringResultEngine:
         """Save feature monitoring result.
 
         Args:
-            config_id: int. Id of the feature monitoring configuration.
-            execution_id: int. Id of the job execution.
-            detection_statistics: FeatureDescriptiveStatistics. Statistics computed from the detection data.
-            reference_statistics: Optional[Union[FeatureDescriptiveStatistics, int, float]]. Statistics computed from the reference data.
-                Defaults to None if no reference is provided.
-            shift_detected: bool. Whether a shift is detected between the detection and reference window.
-                It is used to decide whether to trigger an alert.
-            difference: Optional[float]. Difference between detection statistics and reference statistics.
+            result: Feature monitoring result to be saved.
 
         Returns:
-            FeatureMonitoringResult. Saved Feature monitoring result.
+            Saved Feature monitoring result.
         """
         return self._feature_monitoring_result_api.create(
             result,
@@ -164,10 +160,10 @@ class FeatureMonitoringResultEngine:
     def fetch_all_feature_monitoring_results_by_config_id(
         self,
         config_id: int,
-        start_time: Union[str, int, datetime, date, None] = None,
-        end_time: Union[str, int, datetime, date, None] = None,
+        start_time: str | int | datetime | date | None = None,
+        end_time: str | int | datetime | date | None = None,
         with_statistics: bool = False,
-    ) -> List[FeatureMonitoringResult]:
+    ) -> list[FeatureMonitoringResult]:
         """Fetch all feature monitoring results by config id.
 
         Args:
@@ -182,7 +178,6 @@ class FeatureMonitoringResultEngine:
         Returns:
             List[FeatureMonitoringResult]. List of feature monitoring results.
         """
-
         query_params = self._build_query_params(
             start_time=start_time,
             end_time=end_time,
@@ -196,12 +191,12 @@ class FeatureMonitoringResultEngine:
 
     def get_feature_monitoring_results(
         self,
-        config_id: Optional[int] = None,
-        config_name: Optional[str] = None,
-        start_time: Optional[Union[str, int, datetime, date]] = None,
-        end_time: Optional[Union[str, int, datetime, date]] = None,
+        config_id: int | None = None,
+        config_name: str | None = None,
+        start_time: str | int | datetime | date | None = None,
+        end_time: str | int | datetime | date | None = None,
         with_statistics: bool = True,
-    ) -> List[FeatureMonitoringResult]:
+    ) -> list[FeatureMonitoringResult]:
         """Convenience method to fetch feature monitoring results from an entity.
 
         Args:
@@ -223,11 +218,11 @@ class FeatureMonitoringResultEngine:
             raise ValueError(
                 "Either config_id or config_name must be provided to fetch feature monitoring results."
             )
-        elif all([config_id is not None, config_name is not None]):
+        if all([config_id is not None, config_name is not None]):
             raise ValueError(
                 "Only one of config_id or config_name can be provided to fetch feature monitoring results."
             )
-        elif config_name is not None and isinstance(config_name, str):
+        if config_name is not None and isinstance(config_name, str):
             config = self._feature_monitoring_config_api.get_by_name(config_name)
             if not isinstance(config, fmc.FeatureMonitoringConfig):
                 return []
@@ -248,10 +243,10 @@ class FeatureMonitoringResultEngine:
 
     def _build_query_params(
         self,
-        start_time: Union[str, int, datetime, date, None],
-        end_time: Union[str, int, datetime, date, None],
+        start_time: str | int | datetime | date | None,
+        end_time: str | int | datetime | date | None,
         with_statistics: bool,
-    ) -> Dict[str, Union[str, List[str]]]:
+    ) -> dict[str, str | list[str]]:
         """Build query parameters for feature monitoring result API calls.
 
         Args:
@@ -265,7 +260,6 @@ class FeatureMonitoringResultEngine:
         Returns:
             Dict[str, Union[str, List[str]]]. Query parameters.
         """
-
         query_params = {"sort_by": "monitoring_time:desc"}
 
         filter_by = []
@@ -285,11 +279,11 @@ class FeatureMonitoringResultEngine:
 
     def run_and_save_statistics_comparison(
         self,
-        fm_config: "fmc.FeatureMonitoringConfig",
-        detection_statistics: List[FeatureDescriptiveStatistics],
-        reference_statistics: Optional[List[FeatureDescriptiveStatistics]] = None,
-        specific_value: Optional[Union[int, float]] = None,
-    ) -> List[FeatureMonitoringResult]:
+        fm_config: fmc.FeatureMonitoringConfig,
+        detection_statistics: list[FeatureDescriptiveStatistics],
+        reference_statistics: list[FeatureDescriptiveStatistics] | None = None,
+        specific_value: float | None = None,
+    ) -> list[FeatureMonitoringResult]:
         """Run and upload statistics comparison between detection and reference stats.
 
         Args:
@@ -328,9 +322,9 @@ class FeatureMonitoringResultEngine:
 
     def _run_and_save_statistics_comparison_specific_value(
         self,
-        fm_config: "fmc.FeatureMonitoringConfig",
-        detection_statistics: List[FeatureDescriptiveStatistics],
-        specific_value: Union[int, float],
+        fm_config: fmc.FeatureMonitoringConfig,
+        detection_statistics: list[FeatureDescriptiveStatistics],
+        specific_value: float,
     ):
         assert len(detection_statistics) == 1, (
             "detection_statistics must a be a single FeatureDescriptiveStatistics object "
@@ -357,9 +351,9 @@ class FeatureMonitoringResultEngine:
 
     def _run_and_save_statistics_comparison_reference_stats(
         self,
-        fm_config: "fmc.FeatureMonitoringConfig",
-        detection_statistics: List[FeatureDescriptiveStatistics],
-        reference_statistics: List[FeatureDescriptiveStatistics],
+        fm_config: fmc.FeatureMonitoringConfig,
+        detection_statistics: list[FeatureDescriptiveStatistics],
+        reference_statistics: list[FeatureDescriptiveStatistics],
     ):
         assert len(reference_statistics) == len(detection_statistics), (
             "detection_statistics and reference_statistics must contain the same number of feature statistics"
@@ -410,22 +404,21 @@ class FeatureMonitoringResultEngine:
 
     def compute_difference_and_shift(
         self,
-        fm_config: "fmc.FeatureMonitoringConfig",
+        fm_config: fmc.FeatureMonitoringConfig,
         detection_statistics: FeatureDescriptiveStatistics,
-        reference_statistics: Optional[FeatureDescriptiveStatistics] = None,
-        specific_value: Optional[Union[int, float]] = None,
-    ) -> Tuple[Optional[float], bool]:
+        reference_statistics: FeatureDescriptiveStatistics | float | None = None,
+        specific_value: float | None = None,
+    ) -> tuple[float | None, bool]:
         """Compute the difference and detect shift between the reference and detection statistics.
 
         Args:
-            fm_config: FeatureMonitoringConfig. Feature monitoring configuration.
-            detection_statistics: FeatureDescriptiveStatistics. Computed statistics from detection data.
-            reference_statistics: Union[FeatureDescriptiveStatistics, int, float].
-                Computed statistics from reference data, or a specific value to use as reference.
+            fm_config: Feature monitoring configuration.
+            detection_statistics: Computed statistics from detection data.
+            reference_statistics: Computed statistics from reference data, or a specific value to use as reference.
+            specific_value: A specific value to use as reference.
 
         Returns:
-            `(float, bool)`. The difference between the reference and detection statistics,
-                             and whether shift was detected or not
+            The difference between the reference and detection statistics, and whether shift was detected or not
         """
         difference = self.compute_difference_between_stats(
             detection_statistics=detection_statistics,
@@ -439,15 +432,11 @@ class FeatureMonitoringResultEngine:
 
         if fm_config.statistics_comparison_config["strict"]:
             shift_detected = (
-                True
-                if difference >= fm_config.statistics_comparison_config["threshold"]
-                else False
+                difference >= fm_config.statistics_comparison_config["threshold"]
             )
         else:
             shift_detected = (
-                True
-                if difference > fm_config.statistics_comparison_config["threshold"]
-                else False
+                difference > fm_config.statistics_comparison_config["threshold"]
             )
         return difference, shift_detected
 
@@ -456,9 +445,9 @@ class FeatureMonitoringResultEngine:
         detection_statistics: FeatureDescriptiveStatistics,
         metric: str,
         relative: bool = False,
-        reference_statistics: Optional[FeatureDescriptiveStatistics] = None,
-        specific_value: Optional[Union[int, float]] = None,
-    ) -> Optional[float]:
+        reference_statistics: FeatureDescriptiveStatistics | None = None,
+        specific_value: float | None = None,
+    ) -> float | None:
         """Compute the difference between the reference and detection statistics.
 
         Args:
@@ -492,8 +481,8 @@ class FeatureMonitoringResultEngine:
 
     def compute_difference_between_specific_values(
         self,
-        detection_value: Union[int, float],
-        reference_value: Union[int, float],
+        detection_value: float,
+        reference_value: float,
         relative: bool = False,
     ) -> float:
         """Compute the difference between a reference and detection value.
@@ -506,15 +495,12 @@ class FeatureMonitoringResultEngine:
         Returns:
             `float`. The difference between the reference and detection values.
         """
-
         diff = abs(detection_value - reference_value)
         if relative:
             if reference_value == 0:
                 return float("inf")
-            else:
-                return diff / reference_value
-        else:
-            return diff
+            return diff / reference_value
+        return diff
 
     def get_monitoring_job_execution_id(
         self,
@@ -541,7 +527,7 @@ class FeatureMonitoringResultEngine:
 
     def is_monitoring_window_empty(
         self,
-        monitoring_window_statistics: Optional[FeatureDescriptiveStatistics] = None,
+        monitoring_window_statistics: FeatureDescriptiveStatistics | None = None,
     ) -> bool:
         """Check if the monitoring window is empty.
 
@@ -551,24 +537,23 @@ class FeatureMonitoringResultEngine:
         Returns:
             bool. Whether the monitoring window is empty or not.
         """
-        if monitoring_window_statistics is None:
-            return True
-        elif monitoring_window_statistics.count == 0:
-            return True
-        else:
-            return False
+        return bool(
+            monitoring_window_statistics is None
+            or monitoring_window_statistics.count == 0
+        )
 
     def save_feature_monitoring_result_with_exception(
         self,
         config_id: int,
         job_name: str,
-        feature_name: Optional[str] = None,
-    ) -> "FeatureMonitoringResult":
+        feature_name: str | None = None,
+    ) -> FeatureMonitoringResult:
         """Save feature monitoring result with raised_exception flag.
 
         Args:
-            config_id: int. Id of the feature monitoring configuration.
-            job_name: str. Name of the monitoring job.
+            config_id: Id of the feature monitoring configuration.
+            job_name: Name of the monitoring job.
+            feature_name: Name of the feature being monitored.
 
         Returns:
             FeatureMonitoringResult. Saved Feature monitoring result.

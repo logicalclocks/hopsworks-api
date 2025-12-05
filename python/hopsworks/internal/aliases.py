@@ -134,7 +134,6 @@ def public(
             See `deprecated` decorator for the implementation of construction of the deprecated objects.
         available_until: The first hopsworks release in which the entity will become unavailable, defaults to `None`; if the release is known, it is reported to the external user in the deprecation warning.
     """
-
     if available_until and not deprecated_by:
         raise InternalAliasError(
             "If the alias is available until a specific release, something to use instead should be provided in deprecated_by."
@@ -172,7 +171,6 @@ def publish(*paths: str):
     Parameters:
         paths: The import paths under which the names declared in this context will be publically available; effectively results in generation of aliases in all of the paths for all the names declared in the context.
     """
-
     caller = inspect.getmodule(inspect.stack()[1][0])
     exclude = {x for x, _ in inspect.getmembers(caller)}
     Registry.add_module(caller, exclude, paths)
@@ -223,7 +221,6 @@ def deprecated(
         deprecated_by: A set of recommendations to use instead.
         available_until: The first hopsworks release in which the entity will become unavailable, defaults to `None`; if the release is known, it is reported to the external user in the warning.
     """
-
     v = f"version {available_until}" if available_until else "a future release"
     if len(deprecated_by) == 1:
         recs = deprecated_by[0]

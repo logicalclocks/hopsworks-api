@@ -15,8 +15,6 @@
 #
 from __future__ import annotations
 
-from typing import Dict, List, Union
-
 from hopsworks_common import client
 from hsfs import ge_validation_result
 
@@ -36,11 +34,11 @@ class ValidationResultApi:
     def get_validation_history(
         self,
         expectation_id: int,
-        query_params: Dict[str, str] = None,
-    ) -> Union[
-        List[ge_validation_result.ValidationResult],
-        ge_validation_result.ValidationResult,
-    ]:
+        query_params: dict[str, str] = None,
+    ) -> (
+        list[ge_validation_result.ValidationResult]
+        | ge_validation_result.ValidationResult
+    ):
         """Get the validation report attached to a featuregroup.
 
         :return: validation report

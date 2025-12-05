@@ -16,26 +16,26 @@
 
 from __future__ import annotations
 
-from typing import Literal, Optional, Union
+from typing import Literal
 
 from hopsworks_common.client import external, hopsworks, istio
 from hopsworks_common.constants import HOSTS
 
 
-_client: Union[hopsworks.Client, external.Client, None] = None
+_client: hopsworks.Client | external.Client | None = None
 
 
 def init(
-    client_type: Union[Literal["hopsworks"], Literal["external"]],
-    host: Optional[str] = None,
-    port: Optional[int] = None,
-    project: Optional[str] = None,
-    engine: Optional[str] = None,
-    hostname_verification: Optional[bool] = None,
-    trust_store_path: Optional[str] = None,
-    cert_folder: Optional[str] = None,
-    api_key_file: Optional[str] = None,
-    api_key_value: Optional[str] = None,
+    client_type: Literal["hopsworks", "external"],
+    host: str | None = None,
+    port: int | None = None,
+    project: str | None = None,
+    engine: str | None = None,
+    hostname_verification: bool | None = None,
+    trust_store_path: str | None = None,
+    cert_folder: str | None = None,
+    api_key_file: str | None = None,
+    api_key_value: str | None = None,
 ) -> None:
     global _client
     if not _client:
@@ -57,7 +57,7 @@ def init(
         _client.provide_project(project)
 
 
-def get_instance() -> Union[hopsworks.Client, external.Client]:
+def get_instance() -> hopsworks.Client | external.Client:
     global _client
     if not _client:
         raise Exception("Couldn't find client. Try reconnecting to Hopsworks.")

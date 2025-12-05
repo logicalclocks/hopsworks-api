@@ -24,7 +24,7 @@ import os
 import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
-from typing import Literal, Optional, Type, Union
+from typing import Literal
 
 from hopsworks_common import client, tag, usage, util
 from hopsworks_common.client.exceptions import DatasetException, RestAPIError
@@ -59,8 +59,8 @@ class DatasetApi:
     def download(
         self,
         path: str,
-        local_path: Optional[str] = None,
-        overwrite: Optional[bool] = False,
+        local_path: str | None = None,
+        overwrite: bool | None = False,
         chunk_size: int = DEFAULT_DOWNLOAD_FLOW_CHUNK_SIZE,
     ) -> str:
         """Download file from Hopsworks Filesystem to the current working directory.
@@ -116,38 +116,38 @@ class DatasetApi:
             elif os.path.isdir(local_path):
                 shutil.rmtree(local_path)
         elif os.path.exists(local_path):
-            raise IOError(
-                "{} already exists, set overwrite=True to overwrite it".format(
-                    local_path
-                )
+            raise OSError(
+                f"{local_path} already exists, set overwrite=True to overwrite it"
             )
 
         file_size = int(self._get(path)["attributes"]["size"])
-        with _client._send_request(
-            "GET", path_params, query_params=query_params, stream=True
-        ) as response:
-            with open(local_path, "wb") as f:
-                pbar = None
-                try:
-                    pbar = tqdm(
-                        total=file_size,
-                        bar_format="{desc}: {percentage:.3f}%|{bar}| {n_fmt}/{total_fmt} elapsed<{elapsed} remaining<{remaining}",
-                        desc="Downloading",
-                    )
-                except Exception:
-                    self._log.exception("Failed to initialize progress bar.")
-                    self._log.info("Starting download")
+        with (
+            _client._send_request(
+                "GET", path_params, query_params=query_params, stream=True
+            ) as response,
+            open(local_path, "wb") as f,
+        ):
+            pbar = None
+            try:
+                pbar = tqdm(
+                    total=file_size,
+                    bar_format="{desc}: {percentage:.3f}%|{bar}| {n_fmt}/{total_fmt} elapsed<{elapsed} remaining<{remaining}",
+                    desc="Downloading",
+                )
+            except Exception:
+                self._log.exception("Failed to initialize progress bar.")
+                self._log.info("Starting download")
 
-                for chunk in response.iter_content(chunk_size=chunk_size):
-                    f.write(chunk)
-
-                    if pbar is not None:
-                        pbar.update(len(chunk))
+            for chunk in response.iter_content(chunk_size=chunk_size):
+                f.write(chunk)
 
                 if pbar is not None:
-                    pbar.close()
-                else:
-                    self._log.info("Download finished")
+                    pbar.update(len(chunk))
+
+            if pbar is not None:
+                pbar.close()
+            else:
+                self._log.info("Download finished")
 
         return local_path
 
@@ -195,7 +195,6 @@ class DatasetApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         # local path could be absolute or relative,
         if not os.path.isabs(local_path) and os.path.exists(
             os.path.join(os.getcwd(), local_path)
@@ -212,13 +211,10 @@ class DatasetApi:
                     raise DatasetException(
                         "overwrite=True not supported on a top-level dataset"
                     )
-                else:
-                    self.remove(destination_path)
+                self.remove(destination_path)
             else:
                 raise DatasetException(
-                    "{} already exists, set overwrite=True to overwrite it".format(
-                        destination_path
-                    )
+                    f"{destination_path} already exists, set overwrite=True to overwrite it"
                 )
 
         if os.path.isdir(local_path):
@@ -298,7 +294,7 @@ class DatasetApi:
                 pbar = tqdm(
                     total=file_size,
                     bar_format="{desc}: {percentage:.3f}%|{bar}| {n_fmt}/{total_fmt} elapsed<{elapsed} remaining<{remaining}",
-                    desc="Uploading {}".format(local_path),
+                    desc=f"Uploading {local_path}",
                 )
             except Exception:
                 self._log.exception("Failed to initialize progress bar.")
@@ -423,7 +419,7 @@ class DatasetApi:
         return _client._send_request("GET", path_params, headers=headers)
 
     def get(self, path: str):
-        """**Deprecated**
+        """**Deprecated**.
 
         Get dataset metadata.
 
@@ -555,13 +551,10 @@ class DatasetApi:
                     raise DatasetException(
                         "overwrite=True not supported on a top-level dataset"
                     )
-                else:
-                    self.remove(destination_path)
+                self.remove(destination_path)
             else:
                 raise DatasetException(
-                    "{} already exists, set overwrite=True to overwrite it".format(
-                        destination_path
-                    )
+                    f"{destination_path} already exists, set overwrite=True to overwrite it"
                 )
 
         _client = client.get_instance()
@@ -601,13 +594,10 @@ class DatasetApi:
                     raise DatasetException(
                         "overwrite=True not supported on a top-level dataset"
                     )
-                else:
-                    self.remove(destination_path)
+                self.remove(destination_path)
             else:
                 raise DatasetException(
-                    "{} already exists, set overwrite=True to overwrite it".format(
-                        destination_path
-                    )
+                    f"{destination_path} already exists, set overwrite=True to overwrite it"
                 )
 
         _client = client.get_instance()
@@ -702,9 +692,15 @@ class DatasetApi:
         return files
 
     @usage.method_logger
-    def _list_dataset_path(self, path: str, cls: Union[Type[dataset.Dataset], Type[inode.Inode]], offset: int = 0, limit: int = 1000, sort_by: str = "ID:asc") -> tuple[int, tuple[int, list[inode.Inode]] | tuple[int, list[dataset.Dataset]]]:
-        """
-        List contents of a directory in the Hopsworks Filesystem.
+    def _list_dataset_path(
+        self,
+        path: str,
+        cls: type[dataset.Dataset | inode.Inode],
+        offset: int = 0,
+        limit: int = 1000,
+        sort_by: str = "ID:asc",
+    ) -> tuple[int, tuple[int, list[inode.Inode]] | tuple[int, list[dataset.Dataset]]]:
+        """List contents of a directory in the Hopsworks Filesystem.
 
         Parameters:
             path: Path to the directory to list the contents of.
@@ -808,7 +804,6 @@ class DatasetApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "dataset", remote_path]
 
@@ -842,7 +837,7 @@ class DatasetApi:
                     )
                 # Get the zipState of the directory being zipped
                 dir_status = self.get(remote_path)
-                zip_state = dir_status["zipState"] if "zipState" in dir_status else None
+                zip_state = dir_status.get("zipState", None)
                 if zip_exists and zip_state == "NONE":
                     return True
             elif action == "unzip":
@@ -852,7 +847,7 @@ class DatasetApi:
                 )
                 # Get the zipState of the zip being extracted
                 dir_status = self.get(remote_path)
-                zip_state = dir_status["zipState"] if "zipState" in dir_status else None
+                zip_state = dir_status.get("zipState", None)
                 if unzipped_dir_exists and zip_state == "NONE":
                     return True
             time.sleep(1)
@@ -863,9 +858,7 @@ class DatasetApi:
                 )
                 return False
 
-    def unzip(
-        self, remote_path: str, block: bool = False, timeout: Optional[int] = 120
-    ):
+    def unzip(self, remote_path: str, block: bool = False, timeout: int | None = 120):
         """Unzip an archive in the dataset.
 
         Parameters:
@@ -913,7 +906,7 @@ class DatasetApi:
     # region Dataset Tags
 
     def add(self, path: str, name: str, value: str):
-        """**Deprecated**
+        """**Deprecated**.
 
         Attach a name/value tag to a model.
 
@@ -940,7 +933,7 @@ class DatasetApi:
         _client._send_request("PUT", path_params, headers=headers, data=json_value)
 
     def delete(self, path: str, name: str):
-        """**Deprecated**
+        """**Deprecated**.
 
         Delete a tag.
 
@@ -963,7 +956,7 @@ class DatasetApi:
         _client._send_request("DELETE", path_params)
 
     def get_tags(self, path: str, name: str | None = None) -> dict:
-        """**Deprecated**
+        """**Deprecated**.
 
         Get the tags.
 

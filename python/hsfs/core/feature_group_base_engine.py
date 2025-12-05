@@ -46,19 +46,18 @@ class FeatureGroupBaseEngine:
         tag = self._tags_api.get(feature_group, name)
         if tag:
             return tag[name]
-        else:
-            return None
+        return None
 
     def get_tags(self, feature_group):
         """Get all tags for a feature group."""
         tags = self._tags_api.get(feature_group)
         if tags:
             return tags
-        else:
-            return {}
+        return {}
 
     def get_parent_feature_groups(self, feature_group):
         """Get the parents of this feature group, based on explicit provenance.
+
         Parents are feature groups or external feature groups. These feature
         groups can be accessible, deleted or inaccessible.
         For deleted and inaccessible feature groups, only a minimal information is
@@ -73,9 +72,11 @@ class FeatureGroupBaseEngine:
         links = self._feature_group_api.get_parent_feature_groups(feature_group)
         if not links.is_empty():
             return links
+        return None
 
     def get_storage_connector_provenance(self, feature_group):
         """Get the parents of this feature group, based on explicit provenance.
+
         Parents are storage connectors. These storage connector can be accessible,
         deleted or inaccessible.
         For deleted and inaccessible storage connector, only a minimal information is
@@ -90,10 +91,12 @@ class FeatureGroupBaseEngine:
         links = self._feature_group_api.get_storage_connector_provenance(feature_group)
         if not links.is_empty():
             return links
+        return None
 
     def get_generated_feature_views(self, feature_group):
-        """Get the generated feature view using this feature group, based on explicit
-        provenance. These feature views can be accessible or inaccessible. Explicit
+        """Get the generated feature view using this feature group, based on explicit provenance.
+
+        These feature views can be accessible or inaccessible. Explicit
         provenance does not track deleted generated feature view links, so deleted
         will always be empty.
         For inaccessible feature views, only a minimal information is returned.
@@ -107,10 +110,12 @@ class FeatureGroupBaseEngine:
         links = self._feature_group_api.get_generated_feature_views(feature_group)
         if not links.is_empty():
             return links
+        return None
 
     def get_generated_feature_groups(self, feature_group):
-        """Get the generated feature groups using this feature group, based on explicit
-        provenance. These feature groups can be accessible or inaccessible. Explicit
+        """Get the generated feature groups using this feature group, based on explicit provenance.
+
+        These feature groups can be accessible or inaccessible. Explicit
         provenance does not track deleted generated feature group links, so deleted
         will always be empty.
         For inaccessible feature groups, only a minimal information is returned.
@@ -124,6 +129,7 @@ class FeatureGroupBaseEngine:
         links = self._feature_group_api.get_generated_feature_groups(feature_group)
         if not links.is_empty():
             return links
+        return None
 
     def update_statistics_config(self, feature_group):
         """Update the statistics configuration of a feature group."""

@@ -15,8 +15,6 @@
 #
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Union
-
 from hopsworks_common import client
 from hsfs import decorators
 from hsfs.core.feature_monitoring_result import FeatureMonitoringResult
@@ -38,9 +36,9 @@ class FeatureMonitoringResultApi:
     def __init__(
         self,
         feature_store_id: int,
-        feature_group_id: Optional[int] = None,
-        feature_view_name: Optional[str] = None,
-        feature_view_version: Optional[int] = None,
+        feature_group_id: int | None = None,
+        feature_view_name: str | None = None,
+        feature_view_version: int | None = None,
         **kwargs,
     ):
         if feature_group_id is None:
@@ -94,8 +92,8 @@ class FeatureMonitoringResultApi:
     def get_by_config_id(
         self,
         config_id: int,
-        query_params: Optional[Dict[str, Union[str, List[str]]]] = None,
-    ) -> List[FeatureMonitoringResult]:
+        query_params: dict[str, str | list[str]] | None = None,
+    ) -> list[FeatureMonitoringResult]:
         """Get all Feature Monitoring Result attached to a Monitoring Config.
 
         :param config_id: Id of the feature monitoring config for which to fetch all results
@@ -120,7 +118,7 @@ class FeatureMonitoringResultApi:
     def get_by_id(
         self,
         result_id: int,
-    ) -> List[FeatureMonitoringResult]:
+    ) -> list[FeatureMonitoringResult]:
         """Get the Feature Monitoring Result attached to a Feature.
 
         :param result_id: Id of the feature monitoring result to fetch
@@ -141,7 +139,7 @@ class FeatureMonitoringResultApi:
     def build_path_params(
         self,
         project_id: int,
-    ) -> List[str]:
+    ) -> list[str]:
         """Build the path parameters for the Feature Monitoring Result API.
 
         :param project_id: Id of the project

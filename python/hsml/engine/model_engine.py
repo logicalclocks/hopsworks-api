@@ -56,6 +56,7 @@ class ModelEngine:
             print(
                 "Model not available during polling, set a higher value for await_registration to wait longer."
             )
+        return None
 
     def _upload_additional_resources(self, model_instance):
         if model_instance._input_example is not None:
@@ -115,7 +116,7 @@ class ModelEngine:
                 "It is disallowed to export a root dataset path."
                 " Move the model to a sub-folder and try again."
             )
-        elif model_path_attr.get("dir", False):
+        if model_path_attr.get("dir", False):
             # if path is a directory, iterate of the directory content
             count, files = self._dataset_api._list_dataset_path(
                 from_hdfs_model_path, inode.Inode, sort_by="NAME:desc"
@@ -145,7 +146,7 @@ class ModelEngine:
         n_dirs,
         n_files,
     ):
-        """Download model files from a model path in hdfs, recursively"""
+        """Download model files from a model path in hdfs, recursively."""
         count, files = self._dataset_api._list_dataset_path(
             from_hdfs_model_path, inode.Inode, sort_by="NAME:desc"
         )
@@ -181,7 +182,6 @@ class ModelEngine:
         self, from_hdfs_model_path: str, to_local_path: str, update_download_progress
     ):
         """Download model files from a model path in hdfs."""
-
         n_dirs, n_files = self._download_model_from_hopsfs_recursive(
             from_hdfs_model_path=from_hdfs_model_path,
             to_local_path=to_local_path,
@@ -241,7 +241,7 @@ class ModelEngine:
         update_upload_progress,
         upload_configuration=None,
     ):
-        """Save model files from a local path. The local path can be on hopsfs mount"""
+        """Save model files from a local path. The local path can be on hopsfs mount."""
         # check hopsfs mount
         if model_path.startswith(constants.MODEL_REGISTRY.HOPSFS_MOUNT_PREFIX):
             self._copy_or_move_hopsfs_model(
@@ -337,28 +337,21 @@ class ModelEngine:
             # Perform validations to handle possible inconsistency between db and filesystem
             if model_backend_object_exists and not model_version_folder_exists:
                 raise ModelRegistryException(
-                    "Model with name {0} and version {1} looks to be corrupt as the version is registered but there is no Models/{0}/{1} folder in the filesystem. Delete this version using Model.delete() or the UI and try to export this version again.".format(
-                        model_instance._name, model_instance._version
-                    )
+                    f"Model with name {model_instance._name} and version {model_instance._version} looks to be corrupt as the version is registered but there is no Models/{model_instance._name}/{model_instance._version} folder in the filesystem. Delete this version using Model.delete() or the UI and try to export this version again."
                 )
-            elif not model_backend_object_exists and model_version_folder_exists:
+            if not model_backend_object_exists and model_version_folder_exists:
                 raise ModelRegistryException(
-                    "Model with name {0} and version {1} looks to be corrupt as the version exists in the filesystem but it is not registered. To proceed, please delete the Models/{0}/{1} folder manually and try to save this model again.".format(
-                        model_instance._name, model_instance._version
-                    )
+                    f"Model with name {model_instance._name} and version {model_instance._version} looks to be corrupt as the version exists in the filesystem but it is not registered. To proceed, please delete the Models/{model_instance._name}/{model_instance._version} folder manually and try to save this model again."
                 )
-            elif model_backend_object_exists and model_version_folder_exists:
+            if model_backend_object_exists and model_version_folder_exists:
                 raise ModelRegistryException(
-                    "Model with name {} and version {} already exists, please select another version.".format(
-                        model_instance._name, model_instance._version
-                    )
+                    f"Model with name {model_instance._name} and version {model_instance._version} already exists, please select another version."
                 )
 
         return model_instance
 
     def _build_resource_path(self, model_instance, artifact):
-        artifact_path = "{}/{}".format(model_instance.version_path, artifact)
-        return artifact_path
+        return f"{model_instance.version_path}/{artifact}"
 
     def save(
         self,
@@ -373,10 +366,7 @@ class ModelEngine:
         is_shared_registry = model_instance.shared_registry_project_name is not None
 
         if is_shared_registry:
-            dataset_models_root_path = "{}::{}".format(
-                model_instance.shared_registry_project_name,
-                constants.MODEL_REGISTRY.MODELS_DATASET,
-            )
+            dataset_models_root_path = f"{model_instance.shared_registry_project_name}::{constants.MODEL_REGISTRY.MODELS_DATASET}"
             model_instance._project_name = model_instance.shared_registry_project_name
         else:
             dataset_models_root_path = constants.MODEL_REGISTRY.MODELS_DATASET
@@ -386,9 +376,7 @@ class ModelEngine:
 
         if not self._dataset_api.path_exists(dataset_models_root_path):
             raise AssertionError(
-                "{} dataset does not exist in this project. Please enable the Serving service or create it manually.".format(
-                    dataset_models_root_path
-                )
+                f"{dataset_models_root_path} dataset does not exist in this project. Please enable the Serving service or create it manually."
             )
 
         # Create /Models/{model_instance._name} folder
@@ -421,7 +409,7 @@ class ModelEngine:
 
         for step in pbar:
             try:
-                pbar.set_description("%s" % step["desc"])
+                pbar.set_description("{}".format(step["desc"]))
                 if step["id"] == 0:
                     # Create folders
                     self._engine.mkdir(model_instance.version_path)
@@ -430,7 +418,9 @@ class ModelEngine:
 
                     def update_upload_progress(n_dirs=0, n_files=0, step=step):
                         pbar.set_description(
-                            "%s (%s dirs, %s files)" % (step["desc"], n_dirs, n_files)
+                            "{} ({} dirs, {} files)".format(
+                                step["desc"], n_dirs, n_files
+                            )
                         )
 
                     update_upload_progress(n_dirs=0, n_files=0)
@@ -467,10 +457,8 @@ class ModelEngine:
                             update_upload_progress=update_upload_progress,
                         )
                     else:
-                        raise IOError(
-                            "Could not find path {} in the local filesystem or in Hopsworks File System".format(
-                                model_path
-                            )
+                        raise OSError(
+                            f"Could not find path {model_path} in the local filesystem or in Hopsworks File System"
                         )
                 if step["id"] == 2:
                     model_instance = self._upload_additional_resources(model_instance)
@@ -502,8 +490,9 @@ class ModelEngine:
 
         def update_download_progress(n_dirs, n_files, done=False):
             print(
-                "Downloading model artifact (%s dirs, %s files)... %s"
-                % (n_dirs, n_files, "DONE" if done else ""),
+                "Downloading model artifact ({} dirs, {} files)... {}".format(
+                    n_dirs, n_files, "DONE" if done else ""
+                ),
                 end="\r",
             )
 
@@ -541,11 +530,12 @@ class ModelEngine:
                     hdfs_resource_path,
                     local_resource_path,
                 )
-                with open(local_resource_path, "r") as f:
+                with open(local_resource_path) as f:
                     return f.read()
             finally:
                 if tmp_dir is not None and os.path.exists(tmp_dir.name):
                     tmp_dir.cleanup()
+        return None
 
     def read_json(self, model_instance, resource):
         hdfs_resource_path = self._build_resource_path(model_instance, resource)
@@ -562,6 +552,7 @@ class ModelEngine:
             finally:
                 if tmp_dir is not None and os.path.exists(tmp_dir.name):
                     tmp_dir.cleanup()
+        return None
 
     def delete(self, model_instance):
         self._engine.delete(model_instance)
@@ -584,6 +575,7 @@ class ModelEngine:
 
     def get_feature_view_provenance(self, model_instance):
         """Get the parent feature view of this model, based on explicit provenance.
+
         These feature views can be accessible, deleted or inaccessible.
         For deleted and inaccessible feature views, only a minimal information is
         returned.
@@ -598,6 +590,7 @@ class ModelEngine:
 
     def get_training_dataset_provenance(self, model_instance):
         """Get the parent training dataset of this model, based on explicit provenance.
+
         These training datasets can be accessible, deleted or inaccessible.
         For deleted and inaccessible feature views, only a minimal information is
         returned.

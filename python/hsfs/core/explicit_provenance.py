@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 from enum import Enum
-from typing import Optional, Set
 
 import humps
 from hsfs import feature_group, feature_view, storage_connector, training_dataset, util
@@ -73,7 +72,7 @@ class Artifact:
 
     @property
     def version(self):
-        """Version of the artifact"""
+        """Version of the artifact."""
         return self._version
 
     def json(self):
@@ -136,18 +135,16 @@ class Links:
 
     @property
     def deleted(self):
-        """List of [Artifact objects] which contains
-        minimal information (name, version) about the entities
-        (storage connectors, feature groups, feature views, models) they represent.
+        """List of [Artifact objects] which contains minimal information (name, version) about the entities (storage connectors, feature groups, feature views, models) they represent.
+
         These entities have been removed from the feature store/model registry.
         """
         return self._deleted
 
     @property
     def inaccessible(self):
-        """List of [Artifact objects] which contains
-        minimal information (name, version) about the entities
-        (storage connectors, feature groups, feature views, models) they represent.
+        """List of [Artifact objects] which contains minimal information (name, version) about the entities (storage connectors, feature groups, feature views, models) they represent.
+
         These entities exist in the feature store/model registry, however the user
         does not have access to them anymore.
         """
@@ -155,17 +152,17 @@ class Links:
 
     @property
     def accessible(self):
-        """List of [StorageConnectors|FeatureGroups|FeatureViews|Models] objects
-        which are part of the provenance graph requested. These entities
+        """List of [StorageConnectors|FeatureGroups|FeatureViews|Models] objects which are part of the provenance graph requested.
+
+        These entities
         exist in the feature store/model registry and the user has access to them.
         """
         return self._accessible
 
     @property
     def faulty(self):
-        """List of [Artifact objects] which contains
-        minimal information (name, version) about the entities
-        (storage connectors, feature groups, feature views, models) they represent.
+        """List of [Artifact objects] which contains minimal information (name, version) about the entities (storage connectors, feature groups, feature views, models) they represent.
+
         These entities exist in the feature store/model registry, however they are corrupted.
         """
         return self._faulty
@@ -198,7 +195,7 @@ class Links:
         )
 
     @staticmethod
-    def __parse_storage_connector(links_json: dict, artifacts: Set[str]):
+    def __parse_storage_connector(links_json: dict, artifacts: set[str]):
         links = Links()
         for link_json in links_json:
             if link_json["node"]["artifact_type"] in artifacts:
@@ -222,13 +219,14 @@ class Links:
     def __feature_group(link_json: dict):
         if link_json["artifact_type"] == "FEATURE_GROUP":
             return feature_group.FeatureGroup.from_response_json(link_json["artifact"])
-        elif link_json["artifact_type"] == "EXTERNAL_FEATURE_GROUP":
+        if link_json["artifact_type"] == "EXTERNAL_FEATURE_GROUP":
             return feature_group.ExternalFeatureGroup.from_response_json(
                 link_json["artifact"]
             )
+        return None
 
     @staticmethod
-    def __parse_feature_groups(links_json: dict, artifacts: Set[str]):
+    def __parse_feature_groups(links_json: dict, artifacts: set[str]):
         links = Links()
         for link_json in links_json:
             if link_json["node"]["artifact_type"] in artifacts:
@@ -245,7 +243,7 @@ class Links:
         return links
 
     @staticmethod
-    def __parse_feature_views(links_json: dict, artifacts: Set[str]):
+    def __parse_feature_views(links_json: dict, artifacts: set[str]):
         links = Links()
         for link_json in links_json:
             if link_json["node"]["artifact_type"] in artifacts:
@@ -266,9 +264,7 @@ class Links:
         return links
 
     @staticmethod
-    def __parse_models(
-        links_json: dict, training_dataset_version: Optional[int] = None
-    ):
+    def __parse_models(links_json: dict, training_dataset_version: int | None = None):
         from hsml import model
         from hsml.core import explicit_provenance as hsml_explicit_provenance
 
@@ -321,10 +317,9 @@ class Links:
         json_dict: dict,
         direction: Direction,
         artifact: Type,
-        training_dataset_version: Optional[int] = None,
+        training_dataset_version: int | None = None,
     ):
-        """Parse explicit links from json response. There are four types of
-        Links: UpstreamStorageConnectors, UpstreamFeatureGroups, DownstreamFeatureGroups, DownstreamFeatureViews
+        """Parse explicit links from json response. There are four types of Links: UpstreamStorageConnectors, UpstreamFeatureGroups, DownstreamFeatureGroups, DownstreamFeatureViews.
 
         Parameters:
             json_dict: json response from the explicit provenance endpoint
@@ -363,38 +358,36 @@ class Links:
                 links_json["downstream"],
                 training_dataset_version=training_dataset_version,
             )
-        else:
-            if direction == Links.Direction.UPSTREAM:
-                if artifact == Links.Type.FEATURE_GROUP:
-                    return Links.__parse_feature_groups(
-                        links_json["upstream"],
-                        {
-                            "FEATURE_GROUP",
-                            "EXTERNAL_FEATURE_GROUP",
-                        },
-                    )
-                elif artifact == Links.Type.STORAGE_CONNECTOR:
-                    return Links.__parse_storage_connector(
-                        links_json["upstream"], {"STORAGE_CONNECTOR"}
-                    )
-                else:
-                    return Links()
+        if direction == Links.Direction.UPSTREAM:
+            if artifact == Links.Type.FEATURE_GROUP:
+                return Links.__parse_feature_groups(
+                    links_json["upstream"],
+                    {
+                        "FEATURE_GROUP",
+                        "EXTERNAL_FEATURE_GROUP",
+                    },
+                )
+            if artifact == Links.Type.STORAGE_CONNECTOR:
+                return Links.__parse_storage_connector(
+                    links_json["upstream"], {"STORAGE_CONNECTOR"}
+                )
+            return Links()
 
-            if direction == Links.Direction.DOWNSTREAM:
-                if artifact == Links.Type.FEATURE_GROUP:
-                    return Links.__parse_feature_groups(
-                        links_json["downstream"],
-                        {
-                            "FEATURE_GROUP",
-                            "EXTERNAL_FEATURE_GROUP",
-                        },
-                    )
-                elif artifact == Links.Type.FEATURE_VIEW:
-                    return Links.__parse_feature_views(
-                        links_json["downstream"], {"FEATURE_VIEW"}
-                    )
-                else:
-                    return Links()
+        if direction == Links.Direction.DOWNSTREAM:
+            if artifact == Links.Type.FEATURE_GROUP:
+                return Links.__parse_feature_groups(
+                    links_json["downstream"],
+                    {
+                        "FEATURE_GROUP",
+                        "EXTERNAL_FEATURE_GROUP",
+                    },
+                )
+            if artifact == Links.Type.FEATURE_VIEW:
+                return Links.__parse_feature_views(
+                    links_json["downstream"], {"FEATURE_VIEW"}
+                )
+            return Links()
+        return None
 
 
 class ProvenanceEncoder(json.JSONEncoder):
@@ -406,7 +399,7 @@ class ProvenanceEncoder(json.JSONEncoder):
                 "deleted": obj.deleted,
                 "faulty": obj.faulty,
             }
-        elif isinstance(
+        if isinstance(
             obj,
             (
                 feature_group.FeatureGroup,
@@ -421,30 +414,29 @@ class ProvenanceEncoder(json.JSONEncoder):
                 "name": obj.name,
                 "version": obj.version,
             }
-        elif isinstance(
+        if isinstance(
             obj,
             (storage_connector.StorageConnector),
         ):
             return {
                 "name": obj.name,
             }
-        else:
-            import importlib.util
+        import importlib.util
 
-            if importlib.util.find_spec("hsml"):
-                from hsml import model
-                from hsml.core import explicit_provenance as hsml_explicit_provenance
+        if importlib.util.find_spec("hsml"):
+            from hsml import model
+            from hsml.core import explicit_provenance as hsml_explicit_provenance
 
-                if isinstance(
-                    obj,
-                    (
-                        model.Model,
-                        hsml_explicit_provenance.Artifact,
-                    ),
-                ):
-                    return {
-                        "model_registry_id": obj.model_registry_id,
-                        "name": obj.name,
-                        "version": obj.version,
-                    }
-            return json.JSONEncoder.default(self, obj)
+            if isinstance(
+                obj,
+                (
+                    model.Model,
+                    hsml_explicit_provenance.Artifact,
+                ),
+            ):
+                return {
+                    "model_registry_id": obj.model_registry_id,
+                    "name": obj.name,
+                    "version": obj.version,
+                }
+        return json.JSONEncoder.default(self, obj)

@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Literal
 
 from hopsworks_common import (
     client,
@@ -28,10 +28,13 @@ from hopsworks_common import (
     usage,
     util,
 )
-from hopsworks_common.core import (
-    ingestion_job_conf,
-    job_configuration,
-)
+
+
+if TYPE_CHECKING:
+    from hopsworks_common.core import (
+        ingestion_job_conf,
+        job_configuration,
+    )
 
 
 class JobApi:
@@ -80,7 +83,7 @@ class JobApi:
 
     @usage.method_logger
     @decorators.catch_not_found("hopsworks_common.job.Job", fallback_return=None)
-    def get_job(self, name: str) -> Optional[job.Job]:
+    def get_job(self, name: str) -> job.Job | None:
         """Get a job.
 
         Parameters:
@@ -105,7 +108,7 @@ class JobApi:
         )
 
     @usage.method_logger
-    def get_jobs(self) -> List[job.Job]:
+    def get_jobs(self) -> list[job.Job]:
         """Get all jobs.
 
         Returns:
@@ -142,7 +145,9 @@ class JobApi:
         return job is not None
 
     @usage.method_logger
-    def get_configuration(self, type: Literal["SPARK", "PYSPARK", "PYTHON", "DOCKER", "FLINK"]) -> dict:
+    def get_configuration(
+        self, type: Literal["SPARK", "PYSPARK", "PYTHON", "DOCKER", "FLINK"]
+    ) -> dict:
         """Get configuration for the specific job type.
 
         Parameters:
@@ -230,9 +235,8 @@ class JobApi:
     def create(
         self,
         name: str,
-        job_conf: Union[
-            job_configuration.JobConfiguration, ingestion_job_conf.IngestionJobConf
-        ],
+        job_conf: job_configuration.JobConfiguration
+        | ingestion_job_conf.IngestionJobConf,
     ) -> job.Job:
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "jobs", name]
@@ -275,7 +279,7 @@ class JobApi:
 
     @usage.method_logger
     def create_or_update_schedule_job(
-        self, name: str, schedule_config: Dict[str, Any]
+        self, name: str, schedule_config: dict[str, Any]
     ) -> job_schedule.JobSchedule:
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "jobs", name, "schedule", "v2"]

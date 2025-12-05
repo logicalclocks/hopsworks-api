@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from furl import furl
 from hopsworks_common import client, usage
@@ -54,19 +54,17 @@ class OpenSearchApi:
                 "opensearch"
             )
             return f"https://{external_domain}:9200"
-        else:
-            service_discovery_domain = self._variable_api.get_service_discovery_domain()
-            if service_discovery_domain == "":
-                raise FeatureStoreException(
-                    "Client could not locate service_discovery_domain "
-                    "in Hopsworks cluster configuration or variable is empty."
-                )
-            return f"https://rest.elastic.service.{service_discovery_domain}:9200"
+        service_discovery_domain = self._variable_api.get_service_discovery_domain()
+        if service_discovery_domain == "":
+            raise FeatureStoreException(
+                "Client could not locate service_discovery_domain "
+                "in Hopsworks cluster configuration or variable is empty."
+            )
+        return f"https://rest.elastic.service.{service_discovery_domain}:9200"
 
     @usage.method_logger
     def get_project_index(self, index: str) -> str:
-        """
-        This helper method prefixes the supplied index name with the project name to avoid index name clashes.
+        """This helper method prefixes the supplied index name with the project name to avoid index name clashes.
 
         Parameters:
             index: The opensearch index to interact with.
@@ -78,9 +76,8 @@ class OpenSearchApi:
         return (_client._project_name + "_" + index).lower()
 
     @usage.method_logger
-    def get_default_py_config(self) -> Dict[str, Any]:
-        """
-        Get the required opensearch configuration to setup a connection using the *opensearch-py* library.
+    def get_default_py_config(self) -> dict[str, Any]:
+        """Get the required opensearch configuration to setup a connection using the *opensearch-py* library.
 
         ```python
         import hopsworks
@@ -117,7 +114,6 @@ class OpenSearchApi:
         Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
-
         _client = client.get_instance()
         path_params = ["elastic", "jwt", _client._project_id]
 

@@ -13,30 +13,27 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
+
 import builtins
-from typing import Literal, Optional, Union
+from typing import Literal
 
 import hopsworks
 
 
 def login(
-    host: Optional[str] = None,
+    host: str | None = None,
     port: int = 443,
-    project: Optional[str] = None,
-    api_key_value: Optional[str] = None,
-    api_key_file: Optional[str] = None,
+    project: str | None = None,
+    api_key_value: str | None = None,
+    api_key_file: str | None = None,
     hostname_verification: bool = False,
-    trust_store_path: Optional[str] = None,
-    engine: Union[
-        None,
-        Literal["spark"],
-        Literal["python"],
-        Literal["training"],
-        Literal["spark-no-metastore"],
-        Literal["spark-delta"],
-    ] = "python",
+    trust_store_path: str | None = None,
+    engine: Literal["spark", "python", "training", "spark-no-metastore", "spark-delta"]
+    | None = "python",
 ):
     """Login to Hopsworks and return the project.
+
     This function wraps hopsworks.login to simulate user input by overriding the built-in input function.
 
     Args:
@@ -48,6 +45,7 @@ def login(
         hostname_verification (bool): Enable hostname verification for Hopsworks authentication.
         trust_store_path (Optional[str]): Path to the trust store for Hopsworks authentication.
         engine (Union[None, Literal["spark"], Literal["python"], Literal["training"], Literal["spark-no-metastore"], Literal["spark-delta"]]): Engine to use (default: python).
+
     Returns:
         Project: The project object after successful login.
     """

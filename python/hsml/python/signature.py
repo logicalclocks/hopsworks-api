@@ -13,14 +13,18 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
-from typing import Optional, Union
+from typing import TYPE_CHECKING
 
-import numpy
-import pandas
 from hopsworks_common import usage
-from hsml.model_schema import ModelSchema
 from hsml.python.model import Model
+
+
+if TYPE_CHECKING:
+    import numpy
+    import pandas
+    from hsml.model_schema import ModelSchema
 
 
 _mr = None
@@ -29,15 +33,17 @@ _mr = None
 @usage.method_logger
 def create_model(
     name: str,
-    version: Optional[int] = None,
-    metrics: Optional[dict] = None,
-    description: Optional[str] = None,
-    input_example: Optional[
-        Union[pandas.DataFrame, pandas.Series, numpy.ndarray, list]
-    ] = None,
-    model_schema: Optional[ModelSchema] = None,
+    version: int | None = None,
+    metrics: dict | None = None,
+    description: str | None = None,
+    input_example: pandas.DataFrame
+    | pandas.Series
+    | numpy.ndarray
+    | list
+    | None = None,
+    model_schema: ModelSchema | None = None,
     feature_view=None,
-    training_dataset_version: Optional[int] = None,
+    training_dataset_version: int | None = None,
 ):
     """Create a generic Python model metadata object.
 

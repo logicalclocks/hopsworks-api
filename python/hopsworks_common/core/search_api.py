@@ -289,19 +289,19 @@ class SearchApi:
             return search_results.FeaturestoreSearchResultByTag.from_response_json(
                 result
             )
-        elif filter_by == "tag_name":
+        if filter_by == "tag_name":
             return search_results.FeaturestoreSearchResultByTagName.from_response_json(
                 result
             )
-        elif filter_by == "tag_key":
+        if filter_by == "tag_key":
             return search_results.FeaturestoreSearchResultByTagKey.from_response_json(
                 result
             )
-        elif filter_by == "tag_value":
+        if filter_by == "tag_value":
             return search_results.FeaturestoreSearchResultByTagValue.from_response_json(
                 result
             )
-        elif filter_by == "keyword":
+        if filter_by == "keyword":
             return search_results.FeaturestoreSearchResultByKeyWord.from_response_json(
                 result
             )

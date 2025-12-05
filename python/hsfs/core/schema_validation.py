@@ -13,7 +13,7 @@ class DataFrameValidator:
 
     @staticmethod
     def get_validator(df):
-        """method to get the appropriate implementation of validator for the DataFrame type"""
+        """Method to get the appropriate implementation of validator for the DataFrame type."""
         if isinstance(df, pd.DataFrame):
             return PandasValidator()
 
@@ -39,7 +39,7 @@ class DataFrameValidator:
             return "{}"
 
         # Find maximum column name length for alignment
-        col_width = max(len(col) for col in errors.keys()) + 2
+        col_width = max(len(col) for col in errors) + 2
 
         # Create table headers and separator
         result = ["", "Error details:"]
@@ -59,7 +59,7 @@ class DataFrameValidator:
         raise ValueError(f"{base_message}{formatted_errors}")
 
     def validate_schema(self, feature_group, df, df_features):
-        """Common validation rules"""
+        """Common validation rules."""
         validator = self.get_validator(df)
         if validator is None:
             # If no validator is found for this type, skip validation and return df_features
@@ -92,7 +92,7 @@ class DataFrameValidator:
         return df_features
 
     def _validate_df_specifics(self, feature_group, df):
-        """To be implemented by subclasses"""
+        """To be implemented by subclasses."""
         raise NotImplementedError("Subclasses must implement this method")
 
     @staticmethod
@@ -148,17 +148,16 @@ class PandasValidator(DataFrameValidator):
                 for col in df.columns
                 if pd.api.types.is_string_dtype(df[col].dropna())
             ]
-        else:
-            # For pandas 1.x,  is_string_dtype api is not compatible, so check each row if its a string
-            string_cols = []
-            for col in df.select_dtypes(include=["object", "string"]).columns:
-                # Skip empty columns
-                if df[col].count() == 0:
-                    continue
-                # Check if ALL non-null values are strings
-                if df[col].dropna().map(lambda x: isinstance(x, str)).all():
-                    string_cols.append(col)
-            return string_cols
+        # For pandas 1.x,  is_string_dtype api is not compatible, so check each row if its a string
+        string_cols = []
+        for col in df.select_dtypes(include=["object", "string"]).columns:
+            # Skip empty columns
+            if df[col].count() == 0:
+                continue
+            # Check if ALL non-null values are strings
+            if df[col].dropna().map(lambda x: isinstance(x, str)).all():
+                string_cols.append(col)
+        return string_cols
 
     # Pandas df specific validator
     def _validate_df_specifics(self, feature_group, df):

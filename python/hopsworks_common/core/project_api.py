@@ -43,6 +43,7 @@ class ProjectApi:
 
         Returns:
             List of Project objects.
+
         Raises:
             hopsworks.client.exceptions.RestAPIError: If unable to get the project teams.
         """
@@ -57,7 +58,6 @@ class ProjectApi:
                 if project_team["project"]["owner"]["uid"] == current_user_uid:
                     projects.append(self._get_project(project_team["project"]["name"]))
         return projects
-
 
     def _get_project_teams(self) -> str:
         """Get all project teams for this user.
@@ -164,5 +164,4 @@ class ProjectApi:
         projects = self._get_project_teams()
         if projects:
             return projects[0]["user"]
-        else:
-            return {}
+        return {}

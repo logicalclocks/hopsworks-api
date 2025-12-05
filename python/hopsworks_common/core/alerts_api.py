@@ -99,13 +99,13 @@ class AlertsApi:
 
     To obtain an object of this type, use [`project.get_alerts_api()`][hopsworks.project.Project.get_alerts_api].
     """
+
     def __init__(self):
         self._log = logging.getLogger(__name__)
 
     @usage.method_logger
     def get_alerts(self) -> list[alert.ProjectAlert]:
-        """
-        Get all project alerts.
+        """Get all project alerts.
 
         Example:
             ```python
@@ -124,7 +124,6 @@ class AlertsApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
-
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "service", "alerts"]
         headers = {"content-type": "application/json"}
@@ -137,8 +136,7 @@ class AlertsApi:
         "hopsworks_common.alert.ProjectAlert", fallback_return=None
     )
     def get_alert(self, alert_id: int) -> alert.ProjectAlert | None:
-        """
-        Get a specific project alert by ID.
+        """Get a specific project alert by ID.
 
         Example:
             ```python
@@ -160,7 +158,6 @@ class AlertsApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
-
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "service", "alerts", alert_id]
         headers = {"content-type": "application/json"}
@@ -170,8 +167,7 @@ class AlertsApi:
 
     @usage.method_logger
     def get_job_alerts(self, job_name: str) -> list[alert.JobAlert]:
-        """
-        Get all job alerts.
+        """Get all job alerts.
 
         Example:
             ```python
@@ -193,7 +189,6 @@ class AlertsApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
-
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "jobs", job_name, "alerts"]
         headers = {"content-type": "application/json"}
@@ -204,8 +199,7 @@ class AlertsApi:
     @usage.method_logger
     @decorators.catch_not_found("hopsworks_common.alert.JobAlert", fallback_return=None)
     def get_job_alert(self, job_name: str, alert_id: int) -> alert.JobAlert | None:
-        """
-        Get a specific job alert by ID.
+        """Get a specific job alert by ID.
 
         Example:
             ```python
@@ -228,7 +222,6 @@ class AlertsApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
-
         _client = client.get_instance()
         path_params = [
             "project",
@@ -249,8 +242,7 @@ class AlertsApi:
         feature_store_id: int,
         feature_group_id: int,
     ) -> list[alert.FeatureGroupAlert]:
-        """
-        Get all feature group alerts.
+        """Get all feature group alerts.
 
         Example:
             ```python
@@ -273,7 +265,6 @@ class AlertsApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
-
         _client = client.get_instance()
         path_params = [
             "project",
@@ -299,8 +290,7 @@ class AlertsApi:
         feature_group_id: int,
         alert_id: int,
     ) -> alert.FeatureGroupAlert | None:
-        """
-        Get a specific feature group alert by ID.
+        """Get a specific feature group alert by ID.
 
         Example:
             ```python
@@ -347,8 +337,7 @@ class AlertsApi:
         feature_view_name: str,
         feature_view_version: int,
     ) -> list[alert.FeatureViewAlert]:
-        """
-        Get all feature view alerts.
+        """Get all feature view alerts.
 
         Example:
             ```python
@@ -400,8 +389,7 @@ class AlertsApi:
         feature_view_version: int,
         alert_id: int,
     ) -> alert.FeatureViewAlert | None:
-        """
-        Get a specific feature view alert by ID.
+        """Get a specific feature view alert by ID.
 
         Example:
             ```python
@@ -453,8 +441,7 @@ class AlertsApi:
         service: _SERVICES_ARG,
         threshold=0,
     ) -> alert.ProjectAlert:
-        """
-        Create a new alert.
+        """Create a new alert.
 
         Example:
             ```python
@@ -529,8 +516,7 @@ class AlertsApi:
         status: _VALIDATION_STATUS_ARG | _MONITORING_STATUS_ARG,
         severity: _SEVERITY_ARG,
     ) -> alert.FeatureGroupAlert:
-        """
-        Create a new feature group alert.
+        """Create a new feature group alert.
 
         Example:
             ```python
@@ -558,7 +544,6 @@ class AlertsApi:
             ValueError: If the severity is not valid.
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
-
         if status not in _VALIDATION_STATUS + _MONITORING_STATUS:
             raise ValueError(
                 f"Status must be one of the following: {_VALIDATION_STATUS + _MONITORING_STATUS}."
@@ -608,8 +593,7 @@ class AlertsApi:
         status: _MONITORING_STATUS_ARG,
         severity: _SEVERITY_ARG,
     ) -> alert.FeatureViewAlert:
-        """
-        Create a new feature view alert.
+        """Create a new feature view alert.
 
         Example:
             ```python
@@ -677,8 +661,7 @@ class AlertsApi:
         status: _JOB_STATUS_ARG,
         severity: _SEVERITY_ARG,
     ) -> alert.JobAlert:
-        """
-        Create a new job alert.
+        """Create a new job alert.
 
         Example:
             ```python
@@ -736,8 +719,7 @@ class AlertsApi:
 
     @usage.method_logger
     def get_alert_receivers(self) -> list[alert_receiver.AlertReceiver]:
-        """
-        Get all alert receivers.
+        """Get all alert receivers.
 
         Example:
             ```python
@@ -771,8 +753,7 @@ class AlertsApi:
         "hopsworks_common.alert_receiver.AlertReceiver", fallback_return=None
     )
     def get_alert_receiver(self, name: str) -> alert_receiver.AlertReceiver | None:
-        """
-        Get a specific alert receivers by name.
+        """Get a specific alert receivers by name.
 
         Example:
             ```python
@@ -812,8 +793,7 @@ class AlertsApi:
         pagerduty_configs: list[alert_receiver.PagerDutyConfig] | None = None,
         webhook_configs: list[alert_receiver.WebhookConfig] | None = None,
     ) -> alert_receiver.AlertReceiver:
-        """
-        Create a new alert receiver.
+        """Create a new alert receiver.
 
         Example:
             ```python
@@ -911,8 +891,7 @@ class AlertsApi:
 
     @usage.method_logger
     def delete_alert(self, alert_id: int):
-        """
-        Delete an alert by ID.
+        """Delete an alert by ID.
 
         Example:
             ```python
@@ -950,8 +929,7 @@ class AlertsApi:
         generator_url: str | None = None,
         expire_after_sec: int | None = None,
     ):
-        """
-        Trigger an alert.
+        """Trigger an alert.
 
         Example:
             ```python
@@ -1017,8 +995,7 @@ class AlertsApi:
     def get_triggered_alerts(
         self, active: bool = True, silenced: bool = False, inhibited: bool = False
     ) -> list[triggered_alert.TriggeredAlert]:
-        """
-        Get triggered alerts.
+        """Get triggered alerts.
 
         Example:
             ```python
@@ -1053,8 +1030,7 @@ class AlertsApi:
         )
 
     def _get_configured_receivers(self):
-        """
-        Get configured alert receivers.
+        """Get configured alert receivers.
 
         Returns:
             A list of configured alert receivers.
@@ -1069,9 +1045,7 @@ class AlertsApi:
     def _create_route_if_not_exist(
         self, receiver_name: str, status: str, severity: _SEVERITY_ARG
     ):
-        """
-        Create a route for the alert receiver.
-        """
+        """Create a route for the alert receiver."""
         _client = client.get_instance()
         if receiver_name is None:
             raise ValueError("Receiver name cannot be None.")
@@ -1120,8 +1094,7 @@ class AlertsApi:
                     raise e
 
     def _fix_receiver_name(self, name: str, project_name: str) -> str:
-        """
-        Fix the receiver name by adding the project name prefix if necessary.
+        """Fix the receiver name by adding the project name prefix if necessary.
 
         Parameters:
             name: The name of the receiver.

@@ -13,10 +13,11 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import json
 import logging
-from typing import List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Literal
 from urllib.parse import quote
 
 from hopsworks_common import (
@@ -32,7 +33,10 @@ from hopsworks_common import (
 from hopsworks_common.client.exceptions import GitException
 from hopsworks_common.core import git_provider_api
 from hopsworks_common.engine import git_engine
-from hopsworks_common.git_file_status import GitFileStatus
+
+
+if TYPE_CHECKING:
+    from hopsworks_common.git_file_status import GitFileStatus
 
 
 class GitApi:
@@ -43,7 +47,11 @@ class GitApi:
 
     @usage.method_logger
     def clone(
-        self, url: str, path: str, provider: Literal["GitHub", "GitLab", "BitBucket"] | None = None, branch: str = None
+        self,
+        url: str,
+        path: str,
+        provider: Literal["GitHub", "GitLab", "BitBucket"] | None = None,
+        branch: str = None,
     ) -> git_repo.GitRepo:
         """Clone a new Git Repo in to Hopsworks Filesystem.
 
@@ -69,7 +77,6 @@ class GitApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         _client = client.get_instance()
 
         # Support absolute and relative path to dataset
@@ -105,11 +112,10 @@ class GitApi:
             )
         )
         git_op = self._git_engine.execute_op_blocking(git_op, "CLONE")
-        created_repo = self.get_repo(git_op.repository.name, git_op.repository.path)
-        return created_repo
+        return self.get_repo(git_op.repository.name, git_op.repository.path)
 
     @usage.method_logger
-    def get_repos(self) -> List[git_repo.GitRepo]:
+    def get_repos(self) -> list[git_repo.GitRepo]:
         """Get the existing Git repositories.
 
         Returns:
@@ -130,7 +136,7 @@ class GitApi:
         )
 
     @usage.method_logger
-    def get_providers(self) -> List[git_provider.GitProvider]:
+    def get_providers(self) -> list[git_provider.GitProvider]:
         """Get the configured Git providers.
 
         Returns:
@@ -142,7 +148,9 @@ class GitApi:
         return self._git_provider_api._get_providers()
 
     @usage.method_logger
-    def get_provider(self, provider: Literal["GitHub", "GitLab", "BitBucket"], host: str = None) -> Optional[git_provider.GitProvider]:
+    def get_provider(
+        self, provider: Literal["GitHub", "GitLab", "BitBucket"], host: str = None
+    ) -> git_provider.GitProvider | None:
         """Get the configured Git provider.
 
         Parameters:
@@ -158,7 +166,13 @@ class GitApi:
         return self._git_provider_api._get_provider(provider, host)
 
     @usage.method_logger
-    def set_provider(self, provider: Literal["GitHub", "GitLab", "BitBucket"], username: str, token: str, host: str = None):
+    def set_provider(
+        self,
+        provider: Literal["GitHub", "GitLab", "BitBucket"],
+        username: str,
+        token: str,
+        host: str = None,
+    ):
         """Configure a Git provider.
 
         ```python
@@ -186,7 +200,7 @@ class GitApi:
         self._git_provider_api._set_provider(provider, username, token, host)
 
     @usage.method_logger
-    def get_repo(self, name: str, path: str = None) -> Optional[git_repo.GitRepo]:
+    def get_repo(self, name: str, path: str = None) -> git_repo.GitRepo | None:
         """Get the cloned Git repository.
 
         Parameters:
@@ -216,22 +230,16 @@ class GitApi:
 
         filtered_repos = []
         for repository in repos:
-            if repository.name == name:
-                if path is None:
-                    filtered_repos.append(repository)
-                elif repository.path == path:
-                    filtered_repos.append(repository)
+            if repository.name == name and (path is None or repository.path == path):
+                filtered_repos.append(repository)
 
         if len(filtered_repos) == 1:
             return filtered_repos[0]
-        elif len(filtered_repos) > 1:
+        if len(filtered_repos) > 1:
             raise GitException(
-                "Multiple repositories found matching name {}. Please specify the repository by setting the path keyword, for example path='Resources/{}'.".format(
-                    name, name
-                )
+                f"Multiple repositories found matching name {name}. Please specify the repository by setting the path keyword, for example path='Resources/{name}'."
             )
-        else:
-            return None
+        return None
 
     def _delete_repo(self, repo_id):
         _client = client.get_instance()
@@ -508,7 +516,7 @@ class GitApi:
         )
         _ = self._git_engine.execute_op_blocking(git_op, query_params["action"])
 
-    def _checkout_files(self, repo_id, files: Union[List[str], List[GitFileStatus]]):
+    def _checkout_files(self, repo_id, files: list[str] | list[GitFileStatus]):
         files = util.convert_git_status_to_files(files)
 
         _client = client.get_instance()
@@ -554,14 +562,13 @@ class GitApi:
         )
 
     def _get_default_provider_host(self, provider: str) -> str:
-        """Get the default host name for the given provider"""
+        """Get the default host name for the given provider."""
         if provider == "GitHub":
             return "github.com"
-        elif provider == "GitLab":
+        if provider == "GitLab":
             return "gitlab.com"
-        elif provider == "BitBucket":
+        if provider == "BitBucket":
             return "bitbucket.org"
-        else:
-            raise GitException(
-                f"Unknown git provider {provider}. Supported providers are GitHub, GitLab and BitBucket."
-            )
+        raise GitException(
+            f"Unknown git provider {provider}. Supported providers are GitHub, GitLab and BitBucket."
+        )

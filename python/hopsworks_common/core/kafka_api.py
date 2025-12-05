@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 import socket
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
 from hopsworks_common import (
     client,
@@ -145,7 +145,7 @@ class KafkaApi:
         return self.get_schema(schema.subject, schema.version)
 
     @usage.method_logger
-    def get_topic(self, name: str) -> Optional[kafka_topic.KafkaTopic]:
+    def get_topic(self, name: str) -> kafka_topic.KafkaTopic | None:
         """Get kafka topic by name.
 
         Parameters:
@@ -162,6 +162,7 @@ class KafkaApi:
         for topic in topics:
             if topic.name == name:
                 return topic
+        return None
 
     @usage.method_logger
     def get_topics(self) -> list[kafka_topic.KafkaTopic]:
@@ -266,9 +267,7 @@ class KafkaApi:
         return schemas
 
     @usage.method_logger
-    def get_schema(
-        self, subject: str, version: int
-    ) -> Optional[kafka_schema.KafkaSchema]:
+    def get_schema(self, subject: str, version: int) -> kafka_schema.KafkaSchema | None:
         """Get schema given subject name and version.
 
         Parameters:
@@ -285,6 +284,7 @@ class KafkaApi:
         for schema in schemas:
             if schema.version == version:
                 return schema
+        return None
 
     def _get_schema_details(self, subject: str, version: int):
         """Get the schema details.
@@ -330,7 +330,7 @@ class KafkaApi:
         """
         return constants.KAFKA_SSL_CONFIG.SSL
 
-    def get_default_config(self, internal_kafka: Optional[bool] = None) -> dict:
+    def get_default_config(self, internal_kafka: bool | None = None) -> dict:
         """Get the configuration to set up a Producer or Consumer for a Kafka broker using confluent-kafka.
 
         ```python
@@ -353,7 +353,6 @@ class KafkaApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         _client = client.get_instance()
         config = {
             constants.KAFKA_SSL_CONFIG.SECURITY_PROTOCOL_CONFIG: self._get_security_protocol(),
@@ -381,8 +380,8 @@ class KafkaApi:
         self,
         feature_store_id: int,
         subject: str,
-        version: Union[str, int] = "latest",
-    ) -> Dict[str, Any]:
+        version: str | int = "latest",
+    ) -> dict[str, Any]:
         _client = client.get_instance()
         path_params = [
             "project",
