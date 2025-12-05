@@ -91,9 +91,7 @@ class FlinkCluster:
         """
         if self._count_ongoing_executions() > 0:
             raise Exception(
-                "There is already a running FlinkCluster. Use FlinkClusterApi.get_cluster('{}') to get a reference to it.".format(
-                    self._job.name
-                )
+                f"There is already a running FlinkCluster. Use FlinkClusterApi.get_cluster('{self._job.name}') to get a reference to it."
             )
 
         execution = self._execution_api._start(self._job)
@@ -105,9 +103,7 @@ class FlinkCluster:
                 break
 
             self._execution_engine._log.info(
-                "Waiting for cluster to start. Current state: {}.".format(
-                    updated_execution.state
-                )
+                f"Waiting for cluster to start. Current state: {updated_execution.state}."
             )
 
             await_time -= 1
@@ -115,9 +111,7 @@ class FlinkCluster:
 
         if updated_execution.state != "RUNNING":
             raise Exception(
-                "FlinkCluster {} did not start within the allocated time and exited with state {}".format(
-                    execution.id, execution.state
-                )
+                f"FlinkCluster {execution.id} did not start within the allocated time and exited with state {execution.state}"
             )
 
         self._execution_id = execution.id

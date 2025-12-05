@@ -13,15 +13,19 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import json
-from typing import List, Union
+from typing import TYPE_CHECKING
 
 import humps
 from hopsworks_common import git_commit, usage, user, util
 from hopsworks_common.core import dataset_api, git_api, git_remote_api
-from hopsworks_common.git_file_status import GitFileStatus
-from python.hopsworks_common.git_remote import GitRemote
+
+
+if TYPE_CHECKING:
+    from hopsworks_common.git_file_status import GitFileStatus
+    from python.hopsworks_common.git_remote import GitRemote
 
 
 class GitRepo:
@@ -161,7 +165,7 @@ class GitRepo:
         self._git_api._checkout(self.id, commit=commit)
 
     @usage.method_logger
-    def checkout_files(self, files: Union[List[str], List[GitFileStatus]]):
+    def checkout_files(self, files: list[str] | list[GitFileStatus]):
         """Checkout a list of files.
 
         Parameters:
@@ -185,7 +189,7 @@ class GitRepo:
         self._git_api._delete(self.id, branch)
 
     @usage.method_logger
-    def commit(self, message: str, all: bool = True, files: List[str] = None):
+    def commit(self, message: str, all: bool = True, files: list[str] = None):
         """Add changes and new files, and then commit them.
 
         Parameters:

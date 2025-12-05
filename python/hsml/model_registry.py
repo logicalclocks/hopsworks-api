@@ -13,19 +13,23 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import warnings
-from typing import List, Optional
+from typing import TYPE_CHECKING
 
 import humps
 from hopsworks_common import usage, util
-from hsml import model
 from hsml.core import model_api
 from hsml.llm import signature as llm_signature  # noqa: F401
 from hsml.python import signature as python_signature  # noqa: F401
 from hsml.sklearn import signature as sklearn_signature  # noqa: F401
 from hsml.tensorflow import signature as tensorflow_signature  # noqa: F401
 from hsml.torch import signature as torch_signature  # noqa: F401
+
+
+if TYPE_CHECKING:
+    from hsml import model
 
 
 class ModelRegistry:
@@ -65,7 +69,7 @@ class ModelRegistry:
         return cls(**json_decamelized)
 
     @usage.method_logger
-    def get_model(self, name: str, version: int = None) -> Optional[model.Model]:
+    def get_model(self, name: str, version: int = None) -> model.Model | None:
         """Get a model entity from the model registry.
 
         Getting a model from the Model Registry means getting its metadata handle so you can subsequently download the model directory.
@@ -83,9 +87,7 @@ class ModelRegistry:
         """
         if version is None:
             warnings.warn(
-                "No version provided for getting model `{}`, defaulting to `{}`.".format(
-                    name, self.DEFAULT_VERSION
-                ),
+                f"No version provided for getting model `{name}`, defaulting to `{self.DEFAULT_VERSION}`.",
                 util.VersionWarning,
                 stacklevel=1,
             )
@@ -99,7 +101,7 @@ class ModelRegistry:
         )
 
     @usage.method_logger
-    def get_models(self, name: str) -> List[model.Model]:
+    def get_models(self, name: str) -> list[model.Model]:
         """Get all model entities from the model registry for a specified name.
 
         Getting all models from the Model Registry for a given name returns a list of model entities, one for each version registered under the specified model name.
@@ -122,7 +124,7 @@ class ModelRegistry:
     @usage.method_logger
     def get_best_model(
         self, name: str, metric: str, direction: str
-    ) -> Optional[model.Model]:
+    ) -> model.Model | None:
         """Get the best performing model entity from the model registry.
 
         Getting the best performing model from the Model Registry means specifying in addition to the name, also a metric name corresponding to one of the keys in the training_metrics dict of the model and a direction.
@@ -158,7 +160,7 @@ class ModelRegistry:
     @property
     def project_path(self):
         """Path of the project the registry is connected to."""
-        return "/Projects/{}".format(self._project_name)
+        return f"/Projects/{self._project_name}"
 
     @property
     def project_id(self):

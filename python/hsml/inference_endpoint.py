@@ -12,9 +12,9 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
+from __future__ import annotations
 
 import random
-from typing import List, Optional
 
 import humps
 from hopsworks_common import util
@@ -83,8 +83,8 @@ class InferenceEndpoint:
     def __init__(
         self,
         type: str,
-        hosts: List[str],
-        ports: Optional[List[InferenceEndpointPort]],
+        hosts: list[str],
+        ports: list[InferenceEndpointPort] | None,
     ):
         self._type = type
         self._hosts = hosts

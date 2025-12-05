@@ -23,12 +23,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Dict,
-    List,
     Literal,
-    Optional,
-    Set,
-    Tuple,
     TypeVar,
     Union,
 )
@@ -95,7 +90,7 @@ TrainingDatasetDataFrameTypes = Union[
     TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
     TypeVar("pyspark.RDD"),  # noqa: F821
     np.ndarray,
-    List[List[Any]],
+    list[list[Any]],
 ]
 
 if HAS_POLARS:
@@ -112,7 +107,7 @@ SplineDataFrameTypes = Union[
     TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
     TypeVar("pyspark.RDD"),  # noqa: F821
     np.ndarray,
-    List[List[Any]],
+    list[list[Any]],
     TypeVar("SplineGroup"),  # noqa: F821
 ]
 
@@ -130,19 +125,18 @@ class FeatureView:
         name: str,
         query: query.Query,
         featurestore_id: int,
-        id: Optional[int] = None,
-        version: Optional[int] = None,
-        description: Optional[str] = "",
-        labels: Optional[List[str]] = None,
-        inference_helper_columns: Optional[List[str]] = None,
-        training_helper_columns: Optional[List[str]] = None,
-        transformation_functions: Optional[
-            List[Union[TransformationFunction, HopsworksUdf]]
-        ] = None,
-        featurestore_name: Optional[str] = None,
-        serving_keys: Optional[List[skm.ServingKey]] = None,
-        logging_enabled: Optional[bool] = False,
-        extra_log_columns: Optional[Union[List[Feature], Dict[str, str]]] = None,
+        id: int | None = None,
+        version: int | None = None,
+        description: str | None = "",
+        labels: list[str] | None = None,
+        inference_helper_columns: list[str] | None = None,
+        training_helper_columns: list[str] | None = None,
+        transformation_functions: list[TransformationFunction | HopsworksUdf]
+        | None = None,
+        featurestore_name: str | None = None,
+        serving_keys: list[skm.ServingKey] | None = None,
+        logging_enabled: bool | None = False,
+        extra_log_columns: list[Feature] | dict[str, str] | None = None,
         **kwargs,
     ) -> None:
         self._name = name
@@ -163,7 +157,7 @@ class FeatureView:
             training_helper_columns if training_helper_columns else []
         )
 
-        self._transformation_functions: List[TransformationFunction] = []
+        self._transformation_functions: list[TransformationFunction] = []
 
         if transformation_functions:
             for transformation_function in transformation_functions:
@@ -200,13 +194,13 @@ class FeatureView:
         self._transformation_function_engine: transformation_function_engine.TransformationFunctionEngine = transformation_function_engine.TransformationFunctionEngine(
             featurestore_id
         )
-        self.__vector_server: Optional[vector_server.VectorServer] = None
-        self.__batch_scoring_server: Optional[vector_server.VectorServer] = None
-        self.__fully_qualified_primary_keys: List[str] = None
-        self.__fully_qualified_event_time: List[str] = None
+        self.__vector_server: vector_server.VectorServer | None = None
+        self.__batch_scoring_server: vector_server.VectorServer | None = None
+        self.__fully_qualified_primary_keys: list[str] = None
+        self.__fully_qualified_event_time: list[str] = None
         self._serving_keys = serving_keys if serving_keys else []
         self._prefix_serving_key_map = {}
-        self._primary_keys: Set[str] = set()  # Lazy initialized via serving keys
+        self._primary_keys: set[str] = set()  # Lazy initialized via serving keys
 
         self._vector_db_client = None
         self._statistics_engine = statistics_engine.StatisticsEngine(
@@ -216,7 +210,7 @@ class FeatureView:
         self._feature_logging = None
         self._alert_api = alerts_api.AlertsApi()
 
-        self._extra_log_columns: List[Feature] = (
+        self._extra_log_columns: list[Feature] = (
             [
                 Feature.from_response_json(feat) if isinstance(feat, dict) else feat
                 for feat in extra_log_columns
@@ -269,9 +263,7 @@ class FeatureView:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """
         warnings.warn(
-            "All jobs associated to feature view `{}`, version `{}` will be removed.".format(
-                self._name, self._version
-            ),
+            f"All jobs associated to feature view `{self._name}`, version `{self._version}` will be removed.",
             util.JobWarning,
             stacklevel=2,
         )
@@ -343,15 +335,15 @@ class FeatureView:
     @usage.method_logger
     def init_serving(
         self,
-        training_dataset_version: Optional[int] = None,
-        external: Optional[bool] = None,
-        options: Optional[Dict[str, Any]] = None,
-        init_sql_client: Optional[bool] = None,
+        training_dataset_version: int | None = None,
+        external: bool | None = None,
+        options: dict[str, Any] | None = None,
+        init_sql_client: bool | None = None,
         init_rest_client: bool = False,
         reset_rest_client: bool = False,
-        config_rest_client: Optional[Dict[str, Any]] = None,
-        default_client: Optional[Literal["sql", "rest"]] = None,
-        feature_logger: Optional[FeatureLogger] = None,
+        config_rest_client: dict[str, Any] | None = None,
+        default_client: Literal["sql", "rest"] | None = None,
+        feature_logger: FeatureLogger | None = None,
         **kwargs,
     ) -> None:
         """Initialise feature view to retrieve feature vector from online and offline feature store.
@@ -480,8 +472,8 @@ class FeatureView:
 
     @staticmethod
     def _sort_transformation_functions(
-        transformation_functions: List[TransformationFunction],
-    ) -> List[TransformationFunction]:
+        transformation_functions: list[TransformationFunction],
+    ) -> list[TransformationFunction]:
         """Function that sorts transformation functions in the order of the output column names.
 
         The list of transformation functions are sorted based on the output columns names to maintain consistent ordering.
@@ -496,7 +488,7 @@ class FeatureView:
 
     def init_batch_scoring(
         self,
-        training_dataset_version: Optional[int] = None,
+        training_dataset_version: int | None = None,
     ) -> None:
         """Initialise feature view to retrieve feature vector from offline feature store.
 
@@ -525,8 +517,8 @@ class FeatureView:
 
     def get_batch_query(
         self,
-        start_time: Optional[Union[str, int, datetime, date]] = None,
-        end_time: Optional[Union[str, int, datetime, date]] = None,
+        start_time: str | int | datetime | date | None = None,
+        end_time: str | int | datetime | date | None = None,
     ) -> str:
         """Get a query string of the batch query.
 
@@ -578,21 +570,25 @@ class FeatureView:
 
     def get_feature_vector(
         self,
-        entry: Optional[Dict[str, Any]] = None,
-        passed_features: Optional[Dict[str, Any]] = None,
-        external: Optional[bool] = None,
+        entry: dict[str, Any] | None = None,
+        passed_features: dict[str, Any] | None = None,
+        external: bool | None = None,
         return_type: Literal["list", "polars", "numpy", "pandas"] = "list",
         allow_missing: bool = False,
         force_rest_client: bool = False,
         force_sql_client: bool = False,
-        transform: Optional[bool] = True,
-        on_demand_features: Optional[bool] = True,
-        request_parameters: Optional[Dict[str, Any]] = None,
-        transformation_context: Dict[str, Any] = None,
+        transform: bool | None = True,
+        on_demand_features: bool | None = True,
+        request_parameters: dict[str, Any] | None = None,
+        transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
-    ) -> Union[
-        List[Any], pd.DataFrame, np.ndarray, pl.DataFrame, HopsworksLoggingMetadataType
-    ]:
+    ) -> (
+        list[Any]
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+        | HopsworksLoggingMetadataType
+    ):
         """Returns assembled feature vector from online feature store.
 
         Call [`feature_view.init_serving`](#init_serving) before this method if the following configurations are needed:
@@ -734,25 +730,25 @@ class FeatureView:
 
     def get_feature_vectors(
         self,
-        entry: Optional[List[Dict[str, Any]]] = None,
-        passed_features: Optional[List[Dict[str, Any]]] = None,
-        external: Optional[bool] = None,
+        entry: list[dict[str, Any]] | None = None,
+        passed_features: list[dict[str, Any]] | None = None,
+        external: bool | None = None,
         return_type: Literal["list", "polars", "numpy", "pandas"] = "list",
         allow_missing: bool = False,
         force_rest_client: bool = False,
         force_sql_client: bool = False,
-        transform: Optional[bool] = True,
-        on_demand_features: Optional[bool] = True,
-        request_parameters: Optional[List[Dict[str, Any]]] = None,
-        transformation_context: Dict[str, Any] = None,
+        transform: bool | None = True,
+        on_demand_features: bool | None = True,
+        request_parameters: list[dict[str, Any]] | None = None,
+        transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
-    ) -> Union[
-        List[List[Any]],
-        pd.DataFrame,
-        np.ndarray,
-        pl.DataFrame,
-        HopsworksLoggingMetadataType,
-    ]:
+    ) -> (
+        list[list[Any]]
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+        | HopsworksLoggingMetadataType
+    ):
         """Returns assembled feature vectors in batches from online feature store.
 
         Call [`feature_view.init_serving`](#init_serving) before this method if the following configurations are needed.
@@ -893,12 +889,12 @@ class FeatureView:
 
     def get_inference_helper(
         self,
-        entry: Dict[str, Any],
-        external: Optional[bool] = None,
+        entry: dict[str, Any],
+        external: bool | None = None,
         return_type: Literal["pandas", "dict", "polars"] = "pandas",
         force_rest_client: bool = False,
         force_sql_client: bool = False,
-    ) -> Union[pd.DataFrame, pl.DataFrame, Dict[str, Any]]:
+    ) -> pd.DataFrame | pl.DataFrame | dict[str, Any]:
         """Returns assembled inference helper column vectors from online feature store.
 
         Example:
@@ -939,12 +935,12 @@ class FeatureView:
 
     def get_inference_helpers(
         self,
-        entry: List[Dict[str, Any]],
-        external: Optional[bool] = None,
+        entry: list[dict[str, Any]],
+        external: bool | None = None,
         return_type: Literal["pandas", "dict", "polars"] = "pandas",
         force_sql_client: bool = False,
         force_rest_client: bool = False,
-    ) -> Union[List[Dict[str, Any]], pd.DataFrame, pl.DataFrame]:
+    ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
         """Returns assembled inference helper column vectors in batches from online feature store.
 
         Warning: Missing primary key entries
@@ -993,8 +989,8 @@ class FeatureView:
 
     def _get_vector_db_result(
         self,
-        entry: Dict[str, Any],
-    ) -> Optional[Dict[str, Any]]:
+        entry: dict[str, Any],
+    ) -> dict[str, Any] | None:
         if not self._vector_db_client:
             return {}
         result_vectors = {}
@@ -1020,13 +1016,13 @@ class FeatureView:
 
     def find_neighbors(
         self,
-        embedding: List[Union[int, float]],
-        feature: Optional[Feature] = None,
-        k: Optional[int] = 10,
-        filter: Optional[Union[Filter, Logic]] = None,
-        external: Optional[bool] = None,
+        embedding: list[int | float],
+        feature: Feature | None = None,
+        k: int | None = 10,
+        filter: Filter | Logic | None = None,
+        external: bool | None = None,
         return_type: Literal["list", "polars", "pandas"] = "list",
-    ) -> List[List[Any]]:
+    ) -> list[list[Any]]:
         """Finds the nearest neighbors for a given embedding in the vector database.
 
         If `filter` is specified, or if embedding feature is stored in default project index, the number of results returned may be less than k.
@@ -1097,7 +1093,7 @@ class FeatureView:
             allow_missing=True,
         )
 
-    def _extract_primary_key(self, result_key: Dict[str, str]) -> Dict[str, str]:
+    def _extract_primary_key(self, result_key: dict[str, str]) -> dict[str, str]:
         primary_key_map = {}
         for prefix_sk, sk in self._prefix_serving_key_map.items():
             if prefix_sk in result_key:
@@ -1114,27 +1110,27 @@ class FeatureView:
 
     def _get_embedding_fgs(
         self,
-    ) -> Set[feature_group.FeatureGroup]:
+    ) -> set[feature_group.FeatureGroup]:
         return {fg for fg in self.query.featuregroups if fg.embedding_index}
 
     @usage.method_logger
     def get_batch_data(
         self,
-        start_time: Optional[Union[str, int, datetime, date]] = None,
-        end_time: Optional[Union[str, int, datetime, date]] = None,
-        read_options: Optional[Dict[str, Any]] = None,
-        spine: Optional[SplineDataFrameTypes] = None,
+        start_time: str | int | datetime | date | None = None,
+        end_time: str | int | datetime | date | None = None,
+        read_options: dict[str, Any] | None = None,
+        spine: SplineDataFrameTypes | None = None,
         primary_key: bool = False,
         event_time: bool = False,
         inference_helper_columns: bool = False,
         dataframe_type: Literal[
             "default", "spark", "pandas", "polars", "numpy", "python"
         ] = "default",
-        transformed: Optional[bool] = True,
-        transformation_context: Dict[str, Any] = None,
+        transformed: bool | None = True,
+        transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
         **kwargs,
-    ) -> Union[TrainingDatasetDataFrameTypes, HopsworksLoggingMetadataType]:
+    ) -> TrainingDatasetDataFrameTypes | HopsworksLoggingMetadataType:
         """Get a batch of data from an event time interval from the offline feature store.
 
         Example: Batch data for the last 24 hours
@@ -1288,7 +1284,7 @@ class FeatureView:
         """
         return self._feature_view_engine.add_tag(self, name, value)
 
-    def get_tag(self, name: str) -> Optional[tag.Tag]:
+    def get_tag(self, name: str) -> tag.Tag | None:
         """Get the tags of a feature view.
 
         Example:
@@ -1314,7 +1310,7 @@ class FeatureView:
         """
         return self._feature_view_engine.get_tag(self, name)
 
-    def get_tags(self) -> Dict[str, tag.Tag]:
+    def get_tags(self) -> dict[str, tag.Tag]:
         """Returns all tags attached to a feature view.
 
         Example:
@@ -1337,7 +1333,7 @@ class FeatureView:
         """
         return self._feature_view_engine.get_tags(self)
 
-    def get_parent_feature_groups(self) -> Optional["explicit_provenance.Links"]:
+    def get_parent_feature_groups(self) -> explicit_provenance.Links | None:
         """Get the parents of this feature view, based on explicit provenance.
 
         Parents are feature groups or external feature groups. These feature
@@ -1354,8 +1350,8 @@ class FeatureView:
         return self._feature_view_engine.get_parent_feature_groups(self)
 
     def get_newest_model(
-        self, training_dataset_version: Optional[int] = None
-    ) -> Optional[Model]:
+        self, training_dataset_version: int | None = None
+    ) -> Model | None:
         """Get the latest generated model using this feature view, based on explicit provenance.
 
         Search only through the accessible models.
@@ -1376,7 +1372,7 @@ class FeatureView:
             return models[0]
         return None
 
-    def get_models(self, training_dataset_version: Optional[int] = None) -> List[Model]:
+    def get_models(self, training_dataset_version: int | None = None) -> list[Model]:
         """Get the generated models using this feature view, based on explicit provenance.
 
         Only the accessible models are returned.
@@ -1399,8 +1395,8 @@ class FeatureView:
         return []
 
     def get_models_provenance(
-        self, training_dataset_version: Optional[int] = None
-    ) -> "explicit_provenance.Links":
+        self, training_dataset_version: int | None = None
+    ) -> explicit_provenance.Links:
         """Get the generated models using this feature view, based on explicit provenance.
 
         These models can be accessible or inaccessible.
@@ -1453,21 +1449,21 @@ class FeatureView:
     @usage.method_logger
     def create_training_data(
         self,
-        start_time: Optional[Union[str, int, datetime, date]] = "",
-        end_time: Optional[Union[str, int, datetime, date]] = "",
-        storage_connector: Optional[storage_connector.StorageConnector] = None,
-        location: Optional[str] = "",
-        description: Optional[str] = "",
-        extra_filter: Optional[Union[filter.Filter, filter.Logic]] = None,
-        data_format: Optional[str] = "parquet",
-        coalesce: Optional[bool] = False,
-        seed: Optional[int] = None,
-        statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
-        write_options: Optional[Dict[Any, Any]] = None,
-        spine: Optional[SplineDataFrameTypes] = None,
-        transformation_context: Dict[str, Any] = None,
+        start_time: str | int | datetime | date | None = "",
+        end_time: str | int | datetime | date | None = "",
+        storage_connector: storage_connector.StorageConnector | None = None,
+        location: str | None = "",
+        description: str | None = "",
+        extra_filter: filter.Filter | filter.Logic | None = None,
+        data_format: str | None = "parquet",
+        coalesce: bool | None = False,
+        seed: int | None = None,
+        statistics_config: StatisticsConfig | bool | dict | None = None,
+        write_options: dict[Any, Any] | None = None,
+        spine: SplineDataFrameTypes | None = None,
+        transformation_context: dict[str, Any] = None,
         **kwargs,
-    ) -> Tuple[int, job.Job]:
+    ) -> tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
 
         The training data can be retrieved by calling `feature_view.get_training_data`.
@@ -1664,7 +1660,7 @@ class FeatureView:
             transformation_context=transformation_context,
         )
         warnings.warn(
-            "Incremented version to `{}`.".format(td.version),
+            f"Incremented version to `{td.version}`.",
             util.VersionWarning,
             stacklevel=1,
         )
@@ -1675,24 +1671,24 @@ class FeatureView:
     @usage.method_logger
     def create_train_test_split(
         self,
-        test_size: Optional[float] = None,
-        train_start: Optional[Union[str, int, datetime, date]] = "",
-        train_end: Optional[Union[str, int, datetime, date]] = "",
-        test_start: Optional[Union[str, int, datetime, date]] = "",
-        test_end: Optional[Union[str, int, datetime, date]] = "",
-        storage_connector: Optional[storage_connector.StorageConnector] = None,
-        location: Optional[str] = "",
-        description: Optional[str] = "",
-        extra_filter: Optional[Union[filter.Filter, filter.Logic]] = None,
-        data_format: Optional[str] = "parquet",
-        coalesce: Optional[bool] = False,
-        seed: Optional[int] = None,
-        statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
-        write_options: Optional[Dict[Any, Any]] = None,
-        spine: Optional[SplineDataFrameTypes] = None,
-        transformation_context: Dict[str, Any] = None,
+        test_size: float | None = None,
+        train_start: str | int | datetime | date | None = "",
+        train_end: str | int | datetime | date | None = "",
+        test_start: str | int | datetime | date | None = "",
+        test_end: str | int | datetime | date | None = "",
+        storage_connector: storage_connector.StorageConnector | None = None,
+        location: str | None = "",
+        description: str | None = "",
+        extra_filter: filter.Filter | filter.Logic | None = None,
+        data_format: str | None = "parquet",
+        coalesce: bool | None = False,
+        seed: int | None = None,
+        statistics_config: StatisticsConfig | bool | dict | None = None,
+        write_options: dict[Any, Any] | None = None,
+        spine: SplineDataFrameTypes | None = None,
+        transformation_context: dict[str, Any] = None,
         **kwargs,
-    ) -> Tuple[int, job.Job]:
+    ) -> tuple[int, job.Job]:
         # TODO: Convert the docstrings from this point on:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
 
@@ -1947,7 +1943,7 @@ class FeatureView:
             transformation_context=transformation_context,
         )
         warnings.warn(
-            "Incremented version to `{}`.".format(td.version),
+            f"Incremented version to `{td.version}`.",
             util.VersionWarning,
             stacklevel=1,
         )
@@ -1957,27 +1953,27 @@ class FeatureView:
     @usage.method_logger
     def create_train_validation_test_split(
         self,
-        validation_size: Optional[float] = None,
-        test_size: Optional[float] = None,
-        train_start: Optional[Union[str, int, datetime, date]] = "",
-        train_end: Optional[Union[str, int, datetime, date]] = "",
-        validation_start: Optional[Union[str, int, datetime, date]] = "",
-        validation_end: Optional[Union[str, int, datetime, date]] = "",
-        test_start: Optional[Union[str, int, datetime, date]] = "",
-        test_end: Optional[Union[str, int, datetime, date]] = "",
-        storage_connector: Optional[storage_connector.StorageConnector] = None,
-        location: Optional[str] = "",
-        description: Optional[str] = "",
-        extra_filter: Optional[Union[filter.Filter, filter.Logic]] = None,
-        data_format: Optional[str] = "parquet",
-        coalesce: Optional[bool] = False,
-        seed: Optional[int] = None,
-        statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
-        write_options: Optional[Dict[Any, Any]] = None,
-        spine: Optional[SplineDataFrameTypes] = None,
-        transformation_context: Dict[str, Any] = None,
+        validation_size: float | None = None,
+        test_size: float | None = None,
+        train_start: str | int | datetime | date | None = "",
+        train_end: str | int | datetime | date | None = "",
+        validation_start: str | int | datetime | date | None = "",
+        validation_end: str | int | datetime | date | None = "",
+        test_start: str | int | datetime | date | None = "",
+        test_end: str | int | datetime | date | None = "",
+        storage_connector: storage_connector.StorageConnector | None = None,
+        location: str | None = "",
+        description: str | None = "",
+        extra_filter: filter.Filter | filter.Logic | None = None,
+        data_format: str | None = "parquet",
+        coalesce: bool | None = False,
+        seed: int | None = None,
+        statistics_config: StatisticsConfig | bool | dict | None = None,
+        write_options: dict[Any, Any] | None = None,
+        spine: SplineDataFrameTypes | None = None,
+        transformation_context: dict[str, Any] = None,
         **kwargs,
-    ) -> Tuple[int, job.Job]:
+    ) -> tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
 
         The training data is split into train, validation, and test set at random or according to time range.
@@ -2225,7 +2221,7 @@ class FeatureView:
             transformation_context=transformation_context,
         )
         warnings.warn(
-            "Incremented version to `{}`.".format(td.version),
+            f"Incremented version to `{td.version}`.",
             util.VersionWarning,
             stacklevel=1,
         )
@@ -2237,10 +2233,10 @@ class FeatureView:
     def recreate_training_dataset(
         self,
         training_dataset_version: int,
-        statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
-        write_options: Optional[Dict[Any, Any]] = None,
-        spine: Optional[SplineDataFrameTypes] = None,
-        transformation_context: Dict[str, Any] = None,
+        statistics_config: StatisticsConfig | bool | dict | None = None,
+        write_options: dict[Any, Any] | None = None,
+        spine: SplineDataFrameTypes | None = None,
+        transformation_context: dict[str, Any] = None,
     ) -> job.Job:
         """Recreate a training dataset.
 
@@ -2317,22 +2313,22 @@ class FeatureView:
     @usage.method_logger
     def training_data(
         self,
-        start_time: Optional[Union[str, int, datetime, date]] = None,
-        end_time: Optional[Union[str, int, datetime, date]] = None,
-        description: Optional[str] = "",
-        extra_filter: Optional[Union[filter.Filter, filter.Logic]] = None,
-        statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
-        read_options: Optional[Dict[Any, Any]] = None,
-        spine: Optional[SplineDataFrameTypes] = None,
+        start_time: str | int | datetime | date | None = None,
+        end_time: str | int | datetime | date | None = None,
+        description: str | None = "",
+        extra_filter: filter.Filter | filter.Logic | None = None,
+        statistics_config: StatisticsConfig | bool | dict | None = None,
+        read_options: dict[Any, Any] | None = None,
+        spine: SplineDataFrameTypes | None = None,
         primary_key: bool = False,
         event_time: bool = False,
         training_helper_columns: bool = False,
-        dataframe_type: Optional[str] = "default",
-        transformation_context: Dict[str, Any] = None,
+        dataframe_type: str | None = "default",
+        transformation_context: dict[str, Any] = None,
         **kwargs,
-    ) -> Tuple[
+    ) -> tuple[
         TrainingDatasetDataFrameTypes,
-        Optional[TrainingDatasetDataFrameTypes],  # optional label DataFrame
+        TrainingDatasetDataFrameTypes | None,  # optional label DataFrame
     ]:
         """Create the metadata for a training dataset and get the corresponding training data from the offline feature store.
 
@@ -2460,7 +2456,7 @@ class FeatureView:
             transformation_context=transformation_context,
         )
         warnings.warn(
-            "Incremented version to `{}`.".format(td.version),
+            f"Incremented version to `{td.version}`.",
             util.VersionWarning,
             stacklevel=1,
         )
@@ -2470,27 +2466,27 @@ class FeatureView:
     @usage.method_logger
     def train_test_split(
         self,
-        test_size: Optional[float] = None,
-        train_start: Optional[Union[str, int, datetime, date]] = "",
-        train_end: Optional[Union[str, int, datetime, date]] = "",
-        test_start: Optional[Union[str, int, datetime, date]] = "",
-        test_end: Optional[Union[str, int, datetime, date]] = "",
-        description: Optional[str] = "",
-        extra_filter: Optional[Union[filter.Filter, filter.Logic]] = None,
-        statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
-        read_options: Optional[Dict[Any, Any]] = None,
-        spine: Optional[SplineDataFrameTypes] = None,
+        test_size: float | None = None,
+        train_start: str | int | datetime | date | None = "",
+        train_end: str | int | datetime | date | None = "",
+        test_start: str | int | datetime | date | None = "",
+        test_end: str | int | datetime | date | None = "",
+        description: str | None = "",
+        extra_filter: filter.Filter | filter.Logic | None = None,
+        statistics_config: StatisticsConfig | bool | dict | None = None,
+        read_options: dict[Any, Any] | None = None,
+        spine: SplineDataFrameTypes | None = None,
         primary_key: bool = False,
         event_time: bool = False,
         training_helper_columns: bool = False,
-        dataframe_type: Optional[str] = "default",
-        transformation_context: Dict[str, Any] = None,
+        dataframe_type: str | None = "default",
+        transformation_context: dict[str, Any] = None,
         **kwargs,
-    ) -> Tuple[
+    ) -> tuple[
         TrainingDatasetDataFrameTypes,
         TrainingDatasetDataFrameTypes,
-        Optional[TrainingDatasetDataFrameTypes],
-        Optional[TrainingDatasetDataFrameTypes],
+        TrainingDatasetDataFrameTypes | None,
+        TrainingDatasetDataFrameTypes | None,
     ]:
         """Create the metadata for a training dataset and get the corresponding training data from the offline feature store.
 
@@ -2637,7 +2633,7 @@ class FeatureView:
             transformation_context=transformation_context,
         )
         warnings.warn(
-            "Incremented version to `{}`.".format(td.version),
+            f"Incremented version to `{td.version}`.",
             util.VersionWarning,
             stacklevel=1,
         )
@@ -2646,9 +2642,9 @@ class FeatureView:
 
     @staticmethod
     def _validate_train_test_split(
-        test_size: Optional[float],
-        train_end: Optional[Union[str, int, datetime, date]],
-        test_start: Optional[Union[str, int, datetime, date]],
+        test_size: float | None,
+        train_end: str | int | datetime | date | None,
+        test_start: str | int | datetime | date | None,
     ) -> None:
         if not ((test_size and 0 < test_size < 1) or (train_end or test_start)):
             raise ValueError(
@@ -2660,32 +2656,32 @@ class FeatureView:
     @usage.method_logger
     def train_validation_test_split(
         self,
-        validation_size: Optional[float] = None,
-        test_size: Optional[float] = None,
-        train_start: Optional[Union[str, int, datetime, date]] = "",
-        train_end: Optional[Union[str, int, datetime, date]] = "",
-        validation_start: Optional[Union[str, int, datetime, date]] = "",
-        validation_end: Optional[Union[str, int, datetime, date]] = "",
-        test_start: Optional[Union[str, int, datetime, date]] = "",
-        test_end: Optional[Union[str, int, datetime, date]] = "",
-        description: Optional[str] = "",
-        extra_filter: Optional[Union[filter.Filter, filter.Logic]] = None,
-        statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
-        read_options: Optional[Dict[Any, Any]] = None,
-        spine: Optional[SplineDataFrameTypes] = None,
+        validation_size: float | None = None,
+        test_size: float | None = None,
+        train_start: str | int | datetime | date | None = "",
+        train_end: str | int | datetime | date | None = "",
+        validation_start: str | int | datetime | date | None = "",
+        validation_end: str | int | datetime | date | None = "",
+        test_start: str | int | datetime | date | None = "",
+        test_end: str | int | datetime | date | None = "",
+        description: str | None = "",
+        extra_filter: filter.Filter | filter.Logic | None = None,
+        statistics_config: StatisticsConfig | bool | dict | None = None,
+        read_options: dict[Any, Any] | None = None,
+        spine: SplineDataFrameTypes | None = None,
         primary_key: bool = False,
         event_time: bool = False,
         training_helper_columns: bool = False,
-        dataframe_type: Optional[str] = "default",
-        transformation_context: Dict[str, Any] = None,
+        dataframe_type: str | None = "default",
+        transformation_context: dict[str, Any] = None,
         **kwargs,
-    ) -> Tuple[
+    ) -> tuple[
         TrainingDatasetDataFrameTypes,
         TrainingDatasetDataFrameTypes,
         TrainingDatasetDataFrameTypes,
-        Optional[TrainingDatasetDataFrameTypes],
-        Optional[TrainingDatasetDataFrameTypes],
-        Optional[TrainingDatasetDataFrameTypes],
+        TrainingDatasetDataFrameTypes | None,
+        TrainingDatasetDataFrameTypes | None,
+        TrainingDatasetDataFrameTypes | None,
     ]:
         """Create the metadata for a training dataset and get the corresponding training data from the offline feature store.
 
@@ -2857,7 +2853,7 @@ class FeatureView:
             transformation_context=transformation_context,
         )
         warnings.warn(
-            "Incremented version to `{}`.".format(td.version),
+            f"Incremented version to `{td.version}`.",
             util.VersionWarning,
             stacklevel=1,
         )
@@ -2866,12 +2862,12 @@ class FeatureView:
 
     @staticmethod
     def _validate_train_validation_test_split(
-        validation_size: Optional[float],
-        test_size: Optional[float],
-        train_end: Optional[Union[str, int, datetime, date]],
-        validation_start: Optional[Union[str, int, datetime, date]],
-        validation_end: Optional[Union[str, int, datetime, date]],
-        test_start: Optional[Union[str, int, datetime, date]],
+        validation_size: float | None,
+        test_size: float | None,
+        train_end: str | int | datetime | date | None,
+        validation_start: str | int | datetime | date | None,
+        validation_end: str | int | datetime | date | None,
+        test_start: str | int | datetime | date | None,
     ) -> None:
         if not (
             (validation_size and 0 < validation_size < 1)
@@ -2889,16 +2885,16 @@ class FeatureView:
     def get_training_data(
         self,
         training_dataset_version: int,
-        read_options: Optional[Dict[str, Any]] = None,
+        read_options: dict[str, Any] | None = None,
         primary_key: bool = False,
         event_time: bool = False,
         training_helper_columns: bool = False,
-        dataframe_type: Optional[str] = "default",
-        transformation_context: Dict[str, Any] = None,
+        dataframe_type: str | None = "default",
+        transformation_context: dict[str, Any] = None,
         **kwargs,
-    ) -> Tuple[
+    ) -> tuple[
         TrainingDatasetDataFrameTypes,
-        Optional[TrainingDatasetDataFrameTypes],
+        TrainingDatasetDataFrameTypes | None,
     ]:
         """Get training data created by `feature_view.create_training_data` or `feature_view.training_data`.
 
@@ -2960,18 +2956,18 @@ class FeatureView:
     def get_train_test_split(
         self,
         training_dataset_version: int,
-        read_options: Optional[Dict[Any, Any]] = None,
+        read_options: dict[Any, Any] | None = None,
         primary_key: bool = False,
         event_time: bool = False,
         training_helper_columns: bool = False,
-        dataframe_type: Optional[str] = "default",
-        transformation_context: Dict[str, Any] = None,
+        dataframe_type: str | None = "default",
+        transformation_context: dict[str, Any] = None,
         **kwargs,
-    ) -> Tuple[
+    ) -> tuple[
         TrainingDatasetDataFrameTypes,
         TrainingDatasetDataFrameTypes,
-        Optional[TrainingDatasetDataFrameTypes],
-        Optional[TrainingDatasetDataFrameTypes],
+        TrainingDatasetDataFrameTypes | None,
+        TrainingDatasetDataFrameTypes | None,
     ]:
         """Get training data created by `feature_view.create_train_test_split` or `feature_view.train_test_split`.
 
@@ -3032,20 +3028,20 @@ class FeatureView:
     def get_train_validation_test_split(
         self,
         training_dataset_version: int,
-        read_options: Optional[Dict[str, Any]] = None,
+        read_options: dict[str, Any] | None = None,
         primary_key: bool = False,
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: str = "default",
-        transformation_context: Dict[str, Any] = None,
+        transformation_context: dict[str, Any] = None,
         **kwargs,
-    ) -> Tuple[
+    ) -> tuple[
         TrainingDatasetDataFrameTypes,
         TrainingDatasetDataFrameTypes,
         TrainingDatasetDataFrameTypes,
-        Optional[TrainingDatasetDataFrameTypes],
-        Optional[TrainingDatasetDataFrameTypes],
-        Optional[TrainingDatasetDataFrameTypes],
+        TrainingDatasetDataFrameTypes | None,
+        TrainingDatasetDataFrameTypes | None,
+        TrainingDatasetDataFrameTypes | None,
     ]:
         """Get training data created by `feature_view.create_train_validation_test_split` or `feature_view.train_validation_test_split`.
 
@@ -3107,7 +3103,7 @@ class FeatureView:
         return df
 
     @usage.method_logger
-    def get_training_datasets(self) -> List["training_dataset.TrainingDatasetBase"]:
+    def get_training_datasets(self) -> list[training_dataset.TrainingDatasetBase]:
         """Returns the metadata of all training datasets created with this feature view.
 
         Example:
@@ -3135,7 +3131,7 @@ class FeatureView:
         self,
         training_dataset_version: int,
         before_transformation: bool = False,
-        feature_names: Optional[List[str]] = None,
+        feature_names: list[str] | None = None,
     ) -> Statistics:
         """Get statistics of a training dataset.
 
@@ -3171,7 +3167,7 @@ class FeatureView:
         self,
         training_dataset_version: int,
         name: str,
-        value: Union[Dict[str, Any], "tag.Tag"],
+        value: dict[str, Any] | tag.Tag,
     ) -> None:
         """Attach a tag to a training dataset.
 
@@ -3206,7 +3202,7 @@ class FeatureView:
     @usage.method_logger
     def get_training_dataset_tag(
         self, training_dataset_version: int, name: str
-    ) -> Optional[tag.Tag]:
+    ) -> tag.Tag | None:
         """Get the tags of a training dataset.
 
         Example:
@@ -3241,7 +3237,7 @@ class FeatureView:
     @usage.method_logger
     def get_training_dataset_tags(
         self, training_dataset_version: int
-    ) -> Dict[str, tag.Tag]:
+    ) -> dict[str, tag.Tag]:
         """Returns all tags attached to a training dataset.
 
         Example:
@@ -3406,12 +3402,10 @@ class FeatureView:
 
     def get_feature_monitoring_configs(
         self,
-        name: Optional[str] = None,
-        feature_name: Optional[str] = None,
-        config_id: Optional[int] = None,
-    ) -> Union[
-        "fmc.FeatureMonitoringConfig", List["fmc.FeatureMonitoringConfig"], None
-    ]:
+        name: str | None = None,
+        feature_name: str | None = None,
+        config_id: int | None = None,
+    ) -> fmc.FeatureMonitoringConfig | list[fmc.FeatureMonitoringConfig] | None:
         """Fetch feature monitoring configs attached to the feature view.
 
         If no arguments is provided the method will return all feature monitoring configs
@@ -3467,12 +3461,12 @@ class FeatureView:
 
     def get_feature_monitoring_history(
         self,
-        config_name: Optional[str] = None,
-        config_id: Optional[int] = None,
-        start_time: Optional[Union[int, str, datetime, date]] = None,
-        end_time: Optional[Union[int, str, datetime, date]] = None,
-        with_statistics: Optional[bool] = True,
-    ) -> List["fmr.FeatureMonitoringResult"]:
+        config_name: str | None = None,
+        config_id: int | None = None,
+        start_time: int | str | datetime | date | None = None,
+        end_time: int | str | datetime | date | None = None,
+        with_statistics: bool | None = True,
+    ) -> list[fmr.FeatureMonitoringResult]:
         """Fetch feature monitoring history for a given feature monitoring config.
 
         Example:
@@ -3533,12 +3527,12 @@ class FeatureView:
     def create_statistics_monitoring(
         self,
         name: str,
-        feature_name: Optional[str] = None,
-        description: Optional[str] = None,
-        start_date_time: Optional[Union[int, str, datetime, date, pd.Timestamp]] = None,
-        end_date_time: Optional[Union[int, str, datetime, date, pd.Timestamp]] = None,
-        cron_expression: Optional[str] = "0 0 12 ? * * *",
-    ) -> "fmc.FeatureMonitoringConfig":
+        feature_name: str | None = None,
+        description: str | None = None,
+        start_date_time: int | str | datetime | date | pd.Timestamp | None = None,
+        end_date_time: int | str | datetime | date | pd.Timestamp | None = None,
+        cron_expression: str | None = "0 0 12 ? * * *",
+    ) -> fmc.FeatureMonitoringConfig:
         """Run a job to compute statistics on snapshot of feature data on a schedule.
 
         Experimental:
@@ -3599,11 +3593,11 @@ class FeatureView:
         self,
         name: str,
         feature_name: str,
-        description: Optional[str] = None,
-        start_date_time: Optional[Union[int, str, datetime, date, pd.Timestamp]] = None,
-        end_date_time: Optional[Union[int, str, datetime, date, pd.Timestamp]] = None,
-        cron_expression: Optional[str] = "0 0 12 ? * * *",
-    ) -> "fmc.FeatureMonitoringConfig":
+        description: str | None = None,
+        start_date_time: int | str | datetime | date | pd.Timestamp | None = None,
+        end_date_time: int | str | datetime | date | pd.Timestamp | None = None,
+        cron_expression: str | None = "0 0 12 ? * * *",
+    ) -> fmc.FeatureMonitoringConfig:
         """Enable feature monitoring to compare statistics on snapshots of feature data over time.
 
         Experimental:
@@ -3744,7 +3738,7 @@ class FeatureView:
         )
 
     @classmethod
-    def from_response_json(cls, json_dict: Dict[str, Any]) -> "FeatureView":
+    def from_response_json(cls, json_dict: dict[str, Any]) -> FeatureView:
         """Function that constructs the class object from its json serialization.
 
         Parameters:
@@ -3804,7 +3798,7 @@ class FeatureView:
         ]
         return fv
 
-    def update_from_response_json(self, json_dict: Dict[str, Any]) -> "FeatureView":
+    def update_from_response_json(self, json_dict: dict[str, Any]) -> FeatureView:
         """Function that updates the class object from its json serialization.
 
         Parameters:
@@ -3835,14 +3829,14 @@ class FeatureView:
 
     def compute_on_demand_features(
         self,
-        feature_vector: Optional[
-            Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]
-        ] = None,
-        request_parameters: Optional[
-            Union[List[Dict[str, Any]], Dict[str, Any]]
-        ] = None,
-        transformation_context: Dict[str, Any] = None,
-        return_type: Union[Literal["list", "numpy", "pandas", "polars"]] = None,
+        feature_vector: list[Any]
+        | list[list[Any]]
+        | pd.DataFrame
+        | pl.DataFrame
+        | None = None,
+        request_parameters: list[dict[str, Any]] | dict[str, Any] | None = None,
+        transformation_context: dict[str, Any] = None,
+        return_type: Literal["list", "numpy", "pandas", "polars"] = None,
     ):
         """Function computes on-demand features present in the feature view.
 
@@ -3865,10 +3859,10 @@ class FeatureView:
 
     def transform(
         self,
-        feature_vector: Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame],
-        external: Optional[bool] = None,
-        transformation_context: Dict[str, Any] = None,
-        return_type: Union[Literal["list", "numpy", "pandas", "polars"]] = None,
+        feature_vector: list[Any] | list[list[Any]] | pd.DataFrame | pl.DataFrame,
+        external: bool | None = None,
+        transformation_context: dict[str, Any] = None,
+        return_type: Literal["list", "numpy", "pandas", "polars"] = None,
     ):
         """Transform the input feature vector by applying Model-dependent transformations attached to the feature view.
 
@@ -3900,7 +3894,7 @@ class FeatureView:
         )
 
     def enable_logging(
-        self, extra_log_columns: Union[Feature, Dict[str, str]] = None
+        self, extra_log_columns: Feature | dict[str, str] = None
     ) -> None:
         """Enable feature logging for the current feature view.
 
@@ -3958,88 +3952,68 @@ class FeatureView:
 
     def log(
         self,
-        logging_data: Union[
-            pd.DataFrame,
-            pl.DataFrame,
-            List[List[Any]],
-            List[Dict[str, Any]],
-            np.ndarray,
-            TypeVar("pyspark.sql.DataFrame"),
-        ] = None,
-        untransformed_features: Optional[
-            Union[
-                pd.DataFrame,
-                pl.DataFrame,
-                List[List[Any]],
-                List[Dict[str, Any]],
-                np.ndarray,
-                TypeVar("pyspark.sql.DataFrame"),
-            ]
-        ] = None,
-        predictions: Optional[
-            Union[
-                pd.DataFrame,
-                pl.DataFrame,
-                List[List[Any]],
-                List[Dict[str, Any]],
-                np.ndarray,
-            ]
-        ] = None,
-        transformed_features: Union[
-            pd.DataFrame,
-            pl.DataFrame,
-            List[List[Any]],
-            List[Dict[str, Any]],
-            np.ndarray,
-            TypeVar("pyspark.sql.DataFrame"),
-        ] = None,
-        inference_helper_columns: Union[
-            pd.DataFrame,
-            pl.DataFrame,
-            List[List[Any]],
-            List[Dict[str, Any]],
-            np.ndarray,
-            TypeVar("pyspark.sql.DataFrame"),
-        ] = None,
-        request_parameters: Union[
-            pd.DataFrame,
-            pl.DataFrame,
-            List[List[Any]],
-            List[Dict[str, Any]],
-            np.ndarray,
-            TypeVar("pyspark.sql.DataFrame"),
-        ] = None,
-        event_time: Union[
-            pd.DataFrame,
-            pl.DataFrame,
-            List[List[Any]],
-            List[Dict[str, Any]],
-            np.ndarray,
-            TypeVar("pyspark.sql.DataFrame"),
-        ] = None,
-        serving_keys: Union[
-            pd.DataFrame,
-            pl.DataFrame,
-            List[List[Any]],
-            List[Dict[str, Any]],
-            np.ndarray,
-            TypeVar("pyspark.sql.DataFrame"),
-        ] = None,
-        extra_logging_features: Union[
-            pd.DataFrame,
-            pl.DataFrame,
-            List[List[Any]],
-            List[Dict[str, Any]],
-            np.ndarray,
-            TypeVar("pyspark.sql.DataFrame"),
-        ] = None,
-        request_id: Union[str, List[str]] = None,
-        write_options: Optional[Dict[str, Any]] = None,
-        training_dataset_version: Optional[int] = None,
+        logging_data: pd.DataFrame
+        | pl.DataFrame
+        | list[list[Any]]
+        | list[dict[str, Any]]
+        | np.ndarray
+        | TypeVar("pyspark.sql.DataFrame") = None,
+        untransformed_features: pd.DataFrame
+        | pl.DataFrame
+        | list[list[Any]]
+        | list[dict[str, Any]]
+        | np.ndarray
+        | TypeVar("pyspark.sql.DataFrame")
+        | None = None,
+        predictions: pd.DataFrame
+        | pl.DataFrame
+        | list[list[Any]]
+        | list[dict[str, Any]]
+        | np.ndarray
+        | None = None,
+        transformed_features: pd.DataFrame
+        | pl.DataFrame
+        | list[list[Any]]
+        | list[dict[str, Any]]
+        | np.ndarray
+        | TypeVar("pyspark.sql.DataFrame") = None,
+        inference_helper_columns: pd.DataFrame
+        | pl.DataFrame
+        | list[list[Any]]
+        | list[dict[str, Any]]
+        | np.ndarray
+        | TypeVar("pyspark.sql.DataFrame") = None,
+        request_parameters: pd.DataFrame
+        | pl.DataFrame
+        | list[list[Any]]
+        | list[dict[str, Any]]
+        | np.ndarray
+        | TypeVar("pyspark.sql.DataFrame") = None,
+        event_time: pd.DataFrame
+        | pl.DataFrame
+        | list[list[Any]]
+        | list[dict[str, Any]]
+        | np.ndarray
+        | TypeVar("pyspark.sql.DataFrame") = None,
+        serving_keys: pd.DataFrame
+        | pl.DataFrame
+        | list[list[Any]]
+        | list[dict[str, Any]]
+        | np.ndarray
+        | TypeVar("pyspark.sql.DataFrame") = None,
+        extra_logging_features: pd.DataFrame
+        | pl.DataFrame
+        | list[list[Any]]
+        | list[dict[str, Any]]
+        | np.ndarray
+        | TypeVar("pyspark.sql.DataFrame") = None,
+        request_id: str | list[str] = None,
+        write_options: dict[str, Any] | None = None,
+        training_dataset_version: int | None = None,
         model: Model = None,
-        model_name: Optional[str] = None,
-        model_version: Optional[int] = None,
-    ) -> Optional[list[Job]]:
+        model_name: str | None = None,
+        model_version: int | None = None,
+    ) -> list[Job] | None:
         """Log features and optionally predictions for the current feature view. The logged features are written periodically to the offline store. If you need it to be available immediately, call `materialize_log`.
 
         Note: If features is a `pyspark.Dataframe`, prediction needs to be provided as columns in the dataframe,
@@ -4167,10 +4141,10 @@ class FeatureView:
 
     def get_log_timeline(
         self,
-        wallclock_time: Optional[Union[str, int, datetime, datetime.date]] = None,
-        limit: Optional[int] = None,
-        transformed: Optional[bool] = False,
-    ) -> Dict[str, Dict[str, str]]:
+        wallclock_time: str | int | datetime | datetime.date | None = None,
+        limit: int | None = None,
+        transformed: bool | None = False,
+    ) -> dict[str, dict[str, str]]:
         """Retrieve the log timeline for the current feature view.
 
         Parameters:
@@ -4197,19 +4171,15 @@ class FeatureView:
 
     def read_log(
         self,
-        start_time: Optional[Union[str, int, datetime, datetime.date]] = None,
-        end_time: Optional[Union[str, int, datetime, datetime.date]] = None,
-        filter: Optional[Union[Filter, Logic]] = None,
-        transformed: Optional[bool] = False,
-        training_dataset_version: Optional[int] = None,
+        start_time: str | int | datetime | datetime.date | None = None,
+        end_time: str | int | datetime | datetime.date | None = None,
+        filter: Filter | Logic | None = None,
+        transformed: bool | None = False,
+        training_dataset_version: int | None = None,
         model: Model = None,
-        model_name: Optional[str] = None,
-        model_version: Optional[int] = None,
-    ) -> Union[
-        TypeVar("pyspark.sql.DataFrame"),
-        pd.DataFrame,
-        pl.DataFrame,
-    ]:
+        model_name: str | None = None,
+        model_version: int | None = None,
+    ) -> TypeVar("pyspark.sql.DataFrame") | pd.DataFrame | pl.DataFrame:
         """Read the log entries for the current feature view.
 
         Optionally, filter can be applied to start/end time, training dataset version, hsml model, and custom filter.
@@ -4288,8 +4258,8 @@ class FeatureView:
         self._feature_view_engine.resume_logging(self)
 
     def materialize_log(
-        self, wait: bool = False, transformed: Optional[bool] = None
-    ) -> List[Job]:
+        self, wait: bool = False, transformed: bool | None = None
+    ) -> list[Job]:
         """Materialize the log for the current feature view.
 
         Parameters:
@@ -4313,7 +4283,7 @@ class FeatureView:
             self, wait, transformed
         )
 
-    def delete_log(self, transformed: Optional[bool] = None) -> None:
+    def delete_log(self, transformed: bool | None = None) -> None:
         """Delete the logged feature data for the current feature view.
 
         Parameters:
@@ -4376,7 +4346,7 @@ class FeatureView:
         )
 
     @staticmethod
-    def _update_attribute_if_present(this: "FeatureView", new: Any, key: str) -> None:
+    def _update_attribute_if_present(this: FeatureView, new: Any, key: str) -> None:
         if getattr(new, key):
             setattr(this, key, getattr(new, key))
 
@@ -4404,7 +4374,7 @@ class FeatureView:
         """
         return json.dumps(self, cls=util.Encoder)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert class into a dictionary.
 
         Returns:
@@ -4424,8 +4394,8 @@ class FeatureView:
         }
 
     def get_training_dataset_schema(
-        self, training_dataset_version: Optional[int] = None
-    ) -> List[training_dataset_feature.TrainingDatasetFeature]:
+        self, training_dataset_version: int | None = None
+    ) -> list[training_dataset_feature.TrainingDatasetFeature]:
         """Function that returns the schema of the training dataset that is generated from a feature view.
 
         It provides the schema of the features after all transformation functions have been applied.
@@ -4453,7 +4423,7 @@ class FeatureView:
         return self._id
 
     @id.setter
-    def id(self, id: Optional[int]) -> None:
+    def id(self, id: int | None) -> None:
         self._id = id
 
     @property
@@ -4462,11 +4432,11 @@ class FeatureView:
         return self._featurestore_id
 
     @featurestore_id.setter
-    def featurestore_id(self, id: Optional[int]) -> None:
+    def featurestore_id(self, id: int | None) -> None:
         self._featurestore_id = id
 
     @property
-    def feature_store_name(self) -> Optional[str]:
+    def feature_store_name(self) -> str | None:
         """Name of the feature store in which the feature group is located."""
         return self._feature_store_name
 
@@ -4489,7 +4459,7 @@ class FeatureView:
         self._version = version
 
     @property
-    def labels(self) -> List[str]:
+    def labels(self) -> list[str]:
         """The labels/prediction feature of the feature view.
 
         Can be a composite of multiple features.
@@ -4497,11 +4467,11 @@ class FeatureView:
         return self._labels
 
     @labels.setter
-    def labels(self, labels: List[str]) -> None:
+    def labels(self, labels: list[str]) -> None:
         self._labels = [util.autofix_feature_name(lb) for lb in labels]
 
     @property
-    def inference_helper_columns(self) -> List[str]:
+    def inference_helper_columns(self) -> list[str]:
         """The helper column sof the feature view.
 
         Can be a composite of multiple features.
@@ -4509,13 +4479,13 @@ class FeatureView:
         return self._inference_helper_columns
 
     @inference_helper_columns.setter
-    def inference_helper_columns(self, inference_helper_columns: List[str]) -> None:
+    def inference_helper_columns(self, inference_helper_columns: list[str]) -> None:
         self._inference_helper_columns = [
             util.autofix_feature_name(exf) for exf in inference_helper_columns
         ]
 
     @property
-    def training_helper_columns(self) -> List[str]:
+    def training_helper_columns(self) -> list[str]:
         """The helper column sof the feature view.
 
         Can be a composite of multiple features.
@@ -4523,45 +4493,45 @@ class FeatureView:
         return self._training_helper_columns
 
     @training_helper_columns.setter
-    def training_helper_columns(self, training_helper_columns: List[str]) -> None:
+    def training_helper_columns(self, training_helper_columns: list[str]) -> None:
         self._training_helper_columns = [
             util.autofix_feature_name(exf) for exf in training_helper_columns
         ]
 
     @property
-    def description(self) -> Optional[str]:
+    def description(self) -> str | None:
         """Description of the feature view."""
         return self._description
 
     @description.setter
-    def description(self, description: Optional[str]) -> None:
+    def description(self, description: str | None) -> None:
         self._description = description
 
     @property
-    def query(self) -> "query.Query":
+    def query(self) -> query.Query:
         """Query of the feature view."""
         return self._query
 
     @query.setter
-    def query(self, query_obj: "query.Query") -> None:
+    def query(self, query_obj: query.Query) -> None:
         self._query = query_obj
 
     @property
     def transformation_functions(
         self,
-    ) -> List[TransformationFunction]:
+    ) -> list[TransformationFunction]:
         """Get transformation functions."""
         return self._transformation_functions
 
     @transformation_functions.setter
     def transformation_functions(
         self,
-        transformation_functions: List[TransformationFunction],
+        transformation_functions: list[TransformationFunction],
     ) -> None:
         self._transformation_functions = transformation_functions
 
     @property
-    def model_dependent_transformations(self) -> Dict["str", Callable]:
+    def model_dependent_transformations(self) -> dict[str, Callable]:
         """Get Model-Dependent transformations as a dictionary mapping transformed feature names to transformation function."""
         return {
             transformation_function.hopsworks_udf.output_column_names[
@@ -4571,7 +4541,7 @@ class FeatureView:
         }
 
     @property
-    def on_demand_transformations(self) -> Dict["str", Callable]:
+    def on_demand_transformations(self) -> dict[str, Callable]:
         """Get On-Demand transformations as a dictionary mapping on-demand feature names to transformation function."""
         return {
             feature.on_demand_transformation_function.hopsworks_udf.function_name: feature.on_demand_transformation_function.hopsworks_udf.get_udf()
@@ -4580,7 +4550,7 @@ class FeatureView:
         }
 
     @property
-    def _on_demand_transformation_functions(self) -> List[TransformationFunction]:
+    def _on_demand_transformation_functions(self) -> list[TransformationFunction]:
         """Get all on-demand transformations in the feature view."""
         return [
             feature.on_demand_transformation_function
@@ -4589,7 +4559,7 @@ class FeatureView:
         ]
 
     @property
-    def request_parameters(self) -> List[str]:
+    def request_parameters(self) -> list[str]:
         """Get request parameters required for the for on-demand transformations atatched to the feature view."""
         if self._request_parameters is None:
             feature_names = [feature.name for feature in self.features]
@@ -4605,23 +4575,23 @@ class FeatureView:
         return self._request_parameters
 
     @property
-    def schema(self) -> List[training_dataset_feature.TrainingDatasetFeature]:
+    def schema(self) -> list[training_dataset_feature.TrainingDatasetFeature]:
         """Schema of untransformed features in the Feature view."""
         return self._features
 
     @property
-    def features(self) -> List[training_dataset_feature.TrainingDatasetFeature]:
+    def features(self) -> list[training_dataset_feature.TrainingDatasetFeature]:
         """Schema of untransformed features in the Feature view. (alias)."""
         return self._features
 
     @schema.setter
     def schema(
-        self, features: List[training_dataset_feature.TrainingDatasetFeature]
+        self, features: list[training_dataset_feature.TrainingDatasetFeature]
     ) -> None:
         self._features = features
 
     @property
-    def primary_keys(self) -> Set[str]:
+    def primary_keys(self) -> set[str]:
         """Set of primary key names that is required as keys in input dict object for [`get_feature_vector(s)`](#get_feature_vector) method.
 
         When there are duplicated primary key names and prefix is not defined in the query,
@@ -4633,7 +4603,7 @@ class FeatureView:
         return self._primary_keys
 
     @property
-    def serving_keys(self) -> List[skm.ServingKey]:
+    def serving_keys(self) -> list[skm.ServingKey]:
         """All primary keys of the feature groups included in the query."""
         if (
             (not hasattr(self, "_serving_keys"))
@@ -4653,7 +4623,7 @@ class FeatureView:
         return self._serving_keys
 
     @serving_keys.setter
-    def serving_keys(self, serving_keys: List[skm.ServingKey]) -> None:
+    def serving_keys(self, serving_keys: list[skm.ServingKey]) -> None:
         self._serving_keys = serving_keys
 
     @property
@@ -4665,19 +4635,19 @@ class FeatureView:
         self._logging_enabled = logging_enabled
 
     @property
-    def feature_logging(self) -> Optional[FeatureLogging]:
+    def feature_logging(self) -> FeatureLogging | None:
         if self.logging_enabled and self._feature_logging is None:
             self._feature_logging = self._feature_view_engine.get_feature_logging(self)
         return self._feature_logging
 
-    def _get_spine_fg_ids(self) -> List[feature_group.SpineGroup]:
+    def _get_spine_fg_ids(self) -> list[feature_group.SpineGroup]:
         return [
             fg.id
             for fg in self.query.featuregroups
             if isinstance(fg, feature_group.SpineGroup)
         ]
 
-    def _get_skip_fg_ids(self) -> Set[int]:
+    def _get_skip_fg_ids(self) -> set[int]:
         embedding_fg_ids = [fg.id for fg in self._get_embedding_fgs()]
         return set(embedding_fg_ids + self._get_spine_fg_ids())
 
@@ -4710,7 +4680,7 @@ class FeatureView:
         return self.__batch_scoring_server
 
     @property
-    def _fully_qualified_primary_keys(self) -> List[str]:
+    def _fully_qualified_primary_keys(self) -> list[str]:
         """Get name for primary key with fully qualified names from the feature view."""
         if not self.__fully_qualified_primary_keys:
             self.__fully_qualified_primary_keys = (
@@ -4719,7 +4689,7 @@ class FeatureView:
         return self.__fully_qualified_primary_keys
 
     @property
-    def _fully_qualified_event_time(self) -> List[str]:
+    def _fully_qualified_event_time(self) -> list[str]:
         """Get fully qualified names for applicable event time from the feature view."""
         if not self.__fully_qualified_event_time:
             self.__fully_qualified_event_time = (
@@ -4728,7 +4698,7 @@ class FeatureView:
         return self.__fully_qualified_event_time
 
     @property
-    def _label_column_names(self) -> Set[str]:
+    def _label_column_names(self) -> set[str]:
         """Get label column names."""
         if self.__label_column_names is None:
             training_dataset_schema = self.get_training_dataset_schema()
@@ -4738,7 +4708,7 @@ class FeatureView:
         return self.__label_column_names
 
     @property
-    def _transformed_feature_names(self) -> List[str]:
+    def _transformed_feature_names(self) -> list[str]:
         """Get transformed feature names."""
         if self.__transformed_feature_names is None:
             training_dataset_schema = self.get_training_dataset_schema()
@@ -4752,7 +4722,7 @@ class FeatureView:
         return self.__transformed_feature_names
 
     @property
-    def _untransformed_feature_names(self) -> List[str]:
+    def _untransformed_feature_names(self) -> list[str]:
         """Get untransformed feature names."""
         if self.__untransformed_feature_names is None:
             self.__untransformed_feature_names = [
@@ -4765,7 +4735,7 @@ class FeatureView:
         return self.__untransformed_feature_names
 
     @property
-    def _required_serving_key_names(self) -> List[str]:
+    def _required_serving_key_names(self) -> list[str]:
         """Get required serving key names."""
         if self.__required_serving_key_names is None:
             self.__required_serving_key_names = [
@@ -4774,12 +4744,12 @@ class FeatureView:
         return self.__required_serving_key_names
 
     @property
-    def _root_feature_group_event_time_column_name(self) -> Optional[str]:
+    def _root_feature_group_event_time_column_name(self) -> str | None:
         """Get event time column name of the root feature group in the feature view."""
         return self.query._left_feature_group.event_time
 
     @property
-    def _extra_logging_column_names(self) -> List[str]:
+    def _extra_logging_column_names(self) -> list[str]:
         """Get extra logging column names used for feature logging."""
         if self.__extra_logging_column_names is None:
             self.__extra_logging_column_names = (

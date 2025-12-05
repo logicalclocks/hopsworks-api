@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import warnings
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, TypeVar, Union
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import humps
 from hopsworks_common import client
@@ -235,9 +235,7 @@ class TrainingDatasetBase:
         ):
             return self.EXTERNAL
         raise TypeError(
-            "Storage connectors of type {} are currently not supported for training datasets.".format(
-                connector_type
-            )
+            f"Storage connectors of type {connector_type} are currently not supported for training datasets."
         )
 
     def to_dict(self):
@@ -278,11 +276,11 @@ class TrainingDatasetBase:
         self._version = version
 
     @property
-    def description(self) -> Optional[str]:
+    def description(self) -> str | None:
         return self._description
 
     @description.setter
-    def description(self, description: Optional[str]) -> None:
+    def description(self, description: str | None) -> None:
         """Description of the training dataset contents."""
         self._description = description
 
@@ -323,9 +321,7 @@ class TrainingDatasetBase:
             )
         else:
             raise TypeError(
-                "The argument `storage_connector` has to be `None` or of type `StorageConnector`, is of type: {}".format(
-                    type(storage_connector)
-                )
+                f"The argument `storage_connector` has to be `None` or of type `StorageConnector`, is of type: {type(storage_connector)}"
             )
         if self.training_dataset_type != self.IN_MEMORY:
             self._training_dataset_type = self._infer_training_dataset_type(
@@ -333,12 +329,12 @@ class TrainingDatasetBase:
             )
 
     @property
-    def splits(self) -> List[TrainingDatasetSplit]:
+    def splits(self) -> list[TrainingDatasetSplit]:
         """Training dataset splits. `train`, `test` or `eval` and corresponding percentages."""
         return self._splits
 
     @splits.setter
-    def splits(self, splits: Optional[Dict[str, float]]):
+    def splits(self, splits: dict[str, float] | None):
         # user api differs from how the backend expects the splits to be represented
         if splits is None:
             self._splits = []
@@ -354,7 +350,7 @@ class TrainingDatasetBase:
             raise TypeError(
                 "The argument `splits` has to be `None` or a dictionary of key, relative size e.g "
                 "{'train': 0.7, 'test': 0.1, 'validation': 0.2}.\n"
-                + "Got {} with type {}".format(splits, type(splits))
+                f"Got {splits} with type {type(splits)}"
             )
 
     @property
@@ -367,12 +363,12 @@ class TrainingDatasetBase:
         self._location = location
 
     @property
-    def seed(self) -> Optional[int]:
+    def seed(self) -> int | None:
         """Seed used to perform random split, ensure reproducibility of the random split at a later date."""
         return self._seed
 
     @seed.setter
-    def seed(self, seed: Optional[int]):
+    def seed(self, seed: int | None):
         self._seed = seed
 
     @property
@@ -392,9 +388,7 @@ class TrainingDatasetBase:
             self._statistics_config = StatisticsConfig()
         else:
             raise TypeError(
-                "The argument `statistics_config` has to be `None` of type `StatisticsConfig, `bool` or `dict`, but is of type: `{}`".format(
-                    type(statistics_config)
-                )
+                f"The argument `statistics_config` has to be `None` of type `StatisticsConfig, `bool` or `dict`, but is of type: `{type(statistics_config)}`"
             )
 
     @property
@@ -599,15 +593,13 @@ class TrainingDataset(TrainingDatasetBase):
 
     def save(
         self,
-        features: Union[
-            query.Query,
-            pd.DataFrame,
-            TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
-            TypeVar("pyspark.RDD"),  # noqa: F821
-            np.ndarray,
-            List[list],
-        ],
-        write_options: Optional[Dict[Any, Any]] = None,
+        features: query.Query
+        | pd.DataFrame
+        | TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | np.ndarray
+        | list[list],
+        write_options: dict[Any, Any] | None = None,
     ):
         """Materialize the training dataset to storage.
 
@@ -651,9 +643,7 @@ class TrainingDataset(TrainingDatasetBase):
             self.compute_statistics()
         if user_version is None:
             warnings.warn(
-                "No version provided for creating training dataset `{}`, incremented version to `{}`.".format(
-                    self._name, self._version
-                ),
+                f"No version provided for creating training dataset `{self._name}`, incremented version to `{self._version}`.",
                 util.VersionWarning,
                 stacklevel=1,
             )
@@ -662,16 +652,14 @@ class TrainingDataset(TrainingDatasetBase):
 
     def insert(
         self,
-        features: Union[
-            query.Query,
-            pd.DataFrame,
-            TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
-            TypeVar("pyspark.RDD"),  # noqa: F821
-            np.ndarray,
-            List[list],
-        ],
+        features: query.Query
+        | pd.DataFrame
+        | TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | np.ndarray
+        | list[list],
         overwrite: bool,
-        write_options: Optional[Dict[Any, Any]] = None,
+        write_options: dict[Any, Any] | None = None,
     ):
         """Insert additional feature data into the training dataset.
 
@@ -855,9 +843,7 @@ class TrainingDataset(TrainingDatasetBase):
             `hopsworks.client.exceptions.RestAPIError`.
         """
         warnings.warn(
-            "All jobs associated to training dataset `{}`, version `{}` will be removed.".format(
-                self._name, self._version
-            ),
+            f"All jobs associated to training dataset `{self._name}`, version `{self._version}` will be removed.",
             util.JobWarning,
             stacklevel=1,
         )
@@ -996,7 +982,7 @@ class TrainingDataset(TrainingDatasetBase):
         )
 
     def init_prepared_statement(
-        self, batch: Optional[bool] = None, external: Optional[bool] = None
+        self, batch: bool | None = None, external: bool | None = None
     ):
         """Initialise and cache parametrized prepared statement to retrieve feature vector from online feature store.
 
@@ -1012,9 +998,7 @@ class TrainingDataset(TrainingDatasetBase):
         """
         self._vector_server.init_serving(self, batch, external)
 
-    def get_serving_vector(
-        self, entry: Dict[str, Any], external: Optional[bool] = None
-    ):
+    def get_serving_vector(self, entry: dict[str, Any], external: bool | None = None):
         """Returns assembled serving vector from online feature store.
 
         Parameters:
@@ -1036,7 +1020,7 @@ class TrainingDataset(TrainingDatasetBase):
         return self._vector_server.get_feature_vector(entry)
 
     def get_serving_vectors(
-        self, entry: Dict[str, List[Any]], external: Optional[bool] = None
+        self, entry: dict[str, list[Any]], external: bool | None = None
     ):
         """Returns assembled serving vectors in batches from online feature store.
 
@@ -1059,7 +1043,7 @@ class TrainingDataset(TrainingDatasetBase):
         return self._vector_server.get_feature_vectors(entry)
 
     @property
-    def label(self) -> Union[str, List[str]]:
+    def label(self) -> str | list[str]:
         """The label/prediction feature of the training dataset.
 
         Can be a composite of multiple features.
@@ -1080,7 +1064,7 @@ class TrainingDataset(TrainingDatasetBase):
         return self._feature_store_name
 
     @property
-    def serving_keys(self) -> Set[str]:
+    def serving_keys(self) -> set[str]:
         """Set of primary key names that is used as keys in input dict object for `get_serving_vector` method."""
         if self._serving_keys is None or len(self._serving_keys) == 0:
             self._serving_keys = util.build_serving_keys_from_prepared_statements(

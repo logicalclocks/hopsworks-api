@@ -76,7 +76,7 @@ class EnvironmentAttribute:
             hopsworks_dir = _create_hopsworks_dir_if_not_exist()
             user_id_file = join(hopsworks_dir, _USER_ID_FILE)
             if os.path.exists(user_id_file):
-                with open(user_id_file, "r") as fr:
+                with open(user_id_file) as fr:
                     self._user_id = fr.read().rstrip()
             else:
                 with open(user_id_file, "w") as fw:

@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import List, Optional
 
 import humps
 from hopsworks_common import client
@@ -255,9 +254,9 @@ class EmbeddingIndex:
 
     def __init__(
         self,
-        index_name: Optional[str] = None,
-        features: Optional[List[EmbeddingFeature]] = None,
-        col_prefix: Optional[str] = None,
+        index_name: str | None = None,
+        features: list[EmbeddingFeature] | None = None,
+        col_prefix: str | None = None,
     ):
         self._index_name = index_name
         if features is None:
@@ -272,9 +271,8 @@ class EmbeddingIndex:
         self,
         name: str,
         dimension: int,
-        similarity_function_type: Optional[
-            SimilarityFunctionType
-        ] = SimilarityFunctionType.L2,
+        similarity_function_type: SimilarityFunctionType
+        | None = SimilarityFunctionType.L2,
         model=None,
     ):
         """Adds a new embedding feature to the index.

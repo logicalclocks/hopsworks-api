@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import warnings
 from datetime import datetime, timezone
-from typing import Literal, Optional
+from typing import Literal
 
 import humps
 from hopsworks_common import alert, client, usage, util
@@ -254,7 +254,7 @@ class Job:
         return self._execution_api._get_all(self)
 
     @usage.method_logger
-    def save(self) -> "Job":
+    def save(self) -> Job:
         """Save the job.
 
         This function should be called after changing a property such as the job configuration to save it persistently.
@@ -305,7 +305,7 @@ class Job:
                 return True
         return False
 
-    def _wait_for_job(self, await_termination=True, timeout: Optional[float] = None):
+    def _wait_for_job(self, await_termination=True, timeout: float | None = None):
         # If the user passed the wait_for_job option consider it,
         # otherwise use the default True
         if await_termination:

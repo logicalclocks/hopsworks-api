@@ -12,9 +12,9 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
+from __future__ import annotations
 
 import json
-from typing import Optional
 
 import humps
 from hopsworks_common import util
@@ -36,10 +36,10 @@ class InferenceBatcher:
 
     def __init__(
         self,
-        enabled: Optional[bool] = None,
-        max_batch_size: Optional[int] = None,
-        max_latency: Optional[int] = None,
-        timeout: Optional[int] = None,
+        enabled: bool | None = None,
+        max_batch_size: int | None = None,
+        max_latency: int | None = None,
+        timeout: int | None = None,
         **kwargs,
     ):
         self._enabled = enabled if enabled is not None else INFERENCE_BATCHER.ENABLED

@@ -23,7 +23,6 @@ import re
 import sys
 import warnings
 import weakref
-from typing import Optional
 
 from hopsworks_common import client, constants, usage, util, version
 from hopsworks_common.client.exceptions import RestAPIError
@@ -37,6 +36,7 @@ from hopsworks_common.core import (
 from hopsworks_common.core.opensearch import OpenSearchClientSingleton
 from hopsworks_common.decorators import connected, not_connected
 from requests.exceptions import ConnectionError
+from typing_extensions import Self
 
 
 HOPSWORKS_PORT_DEFAULT = 443
@@ -123,15 +123,15 @@ class Connection:
 
     def __init__(
         self,
-        host: Optional[str] = None,
+        host: str | None = None,
         port: int = HOPSWORKS_PORT_DEFAULT,
-        project: Optional[str] = None,
-        engine: Optional[str] = None,
+        project: str | None = None,
+        engine: str | None = None,
         hostname_verification: bool = HOSTNAME_VERIFICATION_DEFAULT,
-        trust_store_path: Optional[str] = None,
+        trust_store_path: str | None = None,
         cert_folder: str = CERT_FOLDER_DEFAULT,
-        api_key_file: Optional[str] = None,
-        api_key_value: Optional[str] = None,
+        api_key_file: str | None = None,
+        api_key_value: str | None = None,
     ) -> None:
         self._host = host
         self._port = port
@@ -151,7 +151,7 @@ class Connection:
     @connected
     def get_feature_store(
         self,
-        name: Optional[str] = None,
+        name: str | None = None,
     ):  # -> feature_store.FeatureStore
         # the typing is commented out due to circular dependency, it breaks auto_doc.py
         """Get a reference to a feature store to perform operations on.
@@ -305,9 +305,7 @@ class Connection:
         if major_minor_backend != major_minor_client:
             print("\n", file=sys.stderr)
             warnings.warn(
-                "The installed hopsworks client version {0} may not be compatible with the connected Hopsworks backend version {1}. \nTo ensure compatibility please install the latest bug fix release matching the minor version of your backend ({2}) by running 'pip install hopsworks=={2}.*'".format(
-                    client_version, self._backend_version, major_minor_backend
-                ),
+                f"The installed hopsworks client version {client_version} may not be compatible with the connected Hopsworks backend version {self._backend_version}. \nTo ensure compatibility please install the latest bug fix release matching the minor version of your backend ({major_minor_backend}) by running 'pip install hopsworks=={major_minor_backend}.*'",
                 stacklevel=1,
             )
             sys.stderr.flush()
@@ -467,15 +465,15 @@ class Connection:
     @classmethod
     def connection(
         cls,
-        host: Optional[str] = None,
+        host: str | None = None,
         port: int = HOPSWORKS_PORT_DEFAULT,
-        project: Optional[str] = None,
-        engine: Optional[str] = None,
+        project: str | None = None,
+        engine: str | None = None,
         hostname_verification: bool = HOSTNAME_VERIFICATION_DEFAULT,
-        trust_store_path: Optional[str] = None,
+        trust_store_path: str | None = None,
         cert_folder: str = CERT_FOLDER_DEFAULT,
-        api_key_file: Optional[str] = None,
-        api_key_value: Optional[str] = None,
+        api_key_file: str | None = None,
+        api_key_value: str | None = None,
     ) -> Connection:
         """Connection factory method, accessible through `hopsworks.connection()`.
 
@@ -553,12 +551,12 @@ class Connection:
         )
 
     @property
-    def host(self) -> Optional[str]:
+    def host(self) -> str | None:
         return self._host
 
     @host.setter
     @not_connected
-    def host(self, host: Optional[str]) -> None:
+    def host(self, host: str | None) -> None:
         self._host = host
 
     @property
@@ -571,12 +569,12 @@ class Connection:
         self._port = port
 
     @property
-    def project(self) -> Optional[str]:
+    def project(self) -> str | None:
         return self._project
 
     @project.setter
     @not_connected
-    def project(self, project: Optional[str]) -> None:
+    def project(self, project: str | None) -> None:
         self._project = project
 
     @property
@@ -589,12 +587,12 @@ class Connection:
         self._hostname_verification = hostname_verification
 
     @property
-    def trust_store_path(self) -> Optional[str]:
+    def trust_store_path(self) -> str | None:
         return self._trust_store_path
 
     @trust_store_path.setter
     @not_connected
-    def trust_store_path(self, trust_store_path: Optional[str]) -> None:
+    def trust_store_path(self, trust_store_path: str | None) -> None:
         self._trust_store_path = trust_store_path
 
     @property
@@ -607,15 +605,15 @@ class Connection:
         self._cert_folder = cert_folder
 
     @property
-    def api_key_file(self) -> Optional[str]:
+    def api_key_file(self) -> str | None:
         return self._api_key_file
 
     @property
-    def api_key_value(self) -> Optional[str]:
+    def api_key_value(self) -> str | None:
         return self._api_key_value
 
     @property
-    def backend_version(self) -> Optional[str]:
+    def backend_version(self) -> str | None:
         """The version of the backend currently connected to hopsworks."""
         return self._backend_version
 
@@ -629,15 +627,15 @@ class Connection:
 
     @api_key_file.setter
     @not_connected
-    def api_key_file(self, api_key_file: Optional[str]) -> None:
+    def api_key_file(self, api_key_file: str | None) -> None:
         self._api_key_file = api_key_file
 
     @api_key_value.setter
     @not_connected
-    def api_key_value(self, api_key_value: Optional[str]) -> Optional[str]:
+    def api_key_value(self, api_key_value: str | None) -> str | None:
         self._api_key_value = api_key_value
 
-    def __enter__(self) -> "Connection":
+    def __enter__(self) -> Self:
         self.connect()
         return self
 

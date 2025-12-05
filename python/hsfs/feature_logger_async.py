@@ -13,6 +13,8 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
+
 import asyncio
 import base64
 import itertools
@@ -22,7 +24,7 @@ import threading
 import traceback
 import uuid
 from datetime import date, datetime, timezone
-from typing import Any, Callable, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable
 
 from hsfs.core.feature_logging_client import (
     get_instance as get_feature_logging_client,
@@ -32,7 +34,10 @@ from hsfs.core.feature_logging_client import (
 )
 from hsfs.core.kafka_engine import encode_row, get_writer_function
 from hsfs.feature_logger import FeatureLogger
-from hsfs.feature_view import FeatureView
+
+
+if TYPE_CHECKING:
+    from hsfs.feature_view import FeatureView
 
 
 _logger = logging.getLogger(__name__)
@@ -68,7 +73,7 @@ class AsyncWorkerThread(threading.Thread):
             threading.Event()
         )  # Stop event to stop input of new tasks after a close has been called.
 
-    def submit_task(self, task: Tuple[dict, dict]):
+    def submit_task(self, task: tuple[dict, dict]):
         """Function to submit a task to the queue from a different thread so that it can be processed by workers.
 
         Parameters:
@@ -152,7 +157,7 @@ class AsyncFeatureLogger(FeatureLogger):
         namespace,
         deployment_name,
         max_concurrent_tasks=5,
-        feature_logger_config: Optional[dict[str, Any]] = None,
+        feature_logger_config: dict[str, Any] | None = None,
     ):
         self._max_concurrent_tasks = max_concurrent_tasks
         self._feature_view: FeatureView = None

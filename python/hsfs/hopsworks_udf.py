@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import ast
 import copy
@@ -23,17 +24,20 @@ import warnings
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from enum import Enum
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Literal
 
 import humps
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.constants import FEATURES
 from hsfs import engine, util
-from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hsfs.decorators import typechecked
 from hsfs.transformation_statistics import TransformationStatistics
 from packaging.version import Version
+
+
+if TYPE_CHECKING:
+    from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 
 
 class UDFExecutionMode(Enum):
@@ -68,10 +72,10 @@ class UDFKeyWords(Enum):
 
 
 def udf(
-    return_type: Union[List[type], type],
-    drop: Optional[Union[str, List[str]]] = None,
+    return_type: list[type] | type,
+    drop: str | list[str] | None = None,
     mode: Literal["default", "python", "pandas"] = "default",
-) -> "HopsworksUdf":
+) -> HopsworksUdf:
     """Create an User Defined Function that can be and used within the Hopsworks Feature Store to create transformation functions.
 
     Hopsworks UDF's are user defined functions that executes as 'pandas_udf' when executing in spark engine and as pandas functions in the python engine.
@@ -124,9 +128,9 @@ class TransformationFeature:
     """
 
     feature_name: str
-    statistic_argument_name: Optional[str]
+    statistic_argument_name: str | None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "feature_name": self.feature_name,
             "statistic_argument_name": self.statistic_argument_name,
@@ -166,25 +170,25 @@ class HopsworksUdf:
 
     def __init__(
         self,
-        func: Union[Callable, str],
-        return_types: Union[List[type], type, List[str], str],
+        func: Callable | str,
+        return_types: list[type] | type | list[str] | str,
         execution_mode: UDFExecutionMode,
-        name: Optional[str] = None,
-        transformation_features: Optional[List[TransformationFeature]] = None,
-        transformation_function_argument_names: Optional[List[str]] = None,
-        dropped_argument_names: Optional[List[str]] = None,
-        dropped_feature_names: Optional[List[str]] = None,
-        feature_name_prefix: Optional[str] = None,
-        output_column_names: Optional[str] = None,
+        name: str | None = None,
+        transformation_features: list[TransformationFeature] | None = None,
+        transformation_function_argument_names: list[str] | None = None,
+        dropped_argument_names: list[str] | None = None,
+        dropped_feature_names: list[str] | None = None,
+        feature_name_prefix: str | None = None,
+        output_column_names: str | None = None,
         generate_output_col_names: bool = True,
     ):
-        self._return_types: List[str] = HopsworksUdf._validate_and_convert_output_types(
+        self._return_types: list[str] = HopsworksUdf._validate_and_convert_output_types(
             return_types
         )
 
         self._execution_mode: UDFExecutionMode = execution_mode
 
-        self._feature_name_prefix: Optional[str] = (
+        self._feature_name_prefix: str | None = (
             feature_name_prefix  # Prefix to be added to feature names
         )
 
@@ -199,11 +203,11 @@ class HopsworksUdf:
         # The parameter `output_column_names` is initialized lazily.
         # It is only initialized if the output column names are retrieved from the backend or explicitly specified using the `alias` function or is initialized with default column names if the UDF is accessed from a transformation function.
         # Output column names are only stored in the backend when a model dependent or on demand transformation function is created using the defined UDF.
-        self._output_column_names: List[str] = []
+        self._output_column_names: list[str] = []
 
         if not transformation_features:
             # New transformation function being declared so extract source code from function
-            self._transformation_features: List[TransformationFeature] = (
+            self._transformation_features: list[TransformationFeature] = (
                 transformation_features
                 if transformation_features
                 else HopsworksUdf._extract_function_arguments(func)
@@ -213,7 +217,7 @@ class HopsworksUdf:
                 feature.feature_name for feature in self._transformation_features
             ]
 
-            self._dropped_argument_names: List[str] = (
+            self._dropped_argument_names: list[str] = (
                 HopsworksUdf._validate_and_convert_drop_features(
                     dropped_argument_names,
                     self.transformation_features,
@@ -241,9 +245,9 @@ class HopsworksUdf:
             HopsworksUdf._format_source_code(self._function_source)
         )
 
-        self._statistics: Optional[TransformationStatistics] = None
+        self._statistics: TransformationStatistics | None = None
 
-        self._transformation_context: Dict[str, Any] = {}
+        self._transformation_context: dict[str, Any] = {}
 
         # Denote if the output feature names have to be generated.
         # Set to `False` if the output column names are saved in the backend and the udf is constructed from it using `from_response_json` function or if user has specified the output feature names using the `alias`` function.
@@ -251,10 +255,10 @@ class HopsworksUdf:
 
     @staticmethod
     def _validate_and_convert_drop_features(
-        dropped_features: Union[str, List[str]],
-        transformation_feature: List[str],
+        dropped_features: str | list[str],
+        transformation_feature: list[str],
         feature_name_prefix: str,
-    ) -> List[str]:
+    ) -> list[str]:
         """Function that converts dropped features to a list and validates if the dropped feature is present in the transformation function.
 
         Parameters:
@@ -291,8 +295,8 @@ class HopsworksUdf:
 
     @staticmethod
     def _validate_and_convert_output_types(
-        output_types: Union[List[type], List[str]],
-    ) -> List[str]:
+        output_types: list[type] | list[str],
+    ) -> list[str]:
         """Function that takes in a type or list of types validates if it is supported and return a list of strings.
 
         Parameters:
@@ -303,7 +307,7 @@ class HopsworksUdf:
         """
         convert_output_types = []
         output_types = (
-            output_types if isinstance(output_types, List) else [output_types]
+            output_types if isinstance(output_types, list) else [output_types]
         )
         for output_type in output_types:
             if (
@@ -321,7 +325,7 @@ class HopsworksUdf:
         return convert_output_types
 
     @staticmethod
-    def _get_module_imports(path: str) -> List[str]:
+    def _get_module_imports(path: str) -> list[str]:
         """Function that extracts the imports used in the python file specified in the path.
 
         Parameters:
@@ -424,7 +428,7 @@ class HopsworksUdf:
         return arg_list, signature, signature_start_line, signature_end_line
 
     @staticmethod
-    def _extract_function_arguments(function: Callable) -> List[TransformationFeature]:
+    def _extract_function_arguments(function: Callable) -> list[TransformationFeature]:
         """Function to extract the argument names from a provided function source code.
 
         Parameters:
@@ -467,7 +471,7 @@ class HopsworksUdf:
         return [TransformationFeature(arg, None) for arg in arg_list]
 
     @staticmethod
-    def _format_source_code(source_code: str) -> Tuple[str, str]:
+    def _format_source_code(source_code: str) -> tuple[str, str]:
         """Function that parses the existing source code to remove statistics parameter and remove all decorators and type hints from the function source code.
 
         Parameters:
@@ -508,7 +512,7 @@ class HopsworksUdf:
             )
         return self.return_types[0]
 
-    def _prepare_transformation_function_scope(self, **kwargs) -> Dict[str, Any]:
+    def _prepare_transformation_function_scope(self, **kwargs) -> dict[str, Any]:
         """Function that prepares the scope for the transformation function to be executed.
 
         This scope would include any variable that are required to be injected into the transformation function.
@@ -680,7 +684,7 @@ def renaming_wrapper(*args):
         # returning executed function object
         return eval("renaming_wrapper", scope)
 
-    def __call__(self, *features: List[str]) -> "HopsworksUdf":
+    def __call__(self, *features: list[str]) -> HopsworksUdf:
         """Set features to be passed as arguments to the user defined functions.
 
         Parameters:
@@ -767,7 +771,7 @@ def renaming_wrapper(*args):
                 f"The number of output feature names provided does not match the number of features returned by the transformation function '{repr(self)}'. Pease provide exactly {len(self.return_types)} feature name(s) to match the output."
             )
 
-    def _validate_transformation_context(self, transformation_context: Dict[str, Any]):
+    def _validate_transformation_context(self, transformation_context: dict[str, Any]):
         """Function that checks if the context variables provided to the transformation function is valid.
 
         It checks if context variables are defined as a dictionary.
@@ -838,7 +842,7 @@ def renaming_wrapper(*args):
             f"Invalid execution mode '{self.execution_mode}' for UDF '{self.function_name}'."
         )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert class into a dictionary.
 
         Returns:
@@ -875,8 +879,8 @@ def renaming_wrapper(*args):
 
     @classmethod
     def from_response_json(
-        cls: "HopsworksUdf", json_dict: Dict[str, Any]
-    ) -> "HopsworksUdf":
+        cls: HopsworksUdf, json_dict: dict[str, Any]
+    ) -> HopsworksUdf:
         """Function that constructs the class object from its json serialization.
 
         Parameters:
@@ -980,7 +984,7 @@ def renaming_wrapper(*args):
         return hopsworks_udf
 
     @property
-    def return_types(self) -> List[str]:
+    def return_types(self) -> list[str]:
         """Get the output types of the UDF."""
         # Update the number of outputs for one hot encoder to match the number of unique values for the feature
         if self.function_name == "one_hot_encoder" and self.transformation_statistics:
@@ -1000,12 +1004,12 @@ def renaming_wrapper(*args):
     @property
     def transformation_statistics(
         self,
-    ) -> Optional[TransformationStatistics]:
+    ) -> TransformationStatistics | None:
         """Feature statistics required for the defined UDF."""
         return self._statistics
 
     @property
-    def output_column_names(self) -> List[str]:
+    def output_column_names(self) -> list[str]:
         """Output columns names of the transformation function."""
         if self._feature_name_prefix:
             return [
@@ -1015,7 +1019,7 @@ def renaming_wrapper(*args):
         return self._output_column_names
 
     @property
-    def transformation_features(self) -> List[str]:
+    def transformation_features(self) -> list[str]:
         """List of feature names to be used in the User Defined Function."""
         if self._feature_name_prefix:
             return [
@@ -1029,7 +1033,7 @@ def renaming_wrapper(*args):
         ]
 
     @property
-    def unprefixed_transformation_features(self) -> List[str]:
+    def unprefixed_transformation_features(self) -> list[str]:
         """List of feature name used in the transformation function without the feature name prefix."""
         return [
             transformation_feature.feature_name
@@ -1037,12 +1041,12 @@ def renaming_wrapper(*args):
         ]
 
     @property
-    def feature_name_prefix(self) -> Optional[str]:
+    def feature_name_prefix(self) -> str | None:
         """The feature name prefix that needs to be added to the feature names."""
         return self._feature_name_prefix
 
     @property
-    def statistics_features(self) -> List[str]:
+    def statistics_features(self) -> list[str]:
         """List of feature names that require statistics."""
         return [
             transformation_feature.feature_name
@@ -1051,7 +1055,7 @@ def renaming_wrapper(*args):
         ]
 
     @property
-    def _statistics_argument_mapping(self) -> Dict[str, str]:
+    def _statistics_argument_mapping(self) -> dict[str, str]:
         """Dictionary that maps feature names to the statistics arguments names in the User defined function."""
         return {
             transformation_feature.feature_name: transformation_feature.statistic_argument_name
@@ -1059,7 +1063,7 @@ def renaming_wrapper(*args):
         }
 
     @property
-    def _statistics_argument_names(self) -> List[str]:
+    def _statistics_argument_names(self) -> list[str]:
         """List of argument names required for statistics."""
         return [
             transformation_feature.statistic_argument_name
@@ -1068,7 +1072,7 @@ def renaming_wrapper(*args):
         ]
 
     @property
-    def dropped_features(self) -> List[str]:
+    def dropped_features(self) -> list[str]:
         """List of features that will be dropped after the UDF is applied."""
         if self._feature_name_prefix and self._dropped_features:
             return [
@@ -1082,7 +1086,7 @@ def renaming_wrapper(*args):
         return self._execution_mode
 
     @property
-    def transformation_context(self) -> Dict[str, Any]:
+    def transformation_context(self) -> dict[str, Any]:
         """Dictionary that contains the context variables required for the UDF.
 
         These context variables passed to the UDF during execution.
@@ -1090,7 +1094,7 @@ def renaming_wrapper(*args):
         return self._transformation_context if self._transformation_context else {}
 
     @transformation_context.setter
-    def transformation_context(self, context_variables: Dict[str, Any]) -> None:
+    def transformation_context(self, context_variables: dict[str, Any]) -> None:
         self._transformation_context = (
             self._validate_transformation_context(context_variables)
             if context_variables
@@ -1098,14 +1102,14 @@ def renaming_wrapper(*args):
         )
 
     @dropped_features.setter
-    def dropped_features(self, features: List[str]) -> None:
+    def dropped_features(self, features: list[str]) -> None:
         self._dropped_features = HopsworksUdf._validate_and_convert_drop_features(
             features, self.transformation_features, self._feature_name_prefix
         )
 
     @transformation_statistics.setter
     def transformation_statistics(
-        self, statistics: List[FeatureDescriptiveStatistics]
+        self, statistics: list[FeatureDescriptiveStatistics]
     ) -> None:
         self._statistics = TransformationStatistics(*self._statistics_argument_names)
         for stat in statistics:
@@ -1115,8 +1119,8 @@ def renaming_wrapper(*args):
                 )
 
     @output_column_names.setter
-    def output_column_names(self, output_col_names: Union[str, List[str]]) -> None:
-        if not isinstance(output_col_names, List):
+    def output_column_names(self, output_col_names: str | list[str]) -> None:
+        if not isinstance(output_col_names, list):
             output_col_names = [output_col_names]
         self._validate_output_col_name(output_col_names)
         self._output_column_names = output_col_names

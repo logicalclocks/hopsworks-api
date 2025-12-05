@@ -24,13 +24,8 @@ from datetime import date, datetime, timedelta
 from typing import (
     TYPE_CHECKING,
     Any,
-    Dict,
-    List,
     Literal,
-    Optional,
-    Tuple,
     TypeVar,
-    Union,
 )
 
 import avro.schema
@@ -124,41 +119,28 @@ class FeatureGroupBase:
 
     def __init__(
         self,
-        name: Optional[str],
-        version: Optional[int],
-        featurestore_id: Optional[int],
-        location: Optional[str],
-        event_time: Optional[Union[str, int, date, datetime]] = None,
+        name: str | None,
+        version: int | None,
+        featurestore_id: int | None,
+        location: str | None,
+        event_time: str | int | date | datetime | None = None,
         online_enabled: bool = False,
-        id: Optional[int] = None,
-        embedding_index: Optional[EmbeddingIndex] = None,
-        expectation_suite: Optional[
-            Union[
-                hsfs.expectation_suite.ExpectationSuite,
-                great_expectations.core.ExpectationSuite,
-                Dict[str, Any],
-            ]
-        ] = None,
-        online_topic_name: Optional[str] = None,
-        topic_name: Optional[str] = None,
-        notification_topic_name: Optional[str] = None,
+        id: int | None = None,
+        embedding_index: EmbeddingIndex | None = None,
+        expectation_suite: hsfs.expectation_suite.ExpectationSuite
+        | great_expectations.core.ExpectationSuite
+        | dict[str, Any]
+        | None = None,
+        online_topic_name: str | None = None,
+        topic_name: str | None = None,
+        notification_topic_name: str | None = None,
         deprecated: bool = False,
-        online_config: Optional[
-            Union[
-                OnlineConfig,
-                Dict[str, Any],
-            ]
-        ] = None,
-        data_source: Optional[
-            Union[
-                ds.DataSource,
-                Dict[str, Any],
-            ]
-        ] = None,
-        storage_connector: Union[sc.StorageConnector, Dict[str, Any]] = None,
-        ttl: Optional[Union[int, float, timedelta]] = None,
-        ttl_enabled: Optional[bool] = None,
-        online_disk: Optional[bool] = None,
+        online_config: OnlineConfig | dict[str, Any] | None = None,
+        data_source: ds.DataSource | dict[str, Any] | None = None,
+        storage_connector: sc.StorageConnector | dict[str, Any] = None,
+        ttl: float | timedelta | None = None,
+        ttl_enabled: bool | None = None,
+        online_disk: bool | None = None,
         **kwargs,
     ) -> None:
         """Initialize a feature group object.
@@ -212,7 +194,7 @@ class FeatureGroupBase:
                 storage_connector
             )
         else:
-            self._storage_connector: "sc.StorageConnector" = storage_connector
+            self._storage_connector: sc.StorageConnector = storage_connector
         self._online_config = (
             OnlineConfig.from_response_json(online_config)
             if isinstance(online_config, dict)
@@ -245,9 +227,9 @@ class FeatureGroupBase:
         # use setter for correct conversion
         self.expectation_suite = expectation_suite
 
-        self._feature_group_engine: Optional[
-            feature_group_engine.FeatureGroupEngine
-        ] = None
+        self._feature_group_engine: feature_group_engine.FeatureGroupEngine | None = (
+            None
+        )
         self._statistics_engine: statistics_engine.StatisticsEngine = (
             statistics_engine.StatisticsEngine(featurestore_id, self.ENTITY_TYPE)
         )
@@ -259,24 +241,24 @@ class FeatureGroupBase:
                 self._expectation_suite._init_expectation_engine(
                     feature_store_id=featurestore_id, feature_group_id=self._id
                 )
-            self._expectation_suite_engine: Optional[
-                expectation_suite_engine.ExpectationSuiteEngine
-            ] = expectation_suite_engine.ExpectationSuiteEngine(
+            self._expectation_suite_engine: (
+                expectation_suite_engine.ExpectationSuiteEngine | None
+            ) = expectation_suite_engine.ExpectationSuiteEngine(
                 feature_store_id=featurestore_id, feature_group_id=self._id
             )
-            self._validation_report_engine: Optional[
-                validation_report_engine.ValidationReportEngine
-            ] = validation_report_engine.ValidationReportEngine(
+            self._validation_report_engine: (
+                validation_report_engine.ValidationReportEngine | None
+            ) = validation_report_engine.ValidationReportEngine(
                 featurestore_id, self._id
             )
-            self._validation_result_engine: Optional[
-                validation_result_engine.ValidationResultEngine
-            ] = validation_result_engine.ValidationResultEngine(
+            self._validation_result_engine: (
+                validation_result_engine.ValidationResultEngine | None
+            ) = validation_result_engine.ValidationResultEngine(
                 featurestore_id, self._id
             )
-            self._feature_monitoring_config_engine: Optional[
-                feature_monitoring_config_engine.FeatureMonitoringConfigEngine
-            ] = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            self._feature_monitoring_config_engine: (
+                feature_monitoring_config_engine.FeatureMonitoringConfigEngine | None
+            ) = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
                 feature_store_id=featurestore_id,
                 feature_group_id=self._id,
             )
@@ -319,9 +301,7 @@ class FeatureGroupBase:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         warnings.warn(
-            "All jobs associated to feature group `{}`, version `{}` will be removed.".format(
-                self._name, self._version
-            ),
+            f"All jobs associated to feature group `{self._name}`, version `{self._version}` will be removed.",
             util.JobWarning,
             stacklevel=1,
         )
@@ -509,7 +489,7 @@ class FeatureGroupBase:
 
         return query
 
-    def select(self, features: List[Union[str, feature.Feature]]) -> query.Query:
+    def select(self, features: list[str | feature.Feature]) -> query.Query:
         """Select a subset of features of the feature group and return a query object.
 
         The query can be used to construct joins of feature groups or create a feature view with a subset of features of the feature group.
@@ -552,7 +532,7 @@ class FeatureGroupBase:
         )
 
     def select_except(
-        self, features: Optional[List[Union[str, feature.Feature]]] = None
+        self, features: list[str | feature.Feature] | None = None
     ) -> query.Query:
         """Select all features including primary key and event time feature of the feature group except provided `features` and return a query object.
 
@@ -604,7 +584,7 @@ class FeatureGroupBase:
             )
         return self.select_all()
 
-    def filter(self, f: Union[filter.Filter, filter.Logic]) -> query.Query:
+    def filter(self, f: filter.Filter | filter.Logic) -> query.Query:
         """Apply filter to the feature group.
 
         Selects all features and returns the resulting `Query` with the applied filter.
@@ -693,7 +673,7 @@ class FeatureGroupBase:
         """
         self._feature_group_engine.delete_tag(self, name)
 
-    def get_tag(self, name: str) -> Optional[tag.Tag]:
+    def get_tag(self, name: str) -> tag.Tag | None:
         """Get the tags of a feature group.
 
         Example:
@@ -718,7 +698,7 @@ class FeatureGroupBase:
         """
         return self._feature_group_engine.get_tag(self, name)
 
-    def get_tags(self) -> Dict[str, tag.Tag]:
+    def get_tags(self) -> dict[str, tag.Tag]:
         """Retrieves all tags attached to a feature group.
 
         Returns:
@@ -729,7 +709,7 @@ class FeatureGroupBase:
         """
         return self._feature_group_engine.get_tags(self)
 
-    def get_parent_feature_groups(self) -> Optional[explicit_provenance.Links]:
+    def get_parent_feature_groups(self) -> explicit_provenance.Links | None:
         """Get the parents of this feature group, based on explicit provenance.
 
         Parents are feature groups or external feature groups.
@@ -744,7 +724,7 @@ class FeatureGroupBase:
         """
         return self._feature_group_engine.get_parent_feature_groups(self)
 
-    def get_storage_connector_provenance(self) -> Optional[explicit_provenance.Links]:
+    def get_storage_connector_provenance(self) -> explicit_provenance.Links | None:
         """Get the parents of this feature group, based on explicit provenance.
 
         Parents are storage connectors.
@@ -759,7 +739,7 @@ class FeatureGroupBase:
         """
         return self._feature_group_engine.get_storage_connector_provenance(self)
 
-    def get_storage_connector(self) -> Optional["sc.StorageConnector"]:
+    def get_storage_connector(self) -> sc.StorageConnector | None:
         """Get the storage connector using this feature group, based on explicit provenance.
 
         Only the accessible storage connector is returned.
@@ -785,7 +765,7 @@ class FeatureGroupBase:
             return storage_connector_provenance.accessible[0]
         return None
 
-    def get_generated_feature_views(self) -> Optional[explicit_provenance.Links]:
+    def get_generated_feature_views(self) -> explicit_provenance.Links | None:
         """Get the generated feature view using this feature group, based on explicit provenance.
 
         These feature views can be accessible or inaccessible.
@@ -800,7 +780,7 @@ class FeatureGroupBase:
         """
         return self._feature_group_engine.get_generated_feature_views(self)
 
-    def get_generated_feature_groups(self) -> Optional[explicit_provenance.Links]:
+    def get_generated_feature_groups(self) -> explicit_provenance.Links | None:
         """Get the generated feature groups using this feature group, based on explicit provenance.
 
         These feature groups can be accessible or inaccessible.
@@ -815,7 +795,7 @@ class FeatureGroupBase:
         """
         return self._feature_group_engine.get_generated_feature_groups(self)
 
-    def get_feature(self, name: str) -> Optional[feature.Feature]:
+    def get_feature(self, name: str) -> feature.Feature | None:
         """Retrieve a `Feature` object from the schema of the feature group.
 
         There are several ways to access features of a feature group:
@@ -852,7 +832,7 @@ class FeatureGroupBase:
 
     def update_statistics_config(
         self,
-    ) -> Union[FeatureGroup, ExternalFeatureGroup, SpineGroup, FeatureGroupBase]:
+    ) -> FeatureGroup | ExternalFeatureGroup | SpineGroup | FeatureGroupBase:
         """Update the statistics configuration of the feature group.
 
         Change the `statistics_config` object and persist the changes by calling this method.
@@ -881,7 +861,7 @@ class FeatureGroupBase:
 
     def update_description(
         self, description: str
-    ) -> Union[FeatureGroupBase, FeatureGroup, ExternalFeatureGroup, SpineGroup]:
+    ) -> FeatureGroupBase | FeatureGroup | ExternalFeatureGroup | SpineGroup:
         """Update the description of the feature group.
 
         Example:
@@ -913,7 +893,7 @@ class FeatureGroupBase:
 
     def update_notification_topic_name(
         self, notification_topic_name: str
-    ) -> Union[FeatureGroupBase, ExternalFeatureGroup, SpineGroup, FeatureGroup]:
+    ) -> FeatureGroupBase | ExternalFeatureGroup | SpineGroup | FeatureGroup:
         """Update the notification topic name of the feature group.
 
         Example:
@@ -949,7 +929,7 @@ class FeatureGroupBase:
 
     def update_deprecated(
         self, deprecate: bool = True
-    ) -> Union[FeatureGroupBase, FeatureGroup, ExternalFeatureGroup, SpineGroup]:
+    ) -> FeatureGroupBase | FeatureGroup | ExternalFeatureGroup | SpineGroup:
         """Deprecate the feature group.
 
         Example:
@@ -980,8 +960,8 @@ class FeatureGroupBase:
         return self
 
     def update_features(
-        self, features: Union[feature.Feature, List[feature.Feature]]
-    ) -> Union[FeatureGroupBase, FeatureGroup, ExternalFeatureGroup, SpineGroup]:
+        self, features: feature.Feature | list[feature.Feature]
+    ) -> FeatureGroupBase | FeatureGroup | ExternalFeatureGroup | SpineGroup:
         """Update metadata of features in this feature group.
 
         Currently it's only supported to update the description of a feature.
@@ -1008,21 +988,19 @@ class FeatureGroupBase:
                 else:
                     raise TypeError(
                         "The argument `features` has to be of type `Feature` or "
-                        "a list thereof, but an element is of type: `{}`".format(
-                            type(features)
-                        )
+                        f"a list thereof, but an element is of type: `{type(features)}`"
                     )
         else:
             raise TypeError(
                 "The argument `features` has to be of type `Feature` or a list "
-                "thereof, but is of type: `{}`".format(type(features))
+                f"thereof, but is of type: `{type(features)}`"
             )
         self._feature_group_engine.update_features(self, new_features)
         return self
 
     def update_feature_description(
         self, feature_name: str, description: str
-    ) -> Union[FeatureGroupBase, FeatureGroup, ExternalFeatureGroup, SpineGroup]:
+    ) -> FeatureGroupBase | FeatureGroup | ExternalFeatureGroup | SpineGroup:
         """Update the description of a single feature in this feature group.
 
         Example:
@@ -1059,8 +1037,8 @@ class FeatureGroupBase:
         return self
 
     def append_features(
-        self, features: Union[feature.Feature, List[feature.Feature]]
-    ) -> Union[FeatureGroupBase, FeatureGroup, ExternalFeatureGroup, SpineGroup]:
+        self, features: feature.Feature | list[feature.Feature]
+    ) -> FeatureGroupBase | FeatureGroup | ExternalFeatureGroup | SpineGroup:
         """Append features to the schema of the feature group.
 
         Example:
@@ -1108,25 +1086,23 @@ class FeatureGroupBase:
                 else:
                     raise TypeError(
                         "The argument `features` has to be of type `Feature` or "
-                        "a list thereof, but an element is of type: `{}`".format(
-                            type(features)
-                        )
+                        f"a list thereof, but an element is of type: `{type(features)}`"
                     )
         else:
             raise TypeError(
                 "The argument `features` has to be of type `Feature` or a list "
-                "thereof, but is of type: `{}`".format(type(features))
+                f"thereof, but is of type: `{type(features)}`"
             )
         self._feature_group_engine.append_features(self, new_features)
         return self
 
     def get_expectation_suite(
         self, ge_type: bool = HAS_GREAT_EXPECTATIONS
-    ) -> Union[
-        hsfs.expectation_suite.ExpectationSuite,
-        great_expectations.core.ExpectationSuite,
-        None,
-    ]:
+    ) -> (
+        hsfs.expectation_suite.ExpectationSuite
+        | great_expectations.core.ExpectationSuite
+        | None
+    ):
         """Return the expectation suite attached to the feature group if it exists.
 
         Example:
@@ -1161,17 +1137,15 @@ class FeatureGroupBase:
 
     def save_expectation_suite(
         self,
-        expectation_suite: Union[
-            hsfs.expectation_suite.ExpectationSuite,
-            great_expectations.core.ExpectationSuite,
-        ],
+        expectation_suite: hsfs.expectation_suite.ExpectationSuite
+        | great_expectations.core.ExpectationSuite,
         run_validation: bool = True,
         validation_ingestion_policy: Literal["always", "strict"] = "always",
         overwrite: bool = False,
-    ) -> Union[
-        hsfs.expectation_suite.ExpectationSuite,
-        great_expectations.core.ExpectationSuite,
-    ]:
+    ) -> (
+        hsfs.expectation_suite.ExpectationSuite
+        | great_expectations.core.ExpectationSuite
+    ):
         """Attach an expectation suite to a feature group and saves it for future use.
 
         If an expectation suite is already attached, it is replaced.
@@ -1224,9 +1198,7 @@ class FeatureGroupBase:
             )
         else:
             raise TypeError(
-                "The provided expectation suite type `{}` is not supported. Use Great Expectation `ExpectationSuite` or HSFS' own `ExpectationSuite` object.".format(
-                    type(expectation_suite)
-                )
+                f"The provided expectation suite type `{type(expectation_suite)}` is not supported. Use Great Expectation `ExpectationSuite` or HSFS' own `ExpectationSuite` object."
             )
 
         if overwrite:
@@ -1264,9 +1236,11 @@ class FeatureGroupBase:
 
     def get_latest_validation_report(
         self, ge_type: bool = HAS_GREAT_EXPECTATIONS
-    ) -> Union[
-        ValidationReport, great_expectations.core.ExpectationSuiteValidationResult, None
-    ]:
+    ) -> (
+        ValidationReport
+        | great_expectations.core.ExpectationSuiteValidationResult
+        | None
+    ):
         """Return the latest validation report attached to the Feature Group if it exists.
 
         Example:
@@ -1295,10 +1269,8 @@ class FeatureGroupBase:
 
     def get_all_validation_reports(
         self, ge_type: bool = HAS_GREAT_EXPECTATIONS
-    ) -> List[
-        Union[
-            ValidationReport, great_expectations.core.ExpectationSuiteValidationResult
-        ]
+    ) -> list[
+        ValidationReport | great_expectations.core.ExpectationSuiteValidationResult
     ]:
         """Return the latest validation report attached to the feature group if it exists.
 
@@ -1333,18 +1305,14 @@ class FeatureGroupBase:
 
     def save_validation_report(
         self,
-        validation_report: Union[
-            Dict[str, Any],
-            ValidationReport,
-            great_expectations.core.expectation_validation_result.ExpectationSuiteValidationResult,
-        ],
+        validation_report: dict[str, Any]
+        | ValidationReport
+        | great_expectations.core.expectation_validation_result.ExpectationSuiteValidationResult,
         ingestion_result: Literal[
             "UNKNOWN", "INGESTED", "REJECTED", "EXPERIMENT", "FG_DATA"
         ] = "UNKNOWN",
         ge_type: bool = HAS_GREAT_EXPECTATIONS,
-    ) -> Union[
-        ValidationReport, great_expectations.core.ExpectationSuiteValidationResult
-    ]:
+    ) -> ValidationReport | great_expectations.core.ExpectationSuiteValidationResult:
         """Save validation report to hopsworks platform along previous reports of the same Feature Group.
 
         Example:
@@ -1404,16 +1372,16 @@ class FeatureGroupBase:
     def get_validation_history(
         self,
         expectation_id: int,
-        start_validation_time: Union[str, int, datetime, date, None] = None,
-        end_validation_time: Union[str, int, datetime, date, None] = None,
-        filter_by: List[
+        start_validation_time: str | int | datetime | date | None = None,
+        end_validation_time: str | int | datetime | date | None = None,
+        filter_by: list[
             Literal["INGESTED", "REJECTED", "FG_DATA", "EXPERIMENT", "UNKNOWN"]
         ] = None,
         ge_type: bool = HAS_GREAT_EXPECTATIONS,
-    ) -> Union[
-        List[ValidationResult],
-        List[great_expectations.core.ExpectationValidationResult],
-    ]:
+    ) -> (
+        list[ValidationResult]
+        | list[great_expectations.core.ExpectationValidationResult]
+    ):
         """Fetch validation history of an Expectation specified by its id.
 
         Example:
@@ -1463,19 +1431,19 @@ class FeatureGroupBase:
     @uses_great_expectations
     def validate(
         self,
-        dataframe: Optional[
-            Union[pd.DataFrame, TypeVar("pyspark.sql.DataFrame")]  # noqa: F821
-        ] = None,
-        expectation_suite: Optional[hsfs.expectation_suite.ExpectationSuite] = None,
+        dataframe: pd.DataFrame | TypeVar("pyspark.sql.DataFrame") | None = None,
+        expectation_suite: hsfs.expectation_suite.ExpectationSuite | None = None,
         save_report: bool = False,
-        validation_options: Optional[Dict[str, Any]] = None,
+        validation_options: dict[str, Any] | None = None,
         ingestion_result: Literal[
             "UNKNOWN", "INGESTED", "REJECTED", "EXPERIMENT", "FG_DATA"
         ] = "UNKNOWN",
         ge_type: bool = True,
-    ) -> Union[
-        great_expectations.core.ExpectationSuiteValidationResult, ValidationReport, None
-    ]:
+    ) -> (
+        great_expectations.core.ExpectationSuiteValidationResult
+        | ValidationReport
+        | None
+    ):
         """Run validation based on the attached expectations.
 
         Runs the expectation suite attached to the feature group against the provided dataframe.
@@ -1534,8 +1502,8 @@ class FeatureGroupBase:
 
     @classmethod
     def from_response_json(
-        cls, feature_group_json: Dict[str, Any]
-    ) -> Union[FeatureGroup, ExternalFeatureGroup, SpineGroup]:
+        cls, feature_group_json: dict[str, Any]
+    ) -> FeatureGroup | ExternalFeatureGroup | SpineGroup:
         if (
             feature_group_json["type"] == "onDemandFeaturegroupDTO"
             and not feature_group_json["spine"]
@@ -1554,10 +1522,10 @@ class FeatureGroupBase:
 
     def get_feature_monitoring_configs(
         self,
-        name: Optional[str] = None,
-        feature_name: Optional[str] = None,
-        config_id: Optional[int] = None,
-    ) -> Union[fmc.FeatureMonitoringConfig, List[fmc.FeatureMonitoringConfig], None]:
+        name: str | None = None,
+        feature_name: str | None = None,
+        config_id: int | None = None,
+    ) -> fmc.FeatureMonitoringConfig | list[fmc.FeatureMonitoringConfig] | None:
         """Fetch all feature monitoring configs attached to the feature group, or fetch by name or feature name only.
 
         If no arguments are provided the method will return all feature monitoring configs attached to the feature group, meaning all feature monitoring configs that are attach to a feature in the feature group.
@@ -1610,12 +1578,12 @@ class FeatureGroupBase:
 
     def get_feature_monitoring_history(
         self,
-        config_name: Optional[str] = None,
-        config_id: Optional[int] = None,
-        start_time: Optional[Union[int, str, datetime, date]] = None,
-        end_time: Optional[Union[int, str, datetime, date]] = None,
+        config_name: str | None = None,
+        config_id: int | None = None,
+        start_time: int | str | datetime | date | None = None,
+        end_time: int | str | datetime | date | None = None,
         with_statistics: bool = True,
-    ) -> List[fmr.FeatureMonitoringResult]:
+    ) -> list[fmr.FeatureMonitoringResult]:
         """Fetch feature monitoring history for a given feature monitoring config.
 
         Example:
@@ -1672,11 +1640,11 @@ class FeatureGroupBase:
     def create_statistics_monitoring(
         self,
         name: str,
-        feature_name: Optional[str] = None,
-        description: Optional[str] = None,
-        start_date_time: Optional[Union[int, str, datetime, date, pd.Timestamp]] = None,
-        end_date_time: Optional[Union[int, str, datetime, date, pd.Timestamp]] = None,
-        cron_expression: Optional[str] = "0 0 12 ? * * *",
+        feature_name: str | None = None,
+        description: str | None = None,
+        start_date_time: int | str | datetime | date | pd.Timestamp | None = None,
+        end_date_time: int | str | datetime | date | pd.Timestamp | None = None,
+        cron_expression: str | None = "0 0 12 ? * * *",
     ) -> fmc.FeatureMonitoringConfig:
         """Run a job to compute statistics on snapshot of feature data on a schedule.
 
@@ -1742,10 +1710,10 @@ class FeatureGroupBase:
         self,
         name: str,
         feature_name: str,
-        description: Optional[str] = None,
-        start_date_time: Optional[Union[int, str, datetime, date, pd.Timestamp]] = None,
-        end_date_time: Optional[Union[int, str, datetime, date, pd.Timestamp]] = None,
-        cron_expression: Optional[str] = "0 0 12 ? * * *",
+        description: str | None = None,
+        start_date_time: int | str | datetime | date | pd.Timestamp | None = None,
+        end_date_time: int | str | datetime | date | pd.Timestamp | None = None,
+        cron_expression: str | None = "0 0 12 ? * * *",
     ) -> fmc.FeatureMonitoringConfig:
         """Enable feature monitoring to compare statistics on snapshots of feature data over time.
 
@@ -1846,7 +1814,7 @@ class FeatureGroupBase:
     @statistics_config.setter
     def statistics_config(
         self,
-        statistics_config: Optional[Union[StatisticsConfig, Dict[str, Any], bool]],
+        statistics_config: StatisticsConfig | dict[str, Any] | bool | None,
     ) -> None:
         self._check_statistics_support()  # raises an error if stats not supported
         if isinstance(statistics_config, StatisticsConfig):
@@ -1859,9 +1827,7 @@ class FeatureGroupBase:
             self._statistics_config = StatisticsConfig()
         else:
             raise TypeError(
-                "The argument `statistics_config` has to be `None` of type `StatisticsConfig, `bool` or `dict`, but is of type: `{}`".format(
-                    type(statistics_config)
-                )
+                f"The argument `statistics_config` has to be `None` of type `StatisticsConfig, `bool` or `dict`, but is of type: `{type(statistics_config)}`"
             )
 
     def get_latest_online_ingestion(self) -> online_ingestion.OnlineIngestion:
@@ -1910,7 +1876,7 @@ class FeatureGroupBase:
         )
 
     @property
-    def feature_store_id(self) -> Optional[int]:
+    def feature_store_id(self) -> int | None:
         return self._feature_store_id
 
     @property
@@ -1926,17 +1892,17 @@ class FeatureGroupBase:
         self._feature_store = feature_store
 
     @property
-    def id(self) -> Optional[int]:
+    def id(self) -> int | None:
         """Feature group id."""
         return self._id
 
     @property
-    def name(self) -> Optional[str]:
+    def name(self) -> str | None:
         """Name of the feature group."""
         return self._name
 
     @property
-    def version(self) -> Optional[int]:
+    def version(self) -> int | None:
         """Version number of the feature group."""
         return self._version
 
@@ -1948,7 +1914,7 @@ class FeatureGroupBase:
         return f"{self.name}_{self.version}"
 
     @property
-    def statistics(self) -> Optional[Statistics]:
+    def statistics(self) -> Statistics | None:
         """Get the latest computed statistics for the whole feature group.
 
         Raises:
@@ -1958,21 +1924,21 @@ class FeatureGroupBase:
         return self._statistics_engine.get(self)
 
     @property
-    def primary_key(self) -> List[str]:
+    def primary_key(self) -> list[str]:
         """List of features building the primary key."""
         return self._primary_key
 
     @primary_key.setter
-    def primary_key(self, new_primary_key: List[str]) -> None:
+    def primary_key(self, new_primary_key: list[str]) -> None:
         self._primary_key = [
             util.autofix_feature_name(pk, warn=True) for pk in new_primary_key
         ]
 
     def get_statistics(
         self,
-        computation_time: Optional[Union[str, int, float, datetime, date]] = None,
-        feature_names: Optional[List[str]] = None,
-    ) -> Optional[Statistics]:
+        computation_time: str | float | datetime | date | None = None,
+        feature_names: list[str] | None = None,
+    ) -> Statistics | None:
         """Returns the statistics computed at a specific time for the current feature group.
 
         If `computation_time` is `None`, the most recent statistics are returned.
@@ -2008,9 +1974,9 @@ class FeatureGroupBase:
 
     def get_all_statistics(
         self,
-        computation_time: Optional[Union[str, int, float, datetime, date]] = None,
-        feature_names: Optional[List[str]] = None,
-    ) -> Optional[List[Statistics]]:
+        computation_time: str | float | datetime | date | None = None,
+        feature_names: list[str] | None = None,
+    ) -> list[Statistics] | None:
         """Returns all the statistics metadata computed before a specific time for the current feature group.
 
         If `computation_time` is `None`, all the statistics metadata are returned.
@@ -2073,14 +2039,14 @@ class FeatureGroupBase:
         else:
             warnings.warn(
                 (
-                    "The statistics are not enabled of feature group `{}`, with version"
-                    " `{}`. No statistics computed."
-                ).format(self._name, self._version),
+                    f"The statistics are not enabled of feature group `{self._name}`, with version"
+                    f" `{self._version}`. No statistics computed."
+                ),
                 util.StorageWarning,
                 stacklevel=1,
             )
 
-    def get_alerts(self) -> List[FeatureGroupAlert]:
+    def get_alerts(self) -> list[FeatureGroupAlert]:
         """Get all alerts for this feature group.
 
         Returns:
@@ -2169,24 +2135,24 @@ class FeatureGroupBase:
         )
 
     @property
-    def embedding_index(self) -> Optional["EmbeddingIndex"]:
+    def embedding_index(self) -> EmbeddingIndex | None:
         if self._embedding_index:
             self._embedding_index.feature_group = self
         return self._embedding_index
 
     @embedding_index.setter
-    def embedding_index(self, embedding_index: Optional["EmbeddingIndex"]) -> None:
+    def embedding_index(self, embedding_index: EmbeddingIndex | None) -> None:
         if embedding_index is not None and self._id is None:
             self.online_enabled = True
         self._embedding_index = embedding_index
 
     @property
-    def event_time(self) -> Optional[str]:
+    def event_time(self) -> str | None:
         """Event time feature in the feature group."""
         return self._event_time
 
     @event_time.setter
-    def event_time(self, feature_name: Optional[str]) -> None:
+    def event_time(self, feature_name: str | None) -> None:
         if feature_name is None:
             self._event_time = None
             return
@@ -2212,25 +2178,23 @@ class FeatureGroupBase:
         )
 
     @property
-    def location(self) -> Optional[str]:
+    def location(self) -> str | None:
         return self._location
 
     @property
     def expectation_suite(
         self,
-    ) -> Optional[hsfs.expectation_suite.ExpectationSuite]:
+    ) -> hsfs.expectation_suite.ExpectationSuite | None:
         """Expectation Suite configuration object defining the settings for data validation of the feature group."""
         return self._expectation_suite
 
     @expectation_suite.setter
     def expectation_suite(
         self,
-        expectation_suite: Union[
-            hsfs.expectation_suite.ExpectationSuite,
-            great_expectations.core.ExpectationSuite,
-            Dict[str, Any],
-            None,
-        ],
+        expectation_suite: hsfs.expectation_suite.ExpectationSuite
+        | great_expectations.core.ExpectationSuite
+        | dict[str, Any]
+        | None,
     ) -> None:
         if isinstance(expectation_suite, hsfs.expectation_suite.ExpectationSuite):
             tmp_expectation_suite = expectation_suite.to_json_dict(decamelize=True)
@@ -2259,9 +2223,7 @@ class FeatureGroupBase:
             self._expectation_suite = None
         else:
             raise TypeError(
-                "The argument `expectation_suite` has to be `None` of type `ExpectationSuite` or `dict`, but is of type: `{}`".format(
-                    type(expectation_suite)
-                )
+                f"The argument `expectation_suite` has to be `None` of type `ExpectationSuite` or `dict`, but is of type: `{type(expectation_suite)}`"
             )
 
     @property
@@ -2274,7 +2236,7 @@ class FeatureGroupBase:
         self._online_enabled = online_enabled
 
     @property
-    def storage_connector(self) -> "sc.StorageConnector":
+    def storage_connector(self) -> sc.StorageConnector:
         return self._storage_connector
 
     def prepare_spark_location(self) -> str:
@@ -2284,21 +2246,21 @@ class FeatureGroupBase:
         return location
 
     @property
-    def topic_name(self) -> Optional[str]:
+    def topic_name(self) -> str | None:
         """The topic used for feature group data ingestion."""
         return self._topic_name
 
     @topic_name.setter
-    def topic_name(self, topic_name: Optional[str]) -> None:
+    def topic_name(self, topic_name: str | None) -> None:
         self._topic_name = topic_name
 
     @property
-    def notification_topic_name(self) -> Optional[str]:
+    def notification_topic_name(self) -> str | None:
         """The topic used for feature group notifications."""
         return self._notification_topic_name
 
     @notification_topic_name.setter
-    def notification_topic_name(self, notification_topic_name: Optional[str]) -> None:
+    def notification_topic_name(self, notification_topic_name: str | None) -> None:
         self._notification_topic_name = notification_topic_name
 
     @property
@@ -2311,7 +2273,7 @@ class FeatureGroupBase:
         self._deprecated = deprecated
 
     @property
-    def data_source(self) -> Optional[ds.DataSource]:
+    def data_source(self) -> ds.DataSource | None:
         return self._data_source
 
     @data_source.setter
@@ -2321,7 +2283,7 @@ class FeatureGroupBase:
             self._data_source._update_storage_connector(self.storage_connector)
 
     @property
-    def subject(self) -> Dict[str, Any]:
+    def subject(self) -> dict[str, Any]:
         """Subject of the feature group."""
         if self._subject is None:
             # cache the schema
@@ -2333,7 +2295,7 @@ class FeatureGroupBase:
         """Avro schema representation of the feature group."""
         return self.subject["schema"]
 
-    def get_complex_features(self) -> List[str]:
+    def get_complex_features(self) -> list[str]:
         """Returns the names of all features with a complex data type in this feature group.
 
         Example:
@@ -2355,9 +2317,7 @@ class FeatureGroupBase:
         try:
             avro.schema.parse(schema_s)
         except avro.schema.SchemaParseException as e:
-            raise FeatureStoreException(
-                "Failed to construct Avro Schema: {}".format(e)
-            ) from e
+            raise FeatureStoreException(f"Failed to construct Avro Schema: {e}") from e
         return schema_s
 
     def _get_feature_avro_schema(self, feature_name: str) -> str | None:
@@ -2367,12 +2327,12 @@ class FeatureGroupBase:
         return None
 
     @property
-    def features(self) -> List["feature.Feature"]:
+    def features(self) -> list[feature.Feature]:
         """Feature Group schema (alias)."""
         return self._features
 
     @property
-    def schema(self) -> List["feature.Feature"]:
+    def schema(self) -> list[feature.Feature]:
         """Feature Group schema."""
         return self._features
 
@@ -2419,14 +2379,14 @@ class FeatureGroupBase:
             )
 
     @features.setter
-    def features(self, new_features: List["feature.Feature"]) -> None:
+    def features(self, new_features: list[feature.Feature]) -> None:
         self._features = new_features
 
     def _get_project_name(self) -> str:
         return util.strip_feature_store_suffix(self.feature_store_name)
 
     @property
-    def ttl(self) -> Optional[int]:
+    def ttl(self) -> int | None:
         """Get the time-to-live duration in seconds for features in this group.
 
         The TTL determines how long features should be retained before being automatically removed.
@@ -2438,7 +2398,7 @@ class FeatureGroupBase:
         return self._ttl
 
     @ttl.setter
-    def ttl(self, new_ttl: Optional[Union[int, float, timedelta]]) -> None:
+    def ttl(self, new_ttl: float | timedelta | None) -> None:
         """Set the time-to-live duration for features in this group.
 
         The value is stored internally in seconds.
@@ -2480,8 +2440,8 @@ class FeatureGroupBase:
 
     def enable_ttl(
         self,
-        ttl: Optional[Union[int, float, timedelta]] = None,
-    ) -> Union[FeatureGroupBase, FeatureGroup, ExternalFeatureGroup, SpineGroup]:
+        ttl: float | timedelta | None = None,
+    ) -> FeatureGroupBase | FeatureGroup | ExternalFeatureGroup | SpineGroup:
         """Enable or update the time-to-live (TTL) configuration of the feature group.
 
         If ttl is not set, the feature group will be enabled with the last TTL value being set.
@@ -2526,7 +2486,7 @@ class FeatureGroupBase:
         self._feature_group_engine.update_ttl(self, ttl, True)
         return self
 
-    def disable_ttl(self) -> "FeatureGroup":
+    def disable_ttl(self) -> FeatureGroup:
         """Disable the time-to-live (TTL) configuration of the feature group.
 
         Example:
@@ -2564,61 +2524,47 @@ class FeatureGroup(FeatureGroupBase):
     def __init__(
         self,
         name: str,
-        version: Optional[int],
+        version: int | None,
         featurestore_id: int,
-        description: Optional[str] = "",
-        partition_key: Optional[List[str]] = None,
-        primary_key: Optional[List[str]] = None,
-        foreign_key: Optional[List[str]] = None,
-        hudi_precombine_key: Optional[str] = None,
-        featurestore_name: Optional[str] = None,
-        embedding_index: Optional["EmbeddingIndex"] = None,
-        created: Optional[str] = None,
-        creator: Optional[Dict[str, Any]] = None,
-        id: Optional[int] = None,
-        features: Optional[List[Union["feature.Feature", Dict[str, Any]]]] = None,
-        location: Optional[str] = None,
+        description: str | None = "",
+        partition_key: list[str] | None = None,
+        primary_key: list[str] | None = None,
+        foreign_key: list[str] | None = None,
+        hudi_precombine_key: str | None = None,
+        featurestore_name: str | None = None,
+        embedding_index: EmbeddingIndex | None = None,
+        created: str | None = None,
+        creator: dict[str, Any] | None = None,
+        id: int | None = None,
+        features: list[feature.Feature | dict[str, Any]] | None = None,
+        location: str | None = None,
         online_enabled: bool = False,
-        time_travel_format: Optional[str] = None,
-        statistics_config: Optional[Union["StatisticsConfig", Dict[str, Any]]] = None,
-        online_topic_name: Optional[str] = None,
-        topic_name: Optional[str] = None,
-        notification_topic_name: Optional[str] = None,
-        event_time: Optional[str] = None,
+        time_travel_format: str | None = None,
+        statistics_config: StatisticsConfig | dict[str, Any] | None = None,
+        online_topic_name: str | None = None,
+        topic_name: str | None = None,
+        notification_topic_name: str | None = None,
+        event_time: str | None = None,
         stream: bool = False,
-        expectation_suite: Optional[
-            Union[
-                great_expectations.core.ExpectationSuite,
-                hsfs.expectation_suite.ExpectationSuite,
-                Dict[str, Any],
-            ]
-        ] = None,
-        parents: Optional[List[explicit_provenance.Links]] = None,
-        href: Optional[str] = None,
-        delta_streamer_job_conf: Optional[
-            Union[Dict[str, Any], deltastreamer_jobconf.DeltaStreamerJobConf]
-        ] = None,
+        expectation_suite: great_expectations.core.ExpectationSuite
+        | hsfs.expectation_suite.ExpectationSuite
+        | dict[str, Any]
+        | None = None,
+        parents: list[explicit_provenance.Links] | None = None,
+        href: str | None = None,
+        delta_streamer_job_conf: dict[str, Any]
+        | deltastreamer_jobconf.DeltaStreamerJobConf
+        | None = None,
         deprecated: bool = False,
-        transformation_functions: Optional[
-            List[Union[TransformationFunction, HopsworksUdf]]
-        ] = None,
-        online_config: Optional[
-            Union[
-                OnlineConfig,
-                Dict[str, Any],
-            ]
-        ] = None,
-        offline_backfill_every_hr: Optional[Union[str, int]] = None,
-        storage_connector: Union[sc.StorageConnector, Dict[str, Any]] = None,
-        data_source: Optional[
-            Union[
-                ds.DataSource,
-                Dict[str, Any],
-            ]
-        ] = None,
-        ttl: Optional[Union[int, float, timedelta]] = None,
-        ttl_enabled: Optional[bool] = None,
-        online_disk: Optional[bool] = None,
+        transformation_functions: list[TransformationFunction | HopsworksUdf]
+        | None = None,
+        online_config: OnlineConfig | dict[str, Any] | None = None,
+        offline_backfill_every_hr: str | int | None = None,
+        storage_connector: sc.StorageConnector | dict[str, Any] = None,
+        data_source: ds.DataSource | dict[str, Any] | None = None,
+        ttl: float | timedelta | None = None,
+        ttl_enabled: bool | None = None,
+        online_disk: bool | None = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -2643,8 +2589,8 @@ class FeatureGroup(FeatureGroupBase):
             online_disk=online_disk,
         )
 
-        self._feature_store_name: Optional[str] = featurestore_name
-        self._description: Optional[str] = description
+        self._feature_store_name: str | None = featurestore_name
+        self._description: str | None = description
         self._created = created
         self._creator = user.User.from_response_json(creator)
 
@@ -2661,17 +2607,17 @@ class FeatureGroup(FeatureGroupBase):
         self._parents = parents
         self._deltastreamer_jobconf = delta_streamer_job_conf
 
-        self._materialization_job: "Job" = None
+        self._materialization_job: Job = None
 
         if self._id:
             # initialized by backend
-            self.primary_key: List[str] = [
+            self.primary_key: list[str] = [
                 feat.name for feat in self._features if feat.primary is True
             ]
-            self.foreign_key: List[str] = [
+            self.foreign_key: list[str] = [
                 feat.name for feat in self._features if feat.foreign is True
             ]
-            self._partition_key: List[str] = [
+            self._partition_key: list[str] = [
                 feat.name for feat in self._features if feat.partition is True
             ]
             if (
@@ -2680,13 +2626,13 @@ class FeatureGroup(FeatureGroupBase):
                 and self._features
             ):
                 # hudi precombine key is always a single feature
-                self._hudi_precombine_key: Optional[str] = [
+                self._hudi_precombine_key: str | None = [
                     feat.name
                     for feat in self._features
                     if feat.hudi_precombine_key is True
                 ][0]
             else:
-                self._hudi_precombine_key: Optional[str] = None
+                self._hudi_precombine_key: str | None = None
 
             self.statistics_config = statistics_config
             self._offline_backfill_every_hr = None
@@ -2714,19 +2660,19 @@ class FeatureGroup(FeatureGroupBase):
             self.statistics_config = statistics_config
             self._offline_backfill_every_hr = offline_backfill_every_hr
 
-        self._feature_group_engine: "feature_group_engine.FeatureGroupEngine" = (
+        self._feature_group_engine: feature_group_engine.FeatureGroupEngine = (
             feature_group_engine.FeatureGroupEngine(featurestore_id)
         )
-        self._vector_db_client: Optional["VectorDbClient"] = None
-        self._href: Optional[str] = href
+        self._vector_db_client: VectorDbClient | None = None
+        self._href: str | None = href
 
         # cache for optimized writes
-        self._kafka_producer: Optional["confluent_kafka.Producer"] = None
-        self._feature_writers: Optional[Dict[str, callable]] = None
-        self._writer: Optional[callable] = None
-        self._kafka_headers: Optional[Dict[str, bytes]] = None
+        self._kafka_producer: confluent_kafka.Producer | None = None
+        self._feature_writers: dict[str, callable] | None = None
+        self._writer: callable | None = None
+        self._kafka_headers: dict[str, bytes] | None = None
         # On-Demand Transformation Functions
-        self._transformation_functions: List[TransformationFunction] = []
+        self._transformation_functions: list[TransformationFunction] = []
 
         if transformation_functions:
             for transformation_function in transformation_functions:
@@ -2759,7 +2705,7 @@ class FeatureGroup(FeatureGroupBase):
 
     def _init_time_travel_and_stream(
         self,
-        time_travel_format: Optional[str],
+        time_travel_format: str | None,
         online_enabled: bool,
         is_hopsfs: bool,
     ) -> None:
@@ -2791,12 +2737,12 @@ class FeatureGroup(FeatureGroupBase):
         time_travel_format: str,
         is_hopsfs: bool,
         online_enabled: bool,
-    ) -> Optional[bool]:
+    ) -> bool | None:
         return not (is_hopsfs and time_travel_format == "DELTA" and not online_enabled)
 
     @staticmethod
     def _resolve_time_travel_format(
-        time_travel_format: Optional[str],
+        time_travel_format: str | None,
         online_enabled: bool,
         is_hopsfs: bool,
     ) -> str:
@@ -2816,8 +2762,8 @@ class FeatureGroup(FeatureGroupBase):
 
     @staticmethod
     def _sort_transformation_functions(
-        transformation_functions: List[TransformationFunction],
-    ) -> List[TransformationFunction]:
+        transformation_functions: list[TransformationFunction],
+    ) -> list[TransformationFunction]:
         """Function that sorts transformation functions in the order of the output column names.
 
         The list of transformation functions are sorted based on the output columns names to maintain consistent ordering.
@@ -2832,20 +2778,20 @@ class FeatureGroup(FeatureGroupBase):
 
     def read(
         self,
-        wallclock_time: Optional[Union[str, int, datetime, date]] = None,
+        wallclock_time: str | int | datetime | date | None = None,
         online: bool = False,
         dataframe_type: Literal[
             "default", "spark", "pandas", "polars", "numpy", "python"
         ] = "default",
-        read_options: Optional[dict] = None,
-    ) -> Union[
-        pd.DataFrame,
-        np.ndarray,
-        List[List[Any]],
-        TypeVar("pyspark.sql.DataFrame"),
-        TypeVar("pyspark.RDD"),
-        pl.DataFrame,
-    ]:
+        read_options: dict | None = None,
+    ) -> (
+        pd.DataFrame
+        | np.ndarray
+        | list[list[Any]]
+        | TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pl.DataFrame
+    ):
         """Read the feature group into a dataframe.
 
         Reads the feature group by default from the offline storage as Spark DataFrame on Hopsworks and Databricks, and as Pandas dataframe on AWS Sagemaker and pure Python environments.
@@ -2913,9 +2859,7 @@ class FeatureGroup(FeatureGroupBase):
 
         engine.get_instance().set_job_group(
             "Fetching Feature group",
-            "Getting feature group: {} from the featurestore {}".format(
-                self._name, self._feature_store_name
-            ),
+            f"Getting feature group: {self._name} from the featurestore {self._feature_store_name}",
         )
 
         if wallclock_time:
@@ -2936,17 +2880,17 @@ class FeatureGroup(FeatureGroupBase):
 
     def read_changes(
         self,
-        start_wallclock_time: Union[str, int, datetime, date],
-        end_wallclock_time: Union[str, int, datetime, date],
-        read_options: Optional[dict] = None,
-    ) -> Union[
-        pd.DataFrame,
-        np.ndarray,
-        List[List[Any]],
-        TypeVar("pyspark.sql.DataFrame"),
-        TypeVar("pyspark.RDD"),
-        pl.DataFrame,
-    ]:
+        start_wallclock_time: str | int | datetime | date,
+        end_wallclock_time: str | int | datetime | date,
+        read_options: dict | None = None,
+    ) -> (
+        pd.DataFrame
+        | np.ndarray
+        | list[list[Any]]
+        | TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pl.DataFrame
+    ):
         """Reads updates of this feature that occurred between specified points in time.
 
         Warning: Deprecated
@@ -2985,12 +2929,12 @@ class FeatureGroup(FeatureGroupBase):
 
     def find_neighbors(
         self,
-        embedding: List[Union[int, float]],
-        col: Optional[str] = None,
-        k: Optional[int] = 10,
-        filter: Optional[Union[Filter, Logic]] = None,
-        options: Optional[dict] = None,
-    ) -> List[Tuple[float, List[Any]]]:
+        embedding: list[int | float],
+        col: str | None = None,
+        k: int | None = 10,
+        filter: Filter | Logic | None = None,
+        options: dict | None = None,
+    ) -> list[tuple[float, list[Any]]]:
         """Finds the nearest neighbors for a given embedding in the vector database.
 
         If `filter` is specified, or if embedding feature is stored in default project index, the number of results returned may be less than k.
@@ -3050,7 +2994,7 @@ class FeatureGroup(FeatureGroupBase):
             for result in results
         ]
 
-    def show(self, n: int, online: bool = False) -> List[List[Any]]:
+    def show(self, n: int, online: bool = False) -> list[list[Any]]:
         """Show the first `n` rows of the feature group.
 
         Example:
@@ -3071,28 +3015,24 @@ class FeatureGroup(FeatureGroupBase):
         """
         engine.get_instance().set_job_group(
             "Fetching Feature group",
-            "Getting feature group: {} from the featurestore {}".format(
-                self._name, self._feature_store_name
-            ),
+            f"Getting feature group: {self._name} from the featurestore {self._feature_store_name}",
         )
         return self.select_all().show(n, online)
 
     def save(
         self,
-        features: Union[
-            pd.DataFrame,
-            pl.DataFrame,
-            TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
-            TypeVar("pyspark.RDD"),  # noqa: F821
-            np.ndarray,
-            List[feature.Feature],
-        ] = None,
-        write_options: Optional[Dict[str, Any]] = None,
-        validation_options: Optional[Dict[str, Any]] = None,
+        features: pd.DataFrame
+        | pl.DataFrame
+        | TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | np.ndarray
+        | list[feature.Feature] = None,
+        write_options: dict[str, Any] | None = None,
+        validation_options: dict[str, Any] | None = None,
         wait: bool = False,
-    ) -> Tuple[
-        Optional["Job"],
-        Optional[great_expectations.core.ExpectationSuiteValidationResult],
+    ) -> tuple[
+        Job | None,
+        great_expectations.core.ExpectationSuiteValidationResult | None,
     ]:
         """Persist the metadata and materialize the feature group to the feature store.
 
@@ -3217,9 +3157,7 @@ class FeatureGroup(FeatureGroupBase):
 
         if user_version is None:
             warnings.warn(
-                "No version provided for creating feature group `{}`, incremented version to `{}`.".format(
-                    self._name, self._version
-                ),
+                f"No version provided for creating feature group `{self._name}`, incremented version to `{self._version}`.",
                 util.VersionWarning,
                 stacklevel=1,
             )
@@ -3230,23 +3168,21 @@ class FeatureGroup(FeatureGroupBase):
 
     def insert(
         self,
-        features: Union[
-            pd.DataFrame,
-            pl.DataFrame,
-            TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
-            TypeVar("pyspark.RDD"),  # noqa: F821
-            np.ndarray,
-            List[list],
-        ],
+        features: pd.DataFrame
+        | pl.DataFrame
+        | TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | np.ndarray
+        | list[list],
         overwrite: bool = False,
         operation: Literal["insert", "upsert"] = "upsert",
-        storage: Optional[str] = None,
-        write_options: Optional[Dict[str, Any]] = None,
-        validation_options: Optional[Dict[str, Any]] = None,
+        storage: str | None = None,
+        write_options: dict[str, Any] | None = None,
+        validation_options: dict[str, Any] | None = None,
         wait: bool = False,
-        transformation_context: Dict[str, Any] = None,
+        transformation_context: dict[str, Any] = None,
         transform: bool = True,
-    ) -> Tuple[Optional[Job], Optional[ValidationReport]]:
+    ) -> tuple[Job | None, ValidationReport | None]:
         """Persist the metadata and materialize the feature group to the feature store or insert data from a dataframe into the existing feature group.
 
         Incrementally insert data to a feature group or overwrite all data contained in the feature group.
@@ -3413,27 +3349,24 @@ class FeatureGroup(FeatureGroupBase):
 
     def multi_part_insert(
         self,
-        features: Optional[
-            Union[
-                pd.DataFrame,
-                pl.DataFrame,
-                TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
-                TypeVar("pyspark.RDD"),  # noqa: F821
-                np.ndarray,
-                List[list],
-            ]
-        ] = None,
+        features: pd.DataFrame
+        | pl.DataFrame
+        | TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | np.ndarray
+        | list[list]
+        | None = None,
         overwrite: bool = False,
         operation: Literal["insert", "upsert"] = "upsert",
-        storage: Optional[str] = None,
-        write_options: Optional[Dict[str, Any]] = None,
-        validation_options: Optional[Dict[str, Any]] = None,
-        transformation_context: Dict[str, Any] = None,
+        storage: str | None = None,
+        write_options: dict[str, Any] | None = None,
+        validation_options: dict[str, Any] | None = None,
+        transformation_context: dict[str, Any] = None,
         transform: bool = True,
-    ) -> Union[
-        Tuple[Optional[Job], Optional[ValidationReport]],
-        feature_group_writer.FeatureGroupWriter,
-    ]:
+    ) -> (
+        tuple[Job | None, ValidationReport | None]
+        | feature_group_writer.FeatureGroupWriter
+    ):
         """Get FeatureGroupWriter for optimized multi part inserts or call this method to start manual multi part optimized inserts.
 
         In use cases where very small batches (1 to 1000) rows per Dataframe need to be written to the feature store repeatedly, it might be inefficient to use the standard `feature_group.insert()` method as it performs some background actions to update the metadata of the feature group object first.
@@ -3576,13 +3509,13 @@ class FeatureGroup(FeatureGroupBase):
     def insert_stream(
         self,
         features: TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
-        query_name: Optional[str] = None,
+        query_name: str | None = None,
         output_mode: Literal["append", "complete", "update"] = "append",
         await_termination: bool = False,
-        timeout: Optional[int] = None,
-        checkpoint_dir: Optional[str] = None,
-        write_options: Optional[Dict[str, Any]] = None,
-        transformation_context: Dict[str, Any] = None,
+        timeout: int | None = None,
+        checkpoint_dir: str | None = None,
+        write_options: dict[str, Any] | None = None,
+        transformation_context: dict[str, Any] = None,
         transform: bool = True,
     ) -> TypeVar("StreamingQuery"):
         """Ingest a Spark Structured Streaming Dataframe to the online feature store.
@@ -3651,9 +3584,9 @@ class FeatureGroup(FeatureGroupBase):
         feature_dataframe = engine.get_instance().convert_to_default_dataframe(features)
         warnings.warn(
             (
-                "Stream ingestion for feature group `{}`, with version"
-                " `{}` will not compute statistics."
-            ).format(self._name, self._version),
+                f"Stream ingestion for feature group `{self._name}`, with version"
+                f" `{self._version}` will not compute statistics."
+            ),
             util.StatisticsWarning,
             stacklevel=1,
         )
@@ -3673,9 +3606,9 @@ class FeatureGroup(FeatureGroupBase):
 
     def commit_details(
         self,
-        wallclock_time: Optional[Union[str, int, datetime, date]] = None,
-        limit: Optional[int] = None,
-    ) -> Dict[str, Dict[str, str]]:
+        wallclock_time: str | int | datetime | date | None = None,
+        limit: int | None = None,
+    ) -> dict[str, dict[str, str]]:
         """Retrieves commit timeline for this feature group.
 
         This method can only be used on time travel enabled feature groups
@@ -3709,7 +3642,7 @@ class FeatureGroup(FeatureGroupBase):
     def commit_delete_record(
         self,
         delete_df: TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
-        write_options: Optional[Dict[Any, Any]] = None,
+        write_options: dict[Any, Any] | None = None,
     ) -> None:
         """Drops records present in the provided DataFrame and commits it as update to this Feature group.
 
@@ -3755,9 +3688,9 @@ class FeatureGroup(FeatureGroupBase):
 
     def as_of(
         self,
-        wallclock_time: Optional[Union[str, int, datetime, date]] = None,
-        exclude_until: Optional[Union[str, int, datetime, date]] = None,
-    ) -> "query.Query":
+        wallclock_time: str | int | datetime | date | None = None,
+        exclude_until: str | int | datetime | date | None = None,
+    ) -> query.Query:
         """Get Query object to retrieve all features of the group at a point in the past.
 
         Warning: Pyspark/Spark Only
@@ -3849,10 +3782,10 @@ class FeatureGroup(FeatureGroupBase):
 
     def get_statistics_by_commit_window(
         self,
-        from_commit_time: Optional[Union[str, int, datetime, date]] = None,
-        to_commit_time: Optional[Union[str, int, datetime, date]] = None,
-        feature_names: Optional[List[str]] = None,
-    ) -> Optional[Union["Statistics", List["Statistics"]]]:
+        from_commit_time: str | int | datetime | date | None = None,
+        to_commit_time: str | int | datetime | date | None = None,
+        feature_names: list[str] | None = None,
+    ) -> Statistics | list[Statistics] | None:
         """Returns the statistics computed on a specific commit window for this feature group.
 
         If time travel is not enabled, it raises an exception.
@@ -3894,7 +3827,7 @@ class FeatureGroup(FeatureGroupBase):
         )
 
     def compute_statistics(
-        self, wallclock_time: Optional[Union[str, int, datetime, date]] = None
+        self, wallclock_time: str | int | datetime | date | None = None
     ) -> None:
         """Recompute the statistics for the feature group and save them to the feature store.
 
@@ -3941,8 +3874,8 @@ class FeatureGroup(FeatureGroupBase):
 
     @classmethod
     def from_response_json(
-        cls, json_dict: Union[Dict[str, Any], List[Dict[str, Any]]]
-    ) -> Union["FeatureGroup", List["FeatureGroup"]]:
+        cls, json_dict: dict[str, Any] | list[dict[str, Any]]
+    ) -> FeatureGroup | list[FeatureGroup]:
         json_decamelized = humps.decamelize(json_dict)
         if isinstance(json_decamelized, dict):
             if "type" in json_decamelized:
@@ -3989,7 +3922,7 @@ class FeatureGroup(FeatureGroupBase):
                 ]
         return [cls(**fg) for fg in json_decamelized]
 
-    def update_from_response_json(self, json_dict: Dict[str, Any]) -> "FeatureGroup":
+    def update_from_response_json(self, json_dict: dict[str, Any]) -> FeatureGroup:
         json_decamelized = humps.decamelize(json_dict)
         json_decamelized["stream"] = json_decamelized["type"] == "streamFeatureGroupDTO"
         _ = json_decamelized.pop("type")
@@ -4021,7 +3954,7 @@ class FeatureGroup(FeatureGroupBase):
         """
         return json.dumps(self, cls=util.Encoder)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Get structured info about specific Feature Group in python dictionary format.
 
         Example:
@@ -4083,42 +4016,42 @@ class FeatureGroup(FeatureGroupBase):
         )
 
     @property
-    def id(self) -> Optional[int]:
+    def id(self) -> int | None:
         """Feature group id."""
         return self._id
 
     @property
-    def description(self) -> Optional[str]:
+    def description(self) -> str | None:
         """Description of the feature group contents."""
         return self._description
 
     @property
-    def time_travel_format(self) -> Optional[str]:
+    def time_travel_format(self) -> str | None:
         """Setting of the feature group time travel format."""
         return self._time_travel_format
 
     @property
-    def partition_key(self) -> List[str]:
+    def partition_key(self) -> list[str]:
         """List of features building the partition key."""
         return self._partition_key
 
     @property
-    def hudi_precombine_key(self) -> Optional[str]:
+    def hudi_precombine_key(self) -> str | None:
         """Feature name that is the hudi precombine key."""
         return self._hudi_precombine_key
 
     @property
-    def feature_store_name(self) -> Optional[str]:
+    def feature_store_name(self) -> str | None:
         """Name of the feature store in which the feature group is located."""
         return self._feature_store_name
 
     @property
-    def creator(self) -> Optional["user.User"]:
+    def creator(self) -> user.User | None:
         """Username of the creator."""
         return self._creator
 
     @property
-    def created(self) -> Optional[str]:
+    def created(self) -> str | None:
         """Timestamp when the feature group was created."""
         return self._created
 
@@ -4128,7 +4061,7 @@ class FeatureGroup(FeatureGroupBase):
         return self._stream
 
     @property
-    def parents(self) -> List["explicit_provenance.Links"]:
+    def parents(self) -> list[explicit_provenance.Links]:
         """Parent feature groups as origin of the data in the current feature group.
 
         This is part of explicit provenance.
@@ -4136,14 +4069,14 @@ class FeatureGroup(FeatureGroupBase):
         return self._parents
 
     @property
-    def materialization_job(self) -> Optional["Job"]:
+    def materialization_job(self) -> Job | None:
         """Get the Job object reference for the materialization job for this Feature Group."""
         if self._materialization_job is not None:
             return self._materialization_job
         feature_group_name = util.feature_group_name(self)
         job_suffix_list = ["materialization", "backfill"]
         for job_suffix in job_suffix_list:
-            job_name = "{}_offline_fg_{}".format(feature_group_name, job_suffix)
+            job_name = f"{feature_group_name}_offline_fg_{job_suffix}"
             for _ in range(3):  # retry starting job
                 try:
                     self._materialization_job = job_api.JobApi().get(job_name)
@@ -4158,7 +4091,7 @@ class FeatureGroup(FeatureGroupBase):
         raise FeatureStoreException("No materialization job was found")
 
     @property
-    def statistics(self) -> "Statistics":
+    def statistics(self) -> Statistics:
         """Get the latest computed statistics for the whole feature group."""
         if self._is_time_travel_enabled():
             # retrieve the latests statistics computed on the whole Feature Group, including all the commits.
@@ -4173,20 +4106,20 @@ class FeatureGroup(FeatureGroupBase):
     @property
     def transformation_functions(
         self,
-    ) -> List[TransformationFunction]:
+    ) -> list[TransformationFunction]:
         """Get transformation functions."""
         return self._transformation_functions
 
     @description.setter
-    def description(self, new_description: Optional[str]) -> None:
+    def description(self, new_description: str | None) -> None:
         self._description = new_description
 
     @time_travel_format.setter
-    def time_travel_format(self, new_time_travel_format: Optional[str]) -> None:
+    def time_travel_format(self, new_time_travel_format: str | None) -> None:
         self._time_travel_format = new_time_travel_format
 
     @partition_key.setter
-    def partition_key(self, new_partition_key: List[str]) -> None:
+    def partition_key(self, new_partition_key: list[str]) -> None:
         self._partition_key = [
             util.autofix_feature_name(pk, warn=True) for pk in new_partition_key
         ]
@@ -4202,18 +4135,18 @@ class FeatureGroup(FeatureGroupBase):
         self._stream = stream
 
     @parents.setter
-    def parents(self, new_parents: "explicit_provenance.Links") -> None:
+    def parents(self, new_parents: explicit_provenance.Links) -> None:
         self._parents = new_parents
 
     @transformation_functions.setter
     def transformation_functions(
         self,
-        transformation_functions: List[TransformationFunction],
+        transformation_functions: list[TransformationFunction],
     ) -> None:
         self._transformation_functions = transformation_functions
 
     @property
-    def offline_backfill_every_hr(self) -> Optional[Union[int, str]]:
+    def offline_backfill_every_hr(self) -> int | str | None:
         """On Feature Group creation, used to set scheduled run of the materialisation job."""
         if self.id:
             job = self.materialization_job
@@ -4232,7 +4165,7 @@ class FeatureGroup(FeatureGroupBase):
 
     @offline_backfill_every_hr.setter
     def offline_backfill_every_hr(
-        self, new_offline_backfill_every_hr: Optional[Union[int, str]]
+        self, new_offline_backfill_every_hr: int | str | None
     ) -> None:
         if self.id:
             raise FeatureStoreException(
@@ -4249,53 +4182,40 @@ class ExternalFeatureGroup(FeatureGroupBase):
 
     def __init__(
         self,
-        storage_connector: Union[sc.StorageConnector, Dict[str, Any]],
-        data_format: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
-        name: Optional[str] = None,
-        version: Optional[int] = None,
-        description: Optional[str] = None,
-        primary_key: Optional[List[str]] = None,
-        foreign_key: Optional[List[str]] = None,
-        featurestore_id: Optional[int] = None,
-        featurestore_name: Optional[str] = None,
-        created: Optional[str] = None,
-        creator: Optional[Dict[str, Any]] = None,
-        id: Optional[int] = None,
-        features: Optional[Union[List[Dict[str, Any]], List[feature.Feature]]] = None,
-        location: Optional[str] = None,
-        statistics_config: Optional[Union[StatisticsConfig, Dict[str, Any]]] = None,
-        event_time: Optional[str] = None,
-        expectation_suite: Optional[
-            Union[
-                hsfs.expectation_suite.ExpectationSuite,
-                great_expectations.core.ExpectationSuite,
-                Dict[str, Any],
-            ]
-        ] = None,
+        storage_connector: sc.StorageConnector | dict[str, Any],
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        name: str | None = None,
+        version: int | None = None,
+        description: str | None = None,
+        primary_key: list[str] | None = None,
+        foreign_key: list[str] | None = None,
+        featurestore_id: int | None = None,
+        featurestore_name: str | None = None,
+        created: str | None = None,
+        creator: dict[str, Any] | None = None,
+        id: int | None = None,
+        features: list[dict[str, Any]] | list[feature.Feature] | None = None,
+        location: str | None = None,
+        statistics_config: StatisticsConfig | dict[str, Any] | None = None,
+        event_time: str | None = None,
+        expectation_suite: hsfs.expectation_suite.ExpectationSuite
+        | great_expectations.core.ExpectationSuite
+        | dict[str, Any]
+        | None = None,
         online_enabled: bool = False,
-        href: Optional[str] = None,
-        online_topic_name: Optional[str] = None,
-        topic_name: Optional[str] = None,
-        notification_topic_name: Optional[str] = None,
+        href: str | None = None,
+        online_topic_name: str | None = None,
+        topic_name: str | None = None,
+        notification_topic_name: str | None = None,
         spine: bool = False,
         deprecated: bool = False,
-        embedding_index: Optional[EmbeddingIndex] = None,
-        online_config: Optional[
-            Union[
-                OnlineConfig,
-                Dict[str, Any],
-            ]
-        ] = None,
-        data_source: Optional[
-            Union[
-                ds.DataSource,
-                Dict[str, Any],
-            ]
-        ] = None,
-        ttl: Optional[Union[int, float, timedelta]] = None,
-        ttl_enabled: Optional[bool] = None,
-        online_disk: Optional[bool] = None,
+        embedding_index: EmbeddingIndex | None = None,
+        online_config: OnlineConfig | dict[str, Any] | None = None,
+        data_source: ds.DataSource | dict[str, Any] | None = None,
+        ttl: float | timedelta | None = None,
+        ttl_enabled: bool | None = None,
+        online_disk: bool | None = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -4331,7 +4251,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
             for feat in (features or [])
         ]
 
-        self._feature_group_engine: "external_feature_group_engine.ExternalFeatureGroupEngine" = external_feature_group_engine.ExternalFeatureGroupEngine(
+        self._feature_group_engine: external_feature_group_engine.ExternalFeatureGroupEngine = external_feature_group_engine.ExternalFeatureGroupEngine(
             featurestore_id
         )
 
@@ -4360,8 +4280,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
             self.statistics_config = statistics_config
             self._options = options or {}
 
-        self._vector_db_client: Optional["VectorDbClient"] = None
-        self._href: Optional[str] = href
+        self._vector_db_client: VectorDbClient | None = None
+        self._href: str | None = href
 
     def save(self) -> None:
         """Persist the metadata for this external feature group.
@@ -4390,19 +4310,15 @@ class ExternalFeatureGroup(FeatureGroupBase):
 
     def insert(
         self,
-        features: Union[
-            pd.DataFrame,
-            TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
-            TypeVar("pyspark.RDD"),  # noqa: F821
-            np.ndarray,
-            List[list],
-        ],
-        write_options: Optional[Dict[str, Any]] = None,
-        validation_options: Optional[Dict[str, Any]] = None,
+        features: pd.DataFrame
+        | TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | np.ndarray
+        | list[list],
+        write_options: dict[str, Any] | None = None,
+        validation_options: dict[str, Any] | None = None,
         wait: bool = False,
-    ) -> Tuple[
-        None, Optional[great_expectations.core.ExpectationSuiteValidationResult]
-    ]:
+    ) -> tuple[None, great_expectations.core.ExpectationSuiteValidationResult | None]:
         """Insert the dataframe feature values ONLY in the online feature store.
 
         External Feature Groups contains metadata about feature data in an external storage system.
@@ -4488,9 +4404,9 @@ class ExternalFeatureGroup(FeatureGroupBase):
         if self.statistics_config.enabled:
             warnings.warn(
                 (
-                    "Statistics are not computed for insertion to online enabled external feature group `{}`, with version"
-                    " `{}`. Call `compute_statistics` explicitly to compute statistics over the data in the external storage system."
-                ).format(self._name, self._version),
+                    f"Statistics are not computed for insertion to online enabled external feature group `{self._name}`, with version"
+                    f" `{self._version}`. Call `compute_statistics` explicitly to compute statistics over the data in the external storage system."
+                ),
                 util.StorageWarning,
                 stacklevel=1,
             )
@@ -4506,14 +4422,14 @@ class ExternalFeatureGroup(FeatureGroupBase):
             "default", "spark", "pandas", "polars", "numpy", "python"
         ] = "default",
         online: bool = False,
-        read_options: Optional[Dict[str, Any]] = None,
-    ) -> Union[
-        TypeVar("pyspark.sql.DataFrame"),
-        TypeVar("pyspark.RDD"),
-        pd.DataFrame,
-        pl.DataFrame,
-        np.ndarray,
-    ]:
+        read_options: dict[str, Any] | None = None,
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | pl.DataFrame
+        | np.ndarray
+    ):
         """Get the feature group as a DataFrame.
 
         Example:
@@ -4569,9 +4485,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
             )
         engine.get_instance().set_job_group(
             "Fetching Feature group",
-            "Getting feature group: {} from the featurestore {}".format(
-                self._name, self._feature_store_name
-            ),
+            f"Getting feature group: {self._name} from the featurestore {self._feature_store_name}",
         )
         return self.select_all().read(
             dataframe_type=dataframe_type,
@@ -4579,7 +4493,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
             read_options=read_options or {},
         )
 
-    def show(self, n: int, online: bool = False) -> List[List[Any]]:
+    def show(self, n: int, online: bool = False) -> list[list[Any]]:
         """Show the first `n` rows of the feature group.
 
         Example:
@@ -4600,20 +4514,18 @@ class ExternalFeatureGroup(FeatureGroupBase):
         """
         engine.get_instance().set_job_group(
             "Fetching Feature group",
-            "Getting feature group: {} from the featurestore {}".format(
-                self._name, self._feature_store_name
-            ),
+            f"Getting feature group: {self._name} from the featurestore {self._feature_store_name}",
         )
         return self.select_all().show(n, online)
 
     def find_neighbors(
         self,
-        embedding: List[Union[int, float]],
-        col: Optional[str] = None,
-        k: Optional[int] = 10,
-        filter: Optional[Union[Filter, Logic]] = None,
-        options: Optional[dict] = None,
-    ) -> List[Tuple[float, List[Any]]]:
+        embedding: list[int | float],
+        col: str | None = None,
+        k: int | None = 10,
+        filter: Filter | Logic | None = None,
+        options: dict | None = None,
+    ) -> list[tuple[float, list[Any]]]:
         """Finds the nearest neighbors for a given embedding in the vector database.
 
         If `filter` is specified, or if embedding feature is stored in default project index, the number of results returned may be less than k.
@@ -4675,8 +4587,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
 
     @classmethod
     def from_response_json(
-        cls, json_dict: Dict[str, Any]
-    ) -> Union["ExternalFeatureGroup", List["ExternalFeatureGroup"]]:
+        cls, json_dict: dict[str, Any]
+    ) -> ExternalFeatureGroup | list[ExternalFeatureGroup]:
         json_decamelized = humps.decamelize(json_dict)
         if isinstance(json_decamelized, dict):
             _ = json_decamelized.pop("type", None)
@@ -4694,8 +4606,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
         return [cls(**fg) for fg in json_decamelized]
 
     def update_from_response_json(
-        self, json_dict: Dict[str, Any]
-    ) -> "ExternalFeatureGroup":
+        self, json_dict: dict[str, Any]
+    ) -> ExternalFeatureGroup:
         json_decamelized = humps.decamelize(json_dict)
         if "type" in json_decamelized:
             _ = json_decamelized.pop("type")
@@ -4709,7 +4621,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
     def json(self) -> str:
         return json.dumps(self, cls=util.Encoder)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         fg_meta_dict = {
             "id": self._id,
             "name": self._name,
@@ -4743,35 +4655,35 @@ class ExternalFeatureGroup(FeatureGroupBase):
         return fg_meta_dict
 
     @property
-    def id(self) -> Optional[int]:
+    def id(self) -> int | None:
         return self._id
 
     @property
-    def description(self) -> Optional[str]:
+    def description(self) -> str | None:
         return self._description
 
     @property
-    def data_format(self) -> Optional[str]:
+    def data_format(self) -> str | None:
         return self._data_format
 
     @property
-    def options(self) -> Optional[Dict[str, Any]]:
+    def options(self) -> dict[str, Any] | None:
         return self._options
 
     @property
-    def creator(self) -> Optional["user.User"]:
+    def creator(self) -> user.User | None:
         return self._creator
 
     @property
-    def created(self) -> Optional[str]:
+    def created(self) -> str | None:
         return self._created
 
     @description.setter
-    def description(self, new_description: Optional[str]) -> None:
+    def description(self, new_description: str | None) -> None:
         self._description = new_description
 
     @property
-    def feature_store_name(self) -> Optional[str]:
+    def feature_store_name(self) -> str | None:
         """Name of the feature store in which the feature group is located."""
         return self._feature_store_name
 
@@ -4783,52 +4695,37 @@ class SpineGroup(FeatureGroupBase):
 
     def __init__(
         self,
-        storage_connector: Optional[
-            Union["sc.StorageConnector", Dict[str, Any]]
-        ] = None,
-        query: Optional[str] = None,
-        data_format: Optional[str] = None,
-        options: Dict[str, Any] = None,
-        name: Optional[str] = None,
-        version: Optional[int] = None,
-        description: Optional[str] = None,
-        primary_key: Optional[List[str]] = None,
-        featurestore_id: Optional[int] = None,
-        featurestore_name: Optional[str] = None,
-        created: Optional[str] = None,
-        creator: Optional[Dict[str, Any]] = None,
-        id: Optional[int] = None,
-        features: Optional[List[Union[feature.Feature, Dict[str, Any]]]] = None,
-        location: Optional[str] = None,
-        statistics_config: Optional[StatisticsConfig] = None,
-        event_time: Optional[str] = None,
-        expectation_suite: Optional[
-            Union[
-                hsfs.expectation_suite.ExpectationSuite,
-                great_expectations.core.ExpectationSuite,
-            ]
-        ] = None,
+        storage_connector: sc.StorageConnector | dict[str, Any] | None = None,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] = None,
+        name: str | None = None,
+        version: int | None = None,
+        description: str | None = None,
+        primary_key: list[str] | None = None,
+        featurestore_id: int | None = None,
+        featurestore_name: str | None = None,
+        created: str | None = None,
+        creator: dict[str, Any] | None = None,
+        id: int | None = None,
+        features: list[feature.Feature | dict[str, Any]] | None = None,
+        location: str | None = None,
+        statistics_config: StatisticsConfig | None = None,
+        event_time: str | None = None,
+        expectation_suite: hsfs.expectation_suite.ExpectationSuite
+        | great_expectations.core.ExpectationSuite
+        | None = None,
         # spine groups are online enabled by default such that feature_view.get_feature_vector can be used
         online_enabled: bool = True,
-        href: Optional[str] = None,
-        online_topic_name: Optional[str] = None,
-        topic_name: Optional[str] = None,
+        href: str | None = None,
+        online_topic_name: str | None = None,
+        topic_name: str | None = None,
         spine: bool = True,
-        dataframe: Optional[str] = None,
+        dataframe: str | None = None,
         deprecated: bool = False,
-        online_config: Optional[
-            Union[
-                OnlineConfig,
-                Dict[str, Any],
-            ]
-        ] = None,
-        data_source: Optional[
-            Union[
-                ds.DataSource,
-                Dict[str, Any],
-            ]
-        ] = None,
-        online_disk: Optional[bool] = None,
+        online_config: OnlineConfig | dict[str, Any] | None = None,
+        data_source: ds.DataSource | dict[str, Any] | None = None,
+        online_disk: bool | None = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -4858,7 +4755,7 @@ class SpineGroup(FeatureGroupBase):
             for feat in (features or [])
         ]
 
-        self._feature_group_engine: "spine_group_engine.SpineGroupEngine" = (
+        self._feature_group_engine: spine_group_engine.SpineGroupEngine = (
             spine_group_engine.SpineGroupEngine(featurestore_id)
         )
         self._statistics_config = None
@@ -4890,7 +4787,7 @@ class SpineGroup(FeatureGroupBase):
         # use setter to convert to default dataframe type for engine
         self.dataframe = dataframe
 
-    def _save(self) -> "SpineGroup":
+    def _save(self) -> SpineGroup:
         """Persist the metadata for this spine group.
 
         Without calling this method, your feature group will only exist
@@ -4915,22 +4812,19 @@ class SpineGroup(FeatureGroupBase):
     @property
     def dataframe(
         self,
-    ) -> Optional[Union[pd.DataFrame, TypeVar("pyspark.sql.DataFrame")]]:
+    ) -> pd.DataFrame | TypeVar("pyspark.sql.DataFrame") | None:
         """Spine dataframe with primary key, event time and label column to use for point in time join when fetching features."""
         return self._dataframe
 
     @dataframe.setter
     def dataframe(
         self,
-        dataframe: Optional[
-            Union[
-                pd.DataFrame,
-                pl.DataFrame,
-                np.ndarray,
-                TypeVar("pyspark.sql.DataFrame"),
-                TypeVar("pyspark.RDD"),
-            ]
-        ],
+        dataframe: pd.DataFrame
+        | pl.DataFrame
+        | np.ndarray
+        | TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | None,
     ) -> None:
         """Update the spine dataframe contained in the spine group."""
         if dataframe is None:
@@ -4964,8 +4858,8 @@ class SpineGroup(FeatureGroupBase):
 
     @classmethod
     def from_response_json(
-        cls, json_dict: Dict[str, Any]
-    ) -> Union["SpineGroup", List["SpineGroup"]]:
+        cls, json_dict: dict[str, Any]
+    ) -> SpineGroup | list[SpineGroup]:
         json_decamelized = humps.decamelize(json_dict)
         if isinstance(json_decamelized, dict):
             _ = json_decamelized.pop("type", None)
@@ -4974,7 +4868,7 @@ class SpineGroup(FeatureGroupBase):
             _ = fg.pop("type", None)
         return [cls(**fg) for fg in json_decamelized]
 
-    def update_from_response_json(self, json_dict: Dict[str, Any]) -> "SpineGroup":
+    def update_from_response_json(self, json_dict: dict[str, Any]) -> SpineGroup:
         json_decamelized = humps.decamelize(json_dict)
         if "type" in json_decamelized:
             _ = json_decamelized.pop("type")
@@ -4984,7 +4878,7 @@ class SpineGroup(FeatureGroupBase):
     def json(self) -> str:
         return json.dumps(self, cls=util.Encoder)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self._id,
             "name": self._name,

@@ -12,9 +12,9 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
+from __future__ import annotations
 
 import json
-from typing import Optional, Union
 
 import humps
 from hopsworks_common import util
@@ -35,8 +35,8 @@ class InferenceLogger:
 
     def __init__(
         self,
-        kafka_topic: Optional[Union[KafkaTopic, dict, Default]] = DEFAULT,
-        mode: Optional[str] = INFERENCE_LOGGER.MODE_ALL,
+        kafka_topic: KafkaTopic | dict | Default | None = DEFAULT,
+        mode: str | None = INFERENCE_LOGGER.MODE_ALL,
         **kwargs,
     ):
         self._kafka_topic = util.get_obj_from_json(kafka_topic, KafkaTopic)

@@ -29,7 +29,7 @@ import threading
 import time
 import warnings
 from datetime import date, datetime, timezone
-from typing import TYPE_CHECKING, Any, Callable, Dict, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Literal
 from urllib.parse import urljoin, urlparse
 
 import humps
@@ -53,7 +53,7 @@ if TYPE_CHECKING:
 
 
 class Encoder(json.JSONEncoder):
-    def default(self, o: Any) -> Dict[str, Any]:
+    def default(self, o: Any) -> dict[str, Any]:
         try:
             return o.to_dict()
         except AttributeError:
@@ -124,18 +124,14 @@ def autofix_feature_name(name: str, warn: bool = False) -> str:
     # replace spaces with underscores and enforce lower case
     if warn and contains_uppercase(name):
         warnings.warn(
-            "The feature name `{}` contains upper case letters. "
-            "Feature names are sanitized to lower case in the feature store.".format(
-                name
-            ),
+            f"The feature name `{name}` contains upper case letters. "
+            "Feature names are sanitized to lower case in the feature store.",
             stacklevel=1,
         )
     if warn and contains_whitespace(name):
         warnings.warn(
-            "The feature name `{}` contains spaces. "
-            "Feature names are sanitized to use underscore '_' in the feature store.".format(
-                name
-            ),
+            f"The feature name `{name}` contains spaces. "
+            "Feature names are sanitized to use underscore '_' in the feature store.",
             stacklevel=1,
         )
     return name.lower().replace(" ", "_")
@@ -175,7 +171,7 @@ def get_dataset_type(path: str) -> Literal["HIVEDB", "DATASET"]:
     return "DATASET"
 
 
-def check_timestamp_format_from_date_string(input_date: str) -> Tuple[str, str]:
+def check_timestamp_format_from_date_string(input_date: str) -> tuple[str, str]:
     date_format_patterns = {
         r"^([0-9]{4})([0-9]{2})([0-9]{2})$": "%Y%m%d",
         r"^([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{2})$": "%Y%m%d%H",
@@ -239,10 +235,13 @@ def get_delta_datestr_from_timestamp(timestamp: int) -> str:
 
 
 def convert_event_time_to_timestamp(
-    event_time: Optional[
-        Union[str, pd._libs.tslibs.timestamps.Timestamp, datetime, date, int]
-    ],
-) -> Optional[int]:
+    event_time: str
+    | pd._libs.tslibs.timestamps.Timestamp
+    | datetime
+    | date
+    | int
+    | None,
+) -> int | None:
     if not event_time:
         return None
     if isinstance(event_time, str):
@@ -340,9 +339,7 @@ def get_job_url(href: str) -> str:
     url_splits = url.path.split("/")
     project_id = url_splits[4]
     job_name = url_splits[6]
-    ui_url = url._replace(
-        path="p/{}/jobs/named/{}/executions".format(project_id, job_name)
-    )
+    ui_url = url._replace(path=f"p/{project_id}/jobs/named/{job_name}/executions")
     ui_url = client.get_instance().replace_public_host(ui_url)
     return ui_url.geturl()
 
@@ -428,14 +425,14 @@ class FeatureGroupWarning(Warning):
 
 
 def convert_to_abs(path, current_proj_name):
-    abs_project_prefix = "/Projects/{}".format(current_proj_name)
+    abs_project_prefix = f"/Projects/{current_proj_name}"
     if not path.startswith(abs_project_prefix):
         return abs_project_prefix + "/" + path
     return path
 
 
 def convert_to_project_rel_path(path, current_proj_name):
-    abs_project_prefix = "/Projects/{}".format(current_proj_name)
+    abs_project_prefix = f"/Projects/{current_proj_name}"
     if path.startswith(abs_project_prefix):
         return path.replace(abs_project_prefix, "")
     return path
@@ -513,7 +510,7 @@ def set_model_class(model):
         return PyModel(**model)
     if framework == MODEL.FRAMEWORK_LLM:
         return LLMModel(**model)
-    raise ValueError("framework {} is not a supported framework".format(str(framework)))
+    raise ValueError(f"framework {str(framework)} is not a supported framework")
 
 
 def input_example_to_json(input_example):
@@ -523,7 +520,7 @@ def input_example_to_json(input_example):
         if input_example.size > 0:
             return _handle_tensor_input(input_example)
         raise ValueError(
-            "input_example of type {} can not be empty".format(type(input_example))
+            f"input_example of type {type(input_example)} can not be empty"
         )
     if isinstance(input_example, dict):
         return _handle_dict_input(input_example)
@@ -538,22 +535,16 @@ def _handle_dataframe_input(input_ex):
     if HAS_PANDAS and isinstance(input_ex, pd.DataFrame):
         if not input_ex.empty:
             return input_ex.iloc[0].tolist()
-        raise ValueError(
-            "input_example of type {} can not be empty".format(type(input_ex))
-        )
+        raise ValueError(f"input_example of type {type(input_ex)} can not be empty")
     if HAS_PANDAS and isinstance(input_ex, pd.Series):
         if not input_ex.empty:
             return input_ex.tolist()
-        raise ValueError(
-            "input_example of type {} can not be empty".format(type(input_ex))
-        )
+        raise ValueError(f"input_example of type {type(input_ex)} can not be empty")
     if isinstance(input_ex, list):
         if len(input_ex) > 0:
             return input_ex
-        raise ValueError(
-            "input_example of type {} can not be empty".format(type(input_ex))
-        )
-    raise TypeError("{} is not a supported input example type".format(type(input_ex)))
+        raise ValueError(f"input_example of type {type(input_ex)} can not be empty")
+    raise TypeError(f"{type(input_ex)} is not a supported input example type")
 
 
 def _handle_dict_input(input_ex):
@@ -587,27 +578,21 @@ def validate_metrics(metrics):
     if metrics is not None:
         if not isinstance(metrics, dict):
             raise TypeError(
-                "provided metrics is of instance {}, expected a dict".format(
-                    type(metrics)
-                )
+                f"provided metrics is of instance {type(metrics)}, expected a dict"
             )
 
         for metric in metrics:
             # Validate key is a string
             if not isinstance(metric, string_types):
                 raise TypeError(
-                    "provided metrics key is of instance {}, expected a string".format(
-                        type(metric)
-                    )
+                    f"provided metrics key is of instance {type(metric)}, expected a string"
                 )
             # Validate value is a number
             try:
                 float(metrics[metric])
             except ValueError as err:
                 raise ValueError(
-                    "{} is not a number, only numbers can be attached as metadata for models.".format(
-                        str(metrics[metric])
-                    )
+                    f"{str(metrics[metric])} is not a number, only numbers can be attached as metadata for models."
                 ) from err
 
 
@@ -630,9 +615,7 @@ def get_predictor_for_model(model, **kwargs):
 
     if not isinstance(model, BaseModel):
         raise ValueError(
-            "model is of type {}, but an instance of {} class is expected".format(
-                type(model), BaseModel
-            )
+            f"model is of type {type(model)}, but an instance of {BaseModel} class is expected"
         )
 
     if type(model) is TFModel:
@@ -652,9 +635,7 @@ def get_predictor_for_model(model, **kwargs):
             **kwargs,
         )
     raise TypeError(
-        "model is of type {}, but an instance of {} class is expected".format(
-            type(model), BaseModel
-        )
+        f"model is of type {type(model)}, but an instance of {BaseModel} class is expected"
     )
 
 
@@ -718,7 +699,7 @@ def get_obj_from_json(obj, cls):
         if isinstance(obj, Default):
             return cls()
         raise ValueError(
-            "Object of type {} cannot be converted to class {}".format(type(obj), cls)
+            f"Object of type {type(obj)} cannot be converted to class {cls}"
         )
     return obj
 
@@ -766,7 +747,7 @@ class AsyncTask:
     def __init__(
         self,
         task_function: Callable,
-        task_args: Tuple = (),
+        task_args: tuple = (),
         requires_connection_pool=None,
         **kwargs,
     ):
@@ -822,7 +803,7 @@ class AsyncTaskThread(threading.Thread):
         self,
         connection_pool_initializer: Callable = None,
         connection_test: Callable = None,
-        connection_pool_params: Tuple = (),
+        connection_pool_params: tuple = (),
         *thread_args,
         **thread_kwargs,
     ):
@@ -832,7 +813,7 @@ class AsyncTaskThread(threading.Thread):
         self.stop_event = threading.Event()
         self._connection_pool_initializer: Callable = connection_pool_initializer
         self._connection_test_function: Callable = connection_test
-        self._connection_pool_params: Tuple = connection_pool_params
+        self._connection_pool_params: tuple = connection_pool_params
         self._connection_pool = None
         self.daemon = True  # Setting the thread as a daemon thread by default, so it will be terminated when the main thread is terminated.
 
@@ -887,9 +868,7 @@ class AsyncTaskThread(threading.Thread):
             self._event_loop.run_forever()
         except Exception as e:
             print(
-                "An error occurred in the async task thread the event loop has been closed: {}".format(
-                    str(e)
-                )
+                f"An error occurred in the async task thread the event loop has been closed: {str(e)}"
             )
             self._event_loop.stop()
             self._event_loop.close()

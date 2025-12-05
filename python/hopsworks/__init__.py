@@ -62,7 +62,7 @@ udf = hsfs.hopsworks_udf.udf
 
 
 def hw_formatwarning(message, category, filename, lineno, line=None):
-    return "{}: {}\n".format(category.__name__, message)
+    return f"{category.__name__}: {message}\n"
 
 
 warnings.formatwarning = hw_formatwarning
@@ -191,7 +191,7 @@ def login(
         port = os.environ["HOPSWORKS_PORT"]
 
     hostname_verification = os.getenv(
-        "HOPSWORKS_HOSTNAME_VERIFICATION", "{}".format(hostname_verification)
+        "HOPSWORKS_HOSTNAME_VERIFICATION", f"{hostname_verification}"
     ).lower() in ("true", "1", "y", "yes")
 
     trust_store_path = os.getenv("HOPSWORKS_TRUST_STORE_PATH", trust_store_path)
@@ -209,9 +209,7 @@ def login(
         if os.path.exists(api_key_file):
             api_key = Path(api_key_file).read_text()
         else:
-            raise IOError(
-                "Could not find api key file on path: {}".format(api_key_file)
-            )
+            raise OSError(f"Could not find api key file on path: {api_key_file}")
     # If user connected to Serverless Hopsworks, and the cached .hw_api_key exists, then use it.
     elif os.path.exists(api_key_path) and is_app:
         try:
@@ -299,7 +297,7 @@ def _get_cached_api_key_path():
     If not sufficient permissions are set in HOME to create the API key (writable and executable), it uses the temp directory to store it.
     """
     api_key_name = ".hw_api_key"
-    api_key_folder = ".{}_hopsworks_app".format(getpass.getuser())
+    api_key_folder = f".{getpass.getuser()}_hopsworks_app"
 
     # Path for current working directory api key
     cwd_api_key_path = os.path.join(os.getcwd(), api_key_name)
@@ -370,7 +368,7 @@ def _prompt_project(valid_connection, project, is_app):
         try:
             return valid_connection._project_api._get_project(project)
         except RestAPIError as x:
-            raise ProjectException("Could not find project {}".format(project)) from x
+            raise ProjectException(f"Could not find project {project}") from x
 
 
 def logout():
@@ -460,15 +458,11 @@ def create_project(
         if _connected_project:
             _set_active_project(_connected_project)
         print(
-            "Setting {} as the current project, a reference can be retrieved by calling hopsworks.get_current_project()".format(
-                _connected_project.name
-            )
+            f"Setting {_connected_project.name} as the current project, a reference can be retrieved by calling hopsworks.get_current_project()"
         )
         return _connected_project
     print(
-        "You are already using the project {}, to access the new project use hopsworks.login(..., project='{}')".format(
-            _connected_project.name, new_project.name
-        )
+        f"You are already using the project {_connected_project.name}, to access the new project use hopsworks.login(..., project='{new_project.name}')"
     )
     return None
 

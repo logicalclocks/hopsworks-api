@@ -12,8 +12,7 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
-
-from typing import Optional, Union
+from __future__ import annotations
 
 import humps
 from hopsworks_common import client, util
@@ -28,7 +27,7 @@ class Transformer(DeployableComponent):
     def __init__(
         self,
         script_file: str,
-        resources: Optional[Union[TransformerResources, dict, Default]] = None,  # base
+        resources: TransformerResources | dict | Default | None = None,  # base
         **kwargs,
     ):
         resources = (

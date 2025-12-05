@@ -13,11 +13,14 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import json
-from typing import Optional
+from typing import TYPE_CHECKING
 
-from hsml.schema import Schema
+
+if TYPE_CHECKING:
+    from hsml.schema import Schema
 
 
 class ModelSchema:
@@ -33,8 +36,8 @@ class ModelSchema:
 
     def __init__(
         self,
-        input_schema: Optional[Schema] = None,
-        output_schema: Optional[Schema] = None,
+        input_schema: Schema | None = None,
+        output_schema: Schema | None = None,
         **kwargs,
     ):
         if input_schema is not None:

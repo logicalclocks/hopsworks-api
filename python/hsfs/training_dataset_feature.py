@@ -15,8 +15,6 @@
 #
 from __future__ import annotations
 
-from typing import Optional
-
 import humps
 from hsfs import feature as feature_mod
 from hsfs import feature_group as feature_group_mod
@@ -35,7 +33,7 @@ class TrainingDatasetFeature:
         label=False,
         inference_helper_column=False,
         training_helper_column=False,
-        transformation_function: Optional[TransformationFunction] = None,
+        transformation_function: TransformationFunction | None = None,
         **kwargs,
     ):
         self._name = util.autofix_feature_name(name)
@@ -51,7 +49,7 @@ class TrainingDatasetFeature:
         self._inference_helper_column = inference_helper_column
         self._training_helper_column = training_helper_column
 
-        self._on_demand_transformation_function: Optional[TransformationFunction] = (
+        self._on_demand_transformation_function: TransformationFunction | None = (
             transformation_function if transformation_function else None
         )
 

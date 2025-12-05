@@ -13,9 +13,9 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import json
-from typing import Optional
 
 import humps
 from hopsworks_common import util
@@ -63,7 +63,7 @@ class _EmailConfig:
         return None
 
     @property
-    def to(self) -> Optional[str]:
+    def to(self) -> str | None:
         """Return the email address of the email config."""
         return self._to
 
@@ -126,7 +126,7 @@ class _SlackConfig:
         return None
 
     @property
-    def channel(self) -> Optional[str]:
+    def channel(self) -> str | None:
         """Return the channel of the slack config."""
         return self._channel
 
@@ -196,12 +196,12 @@ class _PagerDutyConfig:
         return None
 
     @property
-    def service_key(self) -> Optional[str]:
+    def service_key(self) -> str | None:
         """Return the service key of the pager duty config."""
         return self._service_key
 
     @property
-    def routing_key(self) -> Optional[str]:
+    def routing_key(self) -> str | None:
         """Return the routing key of the pager duty config."""
         return self._routing_key
 
@@ -265,7 +265,7 @@ class _WebhookConfig:
         return None
 
     @property
-    def url(self) -> Optional[str]:
+    def url(self) -> str | None:
         """Return the url of the webhook config."""
         return self._url
 
@@ -333,27 +333,27 @@ class AlertReceiver:
         return cls(**json_decamelized)
 
     @property
-    def name(self) -> Optional[str]:
+    def name(self) -> str | None:
         """Return the name of the alert receiver."""
         return self._name
 
     @property
-    def email_configs(self) -> Optional[list]:
+    def email_configs(self) -> list | None:
         """Return the email configs of the alert receiver."""
         return self._email_configs
 
     @property
-    def slack_configs(self) -> Optional[list]:
+    def slack_configs(self) -> list | None:
         """Return the slack configs of the alert receiver."""
         return self._slack_configs
 
     @property
-    def pager_duty_configs(self) -> Optional[list]:
+    def pager_duty_configs(self) -> list | None:
         """Return the pager duty configs of the alert receiver."""
         return self._pager_duty_configs
 
     @property
-    def webhook_configs(self) -> Optional[list]:
+    def webhook_configs(self) -> list | None:
         """Return the webhook configs of the alert receiver."""
         return self._webhook_configs
 

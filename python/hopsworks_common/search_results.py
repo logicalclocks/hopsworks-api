@@ -13,9 +13,9 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import json
-from typing import Optional
 
 import humps
 from hopsworks_common import util
@@ -189,17 +189,17 @@ class Highlight:
         return self._description
 
     @property
-    def features(self) -> Optional[list]:
+    def features(self) -> list | None:
         """List of features."""
         return self._features
 
     @property
-    def tags(self) -> Optional[list]:
+    def tags(self) -> list | None:
         """List of tags."""
         return self._tags
 
     @property
-    def other_xattrs(self) -> Optional[dict]:
+    def other_xattrs(self) -> dict | None:
         """Other xattrs."""
         return self._other_xattrs
 
@@ -296,17 +296,17 @@ class FeaturestoreResult:
         return self._parent_project_name
 
     @property
-    def access_projects(self) -> Optional[dict]:
+    def access_projects(self) -> dict | None:
         """Projects that can access this result."""
         return self._access_projects
 
     @property
-    def highlights(self) -> Optional[Highlight]:
+    def highlights(self) -> Highlight | None:
         """Highlights of the result."""
         return self._highlights
 
     @property
-    def creator(self) -> Optional[Creator]:
+    def creator(self) -> Creator | None:
         """Creator of the result."""
         return self._creator
 
@@ -620,62 +620,62 @@ class FeaturestoreSearchResultBase:
         return None
 
     @property
-    def featuregroups(self) -> Optional[list]:
+    def featuregroups(self) -> list | None:
         """List of FeatureGroupResult."""
         return self._featuregroups
 
     @property
-    def feature_views(self) -> Optional[list]:
+    def feature_views(self) -> list | None:
         """List of FeatureViewResult."""
         return self._feature_views
 
     @property
-    def trainingdatasets(self) -> Optional[list]:
+    def trainingdatasets(self) -> list | None:
         """List of TrainingDatasetResult."""
         return self._trainingdatasets
 
     @property
-    def features(self) -> Optional[list]:
+    def features(self) -> list | None:
         """List of FeatureResult."""
         return self._features
 
     @property
-    def featuregroups_from(self) -> Optional[list]:
+    def featuregroups_from(self) -> list | None:
         """Results from offset."""
         return self._featuregroups_from
 
     @property
-    def featuregroups_total(self) -> Optional[list]:
+    def featuregroups_total(self) -> list | None:
         """Total feature groups found."""
         return self._featuregroups_total
 
     @property
-    def feature_views_from(self) -> Optional[list]:
+    def feature_views_from(self) -> list | None:
         """Results from offset."""
         return self._feature_views_from
 
     @property
-    def feature_views_total(self) -> Optional[list]:
+    def feature_views_total(self) -> list | None:
         """Total feature views found."""
         return self._feature_views_total
 
     @property
-    def trainingdatasets_from(self) -> Optional[list]:
+    def trainingdatasets_from(self) -> list | None:
         """Results from offset."""
         return self._trainingdatasets_from
 
     @property
-    def trainingdatasets_total(self) -> Optional[list]:
+    def trainingdatasets_total(self) -> list | None:
         """Total training datasets found."""
         return self._trainingdatasets_total
 
     @property
-    def features_from(self) -> Optional[list]:
+    def features_from(self) -> list | None:
         """Features from offset."""
         return self._features_from
 
     @property
-    def features_total(self) -> Optional[list]:
+    def features_total(self) -> list | None:
         """Total features found."""
         return self._features_total
 
@@ -1217,17 +1217,17 @@ class FeatureGroupSearchResult:
         self._featuregroups_total = result.featuregroups_total
 
     @property
-    def featuregroups(self) -> Optional[list]:
+    def featuregroups(self) -> list | None:
         """List of FeatureGroupResult."""
         return self._featuregroups
 
     @property
-    def featuregroups_from(self) -> Optional[list]:
+    def featuregroups_from(self) -> list | None:
         """Result from offset."""
         return self._featuregroups_from
 
     @property
-    def featuregroups_total(self) -> Optional[list]:
+    def featuregroups_total(self) -> list | None:
         """Total feature groups found."""
         return self._featuregroups_total
 
@@ -1255,17 +1255,17 @@ class FeatureViewSearchResult:
         self._feature_views_total = result.feature_views_total
 
     @property
-    def feature_views(self) -> Optional[list]:
+    def feature_views(self) -> list | None:
         """List of FeatureViewResult."""
         return self._feature_views
 
     @property
-    def feature_views_from(self) -> Optional[list]:
+    def feature_views_from(self) -> list | None:
         """Result from offset."""
         return self._feature_views_from
 
     @property
-    def feature_views_total(self) -> Optional[list]:
+    def feature_views_total(self) -> list | None:
         """Total feature views found."""
         return self._feature_views_total
 
@@ -1293,17 +1293,17 @@ class FeatureSearchResult:
         self._features_total = result.features_total
 
     @property
-    def features(self) -> Optional[list]:
+    def features(self) -> list | None:
         """List of FeatureResult."""
         return self._features
 
     @property
-    def features_from(self) -> Optional[list]:
+    def features_from(self) -> list | None:
         """Result from offset."""
         return self._features_from
 
     @property
-    def features_total(self) -> Optional[list]:
+    def features_total(self) -> list | None:
         """Total features found."""
         return self._features_total
 
@@ -1331,17 +1331,17 @@ class TrainingDatasetSearchResult:
         self._trainingdatasets_total = result.trainingdatasets_total
 
     @property
-    def trainingdatasets(self) -> Optional[list]:
+    def trainingdatasets(self) -> list | None:
         """List of TrainingDatasetResult."""
         return self._trainingdatasets
 
     @property
-    def trainingdatasets_from(self) -> Optional[list]:
+    def trainingdatasets_from(self) -> list | None:
         """Result from offset."""
         return self._trainingdatasets_from
 
     @property
-    def trainingdatasets_total(self) -> Optional[list]:
+    def trainingdatasets_total(self) -> list | None:
         """Total training datasets found."""
         return self._trainingdatasets_total
 

@@ -19,7 +19,7 @@ import datetime
 import json
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 import humps
 from hopsworks_common import execution as execution_mod
@@ -52,16 +52,16 @@ class FeatureStoreActivity:
     type: FeatureStoreActivityType
     timestamp: int
     metadata: str
-    user: Optional[user_mod.User]
+    user: user_mod.User | None
     # optional fields depending on the activity type
-    validation_report: Optional[
-        Union[vr_mod.ValidationReport, ExpectationSuiteValidationResult]
-    ] = None
-    expectation_suite: Optional[Union[es_mod.ExpectationSuite, ExpectationSuite]] = None
-    commit: Optional[Dict[str, Union[str, int, float]]] = None
-    statistics: Optional[Dict[str, Union[str, int, float]]] = None
-    execution: Optional[execution_mod.Execution] = None
-    execution_last_event_time: Optional[int] = None
+    validation_report: (
+        vr_mod.ValidationReport | ExpectationSuiteValidationResult | None
+    ) = None
+    expectation_suite: es_mod.ExpectationSuite | ExpectationSuite | None = None
+    commit: dict[str, str | int | float] | None = None
+    statistics: dict[str, str | int | float] | None = None
+    execution: execution_mod.Execution | None = None
+    execution_last_event_time: int | None = None
     # internal fields
     id: int
     href: str
@@ -70,14 +70,14 @@ class FeatureStoreActivity:
         self,
         type: str,
         timestamp: int,
-        metadata: Optional[str] = None,
-        user: Optional[Dict[str, Any]] = None,
-        expectation_suite: Optional[Dict[str, Any]] = None,
-        validation_report: Optional[Dict[str, Any]] = None,
-        commit: Optional[Dict[str, Union[str, int, float]]] = None,
-        statistics: Optional[Dict[str, Union[str, int, float]]] = None,
-        execution: Optional[Dict[str, Any]] = None,
-        execution_last_event_time: Optional[int] = None,
+        metadata: str | None = None,
+        user: dict[str, Any] | None = None,
+        expectation_suite: dict[str, Any] | None = None,
+        validation_report: dict[str, Any] | None = None,
+        commit: dict[str, str | int | float] | None = None,
+        statistics: dict[str, str | int | float] | None = None,
+        execution: dict[str, Any] | None = None,
+        execution_last_event_time: int | None = None,
         **kwargs,
     ):
         self.type = FeatureStoreActivityType(type) if isinstance(type, str) else type
@@ -111,15 +111,15 @@ class FeatureStoreActivity:
 
     @classmethod
     def from_response_json(
-        cls, response_json: Dict[str, Any]
-    ) -> List[FeatureStoreActivity]:
+        cls, response_json: dict[str, Any]
+    ) -> list[FeatureStoreActivity]:
         if "items" in response_json:
             return [
                 cls.from_response_json(activity) for activity in response_json["items"]
             ]
         return cls(**humps.decamelize(response_json))
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         activity_dict = {
             "id": self.id,
             "type": self.type.value,

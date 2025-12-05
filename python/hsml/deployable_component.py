@@ -12,16 +12,20 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
+from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
-from typing import Optional, Union
+from typing import TYPE_CHECKING
 
 import humps
 from hopsworks_common import util
-from hopsworks_common.constants import Default
 from hsml.inference_batcher import InferenceBatcher
-from hsml.resources import Resources
+
+
+if TYPE_CHECKING:
+    from hopsworks_common.constants import Default
+    from hsml.resources import Resources
 
 
 class DeployableComponent(ABC):
@@ -29,9 +33,9 @@ class DeployableComponent(ABC):
 
     def __init__(
         self,
-        script_file: Optional[str] = None,
-        resources: Optional[Resources] = None,
-        inference_batcher: Optional[Union[InferenceBatcher, dict, Default]] = None,
+        script_file: str | None = None,
+        resources: Resources | None = None,
+        inference_batcher: InferenceBatcher | dict | Default | None = None,
         **kwargs,
     ):
         self._script_file = script_file

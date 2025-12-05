@@ -13,15 +13,19 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import os
-from typing import Optional
+from typing import TYPE_CHECKING
 
 import humps
 from hopsworks_common import client, command, usage, util
 from hopsworks_common.core import environment_api, library_api
 from hopsworks_common.engine import environment_engine
-from python.hopsworks_common.library import Library
+
+
+if TYPE_CHECKING:
+    from python.hopsworks_common.library import Library
 
 
 class Environment:
@@ -81,7 +85,7 @@ class Environment:
 
     @usage.method_logger
     def install_wheel(
-        self, path: str, await_installation: Optional[bool] = True
+        self, path: str, await_installation: bool | None = True
     ) -> Library:
         """Install a python library packaged in a wheel file.
 
@@ -136,7 +140,7 @@ class Environment:
 
     @usage.method_logger
     def install_requirements(
-        self, path: str, await_installation: Optional[bool] = True
+        self, path: str, await_installation: bool | None = True
     ) -> Library:
         """Install libraries specified in a `requirements.txt` file.
 

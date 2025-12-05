@@ -212,17 +212,15 @@ select = [
     "W",
     "D2",
     "D3",
-    "D4"
+    "D4",
+    "INP",
+    "UP",
+    "FA",
 ]
 ignore = [
-    "B905",   # zip has no strict kwarg until Python 3.10
-    "ANN101", # Missing type annotation for self in method
-    "ANN102", # Missing type annotation for cls in classmethod
-    "ANN003", # Missing type annotation for **kwarg in function
-    "ANN002", # Missing type annotation for *args in function
-    "ANN401", # Allow Any in type annotations
-    "W505",   # Doc line too long
-    "E501",   # Line too long
+    "B905",  # zip has no strict kwarg until Python 3.10
+    "W505",  # Doc line too long
+    "E501",  # Line too long
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.

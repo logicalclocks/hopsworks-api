@@ -12,10 +12,10 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
+from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
-from typing import Optional, Union
 
 import humps
 from hopsworks_common import util
@@ -117,8 +117,8 @@ class ComponentResources(ABC):
     def __init__(
         self,
         num_instances: int,
-        requests: Optional[Union[Resources, dict, Default]] = None,
-        limits: Optional[Union[Resources, dict, Default]] = None,
+        requests: Resources | dict | Default | None = None,
+        limits: Resources | dict | Default | None = None,
     ):
         self._num_instances = num_instances
         self._requests = util.get_obj_from_json(requests, Resources) or Resources(
@@ -240,8 +240,8 @@ class PredictorResources(ComponentResources):
     def __init__(
         self,
         num_instances: int,
-        requests: Optional[Union[Resources, dict]] = None,
-        limits: Optional[Union[Resources, dict]] = None,
+        requests: Resources | dict | None = None,
+        limits: Resources | dict | None = None,
     ):
         super().__init__(num_instances, requests, limits)
 
@@ -268,8 +268,8 @@ class TransformerResources(ComponentResources):
     def __init__(
         self,
         num_instances: int,
-        requests: Optional[Union[Resources, dict]] = None,
-        limits: Optional[Union[Resources, dict]] = None,
+        requests: Resources | dict | None = None,
+        limits: Resources | dict | None = None,
     ):
         super().__init__(num_instances, requests, limits)
 

@@ -15,7 +15,7 @@
 #
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, Any, TypeVar
 
 
 if TYPE_CHECKING:
@@ -37,21 +37,19 @@ class FeatureGroupWriter:
 
     def insert(
         self,
-        features: Union[
-            pd.DataFrame,
-            TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
-            TypeVar("pyspark.RDD"),  # noqa: F821
-            np.ndarray,
-            List[list],
-        ],
-        overwrite: Optional[bool] = False,
-        operation: Optional[str] = "upsert",
-        storage: Optional[str] = None,
-        write_options: Optional[Dict[str, Any]] = None,
-        validation_options: Optional[Dict[str, Any]] = None,
-        transformation_context: Dict[str, Any] = None,
+        features: pd.DataFrame
+        | TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | np.ndarray
+        | list[list],
+        overwrite: bool | None = False,
+        operation: str | None = "upsert",
+        storage: str | None = None,
+        write_options: dict[str, Any] | None = None,
+        validation_options: dict[str, Any] | None = None,
+        transformation_context: dict[str, Any] = None,
         transform: bool = True,
-    ) -> Tuple[Optional[Job], Optional[ValidationReport]]:
+    ) -> tuple[Job | None, ValidationReport | None]:
         if validation_options is None:
             validation_options = {}
         if write_options is None:

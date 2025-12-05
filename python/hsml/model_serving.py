@@ -13,22 +13,26 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import os
-from typing import List, Optional, Union
+from typing import TYPE_CHECKING
 
 from hopsworks_common import usage, util
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.constants import PREDICTOR_STATE
 from hsml.core import serving_api
 from hsml.deployment import Deployment
-from hsml.inference_batcher import InferenceBatcher
-from hsml.inference_endpoint import InferenceEndpoint
-from hsml.inference_logger import InferenceLogger
-from hsml.model import Model
 from hsml.predictor import Predictor
-from hsml.resources import PredictorResources
 from hsml.transformer import Transformer
+
+
+if TYPE_CHECKING:
+    from hsml.inference_batcher import InferenceBatcher
+    from hsml.inference_endpoint import InferenceEndpoint
+    from hsml.inference_logger import InferenceLogger
+    from hsml.model import Model
+    from hsml.resources import PredictorResources
 
 
 class ModelServing:
@@ -46,7 +50,7 @@ class ModelServing:
         self._serving_api = serving_api.ServingApi()
 
     @usage.method_logger
-    def get_deployment_by_id(self, id: int) -> Optional[Deployment]:
+    def get_deployment_by_id(self, id: int) -> Deployment | None:
         """Get a deployment by id from Model Serving.
 
         Getting a deployment from Model Serving means getting its metadata handle so you can subsequently operate on it (e.g., start or stop).
@@ -71,7 +75,7 @@ class ModelServing:
         return self._serving_api.get_by_id(id)
 
     @usage.method_logger
-    def get_deployment(self, name: str = None) -> Optional[Deployment]:
+    def get_deployment(self, name: str = None) -> Deployment | None:
         """Get a deployment by name from Model Serving.
 
         Example:
@@ -101,7 +105,7 @@ class ModelServing:
     @usage.method_logger
     def get_deployments(
         self, model: Model = None, status: str = None
-    ) -> List[Deployment]:
+    ) -> list[Deployment]:
         """Get all deployments from model serving.
 
         Example:
@@ -148,7 +152,7 @@ class ModelServing:
             )
         return status
 
-    def get_inference_endpoints(self) -> List[InferenceEndpoint]:
+    def get_inference_endpoints(self) -> list[InferenceEndpoint]:
         """Get all inference endpoints available in the current project.
 
         Returns:
@@ -160,19 +164,18 @@ class ModelServing:
     def create_predictor(
         self,
         model: Model,
-        name: Optional[str] = None,
-        artifact_version: Optional[
-            str
-        ] = None,  # deprecated, kept for backward compatibility
-        serving_tool: Optional[str] = None,
-        script_file: Optional[str] = None,
-        config_file: Optional[str] = None,
-        resources: Optional[Union[PredictorResources, dict]] = None,
-        inference_logger: Optional[Union[InferenceLogger, dict, str]] = None,
-        inference_batcher: Optional[Union[InferenceBatcher, dict]] = None,
-        transformer: Optional[Union[Transformer, dict]] = None,
-        api_protocol: Optional[str] = IE.API_PROTOCOL_REST,
-        environment: Optional[str] = None,
+        name: str | None = None,
+        artifact_version: str
+        | None = None,  # deprecated, kept for backward compatibility
+        serving_tool: str | None = None,
+        script_file: str | None = None,
+        config_file: str | None = None,
+        resources: PredictorResources | dict | None = None,
+        inference_logger: InferenceLogger | dict | str | None = None,
+        inference_batcher: InferenceBatcher | dict | None = None,
+        transformer: Transformer | dict | None = None,
+        api_protocol: str | None = IE.API_PROTOCOL_REST,
+        environment: str | None = None,
     ) -> Predictor:
         """Create a Predictor metadata object.
 
@@ -238,8 +241,8 @@ class ModelServing:
     @usage.method_logger
     def create_transformer(
         self,
-        script_file: Optional[str] = None,
-        resources: Optional[Union[PredictorResources, dict]] = None,
+        script_file: str | None = None,
+        resources: PredictorResources | dict | None = None,
     ) -> Transformer:
         """Create a Transformer metadata object.
 
@@ -307,12 +310,12 @@ class ModelServing:
         self,
         name: str,
         script_file: str,
-        description: Optional[str] = None,
-        resources: Optional[Union[PredictorResources, dict]] = None,
-        inference_logger: Optional[Union[InferenceLogger, dict, str]] = None,
-        inference_batcher: Optional[Union[InferenceBatcher, dict]] = None,
-        api_protocol: Optional[str] = IE.API_PROTOCOL_REST,
-        environment: Optional[str] = None,
+        description: str | None = None,
+        resources: PredictorResources | dict | None = None,
+        inference_logger: InferenceLogger | dict | str | None = None,
+        inference_batcher: InferenceBatcher | dict | None = None,
+        api_protocol: str | None = IE.API_PROTOCOL_REST,
+        environment: str | None = None,
     ) -> Predictor:
         """Create an Entrypoint metadata object.
 
@@ -360,8 +363,8 @@ class ModelServing:
     def create_deployment(
         self,
         predictor: Predictor,
-        name: Optional[str] = None,
-        environment: Optional[str] = None,
+        name: str | None = None,
+        environment: str | None = None,
     ) -> Deployment:
         """Create a Deployment metadata object.
 
@@ -440,7 +443,7 @@ class ModelServing:
     @property
     def project_path(self):
         """Path of the project the registry is connected to."""
-        return "/Projects/{}".format(self._project_name)
+        return f"/Projects/{self._project_name}"
 
     @property
     def project_id(self):

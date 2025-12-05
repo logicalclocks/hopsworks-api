@@ -12,9 +12,9 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
+from __future__ import annotations
 
 import json
-from typing import Optional, Union
 
 import humps
 from hopsworks_common import client, util
@@ -46,24 +46,20 @@ class Predictor(DeployableComponent):
         model_path: str = None,
         model_version: int = None,
         model_framework: str = None,  # MODEL.FRAMEWORK
-        serving_tool: Optional[str] = None,
-        script_file: Optional[str] = None,
-        config_file: Optional[str] = None,
-        resources: Optional[Union[PredictorResources, dict, Default]] = None,  # base
-        inference_logger: Optional[
-            Union[InferenceLogger, dict, Default]
-        ] = None,  # base
-        inference_batcher: Optional[
-            Union[InferenceBatcher, dict, Default]
-        ] = None,  # base
-        transformer: Optional[Union[Transformer, dict, Default]] = None,
-        id: Optional[int] = None,
-        version: Optional[int] = None,
-        description: Optional[str] = None,
-        created_at: Optional[str] = None,
-        creator: Optional[str] = None,
-        api_protocol: Optional[str] = INFERENCE_ENDPOINTS.API_PROTOCOL_REST,
-        environment: Optional[str] = None,
+        serving_tool: str | None = None,
+        script_file: str | None = None,
+        config_file: str | None = None,
+        resources: PredictorResources | dict | Default | None = None,  # base
+        inference_logger: InferenceLogger | dict | Default | None = None,  # base
+        inference_batcher: InferenceBatcher | dict | Default | None = None,  # base
+        transformer: Transformer | dict | Default | None = None,
+        id: int | None = None,
+        version: int | None = None,
+        description: str | None = None,
+        created_at: str | None = None,
+        creator: str | None = None,
+        api_protocol: str | None = INFERENCE_ENDPOINTS.API_PROTOCOL_REST,
+        environment: str | None = None,
         project_namespace: str = None,
         **kwargs,
     ):
@@ -419,7 +415,7 @@ class Predictor(DeployableComponent):
         return self._version
 
     @artifact_version.setter
-    def artifact_version(self, artifact_version: Union[int, str]):
+    def artifact_version(self, artifact_version: int | str):
         pass  # do nothing, kept for backward compatibility
 
     @property

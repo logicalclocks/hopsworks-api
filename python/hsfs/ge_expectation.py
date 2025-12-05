@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any
 
 
 if TYPE_CHECKING:
@@ -38,10 +38,10 @@ class GeExpectation:
     def __init__(
         self,
         expectation_type: str,
-        kwargs: Dict[str, Any],
-        meta: Dict[str, Any],
-        id: Optional[int] = None,
-        href: Optional[str] = None,
+        kwargs: dict[str, Any],
+        meta: dict[str, Any],
+        id: int | None = None,
+        href: str | None = None,
     ):
         self._id = id
         self._href = href
@@ -76,7 +76,7 @@ class GeExpectation:
     ):
         return cls(**ge_expectation.to_json_dict())
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self._id,
             "expectationType": self._expectation_type,
@@ -84,7 +84,7 @@ class GeExpectation:
             "meta": json.dumps(self._meta),
         }
 
-    def to_json_dict(self, decamelize=False) -> Dict[str, Any]:
+    def to_json_dict(self, decamelize=False) -> dict[str, Any]:
         the_dict = {
             "id": self._id,
             "expectationType": self._expectation_type,
@@ -116,7 +116,7 @@ class GeExpectation:
         )
 
     @property
-    def id(self) -> Optional[int]:
+    def id(self) -> int | None:
         """Id of the expectation, set by backend."""
         if self._id:
             return self._id
@@ -139,7 +139,7 @@ class GeExpectation:
         self._expectation_type = expectation_type
 
     @property
-    def kwargs(self) -> Dict[str, Any]:
+    def kwargs(self) -> dict[str, Any]:
         """Kwargs to run the expectation."""
         return self._kwargs
 
@@ -153,7 +153,7 @@ class GeExpectation:
             raise ValueError("Kwargs field must be stringified json or dict.")
 
     @property
-    def meta(self) -> Dict[str, Any]:
+    def meta(self) -> dict[str, Any]:
         """Meta field of the expectation to store additional information."""
         return self._meta
 

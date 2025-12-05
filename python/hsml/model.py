@@ -13,28 +13,32 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import json
 import logging
 import os
 import re
 import warnings
-from typing import Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 import humps
 from hopsworks_common import client, usage, util
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.constants import MODEL_REGISTRY
-from hsml import deployment, tag
 from hsml.core import explicit_provenance
 from hsml.engine import model_engine
-from hsml.inference_batcher import InferenceBatcher
-from hsml.inference_logger import InferenceLogger
 from hsml.model_schema import ModelSchema
 from hsml.predictor import Predictor
-from hsml.resources import PredictorResources
 from hsml.schema import Schema
-from hsml.transformer import Transformer
+
+
+if TYPE_CHECKING:
+    from hsml import deployment, tag
+    from hsml.inference_batcher import InferenceBatcher
+    from hsml.inference_logger import InferenceLogger
+    from hsml.resources import PredictorResources
+    from hsml.transformer import Transformer
 
 
 _logger = logging.getLogger(__name__)
@@ -104,7 +108,7 @@ class Model:
         model_path,
         await_registration=480,
         keep_original_files=False,
-        upload_configuration: Optional[Dict[str, Any]] = None,
+        upload_configuration: dict[str, Any] | None = None,
     ):
         """Persist this model including model files and metadata to the model registry.
 
@@ -196,20 +200,19 @@ class Model:
     @usage.method_logger
     def deploy(
         self,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        artifact_version: Optional[
-            str
-        ] = None,  # deprecated, kept for backward compatibility
-        serving_tool: Optional[str] = None,
-        script_file: Optional[str] = None,
-        config_file: Optional[str] = None,
-        resources: Optional[Union[PredictorResources, dict]] = None,
-        inference_logger: Optional[Union[InferenceLogger, dict]] = None,
-        inference_batcher: Optional[Union[InferenceBatcher, dict]] = None,
-        transformer: Optional[Union[Transformer, dict]] = None,
-        api_protocol: Optional[str] = IE.API_PROTOCOL_REST,
-        environment: Optional[str] = None,
+        name: str | None = None,
+        description: str | None = None,
+        artifact_version: str
+        | None = None,  # deprecated, kept for backward compatibility
+        serving_tool: str | None = None,
+        script_file: str | None = None,
+        config_file: str | None = None,
+        resources: PredictorResources | dict | None = None,
+        inference_logger: InferenceLogger | dict | None = None,
+        inference_batcher: InferenceBatcher | dict | None = None,
+        transformer: Transformer | dict | None = None,
+        api_protocol: str | None = IE.API_PROTOCOL_REST,
+        environment: str | None = None,
     ) -> deployment.Deployment:
         """Deploy the model.
 
@@ -272,7 +275,7 @@ class Model:
         return predictor.deploy()
 
     @usage.method_logger
-    def add_tag(self, name: str, value: Union[str, dict]):
+    def add_tag(self, name: str, value: str | dict):
         """Attach a tag to a model.
 
         A tag consists of a <name,value> pair. Tag names are unique identifiers across the whole cluster.
@@ -288,7 +291,7 @@ class Model:
         self._model_engine.set_tag(model_instance=self, name=name, value=value)
 
     @usage.method_logger
-    def set_tag(self, name: str, value: Union[str, dict]):
+    def set_tag(self, name: str, value: str | dict):
         """Deprecated: Use add_tag instead."""
         warnings.warn(
             "The set_tag method is deprecated. Please use add_tag instead.",
@@ -309,7 +312,7 @@ class Model:
         """
         self._model_engine.delete_tag(model_instance=self, name=name)
 
-    def get_tag(self, name: str) -> Optional[str]:
+    def get_tag(self, name: str) -> str | None:
         """Get the tags of a model.
 
         Parameters:
@@ -323,7 +326,7 @@ class Model:
         """
         return self._model_engine.get_tag(model_instance=self, name=name)
 
-    def get_tags(self) -> Dict[str, tag.Tag]:
+    def get_tags(self) -> dict[str, tag.Tag]:
         """Retrieves all tags attached to a model.
 
         Returns:
@@ -600,7 +603,7 @@ class Model:
 
         Resolves to `/Projects/{project_name}/Models/{name}`.
         """
-        return "/Projects/{}/Models/{}".format(self.project_name, self.name)
+        return f"/Projects/{self.project_name}/Models/{self.name}"
 
     @property
     def version_path(self):
@@ -608,7 +611,7 @@ class Model:
 
         Resolves to `/Projects/{project_name}/Models/{name}/{version}`.
         """
-        return "{}/{}".format(self.model_path, str(self.version))
+        return f"{self.model_path}/{str(self.version)}"
 
     @property
     def model_files_path(self):
@@ -616,10 +619,7 @@ class Model:
 
         Resolves to `/Projects/{project_name}/Models/{name}/{version}/Files`.
         """
-        return "{}/{}".format(
-            self.version_path,
-            MODEL_REGISTRY.MODEL_FILES_DIR_NAME,
-        )
+        return f"{self.version_path}/{MODEL_REGISTRY.MODEL_FILES_DIR_NAME}"
 
     @property
     def shared_registry_project_name(self):

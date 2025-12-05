@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import humps
 from hsfs import (
@@ -72,17 +72,17 @@ class FeatureStore:
         self,
         featurestore_id: int,
         featurestore_name: str,
-        created: Union[str, datetime.datetime],
+        created: str | datetime.datetime,
         project_name: str,
         project_id: int,
         offline_featurestore_name: str,
         online_enabled: bool,
-        num_feature_groups: Optional[int] = None,
-        num_training_datasets: Optional[int] = None,
-        num_storage_connectors: Optional[int] = None,
-        num_feature_views: Optional[int] = None,
-        online_featurestore_name: Optional[str] = None,
-        online_featurestore_size: Optional[int] = None,
+        num_feature_groups: int | None = None,
+        num_training_datasets: int | None = None,
+        num_storage_connectors: int | None = None,
+        num_feature_views: int | None = None,
+        online_featurestore_name: str | None = None,
+        online_featurestore_size: int | None = None,
         **kwargs,
     ) -> None:
         self._id = featurestore_id
@@ -121,7 +121,7 @@ class FeatureStore:
         )
 
     @classmethod
-    def from_response_json(cls, json_dict: Dict[str, Any]) -> FeatureStore:
+    def from_response_json(cls, json_dict: dict[str, Any]) -> FeatureStore:
         json_decamelized = humps.decamelize(json_dict)
         # fields below are removed from 3.4. remove them for backward compatibility.
         json_decamelized.pop("hdfs_store_path", None)
@@ -131,11 +131,11 @@ class FeatureStore:
 
     def get_feature_group(
         self, name: str, version: int = None
-    ) -> Union[
-        feature_group.FeatureGroup,
-        feature_group.ExternalFeatureGroup,
-        feature_group.SpineGroup,
-    ]:
+    ) -> (
+        feature_group.FeatureGroup
+        | feature_group.ExternalFeatureGroup
+        | feature_group.SpineGroup
+    ):
         """Get a feature group entity from the feature store.
 
         Getting a feature group from the Feature Store means getting its metadata handle so you can subsequently read the data into a Spark or Pandas DataFrame or use the `Query`-API to perform joins between feature groups.
@@ -163,9 +163,7 @@ class FeatureStore:
         """
         if version is None:
             warnings.warn(
-                "No version provided for getting feature group `{}`, defaulting to `{}`.".format(
-                    name, self.DEFAULT_VERSION
-                ),
+                f"No version provided for getting feature group `{name}`, defaulting to `{self.DEFAULT_VERSION}`.",
                 util.VersionWarning,
                 stacklevel=1,
             )
@@ -177,12 +175,10 @@ class FeatureStore:
 
     def get_feature_groups(
         self, name: str | None = None
-    ) -> List[
-        Union[
-            feature_group.FeatureGroup,
-            feature_group.ExternalFeatureGroup,
-            feature_group.SpineGroup,
-        ]
+    ) -> list[
+        feature_group.FeatureGroup
+        | feature_group.ExternalFeatureGroup
+        | feature_group.SpineGroup
     ]:
         """Get all feature groups from the feature store, or all versions of a feature group specified by its name.
 
@@ -277,9 +273,7 @@ class FeatureStore:
         """
         if version is None:
             warnings.warn(
-                "No version provided for getting feature group `{}`, defaulting to `{}`.".format(
-                    name, self.DEFAULT_VERSION
-                ),
+                f"No version provided for getting feature group `{name}`, defaulting to `{self.DEFAULT_VERSION}`.",
                 util.VersionWarning,
                 stacklevel=1,
             )
@@ -296,7 +290,7 @@ class FeatureStore:
     @usage.method_logger
     def get_on_demand_feature_groups(
         self, name: str
-    ) -> List[feature_group.ExternalFeatureGroup]:
+    ) -> list[feature_group.ExternalFeatureGroup]:
         """Get a list of all versions of an external feature group entity from the feature store.
 
         Warning: Deprecated
@@ -319,7 +313,7 @@ class FeatureStore:
     @usage.method_logger
     def get_external_feature_groups(
         self, name: str | None = None
-    ) -> List[feature_group.ExternalFeatureGroup]:
+    ) -> list[feature_group.ExternalFeatureGroup]:
         """Get a list of all external feature groups from the feature store, or all versions of an external feature group.
 
         Getting an external feature group from the Feature Store means getting its metadata handle so you can subsequently read the data into a Spark or Pandas DataFrame or use the `Query`-API to perform joins between feature groups.
@@ -378,9 +372,7 @@ class FeatureStore:
         """
         if version is None:
             warnings.warn(
-                "No version provided for getting training dataset `{}`, defaulting to `{}`.".format(
-                    name, self.DEFAULT_VERSION
-                ),
+                f"No version provided for getting training dataset `{name}`, defaulting to `{self.DEFAULT_VERSION}`.",
                 util.VersionWarning,
                 stacklevel=1,
             )
@@ -389,7 +381,7 @@ class FeatureStore:
 
     def get_training_datasets(
         self, name: str
-    ) -> List[training_dataset.TrainingDataset]:
+    ) -> list[training_dataset.TrainingDataset]:
         """Get a list of all versions of a training dataset entity from the feature store.
 
         Warning: Deprecated
@@ -440,8 +432,8 @@ class FeatureStore:
             "default", "spark", "pandas", "polars", "numpy", "python"
         ] = "default",
         online: bool = False,
-        read_options: Optional[dict] = None,
-    ) -> Union[pd.DataFrame, pd.Series, np.ndarray, pl.DataFrame]:
+        read_options: dict | None = None,
+    ) -> pd.DataFrame | pd.Series | np.ndarray | pl.DataFrame:
         """Execute SQL command on the offline or online feature store database.
 
         Example:
@@ -498,51 +490,35 @@ class FeatureStore:
     def create_feature_group(
         self,
         name: str,
-        version: Optional[int] = None,
+        version: int | None = None,
         description: str = "",
         online_enabled: bool = False,
-        time_travel_format: Optional[str] = None,
-        partition_key: Optional[List[str]] = None,
-        primary_key: Optional[List[str]] = None,
-        foreign_key: Optional[List[str]] = None,
-        embedding_index: Optional[EmbeddingIndex] = None,
-        hudi_precombine_key: Optional[str] = None,
-        features: Optional[List[feature.Feature]] = None,
-        statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
-        event_time: Optional[str] = None,
+        time_travel_format: str | None = None,
+        partition_key: list[str] | None = None,
+        primary_key: list[str] | None = None,
+        foreign_key: list[str] | None = None,
+        embedding_index: EmbeddingIndex | None = None,
+        hudi_precombine_key: str | None = None,
+        features: list[feature.Feature] | None = None,
+        statistics_config: StatisticsConfig | bool | dict | None = None,
+        event_time: str | None = None,
         stream: bool = False,
-        expectation_suite: Optional[
-            Union[
-                expectation_suite.ExpectationSuite,
-                TypeVar("great_expectations.core.ExpectationSuite"),
-            ]
-        ] = None,
-        parents: Optional[List[feature_group.FeatureGroup]] = None,
-        topic_name: Optional[str] = None,
-        notification_topic_name: Optional[str] = None,
-        transformation_functions: Optional[
-            List[Union[TransformationFunction, HopsworksUdf]]
-        ] = None,
-        online_config: Optional[
-            Union[
-                OnlineConfig,
-                Dict[str, Any],
-            ]
-        ] = None,
-        offline_backfill_every_hr: Optional[Union[int, str]] = None,
-        storage_connector: Union[
-            storage_connector.StorageConnector, Dict[str, Any]
-        ] = None,
-        path: Optional[str] = None,
-        data_source: Optional[
-            Union[
-                ds.DataSource,
-                Dict[str, Any],
-            ]
-        ] = None,
-        ttl: Optional[Union[int, float, timedelta]] = None,
-        ttl_enabled: Optional[bool] = None,
-        online_disk: Optional[bool] = None,
+        expectation_suite: expectation_suite.ExpectationSuite
+        | TypeVar("great_expectations.core.ExpectationSuite")
+        | None = None,
+        parents: list[feature_group.FeatureGroup] | None = None,
+        topic_name: str | None = None,
+        notification_topic_name: str | None = None,
+        transformation_functions: list[TransformationFunction | HopsworksUdf]
+        | None = None,
+        online_config: OnlineConfig | dict[str, Any] | None = None,
+        offline_backfill_every_hr: int | str | None = None,
+        storage_connector: storage_connector.StorageConnector | dict[str, Any] = None,
+        path: str | None = None,
+        data_source: ds.DataSource | dict[str, Any] | None = None,
+        ttl: float | timedelta | None = None,
+        ttl_enabled: bool | None = None,
+        online_disk: bool | None = None,
     ) -> feature_group.FeatureGroup:
         """Create a feature group metadata object.
 
@@ -714,50 +690,39 @@ class FeatureStore:
         self,
         name: str,
         version: int,
-        description: Optional[str] = "",
-        online_enabled: Optional[bool] = False,
-        time_travel_format: Optional[str] = None,
-        partition_key: Optional[List[str]] = None,
-        primary_key: Optional[List[str]] = None,
-        foreign_key: Optional[List[str]] = None,
-        embedding_index: Optional[EmbeddingIndex] = None,
-        hudi_precombine_key: Optional[str] = None,
-        features: Optional[List[feature.Feature]] = None,
-        statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
-        expectation_suite: Optional[
-            Union[
-                expectation_suite.ExpectationSuite,
-                TypeVar("great_expectations.core.ExpectationSuite"),
-            ]
-        ] = None,
-        event_time: Optional[str] = None,
-        stream: Optional[bool] = False,
-        parents: Optional[List[feature_group.FeatureGroup]] = None,
-        topic_name: Optional[str] = None,
-        notification_topic_name: Optional[str] = None,
-        transformation_functions: Optional[
-            List[Union[TransformationFunction, HopsworksUdf]]
-        ] = None,
-        online_config: Optional[Union[OnlineConfig, Dict[str, Any]]] = None,
-        offline_backfill_every_hr: Optional[Union[int, str]] = None,
-        storage_connector: Union[
-            storage_connector.StorageConnector, Dict[str, Any]
-        ] = None,
-        path: Optional[str] = None,
-        data_source: Optional[
-            Union[
-                ds.DataSource,
-                Dict[str, Any],
-            ]
-        ] = None,
-        ttl: Optional[Union[int, float, timedelta]] = None,
-        ttl_enabled: Optional[bool] = None,
-        online_disk: Optional[bool] = None,
-    ) -> Union[
-        feature_group.FeatureGroup,
-        feature_group.ExternalFeatureGroup,
-        feature_group.SpineGroup,
-    ]:
+        description: str | None = "",
+        online_enabled: bool | None = False,
+        time_travel_format: str | None = None,
+        partition_key: list[str] | None = None,
+        primary_key: list[str] | None = None,
+        foreign_key: list[str] | None = None,
+        embedding_index: EmbeddingIndex | None = None,
+        hudi_precombine_key: str | None = None,
+        features: list[feature.Feature] | None = None,
+        statistics_config: StatisticsConfig | bool | dict | None = None,
+        expectation_suite: expectation_suite.ExpectationSuite
+        | TypeVar("great_expectations.core.ExpectationSuite")
+        | None = None,
+        event_time: str | None = None,
+        stream: bool | None = False,
+        parents: list[feature_group.FeatureGroup] | None = None,
+        topic_name: str | None = None,
+        notification_topic_name: str | None = None,
+        transformation_functions: list[TransformationFunction | HopsworksUdf]
+        | None = None,
+        online_config: OnlineConfig | dict[str, Any] | None = None,
+        offline_backfill_every_hr: int | str | None = None,
+        storage_connector: storage_connector.StorageConnector | dict[str, Any] = None,
+        path: str | None = None,
+        data_source: ds.DataSource | dict[str, Any] | None = None,
+        ttl: float | timedelta | None = None,
+        ttl_enabled: bool | None = None,
+        online_disk: bool | None = None,
+    ) -> (
+        feature_group.FeatureGroup
+        | feature_group.ExternalFeatureGroup
+        | feature_group.SpineGroup
+    ):
         """Get feature group metadata object or create a new one if it doesn't exist.
 
         This method doesn't update existing feature group metadata object.
@@ -920,34 +885,26 @@ class FeatureStore:
         self,
         name: str,
         storage_connector: storage_connector.StorageConnector,
-        query: Optional[str] = None,
-        data_format: Optional[str] = None,
-        path: Optional[str] = "",
-        options: Optional[Dict[str, str]] = None,
-        version: Optional[int] = None,
-        description: Optional[str] = "",
-        primary_key: Optional[List[str]] = None,
-        foreign_key: Optional[List[str]] = None,
-        features: Optional[List[feature.Feature]] = None,
-        statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
-        event_time: Optional[str] = None,
-        expectation_suite: Optional[
-            Union[
-                expectation_suite.ExpectationSuite,
-                TypeVar("great_expectations.core.ExpectationSuite"),
-            ]
-        ] = None,
-        topic_name: Optional[str] = None,
-        notification_topic_name: Optional[str] = None,
-        data_source: Optional[
-            Union[
-                ds.DataSource,
-                Dict[str, Any],
-            ]
-        ] = None,
+        query: str | None = None,
+        data_format: str | None = None,
+        path: str | None = "",
+        options: dict[str, str] | None = None,
+        version: int | None = None,
+        description: str | None = "",
+        primary_key: list[str] | None = None,
+        foreign_key: list[str] | None = None,
+        features: list[feature.Feature] | None = None,
+        statistics_config: StatisticsConfig | bool | dict | None = None,
+        event_time: str | None = None,
+        expectation_suite: expectation_suite.ExpectationSuite
+        | TypeVar("great_expectations.core.ExpectationSuite")
+        | None = None,
+        topic_name: str | None = None,
+        notification_topic_name: str | None = None,
+        data_source: ds.DataSource | dict[str, Any] | None = None,
         online_enabled: bool = False,
-        ttl: Optional[Union[int, float, timedelta]] = None,
-        ttl_enabled: Optional[bool] = None,
+        ttl: float | timedelta | None = None,
+        ttl_enabled: bool | None = None,
     ) -> feature_group.ExternalFeatureGroup:
         """Create an external feature group metadata object.
 
@@ -1066,42 +1023,29 @@ class FeatureStore:
         self,
         name: str,
         storage_connector: storage_connector.StorageConnector,
-        query: Optional[str] = None,
-        data_format: Optional[str] = None,
-        path: Optional[str] = "",
-        options: Optional[Dict[str, str]] = None,
-        version: Optional[int] = None,
-        description: Optional[str] = "",
-        primary_key: Optional[List[str]] = None,
-        foreign_key: Optional[List[str]] = None,
-        embedding_index: Optional[EmbeddingIndex] = None,
-        features: Optional[List[feature.Feature]] = None,
-        statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
-        event_time: Optional[str] = None,
-        expectation_suite: Optional[
-            Union[
-                expectation_suite.ExpectationSuite,
-                TypeVar("great_expectations.core.ExpectationSuite"),
-            ]
-        ] = None,
+        query: str | None = None,
+        data_format: str | None = None,
+        path: str | None = "",
+        options: dict[str, str] | None = None,
+        version: int | None = None,
+        description: str | None = "",
+        primary_key: list[str] | None = None,
+        foreign_key: list[str] | None = None,
+        embedding_index: EmbeddingIndex | None = None,
+        features: list[feature.Feature] | None = None,
+        statistics_config: StatisticsConfig | bool | dict | None = None,
+        event_time: str | None = None,
+        expectation_suite: expectation_suite.ExpectationSuite
+        | TypeVar("great_expectations.core.ExpectationSuite")
+        | None = None,
         online_enabled: bool = False,
-        topic_name: Optional[str] = None,
-        notification_topic_name: Optional[str] = None,
-        online_config: Optional[
-            Union[
-                OnlineConfig,
-                Dict[str, Any],
-            ]
-        ] = None,
-        data_source: Optional[
-            Union[
-                ds.DataSource,
-                Dict[str, Any],
-            ]
-        ] = None,
-        ttl: Optional[Union[int, float, timedelta]] = None,
-        ttl_enabled: Optional[bool] = None,
-        online_disk: Optional[bool] = None,
+        topic_name: str | None = None,
+        notification_topic_name: str | None = None,
+        online_config: OnlineConfig | dict[str, Any] | None = None,
+        data_source: ds.DataSource | dict[str, Any] | None = None,
+        ttl: float | timedelta | None = None,
+        ttl_enabled: bool | None = None,
+        online_disk: bool | None = None,
     ) -> feature_group.ExternalFeatureGroup:
         """Create an external feature group metadata object.
 
@@ -1270,19 +1214,17 @@ class FeatureStore:
     def get_or_create_spine_group(
         self,
         name: str,
-        version: Optional[int] = None,
-        description: Optional[str] = "",
-        primary_key: Optional[List[str]] = None,
-        foreign_key: Optional[List[str]] = None,
-        event_time: Optional[str] = None,
-        features: Optional[List[feature.Feature]] = None,
-        dataframe: Union[
-            pd.DataFrame,
-            TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
-            TypeVar("pyspark.RDD"),  # noqa: F821
-            np.ndarray,
-            List[list],
-        ] = None,
+        version: int | None = None,
+        description: str | None = "",
+        primary_key: list[str] | None = None,
+        foreign_key: list[str] | None = None,
+        event_time: str | None = None,
+        features: list[feature.Feature] | None = None,
+        dataframe: pd.DataFrame
+        | TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | np.ndarray
+        | list[list] = None,
     ) -> feature_group.SpineGroup:
         """Create a spine group metadata object.
 
@@ -1398,19 +1340,19 @@ class FeatureStore:
     def create_training_dataset(
         self,
         name: str,
-        version: Optional[int] = None,
-        description: Optional[str] = "",
-        data_format: Optional[str] = "tfrecords",
-        coalesce: Optional[bool] = False,
-        storage_connector: Optional[storage_connector.StorageConnector] = None,
-        splits: Optional[Dict[str, float]] = None,
-        location: Optional[str] = "",
-        seed: Optional[int] = None,
-        statistics_config: Optional[Union[StatisticsConfig, bool, dict]] = None,
-        label: Optional[List[str]] = None,
-        transformation_functions: Optional[Dict[str, TransformationFunction]] = None,
+        version: int | None = None,
+        description: str | None = "",
+        data_format: str | None = "tfrecords",
+        coalesce: bool | None = False,
+        storage_connector: storage_connector.StorageConnector | None = None,
+        splits: dict[str, float] | None = None,
+        location: str | None = "",
+        seed: int | None = None,
+        statistics_config: StatisticsConfig | bool | dict | None = None,
+        label: list[str] | None = None,
+        transformation_functions: dict[str, TransformationFunction] | None = None,
         train_split: str = None,
-    ) -> "training_dataset.TrainingDataset":
+    ) -> training_dataset.TrainingDataset:
         """Create a training dataset metadata object.
 
         Warning: Deprecated
@@ -1498,7 +1440,7 @@ class FeatureStore:
     def create_transformation_function(
         self,
         transformation_function: HopsworksUdf,
-        version: Optional[int] = None,
+        version: int | None = None,
     ) -> TransformationFunction:
         """Create a transformation function metadata object.
 
@@ -1539,7 +1481,7 @@ class FeatureStore:
     def get_transformation_function(
         self,
         name: str,
-        version: Optional[int] = None,
+        version: int | None = None,
     ) -> TransformationFunction:
         """Get  transformation function metadata object.
 
@@ -1639,7 +1581,7 @@ class FeatureStore:
         return self._transformation_function_engine.get_transformation_fn(name, version)
 
     @usage.method_logger
-    def get_transformation_functions(self) -> List[TransformationFunction]:
+    def get_transformation_functions(self) -> list[TransformationFunction]:
         """Get  all transformation functions metadata objects.
 
         Example: Get all transformation functions
@@ -1661,18 +1603,15 @@ class FeatureStore:
         self,
         name: str,
         query: Query,
-        version: Optional[int] = None,
-        description: Optional[str] = "",
-        labels: Optional[List[str]] = None,
-        inference_helper_columns: Optional[List[str]] = None,
-        training_helper_columns: Optional[List[str]] = None,
-        transformation_functions: Optional[
-            List[Union[TransformationFunction, HopsworksUdf]]
-        ] = None,
-        logging_enabled: Optional[bool] = False,
-        extra_log_columns: Optional[
-            Union[List[feature.Feature], List[Dict[str, str]]]
-        ] = None,
+        version: int | None = None,
+        description: str | None = "",
+        labels: list[str] | None = None,
+        inference_helper_columns: list[str] | None = None,
+        training_helper_columns: list[str] | None = None,
+        transformation_functions: list[TransformationFunction | HopsworksUdf]
+        | None = None,
+        logging_enabled: bool | None = False,
+        extra_log_columns: list[feature.Feature] | list[dict[str, str]] | None = None,
     ) -> feature_view.FeatureView:
         """Create a feature view metadata object and saved it to hopsworks.
 
@@ -1786,15 +1725,13 @@ class FeatureStore:
         name: str,
         query: Query,
         version: int,
-        description: Optional[str] = "",
-        labels: Optional[List[str]] = None,
-        inference_helper_columns: Optional[List[str]] = None,
-        training_helper_columns: Optional[List[str]] = None,
-        transformation_functions: Optional[Dict[str, TransformationFunction]] = None,
-        logging_enabled: Optional[bool] = False,
-        extra_log_columns: Optional[
-            Union[List[feature.Feature], List[Dict[str, str]]]
-        ] = None,
+        description: str | None = "",
+        labels: list[str] | None = None,
+        inference_helper_columns: list[str] | None = None,
+        training_helper_columns: list[str] | None = None,
+        transformation_functions: dict[str, TransformationFunction] | None = None,
+        logging_enabled: bool | None = False,
+        extra_log_columns: list[feature.Feature] | list[dict[str, str]] | None = None,
     ) -> feature_view.FeatureView:
         """Get feature view metadata object or create a new one if it doesn't exist.
 
@@ -1899,9 +1836,7 @@ class FeatureStore:
         """
         if version is None:
             warnings.warn(
-                "No version provided for getting feature view `{}`, defaulting to `{}`.".format(
-                    name, self.DEFAULT_VERSION
-                ),
+                f"No version provided for getting feature view `{name}`, defaulting to `{self.DEFAULT_VERSION}`.",
                 util.VersionWarning,
                 stacklevel=1,
             )
@@ -1909,7 +1844,7 @@ class FeatureStore:
         return self._feature_view_engine.get(name, version)
 
     @usage.method_logger
-    def get_feature_views(self, name: str) -> List[feature_view.FeatureView]:
+    def get_feature_views(self, name: str) -> list[feature_view.FeatureView]:
         """Get a list of all versions of a feature view entity from the feature store.
 
         Getting a feature view from the Feature Store means getting its metadata.
@@ -1970,7 +1905,7 @@ class FeatureStore:
         return self._project_id
 
     @property
-    def online_featurestore_name(self) -> Optional[str]:
+    def online_featurestore_name(self) -> str | None:
         """Name of the online feature store database."""
         return self._online_feature_store_name
 

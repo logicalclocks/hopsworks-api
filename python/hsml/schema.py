@@ -13,14 +13,18 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import json
-from typing import Optional, TypeVar, Union
+from typing import TYPE_CHECKING, TypeVar
 
 import numpy
-import pandas
 from hsml.utils.schema.columnar_schema import ColumnarSchema
 from hsml.utils.schema.tensor_schema import TensorSchema
+
+
+if TYPE_CHECKING:
+    import pandas
 
 
 class Schema:
@@ -35,16 +39,13 @@ class Schema:
 
     def __init__(
         self,
-        object: Optional[
-            Union[
-                pandas.DataFrame,
-                pandas.Series,
-                TypeVar("pyspark.sql.dataframe.DataFrame"),  # noqa: F821
-                TypeVar("hsfs.training_dataset.TrainingDataset"),  # noqa: F821
-                numpy.ndarray,
-                list,
-            ]
-        ] = None,
+        object: pandas.DataFrame
+        | pandas.Series
+        | TypeVar("pyspark.sql.dataframe.DataFrame")
+        | TypeVar("hsfs.training_dataset.TrainingDataset")
+        | numpy.ndarray
+        | list
+        | None = None,
         **kwargs,
     ):
         # A tensor schema is either ndarray of a list containing name, type and shape dicts

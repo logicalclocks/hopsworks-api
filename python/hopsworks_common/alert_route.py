@@ -13,9 +13,9 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import json
-from typing import Optional
 
 import humps
 from hopsworks_common import util
@@ -51,37 +51,37 @@ class AlertRoute:
         return cls(**json_decamelized)
 
     @property
-    def groupBy(self) -> Optional[list]:
+    def groupBy(self) -> list | None:
         """The labels by which incoming alerts are grouped together."""
         return self._groupBy
 
     @property
-    def groupWait(self) -> Optional[str]:
+    def groupWait(self) -> str | None:
         """How long to initially wait to send a notification for a group."""
         return self._groupWait
 
     @property
-    def groupInterval(self) -> Optional[str]:
+    def groupInterval(self) -> str | None:
         """How long to wait before sending a notification about new alerts that are added to a group."""
         return self._groupInterval
 
     @property
-    def repeatInterval(self) -> Optional[str]:
+    def repeatInterval(self) -> str | None:
         """How long to wait before sending a notification again if it has already been sent successfully."""
         return self._repeatInterval
 
     @property
-    def receiver(self) -> Optional[str]:
+    def receiver(self) -> str | None:
         """The receiver to send notifications to."""
         return self._receiver
 
     @property
-    def match(self) -> Optional[dict]:
+    def match(self) -> dict | None:
         """A set of equality matchers an alert has to fulfill to match the node."""
         return self._match
 
     @property
-    def matchRe(self) -> Optional[dict]:
+    def matchRe(self) -> dict | None:
         """A set of regex-matchers an alert has to fulfill to match the node."""
         return self._matchRe
 

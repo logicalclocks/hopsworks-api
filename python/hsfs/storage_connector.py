@@ -22,7 +22,7 @@ import posixpath
 import re
 import warnings
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import humps
 from hopsworks_common import client
@@ -61,9 +61,9 @@ class StorageConnector(ABC):
 
     def __init__(
         self,
-        id: Optional[int],
+        id: int | None,
         name: str,
-        description: Optional[str],
+        description: str | None,
         featurestore_id: int,
         **kwargs,
     ) -> None:
@@ -77,17 +77,17 @@ class StorageConnector(ABC):
 
     @classmethod
     def from_response_json(
-        cls, json_dict: Dict[str, Any]
-    ) -> Union[
-        "StorageConnector",
-        "HopsFSConnector",
-        "S3Connector",
-        "RedshiftConnector",
-        "AdlsConnector",
-        "SnowflakeConnector",
-        "BigQueryConnector",
-        "RdsConnector",
-    ]:
+        cls, json_dict: dict[str, Any]
+    ) -> (
+        StorageConnector
+        | HopsFSConnector
+        | S3Connector
+        | RedshiftConnector
+        | AdlsConnector
+        | SnowflakeConnector
+        | BigQueryConnector
+        | RdsConnector
+    ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
         for subcls in cls.__subclasses__():
@@ -97,17 +97,17 @@ class StorageConnector(ABC):
         raise ValueError
 
     def update_from_response_json(
-        self, json_dict: Dict[str, Any]
-    ) -> Union[
-        "StorageConnector",
-        "HopsFSConnector",
-        "S3Connector",
-        "RedshiftConnector",
-        "AdlsConnector",
-        "SnowflakeConnector",
-        "BigQueryConnector",
-        "RdsConnector",
-    ]:
+        self, json_dict: dict[str, Any]
+    ) -> (
+        StorageConnector
+        | HopsFSConnector
+        | S3Connector
+        | RedshiftConnector
+        | AdlsConnector
+        | SnowflakeConnector
+        | BigQueryConnector
+        | RdsConnector
+    ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
         if self.type == json_decamelized["storage_connector_type"]:
@@ -117,7 +117,7 @@ class StorageConnector(ABC):
             raise ValueError("Failed to update storage connector information.")
         return self
 
-    def to_dict(self) -> Dict[str, Optional[Union[int, str]]]:
+    def to_dict(self) -> dict[str, int | str | None]:
         return {
             "id": self._id,
             "name": self._name,
@@ -126,12 +126,12 @@ class StorageConnector(ABC):
         }
 
     @property
-    def type(self) -> Optional[str]:
+    def type(self) -> str | None:
         """Type of the connector as string, e.g. "HOPFS, S3, ADLS, REDSHIFT, JDBC or SNOWFLAKE."""
         return self._type
 
     @property
-    def id(self) -> Optional[int]:
+    def id(self) -> int | None:
         """Id of the storage connector uniquely identifying it in the Feature store."""
         return self._id
 
@@ -141,7 +141,7 @@ class StorageConnector(ABC):
         return self._name
 
     @property
-    def description(self) -> Optional[str]:
+    def description(self) -> str | None:
         """User provided description of the storage connector."""
         return self._description
 
@@ -149,25 +149,25 @@ class StorageConnector(ABC):
     def spark_options(self) -> None:
         pass
 
-    def prepare_spark(self, path: Optional[str] = None) -> Optional[str]:
+    def prepare_spark(self, path: str | None = None) -> str | None:
         return path
 
     def read(
         self,
-        query: Optional[str] = None,
-        data_format: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
-        path: Optional[str] = None,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
         dataframe_type: Literal[
             "default", "spark", "pandas", "polars", "numpy", "python"
         ] = "default",
-    ) -> Union[
-        TypeVar("pyspark.sql.DataFrame"),
-        TypeVar("pyspark.RDD"),
-        pd.DataFrame,
-        np.ndarray,
-        pl.DataFrame,
-    ]:
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
         """Reads a query or a path into a dataframe using the storage connector.
 
         Note, paths are only supported for object stores like S3, HopsFS and ADLS, while queries are meant for JDBC or databases like Redshift and Snowflake.
@@ -199,7 +199,7 @@ class StorageConnector(ABC):
     def _get_path(self, sub_path: str) -> None:
         return None
 
-    def connector_options(self) -> Dict[str, Any]:
+    def connector_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to an external connector library.
 
         Not implemented for this connector type.
@@ -285,13 +285,13 @@ class HopsFSConnector(StorageConnector):
 
     def __init__(
         self,
-        id: Optional[int],
+        id: int | None,
         name: str,
         featurestore_id: int,
-        description: Optional[str] = None,
+        description: str | None = None,
         # members specific to type of connector
-        hopsfs_path: Optional[str] = None,
-        dataset_name: Optional[str] = None,
+        hopsfs_path: str | None = None,
+        dataset_name: str | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
@@ -300,7 +300,7 @@ class HopsFSConnector(StorageConnector):
         self._hopsfs_path = hopsfs_path
         self._dataset_name = dataset_name
 
-    def spark_options(self) -> Dict[str, Any]:
+    def spark_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional arguments."""
         return {}
 
@@ -313,21 +313,21 @@ class S3Connector(StorageConnector):
 
     def __init__(
         self,
-        id: Optional[int],
+        id: int | None,
         name: str,
-        featurestore_id: Optional[int],
-        description: Optional[str] = None,
+        featurestore_id: int | None,
+        description: str | None = None,
         # members specific to type of connector
-        access_key: Optional[str] = None,
-        secret_key: Optional[str] = None,
-        server_encryption_algorithm: Optional[str] = None,
-        server_encryption_key: Optional[str] = None,
-        bucket: Optional[str] = None,
-        path: Optional[str] = None,
-        region: Optional[str] = None,
-        session_token: Optional[str] = None,
-        iam_role: Optional[str] = None,
-        arguments: Optional[Dict[str, Any]] = None,
+        access_key: str | None = None,
+        secret_key: str | None = None,
+        server_encryption_algorithm: str | None = None,
+        server_encryption_key: str | None = None,
+        bucket: str | None = None,
+        path: str | None = None,
+        region: str | None = None,
+        session_token: str | None = None,
+        iam_role: str | None = None,
+        arguments: dict[str, Any] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
@@ -347,61 +347,61 @@ class S3Connector(StorageConnector):
         )
 
     @property
-    def access_key(self) -> Optional[str]:
+    def access_key(self) -> str | None:
         """Access key."""
         return self._access_key
 
     @property
-    def secret_key(self) -> Optional[str]:
+    def secret_key(self) -> str | None:
         """Secret key."""
         return self._secret_key
 
     @property
-    def server_encryption_algorithm(self) -> Optional[str]:
+    def server_encryption_algorithm(self) -> str | None:
         """Encryption algorithm if server-side S3 bucket encryption is enabled."""
         return self._server_encryption_algorithm
 
     @property
-    def server_encryption_key(self) -> Optional[str]:
+    def server_encryption_key(self) -> str | None:
         """Encryption key if server-side S3 bucket encryption is enabled."""
         return self._server_encryption_key
 
     @property
-    def bucket(self) -> Optional[str]:
+    def bucket(self) -> str | None:
         """Return the bucket for S3 connectors."""
         return self._bucket
 
     @property
-    def region(self) -> Optional[str]:
+    def region(self) -> str | None:
         """Return the region for S3 connectors."""
         return self._region
 
     @property
-    def session_token(self) -> Optional[str]:
+    def session_token(self) -> str | None:
         """Session token."""
         return self._session_token
 
     @property
-    def iam_role(self) -> Optional[str]:
+    def iam_role(self) -> str | None:
         """IAM role."""
         return self._iam_role
 
     @property
-    def path(self) -> Optional[str]:
+    def path(self) -> str | None:
         """If the connector refers to a path (e.g. S3) - return the path of the connector."""
         return posixpath.join(
             "s3://" + self._bucket, *os.path.split(self._path if self._path else "")
         )
 
     @property
-    def arguments(self) -> Optional[Dict[str, Any]]:
+    def arguments(self) -> dict[str, Any] | None:
         return self._arguments
 
-    def spark_options(self) -> Dict[str, str]:
+    def spark_options(self) -> dict[str, str]:
         """Return prepared options to be passed to Spark, based on the additional arguments."""
         return self._arguments
 
-    def prepare_spark(self, path: Optional[str] = None) -> Optional[str]:
+    def prepare_spark(self, path: str | None = None) -> str | None:
         """Prepare Spark to use this Storage Connector.
 
         ```python
@@ -419,7 +419,7 @@ class S3Connector(StorageConnector):
         self.refetch()
         return engine.get_instance().setup_storage_connector(self, path)
 
-    def connector_options(self) -> Dict[str, Any]:
+    def connector_options(self) -> dict[str, Any]:
         """Return options to be passed to an external S3 connector library."""
         self.refetch()
         options = {
@@ -450,20 +450,20 @@ class S3Connector(StorageConnector):
 
     def read(
         self,
-        query: Optional[str] = None,
-        data_format: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
         path: str = "",
         dataframe_type: Literal[
             "default", "spark", "pandas", "polars", "numpy", "python"
         ] = "default",
-    ) -> Union[
-        TypeVar("pyspark.sql.DataFrame"),
-        TypeVar("pyspark.RDD"),
-        pd.DataFrame,
-        np.ndarray,
-        pl.DataFrame,
-    ]:
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
         """Reads a query or a path into a dataframe using the storage connector.
 
         Note, paths are only supported for object stores like S3, HopsFS and ADLS, while queries are meant for JDBC or databases like Redshift and Snowflake.
@@ -489,9 +489,7 @@ class S3Connector(StorageConnector):
         if not path.startswith(("s3://", "s3a://")):
             path = self._get_path(path)
             print(
-                "Prepending default bucket specified on connector, final path: {}".format(
-                    path
-                )
+                f"Prepending default bucket specified on connector, final path: {path}"
             )
 
         return engine.get_instance().read(
@@ -508,24 +506,24 @@ class RedshiftConnector(StorageConnector):
 
     def __init__(
         self,
-        id: Optional[int],
+        id: int | None,
         name: str,
         featurestore_id: int,
-        description: Optional[str] = None,
+        description: str | None = None,
         # members specific to type of connector
-        cluster_identifier: Optional[str] = None,
-        database_driver: Optional[str] = None,
-        database_endpoint: Optional[str] = None,
-        database_name: Optional[str] = None,
-        database_port: Optional[Union[int, str]] = None,
-        table_name: Optional[str] = None,
-        database_user_name: Optional[str] = None,
-        auto_create: Optional[bool] = None,
-        database_password: Optional[str] = None,
-        database_group: Optional[str] = None,
-        iam_role: Optional[Any] = None,
-        arguments: Optional[Dict[str, Any]] = None,
-        expiration: Optional[Union[int, str]] = None,
+        cluster_identifier: str | None = None,
+        database_driver: str | None = None,
+        database_endpoint: str | None = None,
+        database_name: str | None = None,
+        database_port: int | str | None = None,
+        table_name: str | None = None,
+        database_user_name: str | None = None,
+        auto_create: bool | None = None,
+        database_password: str | None = None,
+        database_group: str | None = None,
+        iam_role: Any | None = None,
+        arguments: dict[str, Any] | None = None,
+        expiration: int | str | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
@@ -550,67 +548,67 @@ class RedshiftConnector(StorageConnector):
         self._expiration = expiration
 
     @property
-    def cluster_identifier(self) -> Optional[str]:
+    def cluster_identifier(self) -> str | None:
         """Cluster identifier for redshift cluster."""
         return self._cluster_identifier
 
     @property
-    def database_driver(self) -> Optional[str]:
+    def database_driver(self) -> str | None:
         """Database endpoint for redshift cluster."""
         return self._database_driver
 
     @property
-    def database_endpoint(self) -> Optional[str]:
+    def database_endpoint(self) -> str | None:
         """Database endpoint for redshift cluster."""
         return self._database_endpoint
 
     @property
-    def database_name(self) -> Optional[str]:
+    def database_name(self) -> str | None:
         """Database name for redshift cluster."""
         return self._database_name
 
     @property
-    def database_port(self) -> Optional[Union[int, str]]:
+    def database_port(self) -> int | str | None:
         """Database port for redshift cluster."""
         return self._database_port
 
     @property
-    def table_name(self) -> Optional[str]:
+    def table_name(self) -> str | None:
         """Table name for redshift cluster."""
         return self._table_name
 
     @property
-    def database_user_name(self) -> Optional[str]:
+    def database_user_name(self) -> str | None:
         """Database username for redshift cluster."""
         return self._database_user_name
 
     @property
-    def auto_create(self) -> Optional[bool]:
+    def auto_create(self) -> bool | None:
         """Database username for redshift cluster."""
         return self._auto_create
 
     @property
-    def database_group(self) -> Optional[str]:
+    def database_group(self) -> str | None:
         """Database username for redshift cluster."""
         return self._database_group
 
     @property
-    def database_password(self) -> Optional[str]:
+    def database_password(self) -> str | None:
         """Database password for redshift cluster."""
         return self._database_password
 
     @property
-    def iam_role(self) -> Optional[Any]:
+    def iam_role(self) -> Any | None:
         """IAM role."""
         return self._iam_role
 
     @property
-    def expiration(self) -> Optional[Union[int, str]]:
+    def expiration(self) -> int | str | None:
         """Cluster temporary credential expiration time."""
         return self._expiration
 
     @property
-    def arguments(self) -> Optional[str]:
+    def arguments(self) -> str | None:
         """Additional JDBC, REDSHIFT, or Snowflake arguments."""
         if isinstance(self._arguments, dict):
             return ",".join(
@@ -618,7 +616,7 @@ class RedshiftConnector(StorageConnector):
             )
         return self._arguments
 
-    def connector_options(self) -> Dict[str, Any]:
+    def connector_options(self) -> dict[str, Any]:
         """Return options to be passed to an external Redshift connector library."""
         props = {
             "host": self._cluster_identifier + "." + self._database_endpoint,
@@ -634,7 +632,7 @@ class RedshiftConnector(StorageConnector):
             props["iam"] = "True"
         return props
 
-    def spark_options(self) -> Dict[str, Any]:
+    def spark_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional arguments."""
         connstr = (
             "jdbc:redshift://"
@@ -661,18 +659,18 @@ class RedshiftConnector(StorageConnector):
 
     def read(
         self,
-        query: Optional[str] = None,
-        data_format: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
-        path: Optional[str] = None,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
         dataframe_type: str = "default",
-    ) -> Union[
-        TypeVar("pyspark.sql.DataFrame"),
-        TypeVar("pyspark.RDD"),
-        pd.DataFrame,
-        np.ndarray,
-        pl.DataFrame,
-    ]:
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
         """Reads a table or query into a dataframe using the storage connector.
 
         Parameters:
@@ -715,18 +713,18 @@ class AdlsConnector(StorageConnector):
 
     def __init__(
         self,
-        id: Optional[int],
+        id: int | None,
         name: str,
         featurestore_id: int,
-        description: Optional[str] = None,
+        description: str | None = None,
         # members specific to type of connector
-        generation: Optional[str] = None,
-        directory_id: Optional[str] = None,
-        application_id: Optional[str] = None,
-        service_credential: Optional[str] = None,
-        account_name: Optional[str] = None,
-        container_name: Optional[str] = None,
-        spark_options: Optional[Dict[str, Any]] = None,
+        generation: str | None = None,
+        directory_id: str | None = None,
+        application_id: str | None = None,
+        service_credential: str | None = None,
+        account_name: str | None = None,
+        container_name: str | None = None,
+        spark_options: dict[str, Any] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
@@ -746,49 +744,47 @@ class AdlsConnector(StorageConnector):
         )
 
     @property
-    def generation(self) -> Optional[str]:
+    def generation(self) -> str | None:
         """Generation of the ADLS storage connector."""
         return self._generation
 
     @property
-    def directory_id(self) -> Optional[str]:
+    def directory_id(self) -> str | None:
         """Directory ID of the ADLS storage connector."""
         return self._directory_id
 
     @property
-    def application_id(self) -> Optional[str]:
+    def application_id(self) -> str | None:
         """Application ID of the ADLS storage connector."""
         return self._application_id
 
     @property
-    def account_name(self) -> Optional[str]:
+    def account_name(self) -> str | None:
         """Account name of the ADLS storage connector."""
         return self._account_name
 
     @property
-    def container_name(self) -> Optional[str]:
+    def container_name(self) -> str | None:
         """Container name of the ADLS storage connector."""
         return self._container_name
 
     @property
-    def service_credential(self) -> Optional[str]:
+    def service_credential(self) -> str | None:
         """Service credential of the ADLS storage connector."""
         return self._service_credential
 
     @property
-    def path(self) -> Optional[str]:
+    def path(self) -> str | None:
         """If the connector refers to a path (e.g. ADLS) - return the path of the connector."""
         if self.generation == 2:
-            return "abfss://{}@{}.dfs.core.windows.net".format(
-                self.container_name, self.account_name
-            )
-        return "adl://{}.azuredatalakestore.net".format(self.account_name)
+            return f"abfss://{self.container_name}@{self.account_name}.dfs.core.windows.net"
+        return f"adl://{self.account_name}.azuredatalakestore.net"
 
-    def spark_options(self) -> Dict[str, Any]:
+    def spark_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional arguments."""
         return self._spark_options
 
-    def prepare_spark(self, path: Optional[str] = None) -> Optional[str]:
+    def prepare_spark(self, path: str | None = None) -> str | None:
         """Prepare Spark to use this Storage Connector.
 
         ```python
@@ -810,18 +806,18 @@ class AdlsConnector(StorageConnector):
 
     def read(
         self,
-        query: Optional[str] = None,
-        data_format: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
         path: str = "",
         dataframe_type: str = "default",
-    ) -> Union[
-        TypeVar("pyspark.sql.DataFrame"),
-        TypeVar("pyspark.RDD"),
-        pd.DataFrame,
-        np.ndarray,
-        pl.DataFrame,
-    ]:
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
         """Reads a path into a dataframe using the storage connector.
 
         Parameters:
@@ -840,11 +836,7 @@ class AdlsConnector(StorageConnector):
         path = path.strip()
         if not path.startswith("abfss://") or path.startswith("adl://"):
             path = self._get_path(path)
-            print(
-                "Using default container specified on connector, final path: {}".format(
-                    path
-                )
-            )
+            print(f"Using default container specified on connector, final path: {path}")
 
         return engine.get_instance().read(
             self, data_format, options or {}, path, dataframe_type
@@ -857,22 +849,22 @@ class SnowflakeConnector(StorageConnector):
 
     def __init__(
         self,
-        id: Optional[int],
+        id: int | None,
         name: str,
-        featurestore_id: Optional[int],
-        description: Optional[str] = None,
+        featurestore_id: int | None,
+        description: str | None = None,
         # members specific to type of connector
-        database: Optional[str] = None,
-        password: Optional[str] = None,
-        token: Optional[str] = None,
-        role: Optional[Any] = None,
-        schema: Optional[str] = None,
-        table: Optional[str] = None,
-        url: Optional[str] = None,
-        user: Optional[Any] = None,
-        warehouse: Optional[str] = None,
-        application: Optional[Any] = None,
-        sf_options: Optional[Dict[str, Any]] = None,
+        database: str | None = None,
+        password: str | None = None,
+        token: str | None = None,
+        role: Any | None = None,
+        schema: str | None = None,
+        table: str | None = None,
+        url: str | None = None,
+        user: Any | None = None,
+        warehouse: str | None = None,
+        application: Any | None = None,
+        sf_options: dict[str, Any] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
@@ -894,52 +886,52 @@ class SnowflakeConnector(StorageConnector):
         )
 
     @property
-    def url(self) -> Optional[str]:
+    def url(self) -> str | None:
         """URL of the Snowflake storage connector."""
         return self._url
 
     @property
-    def warehouse(self) -> Optional[str]:
+    def warehouse(self) -> str | None:
         """Warehouse of the Snowflake storage connector."""
         return self._warehouse
 
     @property
-    def database(self) -> Optional[str]:
+    def database(self) -> str | None:
         """Database of the Snowflake storage connector."""
         return self._database
 
     @property
-    def user(self) -> Optional[Any]:
+    def user(self) -> Any | None:
         """User of the Snowflake storage connector."""
         return self._user
 
     @property
-    def password(self) -> Optional[str]:
+    def password(self) -> str | None:
         """Password of the Snowflake storage connector."""
         return self._password
 
     @property
-    def token(self) -> Optional[str]:
+    def token(self) -> str | None:
         """OAuth token of the Snowflake storage connector."""
         return self._token
 
     @property
-    def schema(self) -> Optional[str]:
+    def schema(self) -> str | None:
         """Schema of the Snowflake storage connector."""
         return self._schema
 
     @property
-    def table(self) -> Optional[str]:
+    def table(self) -> str | None:
         """Table of the Snowflake storage connector."""
         return self._table
 
     @property
-    def role(self) -> Optional[Any]:
+    def role(self) -> Any | None:
         """Role of the Snowflake storage connector."""
         return self._role
 
     @property
-    def account(self) -> Optional[str]:
+    def account(self) -> str | None:
         """Account of the Snowflake storage connector."""
         return self._url.replace("https://", "").replace(".snowflakecomputing.com", "")
 
@@ -949,15 +941,15 @@ class SnowflakeConnector(StorageConnector):
         return self._application
 
     @property
-    def options(self) -> Optional[Dict[str, Any]]:
+    def options(self) -> dict[str, Any] | None:
         """Additional options for the Snowflake storage connector."""
         return self._options
 
-    def snowflake_connector_options(self) -> Optional[Dict[str, Any]]:
+    def snowflake_connector_options(self) -> dict[str, Any] | None:
         """Alias for `connector_options`."""
         return self.connector_options()
 
-    def connector_options(self) -> Optional[Dict[str, Any]]:
+    def connector_options(self) -> dict[str, Any] | None:
         """Prepare a Python dictionary with the needed arguments for you to connect to a Snowflake database.
 
         It is useful for the `snowflake.connector` Python library.
@@ -985,7 +977,7 @@ class SnowflakeConnector(StorageConnector):
             props["application"] = self._application
         return props
 
-    def spark_options(self) -> Dict[str, Any]:
+    def spark_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional arguments."""
         props = self._options
         props["sfURL"] = self._url
@@ -1010,18 +1002,18 @@ class SnowflakeConnector(StorageConnector):
 
     def read(
         self,
-        query: Optional[str] = None,
-        data_format: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
-        path: Optional[str] = None,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
         dataframe_type: str = "default",
-    ) -> Union[
-        TypeVar("pyspark.sql.DataFrame"),
-        TypeVar("pyspark.RDD"),
-        pd.DataFrame,
-        np.ndarray,
-        pl.DataFrame,
-    ]:
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
         """Reads a table or query into a dataframe using the storage connector.
 
         Parameters:
@@ -1059,13 +1051,13 @@ class JdbcConnector(StorageConnector):
 
     def __init__(
         self,
-        id: Optional[int],
+        id: int | None,
         name: str,
         featurestore_id: int,
-        description: Optional[str] = None,
+        description: str | None = None,
         # members specific to type of connector
-        connection_string: Optional[str] = None,
-        arguments: Dict[str, Any] = None,
+        connection_string: str | None = None,
+        arguments: dict[str, Any] = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
@@ -1075,19 +1067,19 @@ class JdbcConnector(StorageConnector):
         self._arguments = arguments
 
     @property
-    def connection_string(self) -> Optional[str]:
+    def connection_string(self) -> str | None:
         """JDBC connection string."""
         return self._connection_string
 
     @property
-    def arguments(self) -> Optional[Dict[str, Any]]:
+    def arguments(self) -> dict[str, Any] | None:
         """Additional JDBC arguments.
 
         When running hsfs with PySpark/Spark in Hopsworks, the driver is automatically provided in the classpath but you need to set the `driver` argument to `com.mysql.cj.jdbc.Driver` when creating the Storage Connector.
         """
         return self._arguments
 
-    def spark_options(self) -> Dict[str, Any]:
+    def spark_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional arguments."""
         options = (
             {arg.get("name"): arg.get("value") for arg in self._arguments}
@@ -1102,17 +1094,17 @@ class JdbcConnector(StorageConnector):
     def read(
         self,
         query: str,
-        data_format: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
-        path: Optional[str] = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
         dataframe_type: str = "default",
-    ) -> Union[
-        TypeVar("pyspark.sql.DataFrame"),
-        TypeVar("pyspark.RDD"),
-        pd.DataFrame,
-        np.ndarray,
-        pl.DataFrame,
-    ]:
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
         """Reads a query into a dataframe using the storage connector.
 
         Parameters:
@@ -1147,21 +1139,21 @@ class KafkaConnector(StorageConnector):
 
     def __init__(
         self,
-        id: Optional[int],
+        id: int | None,
         name: str,
         featurestore_id: int,
-        description: Optional[str] = None,
+        description: str | None = None,
         # members specific to type of connector
-        bootstrap_servers: Optional[List[str]] = None,
-        security_protocol: Optional[str] = None,
-        ssl_truststore_location: Optional[str] = None,
-        ssl_truststore_password: Optional[str] = None,
-        ssl_keystore_location: Optional[str] = None,
-        ssl_keystore_password: Optional[str] = None,
-        ssl_key_password: Optional[str] = None,
-        ssl_endpoint_identification_algorithm: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
-        external_kafka: Optional[bool] = None,
+        bootstrap_servers: list[str] | None = None,
+        security_protocol: str | None = None,
+        ssl_truststore_location: str | None = None,
+        ssl_truststore_password: str | None = None,
+        ssl_keystore_location: str | None = None,
+        ssl_keystore_password: str | None = None,
+        ssl_key_password: str | None = None,
+        ssl_endpoint_identification_algorithm: str | None = None,
+        options: dict[str, Any] | None = None,
+        external_kafka: bool | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
@@ -1186,36 +1178,36 @@ class KafkaConnector(StorageConnector):
         self._pem_files_created = False
 
     @property
-    def bootstrap_servers(self) -> Optional[List[str]]:
+    def bootstrap_servers(self) -> list[str] | None:
         """Bootstrap servers string."""
         return self._bootstrap_servers
 
     @property
-    def security_protocol(self) -> Optional[str]:
+    def security_protocol(self) -> str | None:
         """Bootstrap servers string."""
         return self._security_protocol
 
     @property
-    def ssl_truststore_location(self) -> Optional[str]:
+    def ssl_truststore_location(self) -> str | None:
         """Bootstrap servers string."""
         return self._ssl_truststore_location
 
     @property
-    def ssl_keystore_location(self) -> Optional[str]:
+    def ssl_keystore_location(self) -> str | None:
         """Bootstrap servers string."""
         return self._ssl_keystore_location
 
     @property
-    def ssl_endpoint_identification_algorithm(self) -> Optional[str]:
+    def ssl_endpoint_identification_algorithm(self) -> str | None:
         """Bootstrap servers string."""
         return self._ssl_endpoint_identification_algorithm
 
     @property
-    def options(self) -> Dict[str, Any]:
+    def options(self) -> dict[str, Any]:
         """Bootstrap servers string."""
         return self._options
 
-    def create_pem_files(self, kafka_options: Dict[str, Any]) -> None:
+    def create_pem_files(self, kafka_options: dict[str, Any]) -> None:
         """Create PEM (Privacy Enhanced Mail) files for Kafka SSL authentication.
 
         This method writes the necessary PEM files for SSL authentication with Kafka,
@@ -1243,7 +1235,7 @@ class KafkaConnector(StorageConnector):
             )
             self._pem_files_created = True
 
-    def kafka_options(self, distribute=True) -> Dict[str, Any]:
+    def kafka_options(self, distribute=True) -> dict[str, Any]:
         """Return prepared options to be passed to kafka, based on the additional arguments.
 
         See <https://kafka.apache.org/documentation/>.
@@ -1306,7 +1298,7 @@ class KafkaConnector(StorageConnector):
 
         return config
 
-    def confluent_options(self) -> Dict[str, Any]:
+    def confluent_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to confluent_kafka, based on the provided apache spark configuration.
 
         Right now only producer values with Importance >= medium are implemented.
@@ -1394,10 +1386,10 @@ class KafkaConnector(StorageConnector):
         return config
 
     def _read_pem(self, file_name):
-        with open(file_name, "r") as file:
+        with open(file_name) as file:
             return file.read()
 
-    def spark_options(self) -> Dict[str, Any]:
+    def spark_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional arguments.
 
         This is done by just adding 'kafka.' prefix to kafka_options.
@@ -1449,10 +1441,10 @@ class KafkaConnector(StorageConnector):
 
     def read(
         self,
-        query: Optional[str] = None,
-        data_format: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
-        path: Optional[str] = None,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
         dataframe_type: str = "default",
     ) -> None:
         """NOT SUPPORTED."""
@@ -1465,13 +1457,12 @@ class KafkaConnector(StorageConnector):
         topic: str,
         topic_pattern: bool = False,
         message_format: str = "avro",
-        schema: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
+        schema: str | None = None,
+        options: dict[str, Any] | None = None,
         include_metadata: bool = False,
-    ) -> Union[
-        TypeVar("pyspark.sql.DataFrame"),
-        TypeVar("pyspark.sql.streaming.StreamingQuery"),
-    ]:
+    ) -> TypeVar("pyspark.sql.DataFrame") | TypeVar(
+        "pyspark.sql.streaming.StreamingQuery"
+    ):
         """Reads a Kafka stream from a topic or multiple topics into a Dataframe.
 
         Warning: Engine Support
@@ -1542,16 +1533,16 @@ class GcsConnector(StorageConnector):
 
     def __init__(
         self,
-        id: Optional[int],
+        id: int | None,
         name: str,
         featurestore_id: int,
-        description: Optional[str] = None,
+        description: str | None = None,
         # members specific to type of connector
-        key_path: Optional[str] = None,
-        bucket: Optional[str] = None,
-        algorithm: Optional[str] = None,
-        encryption_key: Optional[str] = None,
-        encryption_key_hash: Optional[str] = None,
+        key_path: str | None = None,
+        bucket: str | None = None,
+        algorithm: str | None = None,
+        encryption_key: str | None = None,
+        encryption_key_hash: str | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
@@ -1563,58 +1554,58 @@ class GcsConnector(StorageConnector):
         self._encryption_key_hash = encryption_key_hash
 
     @property
-    def key_path(self) -> Optional[str]:
+    def key_path(self) -> str | None:
         """JSON keyfile for service account."""
         return self._key_path
 
     @property
-    def algorithm(self) -> Optional[str]:
+    def algorithm(self) -> str | None:
         """Encryption Algorithm."""
         return self._algorithm
 
     @property
-    def encryption_key(self) -> Optional[str]:
+    def encryption_key(self) -> str | None:
         """Encryption Key."""
         return self._encryption_key
 
     @property
-    def encryption_key_hash(self) -> Optional[str]:
+    def encryption_key_hash(self) -> str | None:
         """Encryption Key Hash."""
         return self._encryption_key_hash
 
     @property
-    def path(self) -> Optional[str]:
+    def path(self) -> str | None:
         """The path of the connector along with gs file system prefixed."""
         return self.GS_FS_PREFIX + self._bucket
 
     @property
-    def bucket(self) -> Optional[str]:
+    def bucket(self) -> str | None:
         """GCS Bucket."""
         return self._bucket
 
-    def _get_path(self, sub_path: str) -> Optional[str]:
+    def _get_path(self, sub_path: str) -> str | None:
         if sub_path:
             return os.path.join(self.path, sub_path)
         return self.path
 
-    def spark_options(self) -> Dict[str, Any]:
+    def spark_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional arguments."""
         return {}
 
     def read(
         self,
-        query: Optional[str] = None,
-        data_format: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
         path: str = "",
         dataframe_type: str = "default",
-    ) -> Union[
-        TypeVar("pyspark.sql.DataFrame"),
-        TypeVar("pyspark.RDD"),
-        pd.DataFrame,
-        np.ndarray,
-        pl.DataFrame,
-    ]:
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
         """Reads GCS path into a dataframe using the storage connector.
 
         To read directly from the default bucket, you can omit the path argument:
@@ -1655,16 +1646,14 @@ class GcsConnector(StorageConnector):
         if not path.startswith(self.GS_FS_PREFIX):
             path = self._get_path(path)
             print(
-                "Prepending default bucket specified on connector, final path: {}".format(
-                    path
-                )
+                f"Prepending default bucket specified on connector, final path: {path}"
             )
 
         return engine.get_instance().read(
             self, data_format, options or {}, path, dataframe_type
         )
 
-    def prepare_spark(self, path: Optional[str] = None) -> Optional[str]:
+    def prepare_spark(self, path: str | None = None) -> str | None:
         """Prepare Spark to use this Storage Connector.
 
         ```python
@@ -1705,18 +1694,18 @@ class BigQueryConnector(StorageConnector):
 
     def __init__(
         self,
-        id: Optional[int],
+        id: int | None,
         name: str,
         featurestore_id: int,
-        description: Optional[str] = None,
+        description: str | None = None,
         # members specific to type of connector
-        key_path: Optional[str] = None,
-        parent_project: Optional[str] = None,
-        dataset: Optional[str] = None,
-        query_table: Optional[str] = None,
-        query_project: Optional[str] = None,
-        materialization_dataset: Optional[str] = None,
-        arguments: Optional[Dict[str, Any]] = None,
+        key_path: str | None = None,
+        parent_project: str | None = None,
+        dataset: str | None = None,
+        query_table: str | None = None,
+        query_project: str | None = None,
+        materialization_dataset: str | None = None,
+        arguments: dict[str, Any] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
@@ -1731,41 +1720,41 @@ class BigQueryConnector(StorageConnector):
         )
 
     @property
-    def key_path(self) -> Optional[str]:
+    def key_path(self) -> str | None:
         """JSON keyfile for service account."""
         return self._key_path
 
     @property
-    def parent_project(self) -> Optional[str]:
+    def parent_project(self) -> str | None:
         """BigQuery parent project (Google Cloud Project ID of the table to bill for the export)."""
         return self._parent_project
 
     @property
-    def dataset(self) -> Optional[str]:
+    def dataset(self) -> str | None:
         """BigQuery dataset (The dataset containing the table)."""
         return self._dataset
 
     @property
-    def query_table(self) -> Optional[str]:
+    def query_table(self) -> str | None:
         """BigQuery table name."""
         return self._query_table
 
     @property
-    def query_project(self) -> Optional[str]:
+    def query_project(self) -> str | None:
         """BigQuery project (The Google Cloud Project ID of the table)."""
         return self._query_project
 
     @property
-    def materialization_dataset(self) -> Optional[str]:
+    def materialization_dataset(self) -> str | None:
         """BigQuery materialization dataset (The dataset where the materialized view is going to be created, used in case of query)."""
         return self._materialization_dataset
 
     @property
-    def arguments(self) -> Dict[str, Any]:
+    def arguments(self) -> dict[str, Any]:
         """Additional spark options."""
         return self._arguments
 
-    def connector_options(self) -> Dict[str, Any]:
+    def connector_options(self) -> dict[str, Any]:
         """Return options to be passed to an external BigQuery connector library."""
         return {
             "key_path": self._key_path,
@@ -1773,7 +1762,7 @@ class BigQueryConnector(StorageConnector):
             "dataset_id": self._dataset,
         }
 
-    def spark_options(self) -> Dict[str, Any]:
+    def spark_options(self) -> dict[str, Any]:
         """Return spark options to be set for BigQuery spark connector."""
         properties = self._arguments
         properties[self.BIGQ_PARENT_PROJECT] = self._parent_project
@@ -1798,18 +1787,18 @@ class BigQueryConnector(StorageConnector):
 
     def read(
         self,
-        query: Optional[str] = None,
-        data_format: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
-        path: Optional[str] = None,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
         dataframe_type: str = "default",
-    ) -> Union[
-        TypeVar("pyspark.sql.DataFrame"),
-        TypeVar("pyspark.RDD"),
-        pd.DataFrame,
-        np.ndarray,
-        pl.DataFrame,
-    ]:
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
         """Reads results from BigQuery into a spark dataframe using the storage connector.
 
           Reading from bigquery is done via either specifying the BigQuery table or BigQuery query.
@@ -1890,17 +1879,17 @@ class RdsConnector(StorageConnector):
 
     def __init__(
         self,
-        id: Optional[int],
+        id: int | None,
         name: str,
         featurestore_id: int,
-        description: Optional[str] = None,
+        description: str | None = None,
         # members specific to type of connector
-        host: Optional[str] = None,
-        port: Optional[int] = None,
-        database: Optional[str] = None,
-        user: Optional[str] = None,
-        password: Optional[str] = None,
-        arguments: Optional[Dict[str, Any]] = None,
+        host: str | None = None,
+        port: int | None = None,
+        database: str | None = None,
+        user: str | None = None,
+        password: str | None = None,
+        arguments: dict[str, Any] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
@@ -1914,31 +1903,31 @@ class RdsConnector(StorageConnector):
         )
 
     @property
-    def host(self) -> Optional[str]:
+    def host(self) -> str | None:
         return self._host
 
     @property
-    def port(self) -> Optional[int]:
+    def port(self) -> int | None:
         return self._port
 
     @property
-    def database(self) -> Optional[str]:
+    def database(self) -> str | None:
         return self._database
 
     @property
-    def user(self) -> Optional[str]:
+    def user(self) -> str | None:
         return self._user
 
     @property
-    def password(self) -> Optional[str]:
+    def password(self) -> str | None:
         return self._password
 
     @property
-    def arguments(self) -> Dict[str, Any]:
+    def arguments(self) -> dict[str, Any]:
         """Additional options."""
         return self._arguments
 
-    def spark_options(self) -> Dict[str, Any]:
+    def spark_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional arguments."""
         return {
             "user": self.user,
@@ -1946,7 +1935,7 @@ class RdsConnector(StorageConnector):
             "driver": "org.postgresql.Driver",
         }
 
-    def connector_options(self) -> Dict[str, Any]:
+    def connector_options(self) -> dict[str, Any]:
         """Return options to be passed to an external RDS connector library."""
         props = {
             "host": self.host,
@@ -1962,17 +1951,17 @@ class RdsConnector(StorageConnector):
     def read(
         self,
         query: str,
-        data_format: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
-        path: Optional[str] = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
         dataframe_type: str = "default",
-    ) -> Union[
-        TypeVar("pyspark.sql.DataFrame"),
-        TypeVar("pyspark.RDD"),
-        pd.DataFrame,
-        np.ndarray,
-        pl.DataFrame,
-    ]:
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
         """Reads a query into a dataframe using the storage connector.
 
         Parameters:

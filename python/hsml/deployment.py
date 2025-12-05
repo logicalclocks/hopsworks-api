@@ -12,21 +12,25 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
+from __future__ import annotations
 
-from typing import Dict, List, Optional, Union
+from typing import TYPE_CHECKING
 
 from hopsworks_common import client, usage, util
 from hsml import predictor as predictor_mod
 from hsml.client.exceptions import ModelServingException
-from hsml.client.istio.utils.infer_type import InferInput
 from hsml.constants import DEPLOYABLE_COMPONENT, PREDICTOR_STATE
 from hsml.core import model_api, serving_api
 from hsml.engine import serving_engine
-from hsml.inference_batcher import InferenceBatcher
-from hsml.inference_logger import InferenceLogger
-from hsml.predictor_state import PredictorState
-from hsml.resources import Resources
-from hsml.transformer import Transformer
+
+
+if TYPE_CHECKING:
+    from hsml.client.istio.utils.infer_type import InferInput
+    from hsml.inference_batcher import InferenceBatcher
+    from hsml.inference_logger import InferenceLogger
+    from hsml.predictor_state import PredictorState
+    from hsml.resources import Resources
+    from hsml.transformer import Transformer
 
 
 class Deployment:
@@ -36,8 +40,8 @@ class Deployment:
     def __init__(
         self,
         predictor,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
+        name: str | None = None,
+        description: str | None = None,
         project_namespace: str = None,
         **kwargs,
     ):
@@ -67,7 +71,7 @@ class Deployment:
         self._model_registry_id = None
 
     @usage.method_logger
-    def save(self, await_update: Optional[int] = 600):
+    def save(self, await_update: int | None = 600):
         """Persist this deployment including the predictor and metadata to Model Serving.
 
         Parameters:
@@ -81,7 +85,7 @@ class Deployment:
         self._serving_engine.save(self, await_update)
 
     @usage.method_logger
-    def start(self, await_running: Optional[int] = 600):
+    def start(self, await_running: int | None = 600):
         """Start the deployment.
 
         Parameters:
@@ -95,7 +99,7 @@ class Deployment:
         self._serving_engine.start(self, await_status=await_running)
 
     @usage.method_logger
-    def stop(self, await_stopped: Optional[int] = 600):
+    def stop(self, await_stopped: int | None = 600):
         """Stop the deployment.
 
         Parameters:
@@ -193,8 +197,8 @@ class Deployment:
 
     def predict(
         self,
-        data: Union[Dict, InferInput] = None,
-        inputs: Union[List, Dict] = None,
+        data: dict | InferInput = None,
+        inputs: list | dict = None,
     ):
         """Send inference requests to the deployment.
 
@@ -412,7 +416,7 @@ class Deployment:
         return self._predictor.version
 
     @artifact_version.setter
-    def artifact_version(self, version: Union[int, str]):
+    def artifact_version(self, version: int | str):
         pass  # do nothing, kept for backward compatibility
 
     @property

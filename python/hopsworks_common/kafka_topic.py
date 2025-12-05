@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import json
-from typing import Optional
 
 import humps
 from hopsworks_common import usage, util
@@ -30,9 +29,9 @@ class KafkaTopic:
 
     def __init__(
         self,
-        name: Optional[str] = KAFKA_TOPIC.CREATE,
-        num_of_replicas: Optional[int] = None,
-        num_of_partitions: Optional[int] = None,
+        name: str | None = KAFKA_TOPIC.CREATE,
+        num_of_replicas: int | None = None,
+        num_of_partitions: int | None = None,
         schema_name=None,
         schema_version=None,
         schema_content=None,
@@ -43,8 +42,8 @@ class KafkaTopic:
         expand=None,
         items=None,
         count=None,
-        num_replicas: Optional[int] = None,
-        num_partitions: Optional[int] = None,
+        num_replicas: int | None = None,
+        num_partitions: int | None = None,
         **kwargs,
     ):
         self._name = name
@@ -72,16 +71,12 @@ class KafkaTopic:
             if name == KAFKA_TOPIC.CREATE:
                 if num_replicas is None:
                     print(
-                        "Setting number of replicas to default value '{}'".format(
-                            KAFKA_TOPIC.NUM_REPLICAS
-                        )
+                        f"Setting number of replicas to default value '{KAFKA_TOPIC.NUM_REPLICAS}'"
                     )
                     num_replicas = KAFKA_TOPIC.NUM_REPLICAS
                 if num_partitions is None:
                     print(
-                        "Setting number of partitions to default value '{}'".format(
-                            KAFKA_TOPIC.NUM_PARTITIONS
-                        )
+                        f"Setting number of partitions to default value '{KAFKA_TOPIC.NUM_PARTITIONS}'"
                     )
                     num_partitions = KAFKA_TOPIC.NUM_PARTITIONS
         elif name is None or name == KAFKA_TOPIC.NONE:
