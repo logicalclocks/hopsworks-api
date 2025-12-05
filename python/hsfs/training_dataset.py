@@ -901,13 +901,12 @@ class TrainingDataset(TrainingDatasetBase):
     @classmethod
     def _rewrite_location(cls, td_json):
         _client = client.get_instance()
-        if "location" in td_json:
-            if td_json["location"].endswith(
-                f"/Projects/{_client._project_name}/{_client._project_name}_Training_Datasets"
-            ):
-                td_json["location"] = (
-                    f"{td_json['location']}/{td_json['name']}_{td_json['version']}"
-                )
+        if "location" in td_json and td_json["location"].endswith(
+            f"/Projects/{_client._project_name}/{_client._project_name}_Training_Datasets"
+        ):
+            td_json["location"] = (
+                f"{td_json['location']}/{td_json['name']}_{td_json['version']}"
+            )
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)

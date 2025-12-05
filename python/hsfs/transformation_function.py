@@ -324,11 +324,13 @@ class TransformationFunction:
         Raises:
             `hopsworks.client.exceptions.FeatureStoreException` : If the UDF Type is None or if statistics or multiple columns has been output by a on-demand transformation function
         """
-        if transformation_type == TransformationType.ON_DEMAND:
-            if hopsworks_udf.statistics_required:
-                raise FeatureStoreException(
-                    "On-Demand Transformation functions cannot use statistics, please remove statistics parameters from the functions"
-                )
+        if (
+            transformation_type == TransformationType.ON_DEMAND
+            and hopsworks_udf.statistics_required
+        ):
+            raise FeatureStoreException(
+                "On-Demand Transformation functions cannot use statistics, please remove statistics parameters from the functions"
+            )
 
     @property
     def id(self) -> id:

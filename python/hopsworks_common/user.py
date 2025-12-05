@@ -48,7 +48,7 @@ class User:
     def from_response_json(cls, json_dict: Optional[Dict[str, Any]]) -> Optional[User]:
         if json_dict:
             json_decamelized = humps.decamelize(json_dict)
-            if "firstname" in json_decamelized.keys():
+            if "firstname" in json_decamelized:
                 json_decamelized["first_name"] = json_decamelized.pop("firstname")
                 json_decamelized["last_name"] = json_decamelized.pop("lastname")
             # Remove keys that are not part of the dataclass

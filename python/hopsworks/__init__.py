@@ -206,13 +206,8 @@ def login(
         api_key = api_key_value
     # If user supplied the api key in a file
     elif api_key_file is not None:
-        file = None
         if os.path.exists(api_key_file):
-            try:
-                file = open(api_key_file, mode="r")
-                api_key = file.read()
-            finally:
-                file.close()
+            api_key = Path(api_key_file).read_text()
         else:
             raise IOError(
                 "Could not find api key file on path: {}".format(api_key_file)

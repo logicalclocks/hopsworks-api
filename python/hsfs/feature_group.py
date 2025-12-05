@@ -2192,16 +2192,19 @@ class FeatureGroupBase:
         if isinstance(feature_name, str):
             self._event_time = util.autofix_feature_name(feature_name, warn=True)
             return
-        if isinstance(feature_name, list) and len(feature_name) == 1:
-            if isinstance(feature_name[0], str):
-                warnings.warn(
-                    "Providing event_time as a single-element list is deprecated"
-                    " and will be dropped in future versions. Provide the feature_name string instead.",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-                self._event_time = util.autofix_feature_name(feature_name[0], warn=True)
-                return
+        if (
+            isinstance(feature_name, list)
+            and len(feature_name) == 1
+            and isinstance(feature_name[0], str)
+        ):
+            warnings.warn(
+                "Providing event_time as a single-element list is deprecated"
+                " and will be dropped in future versions. Provide the feature_name string instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            self._event_time = util.autofix_feature_name(feature_name[0], warn=True)
+            return
 
         raise ValueError(
             "event_time must be a string corresponding to an existing feature name of the Feature Group."
@@ -3905,33 +3908,34 @@ class FeatureGroup(FeatureGroupBase):
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        if self.statistics_config.enabled:
-            if self._is_time_travel_enabled() or wallclock_time is not None:
-                wallclock_time = wallclock_time or datetime.now()
-                # Retrieve fg commit id related to this wall clock time and recompute statistics. It will throw
-                # exception if its not time travel enabled feature group.
-                fg_commit_id = list(
-                    self._feature_group_engine.commit_details(
-                        self, wallclock_time, 1
-                    ).keys()
-                )[0]
-                registered_stats = self.get_statistics_by_commit_window(
-                    to_commit_time=fg_commit_id
+        if self.statistics_config.enabled and (
+            self._is_time_travel_enabled() or wallclock_time is not None
+        ):
+            wallclock_time = wallclock_time or datetime.now()
+            # Retrieve fg commit id related to this wall clock time and recompute statistics. It will throw
+            # exception if its not time travel enabled feature group.
+            fg_commit_id = list(
+                self._feature_group_engine.commit_details(
+                    self, wallclock_time, 1
+                ).keys()
+            )[0]
+            registered_stats = self.get_statistics_by_commit_window(
+                to_commit_time=fg_commit_id
+            )
+            if registered_stats is not None and self._are_statistics_missing(
+                registered_stats
+            ):
+                registered_stats = None
+            # Don't read the dataframe here, to avoid triggering a read operation
+            # for the Python engine. The Python engine is going to setup a Spark Job
+            # to update the statistics.
+            return (
+                registered_stats
+                or self._statistics_engine.compute_and_save_statistics(
+                    self,
+                    feature_group_commit_id=fg_commit_id,
                 )
-                if registered_stats is not None and self._are_statistics_missing(
-                    registered_stats
-                ):
-                    registered_stats = None
-                # Don't read the dataframe here, to avoid triggering a read operation
-                # for the Python engine. The Python engine is going to setup a Spark Job
-                # to update the statistics.
-                return (
-                    registered_stats
-                    or self._statistics_engine.compute_and_save_statistics(
-                        self,
-                        feature_group_commit_id=fg_commit_id,
-                    )
-                )
+            )
         return super().compute_statistics()
 
     @classmethod

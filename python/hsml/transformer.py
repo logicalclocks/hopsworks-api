@@ -48,12 +48,15 @@ class Transformer(DeployableComponent):
 
     @classmethod
     def _validate_resources(cls, resources):
-        if resources is not None:
+        if (
+            resources is not None
+            and resources.num_instances != 0
+            and client.is_scale_to_zero_required()
+        ):
             # ensure scale-to-zero for kserve deployments when required
-            if resources.num_instances != 0 and client.is_scale_to_zero_required():
-                raise ValueError(
-                    "Scale-to-zero is required for KServe deployments in this cluster. Please, set the number of transformer instances to 0."
-                )
+            raise ValueError(
+                "Scale-to-zero is required for KServe deployments in this cluster. Please, set the number of transformer instances to 0."
+            )
         return resources
 
     @classmethod

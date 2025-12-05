@@ -15,6 +15,7 @@
 #
 from __future__ import annotations
 
+import contextlib
 import datetime
 import json
 from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, Union
@@ -69,7 +70,7 @@ class ValidationResult:
         self.validation_time = validation_time
         self.ingestion_result = ingestion_result
 
-        if (observed_value is None) and ("observed_value" in self.result.keys()):
+        if (observed_value is None) and ("observed_value" in self.result):
             self._observed_value = self.result["observed_value"]
 
     @classmethod
@@ -211,13 +212,11 @@ class ValidationResult:
                 Supported format include timestamps(int), datetime, date or string formatted to be datutils parsable.
         """
         if isinstance(validation_time, str):
-            try:
+            with contextlib.suppress(ValueError):
                 # returns a datemtime to be converted to timestamp below
                 validation_time = dateutil.parser.parse(validation_time).astimezone(
                     datetime.timezone.utc
                 )
-            except ValueError:
-                pass
         # use the same function as the rest of the client to deal with conversion to timestamps
         # from various types
         if validation_time:

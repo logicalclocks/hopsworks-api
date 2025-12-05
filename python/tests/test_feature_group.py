@@ -1446,12 +1446,12 @@ class TestExternalFeatureGroup:
 
         assert len(warning_record) == 2
         assert (
-            "The feature name `Event_Time` contains upper case letters. Feature names are sanitized to lower case in the feature store."
-            == str(warning_record[0].message)
+            str(warning_record[0].message)
+            == "The feature name `Event_Time` contains upper case letters. Feature names are sanitized to lower case in the feature store."
         )
         assert (
-            "The feature name `PrimaryKey` contains upper case letters. Feature names are sanitized to lower case in the feature store."
-            == str(warning_record[1].message)
+            str(warning_record[1].message)
+            == "The feature name `PrimaryKey` contains upper case letters. Feature names are sanitized to lower case in the feature store."
         )
 
         # Assert

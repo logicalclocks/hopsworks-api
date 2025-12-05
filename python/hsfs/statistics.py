@@ -173,7 +173,7 @@ class Statistics:
 
     @row_percentage.setter
     def row_percentage(self, row_percentage: Optional[float]):
-        if isinstance(row_percentage, int) or isinstance(row_percentage, float):
+        if isinstance(row_percentage, (int, float)):
             row_percentage = float(row_percentage)
             if row_percentage <= 0.0 or row_percentage > 1.0:
                 raise ValueError("Row percentage must be a float between 0 and 1.")

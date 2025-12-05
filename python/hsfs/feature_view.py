@@ -429,7 +429,7 @@ class FeatureView:
         self._serving_training_dataset_version = training_dataset_version
         # Compatibility with 3.7
         if init_sql_client is None:
-            init_sql_client = kwargs.get("init_online_store_sql_client", None)
+            init_sql_client = kwargs.get("init_online_store_sql_client")
         if init_rest_client is False:
             init_rest_client = kwargs.get("init_online_store_rest_client", False)
 

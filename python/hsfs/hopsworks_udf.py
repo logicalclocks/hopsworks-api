@@ -204,9 +204,9 @@ class HopsworksUdf:
         if not transformation_features:
             # New transformation function being declared so extract source code from function
             self._transformation_features: List[TransformationFeature] = (
-                HopsworksUdf._extract_function_arguments(func)
-                if not transformation_features
-                else transformation_features
+                transformation_features
+                if transformation_features
+                else HopsworksUdf._extract_function_arguments(func)
             )
 
             self._transformation_function_argument_names = [
@@ -307,7 +307,7 @@ class HopsworksUdf:
         )
         for output_type in output_types:
             if (
-                output_type not in HopsworksUdf.PYTHON_SPARK_TYPE_MAPPING.keys()
+                output_type not in HopsworksUdf.PYTHON_SPARK_TYPE_MAPPING
                 and output_type not in HopsworksUdf.PYTHON_SPARK_TYPE_MAPPING.values()
             ):
                 raise FeatureStoreException(
@@ -414,7 +414,7 @@ class HopsworksUdf:
         arg_list = [
             arg.split(":")[0].split("=")[0].strip()
             for arg in arg_list
-            if not arg.strip() == ""
+            if arg.strip() != ""
         ]
 
         # Extracting keywords like `context`and `statistics` from the function signature.
@@ -932,7 +932,7 @@ def renaming_wrapper(*args):
         arg_list, _, _, _ = HopsworksUdf._parse_function_signature(function_source_code)
 
         transformation_features = (
-            arg_list if not transformation_features else transformation_features
+            transformation_features if transformation_features else arg_list
         )
 
         dropped_feature_names = (
@@ -1109,7 +1109,7 @@ def renaming_wrapper(*args):
     ) -> None:
         self._statistics = TransformationStatistics(*self._statistics_argument_names)
         for stat in statistics:
-            if stat.feature_name in self._statistics_argument_mapping.keys():
+            if stat.feature_name in self._statistics_argument_mapping:
                 self._statistics.set_statistics(
                     self._statistics_argument_mapping[stat.feature_name], stat.to_dict()
                 )

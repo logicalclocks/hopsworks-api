@@ -194,16 +194,16 @@ class Predictor(DeployableComponent):
 
     @classmethod
     def _validate_resources(cls, resources, serving_tool):
-        if resources is not None:
+        if (
+            resources is not None
+            and serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
+            and resources.num_instances != 0
+            and client.is_scale_to_zero_required()
+        ):
             # ensure scale-to-zero for kserve deployments when required
-            if (
-                serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
-                and resources.num_instances != 0
-                and client.is_scale_to_zero_required()
-            ):
-                raise ValueError(
-                    "Scale-to-zero is required for KServe deployments in this cluster. Please, set the number of instances to 0."
-                )
+            raise ValueError(
+                "Scale-to-zero is required for KServe deployments in this cluster. Please, set the number of instances to 0."
+            )
         return resources
 
     @classmethod

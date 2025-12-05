@@ -84,7 +84,7 @@ class NumpyEncoder(json.JSONEncoder):
 
         if isinstance(obj, datetime) or (HAS_PANDAS and isinstance(obj, pd.Timestamp)):
             return obj.isoformat(), True
-        if isinstance(obj, bytes) or isinstance(obj, bytearray):
+        if isinstance(obj, (bytes, bytearray)):
             return encode_binary(obj), True
         if isinstance(obj, np.generic):
             return obj.item(), True
@@ -304,11 +304,13 @@ def verify_attribute_key_names(
                 f"Provided primary key(s) {','.join(diff)} doesn't exist in feature dataframe"
             )
 
-    if feature_group_obj.event_time:
-        if feature_group_obj.event_time not in feature_names:
-            raise FeatureStoreException(
-                f"Provided event_time feature {feature_group_obj.event_time} doesn't exist in feature dataframe"
-            )
+    if (
+        feature_group_obj.event_time
+        and feature_group_obj.event_time not in feature_names
+    ):
+        raise FeatureStoreException(
+            f"Provided event_time feature {feature_group_obj.event_time} doesn't exist in feature dataframe"
+        )
 
     if not external_feature_group:
         if feature_group_obj.partition_key:
@@ -318,12 +320,14 @@ def verify_attribute_key_names(
                     f"Provided partition key(s) {','.join(diff)} doesn't exist in feature dataframe"
                 )
 
-        if feature_group_obj.hudi_precombine_key:
-            if feature_group_obj.hudi_precombine_key not in feature_names:
-                raise FeatureStoreException(
-                    f"Provided hudi precombine key {feature_group_obj.hudi_precombine_key} "
-                    f"doesn't exist in feature dataframe"
-                )
+        if (
+            feature_group_obj.hudi_precombine_key
+            and feature_group_obj.hudi_precombine_key not in feature_names
+        ):
+            raise FeatureStoreException(
+                f"Provided hudi precombine key {feature_group_obj.hudi_precombine_key} "
+                f"doesn't exist in feature dataframe"
+            )
 
 
 def get_job_url(href: str) -> str:
@@ -392,9 +396,7 @@ def get_feature_group_url(feature_store_id: int, feature_group_id: int) -> str:
 
 
 def is_runtime_notebook():
-    if "ipykernel" in sys.modules:
-        return True
-    return False
+    return "ipykernel" in sys.modules
 
 
 class VersionWarning(Warning):
