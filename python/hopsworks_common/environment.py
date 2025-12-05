@@ -25,7 +25,7 @@ from hopsworks_common.engine import environment_engine
 
 
 if TYPE_CHECKING:
-    from python.hopsworks_common.library import Library
+    from hopsworks_common.library import Library
 
 
 class Environment:

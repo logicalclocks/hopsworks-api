@@ -19,7 +19,7 @@ import time
 
 from hopsworks_common.client.exceptions import GitException
 from hopsworks_common.core import git_op_execution_api
-from python.hopsworks_common.git_op_execution import GitOpExecution
+from hopsworks_common.git_op_execution import GitOpExecution
 
 
 class GitEngine:

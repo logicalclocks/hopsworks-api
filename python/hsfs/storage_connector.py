@@ -42,8 +42,8 @@ if TYPE_CHECKING:
     if HAS_POLARS:
         import polars as pl
     import pandas as pd
-    from python.hsfs.core.explicit_provenance import Links
-    from python.hsfs.feature_group import FeatureGroup
+    from hsfs.core.explicit_provenance import Links
+    from hsfs.feature_group import FeatureGroup
 
 
 _logger = logging.getLogger(__name__)

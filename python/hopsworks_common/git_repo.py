@@ -25,7 +25,7 @@ from hopsworks_common.core import dataset_api, git_api, git_remote_api
 
 if TYPE_CHECKING:
     from hopsworks_common.git_file_status import GitFileStatus
-    from python.hopsworks_common.git_remote import GitRemote
+    from hopsworks_common.git_remote import GitRemote
 
 
 class GitRepo:

@@ -28,7 +28,7 @@ from hopsworks_common.core import dataset_api, execution_api
 
 
 if TYPE_CHECKING:
-    from python.hopsworks_common.execution import Execution
+    from hopsworks_common.execution import Execution
 
 
 class ExecutionEngine:
