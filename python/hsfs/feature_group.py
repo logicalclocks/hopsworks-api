@@ -22,6 +22,7 @@ import time
 import warnings
 from datetime import date, datetime, timedelta
 from typing import (
+    TYPE_CHECKING,
     Any,
     Dict,
     List,
@@ -35,8 +36,6 @@ from typing import (
 import avro.schema
 import hsfs.expectation_suite
 import humps
-import pandas as pd
-from hopsworks_common.alert import FeatureGroupAlert
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core import alerts_api
 from hopsworks_common.core.constants import (
@@ -60,7 +59,6 @@ from hsfs import (
     storage_connector as sc,
 )
 from hsfs.constructor import filter, query
-from hsfs.constructor.filter import Filter, Logic
 from hsfs.core import data_source as ds
 from hsfs.core import (
     deltastreamer_jobconf,
@@ -86,33 +84,36 @@ from hsfs.core.constants import (
     HAS_CONFLUENT_KAFKA,
     HAS_GREAT_EXPECTATIONS,
 )
-from hsfs.core.job import Job
 from hsfs.core.variable_api import VariableApi
 from hsfs.core.vector_db_client import VectorDbClient
 
 # if great_expectations is not installed, we will default to using native Hopsworks class as return values
 from hsfs.decorators import typechecked, uses_great_expectations
 from hsfs.embedding import EmbeddingIndex
-from hsfs.ge_validation_result import ValidationResult
-from hsfs.hopsworks_udf import HopsworksUdf
 from hsfs.online_config import OnlineConfig
-from hsfs.statistics import Statistics
 from hsfs.statistics_config import StatisticsConfig
 from hsfs.transformation_function import TransformationFunction, TransformationType
 from hsfs.validation_report import ValidationReport
 
 
+if TYPE_CHECKING:
+    if HAS_CONFLUENT_KAFKA:
+        import confluent_kafka
+    if HAS_NUMPY:
+        import numpy as np
+    if HAS_POLARS:
+        import polars as pl
+    import pandas as pd
+    from hopsworks_common.alert import FeatureGroupAlert
+    from hsfs.constructor.filter import Filter, Logic
+    from hsfs.core.job import Job
+    from hsfs.ge_validation_result import ValidationResult
+    from hsfs.hopsworks_udf import HopsworksUdf
+    from hsfs.statistics import Statistics
+
+
 if HAS_GREAT_EXPECTATIONS:
     import great_expectations
-
-if HAS_CONFLUENT_KAFKA:
-    import confluent_kafka
-
-if HAS_NUMPY:
-    import numpy as np
-
-if HAS_POLARS:
-    import polars as pl
 
 _logger = logging.getLogger(__name__)
 

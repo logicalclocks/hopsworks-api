@@ -16,14 +16,10 @@
 #
 from __future__ import annotations
 
-import datetime
 import warnings
-from datetime import timedelta
-from typing import Any, Dict, List, Literal, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, TypeVar, Union
 
 import humps
-import pandas as pd
-from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import (
     expectation_suite,
     feature,
@@ -34,7 +30,6 @@ from hsfs import (
     usage,
     util,
 )
-from hsfs.constructor.query import Query
 from hsfs.core import (
     data_source as ds,
 )
@@ -47,18 +42,26 @@ from hsfs.core import (
     transformation_function_engine,
 )
 from hsfs.decorators import typechecked
-from hsfs.embedding import EmbeddingIndex
-from hsfs.hopsworks_udf import HopsworksUdf
-from hsfs.online_config import OnlineConfig
-from hsfs.statistics_config import StatisticsConfig
 from hsfs.transformation_function import TransformationFunction
 
 
-if HAS_NUMPY:
-    import numpy as np
+if TYPE_CHECKING:
+    from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 
-if HAS_POLARS:
-    import polars as pl
+    if HAS_NUMPY:
+        import numpy as np
+    if HAS_POLARS:
+        import polars as pl
+
+    import datetime
+    from datetime import timedelta
+
+    import pandas as pd
+    from hsfs.constructor.query import Query
+    from hsfs.embedding import EmbeddingIndex
+    from hsfs.hopsworks_udf import HopsworksUdf
+    from hsfs.online_config import OnlineConfig
+    from hsfs.statistics_config import StatisticsConfig
 
 
 @typechecked

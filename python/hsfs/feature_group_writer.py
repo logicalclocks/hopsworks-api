@@ -15,16 +15,17 @@
 #
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
-
-import pandas as pd
-from hopsworks_common.core.constants import HAS_NUMPY
-from hsfs.core.job import Job
-from hsfs.validation_report import ValidationReport
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union
 
 
-if HAS_NUMPY:
-    import numpy as np
+if TYPE_CHECKING:
+    from hopsworks_common.core.constants import HAS_NUMPY
+
+    if HAS_NUMPY:
+        import numpy as np
+    import pandas as pd
+    from hsfs.core.job import Job
+    from hsfs.validation_report import ValidationReport
 
 
 class FeatureGroupWriter:

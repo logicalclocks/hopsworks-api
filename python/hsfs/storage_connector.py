@@ -22,24 +22,26 @@ import posixpath
 import re
 import warnings
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Literal, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, TypeVar, Union
 
 import humps
-import pandas as pd
 from hopsworks_common import client
-from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hsfs import engine
 from hsfs.core import data_source as ds
 from hsfs.core import data_source_api, storage_connector_api
-from python.hsfs.core.explicit_provenance import Links
-from python.hsfs.feature_group import FeatureGroup
 
 
-if HAS_NUMPY:
-    import numpy as np
+if TYPE_CHECKING:
+    from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 
-if HAS_POLARS:
-    import polars as pl
+    if HAS_NUMPY:
+        import numpy as np
+    if HAS_POLARS:
+        import polars as pl
+    import pandas as pd
+    from python.hsfs.core.explicit_provenance import Links
+    from python.hsfs.feature_group import FeatureGroup
+
 
 _logger = logging.getLogger(__name__)
 

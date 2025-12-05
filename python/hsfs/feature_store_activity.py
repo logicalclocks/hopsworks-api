@@ -30,11 +30,12 @@ from hsfs import expectation_suite as es_mod
 from hsfs import validation_report as vr_mod
 
 
-if TYPE_CHECKING or HAS_GREAT_EXPECTATIONS:
-    from great_expectations.core import (
-        ExpectationSuite,
-        ExpectationSuiteValidationResult,
-    )
+if TYPE_CHECKING:
+    if HAS_GREAT_EXPECTATIONS:
+        from great_expectations.core import (
+            ExpectationSuite,
+            ExpectationSuiteValidationResult,
+        )
 
 
 class FeatureStoreActivityType(Enum):

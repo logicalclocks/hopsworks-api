@@ -19,8 +19,8 @@ import json
 import logging
 import os
 import warnings
-from datetime import date, datetime
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -39,7 +39,6 @@ from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import alerts_api
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
-from hopsworks_common.core.type_systems import HopsworksLoggingMetadataType
 from hsfs import (
     feature_group,
     storage_connector,
@@ -51,7 +50,6 @@ from hsfs import (
 )
 from hsfs import serving_key as skm
 from hsfs.constructor import filter, query
-from hsfs.constructor.filter import Filter, Logic
 from hsfs.core import (
     explicit_provenance,
     feature_monitoring_config_engine,
@@ -64,19 +62,26 @@ from hsfs.core import (
 )
 from hsfs.core import feature_monitoring_config as fmc
 from hsfs.core import feature_monitoring_result as fmr
-from hsfs.core.feature_logging import FeatureLogging
 from hsfs.core.feature_view_api import FeatureViewApi
-from hsfs.core.job import Job
 from hsfs.core.vector_db_client import VectorDbClient
 from hsfs.decorators import typechecked
 from hsfs.feature import Feature
-from hsfs.feature_logger import FeatureLogger
-from hsfs.hopsworks_udf import HopsworksUdf
-from hsfs.statistics import Statistics
-from hsfs.statistics_config import StatisticsConfig
 from hsfs.training_dataset_split import TrainingDatasetSplit
 from hsfs.transformation_function import TransformationFunction, TransformationType
-from hsml.model import Model
+
+
+if TYPE_CHECKING:
+    from datetime import date, datetime
+
+    from hopsworks_common.core.type_systems import HopsworksLoggingMetadataType
+    from hsfs.constructor.filter import Filter, Logic
+    from hsfs.core.feature_logging import FeatureLogging
+    from hsfs.core.job import Job
+    from hsfs.feature_logger import FeatureLogger
+    from hsfs.hopsworks_udf import HopsworksUdf
+    from hsfs.statistics import Statistics
+    from hsfs.statistics_config import StatisticsConfig
+    from hsml.model import Model
 
 
 if HAS_NUMPY:
