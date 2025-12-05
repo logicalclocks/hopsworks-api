@@ -854,7 +854,7 @@ class TrainingDataset(TrainingDatasetBase):
             training dataset **and** and the materialized data in HopsFS.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError.
+            hopsworks.client.exceptions.RestAPIError: In case of a server error.
         """
         warnings.warn(
             f"All jobs associated to training dataset `{self._name}`, version `{self._version}` will be removed.",
