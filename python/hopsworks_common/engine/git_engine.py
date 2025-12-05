@@ -19,7 +19,6 @@ import time
 
 from hopsworks_common.client.exceptions import GitException
 from hopsworks_common.core import git_op_execution_api
-from hopsworks_common.git_op_execution import GitOpExecution
 
 
 class GitEngine:
@@ -27,13 +26,11 @@ class GitEngine:
         self._git_op_execution_api = git_op_execution_api.GitOpExecutionApi()
         self._log = logging.getLogger(__name__)
 
-    def execute_op_blocking(
-        self, git_op: GitOpExecution, command: str
-    ) -> GitOpExecution:
+    def execute_op_blocking(self, git_op, command: str):
         """Poll a git execution status until it reaches a terminal state.
 
         Parameters:
-            git_op: git execution to monitor.
+            git_op (GitOpExecution): git execution to monitor.
             command: git operation running.
 
         Returns:
