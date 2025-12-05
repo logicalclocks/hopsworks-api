@@ -199,8 +199,8 @@ Note that you can link entities defined in other libraries as well, like `pandas
 To link a page of documentation and not an API refeerence object, use a relative link:
 
 ```markdown
-[Model Training](../../concepts/mlops/training)
-[Hopsworks On-Premise Installation](../../setup_installation/on_prem/contact_hopsworks)
+[Model Training](../../concepts/mlops/training.md)
+[Hopsworks On-Premise Installation](../../setup_installation/on_prem/contact_hopsworks.md)
 ```
 
 Always start it with `../..` to escape from the API reference page to the root.

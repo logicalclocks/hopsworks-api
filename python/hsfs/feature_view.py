@@ -1628,7 +1628,7 @@ class FeatureView:
 
                 When using the `python` engine, write_options can contain the following entries:
 
-                - key `use_spark` and value `True` to materialize training dataset with Spark instead of [Hopsworks Feature Query Service](../../setup_installation/common/arrow_flight_duckdb/).
+                - key `use_spark` and value `True` to materialize training dataset with Spark instead of [Hopsworks Feature Query Service](../../setup_installation/common/arrow_flight_duckdb.md).
                 - key `spark` and value an object of type [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration] to configure the Hopsworks Job used to compute the training dataset.
                 - key `wait_for_job` and value `True` or `False` to configure whether or not to the save call should return only after the Hopsworks Job has finished.
                   By default it waits.
@@ -1899,7 +1899,7 @@ class FeatureView:
                 When using the `python` engine, write_options can contain the
                 following entries:
                 * key `use_spark` and value `True` to materialize training dataset
-                  with Spark instead of [Hopsworks Feature Query Service](../../setup_installation/common/arrow_flight_duckdb/).
+                  with Spark instead of [Hopsworks Feature Query Service](../../setup_installation/common/arrow_flight_duckdb.md).
                 * key `spark` and value an object of type
                 [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration]
                   to configure the Hopsworks Job used to compute the training dataset.
@@ -2169,7 +2169,7 @@ class FeatureView:
                 When using the `python` engine, write_options can contain the
                 following entries:
                 * key `use_spark` and value `True` to materialize training dataset
-                  with Spark instead of [Hopsworks Feature Query Service](../../setup_installation/common/arrow_flight_duckdb/).
+                  with Spark instead of [Hopsworks Feature Query Service](../../setup_installation/common/arrow_flight_duckdb.md).
                 * key `spark` and value an object of type
                 [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration]
                   to configure the Hopsworks Job used to compute the training dataset.
@@ -2287,7 +2287,7 @@ class FeatureView:
                 When using the `python` engine, write_options can contain the
                 following entries:
                 * key `use_spark` and value `True` to materialize training dataset
-                  with Spark instead of [Hopsworks Feature Query Service](../../setup_installation/common/arrow_flight_duckdb/).
+                  with Spark instead of [Hopsworks Feature Query Service](../../setup_installation/common/arrow_flight_duckdb.md).
                 * key `spark` and value an object of type
                 [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration]
                   to configure the Hopsworks Job used to compute the training dataset.
