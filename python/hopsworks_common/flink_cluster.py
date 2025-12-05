@@ -374,32 +374,32 @@ class FlinkCluster:
 
     @property
     def id(self):
-        """Id of the cluster"""
+        """Id of the cluster."""
         return self._job._id
 
     @property
     def name(self):
-        """Name of the cluster"""
+        """Name of the cluster."""
         return self._job._name
 
     @property
     def creation_time(self):
-        """Date of creation for the cluster"""
+        """Date of creation for the cluster."""
         return self._job._creation_time
 
     @property
     def config(self):
-        """Configuration for the cluster"""
+        """Configuration for the cluster."""
         return self._job._config
 
     @property
     def creator(self):
-        """Creator of the cluster"""
+        """Creator of the cluster."""
         return self._job._creator
 
     @property
     def state(self):
-        """State of the cluster"""
+        """State of the cluster."""
         current_exec = self._get_execution(assert_running=False)
         if current_exec is not None:
             return current_exec.state

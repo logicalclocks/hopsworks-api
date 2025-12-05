@@ -53,17 +53,17 @@ class GitProvider:
 
     @property
     def username(self):
-        """Username set for the provider"""
+        """Username set for the provider."""
         return self._username
 
     @property
     def git_provider(self):
-        """Name of the provider, can be GitHub, GitLab or BitBucket"""
+        """Name of the provider, can be GitHub, GitLab or BitBucket."""
         return self._git_provider
 
     @property
     def host(self):
-        """Host of the provider, can be for example github.com for GitHub, gitlab.com for GitLab or bitbucket.org for BitBucket"""
+        """Host of the provider, can be for example github.com for GitHub, gitlab.com for GitLab or bitbucket.org for BitBucket."""
         return self._host
 
     @usage.method_logger

@@ -67,17 +67,17 @@ class Environment:
 
     @property
     def python_version(self):
-        """Python version of the environment"""
+        """Python version of the environment."""
         return self._python_version
 
     @property
     def name(self):
-        """Name of the environment"""
+        """Name of the environment."""
         return self._name
 
     @property
     def description(self):
-        """Description of the environment"""
+        """Description of the environment."""
         return self._description
 
     @usage.method_logger

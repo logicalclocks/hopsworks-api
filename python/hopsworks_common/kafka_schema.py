@@ -55,22 +55,22 @@ class KafkaSchema:
 
     @property
     def id(self):
-        """Id of the kafka schema"""
+        """Id of the kafka schema."""
         return self._id
 
     @property
     def subject(self):
-        """Name of the subject for the schema"""
+        """Name of the subject for the schema."""
         return self._subject
 
     @property
     def version(self):
-        """Version of the schema"""
+        """Version of the schema."""
         return self._version
 
     @property
     def schema(self):
-        """Schema definition"""
+        """Schema definition."""
         return self._schema
 
     @usage.method_logger

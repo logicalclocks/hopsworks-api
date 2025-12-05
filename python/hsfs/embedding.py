@@ -46,8 +46,7 @@ class SimilarityFunctionType:
 
 @dataclass
 class HsmlModel:
-    """Data class storing the metadata of a hsml model
-    """
+    """Data class storing the metadata of a hsml model."""
 
     model_registry_id: int
     model_name: str

@@ -84,32 +84,32 @@ class Project:
 
     @property
     def id(self):
-        """Id of the project"""
+        """Id of the project."""
         return self._id
 
     @property
     def name(self):
-        """Name of the project"""
+        """Name of the project."""
         return self._name
 
     @property
     def owner(self):
-        """Owner of the project"""
+        """Owner of the project."""
         return self._owner
 
     @property
     def description(self):
-        """Description of the project"""
+        """Description of the project."""
         return self._description
 
     @property
     def created(self):
-        """Timestamp when the project was created"""
+        """Timestamp when the project was created."""
         return self._created
 
     @property
     def project_namespace(self):
-        """Kubernetes namespace used by project"""
+        """Kubernetes namespace used by project."""
         return self._project_namespace
 
     def get_feature_store(self, name: str | None = None):
@@ -209,7 +209,7 @@ class Project:
         return self._job_api
 
     def get_jobs_api(self):
-        """**Deprecated**, use get_job_api instead. Excluded from docs to prevent API breakage"""
+        """**Deprecated**, use get_job_api instead. Excluded from docs to prevent API breakage."""
         return self.get_job_api()
 
     def get_flink_cluster_api(self) -> flink_cluster_api.FlinkClusterApi:

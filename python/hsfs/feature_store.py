@@ -447,7 +447,7 @@ class FeatureStore:
             fs = ...
 
             # construct the query and show head rows
-            query_res_head = fs.sql(\"SELECT * FROM `fg_1`\").head()
+            query_res_head = fs.sql("SELECT * FROM `fg_1`").head()
             ```
 
         Parameters:

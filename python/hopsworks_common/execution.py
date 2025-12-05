@@ -85,17 +85,17 @@ class Execution:
 
     @property
     def id(self):
-        """Id of the execution"""
+        """Id of the execution."""
         return self._id
 
     @property
     def job_name(self):
-        """Name of the job the execution belongs to"""
+        """Name of the job the execution belongs to."""
         return self._job.name
 
     @property
     def job_type(self):
-        """Type of the job the execution belongs to"""
+        """Type of the job the execution belongs to."""
         return self._job.job_type
 
     @property
@@ -116,22 +116,22 @@ class Execution:
 
     @property
     def submission_time(self):
-        """Timestamp when the execution was submitted"""
+        """Timestamp when the execution was submitted."""
         return self._submission_time
 
     @property
     def stdout_path(self):
-        """Path in Hopsworks Filesystem to stdout log file"""
+        """Path in Hopsworks Filesystem to stdout log file."""
         return self._stdout_path
 
     @property
     def stderr_path(self):
-        """Path in Hopsworks Filesystem to stderr log file"""
+        """Path in Hopsworks Filesystem to stderr log file."""
         return self._stderr_path
 
     @property
     def app_id(self):
-        """Application id for the execution"""
+        """Application id for the execution."""
         return self._app_id
 
     @property
@@ -161,7 +161,7 @@ class Execution:
 
     @property
     def success(self):
-        """Boolean to indicate if execution ran successfully or failed
+        """Boolean to indicate if execution ran successfully or failed.
 
         Returns:
             `bool`. True if execution ran successfully. False if execution failed or was killed.

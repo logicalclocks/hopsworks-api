@@ -285,10 +285,13 @@ def convert_event_time_to_timestamp(
 
 
 def get_hostname_replaced_url(sub_path: str) -> str:
-    """Construct and return an url with public hopsworks hostname and sub path
-    :param self:
-    :param sub_path: url sub-path after base url
-    :return: href url
+    """Construct and return an url with public hopsworks hostname and sub path.
+
+    Parameters:
+        sub_path: URL sub-path after base URL.
+
+    Returns:
+        href url.
     """
     href = urljoin(client.get_instance()._base_url, sub_path)
     url_parsed = client.get_instance().replace_public_host(urlparse(href))
@@ -330,10 +333,10 @@ def verify_attribute_key_names(
 
 
 def get_job_url(href: str) -> str:
-    """Use the endpoint returned by the API to construct the UI url for jobs
+    """Use the endpoint returned by the API to construct the UI url for jobs.
 
-    Args:
-        href (str): the endpoint returned by the API
+    Parameters:
+        href: the endpoint returned by the API
     """
     url = urlparse(href)
     url_splits = url.path.split("/")
@@ -789,8 +792,7 @@ class AsyncTask:
 
     @property
     def result(self) -> Any:
-        """The result of the async task.
-        """
+        """The result of the async task."""
         return self._result
 
     @result.setter
@@ -799,8 +801,7 @@ class AsyncTask:
 
     @property
     def event(self) -> threading.Event:
-        """The event that will be set when the async task is finished.
-        """
+        """The event that will be set when the async task is finished."""
         return self._event
 
     @event.setter
@@ -809,8 +810,7 @@ class AsyncTask:
 
     @property
     def requires_connection_pool(self) -> bool:
-        """Whether the task requires a connection pool.
-        """
+        """Whether the task requires a connection pool."""
         return self._requires_connection_pool
 
 
@@ -849,8 +849,7 @@ class AsyncTaskThread(threading.Thread):
         self.daemon = True  # Setting the thread as a daemon thread by default, so it will be terminated when the main thread is terminated.
 
     async def execute_task(self):
-        """Execute the async tasks for the queue.
-        """
+        """Execute the async tasks for the queue."""
         asyncio.set_event_loop(self._event_loop)
 
         while not self.stop_event.is_set():
@@ -882,15 +881,13 @@ class AsyncTaskThread(threading.Thread):
                 task.event.set()
 
     def stop(self):
-        """Stop the thread and close the event loop.
-        """
+        """Stop the thread and close the event loop."""
         self.stop_event.set()
         self._event_loop.stop()
         self._event_loop.close()
 
     def run(self):
-        """Execute the async tasks for the queue.
-        """
+        """Execute the async tasks for the queue."""
         asyncio.set_event_loop(self._event_loop)
         # Initialize the connection pool by using loop.run_until_complete to make sure the connection pool is initialized before the event loop starts running forever.
         if self._connection_pool_initializer:
@@ -913,8 +910,7 @@ class AsyncTaskThread(threading.Thread):
             self._event_loop.close()
 
     def submit(self, task: AsyncTask):
-        """Submit a async task to the thread and block until the execution of the function is completed.
-        """
+        """Submit a async task to the thread and block until the execution of the function is completed."""
         # Submit a task to the queue.
         self.task_queue.put(task)
         # Block the execution until the task is finished.
@@ -928,18 +924,15 @@ class AsyncTaskThread(threading.Thread):
 
     @property
     def event_loop(self) -> asyncio.AbstractEventLoop:
-        """The event loop used by the thread.
-        """
+        """The event loop used by the thread."""
         return self._event_loop
 
     @property
     def task_queue(self) -> queue.Queue[AsyncTask]:
-        """The queue used to submit tasks to the thread.
-        """
+        """The queue used to submit tasks to the thread."""
         return self._task_queue
 
     @property
     def connection_pool(self):
-        """The connection pool used by the thread.
-        """
+        """The connection pool used by the thread."""
         return self._connection_pool

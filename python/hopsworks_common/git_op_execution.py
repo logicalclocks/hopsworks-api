@@ -55,52 +55,52 @@ class GitOpExecution:
 
     @property
     def id(self):
-        """Id of the execution"""
+        """Id of the execution."""
         return self._id
 
     @property
     def submission_time(self):
-        """Timestamp when the execution was submitted"""
+        """Timestamp when the execution was submitted."""
         return self._submission_time
 
     @property
     def execution_start(self):
-        """Timestamp when the execution started"""
+        """Timestamp when the execution started."""
         return self._execution_start
 
     @property
     def execution_stop(self):
-        """Timestamp when the execution stopped"""
+        """Timestamp when the execution stopped."""
         return self._execution_stop
 
     @property
     def user(self):
-        """User that issued the execution"""
+        """User that issued the execution."""
         return self._user
 
     @property
     def git_command_configuration(self):
-        """Configuration for the git command"""
+        """Configuration for the git command."""
         return self._git_command_configuration
 
     @property
     def state(self):
-        """State of the git execution"""
+        """State of the git execution."""
         return self._state
 
     @property
     def command_result_message(self):
-        """Results message from the execution"""
+        """Results message from the execution."""
         return self._command_result_message
 
     @property
     def repository(self):
-        """Git repository of the execution"""
+        """Git repository of the execution."""
         return self._repository
 
     @property
     def success(self):
-        """Boolean to indicate if execution ran successfully or failed
+        """Boolean to indicate if execution ran successfully or failed.
 
         ```
         Returns:

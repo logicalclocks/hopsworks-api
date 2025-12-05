@@ -90,47 +90,47 @@ class TriggeredAlert:
 
     @property
     def labels(self):
-        """Return the labels of the alert"""
+        """Return the labels of the alert."""
         return self._labels
 
     @property
     def annotations(self):
-        """Return the annotations of the alert"""
+        """Return the annotations of the alert."""
         return self._annotations
 
     @property
     def receivers(self):
-        """Return the receivers of the alert"""
+        """Return the receivers of the alert."""
         return self._receivers
 
     @property
     def fingerprint(self):
-        """Return the fingerprint of the alert"""
+        """Return the fingerprint of the alert."""
         return self._fingerprint
 
     @property
     def starts_at(self):
-        """Return the start time of the alert"""
+        """Return the start time of the alert."""
         return self._starts_at
 
     @property
     def ends_at(self):
-        """Return the end time of the alert"""
+        """Return the end time of the alert."""
         return self._ends_at
 
     @property
     def updated_at(self):
-        """Return the update time of the alert"""
+        """Return the update time of the alert."""
         return self._updated_at
 
     @property
     def generatorurl(self):
-        """Return the generator URL of the alert"""
+        """Return the generator URL of the alert."""
         return self._generatorurl
 
     @property
     def status(self):
-        """Return the status of the alert"""
+        """Return the status of the alert."""
         return self._status
 
     def json(self):

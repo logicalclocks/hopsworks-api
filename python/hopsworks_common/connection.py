@@ -614,14 +614,12 @@ class Connection:
 
     @property
     def backend_version(self) -> Optional[str]:
-        """The version of the backend currently connected to hopsworks.
-        """
+        """The version of the backend currently connected to hopsworks."""
         return self._backend_version
 
     @backend_version.setter
     def backend_version(self, backend_version: str) -> None:
-        """The version of the backend currently connected to hopsworks.
-        """
+        """The version of the backend currently connected to hopsworks."""
         self._backend_version = backend_version.split("-SNAPSHOT")[
             0
         ].strip()  # Strip off the -SNAPSHOT part of the version if it is present.

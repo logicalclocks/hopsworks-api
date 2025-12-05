@@ -53,8 +53,7 @@ class EventEncoder(json.JSONEncoder):
 
 
 class AsyncWorkerThread(threading.Thread):
-    """Thread class to run an asyncio event loop in a separate thread. The event loop is used to run async workers that processes logs.
-    """
+    """Thread class to run an asyncio event loop in a separate thread. The event loop is used to run async workers that processes logs."""
 
     def __init__(
         self, group=None, target=None, name=None, args=..., kwargs=None, *, daemon=None
@@ -93,8 +92,7 @@ class AsyncWorkerThread(threading.Thread):
             self._workers.append(worker)
 
     def run(self):
-        """Thread functions that runs the event loop in the thread and close the event loop with feature logging after the loop is stopped.
-        """
+        """Thread functions that runs the event loop in the thread and close the event loop with feature logging after the loop is stopped."""
         asyncio.set_event_loop(self._event_loop)
 
         # Run the event loop
@@ -122,8 +120,7 @@ class AsyncWorkerThread(threading.Thread):
             self._tasks_queue.task_done()
 
     def close(self):
-        """Function to stop any more tasks from being submitted and start the graceful stop of the thread.
-        """
+        """Function to stop any more tasks from being submitted and start the graceful stop of the thread."""
         # Stop any more tasks from being submitted using the stop event.
         self._stop_event.set()
 
@@ -131,8 +128,7 @@ class AsyncWorkerThread(threading.Thread):
         asyncio.run_coroutine_threadsafe(self.finalize_event_loop(), self._event_loop)
 
     async def finalize_event_loop(self):
-        """Function that gracefully stops the event loop by stopping the workers and waiting for all tasks to be processed.
-        """
+        """Function that gracefully stops the event loop by stopping the workers and waiting for all tasks to be processed."""
         # Stop workers
         for _ in range(len(self._workers)):
             await self._tasks_queue.put(None)  # Poison pill to stop workers
@@ -280,7 +276,6 @@ class AsyncFeatureLogger(FeatureLogger):
         return encode_row(complex_feature_encoder, feature_encoder, features)
 
     def close(self):
-        """Close the async feature logger.
-        """
+        """Close the async feature logger."""
         # Close the async worker thread
         self._async_worker_thread.close()

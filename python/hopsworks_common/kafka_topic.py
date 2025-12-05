@@ -160,7 +160,7 @@ class KafkaTopic:
 
     @property
     def schema(self):
-        """Schema for the topic"""
+        """Schema for the topic."""
         return self._kafka_api._get_schema_details(
             self._schema_name, self._schema_version
         )

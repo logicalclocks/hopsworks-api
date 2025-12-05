@@ -91,42 +91,42 @@ class Job:
 
     @property
     def id(self):
-        """Id of the job"""
+        """Id of the job."""
         return self._id
 
     @property
     def name(self):
-        """Name of the job"""
+        """Name of the job."""
         return self._name
 
     @property
     def creation_time(self):
-        """Date of creation for the job"""
+        """Date of creation for the job."""
         return self._creation_time
 
     @property
     def config(self):
-        """Configuration for the job"""
+        """Configuration for the job."""
         return self._config
 
     @config.setter
     def config(self, config: dict):
-        """Update configuration for the job"""
+        """Update configuration for the job."""
         self._config = config
 
     @property
     def job_type(self):
-        """Type of the job"""
+        """Type of the job."""
         return self._job_type
 
     @property
     def creator(self):
-        """Creator of the job"""
+        """Creator of the job."""
         return self._creator
 
     @property
     def job_schedule(self):
-        """Return the Job schedule"""
+        """Return the Job schedule."""
         return self._job_schedule
 
     @property
@@ -139,7 +139,7 @@ class Job:
 
     @property
     def config(self):
-        """Configuration for the job"""
+        """Configuration for the job."""
         return self._config
 
     @usage.method_logger
@@ -369,13 +369,13 @@ class Job:
 
     @usage.method_logger
     def unschedule(self):
-        """Unschedule the exceution of a Job"""
+        """Unschedule the exceution of a Job."""
         self._job_api._delete_schedule_job(self._name)
         self._job_schedule = None
 
     @usage.method_logger
     def resume_schedule(self):
-        """Resumes the schedule of a Job execution"""
+        """Resumes the schedule of a Job execution."""
         if self._job_schedule is None:
             raise JobException("No schedule found for job")
 
@@ -390,7 +390,7 @@ class Job:
 
     @usage.method_logger
     def pause_schedule(self):
-        """Pauses the schedule of a Job execution"""
+        """Pauses the schedule of a Job execution."""
         if self._job_schedule is None:
             raise JobException("No schedule found for job")
 

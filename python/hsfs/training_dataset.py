@@ -296,9 +296,9 @@ class TrainingDatasetBase:
 
     @property
     def coalesce(self) -> bool:
-        """If true the training dataset data will be coalesced into
-        a single partition before writing. The resulting training dataset
-        will be a single file per split
+        """If true the training dataset data will be coalesced into a single partition before writing.
+
+        The resulting training dataset will be a single file per split.
         """
         return self._coalesce
 
@@ -983,7 +983,7 @@ class TrainingDataset(TrainingDatasetBase):
         return self._training_dataset_engine.query(self, True, True, False)
 
     def get_query(self, online: bool = True, with_label: bool = False):
-        """Returns the query used to generate this training dataset
+        """Returns the query used to generate this training dataset.
 
         Parameters:
             online: boolean, optional. Return the query for the online storage, else

@@ -4556,7 +4556,7 @@ class FeatureView:
 
     @property
     def model_dependent_transformations(self) -> Dict["str", Callable]:
-        """Get Model-Dependent transformations as a dictionary mapping transformed feature names to transformation function"""
+        """Get Model-Dependent transformations as a dictionary mapping transformed feature names to transformation function."""
         return {
             transformation_function.hopsworks_udf.output_column_names[
                 0
@@ -4566,7 +4566,7 @@ class FeatureView:
 
     @property
     def on_demand_transformations(self) -> Dict["str", Callable]:
-        """Get On-Demand transformations as a dictionary mapping on-demand feature names to transformation function"""
+        """Get On-Demand transformations as a dictionary mapping on-demand feature names to transformation function."""
         return {
             feature.on_demand_transformation_function.hopsworks_udf.function_name: feature.on_demand_transformation_function.hopsworks_udf.get_udf()
             for feature in self.features
@@ -4575,7 +4575,7 @@ class FeatureView:
 
     @property
     def _on_demand_transformation_functions(self) -> List[TransformationFunction]:
-        """Get all on-demand transformations in the feature view"""
+        """Get all on-demand transformations in the feature view."""
         return [
             feature.on_demand_transformation_function
             for feature in self.features
@@ -4605,7 +4605,7 @@ class FeatureView:
 
     @property
     def features(self) -> List[training_dataset_feature.TrainingDatasetFeature]:
-        """Schema of untransformed features in the Feature view. (alias)"""
+        """Schema of untransformed features in the Feature view. (alias)."""
         return self._features
 
     @schema.setter

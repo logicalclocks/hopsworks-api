@@ -61,27 +61,27 @@ class GitCommit:
 
     @property
     def name(self):
-        """Name of the user"""
+        """Name of the user."""
         return self._name
 
     @property
     def email(self):
-        """Email of the user"""
+        """Email of the user."""
         return self._email
 
     @property
     def message(self):
-        """Commit message"""
+        """Commit message."""
         return self._message
 
     @property
     def hash(self):
-        """Commit hash"""
+        """Commit hash."""
         return self._hash
 
     @property
     def time(self):
-        """Timestamp for the commit"""
+        """Timestamp for the commit."""
         return self._time
 
     def json(self):

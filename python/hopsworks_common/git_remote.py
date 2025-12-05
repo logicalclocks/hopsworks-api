@@ -52,12 +52,12 @@ class GitRemote:
 
     @property
     def name(self):
-        """Name of the remote"""
+        """Name of the remote."""
         return self._name
 
     @property
     def url(self):
-        """Url of the remote"""
+        """Url of the remote."""
         return self._url
 
     @usage.method_logger

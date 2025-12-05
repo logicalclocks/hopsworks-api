@@ -37,8 +37,7 @@ from packaging.version import Version
 
 
 class UDFExecutionMode(Enum):
-    """Class that store the possible execution types of UDF's.
-    """
+    """Class that store the possible execution types of UDF's."""
 
     DEFAULT = "default"
     PYTHON = "python"
@@ -63,8 +62,7 @@ class UDFExecutionMode(Enum):
 
 
 class UDFKeyWords(Enum):
-    """Class that stores the keywords used as arguments in a UDFs.
-    """
+    """Class that stores the keywords used as arguments in a UDFs."""
 
     STATISTICS = "statistics"
     CONTEXT = "context"
@@ -737,8 +735,7 @@ def renaming_wrapper(*args):
         return udf
 
     def alias(self, *args: str):
-        """Set the names of the transformed features output by the UDF.
-        """
+        """Set the names of the transformed features output by the UDF."""
         if len(args) == 1 and isinstance(args[0], list):
             # If a single list is passed, use it directly
             output_col_names = args[0]
@@ -1025,8 +1022,7 @@ def renaming_wrapper(*args):
 
     @property
     def transformation_features(self) -> List[str]:
-        """List of feature names to be used in the User Defined Function.
-        """
+        """List of feature names to be used in the User Defined Function."""
         if self._feature_name_prefix:
             return [
                 self._feature_name_prefix + transformation_feature.feature_name
@@ -1041,8 +1037,7 @@ def renaming_wrapper(*args):
 
     @property
     def unprefixed_transformation_features(self) -> List[str]:
-        """List of feature name used in the transformation function without the feature name prefix.
-        """
+        """List of feature name used in the transformation function without the feature name prefix."""
         return [
             transformation_feature.feature_name
             for transformation_feature in self._transformation_features
@@ -1055,8 +1050,7 @@ def renaming_wrapper(*args):
 
     @property
     def statistics_features(self) -> List[str]:
-        """List of feature names that require statistics.
-        """
+        """List of feature names that require statistics."""
         return [
             transformation_feature.feature_name
             for transformation_feature in self._transformation_features
@@ -1065,8 +1059,7 @@ def renaming_wrapper(*args):
 
     @property
     def _statistics_argument_mapping(self) -> Dict[str, str]:
-        """Dictionary that maps feature names to the statistics arguments names in the User defined function.
-        """
+        """Dictionary that maps feature names to the statistics arguments names in the User defined function."""
         return {
             transformation_feature.feature_name: transformation_feature.statistic_argument_name
             for transformation_feature in self._transformation_features
@@ -1074,8 +1067,7 @@ def renaming_wrapper(*args):
 
     @property
     def _statistics_argument_names(self) -> List[str]:
-        """List of argument names required for statistics.
-        """
+        """List of argument names required for statistics."""
         return [
             transformation_feature.statistic_argument_name
             for transformation_feature in self._transformation_features
@@ -1084,8 +1076,7 @@ def renaming_wrapper(*args):
 
     @property
     def dropped_features(self) -> List[str]:
-        """List of features that will be dropped after the UDF is applied.
-        """
+        """List of features that will be dropped after the UDF is applied."""
         if self._feature_name_prefix and self._dropped_features:
             return [
                 self._feature_name_prefix + dropped_feature

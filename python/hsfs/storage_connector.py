@@ -191,8 +191,7 @@ class StorageConnector(ABC):
         )
 
     def refetch(self) -> None:
-        """Refetch storage connector.
-        """
+        """Refetch storage connector."""
         self._storage_connector_api.refetch(self)
 
     def _get_path(self, sub_path: str) -> None:
@@ -387,7 +386,7 @@ class S3Connector(StorageConnector):
 
     @property
     def path(self) -> Optional[str]:
-        """If the connector refers to a path (e.g. S3) - return the path of the connector"""
+        """If the connector refers to a path (e.g. S3) - return the path of the connector."""
         return posixpath.join(
             "s3://" + self._bucket, *os.path.split(self._path if self._path else "")
         )
@@ -421,7 +420,7 @@ class S3Connector(StorageConnector):
         return engine.get_instance().setup_storage_connector(self, path)
 
     def connector_options(self) -> Dict[str, Any]:
-        """Return options to be passed to an external S3 connector library"""
+        """Return options to be passed to an external S3 connector library."""
         self.refetch()
         options = {
             "access_key": self.access_key,
@@ -620,7 +619,7 @@ class RedshiftConnector(StorageConnector):
         return self._arguments
 
     def connector_options(self) -> Dict[str, Any]:
-        """Return options to be passed to an external Redshift connector library"""
+        """Return options to be passed to an external Redshift connector library."""
         props = {
             "host": self._cluster_identifier + "." + self._database_endpoint,
             "port": self._database_port,
@@ -709,8 +708,7 @@ class RedshiftConnector(StorageConnector):
         )
 
     def refetch(self) -> None:
-        """Refetch storage connector in order to retrieve updated temporary credentials.
-        """
+        """Refetch storage connector in order to retrieve updated temporary credentials."""
         self._storage_connector_api.refetch(self)
 
 
@@ -751,37 +749,37 @@ class AdlsConnector(StorageConnector):
 
     @property
     def generation(self) -> Optional[str]:
-        """Generation of the ADLS storage connector"""
+        """Generation of the ADLS storage connector."""
         return self._generation
 
     @property
     def directory_id(self) -> Optional[str]:
-        """Directory ID of the ADLS storage connector"""
+        """Directory ID of the ADLS storage connector."""
         return self._directory_id
 
     @property
     def application_id(self) -> Optional[str]:
-        """Application ID of the ADLS storage connector"""
+        """Application ID of the ADLS storage connector."""
         return self._application_id
 
     @property
     def account_name(self) -> Optional[str]:
-        """Account name of the ADLS storage connector"""
+        """Account name of the ADLS storage connector."""
         return self._account_name
 
     @property
     def container_name(self) -> Optional[str]:
-        """Container name of the ADLS storage connector"""
+        """Container name of the ADLS storage connector."""
         return self._container_name
 
     @property
     def service_credential(self) -> Optional[str]:
-        """Service credential of the ADLS storage connector"""
+        """Service credential of the ADLS storage connector."""
         return self._service_credential
 
     @property
     def path(self) -> Optional[str]:
-        """If the connector refers to a path (e.g. ADLS) - return the path of the connector"""
+        """If the connector refers to a path (e.g. ADLS) - return the path of the connector."""
         if self.generation == 2:
             return "abfss://{}@{}.dfs.core.windows.net".format(
                 self.container_name, self.account_name
@@ -901,66 +899,66 @@ class SnowflakeConnector(StorageConnector):
 
     @property
     def url(self) -> Optional[str]:
-        """URL of the Snowflake storage connector"""
+        """URL of the Snowflake storage connector."""
         return self._url
 
     @property
     def warehouse(self) -> Optional[str]:
-        """Warehouse of the Snowflake storage connector"""
+        """Warehouse of the Snowflake storage connector."""
         return self._warehouse
 
     @property
     def database(self) -> Optional[str]:
-        """Database of the Snowflake storage connector"""
+        """Database of the Snowflake storage connector."""
         return self._database
 
     @property
     def user(self) -> Optional[Any]:
-        """User of the Snowflake storage connector"""
+        """User of the Snowflake storage connector."""
         return self._user
 
     @property
     def password(self) -> Optional[str]:
-        """Password of the Snowflake storage connector"""
+        """Password of the Snowflake storage connector."""
         return self._password
 
     @property
     def token(self) -> Optional[str]:
-        """OAuth token of the Snowflake storage connector"""
+        """OAuth token of the Snowflake storage connector."""
         return self._token
 
     @property
     def schema(self) -> Optional[str]:
-        """Schema of the Snowflake storage connector"""
+        """Schema of the Snowflake storage connector."""
         return self._schema
 
     @property
     def table(self) -> Optional[str]:
-        """Table of the Snowflake storage connector"""
+        """Table of the Snowflake storage connector."""
         return self._table
 
     @property
     def role(self) -> Optional[Any]:
-        """Role of the Snowflake storage connector"""
+        """Role of the Snowflake storage connector."""
         return self._role
 
     @property
     def account(self) -> Optional[str]:
-        """Account of the Snowflake storage connector"""
+        """Account of the Snowflake storage connector."""
         return self._url.replace("https://", "").replace(".snowflakecomputing.com", "")
 
     @property
     def application(self) -> Any:
-        """Application of the Snowflake storage connector"""
+        """Application of the Snowflake storage connector."""
         return self._application
 
     @property
     def options(self) -> Optional[Dict[str, Any]]:
-        """Additional options for the Snowflake storage connector"""
+        """Additional options for the Snowflake storage connector."""
         return self._options
 
     def snowflake_connector_options(self) -> Optional[Dict[str, Any]]:
-        """Alias for `connector_options`"""
+        """Alias for `connector_options`."""
         return self.connector_options()
 
     def connector_options(self) -> Optional[Dict[str, Any]]:
@@ -1091,7 +1089,7 @@ class JdbcConnector(StorageConnector):
     def arguments(self) -> Optional[Dict[str, Any]]:
         """Additional JDBC arguments. When running hsfs with PySpark/Spark in Hopsworks,
         the driver is automatically provided in the classpath but you need to set the `driver` argument to
-        `com.mysql.cj.jdbc.Driver` when creating the Storage Connector
+        `com.mysql.cj.jdbc.Driver` when creating the Storage Connector.
         """
         return self._arguments
 
@@ -1255,7 +1253,8 @@ class KafkaConnector(StorageConnector):
 
     def kafka_options(self, distribute=True) -> Dict[str, Any]:
         """Return prepared options to be passed to kafka, based on the additional arguments.
-        https://kafka.apache.org/documentation/
+
+        See <https://kafka.apache.org/documentation/>.
         """
         config = {}
 
@@ -1317,8 +1316,10 @@ class KafkaConnector(StorageConnector):
 
     def confluent_options(self) -> Dict[str, Any]:
         """Return prepared options to be passed to confluent_kafka, based on the provided apache spark configuration.
+
         Right now only producer values with Importance >= medium are implemented.
-        https://docs.confluent.io/platform/current/clients/librdkafka/html/md_CONFIGURATION.html
+
+        See <https://docs.confluent.io/platform/current/clients/librdkafka/html/md_CONFIGURATION.html>.
         """
         pem_files_assigned = False
         config = {}
@@ -1406,8 +1407,10 @@ class KafkaConnector(StorageConnector):
 
     def spark_options(self) -> Dict[str, Any]:
         """Return prepared options to be passed to Spark, based on the additional arguments.
+
         This is done by just adding 'kafka.' prefix to kafka_options.
-        https://spark.apache.org/docs/latest/structured-streaming-kafka-integration.html#kafka-specific-configurations
+
+        See <https://spark.apache.org/docs/latest/structured-streaming-kafka-integration.html#kafka-specific-configurations>.
         """
         from packaging import version
 
@@ -1568,32 +1571,32 @@ class GcsConnector(StorageConnector):
 
     @property
     def key_path(self) -> Optional[str]:
-        """JSON keyfile for service account"""
+        """JSON keyfile for service account."""
         return self._key_path
 
     @property
     def algorithm(self) -> Optional[str]:
-        """Encryption Algorithm"""
+        """Encryption Algorithm."""
         return self._algorithm
 
     @property
     def encryption_key(self) -> Optional[str]:
-        """Encryption Key"""
+        """Encryption Key."""
         return self._encryption_key
 
     @property
     def encryption_key_hash(self) -> Optional[str]:
-        """Encryption Key Hash"""
+        """Encryption Key Hash."""
         return self._encryption_key_hash
 
     @property
     def path(self) -> Optional[str]:
-        """The path of the connector along with gs file system prefixed"""
+        """The path of the connector along with gs file system prefixed."""
         return self.GS_FS_PREFIX + self._bucket
 
     @property
     def bucket(self) -> Optional[str]:
-        """GCS Bucket"""
+        """GCS Bucket."""
         return self._bucket
 
     def _get_path(self, sub_path: str) -> Optional[str]:
@@ -1738,43 +1741,41 @@ class BigQueryConnector(StorageConnector):
 
     @property
     def key_path(self) -> Optional[str]:
-        """JSON keyfile for service account"""
+        """JSON keyfile for service account."""
         return self._key_path
 
     @property
     def parent_project(self) -> Optional[str]:
-        """BigQuery parent project (Google Cloud Project ID of the table to bill for the export)"""
+        """BigQuery parent project (Google Cloud Project ID of the table to bill for the export)."""
         return self._parent_project
 
     @property
     def dataset(self) -> Optional[str]:
-        """BigQuery dataset (The dataset containing the table)"""
+        """BigQuery dataset (The dataset containing the table)."""
         return self._dataset
 
     @property
     def query_table(self) -> Optional[str]:
-        """BigQuery table name"""
+        """BigQuery table name."""
         return self._query_table
 
     @property
     def query_project(self) -> Optional[str]:
-        """BigQuery project (The Google Cloud Project ID of the table)"""
+        """BigQuery project (The Google Cloud Project ID of the table)."""
         return self._query_project
 
     @property
     def materialization_dataset(self) -> Optional[str]:
-        """BigQuery materialization dataset (The dataset where the materialized view is going to be created,
-        used in case of query)
-        """
+        """BigQuery materialization dataset (The dataset where the materialized view is going to be created, used in case of query)."""
         return self._materialization_dataset
 
     @property
     def arguments(self) -> Dict[str, Any]:
-        """Additional spark options"""
+        """Additional spark options."""
         return self._arguments
 
     def connector_options(self) -> Dict[str, Any]:
-        """Return options to be passed to an external BigQuery connector library"""
+        """Return options to be passed to an external BigQuery connector library."""
         props = {
             "key_path": self._key_path,
             "project_id": self._parent_project,
@@ -1783,7 +1784,7 @@ class BigQueryConnector(StorageConnector):
         return props
 
     def spark_options(self) -> Dict[str, Any]:
-        """Return spark options to be set for BigQuery spark connector"""
+        """Return spark options to be set for BigQuery spark connector."""
         properties = self._arguments
         properties[self.BIGQ_PARENT_PROJECT] = self._parent_project
 
@@ -1944,7 +1945,7 @@ class RdsConnector(StorageConnector):
 
     @property
     def arguments(self) -> Dict[str, Any]:
-        """Additional options"""
+        """Additional options."""
         return self._arguments
 
     def spark_options(self) -> Dict[str, Any]:
@@ -1958,7 +1959,7 @@ class RdsConnector(StorageConnector):
         }
 
     def connector_options(self) -> Dict[str, Any]:
-        """Return options to be passed to an external RDS connector library"""
+        """Return options to be passed to an external RDS connector library."""
         props = {
             "host": self.host,
             "port": self.port,

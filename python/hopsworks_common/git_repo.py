@@ -73,37 +73,37 @@ class GitRepo:
 
     @property
     def id(self):
-        """Id of the git repo"""
+        """Id of the git repo."""
         return self._id
 
     @property
     def name(self):
-        """Name of the git repo"""
+        """Name of the git repo."""
         return self._name
 
     @property
     def path(self):
-        """Path to the git repo in the Hopsworks Filesystem"""
+        """Path to the git repo in the Hopsworks Filesystem."""
         return self._path
 
     @property
     def creator(self):
-        """Creator of the git repo"""
+        """Creator of the git repo."""
         return self._creator
 
     @property
     def provider(self):
-        """Git provider for the repo, can be GitHub, GitLab or BitBucket"""
+        """Git provider for the repo, can be GitHub, GitLab or BitBucket."""
         return self._provider
 
     @property
     def current_branch(self):
-        """The current branch for the git repo"""
+        """The current branch for the git repo."""
         return self._current_branch
 
     @property
     def current_commit(self):
-        """The current commit for the git repo"""
+        """The current commit for the git repo."""
         return self._current_commit
 
     @property
@@ -150,7 +150,7 @@ class GitRepo:
             self._git_api._checkout(self.id, branch=branch)
 
     def checkout_commit(self, commit: str):
-        """Checkout a commit
+        """Checkout a commit.
 
         Parameters:
             commit: Hash of the commit.
@@ -267,7 +267,7 @@ class GitRepo:
 
     @usage.method_logger
     def add_remote(self, name: str, url: str) -> GitRemote:
-        """Add a remote for the repo
+        """Add a remote for the repo.
 
         ```python
         import hopsworks

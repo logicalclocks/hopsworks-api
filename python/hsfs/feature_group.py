@@ -2374,12 +2374,12 @@ class FeatureGroupBase:
 
     @property
     def features(self) -> List["feature.Feature"]:
-        """Feature Group schema (alias)"""
+        """Feature Group schema (alias)."""
         return self._features
 
     @property
     def schema(self) -> List["feature.Feature"]:
-        """Feature Group schema"""
+        """Feature Group schema."""
         return self._features
 
     def _are_statistics_missing(self, statistics: Statistics) -> bool:
@@ -2414,11 +2414,11 @@ class FeatureGroupBase:
         return False
 
     def _are_statistics_supported(self) -> bool:
-        """Whether statistics are supported or not for the current Feature Group type"""
+        """Whether statistics are supported or not for the current Feature Group type."""
         return not isinstance(self, SpineGroup)
 
     def _check_statistics_support(self) -> None:
-        """Check for statistics support on the current Feature Group type"""
+        """Check for statistics support on the current Feature Group type."""
         if not self._are_statistics_supported():
             raise FeatureStoreException(
                 "Statistics not supported for this Feature Group type"
@@ -4088,7 +4088,7 @@ class FeatureGroup(FeatureGroupBase):
         return self.feature_store_name + "." + self.get_fg_name()
 
     def _is_time_travel_enabled(self) -> bool:
-        """Whether time-travel is enabled or not"""
+        """Whether time-travel is enabled or not."""
         return (
             self._time_travel_format is not None
             and self._time_travel_format.upper() != "NONE"
@@ -4142,15 +4142,14 @@ class FeatureGroup(FeatureGroupBase):
     @property
     def parents(self) -> List["explicit_provenance.Links"]:
         """Parent feature groups as origin of the data in the current feature group.
-        This is part of explicit provenance
+
+        This is part of explicit provenance.
         """
         return self._parents
 
     @property
     def materialization_job(self) -> Optional["Job"]:
-        """Get the Job object reference for the materialization job for this
-        Feature Group.
-        """
+        """Get the Job object reference for the materialization job for this Feature Group."""
         if self._materialization_job is not None:
             return self._materialization_job
         else:

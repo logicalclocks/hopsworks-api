@@ -56,32 +56,32 @@ class Secret:
 
     @property
     def name(self):
-        """Name of the secret"""
+        """Name of the secret."""
         return self._name
 
     @property
     def value(self):
-        """Value of the secret"""
+        """Value of the secret."""
         return self._secret
 
     @property
     def created(self):
-        """Date when secret was created"""
+        """Date when secret was created."""
         return self._added_on
 
     @property
     def visibility(self):
-        """Visibility of the secret"""
+        """Visibility of the secret."""
         return self._visibility
 
     @property
     def scope(self):
-        """Scope of the secret"""
+        """Scope of the secret."""
         return self._scope
 
     @property
     def owner(self):
-        """Owner of the secret"""
+        """Owner of the secret."""
         return self._owner
 
     def delete(self):

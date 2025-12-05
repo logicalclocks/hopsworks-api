@@ -265,7 +265,7 @@ class Feature:
 
     @property
     def on_demand(self) -> bool:
-        """Whether the feature is a on-demand feature computed using on-demand transformation functions"""
+        """Whether the feature is a on-demand feature computed using on-demand transformation functions."""
         return self._on_demand
 
     @on_demand.setter
