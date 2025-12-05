@@ -49,9 +49,7 @@ class ModelSchema:
         )
 
     def to_dict(self):
-        """
-        Get dict representation of the ModelSchema.
-        """
+        """Get dict representation of the ModelSchema."""
         return json.loads(self.json())
 
     def __repr__(self):

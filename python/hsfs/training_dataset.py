@@ -298,7 +298,8 @@ class TrainingDatasetBase:
     def coalesce(self) -> bool:
         """If true the training dataset data will be coalesced into
         a single partition before writing. The resulting training dataset
-        will be a single file per split"""
+        will be a single file per split
+        """
         return self._coalesce
 
     @coalesce.setter
@@ -376,7 +377,8 @@ class TrainingDatasetBase:
     @property
     def statistics_config(self):
         """Statistics configuration object defining the settings for statistics
-        computation of the training dataset."""
+        computation of the training dataset.
+        """
         return self._statistics_config
 
     @statistics_config.setter
@@ -723,6 +725,7 @@ class TrainingDataset(TrainingDatasetBase):
                 training dataset. If the training dataset has split, the `split` parameter
                 is mandatory.
             read_options: Additional read options as key/value pairs, defaults to `{}`.
+
         Returns:
             `DataFrame`: The spark dataframe containing the feature data of the
                 training dataset.
@@ -1029,6 +1032,7 @@ class TrainingDataset(TrainingDatasetBase):
                 If set to False, the online feature store storage connector is used
                 which relies on the private IP. Defaults to True if connection to Hopsworks is established from
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
+
         Returns:
             `list` List of feature values related to provided primary keys, ordered according to positions of this
             features in training dataset query.
@@ -1051,6 +1055,7 @@ class TrainingDataset(TrainingDatasetBase):
                 If set to False, the online feature store storage connector is used
                 which relies on the private IP. Defaults to True if connection to Hopsworks is established from
                 external environment (e.g AWS Sagemaker or Google Colab), otherwise to False.
+
         Returns:
             `List[list]` List of lists of feature values related to provided primary keys, ordered according to
             positions of this features in training dataset query.

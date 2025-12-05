@@ -106,8 +106,7 @@ class TrainingDatasetFeature:
 
     @property
     def index(self):
-        """Index of the feature in the training dataset, required to restore the correct
-        order of features."""
+        """Index of the feature in the training dataset, required to restore the correct order of features."""
         return self._index
 
     @property
@@ -130,7 +129,7 @@ class TrainingDatasetFeature:
 
     @property
     def on_demand_transformation_function(self) -> TransformationFunction:
-        """Whether the feature is a on-demand feature computed using on-demand transformation functions"""
+        """Whether the feature is a on-demand feature computed using on-demand transformation functions."""
         return self._on_demand_transformation_function
 
     @property

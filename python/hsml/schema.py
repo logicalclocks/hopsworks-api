@@ -74,9 +74,7 @@ class Schema:
         )
 
     def to_dict(self):
-        """
-        Get dict representation of the Schema.
-        """
+        """Get dict representation of the Schema."""
         return json.loads(self.json())
 
     def __repr__(self):

@@ -127,6 +127,7 @@ class GitRepo:
         """Delete the git repo from the filesystem.
         Danger: Potentially dangerous operation
             This operation deletes the cloned git repository from the filesystem.
+
         Raises:
             `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
         """

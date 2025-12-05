@@ -121,6 +121,7 @@ class Model:
 
         Returns:
             `Model`: The model metadata object.
+
         Raises:
             `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
@@ -173,6 +174,7 @@ class Model:
             local_path: path where to download the model files in the local filesystem
         Returns:
             `str`: Absolute path to local folder containing the model files.
+
         Raises:
             `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
@@ -180,7 +182,7 @@ class Model:
 
     @usage.method_logger
     def delete(self):
-        """Delete the model
+        """Delete the model.
 
         Danger: Potentially dangerous operation
             This operation drops all metadata associated with **this version** of the
@@ -249,7 +251,6 @@ class Model:
         Raises:
             `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
         """
-
         if name is None:
             name = self._get_default_serving_name()
 
@@ -288,9 +289,7 @@ class Model:
 
     @usage.method_logger
     def set_tag(self, name: str, value: Union[str, dict]):
-        """
-        Deprecated: Use add_tag instead.
-        """
+        """Deprecated: Use add_tag instead."""
         warnings.warn(
             "The set_tag method is deprecated. Please use add_tag instead.",
             DeprecationWarning,
@@ -304,6 +303,7 @@ class Model:
 
         Parameters:
             name: Name of the tag to be removed.
+
         Raises:
             `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to delete the tag.
         """
@@ -314,8 +314,10 @@ class Model:
 
         Parameters:
             name: Name of the tag to get.
+
         Returns:
             tag value or `None` if it does not exist.
+
         Raises:
             `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the tag.
         """
@@ -326,6 +328,7 @@ class Model:
 
         Returns:
             `Dict[str, obj]` of tags.
+
         Raises:
             `hopsworks.client.exceptions.RestAPIError` in case the backend fails to retrieve the tags.
         """
@@ -344,14 +347,17 @@ class Model:
 
     def get_feature_view(self, init: bool = True, online: bool = False):
         """Get the parent feature view of this model, based on explicit provenance.
+
          Only accessible, usable feature view objects are returned. Otherwise an Exception is raised.
          For more details, call the base method - get_feature_view_provenance
 
          Parameters:
             init: By default this is set to True. If you require a more complex initialization of the feature view for online or batch scenarios, you should set `init` to False to retrieve a non initialized feature view and then call `init_batch_scoring()` or `init_serving()` with the required parameters.
             online: By default this is set to False and the initialization for batch scoring is considered the default scenario. If you set `online` to True, the online scenario is enabled and the `init_serving()` method is called. When inside a deployment, the only available scenario is the online one, thus the parameter is ignored and init_serving is always called (if `init` is set to True). If you want to override this behaviour, you should set `init` to False and proceed with a custom initialization.
+
         Returns:
             `FeatureView`: Feature View Object or `None` if it does not exist.
+
         Raises:
             `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the feature view.
         """
@@ -376,27 +382,29 @@ class Model:
 
     def get_feature_view_provenance(self) -> explicit_provenance.Links:
         """Get the parent feature view of this model, based on explicit provenance.
+
         This feature view can be accessible, deleted or inaccessible.
-        For deleted and inaccessible feature views, only a minimal information is
-        returned.
+        For deleted and inaccessible feature views, only a minimal information is returned.
 
         Returns:
-            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist
+            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the feature view provenance
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the feature view provenance.
         """
         return self._model_engine.get_feature_view_provenance(model_instance=self)
 
     def get_training_dataset_provenance(self) -> explicit_provenance.Links:
         """Get the parent training dataset of this model, based on explicit provenance.
+
         This training dataset can be accessible, deleted or inaccessible.
-        For deleted and inaccessible training datasets, only a minimal information is
-        returned.
+        For deleted and inaccessible training datasets, only a minimal information is returned.
 
         Returns:
-            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist
+            `Links`: Object containing the section of provenance graph requested or `None` if it does not exist.
+
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the training dataset provenance
+            `hopsworks.client.exceptions.RestAPIError`: in case the backend fails to retrieve the training dataset provenance.
         """
         return self._model_engine.get_training_dataset_provenance(model_instance=self)
 
@@ -530,7 +538,7 @@ class Model:
 
     @property
     def user(self):
-        """user of the model."""
+        """User of the model."""
         return self._user_full_name
 
     @user.setter
@@ -550,7 +558,7 @@ class Model:
 
     @property
     def framework(self):
-        """framework of the model."""
+        """Framework of the model."""
         return self._framework
 
     @framework.setter
@@ -559,7 +567,7 @@ class Model:
 
     @property
     def model_schema(self):
-        """model schema of the model."""
+        """Model schema of the model."""
         return self._model_engine.read_json(
             model_instance=self, resource="model_schema.json"
         )
@@ -588,17 +596,26 @@ class Model:
 
     @property
     def model_path(self):
-        """path of the model with version folder omitted. Resolves to /Projects/{project_name}/Models/{name}"""
+        """Path of the model with version folder omitted.
+
+        Resolves to `/Projects/{project_name}/Models/{name}`.
+        """
         return "/Projects/{}/Models/{}".format(self.project_name, self.name)
 
     @property
     def version_path(self):
-        """path of the model including version folder. Resolves to /Projects/{project_name}/Models/{name}/{version}"""
+        """Path of the model including version folder.
+
+        Resolves to `/Projects/{project_name}/Models/{name}/{version}`.
+        """
         return "{}/{}".format(self.model_path, str(self.version))
 
     @property
     def model_files_path(self):
-        """path of the model files including version and files folder. Resolves to /Projects/{project_name}/Models/{name}/{version}/Files"""
+        """Path of the model files including version and files folder.
+
+        Resolves to `/Projects/{project_name}/Models/{name}/{version}/Files`.
+        """
         return "{}/{}".format(
             self.version_path,
             MODEL_REGISTRY.MODEL_FILES_DIR_NAME,

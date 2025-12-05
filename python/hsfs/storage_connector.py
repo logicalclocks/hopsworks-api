@@ -191,8 +191,7 @@ class StorageConnector(ABC):
         )
 
     def refetch(self) -> None:
-        """
-        Refetch storage connector.
+        """Refetch storage connector.
         """
         self._storage_connector_api.refetch(self)
 
@@ -710,8 +709,7 @@ class RedshiftConnector(StorageConnector):
         )
 
     def refetch(self) -> None:
-        """
-        Refetch storage connector in order to retrieve updated temporary credentials.
+        """Refetch storage connector in order to retrieve updated temporary credentials.
         """
         self._storage_connector_api.refetch(self)
 
@@ -1093,7 +1091,8 @@ class JdbcConnector(StorageConnector):
     def arguments(self) -> Optional[Dict[str, Any]]:
         """Additional JDBC arguments. When running hsfs with PySpark/Spark in Hopsworks,
         the driver is automatically provided in the classpath but you need to set the `driver` argument to
-        `com.mysql.cj.jdbc.Driver` when creating the Storage Connector"""
+        `com.mysql.cj.jdbc.Driver` when creating the Storage Connector
+        """
         return self._arguments
 
     def spark_options(self) -> Dict[str, Any]:
@@ -1227,8 +1226,7 @@ class KafkaConnector(StorageConnector):
         return self._options
 
     def create_pem_files(self, kafka_options: Dict[str, Any]) -> None:
-        """
-        Create PEM (Privacy Enhanced Mail) files for Kafka SSL authentication.
+        """Create PEM (Privacy Enhanced Mail) files for Kafka SSL authentication.
 
         This method writes the necessary PEM files for SSL authentication with Kafka,
         using the provided keystore and truststore locations and passwords. The generated
@@ -1322,7 +1320,6 @@ class KafkaConnector(StorageConnector):
         Right now only producer values with Importance >= medium are implemented.
         https://docs.confluent.io/platform/current/clients/librdkafka/html/md_CONFIGURATION.html
         """
-
         pem_files_assigned = False
         config = {}
         kafka_options = self.kafka_options()
@@ -1528,8 +1525,7 @@ class KafkaConnector(StorageConnector):
 
 
 class GcsConnector(StorageConnector):
-    """
-    This storage connector provides integration to Google Cloud Storage (GCS).
+    """This storage connector provides integration to Google Cloud Storage (GCS).
     Once you create a connector in FeatureStore, you can transact data from a GCS bucket into a spark dataframe
     by calling the `read` API.
 
@@ -1592,7 +1588,7 @@ class GcsConnector(StorageConnector):
 
     @property
     def path(self) -> Optional[str]:
-        """the path of the connector along with gs file system prefixed"""
+        """The path of the connector along with gs file system prefixed"""
         return self.GS_FS_PREFIX + self._bucket
 
     @property
@@ -1649,6 +1645,7 @@ class GcsConnector(StorageConnector):
             dataframe_type: str, optional. The type of the returned dataframe.
                 Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
                 Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
+
         Raises:
             `ValueError`: Malformed arguments.
 
@@ -1691,8 +1688,7 @@ class GcsConnector(StorageConnector):
 
 
 class BigQueryConnector(StorageConnector):
-    """
-    The BigQuery storage connector provides integration to Google Cloud BigQuery.
+    """The BigQuery storage connector provides integration to Google Cloud BigQuery.
     You can use it to run bigquery on your GCP cluster and load results into spark dataframe by calling the `read` API.
 
     Authentication to GCP is handled by uploading the `JSON keyfile for service account` to the Hopsworks Project. For more information
@@ -1768,7 +1764,8 @@ class BigQueryConnector(StorageConnector):
     @property
     def materialization_dataset(self) -> Optional[str]:
         """BigQuery materialization dataset (The dataset where the materialized view is going to be created,
-        used in case of query)"""
+        used in case of query)
+        """
         return self._materialization_dataset
 
     @property

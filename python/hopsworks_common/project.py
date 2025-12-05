@@ -172,6 +172,7 @@ class Project:
 
         Returns:
             hsml.model_serving.ModelServing: The Model Serving API.
+
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """

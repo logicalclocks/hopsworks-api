@@ -27,8 +27,7 @@ from hsfs.core.vector_db_client import VectorDbClient
 
 
 class SimilarityFunctionType:
-    """
-    Enumeration class representing different types of similarity functions.
+    """Enumeration class representing different types of similarity functions.
 
     Parameters:
         L2: Represents L2 norm similarity function.
@@ -47,8 +46,7 @@ class SimilarityFunctionType:
 
 @dataclass
 class HsmlModel:
-    """
-    Data class storing the metadata of a hsml model
+    """Data class storing the metadata of a hsml model
     """
 
     model_registry_id: int
@@ -110,8 +108,7 @@ class HsmlModel:
 
 
 class EmbeddingFeature:
-    """
-    Represents an embedding feature.
+    """Represents an embedding feature.
 
     Parameters:
         name: The name of the embedding feature.
@@ -166,7 +163,8 @@ class EmbeddingFeature:
     @property
     def dimenstion(self):
         """This one is excluded from the docs as the name is misspelled but kept to avoid breaking the API
-        int: The dimensionality of the embedding feature."""
+        int: The dimensionality of the embedding feature.
+        """
         return self._dimension
 
     @property
@@ -217,8 +215,7 @@ class EmbeddingFeature:
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        """
-        Convert the EmbeddingFeature object to a dictionary.
+        """Convert the EmbeddingFeature object to a dictionary.
 
         Returns:
             `dict`: A dictionary representation of the EmbeddingFeature object.

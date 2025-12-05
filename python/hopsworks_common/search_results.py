@@ -381,8 +381,7 @@ class FeatureResult(FeaturestoreResult):
         self._feature_group_api = feature_group_api.FeatureGroupApi()
 
     def get_feature_group(self):
-        """
-        Get the feature group instance associated with this feature.
+        """Get the feature group instance associated with this feature.
 
         Returns:
             FeatureGroup: The feature group instance.
@@ -395,8 +394,7 @@ class FeatureResult(FeaturestoreResult):
         )
 
     def get_feature(self):
-        """
-        Get the feature instance associated with this feature result.
+        """Get the feature instance associated with this feature result.
 
         Returns:
             Feature: The feature instance.
@@ -471,8 +469,7 @@ class FeatureGroupResult(FeaturestoreResult):
         )
 
     def get_feature_group(self):
-        """
-        Get the feature group instance associated with this feature group result.
+        """Get the feature group instance associated with this feature group result.
 
         Returns:
             FeatureGroup: The feature group instance.
@@ -522,8 +519,7 @@ class FeatureViewResult(FeaturestoreResult):
         )
 
     def get_feature_view(self):
-        """
-        Get the feature view instance associated with this feature view result.
+        """Get the feature view instance associated with this feature view result.
 
         Returns:
             FeatureView: The feature view instance.
@@ -573,8 +569,7 @@ class TrainingDatasetResult(FeaturestoreResult):
         )
 
     def get_training_dataset(self):
-        """
-        Get the training dataset instance associated with this training dataset result.
+        """Get the training dataset instance associated with this training dataset result.
 
         Returns:
             TrainingDataset: The training dataset instance.

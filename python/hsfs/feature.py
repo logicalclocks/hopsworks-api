@@ -112,8 +112,7 @@ class Feature:
     def _get_fully_qualified_feature_name(
         self, feature_group: FeatureGroup = None, prefix: str = None
     ) -> str:
-        """
-        Returns the name of the feature when used to generated dataframes for training/batch data.
+        """Returns the name of the feature when used to generated dataframes for training/batch data.
         - If the feature is configured to use a fully qualified name, it returns that name.
         - Otherwise, if a prefix is provided, it returns the feature name prefixed accordingly.
         - If neither condition applies, it returns the feature’s original name.
@@ -252,7 +251,8 @@ class Feature:
     @property
     def default_value(self) -> Optional[str]:
         """Default value of the feature as string, if the feature was appended to the
-        feature group."""
+        feature group.
+        """
         return self._default_value
 
     @default_value.setter
@@ -299,9 +299,8 @@ class Feature:
         return filter.Filter(self, filter.Filter.GT, self._get_filter_value(other))
 
     def contains(self, other: Union[str, List[Any]]) -> "filter.Filter":
-        """
-        Warning: Deprecated
-            `contains` method is deprecated. Use [`isin`][hsfs.feature.Feature.isin] instead.
+        """Warning: Deprecated
+        `contains` method is deprecated. Use [`isin`][hsfs.feature.Feature.isin] instead.
         """
         return self.isin(other)
 

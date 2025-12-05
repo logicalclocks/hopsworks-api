@@ -21,8 +21,7 @@ import humps
 
 
 class OnlineConfig:
-    """
-    Metadata object used to provide online Feature Store configuration information for a feature group.
+    """Metadata object used to provide online Feature Store configuration information for a feature group.
     """
 
     def __init__(

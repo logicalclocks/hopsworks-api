@@ -270,7 +270,6 @@ class Connection:
         Returns:
             `List[Project]`: List of Project objects.
         """
-
         return self._project_api._get_projects()
 
     @usage.method_logger
@@ -292,7 +291,6 @@ class Connection:
         Assumes versioning (major.minor.patch).
         A client is considered compatible if the major and minor version matches.
         """
-
         versionPattern = r"\d+\.\d+"
         regexMatcher = re.compile(versionPattern)
 
@@ -616,15 +614,13 @@ class Connection:
 
     @property
     def backend_version(self) -> Optional[str]:
-        """
-        The version of the backend currently connected to hopsworks.
+        """The version of the backend currently connected to hopsworks.
         """
         return self._backend_version
 
     @backend_version.setter
     def backend_version(self, backend_version: str) -> None:
-        """
-        The version of the backend currently connected to hopsworks.
+        """The version of the backend currently connected to hopsworks.
         """
         self._backend_version = backend_version.split("-SNAPSHOT")[
             0

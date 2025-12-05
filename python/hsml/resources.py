@@ -29,6 +29,7 @@ class Resources:
         cores: Number of CPUs.
         memory: Memory (MB) resources.
         gpus: Number of GPUs.
+
     Returns:
         `Resources`. Resource configuration for a predictor or transformer.
     """
@@ -45,7 +46,7 @@ class Resources:
         self._gpus = gpus
 
     def describe(self):
-        """Print a description of the resource configuration"""
+        """Print a description of the resource configuration."""
         util.pretty_print(self)
 
     @classmethod
@@ -73,7 +74,7 @@ class Resources:
 
     @property
     def cores(self):
-        """Number of CPUs to be allocated per instance"""
+        """Number of CPUs to be allocated per instance."""
         return self._cores
 
     @cores.setter
@@ -82,7 +83,7 @@ class Resources:
 
     @property
     def memory(self):
-        """Memory resources to be allocated per instance"""
+        """Memory resources to be allocated per instance."""
         return self._memory
 
     @memory.setter
@@ -91,7 +92,7 @@ class Resources:
 
     @property
     def gpus(self):
-        """Number of GPUs to be allocated per instance"""
+        """Number of GPUs to be allocated per instance."""
         return self._gpus
 
     @gpus.setter
@@ -140,7 +141,7 @@ class ComponentResources(ABC):
         )
 
     def describe(self):
-        """Print a description of the resource configuration"""
+        """Print a description of the resource configuration."""
         util.pretty_print(self)
 
     @classmethod
@@ -203,7 +204,7 @@ class ComponentResources(ABC):
 
     @property
     def num_instances(self):
-        """Number of instances"""
+        """Number of instances."""
         return self._num_instances
 
     @num_instances.setter
@@ -212,7 +213,7 @@ class ComponentResources(ABC):
 
     @property
     def requests(self):
-        """Minimum resources to allocate"""
+        """Minimum resources to allocate."""
         return self._requests
 
     @requests.setter
@@ -221,7 +222,7 @@ class ComponentResources(ABC):
 
     @property
     def limits(self):
-        """Maximum resources to allocate"""
+        """Maximum resources to allocate."""
         return self._limits
 
     @limits.setter

@@ -927,15 +927,9 @@ class TestFeatureGroup:
     def test_init_time_travel_and_stream_uses_resolvers_python(
         self, mocker, monkeypatch
     ):
-        """
-        Purpose: Verify that `_init_time_travel_and_stream` delegates to
-        `_resolve_time_travel_format` and, for the Python engine, to
-        `_resolve_stream_python` to derive `_time_travel_format` and `_stream`.
+        """Verify that `_init_time_travel_and_stream` delegates to `_resolve_time_travel_format` and, for the Python engine, to `_resolve_stream_python` to derive `_time_travel_format` and `_stream`.
 
-        This test does not validate resolver logic; it only checks that the
-        outputs of the resolver functions are propagated to the FeatureGroup
-        instance and that the resolvers are called with the expected arguments
-        (notably that the stream resolver receives the already-resolved format).
+        This test does not validate resolver logic; it only checks that the outputs of the resolver functions are propagated to the FeatureGroup instance and that the resolvers are called with the expected arguments (notably that the stream resolver receives the already-resolved format).
         """
         # Arrange: ensure code path selects Python Engine class
         monkeypatch.setattr("hsfs.engine.get_type", lambda: "python")
@@ -981,14 +975,9 @@ class TestFeatureGroup:
         }
 
     def test_init_time_travel_and_stream_uses_resolver_spark(self, mocker, monkeypatch):
-        """
-        Purpose: Verify that `_init_time_travel_and_stream` delegates to
-        `_resolve_time_travel_format` for setting `_time_travel_format` on the
-        Spark engine, and that it does not call `_resolve_stream_python` nor
-        mutate `_stream` (stream is a Python-engine concern only).
+        """Verify that `_init_time_travel_and_stream` delegates to `_resolve_time_travel_format` for setting `_time_travel_format` on the Spark engine, and that it does not call `_resolve_stream_python` nor mutate `_stream` (stream is a Python-engine concern only).
 
-        This test avoids checking the internal logic of the resolver and only
-        validates the delegation and side-effects of `_init_time_travel_and_stream`.
+        This test avoids checking the internal logic of the resolver and only validates the delegation and side-effects of `_init_time_travel_and_stream`.
         """
         # Arrange: ensure code path selects Spark Engine class
         monkeypatch.setattr("hsfs.engine.get_type", lambda: "spark")

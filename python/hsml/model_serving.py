@@ -48,8 +48,8 @@ class ModelServing:
     @usage.method_logger
     def get_deployment_by_id(self, id: int) -> Optional[Deployment]:
         """Get a deployment by id from Model Serving.
-        Getting a deployment from Model Serving means getting its metadata handle
-        so you can subsequently operate on it (e.g., start or stop).
+
+        Getting a deployment from Model Serving means getting its metadata handle so you can subsequently operate on it (e.g., start or stop).
 
         Example:
             ```python
@@ -61,12 +61,13 @@ class ModelServing:
 
         Parameters:
             id: Id of the deployment to get.
+
         Returns:
             `Deployment`: The deployment metadata object or `None` if it does not exist.
+
         Raises:
             `hopsworks.client.exceptions.RestAPIError`: If unable to retrieve deployment from model serving.
         """
-
         return self._serving_api.get_by_id(id)
 
     @usage.method_logger
@@ -86,12 +87,13 @@ class ModelServing:
 
         Parameters:
             name: Name of the deployment to get.
+
         Returns:
             `Deployment`: The deployment metadata object or `None` if it does not exist.
+
         Raises:
             `hopsworks.client.exceptions.RestAPIError`: If unable to retrieve deployment from model serving.
         """
-
         if name is None and ("DEPLOYMENT_NAME" in os.environ):
             name = os.environ["DEPLOYMENT_NAME"]
         return self._serving_api.get(name)
@@ -101,6 +103,7 @@ class ModelServing:
         self, model: Model = None, status: str = None
     ) -> List[Deployment]:
         """Get all deployments from model serving.
+
         Example:
             ```python
             # login into Hopsworks using hopsworks.login()
@@ -124,10 +127,10 @@ class ModelServing:
             status: Filter by status of the deployments
         Returns:
             `List[Deployment]`: A list of deployments.
+
         Raises:
             `hopsworks.client.exceptions.RestAPIError`: If unable to retrieve deployments from model serving.
         """
-
         model_name = model._get_default_serving_name() if model is not None else None
         if status is not None:
             self._validate_deployment_status(status)
@@ -151,7 +154,6 @@ class ModelServing:
         Returns:
             `List[InferenceEndpoint]`: Inference endpoints for model inference
         """
-
         return self._serving_api.get_inference_endpoints()
 
     @usage.method_logger
@@ -216,7 +218,6 @@ class ModelServing:
         Returns:
             `Predictor`. The predictor metadata object.
         """
-
         if name is None:
             name = model._get_default_serving_name()
 
@@ -299,7 +300,6 @@ class ModelServing:
         Returns:
             `Transformer`. The transformer metadata object.
         """
-
         return Transformer(script_file=script_file, resources=resources)
 
     @usage.method_logger
@@ -345,7 +345,6 @@ class ModelServing:
         Returns:
             `Predictor`. The predictor metadata object.
         """
-
         return Predictor.for_server(
             name=name,
             script_file=script_file,
@@ -431,7 +430,6 @@ class ModelServing:
         Returns:
             `Deployment`. The deployment metadata object.
         """
-
         return Deployment(predictor=predictor, name=name)
 
     @property

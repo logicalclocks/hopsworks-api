@@ -37,9 +37,7 @@ _logger = logging.getLogger(__name__)
 
 
 class TransformationType(Enum):
-    """
-    Class that store the possible types of transformation functions.
-    """
+    """Class that store the possible types of transformation functions."""
 
     MODEL_DEPENDENT = "model_dependent"
     ON_DEMAND = "on_demand"
@@ -159,13 +157,14 @@ class TransformationFunction:
         self._transformation_function_engine.delete(self)
 
     def __call__(self, *features: List[str]) -> TransformationFunction:
-        """
-        Update the feature to be using in the transformation function
+        """Update the feature to be using in the transformation function.
 
         Parameters:
-            features: `List[str]`. Name of features to be passed to the User Defined function
+            features: `List[str]`. Name of features to be passed to the User Defined function.
+
         Returns:
             `HopsworksUdf`: Meta data class for the user defined function.
+
         Raises:
             `hopsworks.client.exceptions.FeatureStoreException`: If the provided number of features do not match the number of arguments in the defined UDF or if the provided feature names are not strings.
         """
@@ -179,11 +178,11 @@ class TransformationFunction:
     def from_response_json(
         cls, json_dict: Dict[str, Any]
     ) -> Union[TransformationFunction, List[TransformationFunction]]:
-        """
-        Function that constructs the class object from its json serialization.
+        """Function that constructs the class object from its json serialization.
 
         Parameters:
             json_dict: `Dict[str, Any]`. Json serialized dictionary for the class.
+
         Returns:
             `TransformationFunction`: Json deserialized class object.
         """
@@ -211,11 +210,11 @@ class TransformationFunction:
     def update_from_response_json(
         self, json_dict: Dict[str, Any]
     ) -> TransformationFunction:
-        """
-        Function that updates the class object from its json serialization.
+        """Function that updates the class object from its json serialization.
 
         Parameters:
             json_dict: `Dict[str, Any]`. Json serialized dictionary for the class.
+
         Returns:
             `TransformationFunction`: Json deserialized class object.
         """
@@ -224,8 +223,7 @@ class TransformationFunction:
         return self
 
     def json(self) -> str:
-        """
-        Convert class into its json serialized form.
+        """Convert class into its json serialized form.
 
         Returns:
             `str`: Json serialized object.
@@ -233,8 +231,7 @@ class TransformationFunction:
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self) -> Dict[str, Any]:
-        """
-        Convert class into a dictionary.
+        """Convert class into a dictionary.
 
         Returns:
             `Dict`: Dictionary that contains all data required to json serialize the object.
@@ -254,19 +251,16 @@ class TransformationFunction:
         }
 
     def alias(self, *args: str):
-        """
-        Set the names of the transformed features output by the transformation function.
-        """
+        """Set the names of the transformed features output by the transformation function."""
         self.__hopsworks_udf.alias(*args)
 
         return self
 
-    def _get_output_column_names(self) -> str:
-        """
-        Function that generates feature names for the transformed features
+    def _get_output_column_names(self) -> list[str]:
+        """Function that generates feature names for the transformed features.
 
         Returns:
-            `List[str]`: List of feature names for the transformed columns
+            List of feature names for the transformed columns.
         """
         # If function name matches the name of an input feature and the transformation function only returns one output feature then
         # then the transformed output feature would have the same name as the input feature. i.e the input feature will get overwritten.
@@ -329,13 +323,11 @@ class TransformationFunction:
     def _validate_transformation_type(
         transformation_type: TransformationType, hopsworks_udf: HopsworksUdf
     ):
-        """
-        Function that returns validates if the defined transformation function can be used for the specified UDF type.
+        """Function that returns validates if the defined transformation function can be used for the specified UDF type.
 
         Raises:
             `hopsworks.client.exceptions.FeatureStoreException` : If the UDF Type is None or if statistics or multiple columns has been output by a on-demand transformation function
         """
-
         if transformation_type == TransformationType.ON_DEMAND:
             if hopsworks_udf.statistics_required:
                 raise FeatureStoreException(
@@ -374,7 +366,7 @@ class TransformationFunction:
 
     @property
     def transformation_type(self) -> TransformationType:
-        """Type of the Transformation : Can be \"model dependent\" or \"on-demand\" """
+        """Type of the Transformation: can be `model dependent` or `on-demand`."""
         return self._transformation_type
 
     @transformation_type.setter
@@ -385,7 +377,7 @@ class TransformationFunction:
     def transformation_statistics(
         self,
     ) -> Optional[TransformationStatistics]:
-        """Feature statistics required for the defined UDF"""
+        """Feature statistics required for the defined UDF."""
         return self.__hopsworks_udf.transformation_statistics
 
     @transformation_statistics.setter
@@ -400,7 +392,7 @@ class TransformationFunction:
 
     @property
     def output_column_names(self) -> List[str]:
-        """Names of the output columns generated by the transformation functions"""
+        """Names of the output columns generated by the transformation functions."""
         if (
             self.__hopsworks_udf.function_name == "one_hot_encoder"
             and len(self.__hopsworks_udf.output_column_names)

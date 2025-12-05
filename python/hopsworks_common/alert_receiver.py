@@ -38,7 +38,7 @@ class EmailConfig:
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        """return the email config as a dictionary"""
+        """Return the email config as a dictionary"""
         return {
             "to": self._to,
             "sendResolved": self._send_resolved,
@@ -65,14 +65,14 @@ class _EmailConfig:
 
     @property
     def to(self) -> Optional[str]:
-        """return the email address of the email config"""
+        """Return the email address of the email config"""
         return self._to
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        """return the email config as a dictionary"""
+        """Return the email config as a dictionary"""
         return {
             "to": self._to,
             "sendResolved": self._send_resolved,
@@ -102,7 +102,7 @@ class SlackConfig:
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        """return the slack config as a dictionary"""
+        """Return the slack config as a dictionary"""
         return {
             "channel": self._channel,
             "sendResolved": self._send_resolved,
@@ -129,14 +129,14 @@ class _SlackConfig:
 
     @property
     def channel(self) -> Optional[str]:
-        """return the channel of the slack config"""
+        """Return the channel of the slack config"""
         return self._channel
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        """return the slack config as a dictionary"""
+        """Return the slack config as a dictionary"""
         return {
             "channel": self._channel,
             "sendResolved": self._send_resolved,
@@ -170,7 +170,7 @@ class PagerDutyConfig:
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        """return the pager duty config as a dictionary"""
+        """Return the pager duty config as a dictionary"""
         return {
             "serviceKey": self._service_key,
             "routingKey": self._routing_key,
@@ -200,19 +200,19 @@ class _PagerDutyConfig:
 
     @property
     def service_key(self) -> Optional[str]:
-        """return the service key of the pager duty config"""
+        """Return the service key of the pager duty config"""
         return self._service_key
 
     @property
     def routing_key(self) -> Optional[str]:
-        """return the routing key of the pager duty config"""
+        """Return the routing key of the pager duty config"""
         return self._routing_key
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        """return the pager duty config as a dictionary"""
+        """Return the pager duty config as a dictionary"""
         return {
             "serviceKey": self._service_key,
             "routingKey": self._routing_key,
@@ -243,7 +243,7 @@ class WebhookConfig:
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        """return the webhook config as a dictionary"""
+        """Return the webhook config as a dictionary"""
         return {
             "url": self._url,
             "sendResolved": self._send_resolved,
@@ -270,14 +270,14 @@ class _WebhookConfig:
 
     @property
     def url(self) -> Optional[str]:
-        """return the url of the webhook config"""
+        """Return the url of the webhook config"""
         return self._url
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        """return the webhook config as a dictionary"""
+        """Return the webhook config as a dictionary"""
         return {
             "url": self._url,
             "sendResolved": self._send_resolved,
@@ -340,34 +340,34 @@ class AlertReceiver:
 
     @property
     def name(self) -> Optional[str]:
-        """return the name of the alert receiver"""
+        """Return the name of the alert receiver"""
         return self._name
 
     @property
     def email_configs(self) -> Optional[list]:
-        """return the email configs of the alert receiver"""
+        """Return the email configs of the alert receiver"""
         return self._email_configs
 
     @property
     def slack_configs(self) -> Optional[list]:
-        """return the slack configs of the alert receiver"""
+        """Return the slack configs of the alert receiver"""
         return self._slack_configs
 
     @property
     def pager_duty_configs(self) -> Optional[list]:
-        """return the pager duty configs of the alert receiver"""
+        """Return the pager duty configs of the alert receiver"""
         return self._pager_duty_configs
 
     @property
     def webhook_configs(self) -> Optional[list]:
-        """return the webhook configs of the alert receiver"""
+        """Return the webhook configs of the alert receiver"""
         return self._webhook_configs
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        """return the alert receiver as a dictionary"""
+        """Return the alert receiver as a dictionary"""
         dict = {
             "name": self._name,
         }

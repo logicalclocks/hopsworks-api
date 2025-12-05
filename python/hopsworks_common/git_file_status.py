@@ -57,7 +57,8 @@ class GitFileStatus:
         Deleted            StatusCode = 'D'
         Renamed            StatusCode = 'R'
         Copied             StatusCode = 'C'
-        UpdatedButUnmerged StatusCode = 'U'"""
+        UpdatedButUnmerged StatusCode = 'U'
+        """
         return self._status
 
     @property

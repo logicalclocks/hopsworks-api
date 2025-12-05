@@ -133,7 +133,6 @@ class Predictor(DeployableComponent):
         Returns:
             `Deployment`. The deployment metadata object of a new or existing deployment.
         """
-
         _deployment = deployment.Deployment(
             predictor=self, name=self._name, description=self._description
         )
@@ -142,11 +141,11 @@ class Predictor(DeployableComponent):
         return _deployment
 
     def describe(self):
-        """Print a description of the predictor"""
+        """Print a description of the predictor."""
         util.pretty_print(self)
 
     def _set_state(self, state: PredictorState):
-        """Set the state of the predictor"""
+        """Set the state of the predictor."""
         self._state = state
 
     @classmethod
@@ -464,6 +463,7 @@ class Predictor(DeployableComponent):
     @property
     def config_file(self):
         """Model server configuration file passed to the model deployment.
+
         It can be accessed via `CONFIG_FILE_PATH` environment variable from a predictor or transformer script.
         For LLM deployments without a predictor script, this file is used to configure the vLLM engine.
         """
@@ -520,7 +520,7 @@ class Predictor(DeployableComponent):
 
     @property
     def environment(self):
-        """Name of the inference environment"""
+        """Name of the inference environment."""
         return self._environment
 
     @environment.setter
@@ -529,7 +529,7 @@ class Predictor(DeployableComponent):
 
     @property
     def project_namespace(self):
-        """Kubernetes project namespace"""
+        """Kubernetes project namespace."""
         return self._project_namespace
 
     @project_namespace.setter

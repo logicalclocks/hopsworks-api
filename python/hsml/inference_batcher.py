@@ -29,6 +29,7 @@ class InferenceBatcher:
         max_batch_size: Maximum requests batch size.
         max_latency: Maximum latency for request batching.
         timeout: Maximum waiting time for request batching.
+
     Returns:
         `InferenceLogger`. Configuration of an inference logger.
     """
@@ -47,7 +48,7 @@ class InferenceBatcher:
         self._timeout = timeout if timeout is not None else None
 
     def describe(self):
-        """Print a description of the inference batcher"""
+        """Print a description of the inference batcher."""
         util.pretty_print(self)
 
     @classmethod

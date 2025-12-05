@@ -89,7 +89,6 @@ class FlinkCluster:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         if self._count_ongoing_executions() > 0:
             raise Exception(
                 "There is already a running FlinkCluster. Use FlinkClusterApi.get_cluster('{}') to get a reference to it.".format(
@@ -146,7 +145,6 @@ class FlinkCluster:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         return self._flink_cluster_api._get_jobs(
             self._get_execution(assert_running=True)
         )
@@ -177,7 +175,6 @@ class FlinkCluster:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         return self._flink_cluster_api._get_job(
             self._get_execution(assert_running=True), job_id
         )
@@ -259,7 +256,6 @@ class FlinkCluster:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         self._flink_cluster_api._upload_jar(
             self._get_execution(assert_running=True), jar_file
         )
@@ -300,7 +296,6 @@ class FlinkCluster:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         return self._flink_cluster_api._submit_job(
             self._get_execution(assert_running=True), jar_id, main_class, job_arguments
         )
@@ -345,7 +340,6 @@ class FlinkCluster:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         return self._flink_cluster_api._job_state(
             self._get_execution(assert_running=True), job_id
         )

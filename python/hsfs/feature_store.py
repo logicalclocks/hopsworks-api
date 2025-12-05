@@ -272,7 +272,6 @@ class FeatureStore:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         if version is None:
             warnings.warn(
                 "No version provided for getting feature group `{}`, defaulting to `{}`.".format(
@@ -374,7 +373,6 @@ class FeatureStore:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         if version is None:
             warnings.warn(
                 "No version provided for getting training dataset `{}`, defaulting to `{}`.".format(
@@ -470,7 +468,6 @@ class FeatureStore:
         Returns:
             DataFrame depending on the chosen type.
         """
-
         return self._feature_group_engine.sql(
             query, self._name, dataframe_type, online, read_options or {}
         )

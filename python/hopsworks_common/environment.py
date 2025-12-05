@@ -112,7 +112,6 @@ class Environment:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         # Wait for any ongoing environment operations
         self._environment_engine.await_environment_command(self.name)
 
@@ -168,7 +167,6 @@ class Environment:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         # Wait for any ongoing environment operations
         self._environment_engine.await_environment_command(self.name)
 

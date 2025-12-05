@@ -52,39 +52,39 @@ class Alert:
 
     @property
     def id(self) -> Optional[int]:
-        """return the id of the alert"""
+        """Return the id of the alert."""
         return self._id
 
     @property
     def status(self) -> Optional[str]:
-        """return the status of the alert"""
+        """Return the status of the alert."""
         return self._status
 
     @property
     def alert_type(self) -> Optional[str]:
-        """return the type of the alert"""
+        """Return the type of the alert."""
         return self._alert_type
 
     @property
     def severity(self) -> Optional[str]:
-        """return the severity of the alert"""
+        """Return the severity of the alert."""
         return self._severity
 
     @property
     def receiver(self) -> Optional[str]:
-        """return the receiver of the alert"""
+        """Return the receiver of the alert."""
         return self._receiver
 
     @property
     def created(self) -> Optional[str]:
-        """return the creation time of the alert"""
+        """Return the creation time of the alert."""
         return self._created
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        """return the alert as a dictionary"""
+        """Return the alert as a dictionary."""
         return {
             "id": self._id,
             "status": self._status,
@@ -131,21 +131,21 @@ class ProjectAlert(Alert):
 
     @property
     def project_name(self) -> Optional[str]:
-        """return the name of the project"""
+        """Return the name of the project."""
         return self._project_name
 
     @property
     def service(self) -> Optional[str]:
-        """return the name of the service"""
+        """Return the name of the service."""
         return self._service
 
     @property
     def threshold(self) -> Optional[str]:
-        """return the threshold of the alert"""
+        """Return the threshold of the alert."""
         return self._threshold
 
     def to_dict(self):
-        """return the alert as a dictionary"""
+        """Return the alert as a dictionary."""
         return {
             "id": self._id,
             "project_name": self._project_name,
@@ -190,16 +190,16 @@ class JobAlert(Alert):
 
     @property
     def job_name(self) -> Optional[str]:
-        """return the name of the job"""
+        """Return the name of the job."""
         return self._job_name
 
     @property
     def threshold(self) -> Optional[str]:
-        """return the threshold of the alert"""
+        """Return the threshold of the alert."""
         return self._threshold
 
     def to_dict(self):
-        """return the alert as a dictionary"""
+        """Return the alert as a dictionary."""
         return {
             "id": self._id,
             "job_name": self._job_name,
@@ -245,21 +245,21 @@ class FeatureGroupAlert(Alert):
 
     @property
     def feature_store_name(self) -> Optional[str]:
-        """return the name of the feature store"""
+        """Return the name of the feature store."""
         return self._feature_store_name
 
     @property
     def feature_group_id(self) -> Optional[str]:
-        """return the id of the feature group"""
+        """Return the id of the feature group."""
         return self._feature_group_id
 
     @property
     def feature_group_name(self) -> Optional[str]:
-        """return the name of the feature group"""
+        """Return the name of the feature group."""
         return self._feature_group_name
 
     def to_dict(self):
-        """return the alert as a dictionary"""
+        """Return the alert as a dictionary."""
         return {
             "id": self._id,
             "feature_store_name": self._feature_store_name,
@@ -308,26 +308,26 @@ class FeatureViewAlert(Alert):
 
     @property
     def feature_store_name(self) -> Optional[str]:
-        """return the name of the feature store"""
+        """Return the name of the feature store."""
         return self._feature_store_name
 
     @property
     def feature_view_id(self) -> Optional[str]:
-        """return the id of the feature view"""
+        """Return the id of the feature view."""
         return self._feature_view_id
 
     @property
     def feature_view_name(self) -> Optional[str]:
-        """return the name of the feature view"""
+        """Return the name of the feature view."""
         return self._feature_view_name
 
     @property
     def feature_view_version(self) -> Optional[str]:
-        """return the version of the feature view"""
+        """Return the version of the feature view."""
         return self._feature_view_version
 
     def to_dict(self):
-        """return the alert as a dictionary"""
+        """Return the alert as a dictionary."""
         return {
             "id": self._id,
             "feature_store_name": self._feature_store_name,

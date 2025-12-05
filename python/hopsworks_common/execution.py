@@ -166,7 +166,6 @@ class Execution:
         Returns:
             `bool`. True if execution ran successfully. False if execution failed or was killed.
         """
-
         is_yarn_job = (
             self.job_type.lower() == "spark"
             or self.job_type.lower() == "pyspark"

@@ -44,7 +44,7 @@ class DeployableComponent(ABC):
     @classmethod
     @abstractmethod
     def from_json(cls, json_decamelized):
-        "To be implemented by the component type"
+        """To be implemented by the component type."""
         pass
 
     @classmethod
@@ -57,12 +57,12 @@ class DeployableComponent(ABC):
 
     @abstractmethod
     def update_from_response_json(self, json_dict):
-        "To be implemented by the component type"
+        """To be implemented by the component type."""
         pass
 
     @abstractmethod
     def to_dict(self):
-        "To be implemented by the component type"
+        """To be implemented by the component type."""
         pass
 
     @property

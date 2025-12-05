@@ -91,7 +91,7 @@ class AlertRoute:
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        """return the alert route as a dictionary"""
+        """Return the alert route as a dictionary"""
         dict = {
             "group_by": self._groupBy,
             "group_wait": self._groupWait,

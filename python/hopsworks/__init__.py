@@ -139,7 +139,6 @@ def login(
         hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         hopsworks.client.exceptions.HopsworksSSLClientError: If SSLError is raised from underlying requests library.
     """
-
     global _connected_project
 
     # If already logged in, should reset connection and follow login procedure as Connection may no longer be valid
@@ -298,14 +297,12 @@ def _handle_ssl_errors(ssl_e):
 
 
 def _get_cached_api_key_path():
-    """
-    This function is used to get an appropriate path to store the user supplied API Key for Serverless Hopsworks.
+    """This function is used to get an appropriate path to store the user supplied API Key for Serverless Hopsworks.
 
     First it will search for .hw_api_key in the current working directory, if it exists it will use it (this is default in 3.0 client)
     Otherwise, falls back to storing the API key in HOME
     If not sufficient permissions are set in HOME to create the API key (writable and executable), it uses the temp directory to store it.
     """
-
     api_key_name = ".hw_api_key"
     api_key_folder = ".{}_hopsworks_app".format(getpass.getuser())
 

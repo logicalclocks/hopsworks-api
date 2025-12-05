@@ -285,8 +285,7 @@ def convert_event_time_to_timestamp(
 
 
 def get_hostname_replaced_url(sub_path: str) -> str:
-    """
-    construct and return an url with public hopsworks hostname and sub path
+    """Construct and return an url with public hopsworks hostname and sub path
     :param self:
     :param sub_path: url sub-path after base url
     :return: href url
@@ -755,16 +754,14 @@ def feature_view_to_json(obj):
 def generate_fully_qualified_feature_name(
     feature_group: feature_group.FeatureGroup, feature_name: str
 ):
-    """
-    Generate the fully qualified feature name for a feature. The fully qualified name is created by concatenating
+    """Generate the fully qualified feature name for a feature. The fully qualified name is created by concatenating
     the project name, feature group name, feature group version and feature name.
     """
     return f"{feature_group._get_project_name()}_{feature_group.name}_{feature_group.version}_{feature_name}"
 
 
 class AsyncTask:
-    """
-    Generic class to represent an async task.
+    """Generic class to represent an async task.
 
     Args:
         func (Callable): The function to run asynchronously.
@@ -792,8 +789,7 @@ class AsyncTask:
 
     @property
     def result(self) -> Any:
-        """
-        The result of the async task.
+        """The result of the async task.
         """
         return self._result
 
@@ -803,8 +799,7 @@ class AsyncTask:
 
     @property
     def event(self) -> threading.Event:
-        """
-        The event that will be set when the async task is finished.
+        """The event that will be set when the async task is finished.
         """
         return self._event
 
@@ -814,15 +809,13 @@ class AsyncTask:
 
     @property
     def requires_connection_pool(self) -> bool:
-        """
-        Whether the task requires a connection pool.
+        """Whether the task requires a connection pool.
         """
         return self._requires_connection_pool
 
 
 class AsyncTaskThread(threading.Thread):
-    """
-    Generic thread class that can be used to run async tasks in a separate thread.
+    """Generic thread class that can be used to run async tasks in a separate thread.
     The thread will create its own event loop and run submitted tasks in that loop.
 
     The thread also store and fetches a connection pool that can be used by the async tasks.
@@ -856,8 +849,7 @@ class AsyncTaskThread(threading.Thread):
         self.daemon = True  # Setting the thread as a daemon thread by default, so it will be terminated when the main thread is terminated.
 
     async def execute_task(self):
-        """
-        Execute the async tasks for the queue.
+        """Execute the async tasks for the queue.
         """
         asyncio.set_event_loop(self._event_loop)
 
@@ -890,16 +882,14 @@ class AsyncTaskThread(threading.Thread):
                 task.event.set()
 
     def stop(self):
-        """
-        Stop the thread and close the event loop.
+        """Stop the thread and close the event loop.
         """
         self.stop_event.set()
         self._event_loop.stop()
         self._event_loop.close()
 
     def run(self):
-        """
-        Execute the async tasks for the queue.
+        """Execute the async tasks for the queue.
         """
         asyncio.set_event_loop(self._event_loop)
         # Initialize the connection pool by using loop.run_until_complete to make sure the connection pool is initialized before the event loop starts running forever.
@@ -923,8 +913,7 @@ class AsyncTaskThread(threading.Thread):
             self._event_loop.close()
 
     def submit(self, task: AsyncTask):
-        """
-        Submit a async task to the thread and block until the execution of the function is completed.
+        """Submit a async task to the thread and block until the execution of the function is completed.
         """
         # Submit a task to the queue.
         self.task_queue.put(task)
@@ -939,21 +928,18 @@ class AsyncTaskThread(threading.Thread):
 
     @property
     def event_loop(self) -> asyncio.AbstractEventLoop:
-        """
-        The event loop used by the thread.
+        """The event loop used by the thread.
         """
         return self._event_loop
 
     @property
     def task_queue(self) -> queue.Queue[AsyncTask]:
-        """
-        The queue used to submit tasks to the thread.
+        """The queue used to submit tasks to the thread.
         """
         return self._task_queue
 
     @property
     def connection_pool(self):
-        """
-        The connection pool used by the thread.
+        """The connection pool used by the thread.
         """
         return self._connection_pool

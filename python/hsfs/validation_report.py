@@ -134,7 +134,7 @@ class ValidationReport:
 
     @property
     def success(self) -> bool:
-        """Overall success of the validation step"""
+        """Overall success of the validation step."""
         return self._success
 
     @success.setter
@@ -189,8 +189,7 @@ class ValidationReport:
 
     @property
     def statistics(self) -> Optional[Dict[str, Any]]:
-        """Statistics field of the validation report which store overall statistics
-        about the validation result, e.g number of failing/successful expectations."""
+        """Statistics field of the validation report which store overall statistics about the validation result, e.g number of failing/successful expectations."""
         return self._statistics
 
     @statistics.setter
@@ -226,8 +225,7 @@ class ValidationReport:
 
     @property
     def ingestion_result(self) -> str:
-        """Overall success of the validation run together with the ingestion
-        validation policy. Indicating if dataframe was ingested or rejected."""
+        """Overall success of the validation run together with the ingestion validation policy, indicating if dataframe was ingested or rejected."""
         return self._ingestion_result
 
     @ingestion_result.setter

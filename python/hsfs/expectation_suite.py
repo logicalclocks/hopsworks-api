@@ -271,8 +271,7 @@ class ExpectationSuite:
             Dict[str, Any],
         ],
     ) -> GeExpectation:
-        """
-        Convert different representation of expectation to Hopsworks GeExpectation type.
+        """Convert different representation of expectation to Hopsworks GeExpectation type.
 
         Parameters:
             expectation: An expectation to convert to Hopsworks GeExpectation type.

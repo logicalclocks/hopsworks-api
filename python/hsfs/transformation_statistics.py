@@ -25,9 +25,7 @@ import humps
 
 @dataclass
 class FeatureTransformationStatistics:
-    """
-    Data class that contains all the statistics parameters that can be used for transformations inside a custom transformation function.
-    """
+    """Data class that contains all the statistics parameters that can be used for transformations inside a custom transformation function."""
 
     extended_statistics: Optional[Union[dict, str]] = None
 
@@ -157,6 +155,7 @@ class FeatureTransformationStatistics:
     @property
     def entropy(self) -> Optional[float]:
         """Entropy is a measure of the level of information contained in an event (feature value) when considering all possible events (all feature values).
+
         Entropy is estimated using observed value counts as the negative sum of (value_count/total_count) * log(value_count/total_count).
 
         Note: Example
@@ -209,8 +208,7 @@ class FeatureTransformationStatistics:
 
 
 class TransformationStatistics:
-    """
-    Class that stores feature transformation statistics of all features that require training dataset statistics in a transformation function.
+    """Class that stores feature transformation statistics of all features that require training dataset statistics in a transformation function.
 
     All statistics for a feature is initially initialized with null values and will be populated with values when training dataset is created for the soe.
 

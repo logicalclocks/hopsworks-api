@@ -670,7 +670,6 @@ class FeatureGroupBase:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-
         self._feature_group_engine.add_tag(self, name, value)
 
     def delete_tag(self, name: str) -> None:
@@ -1321,6 +1320,7 @@ class FeatureGroupBase:
             ge_type:
                 If `True` returns a native Great Expectation type, Hopsworks custom type otherwise.
                 Conversion can be performed via the `to_ge_type()` method on hopsworks type.
+
         Returns:
             All validation reports attached to the feature group.
 
@@ -2224,7 +2224,8 @@ class FeatureGroupBase:
         self,
     ) -> Optional[hsfs.expectation_suite.ExpectationSuite]:
         """Expectation Suite configuration object defining the settings for
-        data validation of the feature group."""
+        data validation of the feature group.
+        """
         return self._expectation_suite
 
     @expectation_suite.setter
@@ -4141,13 +4142,15 @@ class FeatureGroup(FeatureGroupBase):
     @property
     def parents(self) -> List["explicit_provenance.Links"]:
         """Parent feature groups as origin of the data in the current feature group.
-        This is part of explicit provenance"""
+        This is part of explicit provenance
+        """
         return self._parents
 
     @property
     def materialization_job(self) -> Optional["Job"]:
         """Get the Job object reference for the materialization job for this
-        Feature Group."""
+        Feature Group.
+        """
         if self._materialization_job is not None:
             return self._materialization_job
         else:
@@ -4567,7 +4570,6 @@ class ExternalFeatureGroup(FeatureGroupBase):
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
             hopsworks.client.exceptions.FeatureStoreException: If trying to read an external feature group directly in.
         """
-
         if (
             engine.get_type() == "python"
             and not online

@@ -47,7 +47,7 @@ class PredictorState:
         self._status = status
 
     def describe(self):
-        """Print a description of the deployment state"""
+        """Print a description of the deployment state."""
         util.pretty_print(self)
 
     @classmethod
@@ -115,7 +115,7 @@ class PredictorState:
 
     @property
     def model_server_inference_path(self):
-        """Inference path in the model server"""
+        """Inference path in the model server."""
         return self._model_server_inference_path
 
     @property

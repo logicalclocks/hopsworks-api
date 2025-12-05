@@ -53,8 +53,7 @@ class EventEncoder(json.JSONEncoder):
 
 
 class AsyncWorkerThread(threading.Thread):
-    """
-    Thread class to run an asyncio event loop in a separate thread. The event loop is used to run async workers that processes logs.
+    """Thread class to run an asyncio event loop in a separate thread. The event loop is used to run async workers that processes logs.
     """
 
     def __init__(
@@ -70,8 +69,7 @@ class AsyncWorkerThread(threading.Thread):
         )  # Stop event to stop input of new tasks after a close has been called.
 
     def submit_task(self, task: Tuple[dict, dict]):
-        """
-        Function to submit a task to the queue from a different thread so that it can be processed by workers.
+        """Function to submit a task to the queue from a different thread so that it can be processed by workers.
 
         Parameters:
             task: Tuple that contains untransformed and transformed features to be logged.
@@ -84,8 +82,7 @@ class AsyncWorkerThread(threading.Thread):
             )
 
     def _initialize_workers(self, num_workers: int, worker_function: Callable):
-        """
-        Function to initialize workers as tasks in the event loop.
+        """Function to initialize workers as tasks in the event loop.
 
         Parameters:
             num_worker: Number of workers to be initialized.
@@ -96,8 +93,7 @@ class AsyncWorkerThread(threading.Thread):
             self._workers.append(worker)
 
     def run(self):
-        """
-        Thread functions that runs the event loop in the thread and close the event loop with feature logging after the loop is stopped.
+        """Thread functions that runs the event loop in the thread and close the event loop with feature logging after the loop is stopped.
         """
         asyncio.set_event_loop(self._event_loop)
 
@@ -111,8 +107,7 @@ class AsyncWorkerThread(threading.Thread):
         self._event_loop.close()
 
     async def _worker(self, worker_function: Callable):
-        """
-        Function to run the worker function in the event loop, until a None has been submitted to the queue.
+        """Function to run the worker function in the event loop, until a None has been submitted to the queue.
 
         Parameters:
             worker_function: `Callable`. Function to be run by the workers.
@@ -127,8 +122,7 @@ class AsyncWorkerThread(threading.Thread):
             self._tasks_queue.task_done()
 
     def close(self):
-        """
-        Function to stop any more tasks from being submitted and start the graceful stop of the thread.
+        """Function to stop any more tasks from being submitted and start the graceful stop of the thread.
         """
         # Stop any more tasks from being submitted using the stop event.
         self._stop_event.set()
@@ -137,8 +131,7 @@ class AsyncWorkerThread(threading.Thread):
         asyncio.run_coroutine_threadsafe(self.finalize_event_loop(), self._event_loop)
 
     async def finalize_event_loop(self):
-        """
-        Function that gracefully stops the event loop by stopping the workers and waiting for all tasks to be processed.
+        """Function that gracefully stops the event loop by stopping the workers and waiting for all tasks to be processed.
         """
         # Stop workers
         for _ in range(len(self._workers)):
@@ -287,8 +280,7 @@ class AsyncFeatureLogger(FeatureLogger):
         return encode_row(complex_feature_encoder, feature_encoder, features)
 
     def close(self):
-        """
-        Close the async feature logger.
+        """Close the async feature logger.
         """
         # Close the async worker thread
         self._async_worker_thread.close()
