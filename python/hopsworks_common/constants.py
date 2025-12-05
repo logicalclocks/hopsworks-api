@@ -115,9 +115,6 @@ class KAFKA_CONSUMER_CONFIG:
     KEY_DESERIALIZER_CLASS_CONFIG = "key.deserializer"
     VALUE_DESERIALIZER_CLASS_CONFIG = "value.deserializer"
     AUTO_OFFSET_RESET_CONFIG = "auto.offset.reset"
-    ENABLE_AUTO_COMMIT_CONFIG = "enable.auto.commit"
-    KEY_DESERIALIZER_CLASS_CONFIG = "key.deserializer"
-    VALUE_DESERIALIZER_CLASS_CONFIG = "value.deserializer"
 
 
 class ENV_VARS:

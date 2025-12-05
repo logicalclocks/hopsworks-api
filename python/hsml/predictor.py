@@ -329,15 +329,15 @@ class Predictor(DeployableComponent):
             "projectNamespace": self._project_namespace,
         }
         if self.model_name is not None:
-            json = {**json, **{"modelName": self._model_name}}
+            json = {**json, "modelName": self._model_name}
         if self.model_path is not None:
-            json = {**json, **{"modelPath": self._model_path}}
+            json = {**json, "modelPath": self._model_path}
         if self.model_version is not None:
-            json = {**json, **{"modelVersion": self._model_version}}
+            json = {**json, "modelVersion": self._model_version}
         if self.model_framework is not None:
-            json = {**json, **{"modelFramework": self._model_framework}}
+            json = {**json, "modelFramework": self._model_framework}
         if self.environment is not None:
-            json = {**json, **{"environmentDTO": {"name": self._environment}}}
+            json = {**json, "environmentDTO": {"name": self._environment}}
         if self._resources is not None:
             json = {**json, **self._resources.to_dict()}
         if self._inference_logger is not None:
