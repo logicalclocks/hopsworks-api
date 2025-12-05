@@ -576,7 +576,7 @@ class FeatureStore:
                 Defaults to empty list `[]`, and the feature group won't have any foreign key.
             embedding_index:
                 [`EmbeddingIndex`][hsfs.embedding.EmbeddingIndex]. If an embedding index is provided, vector database is used as online feature store.
-                This enables similarity search by using [`FeatureGroup.find_neighbors`](hsfs.feature_group.FeatureGroup.find_neighbors).
+                This enables similarity search by using [`FeatureGroup.find_neighbors`][hsfs.feature_group.FeatureGroup.find_neighbors].
             hudi_precombine_key:
                 A feature name to be used as a precombine key for the `"HUDI"` feature group.
                 If feature group has time travel format `"HUDI"` and hudi precombine key was not specified then the first primary key of the feature group will be used as hudi precombine key.
@@ -769,7 +769,7 @@ class FeatureStore:
                 Defaults to empty list `[]`, and the feature group won't have any foreign key.
             embedding_index:
                 [`EmbeddingIndex`][hsfs.embedding.EmbeddingIndex]. If an embedding index is provided, vector database is used as online feature store.
-                This enables similarity search by using [`FeatureGroup.find_neighbors`](hsfs.feature_group.FeatureGroup.find_neighbors).
+                This enables similarity search by using [`FeatureGroup.find_neighbors`][hsfs.feature_group.FeatureGroup.find_neighbors].
             hudi_precombine_key:
                 A feature name to be used as a precombine key for the `"HUDI"` feature group.
                 If feature group has time travel format `"HUDI"` and hudi precombine key was not specified then the first primary key of the feature group will be used as hudi precombine key.
