@@ -112,7 +112,7 @@ VALID_EMBEDDING_TYPE = {
 def validate_embedding_feature_type(embedding_index, schema):
     if not embedding_index or not schema:
         return
-    feature_type_map = dict([(feat.name, feat.type) for feat in schema])
+    feature_type_map = {feat.name: feat.type for feat in schema}
     for embedding in embedding_index.get_embeddings():
         feature_type = feature_type_map.get(embedding.name)
         if feature_type not in VALID_EMBEDDING_TYPE:
@@ -302,7 +302,7 @@ def verify_attribute_key_names(
     feature_group_obj,  #  FeatureGroup | ExternalFeatureGroup | SpineGroup
     external_feature_group: bool = False,
 ) -> None:
-    feature_names = set(feat.name for feat in feature_group_obj.features)
+    feature_names = {feat.name for feat in feature_group_obj.features}
     if feature_group_obj.primary_key:
         diff = set(feature_group_obj.primary_key) - feature_names
         if diff:

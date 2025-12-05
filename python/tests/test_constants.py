@@ -371,7 +371,7 @@ class TestConstants:
             )
 
     def _get_contants_name_value_dict(self, cls, prefix=None) -> dict:
-        const_dict = dict()
+        const_dict = {}
         for m in inspect.getmembers(cls, lambda m: not (inspect.isroutine(m))):
             n = m[0]  # name
             if (prefix is not None and n.startswith(prefix)) or (

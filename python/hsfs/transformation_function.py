@@ -267,11 +267,9 @@ class TransformationFunction:
         if (
             len(self.__hopsworks_udf.return_types) == 1
             and any(
-                [
-                    self.__hopsworks_udf.function_name
-                    == transformation_feature.feature_name
-                    for transformation_feature in self.__hopsworks_udf._transformation_features
-                ]
+                self.__hopsworks_udf.function_name
+                == transformation_feature.feature_name
+                for transformation_feature in self.__hopsworks_udf._transformation_features
             )
             and (
                 not self.__hopsworks_udf.dropped_features

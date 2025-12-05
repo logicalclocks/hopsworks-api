@@ -3157,7 +3157,7 @@ class FeatureGroup(FeatureGroupBase):
             or (
                 isinstance(features, list)
                 and len(features) > 0
-                and all([isinstance(f, feature.Feature) for f in features])
+                and all(isinstance(f, feature.Feature) for f in features)
             )
             or (features is None and len(self.transformation_functions) > 0)
         ):
@@ -3214,7 +3214,7 @@ class FeatureGroup(FeatureGroupBase):
         if self.statistics_config.enabled and engine.get_type().startswith("spark"):
             self._statistics_engine.compute_and_save_statistics(self, feature_dataframe)
         elif engine.get_type() == "python" and not self.stream:
-            commit_id = [key for key in self.commit_details(limit=1)][0]
+            commit_id = list(self.commit_details(limit=1))[0]
             self._statistics_engine.compute_and_save_statistics(
                 metadata_instance=self,
                 feature_dataframe=feature_dataframe,
@@ -3405,7 +3405,7 @@ class FeatureGroup(FeatureGroupBase):
         if engine.get_type().startswith("spark") and not self.stream:
             self.compute_statistics()
         elif engine.get_type() == "python" and not self.stream:
-            commit_id = [key for key in self.commit_details(limit=1)][0]
+            commit_id = list(self.commit_details(limit=1))[0]
             self._statistics_engine.compute_and_save_statistics(
                 metadata_instance=self,
                 feature_dataframe=feature_dataframe,
@@ -3924,12 +3924,11 @@ class FeatureGroup(FeatureGroupBase):
                 wallclock_time = wallclock_time or datetime.now()
                 # Retrieve fg commit id related to this wall clock time and recompute statistics. It will throw
                 # exception if its not time travel enabled feature group.
-                fg_commit_id = [
-                    commit_id
-                    for commit_id in self._feature_group_engine.commit_details(
+                fg_commit_id = list(
+                    self._feature_group_engine.commit_details(
                         self, wallclock_time, 1
                     ).keys()
-                ][0]
+                )[0]
                 registered_stats = self.get_statistics_by_commit_window(
                     to_commit_time=fg_commit_id
                 )

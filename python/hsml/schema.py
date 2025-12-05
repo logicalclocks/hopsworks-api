@@ -49,7 +49,7 @@ class Schema:
     ):
         # A tensor schema is either ndarray of a list containing name, type and shape dicts
         if isinstance(object, numpy.ndarray) or (
-            isinstance(object, list) and all(["shape" in entry for entry in object])
+            isinstance(object, list) and all("shape" in entry for entry in object)
         ):
             self.tensor_schema = self._convert_tensor_to_schema(object).tensors
         else:

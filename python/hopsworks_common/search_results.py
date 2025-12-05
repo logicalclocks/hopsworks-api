@@ -952,13 +952,11 @@ class FeaturestoreSearchResultByTagKey(FeaturestoreSearchResultBase):
                 if "highlights" in fg
                 and "tags" in fg["highlights"]
                 and any(
-                    [
-                        "<em>" in val.split(":")[0]
-                        for tag in fg["highlights"]["tags"]
-                        if "value" in tag and isinstance(tag["value"], str)
-                        for val in tag["value"].split(",")
-                        if ":" in val
-                    ]
+                    "<em>" in val.split(":")[0]
+                    for tag in fg["highlights"]["tags"]
+                    if "value" in tag and isinstance(tag["value"], str)
+                    for val in tag["value"].split(",")
+                    if ":" in val
                 )
             ]
             if featuregroups
@@ -974,13 +972,11 @@ class FeaturestoreSearchResultByTagKey(FeaturestoreSearchResultBase):
                     "value" in tag and tag["value"] for tag in fv["highlights"]["tags"]
                 )
                 and any(
-                    [
-                        "<em>" in val.split(":")[0]
-                        for tag in fv["highlights"]["tags"]
-                        if "value" in tag and isinstance(tag["value"], str)
-                        for val in tag["value"].split(",")
-                        if ":" in val
-                    ]
+                    "<em>" in val.split(":")[0]
+                    for tag in fv["highlights"]["tags"]
+                    if "value" in tag and isinstance(tag["value"], str)
+                    for val in tag["value"].split(",")
+                    if ":" in val
                 )
             ]
             if feature_views
@@ -996,13 +992,11 @@ class FeaturestoreSearchResultByTagKey(FeaturestoreSearchResultBase):
                     "value" in tag and tag["value"] for tag in td["highlights"]["tags"]
                 )
                 and any(
-                    [
-                        "<em>" in val.split(":")[0]
-                        for tag in td["highlights"]["tags"]
-                        if "value" in tag and isinstance(tag["value"], str)
-                        for val in tag["value"].split(",")
-                        if ":" in val
-                    ]
+                    "<em>" in val.split(":")[0]
+                    for tag in td["highlights"]["tags"]
+                    if "value" in tag and isinstance(tag["value"], str)
+                    for val in tag["value"].split(",")
+                    if ":" in val
                 )
             ]
             if trainingdatasets
@@ -1018,13 +1012,11 @@ class FeaturestoreSearchResultByTagKey(FeaturestoreSearchResultBase):
                     "value" in tag and tag["value"] for tag in f["highlights"]["tags"]
                 )
                 and any(
-                    [
-                        "<em>" in val.split(":")[0]
-                        for tag in f["highlights"]["tags"]
-                        if "value" in tag and isinstance(tag["value"], str)
-                        for val in tag["value"].split(",")
-                        if ":" in val
-                    ]
+                    "<em>" in val.split(":")[0]
+                    for tag in f["highlights"]["tags"]
+                    if "value" in tag and isinstance(tag["value"], str)
+                    for val in tag["value"].split(",")
+                    if ":" in val
                 )
             ]
             if features
@@ -1070,13 +1062,11 @@ class FeaturestoreSearchResultByTagValue(FeaturestoreSearchResultBase):
                 if "highlights" in fg
                 and "tags" in fg["highlights"]
                 and any(
-                    [
-                        "<em>" in val.split(":")[1]
-                        for tag in fg["highlights"]["tags"]
-                        if "value" in tag and isinstance(tag["value"], str)
-                        for val in tag["value"].split(",")
-                        if ":" in val
-                    ]
+                    "<em>" in val.split(":")[1]
+                    for tag in fg["highlights"]["tags"]
+                    if "value" in tag and isinstance(tag["value"], str)
+                    for val in tag["value"].split(",")
+                    if ":" in val
                 )
             ]
             if featuregroups
@@ -1089,13 +1079,11 @@ class FeaturestoreSearchResultByTagValue(FeaturestoreSearchResultBase):
                 if "highlights" in fv
                 and "tags" in fv["highlights"]
                 and any(
-                    [
-                        "<em>" in val.split(":")[1]
-                        for tag in fv["highlights"]["tags"]
-                        if "value" in tag and isinstance(tag["value"], str)
-                        for val in tag["value"].split(",")
-                        if ":" in val
-                    ]
+                    "<em>" in val.split(":")[1]
+                    for tag in fv["highlights"]["tags"]
+                    if "value" in tag and isinstance(tag["value"], str)
+                    for val in tag["value"].split(",")
+                    if ":" in val
                 )
             ]
             if feature_views
@@ -1108,13 +1096,11 @@ class FeaturestoreSearchResultByTagValue(FeaturestoreSearchResultBase):
                 if "highlights" in td
                 and "tags" in td["highlights"]
                 and any(
-                    [
-                        "<em>" in val.split(":")[1]
-                        for tag in td["highlights"]["tags"]
-                        if "value" in tag and isinstance(tag["value"], str)
-                        for val in tag["value"].split(",")
-                        if ":" in val
-                    ]
+                    "<em>" in val.split(":")[1]
+                    for tag in td["highlights"]["tags"]
+                    if "value" in tag and isinstance(tag["value"], str)
+                    for val in tag["value"].split(",")
+                    if ":" in val
                 )
             ]
             if trainingdatasets
@@ -1127,13 +1113,11 @@ class FeaturestoreSearchResultByTagValue(FeaturestoreSearchResultBase):
                 if "highlights" in f
                 and "tags" in f["highlights"]
                 and any(
-                    [
-                        "<em>" in val.split(":")[1]
-                        for tag in f["highlights"]["tags"]
-                        if "value" in tag and isinstance(tag["value"], str)
-                        for val in tag["value"].split(",")
-                        if ":" in val
-                    ]
+                    "<em>" in val.split(":")[1]
+                    for tag in f["highlights"]["tags"]
+                    if "value" in tag and isinstance(tag["value"], str)
+                    for val in tag["value"].split(",")
+                    if ":" in val
                 )
             ]
             if features

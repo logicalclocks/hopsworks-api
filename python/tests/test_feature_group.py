@@ -351,25 +351,25 @@ class TestFeatureGroup:
         query = test_feature_group.select_all()
         features = query.features
         assert len(features) == 5
-        assert set([f.name for f in features]) == {"pk", "fk", "ts", "f1", "f2"}
+        assert {f.name for f in features} == {"pk", "fk", "ts", "f1", "f2"}
 
     def test_select_all_exclude_pk(self):
         query = test_feature_group.select_all(include_primary_key=False)
         features = query.features
         assert len(features) == 4
-        assert set([f.name for f in features]) == {"ts", "fk", "f1", "f2"}
+        assert {f.name for f in features} == {"ts", "fk", "f1", "f2"}
 
     def test_select_all_exclude_fk(self):
         query = test_feature_group.select_all(include_foreign_key=False)
         features = query.features
         assert len(features) == 4
-        assert set([f.name for f in features]) == {"f1", "f2", "pk", "ts"}
+        assert {f.name for f in features} == {"f1", "f2", "pk", "ts"}
 
     def test_select_all_exclude_ts(self):
         query = test_feature_group.select_all(include_event_time=False)
         features = query.features
         assert len(features) == 4
-        assert set([f.name for f in features]) == {"pk", "fk", "f1", "f2"}
+        assert {f.name for f in features} == {"pk", "fk", "f1", "f2"}
 
     def test_select_all_exclude_pk_ts(self):
         query = test_feature_group.select_all(
@@ -377,13 +377,13 @@ class TestFeatureGroup:
         )
         features = query.features
         assert len(features) == 3
-        assert set([f.name for f in features]) == {"f1", "f2", "fk"}
+        assert {f.name for f in features} == {"f1", "f2", "fk"}
 
     def test_select_features(self):
         query = test_feature_group.select_features()
         features = query.features
         assert len(features) == 2
-        assert set([f.name for f in features]) == {"f1", "f2"}
+        assert {f.name for f in features} == {"f1", "f2"}
 
     def test_materialization_job(self, mocker):
         mock_job = mocker.Mock()

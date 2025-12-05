@@ -196,7 +196,7 @@ target-version = "py39"
 
 [tool.ruff.lint]
 # 1. Enable flake8-bugbear (`B`) rules, in addition to the defaults.
-select = ["E4", "E7", "E9", "F", "B", "I", "W", "D2", "D3", "D4"] #, "ANN"]
+select = ["E", "F", "B", "C4", "I", "W", "D2", "D3", "D4"] #, "ANN"]
 ignore = [
     "B905",   # zip has no strict kwarg until Python 3.10
     "ANN101", # Missing type annotation for self in method
@@ -205,6 +205,7 @@ ignore = [
     "ANN002", # Missing type annotation for *args in function
     "ANN401", # Allow Any in type annotations
     "W505",   # Doc line too long
+    "E501",   # Line too long
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.

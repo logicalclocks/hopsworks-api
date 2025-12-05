@@ -455,12 +455,10 @@ class FeatureView:
             training_dataset_version=training_dataset_version,
         )
 
-        self._prefix_serving_key_map = dict(
-            [
-                (f"{sk.prefix}{sk.feature_name}", sk)
-                for sk in self._vector_server.serving_keys
-            ]
-        )
+        self._prefix_serving_key_map = {
+            f"{sk.prefix}{sk.feature_name}": sk
+            for sk in self._vector_server.serving_keys
+        }
         if len(self._get_embedding_fgs()) > 0:
             self._vector_db_client = VectorDbClient(
                 self.query, serving_keys=self._serving_keys
@@ -1103,7 +1101,7 @@ class FeatureView:
                 primary_key_map[sk.required_serving_key] = result_key[sk.feature_name]
         if len(set(self._vector_server.required_serving_keys)) > len(primary_key_map):
             raise FeatureStoreException(
-                f"Failed to get feature vector because required primary key [{', '.join([k for k in set([sk.required_serving_key for sk in self._prefix_serving_key_map.values()]) - primary_key_map.keys()])}] are not present in vector db."
+                f"Failed to get feature vector because required primary key [{', '.join(list({sk.required_serving_key for sk in self._prefix_serving_key_map.values()} - primary_key_map.keys()))}] are not present in vector db."
                 "If the join of the embedding feature group in the query does not have a prefix,"
                 " try to create a new feature view with prefix attached."
             )
@@ -1112,7 +1110,7 @@ class FeatureView:
     def _get_embedding_fgs(
         self,
     ) -> Set[feature_group.FeatureGroup]:
-        return set([fg for fg in self.query.featuregroups if fg.embedding_index])
+        return {fg for fg in self.query.featuregroups if fg.embedding_index}
 
     @usage.method_logger
     def get_batch_data(
@@ -4628,9 +4626,7 @@ class FeatureView:
         "fgId_{feature_group_id}_{join_index}" where `join_index` is the order of the join.
         """
         if not (hasattr(self, "_primary_keys") and len(self._primary_keys) > 0):
-            self._primary_keys = set(
-                [key.required_serving_key for key in self.serving_keys]
-            )
+            self._primary_keys = {key.required_serving_key for key in self.serving_keys}
         return self._primary_keys
 
     @property

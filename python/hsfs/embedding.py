@@ -263,7 +263,7 @@ class EmbeddingIndex:
         if features is None:
             self._features = {}
         else:
-            self._features = dict([(feat.name, feat) for feat in features])
+            self._features = {feat.name: feat for feat in features}
         self._feature_group = None
         self._col_prefix = col_prefix
         self._vector_db_client = None

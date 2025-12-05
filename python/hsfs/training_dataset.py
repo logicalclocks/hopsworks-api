@@ -181,7 +181,7 @@ class TrainingDatasetBase:
         test_start = util.convert_event_time_to_timestamp(test_start)
         test_end = util.convert_event_time_to_timestamp(test_end)
 
-        time_splits = list()
+        time_splits = []
         self._append_time_split(
             time_splits,
             split_name=TrainingDatasetSplit.TRAIN,
