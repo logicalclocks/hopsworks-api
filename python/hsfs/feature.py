@@ -279,22 +279,22 @@ class Feature:
         else:
             return value
 
-    def __lt__(self, other: Any) -> "filter.Filter":
+    def __lt__(self, other) -> "filter.Filter":
         return filter.Filter(self, filter.Filter.LT, self._get_filter_value(other))
 
-    def __le__(self, other: Any) -> "filter.Filter":
+    def __le__(self, other) -> "filter.Filter":
         return filter.Filter(self, filter.Filter.LE, self._get_filter_value(other))
 
-    def __eq__(self, other: Any) -> "filter.Filter":
+    def __eq__(self, other) -> "filter.Filter":
         return filter.Filter(self, filter.Filter.EQ, self._get_filter_value(other))
 
-    def __ne__(self, other: Any) -> "filter.Filter":
+    def __ne__(self, other) -> "filter.Filter":
         return filter.Filter(self, filter.Filter.NE, self._get_filter_value(other))
 
-    def __ge__(self, other: Any) -> "filter.Filter":
+    def __ge__(self, other) -> "filter.Filter":
         return filter.Filter(self, filter.Filter.GE, self._get_filter_value(other))
 
-    def __gt__(self, other: Any) -> "filter.Filter":
+    def __gt__(self, other) -> "filter.Filter":
         return filter.Filter(self, filter.Filter.GT, self._get_filter_value(other))
 
     def contains(self, other: Union[str, List[Any]]) -> "filter.Filter":

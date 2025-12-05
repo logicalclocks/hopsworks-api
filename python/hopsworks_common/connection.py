@@ -23,7 +23,7 @@ import re
 import sys
 import warnings
 import weakref
-from typing import Any, Optional
+from typing import Optional
 
 from hopsworks_common import client, constants, usage, util, version
 from hopsworks_common.client.exceptions import RestAPIError
@@ -637,9 +637,9 @@ class Connection:
     def api_key_value(self, api_key_value: Optional[str]) -> Optional[str]:
         self._api_key_value = api_key_value
 
-    def __enter__(self) -> Connection:
+    def __enter__(self) -> "Connection":
         self.connect()
         return self
 
-    def __exit__(self, type: Any, value: Any, traceback: Any):
+    def __exit__(self, type, value, traceback):
         self.close()

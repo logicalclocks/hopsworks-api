@@ -202,6 +202,7 @@ select = [
     "C4",
     "ISC",
     "PIE",
+    "PYI",
     "I",
     "W",
     "D2",
