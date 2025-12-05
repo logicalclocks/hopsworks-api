@@ -1,228 +1,224 @@
-## Python development setup
+## Python Development Setup
 
----
+01. Fork and clone the repository on GitHub.
 
-- Fork and clone the repository
+02. Create a new Python environment and install the repository in editable mode with development dependencies (we recommend to use [uv](https://docs.astral.sh/uv/)):
 
-- Create a new Python environment with your favourite environment manager (e.g. virtualenv or conda) and Python 3.9 (newer versions will return a library conflict in `auto_doc.py`)
-
-- Install repository in editable mode with development dependencies (we recommend to use [uv](https://docs.astral.sh/uv/)):
-
-  ```bash
-  cd python
-  uv sync --extra dev --all-groups
-  source .venv/bin/activate
-  ```
-
-- To automate linting and formatting, install [pre-commit](https://pre-commit.com/) and then activate its hooks.
-  `pre-commit` is a framework for managing and maintaining multi-language pre-commit hooks.
-  The library uses pre-commit to ensure code-style and code formatting through [ruff](https://docs.astral.sh/ruff/).
-  Activate the git hooks with:
-
-  ```bash
-  pre-commit install
-  ```
-
-  Afterwards, pre-commit will run whenever you commit.
-
-- To run formatting and code-style separately, you can configure your IDE, such as VSCode, to use `ruff`, or run it via the command line (assuming you are in the `python` subdirectory):
-
-  ```bash
-  # linting
-  ruff check --fix
-  # formatting
-  ruff format
-  ```
-
-### Python documentation
-
-We follow a few best practices for writing the Python documentation:
-
-01. Use the Google docstring style:
-
-    ```python
-    """[One Line Summary]
-
-    [Extended Summary]
-
-    [Example: [Example Title]
-        import xyz
-    ]
-
-    Parameters:
-        arg1: Description.
-        arg2:
-            A long description.
-            Should be use in case it is multi-line.
-
-    Returns:
-        Description.
-
-    Raises:
-        ExceptionType: Description.
-    """
+    ```bash
+    cd python
+    uv sync --extra dev --all-groups
+    source .venv/bin/activate
     ```
 
-    If Python 3 type annotations are used, they are inserted automatically.
+03. The repository uses a number of automated checks and tests which you have to satisfy before your PR can be merged, see `.github/workflows/python.yml` for the exact checks.
 
-02. Hopsworks entity engine methods (e.g. ExecutionEngine etc.) only require a single line docstring.
-03. Private REST API implementations (e.g. FeatureGroupApi etc.) should be fully documented with docstrings without defaults.
-04. Public API such as metadata objects and public REST API implementations should be fully documented with defaults.
+    To run the tests locally, use `pytest`:
 
-#### Setup and Build Documentation
+    ```bash
+    pytest tests
+    ```
 
-We use `mkdocs` together with `mike` ([for versioning](https://github.com/jimporter/mike/)) to build the documentation and a plugin called `keras-autodoc` to auto generate Python API documentation from docstrings.
+    The linting and formatting are done via [ruff](https://docs.astral.sh/ruff/), see `tool.ruff` section of `pyproject.toml` for the configuration.
 
-**Background about `mike`:**
-`mike` builds the documentation and commits it as a new directory to the gh-pages branch.
-Each directory corresponds to one version of the documentation.
-Additionally, `mike` maintains a json in the root of gh-pages with the mappings of versions/aliases for each of the directories available.
-With aliases you can define extra names like `dev` or `latest`, to indicate stable and unstable releases.
+    - To automate linting and formatting, install [`pre-commit`](https://pre-commit.com/) and then activate its hooks.
+      `pre-commit` is a framework for managing and maintaining multi-language pre-commit hooks.
+      Activate the git hooks with:
 
-##### 1. Install dependencies
+      ```bash
+      pre-commit install
+      ```
 
-Install Hopsworks with the required dependencies (assuming you are in the root directory of the repository):
+      Afterwards, `pre-commit` will run whenever you commit.
+      It is not guaranteed that it will fix all linting problems.
+
+    - To run formatting and code-style separately, you can configure your IDE, such as VSCode, to use [the `ruff` extension](https://marketplace.visualstudio.com/items?itemName=charliermarsh.ruff), or run it via the command line:
+
+      ```bash
+      # linting
+      ruff check --fix
+      # formatting
+      ruff format
+      ```
+
+### Python API Reference Documentation
+
+The [`hopsworks-api`](https://github.com/logicalclocks/hopsworks-api) repository contains the code of our Python API, and its reference documentation is built from the docstrings in the code.
+The rest of the documentation is located in [`logicalclocks.github.io`](https://github.com/logicalclocks/logicalclocks.github.io) repository.
+To build the full docs, `hopsworks-api` is cloned into `logicalclocks.github.io` as a subdirectory and then the whole docs are built as a single website.
+For the details of the building process, see [`README.md`](https://github.com/logicalclocks/logicalclocks.github.io/blob/main/README.md) of `logicalclocks.github.io`.
+The whole building process is automated and is triggered on a releasing push to the release branches of `hopsworks-api` via `.github/workflows/mkdocs-release.yml` GitHub Action.
+
+For development purposes, you can build and serve the Python API reference documentation locally (assuming you have activated the virtual environment):
 
 ```bash
-uv sync --extra dev --all-groups --project python
-source python/.venv/bin/activate
-```
-
-##### 2. Run autodoc script
-
-To build the docs, first run the autodoc script:
-
-```bash
-python python/auto_doc.py
-```
-
-##### 3. Option 1: Build only current version of docs
-
-Either build the docs, or serve them dynamically:
-
-Note: Links and pictures might not resolve properly later on when checking with this build.
-The reason for that is that the docs are deployed with versioning on docs.hopsworks.ai and therefore another level is added to all paths, e.g. `docs.hopsworks.ai/[version-or-alias]`.
-Using relative links should not be affected by this, however, building the docs with version (Option 2) is recommended.
-
-```bash
-mkdocs build
-# or
 mkdocs serve
 ```
 
-##### 3. Option 2 (Preferred): Build multi-version doc with `mike`
+Note that the visuals and the structure of the website are different when building only the `hopsworks-api` documentation, as the full website uses a custom theme and additional plugins.
+You can use local serving for checking that the docstrings are provided in correct format and the individual entity documentation is correct, but not to ensure how the full docs look.
 
-###### Versioning on docs.hopsworks.ai
+#### Docstring Guidelines
 
-On docs.hopsworks.ai we implement the following versioning scheme:
+Everything public should have a docstring, following [PEP-257](https://peps.python.org/pep-0257/) and formatted using [the Google style](https://mkdocstrings.github.io/griffe/reference/docstrings/#google-style).
+We use [mkdocs-material admonitions](https://squidfunk.github.io/mkdocs-material/reference/admonitions/?h=admoni#supported-types) where appropriate, which we specify using the [Google style](https://mkdocstrings.github.io/griffe/reference/docstrings/#google-admonitions) as well.
+We do _not_ specify the types or defaults of parameters in the docstrings, as they are automatically extracted from the signatures by the documentation generator, so specify them in the signature.
 
-- current master branches (e.g. of hopsworks corresponding to master of Hopsworks): rendered as current Hopsworks snapshot version, e.g. **4.0.0-SNAPSHOT [dev]**, where `dev` is an alias to indicate that this is an unstable version.
-- the latest release: rendered with full current version, e.g. **3.8.0 [latest]** with `latest` alias to indicate that this is the latest stable release.
-- previous stable releases: rendered without alias, e.g. **3.4.4**.
+##### Writing Good Docstrings
 
-###### 4. Build Instructions
-
-For this you can either checkout and make a local copy of the `upstream/gh-pages` branch, where `mike` maintains the current state of docs.hopsworks.ai, or just build documentation for the branch you are updating:
-
-Building *one* branch:
-
-Checkout your dev branch with modified docs:
-
-```bash
-git checkout [dev-branch]
-```
-
-Generate API docs if necessary:
-
-```bash
-python auto_doc.py
-```
-
-Build docs with a version and alias
-
-```bash
-mike deploy [version] [alias] --update-alias
-
-# for example, if you are updating documentation to be merged to master,
-# which will become the new SNAPSHOT version:
-mike deploy 4.0.0-SNAPSHOT dev --update-alias
-
-# if you are updating docs of the latest stable release branch
-mike deploy [version] latest --update-alias
-
-# if you are updating docs of a previous stable release branch
-mike deploy [version]
-```
-
-If no gh-pages branch existed in your local repository, this will have created it.
-
-**Important**: If no previous docs were built, you will have to choose a version as default to be loaded as index, as follows
-
-```bash
-mike set-default [version-or-alias]
-```
-
-You can now checkout the gh-pages branch and serve:
-
-```bash
-git checkout gh-pages
-mike serve
-```
-
-You can also list all available versions/aliases:
-
-```bash
-mike list
-```
-
-Delete and reset your local gh-pages branch:
-
-```bash
-mike delete --all
-
-# or delete single version
-mike delete [version-or-alias]
-```
-
-#### Adding new API documentation
-
-To add new documentation for APIs, you need to add information about the method/class to document to the `auto_doc.py` script:
+Avoid tautological docstrings.
+For example, instead of:
 
 ```python
-PAGES = {
-    "connection.md": [
-        "hopsworks.connection.Connection.connection"
-    ]
-    "new_template.md": [
-            "module",
-            "xyz.asd"
-    ]
-}
+description: str
+"""Description of the feature."""
 ```
 
-Now you can add a template markdown file to the `docs/templates` directory with the name you specified in the auto-doc script.
-The `new_template.md` file should contain a tag to identify the place at which the API documentation should be inserted:
+write:
 
-````markdown
-## The XYZ package
+```python
+description: str
+"""The description of the feature as it is shown in the UI."""
+```
 
-{{module}}
+Note how here the user gets new information about `description` which is not deducible from the name alone, concretely, that the description parameter is shown in the UI.
 
-Some extra content here.
+Always try to provide an insight or show the intent of the method or class in the docstring, instead of just repeating its name or signature.
+Instead of a warning which does not really explain the reasons to be cautious, like:
 
-Example:
-    ```python
-    import xyz
-    ```
+```plaintext
+Danger: Potentially dangerous operation
+    This operation stops the execution.
+```
 
-{{xyz.asd}}
-````
+write something like:
 
-Finally, run the `auto_doc.py` script, as decribed above, to update the documentation.
+```plaintext
+Danger: Potentially dangerous operation
+    This operation kills the execution, without allowing it to shut down gracefully.
+    This may result in corrupted data, which can be very hard to reverse.
+```
 
-For information about Markdown syntax and possible Admonitions/Highlighting etc. see the [Material for Mkdocs themes reference documentation](https://squidfunk.github.io/mkdocs-material/reference/abbreviations/).
+Note how in the second example it becomes clear why exactly the operation is dangerous, and therefore the user can make an educated choice on whether to use it.
+Never write "do not do ..." without explaining the reasons behind these restrictions.
 
-## Java development setup
+Overall, think about what information the user of the API would need to know in order to use it correctly and effectively, and provide that information in the docstrings in a concise and precise manner.
+
+##### Technicalities
+
+Always place a sentence per line for clear git diffs.
+
+Overall a docstrings should be structured as follows:
+
+```python
+"""Does something.
+
+The details about the exact way something is done.
+It can span multiple lines or paragraphs.
+Use proper sentences for everything in the docstring except admonition titles; that is, start with a capital letter and end with a period, question or exclamation mark.
+
+Note: Use admonitions
+    Where appropriate, use admonitions to highlight important information.
+
+After the full description, list the parameters, return values, raised exceptions, and examples.
+
+Parameters:
+    param1: A one-line description of param1.
+    param2:
+        A multi-line description of param2.
+        In this case, the first line should be on the next line and indented.
+
+Returns:
+    A description of the return value.
+
+Raises:
+    SomeError: If something goes wrong.
+```
+
+You should use `Yields` instead of `Returns` for generator functions.
+Also, always use `Example` admonition instead of `Examples` section, as it will not be rendered correctly.
+
+For example, a method docstring could look like this:
+
+```python
+def delete(self, path: str, missing_ok: bool = False) -> None:
+    """Delete a file or directory at the given path.
+
+    The path can be specified with or without the project prefix, that is, `/Projects/{project_name}`.
+
+    Example: Ensuring a file or directory does not exist
+        ```python
+        import hopsworks
+
+        project = hopsworks.login()
+        project.get_dataset_api().delete("/my_tmp", missing_ok=True)
+        ```
+
+    Parameters:
+        path: The path to the file or directory to delete.
+        missing_ok: Whether to raise an error if the file or directory does not exist.
+
+    Raises:
+        hopsworks.client.exceptions.RestAPIError: If the server returns an error.
+        FileNotFoundError: If `missing_ok` is `False` and the file or directory does not exist.
+    """
+    ...
+```
+
+Or this:
+
+```python
+def contains(self, other: str | list) -> filter.Filter:
+    """Construct a filter similar to SQL's `IN` operator.
+
+    Warning: Deprecated
+        `contains` method is deprecated.
+        Use [`isin`][hsfs.feature.Feature.isin] instead.
+
+    Parameters:
+        other: A single feature value or a list of feature values.
+
+    Returns:
+        A filter that leaves only the feature values also contained in `other`.
+    """
+```
+
+#### Extending the API Reference
+
+To create a new API reference page, you have to create a new markdown file in `docs` and add it to the `nav` section of the `mkdocs.yml` file:
+
+```yaml
+nav:
+  - Login: login.md
+  - Platform API:
+    - ...
+    - New Package: new_package.md
+```
+
+Inside the `new_package.md` file you can use `:::` syntax to include the documentation of different Python entities by providing their full path:
+
+```markdown
+# The New Package
+
+::: hopsworks_common.new_package.NewClass
+```
+
+You can add more entities as needed using the same include syntax.
+Prefer to include all the information into the docstring, and avoid writting Markdown text inside the markdown files of `docs` directory, except for the main title and the includes.
+We plan to move to fully automatic API reference generation in the future, which would not support custom Markdown text outside the docstrings.
+
+##### Summary
+
+- Always document public classes, methods, functions, and modules.
+- Show the intent and provide an insight with your docstrings, avoid tautologies.
+- Do not place a warning without a proper explanation of the reasons behind it.
+- Use proper sentences, starting with a capital letter and ending with a period, question or exclamation mark.
+- Place a sentence per line.
+- Use Google style for docstrings.
+- Use mkdocs-material admonitions where appropriate.
+- Do not duplicate information that can be extracted from the code signatures.
+- Keep the documentation in the code (docstrings) as complete as possible, and avoid writing custom Markdown text in the files of the `docs` directory.
+
+## Java Development Setup
 
 You must add the Hopsworks Enterprise Edition repository to your `~/.m2/settings.xml` file in order to build the Java code.
 You can get access to the repository using your nexus credentials.
@@ -230,17 +226,17 @@ Add the following to your `settings.xml`:
 
 ```xml
 <settings>
-<servers>
-  <server>
-    <id>HopsEE</id>
-    <username>YOUR_NEXUS_USERNAME</username>
-    <password>YOUR_NEXUS_PASSWORD</password>
-  </server>
-</servers>
+  <servers>
+    <server>
+      <id>HopsEE</id>
+      <username>YOUR_NEXUS_USERNAME</username>
+      <password>YOUR_NEXUS_PASSWORD</password>
+    </server>
+  </servers>
 </settings>
 ```
 
-You can then build either hsfs or hsfs_utils:
+You can then build either `hsfs` or `hsfs_utils`:
 
 ```bash
 cd java
