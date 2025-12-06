@@ -10,15 +10,14 @@
     "version": "4.5.0-RC9",
     "title": "4.5.0-RC9",
     "aliases": [
+      "latest",
       "4.5"
     ]
   },
   {
     "version": "4.5.0-RC8",
     "title": "4.5.0-RC8",
-    "aliases": [
-      "latest"
-    ]
+    "aliases": []
   },
   {
     "version": "4.5.0-RC7",
