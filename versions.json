@@ -67,8 +67,8 @@
     "version": "4.4.3",
     "title": "4.4.3",
     "aliases": [
-      "latest",
-      "4.4"
+      "4.4",
+      "latest"
     ]
   },
   {
@@ -119,11 +119,16 @@
     "aliases": []
   },
   {
-    "version": "4.2.9",
-    "title": "4.2.9",
+    "version": "4.2.10",
+    "title": "4.2.10",
     "aliases": [
       "4.2"
     ]
+  },
+  {
+    "version": "4.2.9",
+    "title": "4.2.9",
+    "aliases": []
   },
   {
     "version": "4.2.8",
