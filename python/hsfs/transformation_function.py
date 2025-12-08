@@ -50,7 +50,10 @@ class TransformationType(Enum):
 class TransformationFunction:
     NOT_FOUND_ERROR_CODE = 270160
     """
-    DTO class for transformation functions.
+    DTO class for transformation functions, that is used to store and retrieve transformation functions from the backend.
+    A transformation function is created in Hopsworks in two cases
+       - When a UDF created using the `@udf` decorator is attached to a feature view/feature group.
+       - If a transformation function is fetched or saved from the backend.
 
     # Arguments
         featurestore_id : `int`. Id of the feature store in which the transformation function is saved.
@@ -165,7 +168,7 @@ class TransformationFunction:
         # Arguments
             features: `List[str]`. Name of features to be passed to the User Defined function
         # Returns
-            `HopsworksUdf`: Meta data class for the user defined function.
+            `TransformationFunction`: Transformation function object, with the updated input features names.
         # Raises
             `hopsworks.client.exceptions.FeatureStoreException`: If the provided number of features do not match the number of arguments in the defined UDF or if the provided feature names are not strings.
         """
@@ -256,6 +259,11 @@ class TransformationFunction:
     def alias(self, *args: str):
         """
         Set the names of the transformed features output by the transformation function.
+
+        # Arguments
+            args: `str`. The names of the output features returned from the UDF.
+        # Returns
+            `TransformationFunction`: The transformation function object with the updated output feature names.
         """
         self.__hopsworks_udf.alias(*args)
 
@@ -343,8 +351,8 @@ class TransformationFunction:
                 )
 
     @property
-    def id(self) -> id:
-        """Transformation function id."""
+    def id(self) -> int:
+        """The id for the transformation function that can be used to uniquely identify it in the backend."""
         return self._id
 
     @id.setter
@@ -353,7 +361,10 @@ class TransformationFunction:
 
     @property
     def version(self) -> int:
-        """Version of the transformation function."""
+        """The version number of the transformation function.
+        Multiple versions of a transformation function can be created and saved in the backend by using the `feature_store.create_transformation_function` method.
+        These can be retrieved by using the `feature_store.get_transformation_function` method.
+        """
         return self._version
 
     @version.setter
@@ -362,7 +373,7 @@ class TransformationFunction:
 
     @property
     def hopsworks_udf(self) -> HopsworksUdf:
-        """Meta data class for the user defined transformation function."""
+        """The metadata object for a "User Defined Function" (UDF) that contains all information about a UDF like the function name, return type, arguments, output column names, and more."""
         # Make sure that the output column names for a model-dependent or on-demand transformation function, when accessed externally from the class.
         if (
             self.transformation_type
@@ -385,7 +396,7 @@ class TransformationFunction:
     def transformation_statistics(
         self,
     ) -> Optional[TransformationStatistics]:
-        """Feature statistics required for the defined UDF"""
+        """Object that store the statistics for all features that require training dataset statistics in a transformation function."""
         return self.__hopsworks_udf.transformation_statistics
 
     @transformation_statistics.setter
