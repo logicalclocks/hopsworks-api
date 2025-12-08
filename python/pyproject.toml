@@ -116,8 +116,11 @@ docs = [
     "markdown==3.9",
     "pymdown-extensions==10.17.2",
     "mkdocs-minify-plugin>=0.2.0",
-    "mkdocs-multirepo-plugin",
-    "mkdocstrings[python]",
+    "mkdocs-multirepo-plugin==0.8.3",
+    "mkdocstrings[python]==1.0.0; python_version>='3.10'",
+    "mkdocstrings-python==2.0.1; python_version>='3.10'",
+    "mkdocstrings[python]==0.28.3; python_version<'3.10'",
+    "mkdocstrings-python==1.16.12; python_version<'3.10'",
     "polars==0.20.31",
 ]
 pre-commit = ["pre-commit"]
