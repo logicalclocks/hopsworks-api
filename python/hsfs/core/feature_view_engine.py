@@ -1279,7 +1279,10 @@ class FeatureViewEngine:
         ]
         for df in dataframes:
             if df is not None and engine.get_instance().check_supported_dataframe(df):
-                features = engine.get_instance().parse_schema_feature_group(df)
+                supported_df = engine.get_instance().convert_to_default_dataframe(df)
+                features = engine.get_instance().parse_schema_feature_group(
+                    supported_df
+                )
                 for feature in features:
                     # If the feature names in a label, then add the prefix to get the correct logging feature name.
                     if feature.name in label_features:

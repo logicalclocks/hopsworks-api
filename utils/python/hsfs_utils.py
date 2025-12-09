@@ -383,7 +383,12 @@ def offline_fg_materialization(
     entity.stream = False  # to make sure we dont write to kafka
 
     # Do not apply transformation function at this point since the data written to Kafka already has transformations applied.
-    entity.insert(deduped_df, storage="offline", transform=False)
+    entity.insert(
+        deduped_df,
+        storage="offline",
+        transform=False,
+        validation_options={"schema_validation": False},
+    )
 
     # save offsets
     offset_df = spark.createDataFrame([offset_dict])
