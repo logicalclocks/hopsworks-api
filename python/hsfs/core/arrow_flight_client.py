@@ -16,7 +16,6 @@
 from __future__ import annotations
 
 import base64
-import datetime
 import json
 import logging
 import warnings
@@ -90,12 +89,17 @@ def _is_no_commits_found_error(exception):
 
 
 def _is_no_metadata_found_error(exception):
-    return isinstance(
-        exception, pyarrow._flight.FlightServerError
-    ) and any(
+    return isinstance(exception, pyarrow._flight.FlightServerError) and any(
         msg in str(exception)
         for msg in ["No hudi properties found", "No delta logs found"]
     )
+
+
+def _is_no_data_found_error(exception):
+    # Error message: 'No data found for featuregroup fg_read_uvbhz.fg_polars_online_true_1. Detail: Failed....
+    return isinstance(
+        exception, pyarrow._flight.FlightServerError
+    ) and "No data found" in str(exception)
 
 
 def _should_retry_healthcheck(exception):
@@ -426,7 +430,11 @@ class ArrowFlightClient:
                         raise FeatureStoreException(
                             "Hopsworks Query Service is busy right now. Please try again later."
                         ) from e
-                    elif _is_no_commits_found_error(e) or _is_no_metadata_found_error(e):
+                    elif (
+                        _is_no_commits_found_error(e)
+                        or _is_no_metadata_found_error(e)
+                        or _is_no_data_found_error(e)
+                    ):
                         raise FeatureStoreException(str(e).split("Details:")[0]) from e
                     else:
                         raise FeatureStoreException(user_message) from e

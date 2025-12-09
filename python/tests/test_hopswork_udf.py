@@ -811,7 +811,7 @@ def test_function():
             == "`test_func_col1_0` bigint, `test_func_col1_1` double, `test_func_col1_2` string, `test_func_col1_3` date, `test_func_col1_4` timestamp, `test_func_col1_5` timestamp, `test_func_col1_6` boolean"
         )
 
-    def test_pandas_udf_wrapper_single_output(self):
+    def test_pandas_udf_wrapper_single_output_return_series(self):
         test_dataframe = pd.DataFrame({"col1": [1, 2, 3, 4]})
 
         @udf(int)
@@ -822,6 +822,20 @@ def test_function():
         renaming_wrapper_function = test_func.pandas_udf_wrapper()
 
         result = renaming_wrapper_function(test_dataframe["col1"])
+
+        assert result.name == "test_func_col1_"
+        assert result.values.tolist() == [2, 3, 4, 5]
+
+    def test_pandas_udf_wrapper_single_output_return_dataframe(self):
+        @udf(int)
+        def test_func(col1):
+            return pd.DataFrame({"out1": col1 + 1})
+
+        test_func.output_column_names = ["test_func_col1_"]
+        renaming_wrapper_function = test_func.pandas_udf_wrapper()
+
+        test_dataframe = pd.DataFrame({"column1": [1, 2, 3, 4]})
+        result = renaming_wrapper_function(test_dataframe["column1"])
 
         assert result.name == "test_func_col1_"
         assert result.values.tolist() == [2, 3, 4, 5]

@@ -214,7 +214,12 @@ class TestArrowFlightClient:
         # Assert
         query_object_reference = {
             "query_string": "SELECT * FROM...",
-            "features": {"test.fg_test_1": [{'name': 'intt', 'type': 'int'}, {'name': 'stringt', 'type': 'string'}]},
+            "features": {
+                "test.fg_test_1": [
+                    {"name": "intt", "type": "int"},
+                    {"name": "stringt", "type": "string"},
+                ]
+            },
             "filters": {
                 "type": "logic",
                 "logic_type": "AND",
@@ -288,7 +293,12 @@ class TestArrowFlightClient:
         # Assert
         query_object_reference = {
             "query_string": "SELECT * FROM...",
-            "features": {"test.fg_test_1": [{'name': 'intt', 'type': 'int'}, {'name': 'stringt', 'type': 'string'}]},
+            "features": {
+                "test.fg_test_1": [
+                    {"name": "intt", "type": "int"},
+                    {"name": "stringt", "type": "string"},
+                ]
+            },
             "filters": {
                 "type": "logic",
                 "logic_type": "SINGLE",
@@ -329,7 +339,12 @@ class TestArrowFlightClient:
         # Assert
         query_object_reference = {
             "query_string": "SELECT * FROM...",
-            "features": {"test.fg_test_1": [{'name': 'intt', 'type': 'int'}, {'name': 'stringt', 'type': 'string'}]},
+            "features": {
+                "test.fg_test_1": [
+                    {"name": "intt", "type": "int"},
+                    {"name": "stringt", "type": "string"},
+                ]
+            },
             "filters": {
                 "type": "logic",
                 "logic_type": "SINGLE",
@@ -370,7 +385,12 @@ class TestArrowFlightClient:
         # Assert
         query_object_reference = {
             "query_string": "SELECT * FROM...",
-            "features": {"test.fg_test_1": [{'name': 'intt', 'type': 'int'}, {'name': 'stringt', 'type': 'string'}]},
+            "features": {
+                "test.fg_test_1": [
+                    {"name": "intt", "type": "int"},
+                    {"name": "stringt", "type": "string"},
+                ]
+            },
             "filters": {
                 "type": "logic",
                 "logic_type": "SINGLE",
@@ -423,14 +443,14 @@ class TestArrowFlightClient:
             "query_string": "SELECT * FROM...",
             "features": {
                 "test.tpch1snowflake_1": [
-                    {'name': 'c_acctbal', 'type': 'decimal(12,2)'},
-                    {'name': 'c_address', 'type': 'string'},
-                    {'name': 'c_comment', 'type': 'string'},
-                    {'name': 'c_custkey', 'type': 'decimal(38,0)'},
-                    {'name': 'c_mktsegment', 'type': 'string'},
-                    {'name': 'c_name', 'type': 'string'},
-                    {'name': 'c_nationkey', 'type': 'decimal(38,0)'},
-                    {'name': 'c_phone', 'type': 'string'}
+                    {"name": "c_acctbal", "type": "decimal(12,2)"},
+                    {"name": "c_address", "type": "string"},
+                    {"name": "c_comment", "type": "string"},
+                    {"name": "c_custkey", "type": "decimal(38,0)"},
+                    {"name": "c_mktsegment", "type": "string"},
+                    {"name": "c_name", "type": "string"},
+                    {"name": "c_nationkey", "type": "decimal(38,0)"},
+                    {"name": "c_phone", "type": "string"},
                 ]
             },
             "filters": {

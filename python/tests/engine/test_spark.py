@@ -1255,6 +1255,280 @@ class TestSpark:
         assert mock_spark_engine_save_online_dataframe.call_count == 1
         assert mock_spark_engine_save_offline_dataframe.call_count == 0
 
+    def test_save_dataframe_delta_calls_check_duplicate_records(self, mocker):
+        # Arrange
+        mock_check_duplicate_records = mocker.patch(
+            "hsfs.engine.spark.Engine._check_duplicate_records"
+        )
+        mock_spark_engine_save_offline_dataframe = mocker.patch(
+            "hsfs.engine.spark.Engine._save_offline_dataframe"
+        )
+
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["pk1"],
+            partition_key=[],
+            id=10,
+            time_travel_format="DELTA",
+        )
+
+        mock_dataframe = mocker.Mock(spec=DataFrame)
+
+        # Act
+        spark_engine.save_dataframe(
+            feature_group=fg,
+            dataframe=mock_dataframe,
+            operation="insert",
+            online_enabled=False,
+            storage="offline",
+            offline_write_options=None,
+            online_write_options=None,
+            validation_id=None,
+        )
+
+        # Assert
+        assert mock_check_duplicate_records.call_count == 1
+        mock_check_duplicate_records.assert_called_once_with(mock_dataframe, fg)
+        assert mock_spark_engine_save_offline_dataframe.call_count == 1
+
+    def test_save_dataframe_non_delta_does_not_call_check_duplicate_records(
+        self, mocker
+    ):
+        # Arrange
+        mock_check_duplicate_records = mocker.patch(
+            "hsfs.engine.spark.Engine._check_duplicate_records"
+        )
+        mock_spark_engine_save_offline_dataframe = mocker.patch(
+            "hsfs.engine.spark.Engine._save_offline_dataframe"
+        )
+
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["pk1"],
+            partition_key=[],
+            id=10,
+            time_travel_format="HUDI",
+        )
+
+        mock_dataframe = mocker.Mock(spec=DataFrame)
+
+        # Act
+        spark_engine.save_dataframe(
+            feature_group=fg,
+            dataframe=mock_dataframe,
+            operation="insert",
+            online_enabled=False,
+            storage="offline",
+            offline_write_options=None,
+            online_write_options=None,
+            validation_id=None,
+        )
+
+        # Assert
+        assert mock_check_duplicate_records.call_count == 0
+        assert mock_spark_engine_save_offline_dataframe.call_count == 1
+
+    @pytest.mark.parametrize(
+        "test_name,primary_key,partition_key,event_time,data",
+        [
+            (
+                "duplicate_primary_key",
+                ["id"],
+                [],
+                None,
+                [
+                    {"id": 1, "text": "a"},
+                    {"id": 1, "text": "a_dup"},
+                    {"id": 2, "text": "b"},
+                ],
+            ),
+            (
+                "duplicate_primary_key_partition",
+                ["id"],
+                ["p"],
+                None,
+                [
+                    {"id": 1, "p": 0, "text": "a_p0"},
+                    {"id": 1, "p": 0, "text": "a_p0_dup"},
+                    {"id": 2, "p": 0, "text": "b_p0"},
+                ],
+            ),
+            (
+                "duplicate_primary_key_event_time",
+                ["id"],
+                [],
+                "event_time",
+                [
+                    {"id": 1, "event_time": "2024-01-01", "text": "a_t1"},
+                    {"id": 1, "event_time": "2024-01-01", "text": "a_t1_dup"},
+                    {"id": 2, "event_time": "2024-01-02", "text": "b_t2"},
+                ],
+            ),
+        ],
+    )
+    def test_save_dataframe_delta_duplicate_should_fail(
+        self, mocker, test_name, primary_key, partition_key, event_time, data
+    ):
+        # Arrange
+        from datetime import datetime
+
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name=f"dl_dup_{test_name}",
+            version=1,
+            featurestore_id=99,
+            primary_key=primary_key,
+            partition_key=partition_key,
+            event_time=event_time,
+            time_travel_format="DELTA",
+        )
+
+        # Convert event_time strings to datetime if needed
+        if event_time and any(isinstance(row.get(event_time), str) for row in data):
+            for row in data:
+                if event_time in row and isinstance(row[event_time], str):
+                    row[event_time] = datetime.fromisoformat(row[event_time])
+
+        df = spark_engine._spark_session.createDataFrame(data)
+
+        # Act & Assert
+        with pytest.raises(exceptions.FeatureStoreException) as exc_info:
+            spark_engine.save_dataframe(
+                feature_group=fg,
+                dataframe=df,
+                operation="insert",
+                online_enabled=True,
+                storage="offline",
+                offline_write_options={},
+                online_write_options={},
+                validation_id=None,
+            )
+
+        assert exceptions.FeatureStoreException.DUPLICATE_RECORD_ERROR_MESSAGE in str(
+            exc_info.value
+        )
+
+    @pytest.mark.parametrize(
+        "test_name,primary_key,partition_key,event_time,data_factory",
+        [
+            (
+                "pk_partition_across",
+                ["id"],
+                ["p"],
+                None,
+                lambda dt: [
+                    {"id": 1, "p": 0, "text": "a_p0"},
+                    {"id": 1, "p": 1, "text": "a_p1"},
+                    {"id": 2, "p": 0, "text": "b_p0"},
+                ],
+            ),
+            (
+                "pk_event_time_across",
+                ["id"],
+                [],
+                "event_time",
+                lambda dt: [
+                    {"id": 1, "event_time": dt.datetime(2024, 1, 1), "text": "a_t1"},
+                    {"id": 1, "event_time": dt.datetime(2024, 1, 2), "text": "a_t2"},
+                    {"id": 2, "event_time": dt.datetime(2024, 1, 1), "text": "b_t1"},
+                ],
+            ),
+            (
+                "pk_with_no_duplicate",
+                ["id"],
+                [],
+                None,
+                lambda dt: [
+                    {"id": 1, "text": "a"},
+                    {"id": 2, "text": "b"},
+                    {"id": 3, "text": "c"},
+                ],
+            ),
+            (
+                "no_pk_partition_only",
+                [],
+                ["p"],
+                None,
+                lambda dt: [
+                    {"id": 1, "p": 0, "text": "a_p0"},
+                    {"id": 1, "p": 1, "text": "a_p1"},
+                    {"id": 2, "p": 0, "text": "b_p0"},
+                ],
+            ),
+            (
+                "no_pk_event_time_only",
+                [],
+                [],
+                "event_time",
+                lambda dt: [
+                    {"id": 1, "event_time": dt.datetime(2024, 1, 1), "text": "a_t1"},
+                    {"id": 1, "event_time": dt.datetime(2024, 1, 2), "text": "a_t2"},
+                    {"id": 2, "event_time": dt.datetime(2024, 1, 1), "text": "b_t1"},
+                ],
+            ),
+            (
+                "no_pk",
+                [],
+                [],
+                None,
+                lambda dt: [
+                    {"id": 1, "text": "a"},
+                    {"id": 1, "text": "a_dup"},
+                    {"id": 2, "text": "b"},
+                ],
+            ),
+        ],
+    )
+    def test_save_dataframe_delta_duplicate_should_succeed(
+        self, mocker, test_name, primary_key, partition_key, event_time, data_factory
+    ):
+        # Arrange
+        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mock_spark_engine_save_offline_dataframe = mocker.patch(
+            "hsfs.engine.spark.Engine._save_offline_dataframe"
+        )
+
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name=f"dl_dup_{test_name}",
+            version=1,
+            featurestore_id=99,
+            primary_key=primary_key,
+            partition_key=partition_key,
+            event_time=event_time,
+            time_travel_format="DELTA",
+        )
+
+        data = data_factory(datetime)
+        df = spark_engine._spark_session.createDataFrame(data)
+
+        # Act - should not raise exception
+        spark_engine.save_dataframe(
+            feature_group=fg,
+            dataframe=df,
+            operation="insert",
+            online_enabled=True,
+            storage="offline",
+            offline_write_options={},
+            online_write_options={},
+            validation_id=None,
+        )
+
+        # Assert - no exception should be raised, and save should be called
+        assert mock_spark_engine_save_offline_dataframe.call_count == 1
+
     def test_save_stream_dataframe(self, mocker, backend_fixtures):
         # Arrange
         mock_common_client_get_instance = mocker.patch(
@@ -4105,8 +4379,17 @@ class TestSpark:
         assert "name" in result.columns
         assert result.schema["name"].dataType == StringType()
 
-    def test_add_file(self, mocker):
+    @pytest.mark.parametrize(
+        "distribute_arg",
+        [
+            None,  # Test without providing distribute argument (uses default)
+            True,  # Test with distribute=True
+            False,  # Test with distribute=False
+        ],
+    )
+    def test_add_file(self, mocker, distribute_arg):
         # Arrange
+        mock_dataset_api = mocker.patch("hsfs.core.dataset_api.DatasetApi")
         mock_pyspark_files_get = mocker.patch("pyspark.files.SparkFiles.get")
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
         mocker.patch("shutil.copy")
@@ -4115,14 +4398,31 @@ class TestSpark:
 
         spark_engine = spark.Engine()
 
+        # Mock dataset API and file I/O for distribute=False case
+        if distribute_arg is False:
+            mock_dataset_api.return_value.read_content.return_value.content = bytes()
+            mocker.patch("builtins.open", mocker.mock_open())
+
         # Act
-        spark_engine.add_file(
-            file="test_file",
-        )
+        if distribute_arg is None:
+            # Call without distribute argument
+            spark_engine.add_file(file="test_file")
+        else:
+            # Call with distribute argument
+            spark_engine.add_file(file="test_file", distribute=distribute_arg)
 
         # Assert
-        mock_add_file.assert_called_once_with("hdfs://test_file")
-        mock_pyspark_files_get.assert_called_once_with("test_file")
+        if distribute_arg is False:
+            # When distribute=False, read_content should be called once
+            mock_dataset_api.return_value.read_content.assert_called_once()
+            # addFile and SparkFiles.get should NOT be called
+            mock_add_file.assert_not_called()
+            mock_pyspark_files_get.assert_not_called()
+        else:
+            # When distribute is True or None (default), addFile should be called
+            mock_dataset_api.return_value.read_content.assert_not_called()
+            mock_add_file.assert_called_once_with("hdfs://test_file")
+            mock_pyspark_files_get.assert_called_once_with("test_file")
 
     def test_add_file_if_present_in_job_configuration(self, mocker):
         # Arrange

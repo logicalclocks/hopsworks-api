@@ -24,6 +24,7 @@ EXCLUDE_METHODS = [
     "extract_fields_from_json",
     "from_json",
     "from_response_json",
+    "from_response_json_single",
     "json",
     "update_from_response_json",
     "to_dict",
@@ -223,7 +224,6 @@ PAGES = {
                 "append_features",
                 "compute_statistics",
                 "delete_expectation_suite",
-                "from_response_json",
                 "get_all_validation_reports",
                 "get_expectation_suite",
                 "get_latest_validation_report",
@@ -231,7 +231,6 @@ PAGES = {
                 "get_validation_history",
                 "save_expectation_suite",
                 "save_validation_report",
-                "update_from_response_json",
                 "update_statistics_config",
                 "validate",
             ]
@@ -432,12 +431,15 @@ PAGES = {
         ),
     },
     "api/online_ingestion_result.md": {
-        "online_ingestion_result": ["hsfs.core.online_ingestion_result.OnlineIngestionResult"],
+        "online_ingestion_result": [
+            "hsfs.core.online_ingestion_result.OnlineIngestionResult"
+        ],
         "online_ingestion_result_properties": keras_autodoc.get_properties(
             "hsfs.core.online_ingestion_result.OnlineIngestionResult"
         ),
         "online_ingestion_result_methods": keras_autodoc.get_methods(
-            "hsfs.core.online_ingestion_result.OnlineIngestionResult", exclude=EXCLUDE_METHODS
+            "hsfs.core.online_ingestion_result.OnlineIngestionResult",
+            exclude=EXCLUDE_METHODS,
         ),
     },
     "api/query_api.md": {

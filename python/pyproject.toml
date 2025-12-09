@@ -48,7 +48,7 @@ dependencies = [
     "avro==1.11.3",
     "PyMySQL[rsa]",
     "tzlocal",
-    "fsspec",
+    "fsspec<2025.12.0",
     "retrying",
     "hopsworks_aiomysql[sa]==0.2.2",
     "opensearch-py>=1.1.0,<=2.4.2",
@@ -70,7 +70,7 @@ python = [
     "hops-deltalake==1.1.2.post2; python_version >= '3.9' and (sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64'))",
 ]
 sqlalchemy-1 = [
-    "pandas<2.2.0",
+    "pandas<2.2.0; python_version < '3.13'",
     "sqlalchemy<2.0.0",
 ]
 great-expectations = ["great_expectations==0.18.12"]
@@ -82,6 +82,7 @@ dev-no-opt = [
     "gitignorefile",
     "pyspark==3.5.5",
     "moto[s3]==5.0.0",
+    "pandas>=2.2.0",
     "typeguard==4.2.1",
     "delta-spark==3.3.1"
 ]
@@ -92,23 +93,48 @@ dev-pandas1 = [
     "ruff",
     "pyspark==3.5.5",
     "moto[s3]==5.0.0",
-    "pandas<=1.5.3",
+    "pandas<=1.5.3; python_version < '3.12'",
     "sqlalchemy<=1.4.48",
     "delta-spark==3.3.1"
 ]
-dev = ["hopsworks[dev-no-opt,great-expectations,polars]"]
+dev = ["hopsworks[dev-no-opt,great-expectations,polars,python]"]
 polars=[
     "polars>=0.20.18,<=0.21.0",
     "pyarrow>=17.0",
 ]
 mcp=[
-    "fastmcp>=2.10.5",
+    "fastmcp>=2.10.5; python_version >= '3.10'",
     "httpx",
     "pydantic>=2.11.7",
 ]
 
+[dependency-groups]
+docs = [
+    "mkdocs==1.5.3",
+    "mkdocs-material==9.5.17",
+    "mike==2.0.0",
+    "sphinx==7.3.7",
+    "keras_autodoc @ git+https://git@github.com/logicalclocks/keras-autodoc",
+    "markdown-include==0.8.1",
+    "mkdocs-jupyter==0.24.3",
+    "markdown==3.6",
+    "pymdown-extensions==10.7.1",
+    "mkdocs-macros-plugin==1.0.4",
+    "polars==0.20.31",
+    "mkdocs-minify-plugin>=0.2.0",
+]
+pre-commit = ["pre-commit"]
+
+[tool.uv]
+conflicts = [
+    [{ extra = "dev-pandas1" }, { extra = "dev-no-opt" }],
+    [{ extra = "dev-pandas1" }, { extra = "dev" }],
+    [{ extra = "sqlalchemy-1" }, { extra = "dev-no-opt" }],
+    [{ extra = "sqlalchemy-1" }, { extra = "dev" }],
+]
+
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
