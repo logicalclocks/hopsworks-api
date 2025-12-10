@@ -110,7 +110,7 @@ class FsQuery:
     @property
     def hqs_payload(self) -> Optional[str]:
         return self._hqs_payload
-    
+
     @property
     def hqs_payload_signature(self) -> Optional[str]:
         return self._hqs_payload_signature

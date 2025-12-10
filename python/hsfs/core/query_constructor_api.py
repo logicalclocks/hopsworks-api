@@ -27,10 +27,14 @@ class QueryConstructorApi:
         query_params = {
             "hqs": hqs,
         }
-        
+
         headers = {"content-type": "application/json"}
         return fs_query.FsQuery.from_response_json(
             _client._send_request(
-                "PUT", path_params, headers=headers, query_params=query_params, data=query.json()
+                "PUT",
+                path_params,
+                headers=headers,
+                query_params=query_params,
+                data=query.json(),
             )
         )
