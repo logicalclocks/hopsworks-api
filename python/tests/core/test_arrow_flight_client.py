@@ -13,7 +13,6 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-import datetime
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -22,7 +21,6 @@ from hsfs import feature_group, feature_view, storage_connector, training_datase
 from hsfs.constructor import fs_query
 from hsfs.core import arrow_flight_client
 from hsfs.engine import python
-from hsfs.feature import Feature
 from hsfs.feature_store import FeatureStore
 from hsfs.storage_connector import HopsFSConnector, StorageConnector
 
