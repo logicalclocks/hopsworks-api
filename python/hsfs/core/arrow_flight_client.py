@@ -488,7 +488,6 @@ class ArrowFlightClient:
     @_handle_afs_exception(user_message=READ_ERROR)
     def read_query(self, query_object: FsQuery, arrow_flight_config, dataframe_type):
         query_encoded = query_object.hqs_payload.encode("ascii")
-        print(query_encoded)
         descriptor = pyarrow.flight.FlightDescriptor.for_command(query_encoded)
         return self._get_dataset(
             descriptor,
