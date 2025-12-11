@@ -171,6 +171,7 @@ class ModelServing:
         transformer: Optional[Union[Transformer, dict]] = None,
         api_protocol: Optional[str] = IE.API_PROTOCOL_REST,
         environment: Optional[str] = None,
+        env_vars: Optional[dict] = None,
     ) -> Predictor:
         """Create a Predictor metadata object.
 
@@ -212,6 +213,7 @@ class ModelServing:
             transformer: Transformer to be deployed together with the predictor.
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC'). Defaults to 'REST'.
             environment: The project Python environment to use
+            env_vars: Additional environment variables to use
 
         # Returns
             `Predictor`. The predictor metadata object.
@@ -232,6 +234,7 @@ class ModelServing:
             transformer=transformer,
             api_protocol=api_protocol,
             environment=environment,
+            env_vars=env_vars,
         )
 
     @usage.method_logger
@@ -313,6 +316,7 @@ class ModelServing:
         inference_batcher: Optional[Union[InferenceBatcher, dict]] = None,
         api_protocol: Optional[str] = IE.API_PROTOCOL_REST,
         environment: Optional[str] = None,
+        env_vars: Optional[dict] = None,
     ) -> Predictor:
         """Create an Entrypoint metadata object.
 
@@ -341,6 +345,7 @@ class ModelServing:
             inference_batcher: Inference batcher configuration.
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC'). Defaults to 'REST'.
             environment: The project Python environment to use
+            env_vars: Additional environment variables to use
 
         # Returns
             `Predictor`. The predictor metadata object.
@@ -355,6 +360,7 @@ class ModelServing:
             inference_batcher=inference_batcher,
             api_protocol=api_protocol,
             environment=environment,
+            env_vars=env_vars,
         )
 
     @usage.method_logger

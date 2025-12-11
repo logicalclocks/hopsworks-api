@@ -208,6 +208,7 @@ class Model:
         transformer: Optional[Union[Transformer, dict]] = None,
         api_protocol: Optional[str] = IE.API_PROTOCOL_REST,
         environment: Optional[str] = None,
+        env_vars: Optional[dict] = None,
     ) -> deployment.Deployment:
         """Deploy the model.
 
@@ -266,6 +267,7 @@ class Model:
             transformer=transformer,
             api_protocol=api_protocol,
             environment=environment,
+            env_vars=env_vars,
         )
 
         return predictor.deploy()
