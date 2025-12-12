@@ -18,8 +18,8 @@
 
 
 class InvalidInput(ValueError):
-    """
-    Exception class indicating invalid input arguments.
+    """Exception class indicating invalid input arguments.
+
     HTTP Servers should return HTTP_400 (Bad Request).
     """
 

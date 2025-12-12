@@ -15,7 +15,7 @@
 #
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Literal
 
 
 if TYPE_CHECKING:
@@ -42,22 +42,22 @@ class GreatExpectationEngine:
 
     def validate(
         self,
-        feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
+        feature_group: fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup,
         dataframe: pd.DataFrame,
-        expectation_suite: Union[
-            great_expectations.core.ExpectationSuite, es.ExpectationSuite, None
-        ] = None,
+        expectation_suite: great_expectations.core.ExpectationSuite
+        | es.ExpectationSuite
+        | None = None,
         save_report: bool = False,
-        validation_options: Optional[Dict[str, Any]] = None,
+        validation_options: dict[str, Any] | None = None,
         ge_type: bool = True,
         ingestion_result: Literal[
             "unknown", "ingested", "rejected", "fg_data", "experiment"
         ] = "unknown",
-    ) -> Union[
-        great_expectations.core.ExpectationSuiteValidationResult,
-        validation_report.ValidationReport,
-        None,
-    ]:
+    ) -> (
+        great_expectations.core.ExpectationSuiteValidationResult
+        | validation_report.ValidationReport
+        | None
+    ):
         if validation_options is None:
             validation_options = {}
 
@@ -84,7 +84,7 @@ class GreatExpectationEngine:
             )
         else:
             # if run_validation is False we skip validation and saving_report
-            return
+            return None
 
         if report.success:
             print("Validation succeeded.")
@@ -107,12 +107,12 @@ class GreatExpectationEngine:
 
     def fetch_or_convert_expectation_suite(
         self,
-        feature_group: Union[fg_mod.FeatureGroup, fg_mod.ExternalFeatureGroup],
-        expectation_suite: Union[
-            great_expectations.core.ExpectationSuite, es.ExpectationSuite, None
-        ] = None,
-        validation_options: Optional[Dict[str, Any]] = None,
-    ) -> Optional[es.ExpectationSuite]:
+        feature_group: fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup,
+        expectation_suite: great_expectations.core.ExpectationSuite
+        | es.ExpectationSuite
+        | None = None,
+        validation_options: dict[str, Any] | None = None,
+    ) -> es.ExpectationSuite | None:
         """Convert provided expectation suite or fetch the one attached to the Feature Group from backend."""
         if expectation_suite is not None:
             if isinstance(expectation_suite, es.ExpectationSuite):
@@ -126,8 +126,8 @@ class GreatExpectationEngine:
 
     def should_run_validation(
         self,
-        expectation_suite: Optional[es.ExpectationSuite],
-        validation_options: Dict[str, Any],
+        expectation_suite: es.ExpectationSuite | None,
+        validation_options: dict[str, Any],
     ) -> bool:
         # Suite is None if not provided and nothing attached to FG.
         # In that case we skip validation
@@ -145,14 +145,14 @@ class GreatExpectationEngine:
         report: great_expectations.core.ExpectationSuiteValidationResult,
         save_report: bool,
         ge_type: bool,
-        validation_options: Dict[str, Any],
+        validation_options: dict[str, Any],
         ingestion_result: Literal[
             "unknown", "ingested", "rejected", "fg_data", "experiment"
         ] = "unknown",
-    ) -> Union[
-        great_expectations.core.ExpectationSuiteValidationResult,
-        validation_report.ValidationReport,
-    ]:
+    ) -> (
+        great_expectations.core.ExpectationSuiteValidationResult
+        | validation_report.ValidationReport
+    ):
         save_report = validation_options.get("save_report", save_report)
         if save_report:
             return feature_group.save_validation_report(
@@ -161,7 +161,6 @@ class GreatExpectationEngine:
 
         if ge_type:
             return report
-        else:
-            return validation_report.ValidationReport(
-                **report.to_json_dict(), ingestion_result=ingestion_result
-            )
+        return validation_report.ValidationReport(
+            **report.to_json_dict(), ingestion_result=ingestion_result
+        )

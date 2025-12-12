@@ -15,8 +15,6 @@
 #
 from __future__ import annotations
 
-from typing import List, Optional, Union
-
 from hopsworks_common import client
 from hsfs import (
     decorators,
@@ -32,11 +30,11 @@ class TransformationFunctionApi:
         self,
         transformation_function_instance: transformation_function.TransformationFunction,
     ) -> transformation_function.TransformationFunction:
-        """
-        Register transformation function in backend
+        """Register transformation function in backend.
+
         Args:
-        transformation_function_instance: TransformationFunction, required
-            metadata object of transformation function.
+            transformation_function_instance:
+                metadata object of transformation function.
         """
         _client = client.get_instance()
         path_params = [
@@ -60,18 +58,18 @@ class TransformationFunctionApi:
         "hsfs.transformation_function.TransformationFunction", fallback_return=None
     )
     def get_transformation_fn(
-        self, name: Optional[str], version: Optional[int]
-    ) -> Union[
-        transformation_function.TransformationFunction,
-        List[transformation_function.TransformationFunction],
-    ]:
-        """
-        Retrieve transformation function from backend
+        self, name: str | None, version: int | None
+    ) -> (
+        transformation_function.TransformationFunction
+        | list[transformation_function.TransformationFunction]
+    ):
+        """Retrieve transformation function from backend.
+
         Args:
-        name: TransformationFunction name, optional
-            name of transformation function.
-        version: TransformationFunction version, optional
-            version of transformation function.
+            name:
+                name of transformation function.
+            version:
+                version of transformation function.
         """
         _client = client.get_instance()
         path_params = [
@@ -97,6 +95,7 @@ class TransformationFunctionApi:
         transformation_function_instance: transformation_function.TransformationFunction,
     ) -> None:
         """Delete a transformation function.
+
         Args:
         transformation_function_instance: TransformationFunction, required
             metadata object of transformation function.

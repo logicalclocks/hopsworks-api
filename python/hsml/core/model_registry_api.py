@@ -26,10 +26,11 @@ class ModelRegistryApi:
 
     def get(self, project=None):
         """Get model registry for specific project.
+
         :param project: project of the model registry
         :type project: str
         :return: the model registry metadata
-        :rtype: ModelRegistry
+        :rtype: ModelRegistry.
         """
         _client = client.get_instance()
 
@@ -47,16 +48,12 @@ class ModelRegistryApi:
 
             if shared_registry_project_name is None:
                 raise ModelRegistryException(
-                    "No model registry shared with current project {}, from project {}".format(
-                        _client._project_name, project
-                    )
+                    f"No model registry shared with current project {_client._project_name}, from project {project}"
                 )
         # In the case of default model registry, validate that there is a Models dataset in the connected project
         elif project is None and not self._dataset_api.path_exists("Models"):
             raise ModelRegistryException(
-                "No Models dataset exists in project {}, Please enable the Serving service or create the dataset manually.".format(
-                    _client._project_name
-                )
+                f"No Models dataset exists in project {_client._project_name}, Please enable the Serving service or create the dataset manually."
             )
 
         return ModelRegistry(

@@ -15,8 +15,6 @@
 #
 from __future__ import annotations
 
-from typing import Optional
-
 from hopsworks_common import client
 from hsfs import expectation_suite as es
 from hsfs.core.variable_api import VariableApi
@@ -35,7 +33,7 @@ class ExpectationSuiteApi:
         self._feature_group_id = feature_group_id
         self._variable_api = VariableApi()
 
-    def create(self, expectation_suite: "es.ExpectationSuite") -> "es.ExpectationSuite":
+    def create(self, expectation_suite: es.ExpectationSuite) -> es.ExpectationSuite:
         """Create an expectation suite attached to a Feature Group.
 
         :param expectation_suite: expectation suite object to be created for a Feature Group
@@ -67,7 +65,7 @@ class ExpectationSuiteApi:
             _client._send_request(method, path_params, headers=headers, data=payload)
         )
 
-    def update(self, expectation_suite: "es.ExpectationSuite") -> "es.ExpectationSuite":
+    def update(self, expectation_suite: es.ExpectationSuite) -> es.ExpectationSuite:
         """Update an expectation suite attached to a Feature Group.
 
         :param expectation_suite: expectation suite object to be created for a Feature Group
@@ -103,8 +101,8 @@ class ExpectationSuiteApi:
         )
 
     def update_metadata(
-        self, expectation_suite: "es.ExpectationSuite"
-    ) -> "es.ExpectationSuite":
+        self, expectation_suite: es.ExpectationSuite
+    ) -> es.ExpectationSuite:
         """Update the metadata of an expectation suite attached to a Feature Group.
 
         :param expectation_suite: expectation suite object to be updated
@@ -163,7 +161,7 @@ class ExpectationSuiteApi:
 
         _client._send_request("DELETE", path_params)
 
-    def get(self) -> Optional["es.ExpectationSuite"]:
+    def get(self) -> es.ExpectationSuite | None:
         """Get the expectation suite attached to a Feature Group.
 
         :return: fetched expectation suite attached to the FeatureG Group

@@ -145,10 +145,13 @@ class TestHopsworksUdf:
     def test_extract_source_code(self):
         from .test_helpers.transformation_test_helper import test_function
 
-        assert """import pandas as pd
+        assert (
+            HopsworksUdf._extract_source_code(test_function).strip()
+            == """import pandas as pd
 from hsfs.transformation_statistics import TransformationStatistics
 def test_function():
-    return True""" == HopsworksUdf._extract_source_code(test_function).strip()
+    return True"""
+        )
 
     def test_extract_function_arguments_no_arguments(self):
         from .test_helpers.transformation_test_helper import test_function
@@ -1443,7 +1446,7 @@ def test_function():
         scope = test_func._prepare_transformation_function_scope()
 
         assert scope["_output_col_names"] == ["test_func_feature_"]
-        assert "_output_col_names" in scope.keys()
+        assert "_output_col_names" in scope
 
     def test_prepare_transformation_function_scope_no_kwargs_no_statistics_context(
         self,
@@ -1463,7 +1466,7 @@ def test_function():
         assert scope["_output_col_names"] == ["test_func_feature_"]
         assert scope["context"] == {"test_value": 100}
         assert all(
-            value in scope.keys()
+            value in scope
             for value in {
                 "_output_col_names",
                 "context",
@@ -1486,8 +1489,7 @@ def test_function():
         assert scope["context"] == {"test_value": 100}
         assert scope["statistics"] == 10
         assert all(
-            value in scope.keys()
-            for value in {"_output_col_names", "context", "statistics"}
+            value in scope for value in {"_output_col_names", "context", "statistics"}
         )
 
     def test_prepare_transformation_function_scope_kwargs_statistics_context(self):
@@ -1507,6 +1509,6 @@ def test_function():
         assert scope["statistics"] == 10
         assert scope["test"] == "values"
         assert all(
-            value in scope.keys()
+            value in scope
             for value in {"_output_col_names", "context", "statistics", "test"}
         )

@@ -13,17 +13,18 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, TypeVar
+from typing import TypeVar
 
 
 class FeatureLogger(ABC):
     @abstractmethod
     def log(
         self,
-        untransformed_features: Optional[List[Dict]] = None,
-        transformed_features: Optional[List[Dict]] = None,
+        untransformed_features: list[dict] | None = None,
+        transformed_features: list[dict] | None = None,
     ):
         pass
 

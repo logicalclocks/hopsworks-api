@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 import socket
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
 from hopsworks_common import (
     client,
@@ -38,11 +38,10 @@ class KafkaApi:
         schema_version: int,
         replicas: int = 1,
         partitions: int = 1,
-    ):
+    ) -> kafka_topic.KafkaTopic:
         """Create a new kafka topic.
 
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
@@ -50,18 +49,20 @@ class KafkaApi:
         kafka_api = project.get_kafka_api()
 
         kafka_topic = kafka_api.create_topic("my_topic", "my_schema", 1)
-
         ```
-        # Arguments
-            name: name of the topic
-            schema: subject name of the schema
-            schema_version: version of the schema
-            replicas: replication factor for the topic
-            partitions: partitions for the topic
-        # Returns
-            `KafkaTopic`: The KafkaTopic object
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Parameters:
+            name: Name of the topic.
+            schema: Subject name of the schema.
+            schema_version: Version of the schema.
+            replicas: Replication factor for the topic.
+            partitions: Number of partitions for the topic.
+
+        Returns:
+            The KafkaTopic object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client.get_instance()
 
@@ -82,11 +83,10 @@ class KafkaApi:
         )
 
     @usage.method_logger
-    def create_schema(self, subject: str, schema: dict):
+    def create_schema(self, subject: str, schema: dict) -> kafka_schema.KafkaSchema:
         """Create a new kafka schema.
 
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
@@ -109,15 +109,17 @@ class KafkaApi:
         }
 
         kafka_topic = kafka_api.create_schema("my_schema", avro_schema)
-
         ```
-        # Arguments
-            subject: subject name of the schema
-            schema: avro schema definition
-        # Returns
-            `KafkaSchema`: The KafkaSchema object
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Parameters:
+            subject: Subject name of the schema.
+            schema: Avro schema definition.
+
+        Returns:
+            The KafkaSchema object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client.get_instance()
 
@@ -143,30 +145,34 @@ class KafkaApi:
         return self.get_schema(schema.subject, schema.version)
 
     @usage.method_logger
-    def get_topic(self, name: str) -> Optional[kafka_topic.KafkaTopic]:
+    def get_topic(self, name: str) -> kafka_topic.KafkaTopic | None:
         """Get kafka topic by name.
 
-        # Arguments
-            name: name of the topic
-        # Returns
-            `KafkaTopic`: The KafkaTopic object or `None` if not found
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Parameters:
+            name: Name of the topic.
+
+        Returns:
+            The KafkaTopic object or `None` if not found.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         topics = self.get_topics()
 
         for topic in topics:
             if topic.name == name:
                 return topic
+        return None
 
     @usage.method_logger
-    def get_topics(self):
+    def get_topics(self) -> list[kafka_topic.KafkaTopic]:
         """Get all kafka topics.
 
-        # Returns
-            `List[KafkaTopic]`: List of KafkaTopic objects
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Returns:
+            List of KafkaTopic objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "kafka", "topics"]
@@ -177,8 +183,9 @@ class KafkaApi:
 
     def _delete_topic(self, name: str):
         """Delete the topic.
-        :param name: name of the topic
-        :type name: str
+
+        Parameters:
+            name: Name of the topic.
         """
         _client = client.get_instance()
         path_params = [
@@ -192,10 +199,10 @@ class KafkaApi:
 
     def _delete_subject_version(self, subject: str, version: int):
         """Delete the schema.
-        :param subject: subject name of the schema
-        :type subject: str
-        :param version: version of the subject
-        :type version: int
+
+        Parameters:
+            subject: Subject name of the schema.
+            version: Version of the subject.
         """
         _client = client.get_instance()
         path_params = [
@@ -210,13 +217,14 @@ class KafkaApi:
         _client._send_request("DELETE", path_params)
 
     @usage.method_logger
-    def get_subjects(self):
+    def get_subjects(self) -> list[str]:
         """Get all subjects.
 
-        # Returns
-            `List[str]`: List of registered subjects
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Returns:
+            List of registered subjects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         topics = self.get_topics()
 
@@ -228,15 +236,17 @@ class KafkaApi:
         return list(subjects)
 
     @usage.method_logger
-    def get_schemas(self, subject: str):
+    def get_schemas(self, subject: str) -> list[kafka_schema.KafkaSchema]:
         """Get all schema versions for the subject.
 
-        # Arguments
-            subject: subject name
-        # Returns
-            `List[KafkaSchema]`: List of KafkaSchema objects
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Parameters:
+            subject: Subject name.
+
+        Returns:
+            List of KafkaSchema objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client.get_instance()
         path_params = [
@@ -257,30 +267,31 @@ class KafkaApi:
         return schemas
 
     @usage.method_logger
-    def get_schema(
-        self, subject: str, version: int
-    ) -> Optional[kafka_schema.KafkaSchema]:
+    def get_schema(self, subject: str, version: int) -> kafka_schema.KafkaSchema | None:
         """Get schema given subject name and version.
 
-        # Arguments
-            subject: subject name
-            version: version number
-        # Returns
-            `KafkaSchema`: KafkaSchema object or `None` if it does not exist.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Parameters:
+            subject: Subject name.
+            version: Version number.
+
+        Returns:
+            KafkaSchema object or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         schemas = self.get_schemas(subject)
         for schema in schemas:
             if schema.version == version:
                 return schema
+        return None
 
     def _get_schema_details(self, subject: str, version: int):
         """Get the schema details.
-        :param subject: subject name of the schema
-        :type subject: str
-        :param version: version of the subject
-        :type version: int
+
+        Parameters:
+            subject: Subject name of the schema.
+            version: Version of the subject.
         """
         _client = client.get_instance()
         path_params = [
@@ -312,18 +323,17 @@ class KafkaApi:
         )["brokers"]
 
     def _get_security_protocol(self):
-        """
-        Gets the security protocol used for communicating with Kafka brokers in a Hopsworks cluster
+        """Get the security protocol used for communicating with Kafka brokers in a Hopsworks cluster.
+
         Returns:
-            the security protocol for communicating with Kafka brokers in a Hopsworks cluster
+            The security protocol for communicating with Kafka brokers in a Hopsworks cluster.
         """
         return constants.KAFKA_SSL_CONFIG.SSL
 
-    def get_default_config(self, internal_kafka: Optional[bool] = None):
+    def get_default_config(self, internal_kafka: bool | None = None) -> dict:
         """Get the configuration to set up a Producer or Consumer for a Kafka broker using confluent-kafka.
 
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
@@ -335,14 +345,14 @@ class KafkaApi:
         from confluent_kafka import Producer
 
         producer = Producer(kafka_conf)
-
         ```
-        # Returns
-            `dict`: The kafka configuration
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        """
 
+        Returns:
+            The kafka configuration.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
         _client = client.get_instance()
         config = {
             constants.KAFKA_SSL_CONFIG.SECURITY_PROTOCOL_CONFIG: self._get_security_protocol(),
@@ -370,8 +380,8 @@ class KafkaApi:
         self,
         feature_store_id: int,
         subject: str,
-        version: Union[str, int] = "latest",
-    ) -> Dict[str, Any]:
+        version: str | int = "latest",
+    ) -> dict[str, Any]:
         _client = client.get_instance()
         path_params = [
             "project",

@@ -16,7 +16,7 @@
 import json
 import logging
 from datetime import date, datetime
-from typing import Any, Dict
+from typing import Any
 
 from hsfs import util
 from hsfs.client import exceptions, online_store_rest_client
@@ -38,17 +38,17 @@ if HAS_NUMPY:
             dtypes = (np.datetime64, np.complexfloating)
             if isinstance(obj, (datetime, date)):
                 return util.dateconvert_event_time_to_timestamp(obj)
-            elif isinstance(obj, dtypes):
+            if isinstance(obj, dtypes):
                 return str(obj)
-            elif isinstance(obj, np.integer):
+            if isinstance(obj, np.integer):
                 return int(obj)
-            elif isinstance(obj, np.floating):
+            if isinstance(obj, np.floating):
                 return float(obj)
-            elif isinstance(obj, np.ndarray):
-                if any([np.issubdtype(obj.dtype, i) for i in dtypes]):
+            if isinstance(obj, np.ndarray):
+                if any(np.issubdtype(obj.dtype, i) for i in dtypes):
                     return obj.astype(str).tolist()
                 return obj.tolist()
-            return super(NpDatetimeEncoder, self).default(obj)
+            return super().default(obj)
 else:
     NpDatetimeEncoder = json.JSONEncoder
 
@@ -58,7 +58,7 @@ class OnlineStoreRestClientApi:
     BATCH_VECTOR_ENDPOINT = "batch_feature_store"
     PING_ENDPOINT = "ping"
 
-    def get_single_raw_feature_vector(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def get_single_raw_feature_vector(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Get a single feature vector from the feature store.
 
         Check the RonDB Rest Server documentation for more details:
@@ -69,7 +69,7 @@ class OnlineStoreRestClientApi:
         to missing. The "features" field will be a list with the primary key values and None/null for the
         feature values.
 
-        # Arguments:
+        Parameters:
             payload: The payload to send to the RonDB REST Server Feature Store API.
                 The payload should contains the following fields:
                     - "featureStoreName": The name of the feature store in which the feature view is registered.
@@ -80,15 +80,15 @@ class OnlineStoreRestClientApi:
                         Keys are "featureName" and "featureType" and values are boolean.
                     - "passedFeatures": A dictionary with the feature names as keys and the values to substitute for this specific vector.
 
-        # Returns:
+        Returns:
             The response json containing the feature vector as well as status information
             and optionally descriptive metadata about the features. It contains the following fields:
                 - "status": The status pertinent to this single feature vector. Allowed values are "COMPLETE", "MISSING" and "ERROR".
                 - "features": A list of the feature values.
                 - "metadata": A list of dictionaries with metadata for each feature. The order should match the order of the features.
 
-        # Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the response status code is not 200.
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the response status code is not 200.
                 - 400: Requested Metadata does not exist
                 - 401: Access denied. API key does not give access to the feature store (e.g feature store not shared with user),
                     or authorization header (x-api-key) is not properly set.
@@ -107,13 +107,13 @@ class OnlineStoreRestClientApi:
             ),
         )
 
-    def get_batch_raw_feature_vectors(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def get_batch_raw_feature_vectors(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Get a list of feature vectors from the feature store.
 
         Check the RonDB Rest Server documentation for more details:
         https://docs.hopsworks.ai/latest/user_guides/fs/feature_view/feature-server
 
-        # Arguments:
+        Parameters:
             payload: The payload to send to the RonDB REST Server Feature Store API.
             The payload should contains the following fields:
                 - "featureStoreName": The name of the feature store in which the feature view is registered.
@@ -125,15 +125,15 @@ class OnlineStoreRestClientApi:
                 - "metadataOptions": Whether to include feature metadata in the response.
                     Keys are "featureName" and "featureType" and values are boolean.
 
-        # Returns:
+        Returns:
             The response json containing the feature vector as well as status information
             and optionally descriptive metadata about the features. It contains the following fields:
                 - "status": A list of the status for each feature vector retrieval. Allowed values are "COMPLETE", "MISSING" and "ERROR".
                 - "features": A list containing list of the feature values for each feature_vector.
                 - "metadata": A list of dictionaries with metadata for each feature. The order should match the order of the features.
 
-        # Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the response status code is not 200.
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the response status code is not 200.
                 - 400: Requested Metadata does not exist
                 - 401: Access denied. API key does not give access to the feature store (e.g feature store not shared with user),
                     or authorization header (x-api-key) is not properly set.
@@ -163,7 +163,7 @@ class OnlineStoreRestClientApi:
             _logger.debug(f"Received response from RonDB Rest Server: {ping_response}")
         return ping_response
 
-    def handle_rdrs_feature_store_response(self, response: Response) -> Dict[str, Any]:
+    def handle_rdrs_feature_store_response(self, response: Response) -> dict[str, Any]:
         """Raise RestAPIError or serialize the response from the RonDB Rest Server to json.
 
         Args:
@@ -173,7 +173,7 @@ class OnlineStoreRestClientApi:
             The response json if the status code is 200, otherwise raises an error.
 
         Raises:
-            `hopsworks.client.exceptions.RestAPIError`: If the status code is not 200.
+            hopsworks.client.exceptions.RestAPIError: If the status code is not 200.
                 - 400: Requested Metadata does not exist (e.g feature view/store does not exist)
                 - 401: Access denied. API key does not give access to the feature store (e.g feature store not shared with user),
                     or authorization header (x-api-key) is not properly set.
@@ -186,10 +186,9 @@ class OnlineStoreRestClientApi:
                 )
                 _logger.debug(f"Response: {json.dumps(response.json(), indent=2)}")
             return response.json()
-        else:
-            if _logger.isEnabledFor(logging.ERROR):
-                _logger.error(
-                    f"Received response from RonDB Rest Server with status code {response.status_code}"
-                )
-                _logger.error(f"Response: {response.text}")
-            raise exceptions.RestAPIError(response.url, response)
+        if _logger.isEnabledFor(logging.ERROR):
+            _logger.error(
+                f"Received response from RonDB Rest Server with status code {response.status_code}"
+            )
+            _logger.error(f"Response: {response.text}")
+        raise exceptions.RestAPIError(response.url, response)

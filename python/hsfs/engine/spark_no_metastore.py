@@ -15,11 +15,11 @@
 #
 from __future__ import annotations
 
+import contextlib
 
-try:
+
+with contextlib.suppress(ImportError):
     from pyspark.sql import SparkSession
-except ImportError:
-    pass
 
 from hsfs.engine import spark
 

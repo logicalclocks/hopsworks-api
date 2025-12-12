@@ -15,7 +15,7 @@
 #
 from __future__ import annotations
 
-from typing import TypeVar, Union
+from typing import TypeVar
 
 import hopsworks_common.connection
 from hsfs.client import exceptions
@@ -57,9 +57,9 @@ def init(engine_type: str) -> None:
             _engine_type = engine_type
 
 
-def get_instance() -> Union[
-    spark.Engine, spark_no_metastore.Engine, TypeVar("python.Engine")
-]:
+def get_instance() -> (
+    spark.Engine | spark_no_metastore.Engine | TypeVar("python.Engine")
+):
     init(hopsworks_common.connection._hsfs_engine_type)
     return _engine
 
@@ -67,7 +67,7 @@ def get_instance() -> Union[
 # Used for testing
 def set_instance(
     engine_type: str,
-    engine: Union[spark.Engine, spark_no_metastore.Engine, TypeVar("python.Engine")],
+    engine: spark.Engine | spark_no_metastore.Engine | TypeVar("python.Engine"),
 ) -> None:
     global _engine
     hopsworks_common.connection._hsfs_engine_type = engine_type

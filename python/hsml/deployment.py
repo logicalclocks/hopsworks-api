@@ -12,21 +12,25 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
+from __future__ import annotations
 
-from typing import Dict, List, Optional, Union
+from typing import TYPE_CHECKING
 
 from hopsworks_common import client, usage, util
 from hsml import predictor as predictor_mod
 from hsml.client.exceptions import ModelServingException
-from hsml.client.istio.utils.infer_type import InferInput
 from hsml.constants import DEPLOYABLE_COMPONENT, PREDICTOR_STATE
 from hsml.core import model_api, serving_api
 from hsml.engine import serving_engine
-from hsml.inference_batcher import InferenceBatcher
-from hsml.inference_logger import InferenceLogger
-from hsml.predictor_state import PredictorState
-from hsml.resources import Resources
-from hsml.transformer import Transformer
+
+
+if TYPE_CHECKING:
+    from hsml.client.istio.utils.infer_type import InferInput
+    from hsml.inference_batcher import InferenceBatcher
+    from hsml.inference_logger import InferenceLogger
+    from hsml.predictor_state import PredictorState
+    from hsml.resources import Resources
+    from hsml.transformer import Transformer
 
 
 class Deployment:
@@ -36,8 +40,8 @@ class Deployment:
     def __init__(
         self,
         predictor,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
+        name: str | None = None,
+        description: str | None = None,
         project_namespace: str = None,
         **kwargs,
     ):
@@ -47,7 +51,7 @@ class Deployment:
 
         if self._predictor is None:
             raise ModelServingException("A predictor is required")
-        elif not isinstance(self._predictor, predictor_mod.Predictor):
+        if not isinstance(self._predictor, predictor_mod.Predictor):
             raise ValueError(
                 "The predictor provided is not an instance of the Predictor class"
             )
@@ -67,99 +71,102 @@ class Deployment:
         self._model_registry_id = None
 
     @usage.method_logger
-    def save(self, await_update: Optional[int] = 600):
+    def save(self, await_update: int | None = 600):
         """Persist this deployment including the predictor and metadata to Model Serving.
 
-        # Arguments
+        Parameters:
             await_update: If the deployment is running, awaiting time (seconds) for the running instances to be updated.
                           If the running instances are not updated within this timespan, the call to this method returns while
                           the update in the background.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
-        """
 
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+        """
         self._serving_engine.save(self, await_update)
 
     @usage.method_logger
-    def start(self, await_running: Optional[int] = 600):
-        """Start the deployment
+    def start(self, await_running: int | None = 600):
+        """Start the deployment.
 
-        # Arguments
+        Parameters:
             await_running: Awaiting time (seconds) for the deployment to start.
                            If the deployment has not started within this timespan, the call to this method returns while
                            it deploys in the background.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
-        """
 
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+        """
         self._serving_engine.start(self, await_status=await_running)
 
     @usage.method_logger
-    def stop(self, await_stopped: Optional[int] = 600):
-        """Stop the deployment
+    def stop(self, await_stopped: int | None = 600):
+        """Stop the deployment.
 
-        # Arguments
+        Parameters:
             await_stopped: Awaiting time (seconds) for the deployment to stop.
                            If the deployment has not stopped within this timespan, the call to this method returns while
                            it stopping in the background.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
-        """
 
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+        """
         self._serving_engine.stop(self, await_status=await_stopped)
 
     @usage.method_logger
     def delete(self, force=False):
-        """Delete the deployment
+        """Delete the deployment.
 
-        # Arguments
-            force: Force the deletion of the deployment.
-                   If the deployment is running, it will be stopped and deleted automatically.
-                   !!! warn A call to this method does not ask for a second confirmation.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
+        Parameters:
+            force:
+                Force the deletion of the deployment.
+                If the deployment is running, it will be stopped and deleted automatically.
+
+        Warning:
+                    A call to this method does not ask for a second confirmation.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
-
         self._serving_engine.delete(self, force)
 
     def get_state(self) -> PredictorState:
-        """Get the current state of the deployment
+        """Get the current state of the deployment.
 
-        # Returns
+        Returns:
             `PredictorState`. The state of the deployment.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
-        """
 
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+        """
         return self._serving_engine.get_state(self)
 
     def is_created(self) -> bool:
         """Check whether the deployment is created.
 
-        # Returns
+        Returns:
             `bool`. Whether the deployment is created or not.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
-        """
 
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+        """
         return (
             self._serving_engine.get_state(self).status
             != PREDICTOR_STATE.STATUS_CREATING
         )
 
     def is_running(self, or_idle=True, or_updating=True) -> bool:
-        """Check whether the deployment is ready to handle inference requests
+        """Check whether the deployment is ready to handle inference requests.
 
-        # Arguments
+        Parameters:
             or_idle: Whether the idle state is considered as running (default is True)
             or_updating: Whether the updating state is considered as running (default is True)
 
-        # Returns
+        Returns:
             `bool`. Whether the deployment is ready or not.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
-        """
 
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+        """
         status = self._serving_engine.get_state(self).status
         return (
             status == PREDICTOR_STATE.STATUS_RUNNING
@@ -168,17 +175,17 @@ class Deployment:
         )
 
     def is_stopped(self, or_created=True) -> bool:
-        """Check whether the deployment is stopped
+        """Check whether the deployment is stopped.
 
-        # Arguments
+        Parameters:
             or_created: Whether the creating and created state is considered as stopped (default is True)
 
-        # Returns
+        Returns:
             `bool`. Whether the deployment is stopped or not.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
-        """
 
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+        """
         status = self._serving_engine.get_state(self).status
         return status == PREDICTOR_STATE.STATUS_STOPPED or (
             or_created
@@ -190,13 +197,15 @@ class Deployment:
 
     def predict(
         self,
-        data: Union[Dict, InferInput] = None,
-        inputs: Union[List, Dict] = None,
+        data: dict | InferInput = None,
+        inputs: list | dict = None,
     ):
         """Send inference requests to the deployment.
-           One of data or inputs parameters must be set. If both are set, inputs will be ignored.
 
-        !!! example
+        One of data or inputs parameters must be set.
+        If both are set, inputs will be ignored.
+
+        Example:
             ```python
             # login into Hopsworks using hopsworks.login()
 
@@ -218,46 +227,46 @@ class Deployment:
             predictions = my_deployment.predict(data)
             ```
 
-        # Arguments
+        Parameters:
             data: Payload dictionary for the inference request including the model input(s)
             inputs: Model inputs used in the inference requests
 
-        # Returns
+        Returns:
             `dict`. Inference response.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
-        """
 
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+        """
         return self._serving_engine.predict(self, data, inputs)
 
     def get_model(self):
-        """Retrieve the metadata object for the model being used by this deployment"""
+        """Retrieve the metadata object for the model being used by this deployment."""
         return self._model_api.get(
             self.model_name, self.model_version, self.model_registry_id
         )
 
     @usage.method_logger
     def download_artifact_files(self, local_path=None):
-        """Download the artifact files served by the deployment
+        """Download the artifact files served by the deployment.
 
-        # Arguments
+        Parameters:
             local_path: path where to download the artifact files in the local filesystem
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
-        """
 
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+        """
         return self._serving_engine.download_artifact_files(self, local_path=local_path)
 
     def get_logs(self, component="predictor", tail=10):
         """Prints the deployment logs of the predictor or transformer.
 
-        # Arguments
+        Parameters:
             component: Deployment component to get the logs from (e.g., predictor or transformer)
             tail: Number of most recent lines to retrieve from the logs.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: In case the backend encounters an issue
-        """
 
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+        """
         # validate component
         components = list(util.get_members(DEPLOYABLE_COMPONENT))
         if component not in components:
@@ -273,8 +282,7 @@ class Deployment:
                 print(log, end="\n\n")
 
     def get_url(self):
-        """Get url to the deployment in Hopsworks"""
-
+        """Get url to the deployment in Hopsworks."""
         path = (
             "/p/"
             + str(client.get_instance()._project_id)
@@ -285,7 +293,6 @@ class Deployment:
 
     def describe(self):
         """Print a JSON description of the deployment."""
-
         util.pretty_print(self)
 
     @classmethod
@@ -296,8 +303,7 @@ class Deployment:
                 cls.from_predictor(predictor_instance)
                 for predictor_instance in predictors
             ]
-        else:
-            return cls.from_predictor(predictors)
+        return cls.from_predictor(predictors)
 
     @classmethod
     def from_predictor(cls, predictor_instance):
@@ -375,7 +381,7 @@ class Deployment:
 
     @property
     def model_name(self):
-        """Name of the model deployed by the predictor"""
+        """Name of the model deployed by the predictor."""
         return self._predictor.model_name
 
     @model_name.setter
@@ -404,13 +410,13 @@ class Deployment:
     def artifact_version(self):
         """Artifact version deployed by the predictor.
 
-        !!! warning "Deprecated"
+        Warning: Deprecated
             Artifact versions are deprecated in favor of deployment versions.
         """
         return self._predictor.version
 
     @artifact_version.setter
-    def artifact_version(self, version: Union[int, str]):
+    def artifact_version(self, version: int | str):
         pass  # do nothing, kept for backward compatibility
 
     @property
@@ -422,7 +428,7 @@ class Deployment:
     def artifact_path(self):
         """Path of the model artifact deployed by the predictor.
 
-        !!! warning "Deprecated"
+        Warning: Deprecated
             Artifact versions are deprecated in favor of deployment versions.
         """
         return self.artifact_files_path
@@ -457,6 +463,7 @@ class Deployment:
     @property
     def config_file(self):
         """Model server configuration file passed to the model deployment.
+
         It can be accessed via `CONFIG_FILE_PATH` environment variable from a predictor or transformer script.
         For LLM deployments without a predictor script, this file is used to configure the vLLM engine.
         """
@@ -532,7 +539,7 @@ class Deployment:
 
     @property
     def environment(self):
-        """Name of inference environment"""
+        """Name of inference environment."""
         return self._predictor.environment
 
     @environment.setter
@@ -541,7 +548,7 @@ class Deployment:
 
     @property
     def project_namespace(self):
-        """Name of inference environment"""
+        """Name of inference environment."""
         return self._predictor.project_namespace
 
     @project_namespace.setter

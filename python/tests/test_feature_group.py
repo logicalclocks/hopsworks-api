@@ -344,32 +344,32 @@ class TestFeatureGroup:
         assert issubclass(warning_record[0].category, DeprecationWarning)
         assert str(warning_record[0].message) == (
             "Providing event_time as a single-element list is deprecated"
-            + " and will be dropped in future versions. Provide the feature_name string instead."
+            " and will be dropped in future versions. Provide the feature_name string instead."
         )
 
     def test_select_all(self):
         query = test_feature_group.select_all()
         features = query.features
         assert len(features) == 5
-        assert set([f.name for f in features]) == {"pk", "fk", "ts", "f1", "f2"}
+        assert {f.name for f in features} == {"pk", "fk", "ts", "f1", "f2"}
 
     def test_select_all_exclude_pk(self):
         query = test_feature_group.select_all(include_primary_key=False)
         features = query.features
         assert len(features) == 4
-        assert set([f.name for f in features]) == {"ts", "fk", "f1", "f2"}
+        assert {f.name for f in features} == {"ts", "fk", "f1", "f2"}
 
     def test_select_all_exclude_fk(self):
         query = test_feature_group.select_all(include_foreign_key=False)
         features = query.features
         assert len(features) == 4
-        assert set([f.name for f in features]) == {"f1", "f2", "pk", "ts"}
+        assert {f.name for f in features} == {"f1", "f2", "pk", "ts"}
 
     def test_select_all_exclude_ts(self):
         query = test_feature_group.select_all(include_event_time=False)
         features = query.features
         assert len(features) == 4
-        assert set([f.name for f in features]) == {"pk", "fk", "f1", "f2"}
+        assert {f.name for f in features} == {"pk", "fk", "f1", "f2"}
 
     def test_select_all_exclude_pk_ts(self):
         query = test_feature_group.select_all(
@@ -377,13 +377,13 @@ class TestFeatureGroup:
         )
         features = query.features
         assert len(features) == 3
-        assert set([f.name for f in features]) == {"f1", "f2", "fk"}
+        assert {f.name for f in features} == {"f1", "f2", "fk"}
 
     def test_select_features(self):
         query = test_feature_group.select_features()
         features = query.features
         assert len(features) == 2
-        assert set([f.name for f in features]) == {"f1", "f2"}
+        assert {f.name for f in features} == {"f1", "f2"}
 
     def test_materialization_job(self, mocker):
         mock_job = mocker.Mock()
@@ -931,15 +931,9 @@ class TestFeatureGroup:
     def test_init_time_travel_and_stream_uses_resolvers_python(
         self, mocker, monkeypatch
     ):
-        """
-        Purpose: Verify that `_init_time_travel_and_stream` delegates to
-        `_resolve_time_travel_format` and, for the Python engine, to
-        `_resolve_stream_python` to derive `_time_travel_format` and `_stream`.
+        """Verify that `_init_time_travel_and_stream` delegates to `_resolve_time_travel_format` and, for the Python engine, to `_resolve_stream_python` to derive `_time_travel_format` and `_stream`.
 
-        This test does not validate resolver logic; it only checks that the
-        outputs of the resolver functions are propagated to the FeatureGroup
-        instance and that the resolvers are called with the expected arguments
-        (notably that the stream resolver receives the already-resolved format).
+        This test does not validate resolver logic; it only checks that the outputs of the resolver functions are propagated to the FeatureGroup instance and that the resolvers are called with the expected arguments (notably that the stream resolver receives the already-resolved format).
         """
         # Arrange: ensure code path selects Python Engine class
         monkeypatch.setattr("hsfs.engine.get_type", lambda: "python")
@@ -987,14 +981,9 @@ class TestFeatureGroup:
         }
 
     def test_init_time_travel_and_stream_uses_resolver_spark(self, mocker, monkeypatch):
-        """
-        Purpose: Verify that `_init_time_travel_and_stream` delegates to
-        `_resolve_time_travel_format` for setting `_time_travel_format` on the
-        Spark engine, and that it does not call `_resolve_stream_python` nor
-        mutate `_stream` (stream is a Python-engine concern only).
+        """Verify that `_init_time_travel_and_stream` delegates to `_resolve_time_travel_format` for setting `_time_travel_format` on the Spark engine, and that it does not call `_resolve_stream_python` nor mutate `_stream` (stream is a Python-engine concern only).
 
-        This test avoids checking the internal logic of the resolver and only
-        validates the delegation and side-effects of `_init_time_travel_and_stream`.
+        This test avoids checking the internal logic of the resolver and only validates the delegation and side-effects of `_init_time_travel_and_stream`.
         """
         # Arrange: ensure code path selects Spark Engine class
         monkeypatch.setattr("hsfs.engine.get_type", lambda: "spark")
@@ -1474,12 +1463,12 @@ class TestExternalFeatureGroup:
 
         assert len(warning_record) == 2
         assert (
-            "The feature name `Event_Time` contains upper case letters. Feature names are sanitized to lower case in the feature store."
-            == str(warning_record[0].message)
+            str(warning_record[0].message)
+            == "The feature name `Event_Time` contains upper case letters. Feature names are sanitized to lower case in the feature store."
         )
         assert (
-            "The feature name `PrimaryKey` contains upper case letters. Feature names are sanitized to lower case in the feature store."
-            == str(warning_record[1].message)
+            str(warning_record[1].message)
+            == "The feature name `PrimaryKey` contains upper case letters. Feature names are sanitized to lower case in the feature store."
         )
 
         # Assert

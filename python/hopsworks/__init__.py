@@ -22,7 +22,7 @@ import sys
 import tempfile
 import warnings
 from pathlib import Path
-from typing import Literal, Optional, Union
+from typing import Literal
 
 from hopsworks import client, constants, project, version
 from hopsworks.client.exceptions import (
@@ -62,7 +62,7 @@ udf = hsfs.hopsworks_udf.udf
 
 
 def hw_formatwarning(message, category, filename, lineno, line=None):
-    return "{}: {}\n".format(category.__name__, message)
+    return f"{category.__name__}: {message}\n"
 
 
 warnings.formatwarning = hw_formatwarning
@@ -77,73 +77,68 @@ logging.basicConfig(
 
 
 def login(
-    host: Optional[str] = None,
+    host: str | None = None,
     port: int = 443,
-    project: Optional[str] = None,
-    api_key_value: Optional[str] = None,
-    api_key_file: Optional[str] = None,
+    project: str | None = None,
+    api_key_value: str | None = None,
+    api_key_file: str | None = None,
     hostname_verification: bool = False,
-    trust_store_path: Optional[str] = None,
-    engine: Union[
-        None,
-        Literal["spark"],
-        Literal["python"],
-        Literal["training"],
-        Literal["spark-no-metastore"],
-        Literal["spark-delta"],
-    ] = None,
+    trust_store_path: str | None = None,
+    engine: Literal["spark", "python", "training", "spark-no-metastore", "spark-delta"]
+    | None = None,
 ) -> project.Project:
     """Connect to [Serverless Hopsworks](https://app.hopsworks.ai) by calling the `hopsworks.login()` function with no arguments.
 
-    !!! example "Connect to Serverless"
+    Example: Connect to Serverless
         ```python
-
         import hopsworks
 
         project = hopsworks.login()
-
         ```
 
-    Alternatively, connect to your own Hopsworks installation by specifying the host, port and api key.
+    Alternatively, connect to your own Hopsworks installation by specifying the host, port and API key.
 
-    !!! example "Connect to your Hopsworks cluster"
+    Example: Connect to your Hopsworks cluster
         ```python
-
         import hopsworks
 
-        project = hopsworks.login(host="my.hopsworks.server",
-                                  port=8181,
-                                  api_key_value="DKN8DndwaAjdf98FFNSxwdVKx")
-
+        project = hopsworks.login(
+            host="my.hopsworks.server",
+            port=8181,
+            api_key_value="DKN8DndwaAjdf98FFNSxwdVKx",
+        )
         ```
 
     In addition to setting function arguments directly, `hopsworks.login()` also reads the environment variables:
-    HOPSWORKS_HOST, HOPSWORKS_PORT, HOPSWORKS_PROJECT, HOPSWORKS_API_KEY, HOPSWORKS_HOSTNAME_VERIFICATION, HOPSWORKS_TRUST_STORE_PATH and HOPSWORKS_ENGINE.
+    `HOPSWORKS_HOST`, `HOPSWORKS_PORT`, `HOPSWORKS_PROJECT`, `HOPSWORKS_API_KEY`, `HOPSWORKS_HOSTNAME_VERIFICATION`, `HOPSWORKS_TRUST_STORE_PATH` and `HOPSWORKS_ENGINE`.
 
     The function arguments do however take precedence over the environment variables in case both are set.
 
-    # Arguments
-        host: The hostname of the Hopsworks instance, defaults to `None`.
-        port: The port on which the Hopsworks instance can be reached,
-            defaults to `443`.
+    Parameters:
+        host: The hostname of the Hopsworks instance.
+        port: The port on which the Hopsworks instance can be reached.
         project: Name of the project to access. If used inside a Hopsworks environment it always gets the current project. If not provided you will be prompted to enter it.
-        api_key_value: Value of the Api Key
-        api_key_file: Path to file wih Api Key
+        api_key_value: Value of the API Key
+        api_key_file: Path to file wih API Key
         hostname_verification: Whether to verify Hopsworks' certificate
         trust_store_path: Path on the file system containing the Hopsworks certificates
-        engine: Specifies the engine to use. Possible options are "spark", "python", "training", "spark-no-metastore", or "spark-delta". The default value is None, which automatically selects the engine based on the environment:
-            "spark": Used if Spark is available, such as in Hopsworks or Databricks environments.
-            "python": Used in local Python environments or AWS SageMaker when Spark is not available.
-            "training": Used when only feature store metadata is needed, such as for obtaining training dataset locations and label information during Hopsworks training experiments.
-            "spark-no-metastore": Functions like "spark" but does not rely on the Hive metastore.
-            "spark-delta": Minimizes dependencies further by avoiding both Hive metastore and HopsFS.
-    # Returns
-        `Project`: The Project object to perform operations on
-    # Raises
-        `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        `hopsworks.client.exceptions.HopsworksSSLClientError`: If SSLError is raised from underlying requests library
-    """
+        engine:
+            Specifies the engine to use.
+            The default value is `None`, which automatically selects the engine based on the environment:
 
+            - `spark`: Used if Spark is available, such as in Hopsworks or Databricks environments.
+            - `python`: Used in local Python environments or AWS SageMaker when Spark is not available.
+            - `training`: Used when only feature store metadata is needed, such as for obtaining training dataset locations and label information during Hopsworks training experiments.
+            - `spark-no-metastore`: Functions like `spark` but does not rely on the Hive metastore.
+            - `spark-delta`: Minimizes dependencies further by avoiding both Hive metastore and HopsFS.
+
+    Returns:
+        The Project object to perform operations on.
+
+    Raises:
+        hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        hopsworks.client.exceptions.HopsworksSSLClientError: If SSLError is raised from underlying requests library.
+    """
     global _connected_project
 
     # If already logged in, should reset connection and follow login procedure as Connection may no longer be valid
@@ -196,7 +191,7 @@ def login(
         port = os.environ["HOPSWORKS_PORT"]
 
     hostname_verification = os.getenv(
-        "HOPSWORKS_HOSTNAME_VERIFICATION", "{}".format(hostname_verification)
+        "HOPSWORKS_HOSTNAME_VERIFICATION", f"{hostname_verification}"
     ).lower() in ("true", "1", "y", "yes")
 
     trust_store_path = os.getenv("HOPSWORKS_TRUST_STORE_PATH", trust_store_path)
@@ -211,17 +206,10 @@ def login(
         api_key = api_key_value
     # If user supplied the api key in a file
     elif api_key_file is not None:
-        file = None
         if os.path.exists(api_key_file):
-            try:
-                file = open(api_key_file, mode="r")
-                api_key = file.read()
-            finally:
-                file.close()
+            api_key = Path(api_key_file).read_text()
         else:
-            raise IOError(
-                "Could not find api key file on path: {}".format(api_key_file)
-            )
+            raise OSError(f"Could not find api key file on path: {api_key_file}")
     # If user connected to Serverless Hopsworks, and the cached .hw_api_key exists, then use it.
     elif os.path.exists(api_key_path) and is_app:
         try:
@@ -252,7 +240,7 @@ def login(
 
     if api_key is None and is_app:
         print(
-            "Copy your Api Key (first register/login): https://c.app.hopsworks.ai/account/api/generated"
+            "Copy your API Key (first register/login): https://c.app.hopsworks.ai/account/api/generated"
         )
         api_key = getpass.getpass(prompt="\nPaste it here: ")
 
@@ -302,17 +290,14 @@ def _handle_ssl_errors(ssl_e):
 
 
 def _get_cached_api_key_path():
-    """
-    This function is used to get an appropriate path to store the user supplied API Key for Serverless Hopsworks.
+    """This function is used to get an appropriate path to store the user supplied API Key for Serverless Hopsworks.
 
     First it will search for .hw_api_key in the current working directory, if it exists it will use it (this is default in 3.0 client)
     Otherwise, falls back to storing the API key in HOME
     If not sufficient permissions are set in HOME to create the API key (writable and executable), it uses the temp directory to store it.
-
     """
-
     api_key_name = ".hw_api_key"
-    api_key_folder = ".{}_hopsworks_app".format(getpass.getuser())
+    api_key_folder = f".{getpass.getuser()}_hopsworks_app"
 
     # Path for current working directory api key
     cwd_api_key_path = os.path.join(os.getcwd(), api_key_name)
@@ -350,42 +335,40 @@ def _prompt_project(valid_connection, project, is_app):
         if len(saas_projects) == 0:
             if is_app:
                 raise ProjectException("Could not find any project")
-            else:
-                return None
-        elif len(saas_projects) == 1:
+            return None
+        if len(saas_projects) == 1:
             return saas_projects[0]
-        else:
+        while True:
+            print("\nMultiple projects found. \n")
+            for index in range(len(saas_projects)):
+                print("\t (" + str(index + 1) + ") " + saas_projects[index].name)
             while True:
-                print("\nMultiple projects found. \n")
-                for index in range(len(saas_projects)):
-                    print("\t (" + str(index + 1) + ") " + saas_projects[index].name)
-                while True:
-                    project_index = input(
-                        "\nEnter number corresponding to the project to use: "
-                    )
-                    # Handle invalid input type
+                project_index = input(
+                    "\nEnter number corresponding to the project to use: "
+                )
+                # Handle invalid input type
+                try:
+                    project_index = int(project_index)
+                    # Handle negative indexing
+                    if project_index <= 0:
+                        print("Invalid input, must be greater than or equal to 1")
+                        continue
+                    # Handle index out of range
                     try:
-                        project_index = int(project_index)
-                        # Handle negative indexing
-                        if project_index <= 0:
-                            print("Invalid input, must be greater than or equal to 1")
-                            continue
-                        # Handle index out of range
-                        try:
-                            return saas_projects[project_index - 1]
-                        except IndexError:
-                            print(
-                                "Invalid input, should be an integer from the list of projects."
-                            )
-                    except ValueError:
+                        return saas_projects[project_index - 1]
+                    except IndexError:
                         print(
                             "Invalid input, should be an integer from the list of projects."
                         )
+                except ValueError:
+                    print(
+                        "Invalid input, should be an integer from the list of projects."
+                    )
     else:
         try:
             return valid_connection._project_api._get_project(project)
         except RestAPIError as x:
-            raise ProjectException("Could not find project {}".format(project)) from x
+            raise ProjectException(f"Could not find project {project}") from x
 
 
 def logout():
@@ -411,19 +394,17 @@ def _is_connection_active():
 def get_current_project() -> project.Project:
     """Get a reference to the current logged in project.
 
-    !!! example "Example for getting the project reference"
+    Example: Example for getting the project reference
         ```python
-
         import hopsworks
 
         hopsworks.login()
 
         project = hopsworks.get_current_project()
-
         ```
 
-    # Returns
-        `Project`. The Project object to perform operations on
+    Returns:
+        The Project object to perform operations on.
     """
     global _connected_project
     if _connected_project is None:
@@ -439,38 +420,35 @@ def _initialize_module_apis():
 
 
 def create_project(
-    name: str,
-    description: Optional[str] = None,
-    feature_store_topic: Optional[str] = None,
-):
+    name: str, description: str | None = None, feature_store_topic: str | None = None
+) -> project.Project | None:
     """Create a new project.
 
-    !!! warning "Not supported"
-        This is not supported if you are connected to [Serverless Hopsworks](https://app.hopsworks.ai)
+    Warning: Not supported
+        The function does not work if you are connected to [Serverless Hopsworks](https://app.hopsworks.ai).
 
-    !!! example "Example for creating a new project"
+    Example: Example for creating a new project
         ```python
-
         import hopsworks
 
         hopsworks.login(...)
 
         hopsworks.create_project("my_project", description="An example Hopsworks project")
-
         ```
-    # Arguments
-        name: The name of the project.
-        description: optional description of the project
-        feature_store_topic: optional feature store topic name
 
-    # Returns
-        `Project`. The Project object to perform operations on
+    Parameters:
+        name: The name of the project.
+        description: Description of the project.
+        feature_store_topic: Feature store topic name.
+
+    Returns:
+        The Project object to perform operations on.
     """
     global _hw_connection
     global _connected_project
 
     if not _is_connection_active():
-        raise NoHopsworksConnectionError()
+        raise NoHopsworksConnectionError
 
     new_project = _hw_connection._project_api._create_project(
         name, description, feature_store_topic
@@ -480,28 +458,24 @@ def create_project(
         if _connected_project:
             _set_active_project(_connected_project)
         print(
-            "Setting {} as the current project, a reference can be retrieved by calling hopsworks.get_current_project()".format(
-                _connected_project.name
-            )
+            f"Setting {_connected_project.name} as the current project, a reference can be retrieved by calling hopsworks.get_current_project()"
         )
         return _connected_project
-    else:
-        print(
-            "You are already using the project {}, to access the new project use hopsworks.login(..., project='{}')".format(
-                _connected_project.name, new_project.name
-            )
-        )
+    print(
+        f"You are already using the project {_connected_project.name}, to access the new project use hopsworks.login(..., project='{new_project.name}')"
+    )
+    return None
 
 
-def get_secrets_api():
+def get_secrets_api() -> secret_api.SecretsApi:
     """Get the secrets api.
 
-    # Returns
-        `SecretsApi`: The Secrets Api handle
+    Returns:
+        The Secrets API handle.
     """
     global _secrets_api
     if not _is_connection_active():
-        raise NoHopsworksConnectionError()
+        raise NoHopsworksConnectionError
     return _secrets_api
 
 
