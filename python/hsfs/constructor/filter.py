@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
 from hsfs import feature, util
 
@@ -32,14 +32,14 @@ class Filter:
     LK = "LIKE"
 
     def __init__(
-        self, feature: "feature.Feature", condition: str, value: Any, **kwargs
+        self, feature: feature.Feature, condition: str, value: Any, **kwargs
     ) -> None:
         self._feature = feature
         self._condition = condition
         self._value = value
 
     @classmethod
-    def from_response_json(cls, json_dict: Dict[str, Any]) -> Optional["Filter"]:
+    def from_response_json(cls, json_dict: dict[str, Any]) -> Filter | None:
         if json_dict is None:
             return None
 
@@ -52,36 +52,30 @@ class Filter:
     def json(self) -> str:
         return json.dumps(self, cls=util.Encoder)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "feature": self._feature,
             "condition": self._condition,
             "value": str(self._value) if self._value is not None else None,
         }
 
-    def __and__(self, other: Union["Logic", "Filter"]) -> "Logic":
+    def __and__(self, other: Logic | Filter) -> Logic:
         if isinstance(other, Filter):
             return Logic.And(left_f=self, right_f=other)
-        elif isinstance(other, Logic):
+        if isinstance(other, Logic):
             return Logic.And(left_f=self, right_l=other)
-        else:
-            raise TypeError(
-                "Operator `&` expected type `Filter` or `Logic`, got `{}`".format(
-                    type(other)
-                )
-            )
+        raise TypeError(
+            f"Operator `&` expected type `Filter` or `Logic`, got `{type(other)}`"
+        )
 
-    def __or__(self, other: Union["Filter", "Logic"]) -> "Logic":
+    def __or__(self, other: Filter | Logic) -> Logic:
         if isinstance(other, Filter):
             return Logic.Or(left_f=self, right_f=other)
-        elif isinstance(other, Logic):
+        if isinstance(other, Logic):
             return Logic.Or(left_f=self, right_l=other)
-        else:
-            raise TypeError(
-                "Operator `|` expected type `Filter` or `Logic`, got `{}`".format(
-                    type(other)
-                )
-            )
+        raise TypeError(
+            f"Operator `|` expected type `Filter` or `Logic`, got `{type(other)}`"
+        )
 
     def __repr__(self) -> str:
         return f"Filter({self._feature!r}, {self._condition!r}, {self._value!r})"
@@ -90,7 +84,7 @@ class Filter:
         return self.json()
 
     @property
-    def feature(self) -> "feature.Feature":
+    def feature(self) -> feature.Feature:
         return self._feature
 
     @property
@@ -109,11 +103,11 @@ class Logic:
 
     def __init__(
         self,
-        type: Optional[str],
-        left_f: Optional["Filter"] = None,
-        right_f: Optional["Filter"] = None,
-        left_l: Optional["Logic"] = None,
-        right_l: Optional["Logic"] = None,
+        type: str | None,
+        left_f: Filter | None = None,
+        right_f: Filter | None = None,
+        left_l: Logic | None = None,
+        right_l: Logic | None = None,
         **kwargs,
     ) -> None:
         self._type = type
@@ -125,7 +119,7 @@ class Logic:
     def json(self) -> str:
         return json.dumps(self, cls=util.Encoder)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "type": self._type,
             "leftFilter": self._left_f,
@@ -135,14 +129,12 @@ class Logic:
         }
 
     @classmethod
-    def from_response_json(
-        cls, json_dict: Optional[Dict[str, Any]]
-    ) -> Optional["Logic"]:
+    def from_response_json(cls, json_dict: dict[str, Any] | None) -> Logic | None:
         if json_dict is None:
             return None
 
         return cls(
-            type=json_dict["type"] if "type" in json_dict else None,
+            type=json_dict.get("type", None),
             left_f=Filter.from_response_json(json_dict.get("left_filter", None)),
             right_f=Filter.from_response_json(json_dict.get("right_filter", None)),
             left_l=Logic.from_response_json(json_dict.get("left_logic", None)),
@@ -152,50 +144,44 @@ class Logic:
     @classmethod
     def And(
         cls,
-        left_f: Optional["Filter"] = None,
-        right_f: Optional["Filter"] = None,
-        left_l: Optional["Logic"] = None,
-        right_l: Optional["Logic"] = None,
-    ) -> "Logic":
+        left_f: Filter | None = None,
+        right_f: Filter | None = None,
+        left_l: Logic | None = None,
+        right_l: Logic | None = None,
+    ) -> Logic:
         return cls(cls.AND, left_f, right_f, left_l, right_l)
 
     @classmethod
     def Or(
         cls,
-        left_f: Optional["Filter"] = None,
-        right_f: Optional["Filter"] = None,
-        left_l: Optional["Logic"] = None,
-        right_l: Optional["Logic"] = None,
+        left_f: Filter | None = None,
+        right_f: Filter | None = None,
+        left_l: Logic | None = None,
+        right_l: Logic | None = None,
     ) -> Logic:
         return cls(cls.OR, left_f, right_f, left_l, right_l)
 
     @classmethod
-    def Single(cls, left_f: "Filter") -> Logic:
+    def Single(cls, left_f: Filter) -> Logic:
         return cls(cls.SINGLE, left_f)
 
-    def __and__(self, other: Union["Filter", "Logic"]) -> "Logic":
+    def __and__(self, other: Filter | Logic) -> Logic:
         if isinstance(other, Filter):
             return Logic.And(left_l=self, right_f=other)
-        elif isinstance(other, Logic):
+        if isinstance(other, Logic):
             return Logic.And(left_l=self, right_l=other)
-        else:
-            raise TypeError(
-                "Operator `&` expected type `Filter` or `Logic`, got `{}`".format(
-                    type(other)
-                )
-            )
+        raise TypeError(
+            f"Operator `&` expected type `Filter` or `Logic`, got `{type(other)}`"
+        )
 
-    def __or__(self, other: "Logic") -> "Logic":
+    def __or__(self, other: Logic) -> Logic:
         if isinstance(other, Filter):
             return Logic.Or(left_l=self, right_f=other)
-        elif isinstance(other, Logic):
+        if isinstance(other, Logic):
             return Logic.Or(left_l=self, right_l=other)
-        else:
-            raise TypeError(
-                "Operator `|` expected type `Filter` or `Logic`, got `{}`".format(
-                    type(other)
-                )
-            )
+        raise TypeError(
+            f"Operator `|` expected type `Filter` or `Logic`, got `{type(other)}`"
+        )
 
     def __repr__(self) -> str:
         return f"Logic({self._type!r}, {self._left_f!r}, {self._right_f!r}, {self._left_l!r}, {self._right_l!r})"
@@ -204,11 +190,11 @@ class Logic:
         return self.json()
 
     @property
-    def type(self) -> Optional[str]:
+    def type(self) -> str | None:
         return self._type
 
-    def get_left_filter_or_logic(self) -> Union["Filter", "Logic"]:
+    def get_left_filter_or_logic(self) -> Filter | Logic:
         return self._left_f or self._left_l
 
-    def get_right_filter_or_logic(self) -> Optional[Union["Filter", "Logic"]]:
+    def get_right_filter_or_logic(self) -> Filter | Logic | None:
         return self._right_f or self._right_l

@@ -56,40 +56,42 @@ class Secret:
 
     @property
     def name(self):
-        """Name of the secret"""
+        """Name of the secret."""
         return self._name
 
     @property
     def value(self):
-        """Value of the secret"""
+        """Value of the secret."""
         return self._secret
 
     @property
     def created(self):
-        """Date when secret was created"""
+        """Date when secret was created."""
         return self._added_on
 
     @property
     def visibility(self):
-        """Visibility of the secret"""
+        """Visibility of the secret."""
         return self._visibility
 
     @property
     def scope(self):
-        """Scope of the secret"""
+        """Scope of the secret."""
         return self._scope
 
     @property
     def owner(self):
-        """Owner of the secret"""
+        """Owner of the secret."""
         return self._owner
 
     def delete(self):
-        """Delete the secret
-        !!! danger "Potentially dangerous operation"
+        """Delete the secret.
+
+        Danger: Potentially dangerous operation
             This operation deletes the secret and may break applications using it.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         return self._secret_api._delete(self.name)
 
@@ -102,10 +104,9 @@ class Secret:
     def __repr__(self):
         if self._owner is not None:
             return f"Secret({self._name!r}, {self._visibility!r}, {self._owner!r})"
-        else:
-            return f"Secret({self._name!r}, {self._visibility!r})"
+        return f"Secret({self._name!r}, {self._visibility!r})"
 
     def get_url(self):
-        """Get url to the secret in Hopsworks"""
+        """Get url to the secret in Hopsworks."""
         path = "/account/secrets"
         return util.get_hostname_replaced_url(path)

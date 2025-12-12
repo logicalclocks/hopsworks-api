@@ -15,8 +15,6 @@
 #
 from __future__ import annotations
 
-from typing import List
-
 from hopsworks_common import client
 from hsfs import feature_store_activity as fsa_mod
 
@@ -26,13 +24,11 @@ class FeatureStoreActivityApi:
         self,
         feature_store_id: int,
         feature_group_id: int,
-        activity_type: List[fsa_mod.FeatureStoreActivityType],
+        activity_type: list[fsa_mod.FeatureStoreActivityType],
         limit: int = 100,
         offset: int = 0,
-    ) -> List[fsa_mod.FeatureStoreActivity]:
-        """
-        Get the activities for a feature group in the feature store
-        """
+    ) -> list[fsa_mod.FeatureStoreActivity]:
+        """Get the activities for a feature group in the feature store."""
         _client = client.get_instance()
         path_params = [
             "project",

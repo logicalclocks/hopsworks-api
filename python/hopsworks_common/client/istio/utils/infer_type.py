@@ -14,9 +14,9 @@
 
 # This implementation has been borrowed from kserve/kserve repository
 # https://github.com/kserve/kserve/blob/release-0.11/python/kserve/kserve/protocol/infer_type.py
+from __future__ import annotations
 
 import struct
-from typing import Dict, List, Optional
 
 import numpy
 import numpy as np
@@ -47,35 +47,28 @@ GRPC_CONTENT_DATATYPE_MAPPINGS = {
 
 
 def raise_error(msg):
-    """
-    Raise error with the provided message
-    """
+    """Raise error with the provided message."""
     raise InferenceServerException(msg=msg) from None
 
 
-def serialize_byte_tensor(input_tensor):
-    """
-    Serializes a bytes tensor into a flat numpy array of length prepended
-    bytes. The numpy array should use dtype of np.object. For np.bytes,
+def serialize_byte_tensor(input_tensor: np.array) -> np.array:
+    """Serializes a bytes tensor into a flat numpy array of length prepended bytes.
+
+    The numpy array should use dtype of np.object. For np.bytes,
     numpy will remove trailing zeros at the end of byte sequence and because
     of this it should be avoided.
 
-    Parameters
-    ----------
-    input_tensor : np.array
-        The bytes tensor to serialize.
+    Parameters:
+        input_tensor : np.array
+            The bytes tensor to serialize.
 
-    Returns
-    -------
-    serialized_bytes_tensor : np.array
+    Returns:
         The 1-D numpy array of type uint8 containing the serialized bytes in row-major form.
 
-    Raises
-    ------
-    InferenceServerException
-        If unable to serialize the given tensor.
+    Raises:
+        InferenceServerException:
+            If unable to serialize the given tensor.
     """
-
     if input_tensor.size == 0:
         return np.empty([0], dtype=np.object_)
 
@@ -139,7 +132,7 @@ class InferenceServerException(Exception):
     def message(self):
         """Get the exception message.
 
-        Returns
+        Returns:
         -------
         str
             The message associated with this exception, or None if no message.
@@ -150,7 +143,7 @@ class InferenceServerException(Exception):
     def status(self):
         """Get the status of the exception.
 
-        Returns
+        Returns:
         -------
         str
             Returns the status of the exception
@@ -158,40 +151,42 @@ class InferenceServerException(Exception):
         """
         return self._status
 
-    def debug_details(self):
-        """Get the detailed information about the exception
-        for debugging purposes
+    def debug_details(self) -> str:
+        """Get the detailed information about the exception for debugging purposes.
 
-        Returns
-        -------
-        str
+        Returns:
             Returns the exception details
-
         """
         return self._debug_details
 
 
 class InferInput:
     _name: str
-    _shape: List[int]
+    _shape: list[int]
     _datatype: str
-    _parameters: Dict
+    _parameters: dict
 
-    def __init__(self, name, shape, datatype, data=None, parameters=None):
-        """An object of InferInput class is used to describe
-        input tensor for an inference request.
-        Parameters
-        ----------
-        name : str
-            The name of input whose data will be described by this object
-        shape : list
-            The shape of the associated input.
-        datatype : str
-            The datatype of the associated input.
-        data : Union[List, InferTensorContents]
-            The data of the REST/gRPC input. When data is not set, raw_data is used for gRPC for numpy array bytes.
-        parameters : dict
-            The additional server-specific parameters.
+    def __init__(
+        self,
+        name: str,
+        shape: list,
+        datatype: str,
+        data: list | InferTensorContents | None = None,
+        parameters: dict | None = None,
+    ):
+        """An object of InferInput class is used to describe input tensor for an inference request.
+
+        Parameters:
+            name:
+                The name of input whose data will be described by this object
+            shape:
+                The shape of the associated input.
+            datatype:
+                The datatype of the associated input.
+            data:
+                The data of the REST/gRPC input. When data is not set, raw_data is used for gRPC for numpy array bytes.
+            parameters:
+                The additional server-specific parameters.
         """
         if parameters is None:
             parameters = {}
@@ -205,7 +200,8 @@ class InferInput:
     @property
     def name(self):
         """Get the name of input associated with this object.
-        Returns
+
+        Returns.
         -------
         str
             The name of input
@@ -213,46 +209,43 @@ class InferInput:
         return self._name
 
     @property
-    def datatype(self):
+    def datatype(self) -> str:
         """Get the datatype of input associated with this object.
-        Returns
-        -------
-        str
+
+        Returns:
             The datatype of input
         """
         return self._datatype
 
     @property
     def data(self):
-        """Get the data of InferInput"""
+        """Get the data of InferInput."""
         return self._data
 
     @property
-    def shape(self):
+    def shape(self) -> list:
         """Get the shape of input associated with this object.
-        Returns
-        -------
-        list
+
+        Returns:
             The shape of input
         """
         return self._shape
 
     @property
-    def parameters(self):
+    def parameters(self) -> dict:
         """Get the parameters of input associated with this object.
-        Returns
-        -------
-        dict
+
+        Returns:
             The key, value pair of string and InferParameter
         """
         return self._parameters
 
-    def set_shape(self, shape):
+    def set_shape(self, shape: list):
         """Set the shape of input.
-        Parameters
-        ----------
-        shape : list
-            The shape of the associated input.
+
+        Parameters:
+            shape:
+                The shape of the associated input.
         """
         self._shape = shape
 
@@ -263,26 +256,24 @@ class InferInput:
         if self._raw_data is not None:
             np_array = np.frombuffer(self._raw_data, dtype=dtype)
             return np_array.reshape(self._shape)
-        else:
-            np_array = np.array(self._data, dtype=dtype)
-            return np_array.reshape(self._shape)
+        np_array = np.array(self._data, dtype=dtype)
+        return np_array.reshape(self._shape)
 
-    def set_data_from_numpy(self, input_tensor, binary_data=True):
-        """Set the tensor data from the specified numpy array for
-        input associated with this object.
-        Parameters
-        ----------
-        input_tensor : numpy array
-            The tensor data in numpy array format
-        binary_data : bool
-            Indicates whether to set data for the input in binary format
-            or explicit tensor within JSON. The default value is True,
-            which means the data will be delivered as binary data in the
-            HTTP body after the JSON object.
-        Raises
-        ------
-        InferenceServerException
-            If failed to set data for the tensor.
+    def set_data_from_numpy(self, input_tensor, binary_data: bool = True):
+        """Set the tensor data from the specified numpy array for input associated with this object.
+
+        Parameters:
+            input_tensor:
+                The tensor data in numpy array format
+            binary_data:
+                Indicates whether to set data for the input in binary format
+                or explicit tensor within JSON. The default value is True,
+                which means the data will be delivered as binary data in the
+                HTTP body after the JSON object.
+
+        Raises:
+            InferenceServerException:
+                If failed to set data for the tensor.
         """
         if not isinstance(input_tensor, (np.ndarray,)):
             raise_error("input_tensor must be a numpy array")
@@ -290,9 +281,7 @@ class InferInput:
         dtype = from_np_dtype(input_tensor.dtype)
         if self._datatype != dtype:
             raise_error(
-                "got unexpected datatype {} from numpy array, expected {}".format(
-                    dtype, self._datatype
-                )
+                f"got unexpected datatype {dtype} from numpy array, expected {self._datatype}"
             )
         valid_shape = True
         if len(self._shape) != len(input_tensor.shape):
@@ -303,9 +292,7 @@ class InferInput:
                     valid_shape = False
         if not valid_shape:
             raise_error(
-                "got unexpected numpy array shape [{}], expected [{}]".format(
-                    str(input_tensor.shape)[1:-1], str(self._shape)[1:-1]
-                )
+                f"got unexpected numpy array shape [{str(input_tensor.shape)[1:-1]}], expected [{str(self._shape)[1:-1]}]"
             )
 
         if not binary_data:
@@ -351,26 +338,25 @@ class InferInput:
 def get_content(datatype: str, data: InferTensorContents):
     if datatype == "BOOL":
         return list(data.bool_contents)
-    elif datatype in ["UINT8", "UINT16", "UINT32"]:
+    if datatype in ["UINT8", "UINT16", "UINT32"]:
         return list(data.uint_contents)
-    elif datatype == "UINT64":
+    if datatype == "UINT64":
         return list(data.uint64_contents)
-    elif datatype in ["INT8", "INT16", "INT32"]:
+    if datatype in ["INT8", "INT16", "INT32"]:
         return list(data.int_contents)
-    elif datatype == "INT64":
+    if datatype == "INT64":
         return list(data.int64_contents)
-    elif datatype == "FP32":
+    if datatype == "FP32":
         return list(data.fp32_contents)
-    elif datatype == "FP64":
+    if datatype == "FP64":
         return list(data.fp64_contents)
-    elif datatype == "BYTES":
+    if datatype == "BYTES":
         return list(data.bytes_contents)
-    else:
-        raise InvalidInput("invalid content type")
+    raise InvalidInput("invalid content type")
 
 
 class InferRequest:
-    """InferenceRequest Model
+    """InferenceRequest Model.
 
     $inference_request =
     {
@@ -381,16 +367,16 @@ class InferRequest:
     }
     """
 
-    id: Optional[str]
+    id: str | None
     model_name: str
-    parameters: Optional[Dict]
-    inputs: List[InferInput]
+    parameters: dict | None
+    inputs: list[InferInput]
     from_grpc: bool
 
     def __init__(
         self,
         model_name: str,
-        infer_inputs: List[InferInput],
+        infer_inputs: list[InferInput],
         request_id=None,
         raw_inputs=None,
         from_grpc=False,
@@ -428,8 +414,8 @@ class InferRequest:
             parameters=request.parameters,
         )
 
-    def to_rest(self) -> Dict:
-        """Converts the InferRequest object to v2 REST InferenceRequest message"""
+    def to_rest(self) -> dict:
+        """Converts the InferRequest object to v2 REST InferenceRequest message."""
         infer_inputs = []
         for infer_input in self.inputs:
             infer_input_dict = {
@@ -446,7 +432,7 @@ class InferRequest:
         return {"id": self.id, "inputs": infer_inputs}
 
     def to_grpc(self) -> ModelInferRequest:
-        """Converts the InferRequest object to gRPC ModelInferRequest message"""
+        """Converts the InferRequest object to gRPC ModelInferRequest message."""
         infer_inputs = []
         raw_input_contents = []
         for infer_input in self.inputs:
@@ -460,7 +446,7 @@ class InferRequest:
             if infer_input._raw_data is not None:
                 raw_input_contents.append(infer_input._raw_data)
             else:
-                if not isinstance(infer_input.data, List):
+                if not isinstance(infer_input.data, list):
                     raise InvalidInput("input data is not a List")
                 infer_input_dict["contents"] = {}
                 data_key = GRPC_CONTENT_DATATYPE_MAPPINGS.get(
@@ -484,9 +470,7 @@ class InferRequest:
         )
 
     def as_dataframe(self) -> pd.DataFrame:
-        """
-        Decode the tensor inputs as pandas dataframe
-        """
+        """Decode the tensor inputs as pandas dataframe."""
         dfs = []
         for input in self.inputs:
             input_data = input.data
@@ -500,21 +484,27 @@ class InferRequest:
 
 
 class InferOutput:
-    def __init__(self, name, shape, datatype, data=None, parameters=None):
-        """An object of InferOutput class is used to describe
-        input tensor for an inference request.
-        Parameters
-        ----------
-        name : str
-            The name of input whose data will be described by this object
-        shape : list
-            The shape of the associated input.
-        datatype : str
-            The datatype of the associated input.
-        data : Union[List, InferTensorContents]
-            The data of the REST/gRPC input. When data is not set, raw_data is used for gRPC for numpy array bytes.
-        parameters : dict
-            The additional server-specific parameters.
+    def __init__(
+        self,
+        name: str,
+        shape: list,
+        datatype: str,
+        data: list | InferTensorContents | None = None,
+        parameters: dict | None = None,
+    ):
+        """An object of InferOutput class is used to describe input tensor for an inference request.
+
+        Parameters:
+            name:
+                The name of input whose data will be described by this object
+            shape:
+                The shape of the associated input.
+            datatype:
+                The datatype of the associated input.
+            data:
+                The data of the REST/gRPC input. When data is not set, raw_data is used for gRPC for numpy array bytes.
+            parameters:
+                The additional server-specific parameters.
         """
         if parameters is None:
             parameters = {}
@@ -528,7 +518,8 @@ class InferOutput:
     @property
     def name(self):
         """Get the name of input associated with this object.
-        Returns
+
+        Returns.
         -------
         str
             The name of input
@@ -538,7 +529,8 @@ class InferOutput:
     @property
     def datatype(self):
         """Get the datatype of input associated with this object.
-        Returns
+
+        Returns.
         -------
         str
             The datatype of input
@@ -547,13 +539,14 @@ class InferOutput:
 
     @property
     def data(self):
-        """Get the data of InferOutput"""
+        """Get the data of InferOutput."""
         return self._data
 
     @property
     def shape(self):
         """Get the shape of input associated with this object.
-        Returns
+
+        Returns.
         -------
         list
             The shape of input
@@ -563,52 +556,46 @@ class InferOutput:
     @property
     def parameters(self):
         """Get the parameters of input associated with this object.
-        Returns
+
+        Returns.
         -------
         dict
             The key, value pair of string and InferParameter
         """
         return self._parameters
 
-    def set_shape(self, shape):
+    def set_shape(self, shape: list):
         """Set the shape of input.
-        Parameters
-        ----------
-        shape : list
-            The shape of the associated input.
+
+        Parameters:
+            shape: The shape of the associated input.
         """
         self._shape = shape
 
     def as_numpy(self) -> numpy.ndarray:
-        """
-        Decode the tensor data as numpy array
-        """
+        """Decode the tensor data as numpy array."""
         dtype = to_np_dtype(self.datatype)
         if dtype is None:
             raise InvalidInput("invalid datatype in the input")
         if self._raw_data is not None:
             np_array = np.frombuffer(self._raw_data, dtype=dtype)
             return np_array.reshape(self._shape)
-        else:
-            np_array = np.array(self._data, dtype=dtype)
-            return np_array.reshape(self._shape)
+        np_array = np.array(self._data, dtype=dtype)
+        return np_array.reshape(self._shape)
 
-    def set_data_from_numpy(self, input_tensor, binary_data=True):
-        """Set the tensor data from the specified numpy array for
-        input associated with this object.
-        Parameters
-        ----------
-        input_tensor : numpy array
-            The tensor data in numpy array format
-        binary_data : bool
-            Indicates whether to set data for the input in binary format
-            or explicit tensor within JSON. The default value is True,
-            which means the data will be delivered as binary data in the
-            HTTP body after the JSON object.
-        Raises
-        ------
-        InferenceServerException
-            If failed to set data for the tensor.
+    def set_data_from_numpy(self, input_tensor, binary_data: bool = True):
+        """Set the tensor data from the specified numpy array for input associated with this object.
+
+        Parameters:
+            input_tensor: The tensor data in numpy array format
+            binary_data
+                Indicates whether to set data for the input in binary format
+                or explicit tensor within JSON. The default value is True,
+                which means the data will be delivered as binary data in the
+                HTTP body after the JSON object.
+
+        Raises:
+            InferenceServerException: If failed to set data for the tensor.
         """
         if not isinstance(input_tensor, (np.ndarray,)):
             raise_error("input_tensor must be a numpy array")
@@ -616,9 +603,7 @@ class InferOutput:
         dtype = from_np_dtype(input_tensor.dtype)
         if self._datatype != dtype:
             raise_error(
-                "got unexpected datatype {} from numpy array, expected {}".format(
-                    dtype, self._datatype
-                )
+                f"got unexpected datatype {dtype} from numpy array, expected {self._datatype}"
             )
         valid_shape = True
         if len(self._shape) != len(input_tensor.shape):
@@ -629,9 +614,7 @@ class InferOutput:
                     valid_shape = False
         if not valid_shape:
             raise_error(
-                "got unexpected numpy array shape [{}], expected [{}]".format(
-                    str(input_tensor.shape)[1:-1], str(self._shape)[1:-1]
-                )
+                f"got unexpected numpy array shape [{str(input_tensor.shape)[1:-1]}], expected [{str(self._shape)[1:-1]}]"
             )
 
         if not binary_data:
@@ -675,7 +658,7 @@ class InferOutput:
 
 
 class InferResponse:
-    """InferenceResponse
+    """InferenceResponse.
 
     $inference_response =
     {
@@ -689,15 +672,15 @@ class InferResponse:
 
     id: str
     model_name: str
-    parameters: Optional[Dict]
-    outputs: List[InferOutput]
+    parameters: dict | None
+    outputs: list[InferOutput]
     from_grpc: bool
 
     def __init__(
         self,
         response_id: str,
         model_name: str,
-        infer_outputs: List[InferOutput],
+        infer_outputs: list[InferOutput],
         raw_outputs=None,
         from_grpc=False,
         parameters=None,
@@ -714,7 +697,7 @@ class InferResponse:
                 self.outputs[i]._raw_data = raw_output
 
     @classmethod
-    def from_grpc(cls, response: ModelInferResponse) -> "InferResponse":
+    def from_grpc(cls, response: ModelInferResponse) -> InferResponse:
         infer_outputs = [
             InferOutput(
                 name=output.name,
@@ -735,7 +718,7 @@ class InferResponse:
         )
 
     @classmethod
-    def from_rest(cls, model_name: str, response: Dict) -> "InferResponse":
+    def from_rest(cls, model_name: str, response: dict) -> InferResponse:
         infer_outputs = [
             InferOutput(
                 name=output["name"],
@@ -748,13 +731,13 @@ class InferResponse:
         ]
         return cls(
             model_name=model_name,
-            response_id=response.get("id", None),
+            response_id=response.get("id"),
             parameters=response.get("parameters", {}),
             infer_outputs=infer_outputs,
         )
 
-    def to_rest(self) -> Dict:
-        """Converts the InferResponse object to v2 REST InferenceRequest message"""
+    def to_rest(self) -> dict:
+        """Converts the InferResponse object to v2 REST InferenceRequest message."""
         infer_outputs = []
         for infer_output in self.outputs:
             infer_output_dict = {
@@ -770,11 +753,10 @@ class InferResponse:
             else:
                 infer_output_dict["data"] = infer_output.data
             infer_outputs.append(infer_output_dict)
-        res = {"id": self.id, "model_name": self.model_name, "outputs": infer_outputs}
-        return res
+        return {"id": self.id, "model_name": self.model_name, "outputs": infer_outputs}
 
     def to_grpc(self) -> ModelInferResponse:
-        """Converts the InferResponse object to gRPC ModelInferRequest message"""
+        """Converts the InferResponse object to gRPC ModelInferRequest message."""
         infer_outputs = []
         raw_output_contents = []
         for infer_output in self.outputs:
@@ -788,7 +770,7 @@ class InferResponse:
             if infer_output._raw_data is not None:
                 raw_output_contents.append(infer_output._raw_data)
             else:
-                if not isinstance(infer_output.data, List):
+                if not isinstance(infer_output.data, list):
                     raise InvalidInput("output data is not a List")
                 infer_output_dict["contents"] = {}
                 data_key = GRPC_CONTENT_DATATYPE_MAPPINGS.get(

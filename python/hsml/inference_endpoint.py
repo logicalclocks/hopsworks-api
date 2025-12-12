@@ -12,9 +12,9 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
+from __future__ import annotations
 
 import random
-from typing import List, Optional
 
 import humps
 from hopsworks_common import util
@@ -23,10 +23,11 @@ from hopsworks_common import util
 class InferenceEndpointPort:
     """Port of an inference endpoint.
 
-    # Arguments
+    Parameters:
         name: Name of the port. It typically defines the purpose of the port (e.g., HTTP, HTTPS, STATUS-PORT, TLS)
         number: Port number.
-    # Returns
+
+    Returns:
         `InferenceEndpointPort`. Port of an inference endpoint.
     """
 
@@ -70,30 +71,31 @@ class InferenceEndpointPort:
 class InferenceEndpoint:
     """Inference endpoint available in the current project for model inference.
 
-    # Arguments
+    Parameters:
         type: Type of inference endpoint (e.g., NODE, KUBE_CLUSTER, LOAD_BALANCER).
         hosts: List of hosts of the inference endpoint.
         ports: List of ports of the inference endpoint.
-    # Returns
+
+    Returns:
         `InferenceEndpoint`. Inference endpoint.
     """
 
     def __init__(
         self,
         type: str,
-        hosts: List[str],
-        ports: Optional[List[InferenceEndpointPort]],
+        hosts: list[str],
+        ports: list[InferenceEndpointPort] | None,
     ):
         self._type = type
         self._hosts = hosts
         self._ports = ports
 
     def get_any_host(self):
-        """Get any host available"""
+        """Get any host available."""
         return random.choice(self._hosts) if self._hosts is not None else None
 
     def get_port(self, name):
-        """Get port by name"""
+        """Get port by name."""
         if self._ports is not None:
             for port in self._ports:
                 if port.name == name:
@@ -107,14 +109,11 @@ class InferenceEndpoint:
             if len(json_decamelized) == 0:
                 return []
             return [cls.from_json(endpoint) for endpoint in json_decamelized]
-        else:
-            if "count" in json_decamelized:
-                if json_decamelized["count"] == 0:
-                    return []
-                return [
-                    cls.from_json(endpoint) for endpoint in json_decamelized["items"]
-                ]
-            return cls.from_json(json_decamelized)
+        if "count" in json_decamelized:
+            if json_decamelized["count"] == 0:
+                return []
+            return [cls.from_json(endpoint) for endpoint in json_decamelized["items"]]
+        return cls.from_json(json_decamelized)
 
     @classmethod
     def from_json(cls, json_decamelized):

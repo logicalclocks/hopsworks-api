@@ -1,17 +1,7 @@
+from collections.abc import Iterable as _Iterable
+from collections.abc import Mapping as _Mapping
 from typing import (
     ClassVar as _ClassVar,
-)
-from typing import (
-    Iterable as _Iterable,
-)
-from typing import (
-    Mapping as _Mapping,
-)
-from typing import (
-    Optional as _Optional,
-)
-from typing import (
-    Union as _Union,
 )
 
 from google.protobuf import descriptor as _descriptor
@@ -31,8 +21,8 @@ class InferParameter(_message.Message):
     def __init__(
         self,
         bool_param: bool = ...,
-        int64_param: _Optional[int] = ...,
-        string_param: _Optional[str] = ...,
+        int64_param: int | None = ...,
+        string_param: str | None = ...,
     ) -> None: ...
 
 class InferTensorContents(_message.Message):
@@ -64,14 +54,14 @@ class InferTensorContents(_message.Message):
     uint_contents: _containers.RepeatedScalarFieldContainer[int]
     def __init__(
         self,
-        bool_contents: _Optional[_Iterable[bool]] = ...,
-        int_contents: _Optional[_Iterable[int]] = ...,
-        int64_contents: _Optional[_Iterable[int]] = ...,
-        uint_contents: _Optional[_Iterable[int]] = ...,
-        uint64_contents: _Optional[_Iterable[int]] = ...,
-        fp32_contents: _Optional[_Iterable[float]] = ...,
-        fp64_contents: _Optional[_Iterable[float]] = ...,
-        bytes_contents: _Optional[_Iterable[bytes]] = ...,
+        bool_contents: _Iterable[bool] | None = ...,
+        int_contents: _Iterable[int] | None = ...,
+        int64_contents: _Iterable[int] | None = ...,
+        uint_contents: _Iterable[int] | None = ...,
+        uint64_contents: _Iterable[int] | None = ...,
+        fp32_contents: _Iterable[float] | None = ...,
+        fp64_contents: _Iterable[float] | None = ...,
+        bytes_contents: _Iterable[bytes] | None = ...,
     ) -> None: ...
 
 class ModelInferRequest(_message.Message):
@@ -96,8 +86,8 @@ class ModelInferRequest(_message.Message):
             value: InferParameter
             def __init__(
                 self,
-                key: _Optional[str] = ...,
-                value: _Optional[_Union[InferParameter, _Mapping]] = ...,
+                key: str | None = ...,
+                value: InferParameter | _Mapping | None = ...,
             ) -> None: ...
 
         CONTENTS_FIELD_NUMBER: _ClassVar[int]
@@ -112,11 +102,11 @@ class ModelInferRequest(_message.Message):
         shape: _containers.RepeatedScalarFieldContainer[int]
         def __init__(
             self,
-            name: _Optional[str] = ...,
-            datatype: _Optional[str] = ...,
-            shape: _Optional[_Iterable[int]] = ...,
-            parameters: _Optional[_Mapping[str, InferParameter]] = ...,
-            contents: _Optional[_Union[InferTensorContents, _Mapping]] = ...,
+            name: str | None = ...,
+            datatype: str | None = ...,
+            shape: _Iterable[int] | None = ...,
+            parameters: _Mapping[str, InferParameter] | None = ...,
+            contents: InferTensorContents | _Mapping | None = ...,
         ) -> None: ...
 
     class InferRequestedOutputTensor(_message.Message):
@@ -130,8 +120,8 @@ class ModelInferRequest(_message.Message):
             value: InferParameter
             def __init__(
                 self,
-                key: _Optional[str] = ...,
-                value: _Optional[_Union[InferParameter, _Mapping]] = ...,
+                key: str | None = ...,
+                value: InferParameter | _Mapping | None = ...,
             ) -> None: ...
 
         NAME_FIELD_NUMBER: _ClassVar[int]
@@ -140,8 +130,8 @@ class ModelInferRequest(_message.Message):
         parameters: _containers.MessageMap[str, InferParameter]
         def __init__(
             self,
-            name: _Optional[str] = ...,
-            parameters: _Optional[_Mapping[str, InferParameter]] = ...,
+            name: str | None = ...,
+            parameters: _Mapping[str, InferParameter] | None = ...,
         ) -> None: ...
 
     class ParametersEntry(_message.Message):
@@ -152,8 +142,8 @@ class ModelInferRequest(_message.Message):
         value: InferParameter
         def __init__(
             self,
-            key: _Optional[str] = ...,
-            value: _Optional[_Union[InferParameter, _Mapping]] = ...,
+            key: str | None = ...,
+            value: InferParameter | _Mapping | None = ...,
         ) -> None: ...
 
     ID_FIELD_NUMBER: _ClassVar[int]
@@ -176,17 +166,14 @@ class ModelInferRequest(_message.Message):
     raw_input_contents: _containers.RepeatedScalarFieldContainer[bytes]
     def __init__(
         self,
-        model_name: _Optional[str] = ...,
-        model_version: _Optional[str] = ...,
-        id: _Optional[str] = ...,
-        parameters: _Optional[_Mapping[str, InferParameter]] = ...,
-        inputs: _Optional[
-            _Iterable[_Union[ModelInferRequest.InferInputTensor, _Mapping]]
-        ] = ...,
-        outputs: _Optional[
-            _Iterable[_Union[ModelInferRequest.InferRequestedOutputTensor, _Mapping]]
-        ] = ...,
-        raw_input_contents: _Optional[_Iterable[bytes]] = ...,
+        model_name: str | None = ...,
+        model_version: str | None = ...,
+        id: str | None = ...,
+        parameters: _Mapping[str, InferParameter] | None = ...,
+        inputs: _Iterable[ModelInferRequest.InferInputTensor | _Mapping] | None = ...,
+        outputs: _Iterable[ModelInferRequest.InferRequestedOutputTensor | _Mapping]
+        | None = ...,
+        raw_input_contents: _Iterable[bytes] | None = ...,
     ) -> None: ...
 
 class ModelInferResponse(_message.Message):
@@ -210,8 +197,8 @@ class ModelInferResponse(_message.Message):
             value: InferParameter
             def __init__(
                 self,
-                key: _Optional[str] = ...,
-                value: _Optional[_Union[InferParameter, _Mapping]] = ...,
+                key: str | None = ...,
+                value: InferParameter | _Mapping | None = ...,
             ) -> None: ...
 
         CONTENTS_FIELD_NUMBER: _ClassVar[int]
@@ -226,11 +213,11 @@ class ModelInferResponse(_message.Message):
         shape: _containers.RepeatedScalarFieldContainer[int]
         def __init__(
             self,
-            name: _Optional[str] = ...,
-            datatype: _Optional[str] = ...,
-            shape: _Optional[_Iterable[int]] = ...,
-            parameters: _Optional[_Mapping[str, InferParameter]] = ...,
-            contents: _Optional[_Union[InferTensorContents, _Mapping]] = ...,
+            name: str | None = ...,
+            datatype: str | None = ...,
+            shape: _Iterable[int] | None = ...,
+            parameters: _Mapping[str, InferParameter] | None = ...,
+            contents: InferTensorContents | _Mapping | None = ...,
         ) -> None: ...
 
     class ParametersEntry(_message.Message):
@@ -241,8 +228,8 @@ class ModelInferResponse(_message.Message):
         value: InferParameter
         def __init__(
             self,
-            key: _Optional[str] = ...,
-            value: _Optional[_Union[InferParameter, _Mapping]] = ...,
+            key: str | None = ...,
+            value: InferParameter | _Mapping | None = ...,
         ) -> None: ...
 
     ID_FIELD_NUMBER: _ClassVar[int]
@@ -261,14 +248,13 @@ class ModelInferResponse(_message.Message):
     raw_output_contents: _containers.RepeatedScalarFieldContainer[bytes]
     def __init__(
         self,
-        model_name: _Optional[str] = ...,
-        model_version: _Optional[str] = ...,
-        id: _Optional[str] = ...,
-        parameters: _Optional[_Mapping[str, InferParameter]] = ...,
-        outputs: _Optional[
-            _Iterable[_Union[ModelInferResponse.InferOutputTensor, _Mapping]]
-        ] = ...,
-        raw_output_contents: _Optional[_Iterable[bytes]] = ...,
+        model_name: str | None = ...,
+        model_version: str | None = ...,
+        id: str | None = ...,
+        parameters: _Mapping[str, InferParameter] | None = ...,
+        outputs: _Iterable[ModelInferResponse.InferOutputTensor | _Mapping]
+        | None = ...,
+        raw_output_contents: _Iterable[bytes] | None = ...,
     ) -> None: ...
 
 class ModelMetadataRequest(_message.Message):
@@ -277,9 +263,7 @@ class ModelMetadataRequest(_message.Message):
     VERSION_FIELD_NUMBER: _ClassVar[int]
     name: str
     version: str
-    def __init__(
-        self, name: _Optional[str] = ..., version: _Optional[str] = ...
-    ) -> None: ...
+    def __init__(self, name: str | None = ..., version: str | None = ...) -> None: ...
 
 class ModelMetadataResponse(_message.Message):
     __slots__ = ["inputs", "name", "outputs", "platform", "versions"]
@@ -294,9 +278,9 @@ class ModelMetadataResponse(_message.Message):
         shape: _containers.RepeatedScalarFieldContainer[int]
         def __init__(
             self,
-            name: _Optional[str] = ...,
-            datatype: _Optional[str] = ...,
-            shape: _Optional[_Iterable[int]] = ...,
+            name: str | None = ...,
+            datatype: str | None = ...,
+            shape: _Iterable[int] | None = ...,
         ) -> None: ...
 
     INPUTS_FIELD_NUMBER: _ClassVar[int]
@@ -315,15 +299,12 @@ class ModelMetadataResponse(_message.Message):
     versions: _containers.RepeatedScalarFieldContainer[str]
     def __init__(
         self,
-        name: _Optional[str] = ...,
-        versions: _Optional[_Iterable[str]] = ...,
-        platform: _Optional[str] = ...,
-        inputs: _Optional[
-            _Iterable[_Union[ModelMetadataResponse.TensorMetadata, _Mapping]]
-        ] = ...,
-        outputs: _Optional[
-            _Iterable[_Union[ModelMetadataResponse.TensorMetadata, _Mapping]]
-        ] = ...,
+        name: str | None = ...,
+        versions: _Iterable[str] | None = ...,
+        platform: str | None = ...,
+        inputs: _Iterable[ModelMetadataResponse.TensorMetadata | _Mapping] | None = ...,
+        outputs: _Iterable[ModelMetadataResponse.TensorMetadata | _Mapping]
+        | None = ...,
     ) -> None: ...
 
 class ModelReadyRequest(_message.Message):
@@ -332,9 +313,7 @@ class ModelReadyRequest(_message.Message):
     VERSION_FIELD_NUMBER: _ClassVar[int]
     name: str
     version: str
-    def __init__(
-        self, name: _Optional[str] = ..., version: _Optional[str] = ...
-    ) -> None: ...
+    def __init__(self, name: str | None = ..., version: str | None = ...) -> None: ...
 
 class ModelReadyResponse(_message.Message):
     __slots__ = ["ready"]
@@ -346,7 +325,7 @@ class RepositoryModelLoadRequest(_message.Message):
     __slots__ = ["model_name"]
     MODEL_NAME_FIELD_NUMBER: _ClassVar[int]
     model_name: str
-    def __init__(self, model_name: _Optional[str] = ...) -> None: ...
+    def __init__(self, model_name: str | None = ...) -> None: ...
 
 class RepositoryModelLoadResponse(_message.Message):
     __slots__ = ["isLoaded", "model_name"]
@@ -354,15 +333,13 @@ class RepositoryModelLoadResponse(_message.Message):
     MODEL_NAME_FIELD_NUMBER: _ClassVar[int]
     isLoaded: bool
     model_name: str
-    def __init__(
-        self, model_name: _Optional[str] = ..., isLoaded: bool = ...
-    ) -> None: ...
+    def __init__(self, model_name: str | None = ..., isLoaded: bool = ...) -> None: ...
 
 class RepositoryModelUnloadRequest(_message.Message):
     __slots__ = ["model_name"]
     MODEL_NAME_FIELD_NUMBER: _ClassVar[int]
     model_name: str
-    def __init__(self, model_name: _Optional[str] = ...) -> None: ...
+    def __init__(self, model_name: str | None = ...) -> None: ...
 
 class RepositoryModelUnloadResponse(_message.Message):
     __slots__ = ["isUnloaded", "model_name"]
@@ -371,7 +348,7 @@ class RepositoryModelUnloadResponse(_message.Message):
     isUnloaded: bool
     model_name: str
     def __init__(
-        self, model_name: _Optional[str] = ..., isUnloaded: bool = ...
+        self, model_name: str | None = ..., isUnloaded: bool = ...
     ) -> None: ...
 
 class ServerLiveRequest(_message.Message):
@@ -398,9 +375,9 @@ class ServerMetadataResponse(_message.Message):
     version: str
     def __init__(
         self,
-        name: _Optional[str] = ...,
-        version: _Optional[str] = ...,
-        extensions: _Optional[_Iterable[str]] = ...,
+        name: str | None = ...,
+        version: str | None = ...,
+        extensions: _Iterable[str] | None = ...,
     ) -> None: ...
 
 class ServerReadyRequest(_message.Message):

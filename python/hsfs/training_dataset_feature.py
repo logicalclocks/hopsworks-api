@@ -15,8 +15,6 @@
 #
 from __future__ import annotations
 
-from typing import Optional
-
 import humps
 from hsfs import feature as feature_mod
 from hsfs import feature_group as feature_group_mod
@@ -35,7 +33,7 @@ class TrainingDatasetFeature:
         label=False,
         inference_helper_column=False,
         training_helper_column=False,
-        transformation_function: Optional[TransformationFunction] = None,
+        transformation_function: TransformationFunction | None = None,
         **kwargs,
     ):
         self._name = util.autofix_feature_name(name)
@@ -51,7 +49,7 @@ class TrainingDatasetFeature:
         self._inference_helper_column = inference_helper_column
         self._training_helper_column = training_helper_column
 
-        self._on_demand_transformation_function: Optional[TransformationFunction] = (
+        self._on_demand_transformation_function: TransformationFunction | None = (
             transformation_function if transformation_function else None
         )
 
@@ -97,7 +95,7 @@ class TrainingDatasetFeature:
     def type(self):
         """Data type of the feature in the feature store.
 
-        !!! danger "Not a Python type"
+        Warning: Not a Python type
             This type property is not to be confused with Python types.
             The type property represents the actual data type of the feature in
             the feature store.
@@ -106,8 +104,7 @@ class TrainingDatasetFeature:
 
     @property
     def index(self):
-        """Index of the feature in the training dataset, required to restore the correct
-        order of features."""
+        """Index of the feature in the training dataset, required to restore the correct order of features."""
         return self._index
 
     @property
@@ -130,7 +127,7 @@ class TrainingDatasetFeature:
 
     @property
     def on_demand_transformation_function(self) -> TransformationFunction:
-        """Whether the feature is a on-demand feature computed using on-demand transformation functions"""
+        """Whether the feature is a on-demand feature computed using on-demand transformation functions."""
         return self._on_demand_transformation_function
 
     @property
@@ -153,6 +150,5 @@ class TrainingDatasetFeature:
     def __repr__(self):
         if self._feature_group:
             return f"Training Dataset Feature({self._name!r}, {self._type!r}, {self._index!r}, {self._label}, {self._feature_group_feature_name}, {self._feature_group.id!r}, {self.on_demand_transformation_function})"
-        else:
-            # Feature group will be empty and index will be null if the training dataset feature is generated using model dependent transformations.
-            return f"Training Dataset Feature({self._name!r}, {self._type!r}, {self._index!r}, {self._label}, {self.on_demand_transformation_function})"
+        # Feature group will be empty and index will be null if the training dataset feature is generated using model dependent transformations.
+        return f"Training Dataset Feature({self._name!r}, {self._type!r}, {self._index!r}, {self._label}, {self.on_demand_transformation_function})"

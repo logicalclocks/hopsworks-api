@@ -31,27 +31,24 @@ class ModelServingApi:
 
     def get(self):
         """Get model serving for specific project.
+
         :param project: project of the model registry
         :type project: str
         :return: the model serving metadata
-        :rtype: ModelServing
+        :rtype: ModelServing.
         """
-
         _client = client.get_instance()
 
         # Validate that there is a Models dataset in the connected project
         if not self._dataset_api.path_exists("Models"):
             raise ModelRegistryException(
-                "No Models dataset exists in project {}, Please enable the Serving service or create the dataset manually.".format(
-                    _client._project_name
-                )
+                f"No Models dataset exists in project {_client._project_name}, Please enable the Serving service or create the dataset manually."
             )
 
         return ModelServing(_client._project_name, _client._project_id)
 
     def load_default_configuration(self):
-        """Load default configuration and set istio client for model serving"""
-
+        """Load default configuration and set istio client for model serving."""
         # kserve installed
         is_kserve_installed = self._serving_api.is_kserve_installed()
         client.set_kserve_installed(is_kserve_installed)
@@ -68,8 +65,7 @@ class ModelServingApi:
         client.set_knative_domain(knative_domain)
 
     def _istio_init_if_available(self):
-        """Initialize istio client if available"""
-
+        """Initialize istio client if available."""
         if client.is_kserve_installed():
             # check existing istio client
             try:

@@ -72,8 +72,7 @@ def catch_not_found(*class_import_paths, fallback_return=None):
                     and e.response.json().get("errorCode", "") in not_found_error_codes
                 ):
                     return fallback_return
-                else:
-                    raise e
+                raise e
 
         return g
 

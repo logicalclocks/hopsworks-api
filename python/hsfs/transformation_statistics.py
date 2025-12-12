@@ -18,57 +18,40 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Dict, Mapping, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 import humps
 
 
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+
 @dataclass
 class FeatureTransformationStatistics:
-    """
-    Data class that contains all the statistics parameters that can be used for transformations inside a custom transformation function.
-    """
+    """Data class that contains all the statistics parameters that can be used for transformations inside a custom transformation function."""
 
-    feature_name: str
-    count: int = None
-    # for any feature type
-    completeness: Optional[float] = None
-    num_non_null_values: Optional[int] = None
-    num_null_values: Optional[int] = None
-    approx_num_distinct_values: Optional[int] = None
-    # for numerical features
-    min: Optional[float] = None
-    max: Optional[float] = None
-    sum: Optional[float] = None
-    mean: Optional[float] = None
-    stddev: Optional[float] = None
-    percentiles: Optional[Mapping[str, float]] = None
-    # with exact uniqueness
-    distinctness: Optional[float] = None
-    entropy: Optional[float] = None
-    uniqueness: Optional[float] = None
-    exact_num_distinct_values: Optional[int] = None
-    extended_statistics: Optional[Union[dict, str]] = None
+    extended_statistics: dict | str | None = None
 
     def __init__(
         self,
         feature_name: str,
-        count: int = None,
-        completeness: Optional[float] = None,
-        num_non_null_values: Optional[int] = None,
-        num_null_values: Optional[int] = None,
-        approx_num_distinct_values: Optional[int] = None,
-        min: Optional[float] = None,
-        max: Optional[float] = None,
-        sum: Optional[float] = None,
-        mean: Optional[float] = None,
-        stddev: Optional[float] = None,
-        percentiles: Optional[Mapping[str, float]] = None,
-        distinctness: Optional[float] = None,
-        entropy: Optional[float] = None,
-        uniqueness: Optional[float] = None,
-        exact_num_distinct_values: Optional[int] = None,
-        extended_statistics: Optional[Union[dict, str]] = None,
+        count: int | None = None,
+        completeness: float | None = None,
+        num_non_null_values: int | None = None,
+        num_null_values: int | None = None,
+        approx_num_distinct_values: int | None = None,
+        min: float | None = None,
+        max: float | None = None,
+        sum: float | None = None,
+        mean: float | None = None,
+        stddev: float | None = None,
+        percentiles: Mapping[str, float] | None = None,
+        distinctness: float | None = None,
+        entropy: float | None = None,
+        uniqueness: float | None = None,
+        exact_num_distinct_values: int | None = None,
+        extended_statistics: dict | str | None = None,
         **kwargs,
     ):
         self._feature_name = feature_name
@@ -104,75 +87,82 @@ class FeatureTransformationStatistics:
         return self._feature_name
 
     @property
-    def count(self) -> int:
+    def count(self) -> int | None:
         """Number of values."""
         return self._count
 
+    # for any feature type
+
     @property
-    def completeness(self) -> Optional[float]:
+    def completeness(self) -> float | None:
         """Fraction of non-null values in a column."""
         return self._completeness
 
     @property
-    def num_non_null_values(self) -> Optional[int]:
+    def num_non_null_values(self) -> int | None:
         """Number of non-null values."""
         return self._num_non_null_values
 
     @property
-    def num_null_values(self) -> Optional[int]:
+    def num_null_values(self) -> int | None:
         """Number of null values."""
         return self._num_null_values
 
     @property
-    def approx_num_distinct_values(self) -> Optional[int]:
+    def approx_num_distinct_values(self) -> int | None:
         """Approximate number of distinct values."""
         return self._approx_num_distinct_values
 
+    # for numerical features
+
     @property
-    def min(self) -> Optional[float]:
+    def min(self) -> float | None:
         """Minimum value."""
         return self._min
 
     @property
-    def max(self) -> Optional[float]:
+    def max(self) -> float | None:
         """Maximum value."""
         return self._max
 
     @property
-    def sum(self) -> Optional[float]:
+    def sum(self) -> float | None:
         """Sum of all feature values."""
         return self._sum
 
     @property
-    def mean(self) -> Optional[float]:
+    def mean(self) -> float | None:
         """Mean value."""
         return self._mean
 
     @property
-    def stddev(self) -> Optional[float]:
+    def stddev(self) -> float | None:
         """Standard deviation of the feature values."""
         return self._stddev
 
     @property
-    def percentiles(self) -> Optional[Mapping[str, float]]:
+    def percentiles(self) -> Mapping[str, float] | None:
         """Percentiles."""
         return self._percentiles
 
+    # with exact uniqueness
+
     @property
-    def distinctness(self) -> Optional[float]:
+    def distinctness(self) -> float | None:
         """Fraction of distinct values of a feature over the number of all its values. Distinct values occur at least once.
 
-        !!! note "Example"
+        Note: Example
             $[a, a, b]$ contains two distinct values $a$ and $b$, so distinctness is $2/3$.
         """
         return self._distinctness
 
     @property
-    def entropy(self) -> Optional[float]:
+    def entropy(self) -> float | None:
         """Entropy is a measure of the level of information contained in an event (feature value) when considering all possible events (all feature values).
+
         Entropy is estimated using observed value counts as the negative sum of (value_count/total_count) * log(value_count/total_count).
 
-        !!! note "Example"
+        Note: Example
             $[a, b, b, c, c]$ has three distinct values with counts $[1, 2, 2]$.
 
             Entropy is then $(-1/5*log(1/5)-2/5*log(2/5)-2/5*log(2/5)) = 1.055$.
@@ -180,58 +170,57 @@ class FeatureTransformationStatistics:
         return self._entropy
 
     @property
-    def uniqueness(self) -> Optional[float]:
+    def uniqueness(self) -> float | None:
         """Fraction of unique values over the number of all values of a column. Unique values occur exactly once.
 
-        !!! note "Example"
+        Note: Example
             $[a, a, b]$ contains one unique value $b$, so uniqueness is $1/3$.
         """
         return self._uniqueness
 
     @property
-    def exact_num_distinct_values(self) -> Optional[int]:
+    def exact_num_distinct_values(self) -> int | None:
         """Exact number of distinct values."""
         return self._exact_num_distinct_values
 
     @property
-    def correlations(self) -> Optional[dict]:
+    def correlations(self) -> dict | None:
         """Correlations of feature values."""
         return self._correlations
 
     @property
-    def histogram(self) -> Optional[dict]:
+    def histogram(self) -> dict | None:
         """Histogram of feature values."""
         return self._histogram
 
     @property
-    def kll(self) -> Optional[dict]:
+    def kll(self) -> dict | None:
         """KLL of feature values."""
         return self._kll
 
     @property
-    def unique_values(self) -> Optional[dict]:
+    def unique_values(self) -> dict | None:
         """Number of Unique Values."""
         return self._unique_values
 
     @classmethod
     def from_response_json(
-        cls: FeatureTransformationStatistics, json_dict: Dict[str, Any]
+        cls: FeatureTransformationStatistics, json_dict: dict[str, Any]
     ) -> FeatureTransformationStatistics:
         json_decamelized = humps.decamelize(json_dict)
         return cls(**json_decamelized)
 
 
 class TransformationStatistics:
-    """
-    Class that stores feature transformation statistics of all features that require training dataset statistics in a transformation function.
+    """Class that stores feature transformation statistics of all features that require training dataset statistics in a transformation function.
 
     All statistics for a feature is initially initialized with null values and will be populated with values when training dataset is created for the soe.
 
-    # Arguments
+    Parameters:
         *features: `str`.
             The features for which training dataset statistics need to be computed.
 
-    !!! example
+    Example:
         ```python
         # Defining transformation statistics
         transformation_statistics = TransformationStatistics("feature1", "feature2")
@@ -250,7 +239,7 @@ class TransformationStatistics:
     def init_statistics(self, feature_name: str) -> FeatureTransformationStatistics:
         return FeatureTransformationStatistics(feature_name=feature_name)
 
-    def set_statistics(self, feature_name: str, statistics: Dict[str, Any]) -> None:
+    def set_statistics(self, feature_name: str, statistics: dict[str, Any]) -> None:
         self.__dict__[feature_name] = (
             FeatureTransformationStatistics.from_response_json(statistics)
         )

@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import logging
 import os
 import textwrap
@@ -30,10 +31,8 @@ from hopsworks_common.client import auth, exceptions
 from hopsworks_common.decorators import connected
 
 
-try:
+with contextlib.suppress(ImportError):
     import jks
-except ImportError:
-    pass
 
 _logger = logging.getLogger(__name__)
 
@@ -70,18 +69,15 @@ class Client:
         if verify:
             if trust_store_path is not None:
                 return trust_store_path
-            else:
-                return True
+            return True
 
         return False
 
-    def _get_host_port_pair(self):
-        """
-        Removes "http or https" from the rest endpoint and returns a list
-        [endpoint, port], where endpoint is on the format /path.. without http://
+    def _get_host_port_pair(self) -> tuple[str, str]:
+        """Removes "http or https" from the rest endpoint and returns a list [endpoint, port], where endpoint is on the format /path.. without http://.
 
-        :return: a list [endpoint, port]
-        :rtype: list
+        Returns:
+            a tuple (endpoint, port)
         """
         endpoint = self._base_url
         if "http" in endpoint:
@@ -100,11 +96,11 @@ class Client:
 
     def _read_file(self, secret_file):
         """Retrieve secret from local container."""
-        with open(os.path.join(self._secrets_dir, secret_file), "r") as secret:
+        with open(os.path.join(self._secrets_dir, secret_file)) as secret:
             return secret.read()
 
     def _get_credentials(self, project_id):
-        """Makes a REST call to hopsworks for getting the project user certificates needed to connect to services such as Hive
+        """Makes a REST call to hopsworks for getting the project user certificates needed to connect to services such as Hive.
 
         :param project_id: id of the project
         :type project_id: int
@@ -171,7 +167,7 @@ class Client:
             files=files,
         )
 
-        _logger.debug("url:{} hostname_verification:{}".format(url, self._verify))
+        _logger.debug(f"url:{url} hostname_verification:{self._verify}")
 
         prepped = self._session.prepare_request(request)
         response = self._session.send(prepped, verify=self._verify, stream=stream)
@@ -187,15 +183,15 @@ class Client:
 
         if stream:
             return response
-        else:
-            # handle different success response codes
-            if len(response.content) == 0:
-                return None
-            return response.json()
+        # handle different success response codes
+        if len(response.content) == 0:
+            return None
+        return response.json()
 
     def _retry_token_expired(self, request, stream, wait, retries):
         """Refresh the JWT token and retry the request. Only on Hopsworks.
-        As the token might take a while to get refreshed. Keep trying
+
+        As the token might take a while to get refreshed. Keep trying.
         """
         # Sleep the waited time before re-issuing the request
         time.sleep(wait)
@@ -209,10 +205,9 @@ class Client:
         if response.status_code == 401 and retries < self.TOKEN_EXPIRED_MAX_RETRIES:
             # Try again.
             return self._retry_token_expired(request, stream, wait * 2, retries + 1)
-        else:
-            # If the number of retries have expired, the _send_request method
-            # will throw an exception to the user as part of the status_code validation.
-            return response
+        # If the number of retries have expired, the _send_request method
+        # will throw an exception to the user as part of the status_code validation.
+        return response
 
     def _close(self):
         """Closes a client. Can be implemented for clean up purposes, not mandatory."""
@@ -238,9 +233,7 @@ class Client:
         return ca_chain_path, client_cert_path, client_key_path
 
     def _write_ca_chain(self, ks, ts, ca_chain_path):
-        """
-        Converts JKS keystore and truststore file into ca chain PEM to be compatible with Python libraries
-        """
+        """Converts JKS keystore and truststore file into ca chain PEM to be compatible with Python libraries."""
         ca_chain = ""
         for store in [ks, ts]:
             for _, c in store.certs.items():
@@ -250,9 +243,7 @@ class Client:
             f.write(ca_chain)
 
     def _write_client_cert(self, ks, client_cert_path):
-        """
-        Converts JKS keystore file into client cert PEM to be compatible with Python libraries
-        """
+        """Converts JKS keystore file into client cert PEM to be compatible with Python libraries."""
         client_cert = ""
         for _, pk in ks.private_keys.items():
             for c in pk.cert_chain:
@@ -262,9 +253,7 @@ class Client:
             f.write(client_cert)
 
     def _write_client_key(self, ks, client_key_path):
-        """
-        Converts JKS keystore file into client key PEM to be compatible with Python libraries
-        """
+        """Converts JKS keystore file into client key PEM to be compatible with Python libraries."""
         client_key = ""
         for _, pk in ks.private_keys.items():
             client_key = client_key + self._bytes_to_pem_str(
@@ -275,8 +264,7 @@ class Client:
             f.write(client_key)
 
     def _bytes_to_pem_str(self, der_bytes, pem_type):
-        """
-        Utility function for creating PEM files
+        """Utility function for creating PEM files.
 
         Args:
             der_bytes: DER encoded bytes
@@ -286,7 +274,7 @@ class Client:
             PEM String for a DER-encoded certificate or private key
         """
         pem_str = ""
-        pem_str = pem_str + "-----BEGIN {}-----".format(pem_type) + "\n"
+        pem_str = pem_str + f"-----BEGIN {pem_type}-----" + "\n"
         pem_str = (
             pem_str
             + "\r\n".join(
@@ -294,5 +282,4 @@ class Client:
             )
             + "\n"
         )
-        pem_str = pem_str + "-----END {}-----".format(pem_type) + "\n"
-        return pem_str
+        return pem_str + f"-----END {pem_type}-----" + "\n"
