@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 import hsfs
 import humps
@@ -43,22 +43,19 @@ class Feature:
     def __init__(
         self,
         name: str,
-        type: Optional[str] = None,
-        description: Optional[str] = None,
+        type: str | None = None,
+        description: str | None = None,
         primary: bool = False,
         foreign: bool = False,
         partition: bool = False,
         hudi_precombine_key: bool = False,
-        online_type: Optional[str] = None,
-        default_value: Optional[str] = None,
-        feature_group_id: Optional[int] = None,
-        feature_group: Optional[
-            Union[
-                "hsfs.feature_group.FeatureGroup",
-                "hsfs.feature_group.ExternalFeatureGroup",
-                "hsfs.feature_group.SpineGroup",
-            ]
-        ] = None,
+        online_type: str | None = None,
+        default_value: str | None = None,
+        feature_group_id: int | None = None,
+        feature_group: hsfs.feature_group.FeatureGroup
+        | hsfs.feature_group.ExternalFeatureGroup
+        | hsfs.feature_group.SpineGroup
+        | None = None,
         on_demand: bool = False,
         use_fully_qualified_name=False,
         **kwargs,
@@ -79,10 +76,10 @@ class Feature:
             self._feature_group_id = feature_group_id
         self._on_demand = on_demand
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Get structured info about specific Feature in python dictionary format.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -112,27 +109,26 @@ class Feature:
     def _get_fully_qualified_feature_name(
         self, feature_group: FeatureGroup = None, prefix: str = None
     ) -> str:
-        """
-        Returns the name of the feature when used to generated dataframes for training/batch data.
+        """Returns the name of the feature when used to generated dataframes for training/batch data.
+
         - If the feature is configured to use a fully qualified name, it returns that name.
         - Otherwise, if a prefix is provided, it returns the feature name prefixed accordingly.
-        - If neither condition applies, it returns the feature’s original name.
+        - If neither condition applies, it returns the feature's original name.
 
-        # Args:
+        Parameters:
             feature_group (FeatureGroup, optional): The feature group context in which the name is being used.
             prefix (str, optional): A prefix to prepend to the feature name if applicable.
 
-        # Returns:
+        Returns:
             str: The fully qualified feature name.
         """
         if self.use_fully_qualified_name:
             return util.generate_fully_qualified_feature_name(
                 feature_group=feature_group, feature_name=self._name
             )
-        elif prefix:
+        if prefix:
             return prefix + self._name
-        else:
-            return self._name
+        return self._name
 
     @property
     def use_fully_qualified_name(self) -> bool:
@@ -147,7 +143,7 @@ class Feature:
         return json.dumps(self, cls=util.Encoder)
 
     @classmethod
-    def from_response_json(cls, json_dict: Dict[str, Any]) -> "Feature":
+    def from_response_json(cls, json_dict: dict[str, Any]) -> Feature:
         if json_dict is None:
             return None
 
@@ -157,7 +153,7 @@ class Feature:
     def is_complex(self) -> bool:
         """Returns true if the feature has a complex type.
 
-        !!! example
+        Example:
             ```python
             # connect to the Feature Store
             fs = ...
@@ -181,19 +177,19 @@ class Feature:
         self._name = name
 
     @property
-    def description(self) -> Optional[str]:
+    def description(self) -> str | None:
         """Description of the feature."""
         return self._description
 
     @description.setter
-    def description(self, description: Optional[str]) -> None:
+    def description(self, description: str | None) -> None:
         self._description = description
 
     @property
-    def type(self) -> Optional[str]:
+    def type(self) -> str | None:
         """Data type of the feature in the offline feature store.
 
-        !!! danger "Not a Python type"
+        Warning: Not a Python type
             This type property is not to be confused with Python types.
             The type property represents the actual data type of the feature in
             the feature store.
@@ -201,16 +197,16 @@ class Feature:
         return self._type
 
     @type.setter
-    def type(self, type: Optional[str]) -> None:
+    def type(self, type: str | None) -> None:
         self._type = type
 
     @property
-    def online_type(self) -> Optional[str]:
+    def online_type(self) -> str | None:
         """Data type of the feature in the online feature store."""
         return self._online_type
 
     @online_type.setter
-    def online_type(self, online_type: Optional[str]) -> None:
+    def online_type(self, online_type: str | None) -> None:
         self._online_type = online_type
 
     @property
@@ -250,23 +246,22 @@ class Feature:
         self._hudi_precombine_key = hudi_precombine_key
 
     @property
-    def default_value(self) -> Optional[str]:
-        """Default value of the feature as string, if the feature was appended to the
-        feature group."""
+    def default_value(self) -> str | None:
+        """Default value of the feature as string, if the feature was appended to the feature group."""
         return self._default_value
 
     @default_value.setter
-    def default_value(self, default_value: Optional[str]) -> None:
+    def default_value(self, default_value: str | None) -> None:
         self._default_value = default_value
 
     @property
-    def feature_group_id(self) -> Optional[int]:
+    def feature_group_id(self) -> int | None:
         """ID of the feature group to which this feature belongs."""
         return self._feature_group_id
 
     @property
     def on_demand(self) -> bool:
-        """Whether the feature is a on-demand feature computed using on-demand transformation functions"""
+        """Whether the feature is a on-demand feature computed using on-demand transformation functions."""
         return self._on_demand
 
     @on_demand.setter
@@ -278,39 +273,46 @@ class Feature:
             return datetime.fromtimestamp(
                 util.convert_event_time_to_timestamp(value) / 1000
             ).strftime("%Y-%m-%d %H:%M:%S")
-        else:
-            return value
+        return value
 
-    def __lt__(self, other: Any) -> "filter.Filter":
+    def __lt__(self, other) -> filter.Filter:
         return filter.Filter(self, filter.Filter.LT, self._get_filter_value(other))
 
-    def __le__(self, other: Any) -> "filter.Filter":
+    def __le__(self, other) -> filter.Filter:
         return filter.Filter(self, filter.Filter.LE, self._get_filter_value(other))
 
-    def __eq__(self, other: Any) -> "filter.Filter":
+    def __eq__(self, other) -> filter.Filter:
         return filter.Filter(self, filter.Filter.EQ, self._get_filter_value(other))
 
-    def __ne__(self, other: Any) -> "filter.Filter":
+    def __ne__(self, other) -> filter.Filter:
         return filter.Filter(self, filter.Filter.NE, self._get_filter_value(other))
 
-    def __ge__(self, other: Any) -> "filter.Filter":
+    def __ge__(self, other) -> filter.Filter:
         return filter.Filter(self, filter.Filter.GE, self._get_filter_value(other))
 
-    def __gt__(self, other: Any) -> "filter.Filter":
+    def __gt__(self, other) -> filter.Filter:
         return filter.Filter(self, filter.Filter.GT, self._get_filter_value(other))
 
-    def contains(self, other: Union[str, List[Any]]) -> "filter.Filter":
-        """
-        !!! warning "Deprecated"
-            `contains` method is deprecated. Use `isin` instead.
+    def contains(self, other: str | list[Any]) -> filter.Filter:
+        """Construct a filter similar to SQL's `IN` operator.
+
+        Warning: Deprecated
+            `contains` method is deprecated.
+            Use [`Feature.isin`][hsfs.feature.Feature.isin] instead.
+
+        Parameters:
+            other: A single feature value or a list of feature values.
+
+        Returns:
+            A filter that leaves only the feature values also contained in `other`.
         """
         return self.isin(other)
 
-    def isin(self, other: Union[str, List[Any]]) -> "filter.Filter":
+    def isin(self, other: str | list[Any]) -> filter.Filter:
         """Returns `IN` filter for the feature; replicating the behavior of SQL `IN` clause."""
         return filter.Filter(self, filter.Filter.IN, json.dumps(other))
 
-    def like(self, other: Any) -> "filter.Filter":
+    def like(self, other: Any) -> filter.Filter:
         """Returns `LIKE` filter for the feature; replicating the behavior of SQL `LIKE` clause."""
         return filter.Filter(self, filter.Filter.LK, other)
 

@@ -46,11 +46,7 @@ class Client(istio.Client):
         self._base_url = "http://" + self._host + ":" + str(self._port)
 
         trust_store_path = self._get_ca_chain_path()
-        hostname_verification = (
-            os.environ[self.REQUESTS_VERIFY]
-            if self.REQUESTS_VERIFY in os.environ
-            else "true"
-        )
+        hostname_verification = os.environ.get(self.REQUESTS_VERIFY, "true")
         self._project_id = os.environ[self.PROJECT_ID]
         self._project_name = self._project_name()
         self._auth = auth.ApiKeyAuth(self._get_serving_api_key())
@@ -69,8 +65,7 @@ class Client(istio.Client):
         hops_user_split = hops_user.split(
             "__"
         )  # project users have username project__user
-        project = hops_user_split[0]
-        return project
+        return hops_user_split[0]
 
     def _project_user(self):
         try:
@@ -89,9 +84,8 @@ class Client(istio.Client):
         return os.environ[self.SERVING_API_KEY]
 
     def replace_public_host(self, url):
-        """replace hostname to public hostname set in HOPSWORKS_PUBLIC_HOST"""
-        ui_url = url._replace(netloc=os.environ[self.HOPSWORKS_PUBLIC_HOST])
-        return ui_url
+        """Replace hostname to public hostname set in HOPSWORKS_PUBLIC_HOST."""
+        return url._replace(netloc=os.environ[self.HOPSWORKS_PUBLIC_HOST])
 
     def _is_external(self):
         return False

@@ -13,11 +13,12 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import logging
 import signal
 import sys
-from typing import Literal, Optional, Union
+from typing import Literal
 
 import click
 import hopsworks
@@ -35,7 +36,6 @@ class SafeStreamHandler(logging.StreamHandler):
         except (ValueError, BrokenPipeError, OSError):
             print("Error writing log message to stream, stream may be closed.")
             # Ignore errors from closed streams
-            pass
 
 
 log = logging.getLogger("hopsworks-mcp")
@@ -97,25 +97,19 @@ def handle_shutdown(signum, frame):
     help="Engine to use (python, spark, training, spark-no-metastore, spark-delta) (default: python)",
 )
 def main(
-    host: Optional[str] = None,
+    host: str | None = None,
     port: int = 8001,
-    transport: Optional[str] = None,
+    transport: str | None = None,
     create_session: bool = True,
-    hopsworks_host: Optional[str] = None,
+    hopsworks_host: str | None = None,
     hopsworks_port: int = 443,
-    project: Optional[str] = None,
-    api_key_value: Optional[str] = None,
-    api_key_file: Optional[str] = None,
+    project: str | None = None,
+    api_key_value: str | None = None,
+    api_key_file: str | None = None,
     hostname_verification: bool = False,
-    trust_store_path: Optional[str] = None,
-    engine: Union[
-        None,
-        Literal["spark"],
-        Literal["python"],
-        Literal["training"],
-        Literal["spark-no-metastore"],
-        Literal["spark-delta"],
-    ] = "python",
+    trust_store_path: str | None = None,
+    engine: Literal["spark", "python", "training", "spark-no-metastore", "spark-delta"]
+    | None = "python",
 ):
     """Run the Hopsworks MCP server."""
     if transport not in ["stdio", "http", "sse", "streamable-http"]:

@@ -15,13 +15,16 @@
 #
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 from hopsworks_common import client
 from hsfs import expectation_suite as es
 from hsfs import util
 from hsfs.core import expectation_suite_api
-from hsfs.ge_expectation import GeExpectation
+
+
+if TYPE_CHECKING:
+    from hsfs.ge_expectation import GeExpectation
 
 
 class ExpectationSuiteEngine:
@@ -39,11 +42,10 @@ class ExpectationSuiteEngine:
             feature_store_id=feature_store_id, feature_group_id=feature_group_id
         )
 
-    def save(self, expectation_suite: "es.ExpectationSuite") -> "es.ExpectationSuite":
+    def save(self, expectation_suite: es.ExpectationSuite) -> es.ExpectationSuite:
         if expectation_suite.id:
             return self.update(expectation_suite)
-        else:
-            return self.create(expectation_suite)
+        return self.create(expectation_suite)
 
     def create(self, expectation_suite: es.ExpectationSuite) -> es.ExpectationSuite:
         saved_suite = self._expectation_suite_api.create(expectation_suite)
@@ -74,8 +76,8 @@ class ExpectationSuiteEngine:
         expectation_suite_name: str,
         run_validation: bool,
         validation_ingestion_policy: str,
-        meta: Union[str, Dict[str, Any]],
-        expectations: List[GeExpectation],
+        meta: str | dict[str, Any],
+        expectations: list[GeExpectation],
         **kwargs,
     ) -> None:
         self._expectation_suite_api.update_metadata(
@@ -91,7 +93,7 @@ class ExpectationSuiteEngine:
             )
         )
 
-    def get(self) -> Optional[es.ExpectationSuite]:
+    def get(self) -> es.ExpectationSuite | None:
         return self._expectation_suite_api.get()
 
     def delete(self, expectation_suite_id: int) -> None:
@@ -99,7 +101,7 @@ class ExpectationSuiteEngine:
         self._expectation_engine = None
 
     def _get_expectation_suite_url(self) -> str:
-        """Build url to land on Hopsworks UI page which summarizes validation results"""
+        """Build url to land on Hopsworks UI page which summarizes validation results."""
         sub_path = (
             "/p/"
             + str(client.get_instance()._project_id)

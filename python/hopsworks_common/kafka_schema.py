@@ -43,10 +43,9 @@ class KafkaSchema:
         json_decamelized = humps.decamelize(json_dict)
         if "count" not in json_decamelized:
             return cls(**json_decamelized)
-        elif json_decamelized["count"] == 0:
+        if json_decamelized["count"] == 0:
             return []
-        else:
-            return [cls(**kafka_topic) for kafka_topic in json_decamelized["items"]]
+        return [cls(**kafka_topic) for kafka_topic in json_decamelized["items"]]
 
     def update_from_response_json(self, json_dict):
         json_decamelized = humps.decamelize(json_dict)
@@ -55,31 +54,33 @@ class KafkaSchema:
 
     @property
     def id(self):
-        """Id of the kafka schema"""
+        """Id of the kafka schema."""
         return self._id
 
     @property
     def subject(self):
-        """Name of the subject for the schema"""
+        """Name of the subject for the schema."""
         return self._subject
 
     @property
     def version(self):
-        """Version of the schema"""
+        """Version of the schema."""
         return self._version
 
     @property
     def schema(self):
-        """Schema definition"""
+        """Schema definition."""
         return self._schema
 
     @usage.method_logger
     def delete(self):
-        """Delete the schema
-        !!! danger "Potentially dangerous operation"
+        """Delete the schema.
+
+        Danger: Potentially dangerous operation
             This operation deletes the schema.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         self._kafka_api._delete_subject_version(self.subject, self.version)
 

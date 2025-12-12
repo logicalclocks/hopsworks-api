@@ -68,7 +68,6 @@ class HudiEngine:
     HUDI_QUERY_TYPE_OPT_KEY = "hoodie.datasource.query.type"
     HUDI_QUERY_TYPE_SNAPSHOT_OPT_VAL = "snapshot"
     HUDI_QUERY_TYPE_INCREMENTAL_OPT_VAL = "incremental"
-    HUDI_QUERY_TYPE_SNAPSHOT_OPT_VAL = "snapshot"
     HUDI_QUERY_TIME_TRAVEL_AS_OF_INSTANT = "as.of.instant"
     HUDI_BEGIN_INSTANTTIME_OPT_KEY = "hoodie.datasource.read.begin.instanttime"
     HUDI_END_INSTANTTIME_OPT_KEY = "hoodie.datasource.read.end.instanttime"
@@ -141,10 +140,7 @@ class HudiEngine:
             save_mode
         ).save(location)
 
-        feature_group_commit = self._get_last_commit_metadata(
-            self._spark_context, location
-        )
-        return feature_group_commit
+        return self._get_last_commit_metadata(self._spark_context, location)
 
     def _setup_hudi_write_opts(self, operation, write_options):
         table_name = self._feature_group.get_fg_name()

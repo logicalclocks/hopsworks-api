@@ -13,14 +13,19 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING
 
 import hopsworks
-from fastmcp import Context
 from hopsworks.mcp.models.project import Project, Projects
 from hopsworks.mcp.utils.tags import TAGS
 from hopsworks_common import client
+
+
+if TYPE_CHECKING:
+    from fastmcp import Context
 
 
 class ProjectTools:
@@ -51,16 +56,15 @@ class ProjectTools:
         self, conn, name: str = None, description: str = None
     ) -> dict:
         loop = asyncio.get_event_loop()
-        project = await loop.run_in_executor(
-            None, conn.create_project, name, description
-        )
-        return project
+        return await loop.run_in_executor(None, conn.create_project, name, description)
 
-    async def use_project(self, name: str, ctx: Context = None) -> Project:
+    async def use_project(self, name: str, ctx: Context | None = None) -> Project:
         """Use a specific project.
 
-        Args:
-            name (str): The name of the project to use.
+        Parameters:
+            name: The name of the project to use.
+            context: The MCP context, provided automatically.
+
         Returns:
             Project: The project details or an error message.
         """
@@ -87,13 +91,17 @@ class ProjectTools:
         )
 
     async def create_project(
-        self, name: str = None, description: str = None, ctx: Context = None
+        self,
+        name: str | None = None,
+        description: str | None = None,
+        ctx: Context = None,
     ) -> Project:
         """Create a new project.
 
-        Args:
-            name (str): The name of the project.
-            description (str): A description of the project.
+        Parameters:
+            name: The name of the project.
+            description: A description of the project.
+
         Returns:
             Project: The newly created project details or an error message.
         """
@@ -150,7 +158,7 @@ class ProjectTools:
             ]
         )
 
-    async def get_current_project_details(self, ctx: Context = None) -> Project:
+    async def get_current_project_details(self, ctx: Context | None = None) -> Project:
         """Get details of the current project.
 
         Returns:
@@ -168,11 +176,14 @@ class ProjectTools:
             created=project.created,
         )
 
-    async def get_project_details(self, name: str, ctx: Context = None) -> Project:
+    async def get_project_details(
+        self, name: str, ctx: Context | None = None
+    ) -> Project:
         """Get project details.
 
-        Args:
-            name (str): The name of the project.
+        Parameters:
+            name: The name of the project.
+            context: The MCP context, provided automatically.
 
         Returns:
             Project: The project details or an error message.

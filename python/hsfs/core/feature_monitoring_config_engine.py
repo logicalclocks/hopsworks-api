@@ -17,27 +17,30 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any
 
-import pandas as pd
 from hopsworks_common.client.exceptions import FeatureStoreException
-from hsfs import feature_group, feature_view
 from hsfs.core import feature_monitoring_config as fmc
 from hsfs.core import feature_monitoring_config_api, monitoring_window_config_engine
 from hsfs.core import monitoring_window_config as mwc
-from hsfs.core.feature_monitoring_result import FeatureMonitoringResult
 from hsfs.core.feature_monitoring_result_engine import FeatureMonitoringResultEngine
-from hsfs.core.job import Job
 from hsfs.core.job_api import JobApi
+
+
+if TYPE_CHECKING:
+    import pandas as pd
+    from hsfs import feature_group, feature_view
+    from hsfs.core.feature_monitoring_result import FeatureMonitoringResult
+    from hsfs.core.job import Job
 
 
 class FeatureMonitoringConfigEngine:
     def __init__(
         self,
         feature_store_id: int,
-        feature_group_id: Optional[int] = None,
-        feature_view_name: Optional[str] = None,
-        feature_view_version: Optional[int] = None,
+        feature_group_id: int | None = None,
+        feature_view_name: str | None = None,
+        feature_view_version: int | None = None,
         **kwargs,
     ):
         """Business logic for feature monitoring configuration.
@@ -49,11 +52,11 @@ class FeatureMonitoringConfigEngine:
         to run the feature monitoring job, including taking a monitoring window configuration
         and fetching the associated data.
 
-        Attributes:
-            feature_store_id: int. Id of the respective Feature Store.
-            feature_group_id: int. Id of the feature group, if monitoring a feature group.
-            feature_view_name: str. Name of the feature view, if monitoring a feature view.
-            feature_view_version: int. Version of the feature view, if monitoring a feature view.
+        Parameters:
+            feature_store_id: ID of the respective Feature Store.
+            feature_group_id: ID of the feature group, if monitoring a feature group.
+            feature_view_name: Name of the feature view, if monitoring a feature view.
+            feature_view_version: Version of the feature view, if monitoring a feature view.
         """
         self._feature_store_id = feature_store_id
         self._feature_group_id = feature_group_id
@@ -110,24 +113,24 @@ class FeatureMonitoringConfigEngine:
     def validate_statistics_comparison_config(
         self,
         metric: str,
-        threshold: Union[float, int],
-        id: Optional[int] = None,
+        threshold: float,
+        id: int | None = None,
         relative: bool = False,
         strict: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Validates the statistics comparison config.
 
         Args:
-            metric: str, required
+            metric:
                 Statistical metric to perform comparison on.
-            threshold: float, required
+            threshold:
                 If statistics difference is above threshold, trigger an alert if configured.
-            relative: bool, optional
+            id:
+                ID of the feature monitoring configuration.
+            relative:
                 If true, compute the relative difference between the detection and reference statistics.
-                Defaults to false.
-            strict: bool, optional
+            strict:
                 If true, the statistics difference must be strictly above threshold to trigger an alert.
-                Defaults to false.
 
         Raises:
             ValueError: If the statistics comparison config is invalid.
@@ -179,7 +182,7 @@ class FeatureMonitoringConfigEngine:
                 "Invalid config name. Config name must be alphanumeric or underscore."
             )
 
-    def validate_description(self, description: Optional[str]):
+    def validate_description(self, description: str | None):
         if description is not None and not isinstance(description, str):
             raise TypeError("Invalid description. Description must be a string.")
         if description is not None and len(description) > 256:
@@ -188,7 +191,7 @@ class FeatureMonitoringConfigEngine:
             )
 
     def validate_feature_name(
-        self, feature_name: Optional[str], valid_feature_names: List[str]
+        self, feature_name: str | None, valid_feature_names: list[str]
     ):
         if feature_name is not None and not isinstance(feature_name, str):
             raise TypeError("Invalid feature name. Feature name must be a string.")
@@ -197,9 +200,7 @@ class FeatureMonitoringConfigEngine:
                 f"Invalid feature name. Feature name must be one of {valid_feature_names}."
             )
 
-    def save(
-        self, config: "fmc.FeatureMonitoringConfig"
-    ) -> "fmc.FeatureMonitoringConfig":
+    def save(self, config: fmc.FeatureMonitoringConfig) -> fmc.FeatureMonitoringConfig:
         """Saves a feature monitoring config.
 
         Args:
@@ -220,8 +221,8 @@ class FeatureMonitoringConfigEngine:
         return self._feature_monitoring_config_api.create(config)
 
     def update(
-        self, config: "fmc.FeatureMonitoringConfig"
-    ) -> "fmc.FeatureMonitoringConfig":
+        self, config: fmc.FeatureMonitoringConfig
+    ) -> fmc.FeatureMonitoringConfig:
         """Updates a feature monitoring config.
 
         Args:
@@ -252,12 +253,10 @@ class FeatureMonitoringConfigEngine:
 
     def get_feature_monitoring_configs(
         self,
-        name: Optional[str] = None,
-        feature_name: Optional[str] = None,
-        config_id: Optional[int] = None,
-    ) -> Union[
-        "fmc.FeatureMonitoringConfig", List["fmc.FeatureMonitoringConfig"], None
-    ]:
+        name: str | None = None,
+        feature_name: str | None = None,
+        config_id: int | None = None,
+    ) -> fmc.FeatureMonitoringConfig | list[fmc.FeatureMonitoringConfig] | None:
         """Fetch feature monitoring configuration by entity, name or feature name.
 
         If no arguments are provided, fetches all feature monitoring configurations
@@ -299,13 +298,13 @@ class FeatureMonitoringConfigEngine:
             if not isinstance(name, str):
                 raise TypeError("name must be a string or None.")
             return self._feature_monitoring_config_api.get_by_name(name=name)
-        elif feature_name is not None:
+        if feature_name is not None:
             if not isinstance(feature_name, str):
                 raise TypeError("feature_name must be a string or None.")
             return self._feature_monitoring_config_api.get_by_feature_name(
                 feature_name=feature_name
             )
-        elif config_id is not None:
+        if config_id is not None:
             if not isinstance(config_id, int):
                 raise TypeError("config_id must be an integer or None.")
             return self._feature_monitoring_config_api.get_by_id(config_id=config_id)
@@ -344,9 +343,9 @@ class FeatureMonitoringConfigEngine:
 
     def run_feature_monitoring(
         self,
-        entity: Union[feature_group.FeatureGroup, "feature_view.FeatureView"],
+        entity: feature_group.FeatureGroup | feature_view.FeatureView,
         config_name: str,
-    ) -> List[FeatureMonitoringResult]:
+    ) -> list[FeatureMonitoringResult]:
         """Main function used by the job to actually perform the monitoring.
 
         Args:
@@ -397,13 +396,13 @@ class FeatureMonitoringConfigEngine:
     def _build_default_statistics_monitoring_config(
         self,
         name: str,
-        feature_name: Optional[str] = None,
-        start_date_time: Optional[Union[str, int, date, datetime, pd.Timestamp]] = None,
-        description: Optional[str] = None,
-        valid_feature_names: Optional[List[str]] = None,
-        end_date_time: Optional[Union[str, int, date, datetime, pd.Timestamp]] = None,
-        cron_expression: Optional[str] = "0 0 12 ? * * *",
-    ) -> "fmc.FeatureMonitoringConfig":
+        feature_name: str | None = None,
+        start_date_time: str | int | date | datetime | pd.Timestamp | None = None,
+        description: str | None = None,
+        valid_feature_names: list[str] | None = None,
+        end_date_time: str | int | date | datetime | pd.Timestamp | None = None,
+        cron_expression: str | None = "0 0 12 ? * * *",
+    ) -> fmc.FeatureMonitoringConfig:
         """Builds the default scheduled statistics config, default detection window is full snapshot.
 
         Args:
@@ -456,12 +455,12 @@ class FeatureMonitoringConfigEngine:
         self,
         name: str,
         feature_name: str,
-        start_date_time: Optional[Union[str, int, date, datetime, pd.Timestamp]] = None,
-        description: Optional[str] = None,
-        valid_feature_names: Optional[List[str]] = None,
-        end_date_time: Optional[Union[str, int, date, datetime, pd.Timestamp]] = None,
-        cron_expression: Optional[str] = "0 0 12 ? * * *",
-    ) -> "fmc.FeatureMonitoringConfig":
+        start_date_time: str | int | date | datetime | pd.Timestamp | None = None,
+        description: str | None = None,
+        valid_feature_names: list[str] | None = None,
+        end_date_time: str | int | date | datetime | pd.Timestamp | None = None,
+        cron_expression: str | None = "0 0 12 ? * * *",
+    ) -> fmc.FeatureMonitoringConfig:
         """Builds the default scheduled statistics config, default detection window is full snapshot.
 
         Args:

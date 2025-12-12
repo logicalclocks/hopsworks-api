@@ -1,5 +1,6 @@
 This PR adds/fixes/changes...
-- please summarize your changes to the code 
+
+- please summarize your changes to the code
 - and make sure to include all changes to user-facing APIs
 
 JIRA Issue: -
@@ -14,10 +15,9 @@ Related PRs: -
 - [ ] Integration Tests
 - [ ] Manual Tests on VM
 
-
 **Checklist For The Assigned Reviewer:**
 
-```
+```markdown
 - [ ] Checked if merge conflicts with master exist
 - [ ] Checked if stylechecks for Java and Python pass
 - [ ] Checked if all docstrings were added and/or updated appropriately
