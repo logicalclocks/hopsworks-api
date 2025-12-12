@@ -2,7 +2,9 @@ name: mkdocs-release
 
 on:
   push:
-    branches: [branch-*]
+    branches:
+    - branch-*
+    - main
 
 jobs:
   publish-release:
