@@ -15,21 +15,15 @@
 #
 
 import subprocess
-import hopsworks
-import multiprocessing
-import uuid
-from fastmcp import Context
-from hopsworks.mcp.models.job import Jobs, to_base_model_job
-from hopsworks.mcp.utils.tags import TAGS
-from hopsworks_common import client
-import os
 from queue import Empty, Queue
 from threading import Thread
+
+from hopsworks.mcp.utils.tags import TAGS
 
 
 def enqueue_output(out, queue):
     # TODO: obtain output byte-by-byte
-    for line in iter(out.readline, b''):
+    for line in iter(out.readline, b""):
         queue.put(line)
     out.close()
 
@@ -38,10 +32,9 @@ class UnixTools:
     """Tools for managing jobs in Hopsworks and executing Unix/Git commands."""
 
     def __init__(self, mcp):
-        """
-        Initialize the UnixTools with the MCP server instance.
+        """Initialize the UnixTools with the MCP server instance.
 
-        Args:
+        Parameters:
             mcp: The MCP server instance
         """
         self.mcp = mcp
@@ -52,11 +45,11 @@ class UnixTools:
         self.sessions = {}
 
     def start_session(self, cwd):
-        """
-        Start a Unix session in the specified directory.
+        """Start a Unix session in the specified directory.
 
-        Args:
-            pwd (str): The directory path to start the session in.
+        Parameters:
+            cwd: The directory path to start the session in.
+
         Returns:
             UnixTools: An instance of UnixTools for the specified directory.
         """
@@ -69,12 +62,12 @@ class UnixTools:
             stderr=subprocess.STDOUT,
             cwd=cwd,
             text=True,
-            bufsize=1
+            bufsize=1,
         )
 
         output_queue = Queue()
         t = Thread(target=enqueue_output, args=(proc.stdout, output_queue))
-        t.daemon = True # thread dies with the program
+        t.daemon = True  # thread dies with the program
         t.start()
 
         self.sessions[proc.pid] = (proc, output_queue, "")

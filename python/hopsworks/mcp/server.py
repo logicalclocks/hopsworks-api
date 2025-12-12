@@ -17,20 +17,20 @@
 """MCP server for Hopsworks."""
 
 from fastmcp import FastMCP
-from starlette.responses import Response
 from starlette import status
+from starlette.responses import Response
 
 from .prompts import ProjectPrompts, SystemPrompts
 from .resources import FeatureStoreResources, ProjectResources
 from .tools import (
     AuthTools,
+    BrewerTools,
     DatasetTools,
     FeatureGroupTools,
     FeatureStoreTools,
     JobTools,
     ProjectTools,
     UnixTools,
-    BrewerTools,
 )
 
 
@@ -51,8 +51,10 @@ _feature_group_tools = FeatureGroupTools(mcp)
 _unix_tools = UnixTools(mcp)
 _brewer_tools = BrewerTools(mcp)
 
+
 @mcp.custom_route("/health", methods=["GET"])
 async def health(_):
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
 
 app = mcp.http_app()

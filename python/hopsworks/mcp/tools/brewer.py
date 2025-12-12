@@ -14,30 +14,22 @@
 #   limitations under the License.
 #
 
-import subprocess
-import hopsworks
-import multiprocessing
-import uuid
-from fastmcp import Context
-from hopsworks.mcp.models.job import Jobs, to_base_model_job
-from hopsworks.mcp.utils.tags import TAGS
-from hopsworks_common import client
-import os
-from queue import Empty, Queue
-from threading import Thread
-from pydantic import BaseModel
+from __future__ import annotations
+
 import asyncio
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from fastmcp import Context, FastMCP
 from fastmcp.server.dependencies import get_context
 from fastmcp.server.http import _current_http_request
 from filelock import AsyncFileLock
+from hopsworks.mcp.utils.tags import TAGS
 from pydantic import BaseModel
-from starlette import status
-from starlette.responses import Response
 
+
+if TYPE_CHECKING:
+    from fastmcp import Context
 
 
 class ExecutionResult(BaseModel):
@@ -47,18 +39,15 @@ class ExecutionResult(BaseModel):
 
 class BrewerTools:
     def __init__(self, mcp):
-        """
-        Initialize the BrewerTools with the MCP server instance.
+        """Initialize the BrewerTools with the MCP server instance.
 
-        Args:
+        Parameters:
             mcp: The MCP server instance
         """
         self.mcp = mcp
         self.mcp.tool(tags=[TAGS.BREWER])(self.execute)
 
-
     # TODO: Use on_notification Middleware to handle cancellation requests, add process manager
-
 
     async def execute(
         self,
