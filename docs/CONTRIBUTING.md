@@ -63,6 +63,8 @@ Everything public should have a docstring, following [PEP-257](https://peps.pyth
 We use [mkdocs-material admonitions](https://squidfunk.github.io/mkdocs-material/reference/admonitions/?h=admoni#supported-types) where appropriate, which we specify using the [Google style](https://mkdocstrings.github.io/griffe/reference/docstrings/#google-admonitions) as well.
 We do _not_ specify the types or defaults of parameters in the docstrings, as they are automatically extracted from the signatures by the documentation generator, so specify them in the signature.
 
+The development version of the documentation, built from the main branches of our repositories, is hidden from the version selector but available at <https://docs.hopsworks.ai/dev/>.
+
 ##### Writing Good Docstrings
 
 Avoid tautological docstrings.
