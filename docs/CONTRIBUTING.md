@@ -211,6 +211,46 @@ For external links, use the normal Markdown syntax:
 [Hopsworks Website](https://www.hopsworks.ai)
 ```
 
+##### Patch Notes
+
+The patch versions, namely Z in X.Y.Z versioning scheme, are not included into the version selector on the documentation website.
+That is, it is only possible to select major and minor versions, like `3.8` or `4.4`, but not `3.8.1` or `4.4.2`.
+This means that if you are adding new functionality or fixing bugs in patch releases, you should be careful with how you update the docstrings to reflect the changes.
+
+You should make it clear from which exact version the changes are available.
+The recommended way to do that is to add an info admonition block to the docstring, with a title summarizing the change and making it clear from which version it is available, like this:
+
+```python
+"""Draws a pie chart.
+
+... The main docstring
+
+Info: Collapsing every slice smaller than 1% into `Other`, ~=3.8.1
+    If a slice is smaller than 1% of the total, it will be collapsed into a single `Other` slice together with the rest of such slices.
+    This behavior is available starting from version 3.8.1 and is set as the default.
+    To disable it, set the `collapse_small_slices` parameter to `False`.
+
+Parameters:
+    ...
+"""
+```
+
+Or:
+
+```python
+"""Draws a pie chart.
+
+... The main docstring
+
+Info: Rendering charts of more than 100 slices, ~=4.4.2
+    Previously, charts with more than 100 slices would fail to render with a [`SpecificException`][full.path.SpecificException].
+    This has been fixed in version 4.4.2 and later.
+
+Parameters:
+    ...
+"""
+```
+
 ##### Summary
 
 - Always document public classes, methods, functions, and modules.
@@ -223,6 +263,7 @@ For external links, use the normal Markdown syntax:
 - Use mkdocs-material admonitions where appropriate.
 - Do not duplicate information that can be extracted from the code signatures.
 - Keep the documentation in the code (docstrings) as complete as possible, and avoid writing custom Markdown text in the files of the `docs` directory.
+- Then making changes in patch releases, add an info admonition specifying the exact version from which the change is available.
 
 #### Extending the API Reference
 
