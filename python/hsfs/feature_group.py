@@ -2482,11 +2482,11 @@ class FeatureGroupBase:
         return self._features
 
     @property
-    def feature_names(self) -> list[str]:
-        """List of feature names in the Feature Group.
+    def column_names(self) -> list[str]:
+        """List of column names in the Feature Group.
 
         Returns:
-            List of feature names extracted from the features property.
+            List of column names extracted from the features property.
         """
         return [f.name for f in self._features]
 
