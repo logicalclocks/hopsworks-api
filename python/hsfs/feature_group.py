@@ -2481,6 +2481,15 @@ class FeatureGroupBase:
         """Feature Group schema."""
         return self._features
 
+    @property
+    def feature_names(self) -> list[str]:
+        """List of feature names in the Feature Group.
+
+        Returns:
+            List of feature names extracted from the features property.
+        """
+        return [f.name for f in self._features]
+
     def _are_statistics_missing(self, statistics: Statistics) -> bool:
         if not self.statistics_config.enabled:
             return False
