@@ -2473,7 +2473,28 @@ class FeatureGroupBase:
 
     @property
     def features(self) -> list[feature.Feature]:
-        """Feature Group schema (alias)."""
+        """Feature Group schema (alias).
+
+        .. deprecated::
+            Use :py:attr:`columns` instead. This property will be removed in a future version.
+
+        :meta private:
+        """
+        warnings.warn(
+            "The 'features' property is deprecated and will be removed in a future version. "
+            "Please use 'columns' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._features
+
+    @property
+    def columns(self) -> list[feature.Feature]:
+        """Feature Group schema.
+
+        Returns:
+            List of features/columns in the feature group.
+        """
         return self._features
 
     @property
@@ -2486,7 +2507,7 @@ class FeatureGroupBase:
         """List of column names in the Feature Group.
 
         Returns:
-            List of column names extracted from the features property.
+            List of column names extracted from the columns property.
         """
         return [f.name for f in self._features]
 
@@ -2534,7 +2555,29 @@ class FeatureGroupBase:
 
     @features.setter
     def features(self, new_features: list[feature.Feature]) -> None:
+        """Set the feature group schema.
+
+        .. deprecated::
+            Use :py:attr:`columns` instead. This property will be removed in a future version.
+
+        :meta private:
+        """
+        warnings.warn(
+            "The 'features' property is deprecated and will be removed in a future version. "
+            "Please use 'columns' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._features = new_features
+
+    @columns.setter
+    def columns(self, new_columns: list[feature.Feature]) -> None:
+        """Set the feature group schema.
+
+        Args:
+            new_columns: List of features/columns to set for the feature group.
+        """
+        self._features = new_columns
 
     def _get_project_name(self) -> str:
         return util.strip_feature_store_suffix(self.feature_store_name)
