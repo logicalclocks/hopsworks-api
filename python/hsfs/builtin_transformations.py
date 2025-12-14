@@ -14,6 +14,8 @@
 #   limitations under the License.
 #
 
+from __future__ import annotations
+
 import math
 
 import numpy as np
@@ -39,8 +41,7 @@ def standard_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
 
 @udf(float, drop=["feature"], mode="pandas")
 def robust_scaler(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
-    """
-    Robust scaling using median and IQR.
+    """Robust scaling using median and IQR.
 
     Scales a feature by removing the median and dividing by the interquartile
     range (IQR = Q3 - Q1). This makes the transformation robust to outliers.
@@ -90,8 +91,7 @@ def one_hot_encoder(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
 
 @udf(float, drop=["feature"], mode="pandas")
 def log_transform(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
-    """
-    Apply natural logarithm to a numeric feature.
+    """Apply natural logarithm to a numeric feature.
 
     Notes:
     - Only strictly positive values are transformed: y = ln(x) if x > 0, otherwise NaN.
@@ -109,8 +109,7 @@ def log_transform(feature: pd.Series, statistics=feature_statistics) -> pd.Serie
 def equal_width_binner(
     feature: pd.Series, statistics=feature_statistics, context: dict | None = None
 ) -> pd.Series:
-    """
-    Discretize numeric values into equal-width bins using training min/max.
+    """Discretize numeric values into equal-width bins using training min/max.
 
     - Default bins: 10 (configurable via context["n_bins"])
     - Values below min are placed in the first bin; values above max in the last bin.
@@ -160,8 +159,7 @@ def equal_width_binner(
 def equal_frequency_binner(
     feature: pd.Series, statistics=feature_statistics
 ) -> pd.Series:
-    """
-    Discretize numeric values into equal-frequency bins using training quartiles.
+    """Discretize numeric values into equal-frequency bins using training quartiles.
 
     - Uses Q1/Q2/Q3 percentiles as boundaries to form up to 4 bins.
     - If quartiles have duplicates (constant regions), fewer bins are created.
@@ -206,8 +204,7 @@ def equal_frequency_binner(
 
 @udf(int, drop=["feature"])
 def quantile_binner(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
-    """
-    Discretize numeric values using quantile-based boundaries from training statistics.
+    """Discretize numeric values using quantile-based boundaries from training statistics.
 
     - Default quantiles: quartiles (0%, 25%, 50%, 75%, 100%).
     - Creates up to 4 bins based on Q1, Q2 (median), and Q3.
@@ -256,8 +253,7 @@ def quantile_binner(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
 def quantile_transformer(
     feature: pd.Series, statistics=feature_statistics
 ) -> pd.Series:
-    """
-    Transform features using quantile information to map to a uniform [0, 1] distribution.
+    """Transform features using quantile information to map to a uniform [0, 1] distribution.
 
     This transformation maps the input feature to a uniform distribution by using
     the percentiles computed during training. Values are mapped to their quantile
@@ -290,8 +286,7 @@ def quantile_transformer(
 
 @udf(float, drop=["feature"], mode="pandas")
 def rank_normalizer(feature: pd.Series, statistics=feature_statistics) -> pd.Series:
-    """
-    Replace each value with its percentile rank in the training distribution.
+    """Replace each value with its percentile rank in the training distribution.
 
     This transformation assigns each value a rank between 0 and 1 based on its
     position in the sorted training data distribution. The rank represents the
@@ -329,8 +324,7 @@ def rank_normalizer(feature: pd.Series, statistics=feature_statistics) -> pd.Ser
 def winsorize(
     feature: pd.Series, statistics=feature_statistics, context: dict | None = None
 ) -> pd.Series:
-    """
-    Winsorization (clipping) to limit extreme values and reduce outlier influence.
+    """Winsorization (clipping) to limit extreme values and reduce outlier influence.
 
     Row-size preserving: outliers are replaced with percentile boundary
     values instead of removing rows.
@@ -374,6 +368,73 @@ def winsorize(
     clipped = numerical_feature.clip(lower=lower, upper=upper)
 
     return pd.Series(clipped, index=feature.index)
+
+
+@udf(str, drop=["feature"], mode="pandas")
+def top_k_categorical_binner(
+    feature: pd.Series, statistics=feature_statistics, context: dict | None = None
+) -> pd.Series:
+    """Bin categorical features by grouping rare categories into an 'Other' bucket.
+
+    Groups low-frequency categories together based on training data frequencies.
+    Keeps the top N most frequent categories and maps all others (including
+    unseen categories) to a single label.
+
+    This transformation is useful for:
+    - High-cardinality categorical features (country, city, product_id, etc.)
+    - Reducing dimensionality
+    - Preventing overfitting to rare categories
+    - Improving model generalization
+
+    Parameters (via context):
+    - top_n: int - Keep the top N most frequent categories (default: 10)
+    - other_label: str - Label for grouped rare categories (default: "Other")
+
+    Example usage:
+        # Keep top 20 countries, group rest as "Rare"
+        tf = top_k_categorical_binner("country")
+        tf.hopsworks_udf.transformation_context = {"top_n": 20, "other_label": "Rare"}
+
+    Notes:
+    - Preserves NaN values as NaN
+    - Unseen categories in production data are treated as rare and grouped
+    - Requires histogram statistics from training data
+    - Output type is string
+    """
+    # Get parameters from context
+    top_n = 10
+    other_label = "Other"
+
+    if isinstance(context, dict):
+        top_n = context.get("top_n", top_n)
+        other_label = context.get("other_label", other_label)
+
+    # Get histogram from training statistics (contains value counts)
+    histogram = statistics.feature.histogram
+
+    # Determine which categories to keep based on frequency
+    if histogram is not None and isinstance(histogram, list):
+        # Sort categories by count (descending) and keep top N
+        sorted_categories = sorted(
+            histogram, key=lambda x: x.get("count", 0), reverse=True
+        )
+        frequent_categories = {item["value"] for item in sorted_categories[:top_n]}
+    else:
+        # Fallback: if no histogram available, use unique_values (keeps all)
+        unique_values = statistics.feature.unique_values
+        if unique_values is not None:
+            frequent_categories = set(list(unique_values)[:top_n])
+        else:
+            # No statistics available: return feature unchanged
+            return feature
+
+    # Map rare and unseen categories to other_label
+    def map_category(value):
+        if pd.isna(value):
+            return np.nan
+        return value if value in frequent_categories else other_label
+
+    return feature.map(map_category)
 
 
 # @udf(float, drop=["feature"], mode="pandas")

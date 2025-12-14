@@ -36,6 +36,13 @@ The HSFS library includes several ready-to-use transformation functions in `hsfs
 
 - **`label_encoder(feature)`**: Encode categorical values as integers based on sorted unique values from training. Unseen categories → -1.
 - **`one_hot_encoder(feature)`**: One-hot encode categorical features. Unseen categories → all False.
+- **`top_k_categorical_binner(feature)`**: Group rare categorical values into an "Other" bucket based on training data frequencies. Keeps top N most frequent categories (default: 10). Useful for high-cardinality features. Override via transformation context:
+  ```python
+  from hsfs.builtin_transformations import top_k_categorical_binner
+
+  tf = top_k_categorical_binner("country")
+  tf.hopsworks_udf.transformation_context = {"top_n": 20, "other_label": "Rare"}
+  ```
 <!-- 
 - **`target_mean_encoder(feature, label)`**: Replace categories with the mean of the target variable.
   - **Training**: Computes per-category target means from `feature` and `label` Series.
