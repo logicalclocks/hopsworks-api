@@ -42,6 +42,7 @@ class TransformationFunctionEngine:
         "standard_scaler",
         "robust_scaler",
         "label_encoder",
+        "one_hot_encoder",
         "log_transform",
         "quantile_transformer",
         "rank_normalizer",
@@ -49,6 +50,7 @@ class TransformationFunctionEngine:
         "equal_width_binner",
         "equal_frequency_binner",
         "quantile_binner",
+        "top_k_categorical_binner",
         # "target_mean_encoder",
     ]
     AMBIGUOUS_FEATURE_ERROR = (
