@@ -117,7 +117,7 @@ def equal_width_binner(
 
     Example to use 20 bins:
         tf = equal_width_binner("feature")
-        tf.hopsworks_udf.transformation_context = {"n_bins": 20}
+        tf.transformation_context = {"n_bins": 20}
     """
     numerical_feature = feature.astype("float64")
     min_v = statistics.feature.min
@@ -393,7 +393,7 @@ def top_k_categorical_binner(
     Example usage:
         # Keep top 20 countries, group rest as "Rare"
         tf = top_k_categorical_binner("country")
-        tf.hopsworks_udf.transformation_context = {"top_n": 20, "other_label": "Rare"}
+        tf.transformation_context = {"top_n": 20, "other_label": "Rare"}
 
     Notes:
     - Preserves NaN values as NaN

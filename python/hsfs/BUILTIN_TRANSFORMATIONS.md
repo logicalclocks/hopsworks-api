@@ -21,9 +21,9 @@ The HSFS library includes several ready-to-use transformation functions in `hsfs
 - **`winsorize(feature)`**: Clip extreme values at specified percentiles (default: 1st and 99th). Override thresholds via transformation context:
   ```python
   from hsfs.builtin_transformations import winsorize
-  
+
   tf = winsorize("my_feature")
-  tf.hopsworks_udf.transformation_context = {"p_low": 5, "p_high": 95}
+  tf.transformation_context = {"p_low": 5, "p_high": 95}
   ```
 
 ### Discretization / Binning
@@ -41,7 +41,7 @@ The HSFS library includes several ready-to-use transformation functions in `hsfs
   from hsfs.builtin_transformations import top_k_categorical_binner
 
   tf = top_k_categorical_binner("country")
-  tf.hopsworks_udf.transformation_context = {"top_n": 20, "other_label": "Rare"}
+  tf.transformation_context = {"top_n": 20, "other_label": "Rare"}
   ```
 <!-- 
 - **`target_mean_encoder(feature, label)`**: Replace categories with the mean of the target variable.
@@ -49,9 +49,9 @@ The HSFS library includes several ready-to-use transformation functions in `hsfs
   - **Serving**: Use a precomputed mapping via transformation context:
     ```python
     from hsfs.builtin_transformations import target_mean_encoder
-    
+
     tf = target_mean_encoder("category_col", "label_col")
-    tf.hopsworks_udf.transformation_context = {
+    tf.transformation_context = {
         "target_means": {"A": 1.5, "B": 0.8},
         "global_mean": 1.2
     }
