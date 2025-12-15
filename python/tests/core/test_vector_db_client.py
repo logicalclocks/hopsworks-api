@@ -40,14 +40,17 @@ class TestVectorDbClient:
     @pytest.fixture(autouse=True)
     def setup_mocks(self, mocker):
         mocker.patch("hsfs.engine.get_type", return_value="python")
+        # Mock the OpenSearchClientSingleton to return a MagicMock instead of creating a real client
         mocker.patch(
-            "hsfs.core.opensearch.OpenSearchClientSingleton._setup_opensearch_client"
+            "hsfs.core.vector_db_client.OpenSearchClientSingleton",
+            return_value=MagicMock(),
         )
 
         self.query = self.fg.select_all()
         self.target = vector_db_client.VectorDbClient(self.query)
-        self.target._opensearch_client = MagicMock()
-        self.target._opensearch_client.search.return_value = {
+        # _opensearch_client is a dict keyed by feature_store_id (99 in this case)
+        self.mock_opensearch_client = MagicMock()
+        self.mock_opensearch_client.search.return_value = {
             "hits": {
                 "hits": [
                     {
@@ -60,6 +63,7 @@ class TestVectorDbClient:
                 ]
             }
         }
+        self.target._opensearch_client = {99: self.mock_opensearch_client}
 
     @pytest.mark.parametrize(
         "filter_expression, expected_result",
@@ -230,7 +234,7 @@ class TestVectorDbClient:
             "query": {"bool": {"must": [{"match": {"f1": 10}}, {"match": {"f2": 20}}]}},
             "_source": ["f1", "f2", "f3"],
         }
-        self.target._opensearch_client.search.assert_called_once_with(
+        self.mock_opensearch_client.search.assert_called_once_with(
             body=expected_query, index="2249__embedding_default_embedding"
         )
         expected = [{"f1": 4, "f2": [9, 4, 4]}]
@@ -244,7 +248,7 @@ class TestVectorDbClient:
             "size": 10,
             "_source": ["f1", "f2", "f3"],
         }
-        self.target._opensearch_client.search.assert_called_once_with(
+        self.mock_opensearch_client.search.assert_called_once_with(
             body=expected_query, index="2249__embedding_default_embedding"
         )
         expected = [{"f1": 4, "f2": [9, 4, 4]}]

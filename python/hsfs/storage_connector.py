@@ -1463,7 +1463,7 @@ class KafkaConnector(StorageConnector):
             ):
                 self.create_pem_files(kafka_options)
                 config["ssl.ca.location"] = (
-                    kafka_options["ssl.ca.location"] or self.ca_chain_path
+                    kafka_options.get("ssl.ca.location") or self.ca_chain_path
                 )
                 config["ssl.certificate.location"] = self.client_cert_path
                 config["ssl.key.location"] = self.client_key_path
