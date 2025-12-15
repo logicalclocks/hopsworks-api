@@ -41,7 +41,7 @@ public class KafkaRecordSerializer implements KafkaRecordSerializationSchema<Gen
 
   private final String topic;
   private final List<String> primaryKeys;
-  private final Map<String, byte[]> headerMap;
+  final Map<String, byte[]> headerMap;
 
   public KafkaRecordSerializer(StreamFeatureGroup streamFeatureGroup) throws FeatureStoreException, IOException {
     this.topic = streamFeatureGroup.getOnlineTopicName();
