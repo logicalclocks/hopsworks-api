@@ -67,14 +67,18 @@ class TestOpenSearchClientSingleton:
 
     @pytest.fixture(autouse=True)
     def reset_singleton(self):
-        # Ensure clean singleton state for each test
+        """Ensure clean singleton state for each test.
+
+        Resets the singleton instance before and after each test.
+        """
         OpenSearchClientSingleton._instance = None
         yield
         OpenSearchClientSingleton._instance = None
 
     def test_uses_default_client_when_no_federated_connector(self, mocker):
-        """If there is no `federated_opensearch` connector for the feature store,
-        the OpenSearch client for that feature store should be the same object
+        """If there is no `federated_opensearch` connector for the feature store.
+
+        The OpenSearch client for that feature store should be the same object
         as the default one.
         """
         # Arrange: mock OpenSearchApi.get_default_py_config so we don't hit real cluster
@@ -116,8 +120,9 @@ class TestOpenSearchClientSingleton:
         )
 
     def test_uses_different_client_when_federated_connector_available(self, mocker):
-        """If a `federated_opensearch` connector exists for the feature store,
-        the OpenSearch client for that feature store should be a different object
+        """If a `federated_opensearch` connector exists for the feature store.
+
+        The OpenSearch client for that feature store should be a different object
         than the default one.
         """
         # Arrange: mock default config
