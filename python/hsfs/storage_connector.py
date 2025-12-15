@@ -22,7 +22,7 @@ import posixpath
 import re
 import warnings
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import humps
 from cryptography.hazmat.backends import default_backend
@@ -2141,18 +2141,18 @@ class OpenSearchConnector(StorageConnector):
 
     def __init__(
         self,
-        id: Optional[int],
+        id: int | None,
         name: str,
         featurestore_id: int,
-        description: Optional[str] = None,
+        description: str | None = None,
         # members specific to type of connector
-        host: Optional[str] = None,
-        port: Optional[int] = None,
-        scheme: Optional[str] = None,
-        verify: Optional[bool] = None,
-        username: Optional[str] = None,
-        password: Optional[str] = None,
-        arguments: Optional[Dict[str, Any]] = None,
+        host: str | None = None,
+        port: int | None = None,
+        scheme: str | None = None,
+        verify: bool | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        arguments: dict[str, Any] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
@@ -2169,48 +2169,48 @@ class OpenSearchConnector(StorageConnector):
         )
 
     @property
-    def host(self) -> Optional[str]:
+    def host(self) -> str | None:
         """OpenSearch host address."""
         return self._host
 
     @property
-    def port(self) -> Optional[int]:
+    def port(self) -> int | None:
         """OpenSearch port number."""
         return self._port
 
     @property
-    def scheme(self) -> Optional[str]:
+    def scheme(self) -> str | None:
         """Connection scheme (http or https)."""
         return self._scheme
 
     @property
-    def verify(self) -> Optional[bool]:
+    def verify(self) -> bool | None:
         """Whether to verify SSL certificates."""
         return self._verify
 
     @property
-    def username(self) -> Optional[str]:
+    def username(self) -> str | None:
         """OpenSearch username for authentication."""
         return self._username
 
     @property
-    def password(self) -> Optional[str]:
+    def password(self) -> str | None:
         """OpenSearch password for authentication."""
         return self._password
 
     @property
-    def arguments(self) -> Dict[str, Any]:
+    def arguments(self) -> dict[str, Any]:
         """Additional OpenSearch connection options."""
         return self._arguments
 
-    def spark_options(self) -> Dict[str, Any]:
+    def spark_options(self) -> dict[str, Any]:
         """Return prepared options to be passed to Spark.
 
         Based on the additional arguments.
         """
         return self.connector_options()
 
-    def connector_options(self) -> Dict[str, Any]:
+    def connector_options(self) -> dict[str, Any]:
         """Return options to be passed to an external OpenSearch connector library."""
         props = {
             "http_compress": False,
@@ -2233,18 +2233,18 @@ class OpenSearchConnector(StorageConnector):
 
     def read(
         self,
-        query: Optional[str] = None,
-        data_format: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
-        path: Optional[str] = None,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
         dataframe_type: str = "default",
-    ) -> Union[
-        TypeVar("pyspark.sql.DataFrame"),
-        TypeVar("pyspark.RDD"),
-        pd.DataFrame,
-        np.ndarray,
-        pl.DataFrame,
-    ]:
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
         raise NotImplementedError(
             "Cannot read from OpenSearch connector. Please use feature_group.read() instead."
         )
