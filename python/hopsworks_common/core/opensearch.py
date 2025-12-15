@@ -388,22 +388,9 @@ class OpenSearchClientSingleton:
 
     def _refresh_opensearch_connection(self, feature_store_id: int = None):
         """Refresh the OpenSearch connection for a specific cache key. Thread-safe."""
-        cache_key = feature_store_id if feature_store_id is not None else "default"
-
-        with self._cache_lock:
-            # Close and remove the cached client
-            if cache_key in self._clients_cache:
-                with contextlib.suppress(Exception):
-                    self._clients_cache[cache_key].close()
-                del self._clients_cache[cache_key]
-
-            # Clear federated connector cache for this feature store to force re-check
-            if feature_store_id is not None:
-                fs_cache_key = f"fs_{feature_store_id}"
-                if fs_cache_key in self._federated_connector_cache:
-                    del self._federated_connector_cache[fs_cache_key]
-
-        # Recreate the client using _get_or_create_client which will check for federated connector
+        # Invalidate the cache first
+        OpenSearchClientSingleton.invalidate_cache(feature_store_id)
+        # Recreate the client
         self._get_or_create_client(feature_store_id)
 
     @classmethod
@@ -423,3 +410,50 @@ class OpenSearchClientSingleton:
     def get_instance(cls) -> OpenSearchClientSingleton:
         """Get the singleton instance."""
         return cls._instance
+
+    @classmethod
+    def invalidate_cache(cls, feature_store_id: int = None):
+        """Invalidate cached OpenSearch client and connector config.
+
+        Call this method after updating an OpenSearch storage connector
+        to force the client to use the new configuration.
+
+        Args:
+            feature_store_id: The feature store ID to invalidate cache for.
+                If None, invalidates all caches.
+
+        Example:
+            # After updating the opensearch_connector storage connector:
+            from hopsworks_common.core.opensearch import OpenSearchClientSingleton
+            OpenSearchClientSingleton.invalidate_cache(feature_store_id=99)
+        """
+        if cls._instance is None:
+            return
+
+        with cls._instance._cache_lock:
+            if feature_store_id is not None:
+                # Invalidate specific feature store cache
+                cache_key = feature_store_id
+                fs_cache_key = f"fs_{feature_store_id}"
+
+                # Close and remove the client
+                if cache_key in cls._instance._clients_cache:
+                    with contextlib.suppress(Exception):
+                        cls._instance._clients_cache[cache_key].close()
+                    del cls._instance._clients_cache[cache_key]
+
+                # Remove connector config cache
+                if fs_cache_key in cls._instance._federated_connector_cache:
+                    del cls._instance._federated_connector_cache[fs_cache_key]
+
+                logging.debug(
+                    f"Invalidated OpenSearch cache for feature store {feature_store_id}"
+                )
+            else:
+                # Invalidate all caches
+                for client in list(cls._instance._clients_cache.values()):
+                    with contextlib.suppress(Exception):
+                        client.close()
+                cls._instance._clients_cache.clear()
+                cls._instance._federated_connector_cache.clear()
+                logging.debug("Invalidated all OpenSearch caches")
