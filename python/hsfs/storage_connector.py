@@ -2207,22 +2207,7 @@ class OpenSearchConnector(StorageConnector):
         """Return prepared options to be passed to Spark, based on the additional
         arguments.
         """
-        options = self._arguments.copy()
-        if self._host:
-            options["es.nodes"] = self._host
-        if self._port:
-            options["es.port"] = str(self._port)
-        if self._scheme:
-            options["es.net.ssl"] = "true" if self._scheme == "https" else "false"
-        if self._verify is not None:
-            options["es.net.ssl.cert.allow.self.signed"] = (
-                "false" if self._verify else "true"
-            )
-        if self._username:
-            options["es.net.http.auth.user"] = self._username
-        if self._password:
-            options["es.net.http.auth.pass"] = self._password
-        return options
+        return self.connector_options()
 
     def connector_options(self) -> Dict[str, Any]:
         """Return options to be passed to an external OpenSearch connector library"""
@@ -2259,31 +2244,4 @@ class OpenSearchConnector(StorageConnector):
         np.ndarray,
         pl.DataFrame,
     ]:
-        """Reads data from OpenSearch into a dataframe using the storage connector.
-
-        # Arguments
-            query: OpenSearch query string. Defaults to `None`.
-            data_format: Not relevant for OpenSearch connectors.
-            options: Any additional key/value options to be passed to the OpenSearch connector.
-            path: OpenSearch index name. Defaults to `None`.
-            dataframe_type: str, optional. The type of the returned dataframe.
-                Possible values are `"default"`, `"spark"`,`"pandas"`, `"polars"`, `"numpy"` or `"python"`.
-                Defaults to "default", which maps to Spark dataframe for the Spark Engine and Pandas dataframe for the Python engine.
-
-        # Returns
-            `DataFrame`.
-        """
-        self.refetch()
-        options = (
-            {**self.spark_options(), **options}
-            if options is not None
-            else self.spark_options()
-        )
-        if path:
-            options["es.resource"] = path
-        if query:
-            options["es.query"] = query
-
-        return engine.get_instance().read(
-            self, "org.elasticsearch.spark.sql", options, None, dataframe_type
-        )
+        NotImplementedError("Cannot read from OpenSearch connector. Please use feature_group.read() instead.")
