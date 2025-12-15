@@ -2152,6 +2152,8 @@ class OpenSearchConnector(StorageConnector):
         verify: bool | None = None,
         username: str | None = None,
         password: str | None = None,
+        trust_store_path: str | None = None,
+        trust_store_password: str | None = None,
         arguments: dict[str, Any] | None = None,
         **kwargs,
     ) -> None:
@@ -2162,6 +2164,8 @@ class OpenSearchConnector(StorageConnector):
         self._verify = verify
         self._username = username
         self._password = password
+        self._trust_store_path = trust_store_path
+        self._trust_store_password = trust_store_password
         self._arguments = (
             {arg["name"]: arg.get("value", None) for arg in arguments}
             if isinstance(arguments, list)
@@ -2227,9 +2231,45 @@ class OpenSearchConnector(StorageConnector):
             props[OPENSEARCH_CONFIG.HTTP_AUTH] = (self._username, self._password)
         elif self._username:
             props[OPENSEARCH_CONFIG.HTTP_AUTH] = self._username
+        ca_certs = self._create_ca_certs()
+        if ca_certs:
+            props[OPENSEARCH_CONFIG.CA_CERTS] = ca_certs
         # Merge additional arguments
         props.update(self._arguments)
         return props
+
+    def _create_ca_certs(self) -> str | None:
+        """Convert truststore JKS to PEM chain and return the PEM path.
+
+        Uses the underlying Hopsworks client helper to convert the JKS truststore
+        into a PEM CA chain file that can be consumed by Python libraries such as
+        `opensearch-py`. If the `trust_store_path` is
+        not configured on the connector, this method returns `None`.
+        """
+        # Return cached path if already created
+        ca_attr = "_ca_certs_path"
+        if hasattr(self, ca_attr):
+            return getattr(self, ca_attr)
+
+        # Only require a path; the password may legitimately be an empty string.
+        if not self._trust_store_path:
+            return None
+
+        # Download the truststore from HDFS / remote storage to a local path first
+        local_trust_store_path = engine.get_instance().add_file(self._trust_store_path)
+
+        # Reuse the same truststore for both keystore and truststore inputs since
+        # we only need a CA chain for server verification.
+        ca_chain_path, _, _ = client.get_instance()._write_pem(
+            local_trust_store_path,
+            self._trust_store_password,
+            local_trust_store_path,
+            self._trust_store_password,
+            f"opensearch_sc_{client.get_instance()._project_id}_{self._id}",
+        )
+
+        setattr(self, ca_attr, ca_chain_path)
+        return ca_chain_path
 
     def read(
         self,

@@ -24,12 +24,11 @@ from functools import wraps
 
 import opensearchpy
 import urllib3
-from hopsworks_common import client as hopsworks_client
 from hopsworks_common.client.exceptions import (
     FeatureStoreException,
     VectorDatabaseException,
 )
-from hopsworks_common.core.opensearch_api import OPENSEARCH_CONFIG, OpenSearchApi
+from hopsworks_common.core.opensearch_api import OpenSearchApi
 from opensearchpy import OpenSearch
 from opensearchpy.exceptions import (
     AuthenticationException,
@@ -323,15 +322,6 @@ class OpenSearchClientSingleton:
                 return None
 
             config = connector.connector_options()
-
-            # Add CA cert if using SSL
-            if config[OPENSEARCH_CONFIG.USE_SSL]:
-                try:
-                    config[OPENSEARCH_CONFIG.CA_CERTS] = (
-                        hopsworks_client.get_instance()._get_ca_chain_path()
-                    )
-                except Exception as e:
-                    logging.warning(f"Could not get CA chain path: {e}")
 
             # Cache the config
             with self._cache_lock:
