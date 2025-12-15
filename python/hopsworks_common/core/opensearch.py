@@ -57,28 +57,31 @@ def _handle_opensearch_exception(func):
             # args[0] is 'self' - the ProjectOpenSearchClient instance
             client_wrapper = args[0] if args else None
             if client_wrapper and isinstance(client_wrapper, ProjectOpenSearchClient):
-                feature_store_id = getattr(client_wrapper, '_feature_store_id', None)
+                feature_store_id = getattr(client_wrapper, "_feature_store_id", None)
                 # Get singleton instance and refresh the connection
                 singleton = OpenSearchClientSingleton.get_instance()
                 if singleton:
                     singleton._refresh_opensearch_connection(feature_store_id)
                     # Update the wrapper's client reference
-                    client_wrapper._opensearch_client = singleton._get_or_create_client(feature_store_id)
+                    client_wrapper._opensearch_client = singleton._get_or_create_client(
+                        feature_store_id
+                    )
             return func(*args, **kw)
         except RequestError as e:
             caused_by = e.info.get("error") and e.info["error"].get("caused_by")
             if caused_by and caused_by["type"] == "illegal_argument_exception":
                 client_wrapper = args[0] if args else None
-                if client_wrapper and isinstance(client_wrapper, ProjectOpenSearchClient):
+                if client_wrapper and isinstance(
+                    client_wrapper, ProjectOpenSearchClient
+                ):
                     raise client_wrapper._create_vector_database_exception(
                         caused_by["reason"]
                     ) from e
-                else:
-                    raise VectorDatabaseException(
-                        VectorDatabaseException.OTHERS,
-                        f"Error in Opensearch request: {caused_by['reason']}",
-                        e.info,
-                    ) from e
+                raise VectorDatabaseException(
+                    VectorDatabaseException.OTHERS,
+                    f"Error in Opensearch request: {caused_by['reason']}",
+                    e.info,
+                ) from e
             raise VectorDatabaseException(
                 VectorDatabaseException.OTHERS,
                 f"Error in Opensearch request: {e}",
@@ -148,10 +151,10 @@ class OpensearchRequestOption:
 
 
 class ProjectOpenSearchClient:
-    """
-    Wrapper for OpenSearch client associated with a specific project.
+    """Wrapper for OpenSearch client associated with a specific project.
     Thread-safe and can be used concurrently.
     """
+
     TIMEOUT_ERROR_MSG = """
     Cannot fetch results from Opensearch due to timeout. It is because the server is busy right now or longer time is needed to reload a large index. Try and increase the timeout limit by providing the parameter `options={"timeout": 60}` in the method `find_neighbor` or `count`.
     """
@@ -242,11 +245,11 @@ class ProjectOpenSearchClient:
 
 
 class OpenSearchClientSingleton:
-    """
-    Thread-safe singleton manager for OpenSearch clients.
+    """Thread-safe singleton manager for OpenSearch clients.
     Caches clients per feature_store_id and returns
     ProjectOpenSearchClient wrappers.
     """
+
     _instance = None
     _clients_cache = {}  # Cache OpenSearch clients by feature_store_id
     _cache_lock = threading.RLock()  # Reentrant lock for thread-safe cache access
@@ -258,7 +261,7 @@ class OpenSearchClientSingleton:
 
     def __new__(cls, feature_store_id: int = None):
         if not cls._instance:
-            with cls._cache_lock if hasattr(cls, '_cache_lock') else threading.RLock():
+            with cls._cache_lock if hasattr(cls, "_cache_lock") else threading.RLock():
                 if not cls._instance:  # Double-check locking
                     cls._instance = super(OpenSearchClientSingleton, cls).__new__(cls)
                     cls._instance._cache_lock = threading.RLock()
@@ -269,7 +272,7 @@ class OpenSearchClientSingleton:
                     # 2023-11-24 15:10:49,470 INFO: POST https://localhost:9200/index/_search [status:200 request:0.041s]
                     logging.getLogger("opensearchpy").setLevel(logging.WARNING)
                     logging.getLogger("opensearch").setLevel(logging.WARNING)
-        
+
         # Return a ProjectOpenSearchClient wrapper for the requested feature_store_id
         return cls._instance._get_client_wrapper(feature_store_id)
 
@@ -279,32 +282,34 @@ class OpenSearchClientSingleton:
         return ProjectOpenSearchClient(opensearch_client, feature_store_id)
 
     def _get_federated_opensearch_config(self, feature_store_id: int) -> Optional[dict]:
-        """
-        Try to fetch the federated_opensearch storage connector and return its config.
+        """Try to fetch the federated_opensearch storage connector and return its config.
         Returns None if connector doesn't exist or isn't an OpenSearch connector.
         """
         cache_key = f"fs_{feature_store_id}"
-        
+
         # Check cache first
         with self._cache_lock:
             if cache_key in self._federated_connector_cache:
                 return self._federated_connector_cache[cache_key]
-        
+
         try:
             # Import here to avoid circular imports
             from hsfs.core import storage_connector_api
-            
+
             connector_api = storage_connector_api.StorageConnectorApi()
-            connector = connector_api.get(feature_store_id, self.FEDERATED_CONNECTOR_NAME)
-            
+            connector = connector_api.get(
+                feature_store_id, self.FEDERATED_CONNECTOR_NAME
+            )
+
             if connector is None:
                 # Connector doesn't exist
                 with self._cache_lock:
                     self._federated_connector_cache[cache_key] = None
                 return None
-            
+
             # Check if it's an OpenSearch connector
             from hsfs.storage_connector import OpenSearchConnector
+
             if not isinstance(connector, OpenSearchConnector):
                 logging.debug(
                     f"Storage connector '{self.FEDERATED_CONNECTOR_NAME}' exists but is not an OpenSearch connector. "
@@ -313,26 +318,28 @@ class OpenSearchClientSingleton:
                 with self._cache_lock:
                     self._federated_connector_cache[cache_key] = None
                 return None
-            
+
             config = connector.connector_options()
-            
+
             # Add CA cert if using SSL
             if config[OPENSEARCH_CONFIG.USE_SSL]:
                 try:
-                    config[OPENSEARCH_CONFIG.CA_CERTS] = hopsworks_client.get_instance()._get_ca_chain_path()
+                    config[OPENSEARCH_CONFIG.CA_CERTS] = (
+                        hopsworks_client.get_instance()._get_ca_chain_path()
+                    )
                 except Exception as e:
                     logging.warning(f"Could not get CA chain path: {e}")
-            
+
             # Cache the config
             with self._cache_lock:
                 self._federated_connector_cache[cache_key] = config
-            
+
             logging.info(
                 f"Using federated OpenSearch connector '{self.FEDERATED_CONNECTOR_NAME}' "
                 f"with host: {connector.host}"
             )
             return config
-            
+
         except Exception as e:
             # Log the error but fall back to default config
             logging.debug(
@@ -379,7 +386,9 @@ class OpenSearchClientSingleton:
                     # Fall back to DEFAULT client and reuse it
                     self._clients_cache[cache_key] = self._clients_cache.get(
                         self.DEFAULT_CACHE_KEY,
-                        OpenSearch(**OpenSearchApi().get_default_py_config(feature_store_id))
+                        OpenSearch(
+                            **OpenSearchApi().get_default_py_config(feature_store_id)
+                        ),
                     )
 
         return self._clients_cache[cache_key]
@@ -390,7 +399,7 @@ class OpenSearchClientSingleton:
             cache_key = feature_store_id
         else:
             cache_key = "default"
-        
+
         with self._cache_lock:
             # Close and remove the cached client
             if cache_key in self._clients_cache:
@@ -399,20 +408,20 @@ class OpenSearchClientSingleton:
                 except Exception:
                     pass
                 del self._clients_cache[cache_key]
-            
+
             # Clear federated connector cache for this feature store to force re-check
             if feature_store_id is not None:
                 fs_cache_key = f"fs_{feature_store_id}"
                 if fs_cache_key in self._federated_connector_cache:
                     del self._federated_connector_cache[fs_cache_key]
-        
+
         # Recreate the client using _get_or_create_client which will check for federated connector
         self._get_or_create_client(feature_store_id)
 
     @classmethod
     def close_all(cls):
         """Close all cached OpenSearch clients. Thread-safe."""
-        if cls._instance and hasattr(cls._instance, '_clients_cache'):
+        if cls._instance and hasattr(cls._instance, "_clients_cache"):
             with cls._instance._cache_lock:
                 for client in list(cls._instance._clients_cache.values()):
                     try:
@@ -421,7 +430,7 @@ class OpenSearchClientSingleton:
                         pass
                 cls._instance._clients_cache.clear()
                 # Also clear federated connector cache
-                if hasattr(cls._instance, '_federated_connector_cache'):
+                if hasattr(cls._instance, "_federated_connector_cache"):
                     cls._instance._federated_connector_cache.clear()
 
     @classmethod

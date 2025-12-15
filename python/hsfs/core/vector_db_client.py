@@ -60,7 +60,6 @@ class VectorDbClient:
         self.init()
 
     def init(self):
-
         for fg in self._query.featuregroups:
             if fg.embedding_index:
                 for feat in fg.embedding_index.get_embeddings():
@@ -87,8 +86,8 @@ class VectorDbClient:
                 ]
                 self._fg_col_vdb_col_map[fg.id] = fg_col_vdb_col_map
                 self._fg_embedding_map[fg.id] = fg.embedding_index
-                self._opensearch_client[fg.feature_store_id] = OpenSearchClientSingleton(
-                    feature_store_id=fg.feature_store_id
+                self._opensearch_client[fg.feature_store_id] = (
+                    OpenSearchClientSingleton(feature_store_id=fg.feature_store_id)
                 )
         # create a join for the left fg so that the dict can be constructed in one loop
         fg_joins = [Join(self._query, None, None, None, None, "")] + self._query.joins
@@ -158,7 +157,9 @@ class VectorDbClient:
         if not index_name:
             index_name = embedding_feature.embedding_index.index_name
 
-        opensearch_client = self._opensearch_client[embedding_feature.feature_group.feature_store_id]
+        opensearch_client = self._opensearch_client[
+            embedding_feature.feature_group.feature_store_id
+        ]
         results = opensearch_client.search(
             body=query, index=index_name, options=options
         )
@@ -329,7 +330,9 @@ class VectorDbClient:
             raise FeatureStoreException("Provided fg does not have embedding.")
         if not index_name:
             index_name = self._get_vector_db_index_name(fg_id)
-        opensearch_client = self._opensearch_client[self._fg_embedding_map[fg_id].feature_group.feature_store_id]
+        opensearch_client = self._opensearch_client[
+            self._fg_embedding_map[fg_id].feature_group.feature_store_id
+        ]
         if keys:
             query = {
                 "query": {

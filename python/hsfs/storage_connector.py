@@ -28,8 +28,8 @@ import humps
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from hopsworks_common import client
-from hopsworks_common.core.opensearch_api import OPENSEARCH_CONFIG
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
+from hopsworks_common.core.opensearch_api import OPENSEARCH_CONFIG
 from hsfs import engine
 from hsfs.core import data_source as ds
 from hsfs.core import data_source_api, storage_connector_api
@@ -1462,7 +1462,9 @@ class KafkaConnector(StorageConnector):
                 and not pem_files_assigned
             ):
                 self.create_pem_files(kafka_options)
-                config["ssl.ca.location"] = kafka_options["ssl.ca.location"] or self.ca_chain_path
+                config["ssl.ca.location"] = (
+                    kafka_options["ssl.ca.location"] or self.ca_chain_path
+                )
                 config["ssl.certificate.location"] = self.client_cert_path
                 config["ssl.key.location"] = self.client_key_path
                 pem_files_assigned = True
@@ -2213,7 +2215,9 @@ class OpenSearchConnector(StorageConnector):
         if self._scheme:
             options["es.net.ssl"] = "true" if self._scheme == "https" else "false"
         if self._verify is not None:
-            options["es.net.ssl.cert.allow.self.signed"] = "false" if self._verify else "true"
+            options["es.net.ssl.cert.allow.self.signed"] = (
+                "false" if self._verify else "true"
+            )
         if self._username:
             options["es.net.http.auth.user"] = self._username
         if self._password:
@@ -2224,10 +2228,11 @@ class OpenSearchConnector(StorageConnector):
         """Return options to be passed to an external OpenSearch connector library"""
         props = {
             "http_compress": False,
-
         }
         if self._host:
-            props[OPENSEARCH_CONFIG.HOSTS] = [{"host": self._host, "port": self._port or 9200}]
+            props[OPENSEARCH_CONFIG.HOSTS] = [
+                {"host": self._host, "port": self._port or 9200}
+            ]
         if self._scheme:
             props[OPENSEARCH_CONFIG.USE_SSL] = self._scheme == "https"
         if self._verify is not None:

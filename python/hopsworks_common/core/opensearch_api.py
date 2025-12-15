@@ -117,7 +117,13 @@ class OpenSearchApi:
         """
         _client = client.get_instance()
         if feature_store_id:
-            path_params = ["elastic", "jwt", _client._project_id, "fs", feature_store_id]
+            path_params = [
+                "elastic",
+                "jwt",
+                _client._project_id,
+                "fs",
+                feature_store_id,
+            ]
         else:
             path_params = ["elastic", "jwt", _client._project_id]
 
