@@ -16,11 +16,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import re
 import threading
 from functools import wraps
-from typing import Optional
 
 import opensearchpy
 import urllib3
@@ -152,6 +152,7 @@ class OpensearchRequestOption:
 
 class ProjectOpenSearchClient:
     """Wrapper for OpenSearch client associated with a specific project.
+
     Thread-safe and can be used concurrently.
     """
 
@@ -246,6 +247,7 @@ class ProjectOpenSearchClient:
 
 class OpenSearchClientSingleton:
     """Thread-safe singleton manager for OpenSearch clients.
+
     Caches clients per feature_store_id and returns
     ProjectOpenSearchClient wrappers.
     """
@@ -263,7 +265,7 @@ class OpenSearchClientSingleton:
         if not cls._instance:
             with cls._cache_lock if hasattr(cls, "_cache_lock") else threading.RLock():
                 if not cls._instance:  # Double-check locking
-                    cls._instance = super(OpenSearchClientSingleton, cls).__new__(cls)
+                    cls._instance = super().__new__(cls)
                     cls._instance._cache_lock = threading.RLock()
                     cls._instance._clients_cache = {}
                     cls._instance._federated_connector_cache = {}
@@ -281,8 +283,9 @@ class OpenSearchClientSingleton:
         opensearch_client = self._get_or_create_client(feature_store_id)
         return ProjectOpenSearchClient(opensearch_client, feature_store_id)
 
-    def _get_federated_opensearch_config(self, feature_store_id: int) -> Optional[dict]:
+    def _get_federated_opensearch_config(self, feature_store_id: int) -> dict | None:
         """Try to fetch the federated_opensearch storage connector and return its config.
+
         Returns None if connector doesn't exist or isn't an OpenSearch connector.
         """
         cache_key = f"fs_{feature_store_id}"
@@ -395,18 +398,13 @@ class OpenSearchClientSingleton:
 
     def _refresh_opensearch_connection(self, feature_store_id: int = None):
         """Refresh the OpenSearch connection for a specific cache key. Thread-safe."""
-        if feature_store_id is not None:
-            cache_key = feature_store_id
-        else:
-            cache_key = "default"
+        cache_key = feature_store_id if feature_store_id is not None else "default"
 
         with self._cache_lock:
             # Close and remove the cached client
             if cache_key in self._clients_cache:
-                try:
+                with contextlib.suppress(Exception):
                     self._clients_cache[cache_key].close()
-                except Exception:
-                    pass
                 del self._clients_cache[cache_key]
 
             # Clear federated connector cache for this feature store to force re-check
@@ -424,10 +422,8 @@ class OpenSearchClientSingleton:
         if cls._instance and hasattr(cls._instance, "_clients_cache"):
             with cls._instance._cache_lock:
                 for client in list(cls._instance._clients_cache.values()):
-                    try:
+                    with contextlib.suppress(Exception):
                         client.close()
-                    except Exception:
-                        pass
                 cls._instance._clients_cache.clear()
                 # Also clear federated connector cache
                 if hasattr(cls._instance, "_federated_connector_cache"):

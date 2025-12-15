@@ -22,7 +22,7 @@ import posixpath
 import re
 import warnings
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Literal, TypeVar
+from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, TypeVar, Union
 
 import humps
 from cryptography.hazmat.backends import default_backend
@@ -2204,13 +2204,14 @@ class OpenSearchConnector(StorageConnector):
         return self._arguments
 
     def spark_options(self) -> Dict[str, Any]:
-        """Return prepared options to be passed to Spark, based on the additional
-        arguments.
+        """Return prepared options to be passed to Spark.
+
+        Based on the additional arguments.
         """
         return self.connector_options()
 
     def connector_options(self) -> Dict[str, Any]:
-        """Return options to be passed to an external OpenSearch connector library"""
+        """Return options to be passed to an external OpenSearch connector library."""
         props = {
             "http_compress": False,
         }
@@ -2244,4 +2245,6 @@ class OpenSearchConnector(StorageConnector):
         np.ndarray,
         pl.DataFrame,
     ]:
-        NotImplementedError("Cannot read from OpenSearch connector. Please use feature_group.read() instead.")
+        raise NotImplementedError(
+            "Cannot read from OpenSearch connector. Please use feature_group.read() instead."
+        )
