@@ -2235,7 +2235,9 @@ class OpenSearchConnector(StorageConnector):
         if ca_certs:
             props[OPENSEARCH_CONFIG.CA_CERTS] = ca_certs
         # Merge additional arguments
-        props.update(self._arguments)
+        for key, value in self._arguments.items():
+            if key.startswith("opensearchpy."):
+                props[key.replace("opensearchpy.", "")] = value
         return props
 
     def _create_ca_certs(self) -> str | None:
