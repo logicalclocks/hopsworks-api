@@ -56,15 +56,7 @@ def _handle_opensearch_exception(func):
             # args[0] is 'self' - the ProjectOpenSearchClient instance
             client_wrapper = args[0] if args else None
             if client_wrapper and isinstance(client_wrapper, ProjectOpenSearchClient):
-                feature_store_id = getattr(client_wrapper, "_feature_store_id", None)
-                # Get singleton instance and refresh the connection
-                singleton = OpenSearchClientSingleton.get_instance()
-                if singleton:
-                    singleton._refresh_opensearch_connection(feature_store_id)
-                    # Update the wrapper's client reference
-                    client_wrapper._opensearch_client = singleton._get_or_create_client(
-                        feature_store_id
-                    )
+                client_wrapper.refresh_opensearch_connection()
             return func(*args, **kw)
         except RequestError as e:
             caused_by = e.info.get("error") and e.info["error"].get("caused_by")
@@ -91,6 +83,14 @@ def _handle_opensearch_exception(func):
                 raise FeatureStoreException(
                     ProjectOpenSearchClient.TIMEOUT_ERROR_MSG
                 ) from e
+            client_wrapper = args[0] if args else None
+            # Invalidate the cache if the error is not a timeout, so that it wont't stuck at a error state.
+            if client_wrapper and isinstance(client_wrapper, ProjectOpenSearchClient):
+                client_wrapper.close()
+                if client_wrapper._feature_store_id is not None:
+                    OpenSearchClientSingleton.invalidate_cache(
+                        client_wrapper._feature_store_id, True
+                    )
             raise e
 
     return error_handler_wrapper
@@ -170,7 +170,7 @@ class ProjectOpenSearchClient:
     )
     @_handle_opensearch_exception
     def search(self, index=None, body=None, options=None):
-        return self._opensearch_client.search(
+        return self.get_opensearch_client().search(
             body=body, index=index, params=OpensearchRequestOption.get_options(options)
         )
 
@@ -181,15 +181,23 @@ class ProjectOpenSearchClient:
     )
     @_handle_opensearch_exception
     def count(self, index, body=None, options=None):
-        result = self._opensearch_client.count(
+        result = self.get_opensearch_client().count(
             index=index, body=body, params=OpensearchRequestOption.get_options(options)
         )
         return result["count"]
+
+    def refresh_opensearch_connection(self):
+        """Refresh the OpenSearch connection for the client."""
+        OpenSearchClientSingleton.invalidate_cache(self._feature_store_id, False)
+        self._opensearch_client = OpenSearchClientSingleton._get_or_create_client(
+            self._feature_store_id
+        )
 
     def close(self):
         """Close the underlying OpenSearch client."""
         if self._opensearch_client:
             self._opensearch_client.close()
+            self._opensearch_client = None
 
     def _create_vector_database_exception(self, message):
         """Create appropriate VectorDatabaseException based on error message."""
@@ -237,6 +245,11 @@ class ProjectOpenSearchClient:
         return VectorDatabaseException(reason, message, info)
 
     def get_opensearch_client(self):
+        """Get the underlying OpenSearch client."""
+        if self._opensearch_client is None:
+            self._opensearch_client = OpenSearchClientSingleton._get_or_create_client(
+                self._feature_store_id
+            )
         return self._opensearch_client
 
     @property
@@ -386,13 +399,6 @@ class OpenSearchClientSingleton:
 
         return self._clients_cache[cache_key]
 
-    def _refresh_opensearch_connection(self, feature_store_id: int = None):
-        """Refresh the OpenSearch connection for a specific cache key. Thread-safe."""
-        # Invalidate the cache first
-        OpenSearchClientSingleton.invalidate_cache(feature_store_id)
-        # Recreate the client
-        self._get_or_create_client(feature_store_id)
-
     @classmethod
     def close_all(cls):
         """Close all cached OpenSearch clients. Thread-safe."""
@@ -412,20 +418,14 @@ class OpenSearchClientSingleton:
         return cls._instance
 
     @classmethod
-    def invalidate_cache(cls, feature_store_id: int = None):
+    def invalidate_cache(
+        cls, feature_store_id: int = None, invalidate_storage_connector: bool = True
+    ):
         """Invalidate cached OpenSearch client and connector config.
-
-        Call this method after updating an OpenSearch storage connector
-        to force the client to use the new configuration.
 
         Args:
             feature_store_id: The feature store ID to invalidate cache for.
                 If None, invalidates all caches.
-
-        Example:
-            # After updating the opensearch_connector storage connector:
-            from hopsworks_common.core.opensearch import OpenSearchClientSingleton
-            OpenSearchClientSingleton.invalidate_cache(feature_store_id=99)
         """
         if cls._instance is None:
             return
@@ -443,7 +443,10 @@ class OpenSearchClientSingleton:
                     del cls._instance._clients_cache[cache_key]
 
                 # Remove connector config cache
-                if fs_cache_key in cls._instance._federated_connector_cache:
+                if (
+                    invalidate_storage_connector
+                    and fs_cache_key in cls._instance._federated_connector_cache
+                ):
                     del cls._instance._federated_connector_cache[fs_cache_key]
 
                 logging.debug(
@@ -455,5 +458,6 @@ class OpenSearchClientSingleton:
                     with contextlib.suppress(Exception):
                         client.close()
                 cls._instance._clients_cache.clear()
-                cls._instance._federated_connector_cache.clear()
+                if invalidate_storage_connector:
+                    cls._instance._federated_connector_cache.clear()
                 logging.debug("Invalidated all OpenSearch caches")
