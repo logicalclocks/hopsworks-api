@@ -426,6 +426,7 @@ class OpenSearchClientSingleton:
         Args:
             feature_store_id: The feature store ID to invalidate cache for.
                 If None, invalidates all caches.
+            invalidate_storage_connector: Whether to invalidate the storage connector config cache.
         """
         if cls._instance is None:
             return
