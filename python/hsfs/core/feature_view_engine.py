@@ -331,8 +331,32 @@ class FeatureViewEngine:
                 dataframe_features = engine.get_instance().parse_schema_feature_group(
                     spine.dataframe
                 )
+
+                all_left_feature_group_features = query._left_feature_group.features
+                selected_features = query.features
+                # Using list comprehension
+                selected_left_feature_group_features = [
+                    feature
+                    for feature in all_left_feature_group_features
+                    if feature in selected_features
+                ]
+
+                # remove label features as they are not necessary to check
+                labels = [feat for feat in feature_view_obj.features if feat.label]
+                left_feature_group_features = [
+                    feature
+                    for feature in selected_left_feature_group_features
+                    if not any(
+                        (
+                            feature.name == label.name
+                            and feature._feature_group_id == label._feature_group.id
+                        )
+                        for label in labels
+                    )
+                ]
+
                 spine._feature_group_engine._verify_schema_compatibility(
-                    query._left_feature_group.features, dataframe_features
+                    left_feature_group_features, dataframe_features
                 )
                 query._left_feature_group = spine
             elif isinstance(query._left_feature_group, feature_group.SpineGroup):
@@ -472,7 +496,8 @@ class FeatureViewEngine:
                 # forcing dataframe type to default here since dataframe operations are required for training data split.
                 dataframe_type="default"
                 if dataframe_type.lower() in ["numpy", "python"]
-                else dataframe_type,  # forcing dataframe type to default here since dataframe operations are required for training data split.
+                else dataframe_type,
+                # forcing dataframe type to default here since dataframe operations are required for training data split.
             )
         else:
             self._check_feature_group_accessibility(feature_view_obj)
