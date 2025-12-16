@@ -189,9 +189,9 @@ class ProjectOpenSearchClient:
     def refresh_opensearch_connection(self):
         """Refresh the OpenSearch connection for the client."""
         OpenSearchClientSingleton.invalidate_cache(self._feature_store_id, False)
-        self._opensearch_client = OpenSearchClientSingleton._get_or_create_client(
+        self._opensearch_client = OpenSearchClientSingleton(
             self._feature_store_id
-        )
+        ).get_opensearch_client()
 
     def close(self):
         """Close the underlying OpenSearch client."""
@@ -247,9 +247,9 @@ class ProjectOpenSearchClient:
     def get_opensearch_client(self):
         """Get the underlying OpenSearch client."""
         if self._opensearch_client is None:
-            self._opensearch_client = OpenSearchClientSingleton._get_or_create_client(
+            self._opensearch_client = OpenSearchClientSingleton(
                 self._feature_store_id
-            )
+            ).get_opensearch_client()
         return self._opensearch_client
 
     @property
