@@ -116,16 +116,8 @@ class OpenSearchApi:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         _client = client.get_instance()
-        if feature_store_id:
-            path_params = [
-                "elastic",
-                "jwt",
-                _client._project_id,
-                "fs",
-                feature_store_id,
-            ]
-        else:
-            path_params = ["elastic", "jwt", _client._project_id]
+        # Do not use feature store id for now since the backend is not yet updated to use it.
+        path_params = ["elastic", "jwt", _client._project_id]
 
         headers = {"content-type": "application/json"}
         return _client._send_request("GET", path_params, headers=headers)["token"]
