@@ -161,6 +161,7 @@ class ComponentScalingConfig(ABC):
     def extract_fields_from_json(cls, json_decamelized):
         kwargs = {}
 
+        print("json_decamelized in extract_fields_from_json:", json_decamelized)
         if cls.SCALING_CONFIG_KEY in json_decamelized:
             json_decamelized = json_decamelized[cls.SCALING_CONFIG_KEY]
         elif "scaling_configuration" in json_decamelized:
