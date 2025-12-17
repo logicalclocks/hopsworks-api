@@ -469,7 +469,7 @@ class OpenSearchClientSingleton:
 
         Args:
             feature_store_id: The feature store ID to invalidate cache for.
-            invalidate_storage_connector: Whether to invalidate the storage connector config cache.
+            close_opensearch_client: Whether to close the cached OpenSearch client when invalidating.
         """
         if cls._instance is None:
             return
