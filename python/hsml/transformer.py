@@ -41,9 +41,11 @@ class Transformer(DeployableComponent):
         if resources.num_instances is None:
             resources.num_instances = self._get_default_num_instances()
 
-        self._scaling_configuration = (
-            util.get_obj_from_json(scaling_configuration, TransformerScalingConfig)
-            or TransformerScalingConfig.get_default_scaling_configuration(serving_tool=PREDICTOR.SERVING_TOOL_KSERVE, min_instances=resources.num_instances if resources is not None else None)
+        self._scaling_configuration = util.get_obj_from_json(
+            scaling_configuration, TransformerScalingConfig
+        ) or TransformerScalingConfig.get_default_scaling_configuration(
+            serving_tool=PREDICTOR.SERVING_TOOL_KSERVE,
+            min_instances=resources.num_instances if resources is not None else None,
         )
 
         super().__init__(script_file, resources, scaling_configuration)

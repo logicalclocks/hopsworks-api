@@ -77,7 +77,10 @@ class Predictor(DeployableComponent):
 
         self._scaling_configuration = util.get_obj_from_json(
             scaling_configuration, PredictorScalingConfig
-        ) or PredictorScalingConfig.get_default_scaling_configuration(serving_tool=serving_tool, min_instances=resources.num_instances if resources is not None else None)
+        ) or PredictorScalingConfig.get_default_scaling_configuration(
+            serving_tool=serving_tool,
+            min_instances=resources.num_instances if resources is not None else None,
+        )
 
         super().__init__(
             script_file,

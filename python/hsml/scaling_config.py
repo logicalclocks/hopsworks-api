@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 
 class ScaleMetric(Enum):
     """Scaling metric for a predictor or transformer. Can be either 'CONCURRENCY' or 'RPS'."""
+
     CONCURRENCY = "CONCURRENCY"
     RPS = "RPS"
 
@@ -44,6 +45,7 @@ class ScaleMetric(Enum):
 
 class ComponentScalingConfig(ABC):
     """Scaling configuration for a predictor or transformer."""
+
     def __init__(
         self,
         min_instances: int,
@@ -90,7 +92,6 @@ class ComponentScalingConfig(ABC):
         json_decamelized = humps.decamelize(json_dict)
         return cls.from_json(json_decamelized)
 
-
     @staticmethod
     def get_default_scaling_configuration(serving_tool: str, min_instances: int | None):
         """Get the default scaling configuration based on the serving tool and number of instances."""
@@ -101,7 +102,11 @@ class ComponentScalingConfig(ABC):
                 and client.is_scale_to_zero_required()
                 else SCALING_CONFIG.MIN_NUM_INSTANCES
             )
-        if serving_tool == PREDICTOR.SERVING_TOOL_KSERVE and min_instances != 0 and client.is_scale_to_zero_required():
+        if (
+            serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
+            and min_instances != 0
+            and client.is_scale_to_zero_required()
+        ):
             # ensure scale-to-zero for kserve deployments when required
             raise ValueError(
                 "Scale-to-zero is required for KServe deployments in this cluster. Please, set the minimum number of instances to 0."
@@ -111,7 +116,12 @@ class ComponentScalingConfig(ABC):
                 "Minimum number of instances cannot be 0 for deployments not using KServe. Please, set the minimum number of instances to at least 1."
             )
         if serving_tool == PREDICTOR.SERVING_TOOL_KSERVE:
-            return PredictorScalingConfig(min_instances=min_instances, max_instances=SCALING_CONFIG.MAX_NUM_INSTANCES, scale_metric=SCALING_CONFIG.DEFAULT_CONCURRENCY_TARGET, target_value=SCALING_CONFIG.DEFAULT_CONCURRENCY_TARGET)
+            return PredictorScalingConfig(
+                min_instances=min_instances,
+                max_instances=SCALING_CONFIG.MAX_NUM_INSTANCES,
+                scale_metric=SCALING_CONFIG.SCALE_METRIC_CONCURRENCY,
+                target_value=SCALING_CONFIG.DEFAULT_CONCURRENCY_TARGET,
+            )
         return PredictorScalingConfig(min_instances=min_instances)
 
     @classmethod
@@ -260,9 +270,7 @@ class ComponentScalingConfig(ABC):
         return self._scale_to_zero_retention_seconds
 
     @scale_to_zero_retention_seconds.setter
-    def scale_to_zero_retention_seconds(
-        self, scale_to_zero_retention_seconds: int
-    ):
+    def scale_to_zero_retention_seconds(self, scale_to_zero_retention_seconds: int):
         self._scale_to_zero_retention_seconds = scale_to_zero_retention_seconds
 
     def __repr__(self):
@@ -271,6 +279,7 @@ class ComponentScalingConfig(ABC):
 
 class PredictorScalingConfig(ComponentScalingConfig):
     """Scaling configuration for a predictor."""
+
     SCALING_CONFIG_KEY = "predictor_scaling_config"
 
     def __init__(self, **kwargs):
@@ -292,6 +301,7 @@ class PredictorScalingConfig(ComponentScalingConfig):
 
 class TransformerScalingConfig(ComponentScalingConfig):
     """Scaling configuration for a transformer."""
+
     SCALING_CONFIG_KEY = "transformer_scaling_config"
 
     def __init__(self, **kwargs):
