@@ -18,13 +18,18 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from enum import Enum
+from typing import TYPE_CHECKING
 
 import humps
 from hopsworks_common import util
-from hopsworks_common.constants import Default
+
+
+if TYPE_CHECKING:
+    from hopsworks_common.constants import Default
 
 
 class ScaleMetric(Enum):
+    """Scaling metric for a predictor or transformer. Can be either 'CONCURRENCY' or 'RPS'."""
     CONCURRENCY = "CONCURRENCY"
     RPS = "RPS"
 
@@ -37,6 +42,7 @@ class ScaleMetric(Enum):
 
 
 class ComponentScalingConfig(ABC):
+    """Scaling configuration for a predictor or transformer."""
     def __init__(
         self,
         min_instances: int,
@@ -239,6 +245,7 @@ class ComponentScalingConfig(ABC):
 
 
 class PredictorScalingConfig(ComponentScalingConfig):
+    """Scaling configuration for a predictor."""
     SCALING_CONFIG_KEY = "predictor_scaling_config"
 
     def __init__(self, **kwargs):
@@ -259,6 +266,7 @@ class PredictorScalingConfig(ComponentScalingConfig):
 
 
 class TransformerScalingConfig(ComponentScalingConfig):
+    """Scaling configuration for a transformer."""
     SCALING_CONFIG_KEY = "transformer_scaling_config"
 
     def __init__(self, **kwargs):

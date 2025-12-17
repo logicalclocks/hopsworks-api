@@ -21,12 +21,12 @@ from typing import TYPE_CHECKING
 import humps
 from hopsworks_common import util
 from hsml.inference_batcher import InferenceBatcher
-from hsml.scaling_config import ComponentScalingConfig
 
 
 if TYPE_CHECKING:
     from hopsworks_common.constants import Default
     from hsml.resources import Resources
+    from hsml.scaling_config import ComponentScalingConfig
 
 
 class DeployableComponent(ABC):

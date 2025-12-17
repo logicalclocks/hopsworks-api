@@ -22,7 +22,6 @@ from hsml.client.exceptions import ModelServingException
 from hsml.constants import DEPLOYABLE_COMPONENT, PREDICTOR_STATE
 from hsml.core import model_api, serving_api
 from hsml.engine import serving_engine
-from hsml.scaling_config import PredictorScalingConfig
 
 
 if TYPE_CHECKING:
@@ -31,6 +30,7 @@ if TYPE_CHECKING:
     from hsml.inference_logger import InferenceLogger
     from hsml.predictor_state import PredictorState
     from hsml.resources import Resources
+    from hsml.scaling_config import PredictorScalingConfig
     from hsml.transformer import Transformer
 
 
