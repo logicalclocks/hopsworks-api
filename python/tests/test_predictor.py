@@ -91,6 +91,11 @@ class TestPredictor:
         assert p.inference_batcher.enabled == bool(
             p_json["batching_configuration"]["batching_enabled"]
         )
+        assert p.scaling_configuration is not None
+        assert isinstance(p.scaling_configuration, predictor.PredictorScalingConfig)
+        assert p.scaling_configuration.min_instances == 0
+        assert p.scaling_configuration.scale_metric.name == "RPS"
+        assert p.scaling_configuration.target == 100
 
     def test_from_response_json_list(self, mocker, backend_fixtures):
         # Arrange
@@ -135,6 +140,11 @@ class TestPredictor:
             assert p.inference_batcher.enabled == bool(
                 p_json["batching_configuration"]["batching_enabled"]
             )
+            assert p.scaling_configuration is not None
+            assert isinstance(p.scaling_configuration, predictor.PredictorScalingConfig)
+            assert p.scaling_configuration.min_instances == 0
+            assert p.scaling_configuration.scale_metric.name == "RPS"
+            assert p.scaling_configuration.target == 100
 
     def test_from_response_json_single(self, mocker, backend_fixtures):
         # Arrange
@@ -174,6 +184,11 @@ class TestPredictor:
         assert p.inference_batcher.enabled == bool(
             p_json["batching_configuration"]["batching_enabled"]
         )
+        assert p.scaling_configuration is not None
+        assert isinstance(p.scaling_configuration, predictor.PredictorScalingConfig)
+        assert p.scaling_configuration.min_instances == 0
+        assert p.scaling_configuration.scale_metric.name == "RPS"
+        assert p.scaling_configuration.target == 100
 
     # constructor
 
@@ -227,7 +242,11 @@ class TestPredictor:
                 "kafka_topic": copy.deepcopy(p_json["kafka_topic_dto"]),
             },
             inference_batcher=copy.deepcopy(p_json["batching_configuration"]),
+            scaling_configuration=copy.deepcopy(p_json["predictor_scaling_config"]),
         )
+
+        print("PRedictor scaling configuration:")
+        print(p.scaling_configuration)
 
         # Assert
         assert p.id == p_json["id"]
@@ -256,6 +275,12 @@ class TestPredictor:
         assert p.inference_batcher.enabled == bool(
             p_json["batching_configuration"]["batching_enabled"]
         )
+        assert p.scaling_configuration is not None
+        assert isinstance(p.scaling_configuration, predictor.PredictorScalingConfig)
+        assert p.scaling_configuration.min_instances == 0
+        assert p.scaling_configuration.scale_metric.name == "RPS"
+        assert p.scaling_configuration.target == 100
+
         mock_validate_serving_tool.assert_called_once_with(p_json["serving_tool"])
         assert mock_validate_resources.call_count == 1
         mock_validate_script_file.assert_called_once_with(
@@ -679,6 +704,13 @@ class TestPredictor:
         assert isinstance(
             kwargs["transformer"].resources, resources.TransformerResources
         )
+        assert kwargs["scaling_configuration"] is not None
+        assert isinstance(
+            kwargs["scaling_configuration"], predictor.PredictorScalingConfig
+        )
+        assert kwargs["scaling_configuration"].min_instances == 0
+        assert kwargs["scaling_configuration"].scale_metric.name == "RPS"
+        assert kwargs["scaling_configuration"].target == 100
 
     # deploy
 

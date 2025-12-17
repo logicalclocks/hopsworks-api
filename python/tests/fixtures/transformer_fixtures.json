@@ -15,6 +15,16 @@
           "memory": 17,
           "gpus": 2
         }
+      },
+      "transformer_scaling_config": {
+        "scale_metric": "CONCURRENCY",
+        "target": 100,
+        "min_instances": 1,
+        "max_instances": 10,
+        "panic_window_percentage": 10.0,
+        "stable_window_seconds": 60,
+        "panic_threshold_percentage": 200.0,
+        "scale_to_zero_retention_seconds": 0
       }
     }
   },
@@ -34,6 +44,16 @@
           "memory": 17,
           "gpus": 2
         }
+      },
+      "transformer_scaling_config": {
+        "scale_metric": "CONCURRENCY",
+        "target": 100,
+        "min_instances": 1,
+        "max_instances": 10,
+        "panic_window_percentage": 10.0,
+        "stable_window_seconds": 60,
+        "panic_threshold_percentage": 200.0,
+        "scale_to_zero_retention_seconds": 0
       }
     }
   },
@@ -52,6 +72,16 @@
           "memory": 17,
           "gpus": 2
         }
+      },
+      "transformer_scaling_config": {
+        "scale_metric": "CONCURRENCY",
+        "target": 100,
+        "min_instances": 1,
+        "max_instances": 10,
+        "panic_window_percentage": 10.0,
+        "stable_window_seconds": 60,
+        "panic_threshold_percentage": 200.0,
+        "scale_to_zero_retention_seconds": 0
       }
     }
   },

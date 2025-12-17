@@ -45,7 +45,17 @@
           "environment_dto": {
             "name": "pandas-inference-pipeline"
           },
-          "project_namespace": "test"
+          "project_namespace": "test",
+          "predictor_scaling_config": {
+            "scale_metric": "RPS",
+            "target": 100,
+            "min_instances": 0,
+            "max_instances": 10,
+            "panic_window_percentage": 10.0,
+            "stable_window_seconds": 60,
+            "panic_threshold_percentage": 200.0,
+            "scale_to_zero_retention_seconds": 0
+          }
         }
       ]
     }
@@ -102,7 +112,17 @@
           "environment_dto": {
             "name": "pandas-inference-pipeline"
           },
-          "project_namespace": "test"
+          "project_namespace": "test",
+          "predictor_scaling_config": {
+            "scale_metric": "RPS",
+            "target": 100,
+            "min_instances": 0,
+            "max_instances": 10,
+            "panic_window_percentage": 10.0,
+            "stable_window_seconds": 60,
+            "panic_threshold_percentage": 200.0,
+            "scale_to_zero_retention_seconds": 0
+          }
         },
         {
           "id": 2,
@@ -146,7 +166,17 @@
           "environment_dto": {
             "name": "pandas-inference-pipeline"
           },
-          "project_namespace": "test"
+          "project_namespace": "test",
+          "predictor_scaling_config": {
+            "scale_metric": "RPS",
+            "target": 100,
+            "min_instances": 0,
+            "max_instances": 10,
+            "panic_window_percentage": 10.0,
+            "stable_window_seconds": 60,
+            "panic_threshold_percentage": 200.0,
+            "scale_to_zero_retention_seconds": 0
+          }
         }
       ]
     }
@@ -178,6 +208,16 @@
       },
       "environment_dto": {
         "name": "tensorflow-inference-pipeline"
+      },
+      "predictor_scaling_config": {
+        "scale_metric": "RPS",
+        "target": 100,
+        "min_instances": 0,
+        "max_instances": 10,
+        "panic_window_percentage": 10.0,
+        "stable_window_seconds": 60,
+        "panic_threshold_percentage": 200.0,
+        "scale_to_zero_retention_seconds": 0
       }
     }
   },
@@ -221,6 +261,16 @@
       },
       "environment_dto": {
         "name": "tensorflow-inference-pipeline"
+      },
+      "predictor_scaling_config": {
+        "scale_metric": "RPS",
+        "target": 100,
+        "min_instances": 0,
+        "max_instances": 10,
+        "panic_window_percentage": 10.0,
+        "stable_window_seconds": 60,
+        "panic_threshold_percentage": 200.0,
+        "scale_to_zero_retention_seconds": 0
       }
     }
   },
@@ -259,6 +309,16 @@
       },
       "environment_dto": {
         "name": "pandas-inference-pipeline"
+      },
+      "predictor_scaling_config": {
+        "scale_metric": "RPS",
+        "target": 100,
+        "min_instances": 0,
+        "max_instances": 10,
+        "panic_window_percentage": 10.0,
+        "stable_window_seconds": 60,
+        "panic_threshold_percentage": 200.0,
+        "scale_to_zero_retention_seconds": 0
       }
     }
   },
@@ -304,6 +364,16 @@
       },
       "environment_dto": {
         "name": "pandas-inference-pipeline"
+      },
+      "predictor_scaling_config": {
+        "scale_metric": "RPS",
+        "target": 100,
+        "min_instances": 0,
+        "max_instances": 10,
+        "panic_window_percentage": 10.0,
+        "stable_window_seconds": 60,
+        "panic_threshold_percentage": 200.0,
+        "scale_to_zero_retention_seconds": 0
       }
     }
   },
@@ -342,6 +412,16 @@
       },
       "environment_dto": {
         "name": "pandas-inference-pipeline"
+      },
+      "predictor_scaling_config": {
+        "scale_metric": "RPS",
+        "target": 100,
+        "min_instances": 0,
+        "max_instances": 10,
+        "panic_window_percentage": 10.0,
+        "stable_window_seconds": 60,
+        "panic_threshold_percentage": 200.0,
+        "scale_to_zero_retention_seconds": 0
       }
     }
   },
@@ -387,6 +467,16 @@
       },
       "environment_dto": {
         "name": "pandas-inference-pipeline"
+      },
+      "predictor_scaling_config": {
+        "scale_metric": "RPS",
+        "target": 100,
+        "min_instances": 0,
+        "max_instances": 10,
+        "panic_window_percentage": 10.0,
+        "stable_window_seconds": 60,
+        "panic_threshold_percentage": 200.0,
+        "scale_to_zero_retention_seconds": 0
       }
     }
   },

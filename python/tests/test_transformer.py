@@ -55,6 +55,18 @@ class TestTransformer:
         assert t.resources.limits.memory == tr_resources["limits"]["memory"]
         assert t.resources.limits.gpus == tr_resources["limits"]["gpus"]
 
+        assert t.scaling_configuration is not None
+        assert isinstance(t.scaling_configuration, transformer.TransformerScalingConfig)
+        assert t.scaling_configuration.min_instances == json["transformer_scaling_config"][
+            "min_instances"
+        ]
+        assert t.scaling_configuration.scale_metric == json[
+            "transformer_scaling_config"
+        ]["scale_metric"]
+        assert t.scaling_configuration.target_value == json[
+            "transformer_scaling_config"
+        ]["target_value"]    
+
     def test_from_response_json_with_script_file_field(self, mocker, backend_fixtures):
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
@@ -77,6 +89,18 @@ class TestTransformer:
         assert t.resources.limits.cores == tr_resources["limits"]["cores"]
         assert t.resources.limits.memory == tr_resources["limits"]["memory"]
         assert t.resources.limits.gpus == tr_resources["limits"]["gpus"]
+
+        assert t.scaling_configuration is not None
+        assert isinstance(t.scaling_configuration, transformer.TransformerScalingConfig)
+        assert t.scaling_configuration.min_instances == json["transformer_scaling_config"][
+            "min_instances"
+        ]
+        assert t.scaling_configuration.scale_metric == json[
+            "transformer_scaling_config"
+        ]["scale_metric"]
+        assert t.scaling_configuration.target_value == json[
+            "transformer_scaling_config"
+        ]["target_value"]    
 
     def test_from_response_json_empty(self, mocker, backend_fixtures):
         # Arrange
