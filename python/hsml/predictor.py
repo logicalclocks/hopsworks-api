@@ -33,7 +33,6 @@ from hsml.inference_logger import InferenceLogger
 from hsml.predictor_state import PredictorState
 from hsml.resources import PredictorResources
 from hsml.scaling_config import (
-    ComponentScalingConfig,
     PredictorScalingConfig,
 )
 from hsml.transformer import Transformer
@@ -78,8 +77,7 @@ class Predictor(DeployableComponent):
 
         self._scaling_configuration = util.get_obj_from_json(
             scaling_configuration, PredictorScalingConfig
-        ) or self._get_default_scaling_configuration(serving_tool, resources.num_instances if resources is not None else None)
-        self._validate_scaling_configuration()
+        ) or PredictorScalingConfig.get_default_scaling_configuration(serving_tool, resources.num_instances if resources is not None else None)
 
         super().__init__(
             script_file,
@@ -212,48 +210,6 @@ class Predictor(DeployableComponent):
                 "Scale-to-zero is required for KServe deployments in this cluster. Please, set the number of instances to 0."
             )
         return resources
-
-    @classmethod
-    def _validate_scaling_configuration(cls, scaling_configuration: ComponentScalingConfig, serving_tool):
-        # TODO: are these validations needed or we should just rely on the backend?
-        if (
-            serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
-            and scaling_configuration.min_instances != 0
-            and client.is_scale_to_zero_required()
-        ):
-            # ensure scale-to-zero for kserve deployments when required
-            raise ValueError(
-                "Scale-to-zero is required for KServe deployments in this cluster. Please, set the min_instances to 0 in the scaling configuration."
-            )
-        if serving_tool != PREDICTOR.SERVING_TOOL_KSERVE and scaling_configuration.min_instances == 0:
-            raise ValueError(
-                "Scale-to-zero is only supported for KServe deployments. Please, set the min_instances to a value greater than 0 in the scaling configuration."
-            )
-        if scaling_configuration.max_instances is not None and scaling_configuration.min_instances > scaling_configuration.max_instances:
-            raise ValueError(
-                "The min_instances in the scaling configuration cannot be greater than max_instances."
-            )
-        if scaling_configuration.stable_window_seconds is not None and (scaling_configuration.stable_window_seconds < 6 or scaling_configuration.stable_window_seconds > 3600):
-            raise ValueError(
-                "The stable_window_seconds in the scaling configuration must be between 6 and 3600 seconds."
-            )
-        if scaling_configuration.scale_to_zero_retention_seconds is not None and scaling_configuration.scale_to_zero_retention_seconds < 0:
-            raise ValueError(
-                "The scale_to_zero_retention_seconds in the scaling configuration must be a non-negative value."
-            )
-
-    @classmethod
-    def _get_default_scaling_configuration(cls, serving_tool, min_instances=None):
-        if min_instances is None:
-            min_instances = (
-                0  # enable scale-to-zero by default if required
-                if serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
-                and client.is_scale_to_zero_required()
-                else SCALING_CONFIG.MIN_NUM_INSTANCES
-            )
-        if serving_tool == PREDICTOR.SERVING_TOOL_KSERVE:
-            return PredictorScalingConfig(min_instances=min_instances, max_instances=SCALING_CONFIG.MAX_NUM_INSTANCES, scale_metric=SCALING_CONFIG.DEFAULT_CONCURRENCY_TARGET, target_value=SCALING_CONFIG.DEFAULT_CONCURRENCY_TARGET)
-        return PredictorScalingConfig(min_instances=min_instances)
 
     @classmethod
     def _get_default_resources(cls, serving_tool):

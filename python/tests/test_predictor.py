@@ -17,6 +17,7 @@
 import copy
 
 import pytest
+from hopsworks_common.constants import SCALING_CONFIG
 from hsml import (
     inference_batcher,
     inference_logger,
@@ -25,8 +26,7 @@ from hsml import (
     transformer,
     util,
 )
-from hsml.constants import MODEL, PREDICTOR, RESOURCES
-from hopsworks_common.constants import SCALING_CONFIG
+from hsml.constants import MODEL, PREDICTOR
 
 
 SERVING_NUM_INSTANCES_NO_LIMIT = [-1]

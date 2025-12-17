@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import humps
 from hopsworks_common import client, util
-from hopsworks_common.constants import SCALING_CONFIG, Default
+from hopsworks_common.constants import PREDICTOR, SCALING_CONFIG, Default
 from hsml.deployable_component import DeployableComponent
 from hsml.resources import TransformerResources
 from hsml.scaling_config import TransformerScalingConfig
@@ -43,7 +43,7 @@ class Transformer(DeployableComponent):
 
         self._scaling_configuration = (
             util.get_obj_from_json(scaling_configuration, TransformerScalingConfig)
-            or self._get_default_scaling_configuration()
+            or TransformerScalingConfig.get_default_scaling_configuration(PREDICTOR.SERVING_TOOL_KSERVE, resources.num_instances if resources is not None else None)
         )
 
         super().__init__(script_file, resources, scaling_configuration)
@@ -72,10 +72,6 @@ class Transformer(DeployableComponent):
             if client.is_scale_to_zero_required()
             else SCALING_CONFIG.MIN_NUM_INSTANCES
         )
-
-    @classmethod
-    def _get_default_scaling_configuration(cls):
-        return TransformerScalingConfig(min_instances=0)
 
     @classmethod
     def _get_default_resources(cls):

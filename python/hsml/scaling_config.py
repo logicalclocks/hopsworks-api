@@ -21,7 +21,8 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 import humps
-from hopsworks_common import util
+from hopsworks_common import client, util
+from hopsworks_common.constants import PREDICTOR, SCALING_CONFIG
 
 
 if TYPE_CHECKING:
@@ -81,13 +82,37 @@ class ComponentScalingConfig(ABC):
         self._scale_to_zero_retention_seconds = scale_to_zero_retention_seconds
 
     def describe(self):
-        """Print a JSON description of the inference batcher."""
+        """Print a JSON description of the scaling configuration."""
         util.pretty_print(self)
 
     @classmethod
     def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
         return cls.from_json(json_decamelized)
+
+
+    @staticmethod
+    def get_default_scaling_configuration(cls, serving_tool: str, min_instances: int | None):
+        """Get the default scaling configuration based on the serving tool and number of instances."""
+        if min_instances is None:
+            min_instances = (
+                0  # enable scale-to-zero by default if required
+                if serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
+                and client.is_scale_to_zero_required()
+                else SCALING_CONFIG.MIN_NUM_INSTANCES
+            )
+        if serving_tool == PREDICTOR.SERVING_TOOL_KSERVE and min_instances != 0 and client.is_scale_to_zero_required():
+            # ensure scale-to-zero for kserve deployments when required
+            raise ValueError(
+                "Scale-to-zero is required for KServe deployments in this cluster. Please, set the minimum number of instances to 0."
+            )
+        if serving_tool != PREDICTOR.SERVING_TOOL_KSERVE and min_instances == 0:
+            raise ValueError(
+                "Minimum number of instances cannot be 0 for deployments not using KServe. Please, set the minimum number of instances to at least 1."
+            )
+        if serving_tool == PREDICTOR.SERVING_TOOL_KSERVE:
+            return PredictorScalingConfig(min_instances=min_instances, max_instances=SCALING_CONFIG.MAX_NUM_INSTANCES, scale_metric=SCALING_CONFIG.DEFAULT_CONCURRENCY_TARGET, target_value=SCALING_CONFIG.DEFAULT_CONCURRENCY_TARGET)
+        return PredictorScalingConfig(min_instances=min_instances)
 
     @classmethod
     def extract_fields_from_json(cls, json_decamelized):
