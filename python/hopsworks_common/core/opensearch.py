@@ -86,11 +86,7 @@ def _handle_opensearch_exception(func):
             client_wrapper = args[0] if args else None
             # Invalidate the cache if the error is not a timeout, so that it wont't stuck at a error state.
             if client_wrapper and isinstance(client_wrapper, ProjectOpenSearchClient):
-                client_wrapper.close()
-                if client_wrapper._feature_store_id is not None:
-                    OpenSearchClientSingleton.invalidate_cache(
-                        client_wrapper._feature_store_id, True
-                    )
+                OpenSearchClientSingleton.invalidate_cache(client_wrapper._feature_store_id, close_opensearch_client=True)
             raise e
 
     return error_handler_wrapper
@@ -159,10 +155,10 @@ class ProjectOpenSearchClient:
     Cannot fetch results from Opensearch due to timeout. It is because the server is busy right now or longer time is needed to reload a large index. Try and increase the timeout limit by providing the parameter `options={"timeout": 60}` in the method `find_neighbor` or `count`.
     """
 
-    def __init__(self, opensearch_client: OpenSearch, feature_store_id: int = None):
+    def __init__(self, opensearch_client: OpenSearch, feature_store_id: int = None, is_cluster_client: bool = True):
         self._opensearch_client = opensearch_client
         self._feature_store_id = feature_store_id
-
+        self.is_cluster_client = is_cluster_client
     @retry(
         wait_exponential_multiplier=1000,
         stop_max_attempt_number=5,
@@ -188,16 +184,23 @@ class ProjectOpenSearchClient:
 
     def refresh_opensearch_connection(self):
         """Refresh the OpenSearch connection for the client."""
-        OpenSearchClientSingleton.invalidate_cache(self._feature_store_id, False)
-        self._opensearch_client = OpenSearchClientSingleton(
-            self._feature_store_id
-        ).get_opensearch_client()
+        if self.is_cluster_client:
+            OpenSearchClientSingleton.get_instance().close_cluster_client()
+        else:
+            self.get_opensearch_client().close()
+        self._opensearch_client = None
+        # Recreate the client
+        self.get_opensearch_client()
 
     def close(self):
         """Close the underlying OpenSearch client."""
-        if self._opensearch_client:
-            self._opensearch_client.close()
-            self._opensearch_client = None
+        # For project client using the cluster client, the client is closed when python client is closed
+        OpenSearchClientSingleton.invalidate_cache(self._feature_store_id, close_opensearch_client=self.is_cluster_client)
+
+        # For default client, close the cluster client
+        if not self._feature_store_id:
+            OpenSearchClientSingleton.get_instance().close_cluster_client()
+        self._opensearch_client = None
 
     def _create_vector_database_exception(self, message):
         """Create appropriate VectorDatabaseException based on error message."""
@@ -246,10 +249,12 @@ class ProjectOpenSearchClient:
 
     def get_opensearch_client(self):
         """Get the underlying OpenSearch client."""
+        if self.is_cluster_client:
+            return OpenSearchClientSingleton.get_instance().get_or_create_cluster_client()
         if self._opensearch_client is None:
-            self._opensearch_client = OpenSearchClientSingleton(
-                self._feature_store_id
-            ).get_opensearch_client()
+            self._opensearch_client = OpenSearchClientSingleton.get_instance()._get_or_create_opensearch_client(
+            self._feature_store_id
+            )
         return self._opensearch_client
 
     @property
@@ -265,7 +270,8 @@ class OpenSearchClientSingleton:
     """
 
     _instance = None
-    _clients_cache = {}  # Cache OpenSearch clients by feature_store_id
+    _default_opensearch_client = None
+    _wrapper_cache = {}  # Cache ProjectOpenSearchClient wrappers by feature_store_id
     _cache_lock = threading.RLock()  # Reentrant lock for thread-safe cache access
     _federated_connector_cache = {}  # Cache federated connector check results
 
@@ -279,21 +285,22 @@ class OpenSearchClientSingleton:
                 if not cls._instance:  # Double-check locking
                     cls._instance = super().__new__(cls)
                     cls._instance._cache_lock = threading.RLock()
-                    cls._instance._clients_cache = {}
+                    cls._instance._default_opensearch_client = None
                     cls._instance._federated_connector_cache = {}
-
-                    # query log is at INFO level
-                    # 2023-11-24 15:10:49,470 INFO: POST https://localhost:9200/index/_search [status:200 request:0.041s]
-                    logging.getLogger("opensearchpy").setLevel(logging.WARNING)
-                    logging.getLogger("opensearch").setLevel(logging.WARNING)
 
         # Return a ProjectOpenSearchClient wrapper for the requested feature_store_id
         return cls._instance._get_client_wrapper(feature_store_id)
 
     def _get_client_wrapper(self, feature_store_id: int = None):
         """Get or create a ProjectOpenSearchClient wrapper for the given feature_store_id."""
-        opensearch_client = self._get_or_create_client(feature_store_id)
-        return ProjectOpenSearchClient(opensearch_client, feature_store_id)
+        cache_key = f"fs_{feature_store_id}"
+        if cache_key in self._wrapper_cache:
+            return self._wrapper_cache[cache_key]
+        opensearch_client = self._get_or_create_opensearch_client(feature_store_id)
+        wrapper = ProjectOpenSearchClient(opensearch_client, feature_store_id)
+        with self._cache_lock:
+            self._wrapper_cache[cache_key] = wrapper
+        return wrapper
 
     def _get_federated_opensearch_config(self, feature_store_id: int) -> dict | None:
         """Try to fetch the federated_opensearch storage connector and return its config.
@@ -302,61 +309,44 @@ class OpenSearchClientSingleton:
         """
         cache_key = f"fs_{feature_store_id}"
 
-        # Check cache first
-        with self._cache_lock:
-            if cache_key in self._federated_connector_cache:
-                return self._federated_connector_cache[cache_key]
+        if cache_key in self._federated_connector_cache:
+            return self._federated_connector_cache[cache_key]
 
-        try:
-            # Import here to avoid circular imports
-            from hsfs.core import storage_connector_api
+        # Import here to avoid circular imports
+        from hsfs.core import storage_connector_api
 
-            connector_api = storage_connector_api.StorageConnectorApi()
-            connector = connector_api.get(
-                feature_store_id, self.FEDERATED_CONNECTOR_NAME
-            )
+        connector_api = storage_connector_api.StorageConnectorApi()
+        connector = connector_api.get(
+            feature_store_id, self.FEDERATED_CONNECTOR_NAME
+        )
 
-            if connector is None:
-                # Connector doesn't exist
-                with self._cache_lock:
-                    self._federated_connector_cache[cache_key] = None
-                return None
-
-            # Check if it's an OpenSearch connector
-            from hsfs.storage_connector import OpenSearchConnector
-
-            if not isinstance(connector, OpenSearchConnector):
-                logging.debug(
-                    f"Storage connector '{self.FEDERATED_CONNECTOR_NAME}' exists but is not an OpenSearch connector. "
-                    f"Using default OpenSearch configuration."
-                )
-                with self._cache_lock:
-                    self._federated_connector_cache[cache_key] = None
-                return None
-
-            config = connector.connector_options()
-
-            # Cache the config
-            with self._cache_lock:
-                self._federated_connector_cache[cache_key] = config
-
-            logging.info(
-                f"Using federated OpenSearch connector '{self.FEDERATED_CONNECTOR_NAME}' "
-                f"with host: {connector.host}"
-            )
-            return config
-
-        except Exception as e:
-            # Log the error but fall back to default config
-            logging.debug(
-                f"Could not fetch federated OpenSearch connector '{self.FEDERATED_CONNECTOR_NAME}': {e}. "
-                f"Using default OpenSearch configuration."
-            )
-            with self._cache_lock:
-                self._federated_connector_cache[cache_key] = None
+        if connector is None:
+            # Connector doesn't exist, do not cache anything
             return None
 
-    def _get_or_create_client(self, feature_store_id: int = None):
+        # Check if it's an OpenSearch connector
+        from hsfs.storage_connector import OpenSearchConnector
+
+        if not isinstance(connector, OpenSearchConnector):
+            logging.debug(
+                f"Storage connector '{self.FEDERATED_CONNECTOR_NAME}' exists but is not an OpenSearch connector. "
+                f"Using default OpenSearch configuration."
+            )
+            return None
+
+        config = connector.connector_options()
+
+        # Cache the config
+        with self._cache_lock:
+            self._federated_connector_cache[cache_key] = config
+
+        logging.debug(
+            f"Using federated OpenSearch connector '{self.FEDERATED_CONNECTOR_NAME}' "
+            f"with host: {connector.host}"
+        )
+        return config
+
+    def _get_or_create_opensearch_client(self, feature_store_id: int = None):
         """Get cached client or create new one. Thread-safe.
 
         Cache key:
@@ -366,51 +356,58 @@ class OpenSearchClientSingleton:
         If no federated connector config is found for a given feature store,
         the client for that feature store reuses the DEFAULT cache client.
         """
-        if feature_store_id is not None:
-            cache_key = feature_store_id
-        else:
-            cache_key = self.DEFAULT_CACHE_KEY
+        # query log is at INFO level
+        # 2023-11-24 15:10:49,470 INFO: POST https://localhost:9200/index/_search [status:200 request:0.041s]
+        logging.getLogger("opensearchpy").setLevel(logging.WARNING)
+        logging.getLogger("opensearch").setLevel(logging.WARNING)
 
+        if feature_store_id is None:
+            return self.get_or_create_cluster_client()
+
+        # Try to get federated connector config first
+        opensearch_config = self._get_federated_opensearch_config(
+            feature_store_id
+        )
+
+        if opensearch_config is None:
+            return self.get_or_create_cluster_client()
+
+        # Dedicated client for this feature store
+        return OpenSearch(**opensearch_config)
+
+    def get_or_create_cluster_client(self):
+        """Get or create a cluster client."""
+        if self._default_opensearch_client is not None:
+            return self._default_opensearch_client
         with self._cache_lock:
-            if cache_key not in self._clients_cache:
-                # Try to get federated connector config first
-                opensearch_config = None
-                if feature_store_id is not None:
-                    try:
-                        opensearch_config = self._get_federated_opensearch_config(
-                            feature_store_id
-                        )
-                    except Exception as e:
-                        logging.debug(
-                            f"Could not get federated connector config for feature store {feature_store_id}: {e}"
-                        )
+            default_config = self._federated_connector_cache.get(
+                self.DEFAULT_CACHE_KEY, OpenSearchApi().get_default_py_config()
+            )
+            self._default_opensearch_client = OpenSearch(**default_config)
+            return self._default_opensearch_client
 
-                if opensearch_config is not None:
-                    # Dedicated client for this feature store
-                    self._clients_cache[cache_key] = OpenSearch(**opensearch_config)
-                else:
-                    # Fall back to DEFAULT client and reuse it
-                    self._clients_cache[cache_key] = self._clients_cache.get(
-                        self.DEFAULT_CACHE_KEY,
-                        OpenSearch(
-                            **OpenSearchApi().get_default_py_config(feature_store_id)
-                        ),
-                    )
-
-        return self._clients_cache[cache_key]
+    def close_cluster_client(self):
+        """Close the cluster client."""
+        if self._default_opensearch_client is not None:
+            self._default_opensearch_client.close()
+            self._default_opensearch_client = None
 
     @classmethod
     def close_all(cls):
         """Close all cached OpenSearch clients. Thread-safe."""
-        if cls._instance and hasattr(cls._instance, "_clients_cache"):
+        if cls._instance and hasattr(cls._instance, "_wrapper_cache"):
             with cls._instance._cache_lock:
-                for client in list(cls._instance._clients_cache.values()):
+                for client in list(cls._instance._wrapper_cache.values()):
                     with contextlib.suppress(Exception):
                         client.close()
-                cls._instance._clients_cache.clear()
+                cls._instance._wrapper_cache.clear()
                 # Also clear federated connector cache
                 if hasattr(cls._instance, "_federated_connector_cache"):
                     cls._instance._federated_connector_cache.clear()
+        with contextlib.suppress(Exception):
+            cls._instance._default_opensearch_client.close()
+            cls._instance._default_opensearch_client = None
+        cls._instance = None
 
     @classmethod
     def get_instance(cls) -> OpenSearchClientSingleton:
@@ -419,13 +416,12 @@ class OpenSearchClientSingleton:
 
     @classmethod
     def invalidate_cache(
-        cls, feature_store_id: int = None, invalidate_storage_connector: bool = True
+        cls, feature_store_id: int = None, close_opensearch_client: bool = False
     ):
-        """Invalidate cached OpenSearch client and connector config.
+        """Invalidate cached ProjectOpenSearchClient and connector config.
 
         Args:
             feature_store_id: The feature store ID to invalidate cache for.
-                If None, invalidates all caches.
             invalidate_storage_connector: Whether to invalidate the storage connector config cache.
         """
         if cls._instance is None:
@@ -434,31 +430,19 @@ class OpenSearchClientSingleton:
         with cls._instance._cache_lock:
             if feature_store_id is not None:
                 # Invalidate specific feature store cache
-                cache_key = feature_store_id
                 fs_cache_key = f"fs_{feature_store_id}"
 
-                # Close and remove the client
-                if cache_key in cls._instance._clients_cache:
-                    with contextlib.suppress(Exception):
-                        cls._instance._clients_cache[cache_key].close()
-                    del cls._instance._clients_cache[cache_key]
+                # remove the client from the cache
+                if fs_cache_key in cls._instance._wrapper_cache:
+                    if close_opensearch_client:
+                        with contextlib.suppress(Exception):
+                            cls._instance._wrapper_cache[fs_cache_key].get_opensearch_client().close()
+                    del cls._instance._wrapper_cache[fs_cache_key]
 
                 # Remove connector config cache
-                if (
-                    invalidate_storage_connector
-                    and fs_cache_key in cls._instance._federated_connector_cache
-                ):
+                if fs_cache_key in cls._instance._federated_connector_cache:
                     del cls._instance._federated_connector_cache[fs_cache_key]
 
                 logging.debug(
                     f"Invalidated OpenSearch cache for feature store {feature_store_id}"
                 )
-            else:
-                # Invalidate all caches
-                for client in list(cls._instance._clients_cache.values()):
-                    with contextlib.suppress(Exception):
-                        client.close()
-                cls._instance._clients_cache.clear()
-                if invalidate_storage_connector:
-                    cls._instance._federated_connector_cache.clear()
-                logging.debug("Invalidated all OpenSearch caches")
