@@ -168,22 +168,24 @@ class TestOpenSearchClientSingleton:
         )
 
     @pytest.mark.parametrize(
-        "create_fs_id, invalidate_fs_id, expect_same_client_after_invalidate",
+        "create_fs_id, close_opensearch_client, expect_close_calls",
         [
-            # With no federated connector, feature-store client shares the cluster client,
-            # so invalidating that feature_store_id reuses the same underlying client.
-            (123, 123, True),
-            (None, None, True),  # global invalidation keeps default client in current impl
-            (456, None, True),  # global invalidation keeps feature store client in current impl
+            (123, False, 0),
+            (123, True, 1),
+            (None, False, 0),
         ],
         ids=[
-            "invalidate_specific_feature_store",
-            "invalidate_all_default_client",
-            "invalidate_all_with_feature_store_client",
+            "invalidate_specific_feature_store_no_close",
+            "invalidate_specific_feature_store_with_close",
+            "invalidate_all_default_client_noop",
         ],
     )
     def test_invalidate_cache(
-        self, mocker, create_fs_id, invalidate_fs_id, expect_same_client_after_invalidate
+        self,
+        mocker,
+        create_fs_id,
+        close_opensearch_client,
+        expect_close_calls,
     ):
         """Test that invalidate_cache clears cache and creates new client on next access."""
         # Arrange: mock default config
@@ -213,65 +215,21 @@ class TestOpenSearchClientSingleton:
         client1 = wrapper1.get_opensearch_client()
 
         # Invalidate cache
-        OpenSearchClientSingleton.invalidate_cache(feature_store_id=invalidate_fs_id)
+        OpenSearchClientSingleton.invalidate_cache(
+            feature_store_id=create_fs_id,
+            close_opensearch_client=close_opensearch_client,
+        )
 
         # Get client again - should create a new one
         wrapper2 = OpenSearchClientSingleton(feature_store_id=create_fs_id)
         client2 = wrapper2.get_opensearch_client()
 
-        if expect_same_client_after_invalidate:
-            first_client.close.assert_not_called()
-            assert client1 is client2
-        else:
-            first_client.close.assert_not_called()
+        assert first_client.close.call_count == expect_close_calls
+        # Expect a new client when close_opensearch_client=True; otherwise reuse.
+        if close_opensearch_client:
             assert client1 is not client2
-
-    def test_invalidate_cache_clears_federated_connector_cache(self, mocker):
-        """Test that invalidate_cache also clears the federated connector config cache."""
-        # Arrange: mock default config
-        mock_default_cfg = {"hosts": [{"host": "default-host", "port": 9200}]}
-        mocker.patch(
-            "hopsworks_common.core.opensearch.OpenSearchApi.get_default_py_config",
-            return_value=mock_default_cfg,
-        )
-
-        # Mock federated connector - first returns config, second returns different config
-        federated_cfg_v1 = {"hosts": [{"host": "federated-v1", "port": 9200}]}
-        federated_cfg_v2 = {"hosts": [{"host": "federated-v2", "port": 9200}]}
-        mock_get_federated = mocker.patch(
-            "hopsworks_common.core.opensearch.OpenSearchClientSingleton._get_federated_opensearch_config",
-        )
-        mock_get_federated.side_effect = [federated_cfg_v1, federated_cfg_v2]
-        mocker.patch(
-            "hopsworks_common.core.opensearch.OpenSearchApi._get_authorization_token",
-            return_value="test-token",
-        )
-
-        # Mock OpenSearch client class
-        mock_opensearch_cls = mocker.patch(
-            "hopsworks_common.core.opensearch.OpenSearch", autospec=True
-        )
-
-        client_v1 = MagicMock(name="client_v1")
-        client_v2 = MagicMock(name="client_v2")
-        mock_opensearch_cls.side_effect = [client_v1, client_v2]
-
-        fs_id = 789
-
-        # Act: create client - uses federated_cfg_v1
-        wrapper1 = OpenSearchClientSingleton(feature_store_id=fs_id)
-        first_client = wrapper1.get_opensearch_client()
-
-        # Invalidate cache
-        OpenSearchClientSingleton.invalidate_cache(feature_store_id=fs_id)
-
-        # Get client again - should call _get_federated_opensearch_config again
-        wrapper2 = OpenSearchClientSingleton(feature_store_id=fs_id)
-        second_client = wrapper2.get_opensearch_client()
-
-        # Assert: federated config was fetched twice (cache was cleared)
-        assert mock_get_federated.call_count == 2
-        assert first_client is not second_client
+        else:
+            assert client1 is client2
 
     def test_invalidate_cache_no_op_when_no_instance(self):
         """Test that invalidate_cache is a no-op when singleton not initialized."""
@@ -281,6 +239,53 @@ class TestOpenSearchClientSingleton:
         # Should not raise any exception
         OpenSearchClientSingleton.invalidate_cache()
         OpenSearchClientSingleton.invalidate_cache(feature_store_id=123)
+
+    def test_invalidate_cache_closes_federated_client_and_recreates(self, mocker):
+        """invalidate_cache should close federated client, clear caches, and recreate."""
+        # Arrange: default config plus two federated configs to detect cache refresh
+        mock_default_cfg = {"hosts": [{"host": "default-host", "port": 9200}]}
+        mocker.patch(
+            "hopsworks_common.core.opensearch.OpenSearchApi.get_default_py_config",
+            return_value=mock_default_cfg,
+        )
+        federated_cfg_v1 = {"hosts": [{"host": "fed-v1", "port": 9200}]}
+        federated_cfg_v2 = {"hosts": [{"host": "fed-v2", "port": 9200}]}
+        mock_get_federated = mocker.patch(
+            "hopsworks_common.core.opensearch.OpenSearchClientSingleton._get_federated_opensearch_config",
+            side_effect=[federated_cfg_v1, federated_cfg_v2],
+        )
+        mocker.patch(
+            "hopsworks_common.core.opensearch.OpenSearchApi._get_authorization_token",
+            return_value="test-token",
+        )
+
+        # Mock OpenSearch client to return distinct instances
+        mock_opensearch_cls = mocker.patch(
+            "hopsworks_common.core.opensearch.OpenSearch", autospec=True
+        )
+        federated_client_v1 = MagicMock(name="federated_client_v1")
+        federated_client_v2 = MagicMock(name="federated_client_v2")
+        mock_opensearch_cls.side_effect = [federated_client_v1, federated_client_v2]
+
+        fs_id = 321
+
+        # Act: create initial federated client
+        wrapper1 = OpenSearchClientSingleton(feature_store_id=fs_id)
+        client1 = wrapper1.get_opensearch_client()
+
+        # Invalidate cache with close_opensearch_client=True
+        OpenSearchClientSingleton.invalidate_cache(
+            feature_store_id=fs_id, close_opensearch_client=True
+        )
+
+        # Act: fetch client again; should be recreated with fresh config
+        wrapper2 = OpenSearchClientSingleton(feature_store_id=fs_id)
+        client2 = wrapper2.get_opensearch_client()
+
+        # Assert: old client closed, caches cleared (federated config refetched), new client created
+        assert federated_client_v1.close.call_count == 1
+        assert client1 is not client2
+        assert mock_get_federated.call_count == 2
 
 
 class TestOpensearchRequestOption:

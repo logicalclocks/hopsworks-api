@@ -477,14 +477,16 @@ class OpenSearchClientSingleton:
         if feature_store_id is not None:
             # Invalidate specific feature store cache
             fs_cache_key = f"fs_{feature_store_id}"
+            closed_client = None
             with cls._instance._cache_lock:
                 # remove the client from the cache
                 if fs_cache_key in cls._instance._wrapper_cache:
                     if close_opensearch_client:
                         with contextlib.suppress(Exception):
-                            cls._instance._wrapper_cache[
+                            closed_client = cls._instance._wrapper_cache[
                                 fs_cache_key
-                            ].get_opensearch_client().close()
+                            ].get_opensearch_client()
+                            closed_client.close()
                     del cls._instance._wrapper_cache[fs_cache_key]
 
                 # Remove connector config cache
@@ -494,3 +496,9 @@ class OpenSearchClientSingleton:
                 logging.debug(
                     f"Invalidated OpenSearch cache for feature store {feature_store_id}"
                 )
+
+                # If the closed client is the shared default client, clear it so a new one is created next time.
+                if close_opensearch_client and closed_client is not None:
+                    with contextlib.suppress(Exception):
+                        if cls._instance._default_opensearch_client is closed_client:
+                            cls._instance._default_opensearch_client = None
