@@ -2227,10 +2227,7 @@ class OpenSearchConnector(StorageConnector):
             props[OPENSEARCH_CONFIG.USE_SSL] = self._scheme == "https"
         if self._verify is not None:
             props[OPENSEARCH_CONFIG.VERIFY_CERTS] = self._verify
-        if self._username and self._password:
-            props[OPENSEARCH_CONFIG.HTTP_AUTH] = (self._username, self._password)
-        elif self._username:
-            props[OPENSEARCH_CONFIG.HTTP_AUTH] = self._username
+        # do not set http_auth, the client use jwt for authentication
         ca_certs = self._create_ca_certs()
         if ca_certs:
             props[OPENSEARCH_CONFIG.CA_CERTS] = ca_certs

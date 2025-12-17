@@ -411,9 +411,8 @@ class VectorDbClient:
                 }
             },
         }
-        return (
-            OpenSearchClientSingleton(feature_store_id=fg.feature_store_id)
-            .count(self._get_vector_db_index_name(fg.id), query, options=options)
+        return OpenSearchClientSingleton(feature_store_id=fg.feature_store_id).count(
+            self._get_vector_db_index_name(fg.id), query, options=options
         )
 
     def _get_vector_db_index_name(self, fg_id):
