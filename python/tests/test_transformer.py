@@ -19,6 +19,7 @@ import copy
 import pytest
 from hsml import resources, transformer
 from hsml.constants import RESOURCES
+from python.hopsworks_common.constants import SCALING_CONFIG
 
 
 SERVING_NUM_INSTANCES_NO_LIMIT = [-1]
@@ -106,7 +107,7 @@ class TestTransformer:
         assert isinstance(t, transformer.Transformer)
         assert t.script_file == json["script_file"]
 
-        assert t.resources.num_instances == RESOURCES.MIN_NUM_INSTANCES
+        assert t.resources.num_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
         assert t.resources.requests.cores == RESOURCES.MIN_CORES
         assert t.resources.requests.memory == RESOURCES.MIN_MEMORY
         assert t.resources.requests.gpus == RESOURCES.GPUS
@@ -131,7 +132,7 @@ class TestTransformer:
         # Assert
         assert t.script_file == json["script_file"]
 
-        assert t.resources.num_instances == RESOURCES.MIN_NUM_INSTANCES
+        assert t.resources.num_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
         assert t.resources.requests.cores == RESOURCES.MIN_CORES
         assert t.resources.requests.memory == RESOURCES.MIN_MEMORY
         assert t.resources.requests.gpus == RESOURCES.GPUS
@@ -225,7 +226,7 @@ class TestTransformer:
         num_instances = transformer.Transformer._get_default_num_instances()
 
         # Assert
-        assert num_instances == RESOURCES.MIN_NUM_INSTANCES
+        assert num_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
 
     def test_get_default_num_instances_with_scale_to_zero(self, mocker):
         # Arrange
@@ -252,7 +253,7 @@ class TestTransformer:
 
         # Assert
         assert isinstance(res, resources.TransformerResources)
-        assert res.num_instances == RESOURCES.MIN_NUM_INSTANCES
+        assert res.num_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
 
     def test_get_default_resources_with_scale_to_zero(self, mocker):
         # Arrange

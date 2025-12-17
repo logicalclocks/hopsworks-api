@@ -22,6 +22,7 @@ from hsml.client.exceptions import ModelServingException
 from hsml.constants import DEPLOYABLE_COMPONENT, PREDICTOR_STATE
 from hsml.core import model_api, serving_api
 from hsml.engine import serving_engine
+from hsml.scaling_config import PredictorScalingConfig
 
 
 if TYPE_CHECKING:
@@ -563,6 +564,15 @@ class Deployment:
     @project_name.setter
     def project_name(self, project_name: str):
         self._predictor._project_name = project_name
+
+    @property
+    def scaling_configuration(self):
+        """Scaling configuration for the deployment."""
+        return self._predictor.scaling_configuration
+
+    @scaling_configuration.setter
+    def scaling_configuration(self, scaling_configuration: PredictorScalingConfig):
+        self._predictor.scaling_configuration = scaling_configuration
 
     def __repr__(self):
         desc = (

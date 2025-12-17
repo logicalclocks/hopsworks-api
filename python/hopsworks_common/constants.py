@@ -166,7 +166,6 @@ class MODEL_SERVING:
 
 
 class RESOURCES:
-    MIN_NUM_INSTANCES = 1  # disable scale-to-zero by default
     # default values, not hard limits
     MIN_CORES = 0.2
     MIN_MEMORY = 32
@@ -279,3 +278,8 @@ class FEATURE_LOGGING:
         MODEL_VERSION_COLUMN_NAME,
         REQUEST_PARAMETERS_COLUMN_NAME,
     ]
+
+
+class SCALING_CONFIG:
+    MIN_NUM_INSTANCES = 1
+    MAX__NUM_INSTANCES = 10

@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import humps
 from hopsworks_common import client, util
-from hopsworks_common.constants import RESOURCES, Default
+from hopsworks_common.constants import RESOURCES, SCALING_CONFIG, Default
 from hsml.deployable_component import DeployableComponent
 from hsml.resources import TransformerResources
+from hsml.scaling_config import TransformerScalingConfig
 
 
 class Transformer(DeployableComponent):
@@ -28,6 +29,7 @@ class Transformer(DeployableComponent):
         self,
         script_file: str,
         resources: TransformerResources | dict | Default | None = None,  # base
+        scaling_configuration: TransformerScalingConfig | dict | Default | None = None,
         **kwargs,
     ):
         resources = (
@@ -39,7 +41,12 @@ class Transformer(DeployableComponent):
         if resources.num_instances is None:
             resources.num_instances = self._get_default_num_instances()
 
-        super().__init__(script_file, resources)
+        self._scaling_configuration = (
+            util.get_obj_from_json(scaling_configuration, TransformerScalingConfig)
+            or self._get_default_scaling_configuration()
+        )
+
+        super().__init__(script_file, resources, scaling_configuration)
 
     def describe(self):
         """Print a JSON description of the transformer."""
@@ -63,8 +70,12 @@ class Transformer(DeployableComponent):
         return (
             0  # enable scale-to-zero by default if required
             if client.is_scale_to_zero_required()
-            else RESOURCES.MIN_NUM_INSTANCES
+            else SCALING_CONFIG.MIN_NUM_INSTANCES
         )
+
+    @classmethod
+    def _get_default_scaling_configuration(cls):
+        return TransformerScalingConfig(min_instances=0)
 
     @classmethod
     def _get_default_resources(cls):

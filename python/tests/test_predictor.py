@@ -26,6 +26,7 @@ from hsml import (
     util,
 )
 from hsml.constants import MODEL, PREDICTOR, RESOURCES
+from python.hopsworks_common.constants import SCALING_CONFIG
 
 
 SERVING_NUM_INSTANCES_NO_LIMIT = [-1]
@@ -563,7 +564,7 @@ class TestPredictor:
 
         # Assert
         assert isinstance(res, resources.PredictorResources)
-        assert res.num_instances == RESOURCES.MIN_NUM_INSTANCES
+        assert res.num_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
 
     def test_get_default_resources_non_kserve_with_scale_to_zero(self, mocker):
         # Arrange
@@ -576,7 +577,7 @@ class TestPredictor:
 
         # Assert
         assert isinstance(res, resources.PredictorResources)
-        assert res.num_instances == RESOURCES.MIN_NUM_INSTANCES
+        assert res.num_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
 
     def test_get_default_resources_kserve_without_scale_to_zero(self, mocker):
         # Arrange
@@ -589,7 +590,7 @@ class TestPredictor:
 
         # Assert
         assert isinstance(res, resources.PredictorResources)
-        assert res.num_instances == RESOURCES.MIN_NUM_INSTANCES
+        assert res.num_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
 
     def test_get_default_resources_kserve_with_scale_to_zero(self, mocker):
         # Arrange

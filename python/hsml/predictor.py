@@ -23,7 +23,7 @@ from hopsworks_common.constants import (
     MODEL,
     MODEL_SERVING,
     PREDICTOR,
-    RESOURCES,
+    SCALING_CONFIG,
     Default,
 )
 from hsml import deployment
@@ -33,6 +33,7 @@ from hsml.inference_logger import InferenceLogger
 from hsml.predictor_state import PredictorState
 from hsml.resources import PredictorResources
 from hsml.transformer import Transformer
+from hsml.scaling_config import PredictorScalingConfig
 
 
 class Predictor(DeployableComponent):
@@ -61,6 +62,7 @@ class Predictor(DeployableComponent):
         api_protocol: str | None = INFERENCE_ENDPOINTS.API_PROTOCOL_REST,
         environment: str | None = None,
         project_namespace: str = None,
+        scaling_configuration: PredictorScalingConfig | dict | Default | None = None,
         **kwargs,
     ):
         serving_tool = (
@@ -71,10 +73,15 @@ class Predictor(DeployableComponent):
             util.get_obj_from_json(resources, PredictorResources), serving_tool
         ) or self._get_default_resources(serving_tool)
 
+        self._scaling_configuration = util.get_obj_from_json(
+            scaling_configuration, PredictorScalingConfig
+        ) or self._get_default_scaling_configuration(serving_tool)
+
         super().__init__(
             script_file,
             resources,
             inference_batcher,
+            scaling_configuration,
         )
 
         self._name = name
@@ -203,12 +210,22 @@ class Predictor(DeployableComponent):
         return resources
 
     @classmethod
+    def _get_default_scaling_configuration(cls, serving_tool):
+        min_instances = (
+            0  # enable scale-to-zero by default if required
+            if serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
+            and client.is_scale_to_zero_required()
+            else SCALING_CONFIG.MIN_NUM_INSTANCES
+        )
+        return PredictorScalingConfig(min_instances=min_instances)
+
+    @classmethod
     def _get_default_resources(cls, serving_tool):
         num_instances = (
             0  # enable scale-to-zero by default if required
             if serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
             and client.is_scale_to_zero_required()
-            else RESOURCES.MIN_NUM_INSTANCES
+            else SCALING_CONFIG.MIN_NUM_INSTANCES
         )
         return PredictorResources(num_instances)
 
@@ -294,6 +311,9 @@ class Predictor(DeployableComponent):
             environment = json_decamelized.pop("environment_dto")
             kwargs["environment"] = environment["name"]
         kwargs["project_namespace"] = json_decamelized.pop("project_namespace")
+        kwargs["scaling_configuration"] = PredictorScalingConfig.from_json(
+            json_decamelized
+        )
         return kwargs
 
     def update_from_response_json(self, json_dict):
@@ -338,6 +358,8 @@ class Predictor(DeployableComponent):
             json = {**json, **self._inference_batcher.to_dict()}
         if self._transformer is not None:
             json = {**json, **self._transformer.to_dict()}
+        if self._scaling_configuration is not None:
+            json = {**json, **self._scaling_configuration.to_dict()}
         return json
 
     @property
