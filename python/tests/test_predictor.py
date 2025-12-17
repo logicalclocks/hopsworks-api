@@ -26,7 +26,7 @@ from hsml import (
     util,
 )
 from hsml.constants import MODEL, PREDICTOR, RESOURCES
-from python.hopsworks_common.constants import SCALING_CONFIG
+from hopsworks_common.constants import SCALING_CONFIG
 
 
 SERVING_NUM_INSTANCES_NO_LIMIT = [-1]
