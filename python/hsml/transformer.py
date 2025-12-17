@@ -43,7 +43,7 @@ class Transformer(DeployableComponent):
 
         self._scaling_configuration = (
             util.get_obj_from_json(scaling_configuration, TransformerScalingConfig)
-            or TransformerScalingConfig.get_default_scaling_configuration(PREDICTOR.SERVING_TOOL_KSERVE, resources.num_instances if resources is not None else None)
+            or TransformerScalingConfig.get_default_scaling_configuration(serving_tool=PREDICTOR.SERVING_TOOL_KSERVE, min_instances=resources.num_instances if resources is not None else None)
         )
 
         super().__init__(script_file, resources, scaling_configuration)

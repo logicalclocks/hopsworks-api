@@ -92,7 +92,7 @@ class ComponentScalingConfig(ABC):
 
 
     @staticmethod
-    def get_default_scaling_configuration(cls, serving_tool: str, min_instances: int | None):
+    def get_default_scaling_configuration(serving_tool: str, min_instances: int | None):
         """Get the default scaling configuration based on the serving tool and number of instances."""
         if min_instances is None:
             min_instances = (
