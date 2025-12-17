@@ -1,9 +1,27 @@
+#
+#   Copyright 2025 Hopsworks AB
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+#
+
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import Optional, Union
-from hopsworks_common import util
-import humps
 from enum import Enum
-import json
+
+import humps
+from hopsworks_common import util
+from hopsworks_common.constants import Default
 
 
 class ScaleMetric(Enum):
@@ -22,13 +40,13 @@ class ComponentScalingConfig(ABC):
     def __init__(
         self,
         min_instances: int,
-        max_instances: Optional[int] = None,
-        scale_metric: Optional[Union[str, ScaleMetric]] = None,
-        target: Optional[int] = None,
-        panic_window_percentage: Optional[float] = None,
-        panic_threshold_percentage: Optional[float] = None,
-        stable_window_seconds: Optional[int] = None,
-        scale_to_zero_retention_seconds: Optional[int] = None,
+        max_instances: int | None = None,
+        scale_metric: ScaleMetric | str | Default | None = None,
+        target: int | None = None,
+        panic_window_percentage: float | None = None,
+        panic_threshold_percentage: float | None = None,
+        stable_window_seconds: int | None = None,
+        scale_to_zero_retention_seconds: int | None = None,
         **kwargs,
     ):
 
@@ -64,10 +82,6 @@ class ComponentScalingConfig(ABC):
     def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
         return cls.from_json(json_decamelized)
-
-    @classmethod
-    def from_json(cls, json_decamelized):
-        return ComponentScalingConfig(**cls.extract_fields_from_json(json_decamelized))
 
     @classmethod
     def extract_fields_from_json(cls, json_decamelized):
@@ -136,12 +150,12 @@ class ComponentScalingConfig(ABC):
         pass
 
     @property
-    def scale_metric(self) -> Optional[ScaleMetric]:
+    def scale_metric(self):
         """The metric to use for scaling. Can be either 'CONCURRENCY' or 'RPS'."""
         return self._scale_metric
 
     @scale_metric.setter
-    def scale_metric(self, scale_metric: Union[str, ScaleMetric]) -> None:
+    def scale_metric(self, scale_metric: ScaleMetric | str):
         if isinstance(scale_metric, str):
             if not ScaleMetric.has_value(scale_metric.upper()):
                 raise ValueError(
@@ -156,12 +170,12 @@ class ComponentScalingConfig(ABC):
             )
 
     @property
-    def target(self) -> Optional[int]:
+    def target(self):
         """Target value for the selected scaling metric. For RPS, this is requests per second. For CONCURRENCY, this is concurrent number of requests."""
         return self._target
 
     @target.setter
-    def target(self, target: int) -> None:
+    def target(self, target: int):
         self._target = target
 
     @property
@@ -170,54 +184,54 @@ class ComponentScalingConfig(ABC):
         return self._min_instances
 
     @min_instances.setter
-    def min_instances(self, min_instances: int) -> None:
+    def min_instances(self, min_instances: int):
         self._min_instances = min_instances
 
     @property
-    def max_instances(self) -> Optional[int]:
+    def max_instances(self):
         """Maximum number of instances to scale to. Maximum allowed is configured in the cluster settings by the cluster administrator. Must be at least 1 and greater than or equal to min_instances."""
         return self._max_instances
 
     @max_instances.setter
-    def max_instances(self, max_instances: int) -> None:
+    def max_instances(self, max_instances: int):
         self._max_instances = max_instances
 
     @property
-    def panic_window_percentage(self) -> Optional[float]:
+    def panic_window_percentage(self):
         """The percentage of the stable window to use as the panic window during high load situations. Min is 1. Max is 100. Default is 10."""
         return self._panic_window_percentage
 
     @panic_window_percentage.setter
-    def panic_window_percentage(self, panic_window_percentage: float) -> None:
+    def panic_window_percentage(self, panic_window_percentage: float):
         self._panic_window_percentage = panic_window_percentage
 
     @property
-    def panic_threshold_percentage(self) -> Optional[float]:
+    def panic_threshold_percentage(self):
         """The percentage of the scale metric threshold that, when exceeded during the panic window, will trigger a scale-up event. Min is 1. Max is 100. Default is 200."""
         return self._panic_threshold_percentage
 
     @panic_threshold_percentage.setter
-    def panic_threshold_percentage(self, panic_threshold_percentage: float) -> None:
+    def panic_threshold_percentage(self, panic_threshold_percentage: float):
         self._panic_threshold_percentage = panic_threshold_percentage
 
     @property
-    def stable_window_seconds(self) -> Optional[int]:
+    def stable_window_seconds(self):
         """The interval in seconds over which to calculate the average metric. Larger values result in smoother scaling but slower reaction times. Min is 1 second. Max is 3600 seconds."""
         return self._stable_window_seconds
 
     @stable_window_seconds.setter
-    def stable_window_seconds(self, stable_window_seconds: int) -> None:
+    def stable_window_seconds(self, stable_window_seconds: int):
         self._stable_window_seconds = stable_window_seconds
 
     @property
-    def scale_to_zero_retention_seconds(self) -> Optional[int]:
+    def scale_to_zero_retention_seconds(self):
         """The amount of time in seconds the last instance must be kept before being scaled down to zero. Default is 0."""
         return self._scale_to_zero_retention_seconds
 
     @scale_to_zero_retention_seconds.setter
     def scale_to_zero_retention_seconds(
         self, scale_to_zero_retention_seconds: int
-    ) -> None:
+    ):
         self._scale_to_zero_retention_seconds = scale_to_zero_retention_seconds
 
     def __repr__(self):

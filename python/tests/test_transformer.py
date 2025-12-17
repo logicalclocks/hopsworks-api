@@ -19,7 +19,7 @@ import copy
 import pytest
 from hsml import resources, transformer
 from hsml.constants import RESOURCES
-from python.hopsworks_common.constants import SCALING_CONFIG
+from hopsworks_common.constants import SCALING_CONFIG
 
 
 SERVING_NUM_INSTANCES_NO_LIMIT = [-1]

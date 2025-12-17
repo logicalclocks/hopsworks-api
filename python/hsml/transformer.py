@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import humps
 from hopsworks_common import client, util
-from hopsworks_common.constants import RESOURCES, SCALING_CONFIG, Default
+from hopsworks_common.constants import SCALING_CONFIG, Default
 from hsml.deployable_component import DeployableComponent
 from hsml.resources import TransformerResources
 from hsml.scaling_config import TransformerScalingConfig
