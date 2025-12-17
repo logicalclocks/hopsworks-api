@@ -86,7 +86,7 @@ class Predictor(DeployableComponent):
             script_file,
             resources,
             inference_batcher,
-            scaling_configuration,
+            scaling_configuration=self._scaling_configuration,
         )
 
         self._name = name

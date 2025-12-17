@@ -59,6 +59,7 @@ class ComponentScalingConfig(ABC):
         **kwargs,
     ):
 
+        scale_metric = scale_metric or kwargs.get("scale_metric")
         if scale_metric:
             if isinstance(scale_metric, str):
                 if not ScaleMetric.has_value(scale_metric.upper()):
@@ -76,12 +77,30 @@ class ComponentScalingConfig(ABC):
             self._scale_metric = None
 
         self._min_instances = min_instances
-        self._max_instances = max_instances
-        self._target = target
-        self._panic_window_percentage = panic_window_percentage
-        self._panic_threshold_percentage = panic_threshold_percentage
-        self._stable_window_seconds = stable_window_seconds
-        self._scale_to_zero_retention_seconds = scale_to_zero_retention_seconds
+        self._max_instances = (
+            max_instances if max_instances is not None else kwargs.get("max_instances")
+        )
+        self._target = target if target is not None else kwargs.get("target")
+        self._panic_window_percentage = (
+            panic_window_percentage
+            if panic_window_percentage is not None
+            else kwargs.get("panic_window_percentage")
+        )
+        self._panic_threshold_percentage = (
+            panic_threshold_percentage
+            if panic_threshold_percentage is not None
+            else kwargs.get("panic_threshold_percentage")
+        )
+        self._stable_window_seconds = (
+            stable_window_seconds
+            if stable_window_seconds is not None
+            else kwargs.get("stable_window_seconds")
+        )
+        self._scale_to_zero_retention_seconds = (
+            scale_to_zero_retention_seconds
+            if scale_to_zero_retention_seconds is not None
+            else kwargs.get("scale_to_zero_retention_seconds")
+        )
 
     def describe(self):
         """Print a JSON description of the scaling configuration."""
@@ -93,7 +112,9 @@ class ComponentScalingConfig(ABC):
         return cls.from_json(json_decamelized)
 
     @staticmethod
-    def get_default_scaling_configuration(serving_tool: str, min_instances: int | None):
+    def get_default_scaling_configuration(
+        serving_tool: str, min_instances: int | None, component_type: str = "predictor"
+    ) -> ComponentScalingConfig:
         """Get the default scaling configuration based on the serving tool and number of instances."""
         if min_instances is None:
             min_instances = (
@@ -115,14 +136,26 @@ class ComponentScalingConfig(ABC):
             raise ValueError(
                 "Minimum number of instances cannot be 0 for deployments not using KServe. Please, set the minimum number of instances to at least 1."
             )
+        kwargs = {"min_instances": min_instances}
         if serving_tool == PREDICTOR.SERVING_TOOL_KSERVE:
-            return PredictorScalingConfig(
-                min_instances=min_instances,
-                max_instances=SCALING_CONFIG.MAX_NUM_INSTANCES,
-                scale_metric=SCALING_CONFIG.SCALE_METRIC_CONCURRENCY,
-                target_value=SCALING_CONFIG.DEFAULT_CONCURRENCY_TARGET,
+            kwargs["scale_metric"] = SCALING_CONFIG.SCALE_METRIC_CONCURRENCY
+            kwargs["target"] = SCALING_CONFIG.DEFAULT_CONCURRENCY_TARGET
+            kwargs["panic_threshold_percentage"] = (
+                SCALING_CONFIG.DEFAULT_PANIC_THRESHOLD_PERCENTAGE
             )
-        return PredictorScalingConfig(min_instances=min_instances)
+            kwargs["panic_window_percentage"] = (
+                SCALING_CONFIG.DEFAULT_PANIC_WINDOW_PERCENTAGE
+            )
+            kwargs["stable_window_seconds"] = (
+                SCALING_CONFIG.DEFAULT_STABLE_WINDOW_SECONDS
+            )
+            kwargs["scale_to_zero_retention_seconds"] = (
+                SCALING_CONFIG.DEFAULT_SCALE_TO_ZERO_RETENTION_SECONDS
+            )
+        print("kwargs:", kwargs)
+        if component_type == "predictor":
+            return PredictorScalingConfig(**kwargs)
+        return TransformerScalingConfig(**kwargs)
 
     @classmethod
     def extract_fields_from_json(cls, json_decamelized):
@@ -130,6 +163,8 @@ class ComponentScalingConfig(ABC):
 
         if cls.SCALING_CONFIG_KEY in json_decamelized:
             json_decamelized = json_decamelized[cls.SCALING_CONFIG_KEY]
+        elif "scaling_configuration" in json_decamelized:
+            json_decamelized = json_decamelized["scaling_configuration"]
 
         kwargs["min_instances"] = util.extract_field_from_json(
             json_decamelized, "min_instances"
@@ -153,7 +188,6 @@ class ComponentScalingConfig(ABC):
         kwargs["scale_to_zero_retention_seconds"] = util.extract_field_from_json(
             json_decamelized, "scale_to_zero_retention_seconds"
         )
-
         return kwargs
 
     def update_from_response_json(self, json_dict):
@@ -290,7 +324,8 @@ class PredictorScalingConfig(ComponentScalingConfig):
 
     @classmethod
     def from_json(cls, json_decamelized):
-        return PredictorScalingConfig(**cls.extract_fields_from_json(json_decamelized))
+        kwargs = cls.extract_fields_from_json(json_decamelized)
+        return PredictorScalingConfig(**kwargs)
 
     def to_dict(self):
         return {humps.camelize(self.SCALING_CONFIG_KEY): super().to_json()}
@@ -308,7 +343,7 @@ class TransformerScalingConfig(ComponentScalingConfig):
         min_instances = kwargs.pop("min_instances", None)
         if min_instances is None:
             raise ValueError("min_instances is a required field")
-        super().__init__(**kwargs)
+        super().__init__(min_instances=min_instances, **kwargs)
 
     @classmethod
     def from_json(cls, json_decamelized):

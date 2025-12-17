@@ -41,14 +41,17 @@ class Transformer(DeployableComponent):
         if resources.num_instances is None:
             resources.num_instances = self._get_default_num_instances()
 
-        self._scaling_configuration = util.get_obj_from_json(
+        self._scaling_configuration: TransformerScalingConfig = util.get_obj_from_json(
             scaling_configuration, TransformerScalingConfig
         ) or TransformerScalingConfig.get_default_scaling_configuration(
             serving_tool=PREDICTOR.SERVING_TOOL_KSERVE,
             min_instances=resources.num_instances if resources is not None else None,
+            component_type="transformer",
         )
 
-        super().__init__(script_file, resources, scaling_configuration)
+        super().__init__(
+            script_file, resources, scaling_configuration=self._scaling_configuration
+        )
 
     def describe(self):
         """Print a JSON description of the transformer."""
@@ -81,16 +84,17 @@ class Transformer(DeployableComponent):
 
     @classmethod
     def from_json(cls, json_decamelized):
-        sf, rc = cls.extract_fields_from_json(json_decamelized)
-        return Transformer(sf, rc) if sf is not None else None
+        sf, rc, sc = cls.extract_fields_from_json(json_decamelized)
+        return Transformer(sf, rc, scaling_configuration=sc) if sf is not None else None
 
     @classmethod
     def extract_fields_from_json(cls, json_decamelized):
         sf = util.extract_field_from_json(
             json_decamelized, ["transformer", "script_file"]
         )
+        sc = TransformerScalingConfig.from_json(json_decamelized)
         rc = TransformerResources.from_json(json_decamelized)
-        return sf, rc
+        return sf, rc, sc
 
     def update_from_response_json(self, json_dict):
         json_decamelized = humps.decamelize(json_dict)

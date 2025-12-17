@@ -236,6 +236,9 @@ class TestPredictor:
             transformer={
                 "script_file": p_json["transformer"],
                 "resources": copy.deepcopy(p_json["transformer_resources"]),
+                "scaling_configuration": copy.deepcopy(
+                    p_json["transformer_scaling_config"]
+                ),
             },
             inference_logger={
                 "mode": p_json["inference_logging"],
