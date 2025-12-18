@@ -70,6 +70,7 @@ from hsfs import (
 )
 from hsfs import storage_connector as sc
 from hsfs.constructor import query
+from hsfs.constructor.fs_query import FsQuery
 from hsfs.core import (
     dataset_api,
     delta_engine,
@@ -283,13 +284,13 @@ class Engine:
 
     def _sql_offline(
         self,
-        sql_query: str,
+        sql_query: str | FsQuery,
         dataframe_type: str,
         schema: Optional[List["feature.Feature"]] = None,
         arrow_flight_config: Optional[Dict[str, Any]] = None,
     ) -> Union[pd.DataFrame, pl.DataFrame]:
         self._validate_dataframe_type(dataframe_type)
-        if isinstance(sql_query, dict) and "query_string" in sql_query:
+        if isinstance(sql_query, FsQuery):
             from hsfs.core import arrow_flight_client
 
             result_df = util.run_with_loading_animation(
