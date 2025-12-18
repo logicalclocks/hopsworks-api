@@ -259,7 +259,7 @@ class ComponentScalingConfig(ABC):
 
     @property
     def target(self):
-        """Target value for the selected scaling metric. For RPS, this is requests per second. For CONCURRENCY, this is concurrent number of requests."""
+        """Target value for the selected scaling metric that the autoscaler should try to maintain during the stable window. For RPS, this is requests per second. For CONCURRENCY, this is concurrent number of requests."""
         return self._target
 
     @target.setter
@@ -295,7 +295,7 @@ class ComponentScalingConfig(ABC):
 
     @property
     def panic_threshold_percentage(self):
-        """The percentage of the scale metric threshold that, when exceeded during the panic window, will trigger a scale-up event. Min is 1. Max is 100. Default is 200."""
+        """The percentage of the scale metric threshold that, when exceeded during the panic window, will trigger a scale-up event. Min is 1. Max is 200. Default is 200."""
         return self._panic_threshold_percentage
 
     @panic_threshold_percentage.setter
