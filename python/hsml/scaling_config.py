@@ -58,7 +58,19 @@ class ComponentScalingConfig(ABC):
         scale_to_zero_retention_seconds: int | None = None,
         **kwargs,
     ):
+        """Initialize a ComponentScalingConfig instance.
 
+        Args:
+            min_instances (int): Minimum number of instances to scale to.
+            max_instances (int | None, optional): Maximum number of instances to scale to.
+            scale_metric (ScaleMetric | str | Default | None, optional): Metric to use for scaling.
+            target (int | None, optional): Target value for the selected scaling metric.
+            panic_window_percentage (float | None, optional): Percentage of the stable window to use as the panic window.
+            panic_threshold_percentage (float | None, optional): Percentage of the scale metric threshold to trigger scaling.
+            stable_window_seconds (int | None, optional): Interval in seconds for calculating the average metric.
+            scale_to_zero_retention_seconds (int | None, optional): Time in seconds to retain the last instance before scaling to zero.
+            **kwargs: Additional keyword arguments for configuration.
+        """
         scale_metric = scale_metric or kwargs.get("scale_metric")
         if scale_metric:
             if isinstance(scale_metric, str):
@@ -152,7 +164,6 @@ class ComponentScalingConfig(ABC):
             kwargs["scale_to_zero_retention_seconds"] = (
                 SCALING_CONFIG.DEFAULT_SCALE_TO_ZERO_RETENTION_SECONDS
             )
-        print("kwargs:", kwargs)
         if component_type == "predictor":
             return PredictorScalingConfig(**kwargs)
         return TransformerScalingConfig(**kwargs)
@@ -161,7 +172,6 @@ class ComponentScalingConfig(ABC):
     def extract_fields_from_json(cls, json_decamelized):
         kwargs = {}
 
-        print("json_decamelized in extract_fields_from_json:", json_decamelized)
         if cls.SCALING_CONFIG_KEY in json_decamelized:
             json_decamelized = json_decamelized[cls.SCALING_CONFIG_KEY]
         elif "scaling_configuration" in json_decamelized:
@@ -202,22 +212,24 @@ class ComponentScalingConfig(ABC):
 
     def to_json(self):
         json = {
-            "minInstances": self._min_instances,
+            "min_instances": self._min_instances,
         }
         if self._scale_metric is not None:
-            json["scaleMetric"] = str(self._scale_metric)
+            json["scale_metric"] = str(self._scale_metric)
         if self._target is not None:
             json["target"] = self._target
         if self._max_instances is not None:
-            json["maxInstances"] = self._max_instances
+            json["max_instances"] = self._max_instances
         if self._panic_window_percentage is not None:
-            json["panicWindowPercentage"] = self._panic_window_percentage
+            json["panic_window_percentage"] = self._panic_window_percentage
         if self._panic_threshold_percentage is not None:
-            json["panicThresholdPercentage"] = self._panic_threshold_percentage
+            json["panic_threshold_percentage"] = self._panic_threshold_percentage
         if self._stable_window_seconds is not None:
-            json["stableWindowSeconds"] = self._stable_window_seconds
+            json["stable_window_seconds"] = self._stable_window_seconds
         if self._scale_to_zero_retention_seconds is not None:
-            json["scaleToZeroRetentionSeconds"] = self._scale_to_zero_retention_seconds
+            json["scale_to_zero_retention_seconds"] = (
+                self._scale_to_zero_retention_seconds
+            )
         return json
 
     @classmethod
@@ -318,6 +330,16 @@ class PredictorScalingConfig(ComponentScalingConfig):
     SCALING_CONFIG_KEY = "predictor_scaling_config"
 
     def __init__(self, **kwargs):
+        """Initialize a PredictorScalingConfig instance.
+
+        Args:
+            **kwargs: Keyword arguments for the predictor scaling configuration.
+                - min_instances (int): Minimum number of instances to scale to (required).
+                - Other arguments are passed to the parent class.
+
+        Raises:
+            ValueError: If `min_instances` is not provided.
+        """
         min_instances = kwargs.pop("min_instances", None)
         if min_instances is None:
             raise ValueError("min_instances is a required field")
@@ -341,6 +363,16 @@ class TransformerScalingConfig(ComponentScalingConfig):
     SCALING_CONFIG_KEY = "transformer_scaling_config"
 
     def __init__(self, **kwargs):
+        """Initialize a TransformerScalingConfig instance.
+
+        Args:
+            **kwargs: Keyword arguments for the transformer scaling configuration.
+                - min_instances (int): Minimum number of instances to scale to (required).
+                - Other arguments are passed to the parent class.
+
+        Raises:
+            ValueError: If `min_instances` is not provided.
+        """
         min_instances = kwargs.pop("min_instances", None)
         if min_instances is None:
             raise ValueError("min_instances is a required field")
