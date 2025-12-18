@@ -276,7 +276,7 @@ class Engine:
 
     def _sql_offline(
         self,
-        sql_query: Union[str, FsQuery],
+        sql_query: str | FsQuery,
         dataframe_type: str,
         schema: list[feature.Feature] | None = None,
         arrow_flight_config: dict[str, Any] | None = None,

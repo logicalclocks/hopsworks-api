@@ -711,7 +711,7 @@ class Query:
     def __str__(self) -> str:
         return self._query_constructor_api.construct_query(self)
 
-    def _get_signature(self, fs_query: "FsQuery", asof: bool = False) -> Optional[str]:
+    def _get_signature(self, fs_query: "FsQuery", asof: bool = False) -> str | None:
         if fs_query.pit_query is not None:
             if asof:
                 return fs_query.pit_query_asof_signature

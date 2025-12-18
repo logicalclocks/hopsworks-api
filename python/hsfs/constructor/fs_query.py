@@ -108,11 +108,11 @@ class FsQuery:
         return self._hudi_cached_feature_groups
 
     @property
-    def hqs_payload(self) -> Optional[str]:
+    def hqs_payload(self) -> str | None:
         return self._hqs_payload
 
     @property
-    def hqs_payload_signature(self) -> Optional[str]:
+    def hqs_payload_signature(self) -> str | None:
         return self._hqs_payload_signature
 
     def register_external(
