@@ -23,6 +23,7 @@ from functools import wraps
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_common.core.constants import HAS_PYARROW, pyarrow_not_installed_message
+from retrying import retry
 
 
 if not HAS_PYARROW:
@@ -37,13 +38,12 @@ from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_mes
 from hsfs import feature_group
 from hsfs.core.variable_api import VariableApi
 from hsfs.storage_connector import StorageConnector
-from hsfs.constructor.fs_query import FsQuery
 from pyarrow.flight import FlightServerError
-from retrying import retry
 
 
 if TYPE_CHECKING:
     from hsfs.constructor import query
+    from hsfs.constructor.fs_query import FsQuery
 
 
 if HAS_POLARS:
@@ -467,7 +467,9 @@ class ArrowFlightClient:
         stop_max_attempt_number=3,
         retry_on_exception=_should_retry,
     )
-    def _get_dataset(self, descriptor, timeout=None, headers=None, dataframe_type="pandas"):
+    def _get_dataset(
+        self, descriptor, timeout=None, headers=None, dataframe_type="pandas"
+    ):
         if timeout is None:
             timeout = self.timeout
         info = self.get_flight_info(descriptor)
@@ -476,9 +478,7 @@ class ArrowFlightClient:
         if headers is None:
             headers = self._certificates_headers()
 
-        options = pyarrow.flight.FlightCallOptions(
-            timeout=timeout, headers=headers
-        )
+        options = pyarrow.flight.FlightCallOptions(timeout=timeout, headers=headers)
 
         reader = self._connection.do_get(info.endpoints[0].ticket, options)
         _logger.debug("Dataset fetched. Converting to dataframe %s.", dataframe_type)
@@ -500,7 +500,14 @@ class ArrowFlightClient:
                 if arrow_flight_config
                 else self.timeout
             ),
-            headers=[(b'hopsworks-signature', query_object.hqs_payload_signature.encode('ascii'))] if query_object.hqs_payload_signature else None,
+            headers=[
+                (
+                    b"hopsworks-signature",
+                    query_object.hqs_payload_signature.encode("ascii"),
+                )
+            ]
+            if query_object.hqs_payload_signature
+            else None,
             dataframe_type=dataframe_type,
         )
 
@@ -598,6 +605,7 @@ class ArrowFlightClient:
     def enabled_on_cluster(self) -> bool:
         """Whether the client is enabled on the cluster."""
         return self._enabled_on_cluster
+
 
 def supports(featuregroups):
     if len(featuregroups) > sum(
