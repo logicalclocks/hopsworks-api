@@ -50,8 +50,7 @@ class TestArrowFlightClient:
     def _arrange_featuregroup_mocks(self, backend_fixtures):
         json_fg = backend_fixtures["feature_group"]["get_stream_list"]["response"]
         fg_list = feature_group.FeatureGroup.from_response_json(json_fg)
-        fg = fg_list[0]
-        return fg
+        return fg_list[0]
 
     def _arrange_featureview_mocks(self, mocker, backend_fixtures):
         json_fv = backend_fixtures["feature_view"]["get"]["response"]
