@@ -58,6 +58,7 @@ class AuthTools:
             hostname_verification (bool): Enable hostname verification for Hopsworks authentication.
             trust_store_path (str): Path to the trust store for Hopsworks authentication.
             engine (str): Engine to use (default: python).
+            ctx (Context): The MCP context, provided automatically.
 
         Returns:
             Project: The project details or an error message.

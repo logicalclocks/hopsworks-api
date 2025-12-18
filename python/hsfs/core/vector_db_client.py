@@ -17,9 +17,8 @@ from __future__ import annotations
 
 import base64
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any
 
-import hsfs
 from hopsworks_common.client.exceptions import (
     FeatureStoreException,
     VectorDatabaseException,
@@ -27,7 +26,11 @@ from hopsworks_common.client.exceptions import (
 from hsfs.constructor.filter import Filter, Logic
 from hsfs.constructor.join import Join
 from hsfs.core.opensearch import OpenSearchClientSingleton
-from hsfs.feature import Feature
+
+
+if TYPE_CHECKING:
+    import hsfs
+    from hsfs.feature import Feature
 
 
 class VectorDbClient:
@@ -37,11 +40,10 @@ class VectorDbClient:
         Filter.LT: "lt",
         Filter.LE: "lte",
     }
-    _index_result_limit_k = dict()
-    _index_result_limit_n = dict()
+    _index_result_limit_k = {}
+    _index_result_limit_n = {}
 
     def __init__(self, query, serving_keys=None):
-        self._opensearch_client = None
         self._query = query
         self._embedding_features = {}
         self._fg_vdb_col_fg_col_map = {}
@@ -51,14 +53,11 @@ class VectorDbClient:
         self._td_embedding_feature_names = set()
         self._embedding_fg_by_join_index = {}
         self._fg_id_to_vdb_pks = {}
-        self._opensearch_client = None
-
         self._serving_keys = serving_keys
-        self._serving_key_by_serving_index: Dict[int, hsfs.serving_key.ServingKey] = {}
+        self._serving_key_by_serving_index: dict[int, hsfs.serving_key.ServingKey] = {}
         self.init()
 
     def init(self):
-        self._opensearch_client = OpenSearchClientSingleton()
         for fg in self._query.featuregroups:
             if fg.embedding_index:
                 for feat in fg.embedding_index.get_embeddings():
@@ -85,7 +84,6 @@ class VectorDbClient:
                 ]
                 self._fg_col_vdb_col_map[fg.id] = fg_col_vdb_col_map
                 self._fg_embedding_map[fg.id] = fg.embedding_index
-
         # create a join for the left fg so that the dict can be constructed in one loop
         fg_joins = [Join(self._query, None, None, None, None, "")] + self._query.joins
         # join in dex start from 0, 0 means left fg
@@ -115,7 +113,7 @@ class VectorDbClient:
         feature: Feature = None,
         index_name=None,
         k=10,
-        filter: Union[Filter, Logic] = None,
+        filter: Filter | Logic = None,
         options=None,
     ):
         if not feature:
@@ -154,7 +152,10 @@ class VectorDbClient:
         if not index_name:
             index_name = embedding_feature.embedding_index.index_name
 
-        results = self._opensearch_client.search(
+        opensearch_client = OpenSearchClientSingleton(
+            feature_store_id=embedding_feature.feature_group.feature_store_id
+        )
+        results = opensearch_client.search(
             body=query, index=index_name, options=options
         )
 
@@ -170,7 +171,7 @@ class VectorDbClient:
                 try:
                     # It is expected that this request ALWAYS fails because requested k is too large.
                     # The purpose here is to get the max k allowed from the vector database, and cache it.
-                    self._opensearch_client.search(
+                    opensearch_client.search(
                         body=query, index=index_name, options=options
                     )
                 except VectorDatabaseException as e:
@@ -188,7 +189,7 @@ class VectorDbClient:
             query["query"]["bool"]["must"][0]["knn"][col_name]["k"] = min(
                 VectorDbClient._index_result_limit_k.get(index_name, k), 3 * k
             )
-            results = self._opensearch_client.search(
+            results = opensearch_client.search(
                 body=query, index=index_name, options=options
             )
 
@@ -214,7 +215,7 @@ class VectorDbClient:
             feature_value = result.get(feature_name)
             if not feature_value:  # Feature value can be null
                 continue
-            elif feature_type == "date":
+            if feature_type == "date":
                 result[feature_name] = datetime.utcfromtimestamp(
                     feature_value // 10**3
                 ).date()
@@ -246,14 +247,14 @@ class VectorDbClient:
             return []
         if isinstance(filter, Filter):
             return [self._convert_filter(filter, col_prefix)]
-        elif isinstance(filter, Logic):
+        if isinstance(filter, Logic):
             if filter.type == Logic.SINGLE:
                 return self._get_query_filter(
                     filter.get_left_filter_or_logic()
                 ) or self._get_query_filter(
                     filter.get_right_filter_or_logic(), col_prefix
                 )
-            elif filter.type == Logic.AND:
+            if filter.type == Logic.AND:
                 return [
                     {
                         "bool": {
@@ -268,7 +269,7 @@ class VectorDbClient:
                         }
                     }
                 ]
-            elif filter.type == Logic.OR:
+            if filter.type == Logic.OR:
                 return [
                     {
                         "bool": {
@@ -284,8 +285,7 @@ class VectorDbClient:
                         }
                     }
                 ]
-            else:
-                raise FeatureStoreException(f"filter type {filter.type} not defined.")
+            raise FeatureStoreException(f"filter type {filter.type} not defined.")
 
         raise FeatureStoreException("filter should be of type `Filter` or `Logic`")
 
@@ -297,13 +297,13 @@ class VectorDbClient:
             feature_name = filter.feature.name
         if condition == Filter.EQ:
             return {"term": {feature_name: filter.value}}
-        elif condition == filter.NE:
+        if condition == filter.NE:
             return {"bool": {"must_not": [{"term": {feature_name: filter.value}}]}}
-        elif condition == filter.IN:
+        if condition == filter.IN:
             return {"terms": {feature_name: filter.value}}
-        elif condition == filter.LK:
+        if condition == filter.LK:
             return {"wildcard": {feature_name: {"value": "*" + filter.value + "*"}}}
-        elif condition in self._filter_map:
+        if condition in self._filter_map:
             return {
                 "range": {feature_name: {self._filter_map[condition]: filter.value}}
             }
@@ -325,6 +325,11 @@ class VectorDbClient:
             raise FeatureStoreException("Provided fg does not have embedding.")
         if not index_name:
             index_name = self._get_vector_db_index_name(fg_id)
+        opensearch_client = OpenSearchClientSingleton(
+            feature_store_id=self._fg_embedding_map[
+                fg_id
+            ].feature_group.feature_store_id
+        )
         if keys:
             query = {
                 "query": {
@@ -349,7 +354,7 @@ class VectorDbClient:
                 if VectorDbClient._index_result_limit_n.get(index_name) is None:
                     try:
                         query["size"] = 2**31 - 1
-                        self._opensearch_client.search(body=query, index=index_name)
+                        opensearch_client.search(body=query, index=index_name)
                     except VectorDatabaseException as e:
                         if (
                             e.reason
@@ -367,7 +372,7 @@ class VectorDbClient:
                             raise e
                 query["size"] = VectorDbClient._index_result_limit_n.get(index_name)
         query["_source"] = list(self._fg_vdb_col_fg_col_map.get(fg_id).keys())
-        results = self._opensearch_client.search(body=query, index=index_name)
+        results = opensearch_client.search(body=query, index=index_name)
         # https://opensearch.org/docs/latest/search-plugins/knn/approximate-knn/#spaces
         return [
             self._convert_to_pandas_type(
@@ -381,7 +386,7 @@ class VectorDbClient:
 
     @staticmethod
     def read_feature_group(
-        feature_group: "hsfs.feature_group.FeatureGroup", n: int = None
+        feature_group: hsfs.feature_group.FeatureGroup, n: int = None
     ) -> list:
         if feature_group.embedding_index:
             vector_db_client = VectorDbClient(feature_group.select_all())
@@ -396,8 +401,7 @@ class VectorDbClient:
             return [
                 [result[f.name] for f in feature_group.features] for result in results
             ]
-        else:
-            raise FeatureStoreException("Feature group does not have embedding.")
+        raise FeatureStoreException("Feature group does not have embedding.")
 
     def count(self, fg, options=None):
         query = {
@@ -407,7 +411,7 @@ class VectorDbClient:
                 }
             },
         }
-        return self._opensearch_client.count(
+        return OpenSearchClientSingleton(feature_store_id=fg.feature_store_id).count(
             self._get_vector_db_index_name(fg.id), query, options=options
         )
 
@@ -418,8 +422,8 @@ class VectorDbClient:
         return embedding.index_name
 
     def filter_entry_by_join_index(
-        self, entry: Dict[str, Any], join_index: int
-    ) -> Tuple[bool, Dict[str, Any]]:
+        self, entry: dict[str, Any], join_index: int
+    ) -> tuple[bool, dict[str, Any]]:
         fg_entry = {}
         complete = True
         for sk in self.serving_key_by_serving_index[join_index]:
@@ -432,7 +436,7 @@ class VectorDbClient:
         return complete, fg_entry
 
     @property
-    def serving_keys(self) -> Optional[List[hsfs.serving_key.ServingKey]]:
+    def serving_keys(self) -> list[hsfs.serving_key.ServingKey] | None:
         return self._serving_keys
 
     @property
@@ -440,7 +444,7 @@ class VectorDbClient:
         return self._embedding_fg_by_join_index
 
     @property
-    def serving_key_by_serving_index(self) -> Dict[int, hsfs.serving_key.ServingKey]:
+    def serving_key_by_serving_index(self) -> dict[int, hsfs.serving_key.ServingKey]:
         if len(self._serving_key_by_serving_index) > 0:
             return self._serving_key_by_serving_index
 

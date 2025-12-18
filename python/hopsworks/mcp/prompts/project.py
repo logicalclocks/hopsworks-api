@@ -35,8 +35,7 @@ class ProjectPrompts:
         self.mcp.prompt(tags=[TAGS.PROJECT])(self.get_all_projects_request)
 
     def create_project_request(self, name: str = None, description: str = None) -> str:
-        """
-        Generates a user message for creating a new project.
+        """Generates a user message for creating a new project.
 
         Args:
             name: The name of the project
@@ -51,8 +50,7 @@ class ProjectPrompts:
         return f"Create a new project with name: {name} and description: {description}"
 
     def change_project_request(self, name: str = None) -> str:
-        """
-        Generates a user message for changing the current project.
+        """Generates a user message for changing the current project.
 
         Args:
             name: The name of the project to switch to
@@ -66,8 +64,7 @@ class ProjectPrompts:
         return f"Use project: {name}"
 
     def get_project_details_request(self, name: str = None) -> str:
-        """
-        Generates a user message for getting project details.
+        """Generates a user message for getting project details.
 
         Args:
             name: The name of the project
@@ -81,8 +78,7 @@ class ProjectPrompts:
         return f"Get details for project: {name}"
 
     def get_current_project_details_request(self) -> str:
-        """
-        Generates a user message for getting details of the current project.
+        """Generates a user message for getting details of the current project.
 
         Returns:
             str: A user message for getting details of the current project.
@@ -90,8 +86,7 @@ class ProjectPrompts:
         return "Get details of the current project."
 
     def get_all_projects_request(self) -> str:
-        """
-        Generates a user message for getting all projects.
+        """Generates a user message for getting all projects.
 
         Returns:
             str: A user message for getting all projects.

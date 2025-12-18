@@ -20,7 +20,7 @@ import json
 import logging
 import warnings
 from functools import wraps
-from typing import Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 from hopsworks_common.core.constants import HAS_PYARROW, pyarrow_not_installed_message
 
@@ -35,12 +35,14 @@ from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
 from hsfs import feature_group
-from hsfs.constructor import query
-from hsfs.constructor.fs_query import FsQuery
 from hsfs.core.variable_api import VariableApi
 from hsfs.storage_connector import StorageConnector
 from pyarrow.flight import FlightServerError
 from retrying import retry
+
+
+if TYPE_CHECKING:
+    from hsfs.constructor import query
 
 
 if HAS_POLARS:
@@ -103,8 +105,9 @@ def _is_no_data_found_error(exception):
 
 
 def _should_retry_healthcheck(exception):
-    return isinstance(exception, pyarrow._flight.FlightUnavailableError) or isinstance(
-        exception, pyarrow._flight.FlightTimedOutError
+    return isinstance(
+        exception,
+        (pyarrow._flight.FlightUnavailableError, pyarrow._flight.FlightTimedOutError),
     )
 
 
@@ -115,13 +118,14 @@ def _should_retry_certificate_registration(exception):
 
 
 # Avoid unnecessary client init
-def is_data_format_supported(data_format: str, read_options: Optional[Dict[str, Any]]):
-    if data_format not in ArrowFlightClient.SUPPORTED_FORMATS:
+def is_data_format_supported(data_format: str, read_options: dict[str, Any] | None):
+    if (
+        data_format not in ArrowFlightClient.SUPPORTED_FORMATS
+        or read_options
+        and read_options.get("use_spark", False)
+    ):
         return False
-    elif read_options and read_options.get("use_spark", False):
-        return False
-    else:
-        return get_instance()._should_be_used()
+    return get_instance()._should_be_used()
 
 
 def _is_query_supported_rec(query: query.Query):
@@ -155,13 +159,14 @@ def _is_query_supported_rec(query: query.Query):
     return supported
 
 
-def is_query_supported(query: query.Query, read_options: Optional[Dict[str, Any]]):
-    if read_options and read_options.get("use_spark", False):
+def is_query_supported(query: query.Query, read_options: dict[str, Any] | None):
+    if (
+        read_options
+        and read_options.get("use_spark", False)
+        or not _is_query_supported_rec(query)
+    ):
         return False
-    elif not _is_query_supported_rec(query):
-        return False
-    else:
-        return get_instance()._should_be_used()
+    return get_instance()._should_be_used()
 
 
 class ArrowFlightClient:
@@ -191,13 +196,12 @@ class ArrowFlightClient:
         )
 
         self._enabled_on_cluster: bool = False
-        self._host_url: Optional[str] = None
-        self._connection: Optional[pyarrow.flight.FlightClient] = None
+        self._host_url: str | None = None
+        self._connection: pyarrow.flight.FlightClient | None = None
         if disabled_for_session:
             self._disable_for_session(on_purpose=True)
             return
-        else:
-            self._disabled_for_session: bool = False
+        self._disabled_for_session: bool = False
 
         self._client = client.get_instance()
         self._variable_api: VariableApi = VariableApi()
@@ -205,7 +209,7 @@ class ArrowFlightClient:
             self._variable_api.get_service_discovery_domain()
         )
 
-        self._certificates_json: Optional[str] = None
+        self._certificates_json: str | None = None
 
         try:
             self._check_cluster_service_enabled()
@@ -261,7 +265,7 @@ class ArrowFlightClient:
             _logger.exception(e)
             self._enabled_on_cluster = False
 
-    def _retrieve_host_url(self) -> Optional[str]:
+    def _retrieve_host_url(self) -> str | None:
         _logger.debug("Retrieving host URL.")
         if client._is_external():
             external_domain = self._variable_api.get_loadbalancer_external_domain(
@@ -281,7 +285,7 @@ class ArrowFlightClient:
         return host_url
 
     def _disable_for_session(
-        self, message: Optional[str] = None, on_purpose: bool = False
+        self, message: str | None = None, on_purpose: bool = False
     ) -> None:
         self._disabled_for_session = True
         if on_purpose:
@@ -344,6 +348,7 @@ class ArrowFlightClient:
             version = res.body.to_pybytes()
             _logger.debug(f"The HQS server is of version {version}.")
             return version
+        return None
 
     def _should_be_used(self):
         if not self._enabled_on_cluster:
@@ -365,9 +370,9 @@ class ArrowFlightClient:
         _logger.debug("Extracting client certificates.")
         with open(self._client._get_ca_chain_path(), "rb") as f:
             tls_root_certs = f.read()
-        with open(self._client._get_client_cert_path(), "r") as f:
+        with open(self._client._get_client_cert_path()) as f:
             cert_chain = f.read()
-        with open(self._client._get_client_key_path(), "r") as f:
+        with open(self._client._get_client_key_path()) as f:
             private_key = f.read()
         return tls_root_certs, cert_chain, private_key
 
@@ -426,18 +431,17 @@ class ArrowFlightClient:
                     ):
                         instance._register_certificates()
                         return func(instance, *args, **kw)
-                    elif _is_feature_query_service_queue_full_error(e):
+                    if _is_feature_query_service_queue_full_error(e):
                         raise FeatureStoreException(
                             "Hopsworks Query Service is busy right now. Please try again later."
                         ) from e
-                    elif (
+                    if (
                         _is_no_commits_found_error(e)
                         or _is_no_metadata_found_error(e)
                         or _is_no_data_found_error(e)
                     ):
                         raise FeatureStoreException(str(e).split("Details:")[0]) from e
-                    else:
-                        raise FeatureStoreException(user_message) from e
+                    raise FeatureStoreException(user_message) from e
 
             return afs_error_handler_wrapper
 
@@ -481,8 +485,7 @@ class ArrowFlightClient:
             if not HAS_POLARS:
                 raise ModuleNotFoundError(polars_not_installed_message)
             return pl.from_arrow(reader.read_all())
-        else:
-            return reader.read_pandas()
+        return reader.read_pandas()
 
     # retry is handled in get_dataset
     @_handle_afs_exception(user_message=READ_ERROR)
@@ -556,30 +559,28 @@ class ArrowFlightClient:
             print("Error calling action:", e)
 
     def is_enabled(self):
-        if self._disabled_for_session or not self._enabled_on_cluster:
-            return False
-        return True
+        return not (self._disabled_for_session or not self._enabled_on_cluster)
 
     @property
-    def timeout(self) -> Union[int, float]:
+    def timeout(self) -> int | float:
         """Timeout in seconds for Hopsworks Query Service do_get or do_action operations, not including the healthcheck."""
         return self._timeout
 
     @timeout.setter
-    def timeout(self, value: Union[int, float]) -> None:
+    def timeout(self, value: float) -> None:
         self._timeout = value
 
     @property
-    def health_check_timeout(self) -> Union[int, float]:
+    def health_check_timeout(self) -> int | float:
         """Timeout in seconds for the healthcheck operation."""
         return self._health_check_timeout
 
     @health_check_timeout.setter
-    def health_check_timeout(self, value: Union[int, float]) -> None:
+    def health_check_timeout(self, value: float) -> None:
         self._health_check_timeout = value
 
     @property
-    def host_url(self) -> Optional[str]:
+    def host_url(self) -> str | None:
         """URL of Hopsworks Query Service."""
         return self._host_url
 
@@ -598,6 +599,210 @@ class ArrowFlightClient:
         return self._enabled_on_cluster
 
 
+<<<<<<< HEAD
+=======
+def _serialize_featuregroup_connector(fg, query, on_demand_fg_aliases):
+    # Add feature_group_id to build cache key in flyingduck
+    connector = {"feature_group_id": fg.id}
+    if isinstance(fg, feature_group.ExternalFeatureGroup):
+        connector["time_travel_type"] = None
+        connector["type"] = fg.storage_connector.type
+        connector["options"] = _get_connector_options(fg)
+        connector["query"] = fg.data_source.query
+        for on_demand_fg_alias in on_demand_fg_aliases:
+            # backend attaches dynamic query to on_demand_fg_alias.on_demand_feature_group.query if any
+            if on_demand_fg_alias.on_demand_feature_group.name == fg.name:
+                connector["query"] = (
+                    on_demand_fg_alias.on_demand_feature_group.data_source.query
+                    if fg.data_source.query is None
+                    else fg.data_source.query
+                )
+                connector["alias"] = on_demand_fg_alias.alias
+                break
+        connector["query"] = (
+            connector["query"][:-1]
+            if connector["query"].endswith(";")
+            else connector["query"]
+        )
+        if query._left_feature_group == fg:
+            connector["filters"] = _serialize_filter_expression(
+                query._filter, query, True
+            )
+        else:
+            for join_obj in query._joins:
+                if join_obj._query._left_feature_group == fg:
+                    connector["filters"] = _serialize_filter_expression(
+                        join_obj._query._filter, join_obj._query, True
+                    )
+    elif fg.time_travel_format == "DELTA":
+        connector["time_travel_type"] = "delta"
+        if fg.storage_connector:
+            connector["type"] = fg.storage_connector.type
+            connector["options"] = _get_connector_options(fg)
+        else:
+            connector["type"] = ""
+            connector["options"] = {}
+        connector["query"] = ""
+        if query._left_feature_group == fg:
+            connector["filters"] = _serialize_filter_expression(
+                query._filter, query, True
+            )
+        else:
+            for join_obj in query._joins:
+                if join_obj._query._left_feature_group == fg:
+                    connector["filters"] = _serialize_filter_expression(
+                        join_obj._query._filter, join_obj._query, True
+                    )
+    else:
+        connector["time_travel_type"] = "hudi"
+    return connector
+
+
+def _get_connector_options(fg):
+    # same as in the backend (maybe move to common?)
+    option_map = {}
+
+    datasource = fg.data_source
+    connector = fg.storage_connector
+    connector_type = connector.type
+
+    if connector_type == StorageConnector.SNOWFLAKE:
+        option_map = {
+            "user": connector.user,
+            "account": connector.account,
+            "database": datasource.database,
+            "schema": datasource.group,
+        }
+        if connector.password:
+            option_map["password"] = connector.password
+        elif connector.token:
+            option_map["authenticator"] = "oauth"
+            option_map["token"] = connector.token
+        else:
+            option_map["snowflake_private_key"] = connector.private_key
+            option_map["passphrase"] = connector.passphrase
+
+        if connector.warehouse:
+            option_map["warehouse"] = connector.warehouse
+        if connector.application:
+            option_map["application"] = connector.application
+    elif connector_type == StorageConnector.BIGQUERY:
+        option_map = {
+            "key_path": connector.key_path,
+            "project_id": datasource.database,
+            "dataset_id": datasource.group,
+            "parent_project": connector.parent_project,
+        }
+    elif connector_type == StorageConnector.REDSHIFT:
+        option_map = {
+            "host": connector.cluster_identifier + "." + connector.database_endpoint,
+            "port": connector.database_port,
+            "database": datasource.database,
+        }
+        if connector.database_user_name:
+            option_map["user"] = connector.database_user_name
+        if connector.database_password:
+            option_map["password"] = connector.database_password
+        if connector.iam_role:
+            option_map["iam_role"] = connector.iam_role
+            option_map["iam"] = "True"
+    elif connector_type == StorageConnector.RDS:
+        option_map = {
+            "host": connector.host,
+            "port": connector.port,
+            "database": datasource.database,
+        }
+        if connector.user:
+            option_map["user"] = connector.user
+        if connector.password:
+            option_map["password"] = connector.password
+    elif connector_type == StorageConnector.S3:
+        option_map = {
+            "access_key": connector.access_key,
+            "secret_key": connector.secret_key,
+            "session_token": connector.session_token,
+            "region": connector.region,
+        }
+        if connector.arguments.get("fs.s3a.endpoint"):
+            option_map["endpoint"] = connector.arguments.get("fs.s3a.endpoint")
+        option_map["path"] = fg.location
+    elif connector_type == StorageConnector.GCS:
+        option_map = {
+            "key_path": connector.key_path,
+            "path": fg.location,
+        }
+    else:
+        raise FeatureStoreException(
+            f"Arrow Flight doesn't support connector of type: {connector_type}"
+        )
+
+    return option_map
+
+
+def _serialize_featuregroup_name(fg):
+    return f"{fg._get_project_name()}.{fg.name}_{fg.version}"
+
+
+def _serialize_filter_expression(filters, query, short_name=False):
+    if filters is None:
+        return None
+    return _serialize_logic(filters, query, short_name)
+
+
+def _serialize_logic(logic, query, short_name):
+    return {
+        "type": "logic",
+        "logic_type": logic._type,
+        "left_filter": _serialize_filter_or_logic(
+            logic._left_f, logic._left_l, query, short_name
+        ),
+        "right_filter": _serialize_filter_or_logic(
+            logic._right_f, logic._right_l, query, short_name
+        ),
+    }
+
+
+def _serialize_filter_or_logic(filter, logic, query, short_name):
+    if filter:
+        return _serialize_filter(filter, query, short_name)
+    if logic:
+        return _serialize_logic(logic, query, short_name)
+    return None
+
+
+def _serialize_filter(filter, query, short_name):
+    if isinstance(filter._value, datetime.datetime):
+        filter_value = filter._value.strftime("%Y-%m-%d %H:%M:%S")
+    else:
+        filter_value = filter._value
+
+    return {
+        "type": "filter",
+        "condition": filter._condition,
+        "value": filter_value,
+        "feature": _serialize_feature_name(filter._feature, query, short_name),
+    }
+
+
+def _serialize_feature_name(feature, query, short_name):
+    if short_name:
+        return feature.name
+    fg = query._get_featuregroup_by_feature(feature)
+    fg_name = _serialize_featuregroup_name(fg)
+    return f"{fg_name}.{feature.name}"
+
+
+def _translate_to_duckdb(query, query_str):
+    translated = query_str
+    for fg in query.featuregroups:
+        translated = translated.replace(
+            f"`{fg.feature_store_name}`.`",
+            f"`{fg._get_project_name()}.",
+        )
+    return translated.replace("`", '"')
+
+
+>>>>>>> upstream/main
 def supports(featuregroups):
     if len(featuregroups) > sum(
         1

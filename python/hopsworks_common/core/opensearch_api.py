@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from furl import furl
 from hopsworks_common import client, usage
@@ -42,6 +42,7 @@ class OPENSEARCH_CONFIG:
     VERIFY_CERTS = "verify_certs"
     SSL_ASSERT_HOSTNAME = "ssl_assert_hostname"
     CA_CERTS = "ca_certs"
+    HTTP_AUTH = "http_auth"
 
 
 class OpenSearchApi:
@@ -54,36 +55,32 @@ class OpenSearchApi:
                 "opensearch"
             )
             return f"https://{external_domain}:9200"
-        else:
-            service_discovery_domain = self._variable_api.get_service_discovery_domain()
-            if service_discovery_domain == "":
-                raise FeatureStoreException(
-                    "Client could not locate service_discovery_domain "
-                    "in Hopsworks cluster configuration or variable is empty."
-                )
-            return f"https://rest.elastic.service.{service_discovery_domain}:9200"
+        service_discovery_domain = self._variable_api.get_service_discovery_domain()
+        if service_discovery_domain == "":
+            raise FeatureStoreException(
+                "Client could not locate service_discovery_domain "
+                "in Hopsworks cluster configuration or variable is empty."
+            )
+        return f"https://rest.elastic.service.{service_discovery_domain}:9200"
 
     @usage.method_logger
     def get_project_index(self, index: str) -> str:
-        """
-        This helper method prefixes the supplied index name with the project name to avoid index name clashes.
+        """This helper method prefixes the supplied index name with the project name to avoid index name clashes.
 
-        # Arguments
-            index: the opensearch index to interact with.
+        Parameters:
+            index: The opensearch index to interact with.
 
-        # Returns
-            `str`: A valid opensearch index name.
+        Returns:
+            A valid opensearch index name.
         """
         _client = client.get_instance()
         return (_client._project_name + "_" + index).lower()
 
     @usage.method_logger
-    def get_default_py_config(self) -> Dict[str, Any]:
-        """
-        Get the required opensearch configuration to setup a connection using the *opensearch-py* library.
+    def get_default_py_config(self, feature_store_id: int = None) -> dict[str, Any]:
+        """Get the required opensearch configuration to setup a connection using the *opensearch-py* library.
 
         ```python
-
         import hopsworks
         from opensearchpy import OpenSearch
 
@@ -92,18 +89,17 @@ class OpenSearchApi:
         opensearch_api = project.get_opensearch_api()
 
         client = OpenSearch(**opensearch_api.get_default_py_config())
-
         ```
 
-        # Returns
-            `dict`: A dictionary with required configuration.
+        Returns:
+            A dictionary with required configuration.
         """
         url = furl(self._get_opensearch_url())
         return {
             OPENSEARCH_CONFIG.HOSTS: [{"host": url.host, "port": url.port}],
             OPENSEARCH_CONFIG.HTTP_COMPRESS: False,
             OPENSEARCH_CONFIG.HEADERS: {
-                "Authorization": self._get_authorization_token()
+                "Authorization": self._get_authorization_token(feature_store_id)
             },
             OPENSEARCH_CONFIG.USE_SSL: True,
             OPENSEARCH_CONFIG.VERIFY_CERTS: True,
@@ -111,16 +107,16 @@ class OpenSearchApi:
             OPENSEARCH_CONFIG.CA_CERTS: client.get_instance()._get_ca_chain_path(),
         }
 
-    def _get_authorization_token(self) -> str:
+    def _get_authorization_token(self, feature_store_id: int = None) -> str:
         """Get opensearch jwt token.
 
-        # Returns
+        Returns:
             `str`: OpenSearch jwt token
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
-
         _client = client.get_instance()
+        # Do not use feature store id for now since the backend is not yet updated to use it.
         path_params = ["elastic", "jwt", _client._project_id]
 
         headers = {"content-type": "application/json"}

@@ -17,6 +17,7 @@
 import asyncio
 import os
 from datetime import date, datetime
+from unittest.mock import patch
 from urllib.parse import ParseResult
 
 import hopsworks_common.util
@@ -40,7 +41,6 @@ from hsml.tensorflow.model import Model as TensorflowModel
 from hsml.tensorflow.predictor import Predictor as TFPredictor
 from hsml.torch.model import Model as TorchModel
 from hsml.torch.predictor import Predictor as TorchPredictor
-from mock import patch
 
 
 if HAS_SQLALCHEMY and HAS_AIOMYSQL:
@@ -545,9 +545,7 @@ class TestUtil:
         with pytest.raises(ValueError) as e_info:
             util.get_predictor_for_model(NonBaseModel())
 
-        assert "an instance of {} class is expected".format(BaseModel) in str(
-            e_info.value
-        )
+        assert f"an instance of {BaseModel} class is expected" in str(e_info.value)
         pred_base.assert_not_called()
         pred_python.assert_not_called()
         pred_sklearn.assert_not_called()

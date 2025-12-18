@@ -16,10 +16,10 @@
 
 
 class Default:
-    """An object of this class is used in place of optional arguments in
-    cases when passing None should result in an exception or other behaviour.
-    Overwritting None with a default value is undesirable in some cases,
-    and this class solves the problem."""
+    """An object of this class is used in place of optional arguments in cases when passing `None` should result in an exception or other behaviour.
+
+    Overwritting `None` with a default value is undesirable in some cases, and this class solves the problem.
+    """
 
     def __repr__(self):
         return "DEFAULT"
@@ -71,17 +71,13 @@ class OPENSEARCH_CONFIG:
 
 
 class FEATURES:
-    """
-    Class that stores constants about a feature.
-    """
+    """Class that stores constants about a feature."""
 
     MAX_LENGTH_NAME = 63
 
 
 class KAFKA_SSL_CONFIG:
-    """
-    Kafka SSL constant strings for configuration
-    """
+    """Kafka SSL constant strings for configuration."""
 
     SSL = "SSL"
     SSL_TRUSTSTORE_LOCATION_CONFIG = "ssl.truststore.location"
@@ -101,9 +97,7 @@ class KAFKA_SSL_CONFIG:
 
 
 class KAFKA_PRODUCER_CONFIG:
-    """
-    Constant strings for Kafka producers
-    """
+    """Constant strings for Kafka producers."""
 
     BOOTSTRAP_SERVERS_CONFIG = "bootstrap.servers"
     KEY_SERIALIZER_CLASS_CONFIG = "key.serializer"
@@ -111,9 +105,7 @@ class KAFKA_PRODUCER_CONFIG:
 
 
 class KAFKA_CONSUMER_CONFIG:
-    """
-    Constant strings for Kafka consumers
-    """
+    """Constant strings for Kafka consumers."""
 
     GROUP_ID_CONFIG = "group.id"
     CLIENT_ID_CONFIG = "client.id"
@@ -123,24 +115,17 @@ class KAFKA_CONSUMER_CONFIG:
     KEY_DESERIALIZER_CLASS_CONFIG = "key.deserializer"
     VALUE_DESERIALIZER_CLASS_CONFIG = "value.deserializer"
     AUTO_OFFSET_RESET_CONFIG = "auto.offset.reset"
-    ENABLE_AUTO_COMMIT_CONFIG = "enable.auto.commit"
-    KEY_DESERIALIZER_CLASS_CONFIG = "key.deserializer"
-    VALUE_DESERIALIZER_CLASS_CONFIG = "value.deserializer"
 
 
 class ENV_VARS:
-    """
-    Constant strings for environment variables
-    """
+    """Constant strings for environment variables."""
 
     KAFKA_BROKERS = "KAFKA_BROKERS"
     ELASTIC_ENDPOINT_ENV_VAR = "ELASTIC_ENDPOINT"
 
 
 class SSL_CONFIG:
-    """
-    General SSL configuration constants for Hops-TLS
-    """
+    """General SSL configuration constants for Hops-TLS."""
 
     KEYSTORE_SUFFIX = "__kstore.jks"
     TRUSTSTORE_SUFFIX = "__tstore.jks"

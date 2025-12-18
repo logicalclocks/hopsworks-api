@@ -19,7 +19,7 @@ import asyncio
 import json
 import logging
 import re
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any
 
 from hopsworks_common.core import variable_api
 from hopsworks_common.util import AsyncTask, AsyncTaskThread
@@ -33,14 +33,15 @@ from hsfs.core.constants import HAS_AIOMYSQL, HAS_SQLALCHEMY
 
 
 if TYPE_CHECKING:
+    import aiomysql
+    import aiomysql.utils
     from hsfs import feature_view, storage_connector, training_dataset
     from hsfs.constructor.serving_prepared_statement import ServingPreparedStatement
     from hsfs.serving_key import ServingKey
 
 
 if HAS_AIOMYSQL:
-    import aiomysql
-    import aiomysql.utils
+    pass
 
 if HAS_SQLALCHEMY:
     from sqlalchemy import bindparam, exc, sql, text
@@ -63,23 +64,23 @@ class OnlineStoreSqlClient:
     def __init__(
         self,
         feature_store_id: id,
-        skip_fg_ids: Optional[Set[int]],
+        skip_fg_ids: set[int] | None,
         external: bool,
-        serving_keys: Optional[Set[ServingKey]] = None,
-        connection_options: Optional[Dict[str, Any]] = None,
+        serving_keys: set[ServingKey] | None = None,
+        connection_options: dict[str, Any] | None = None,
     ):
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Initialising Online Store Sql Client")
         self._feature_store_id = feature_store_id
-        self._skip_fg_ids: Set[int] = skip_fg_ids or set()
+        self._skip_fg_ids: set[int] = skip_fg_ids or set()
         self._external = external
 
         self._prefix_by_serving_index = None
         self._pkname_by_serving_index = None
-        self._serving_key_by_serving_index: Dict[str, ServingKey] = {}
-        self._serving_keys: Set[ServingKey] = set(serving_keys or [])
+        self._serving_key_by_serving_index: dict[str, ServingKey] = {}
+        self._serving_keys: set[ServingKey] = set(serving_keys or [])
 
-        self._prepared_statements: Dict[str, List[ServingPreparedStatement]] = {}
+        self._prepared_statements: dict[str, list[ServingPreparedStatement]] = {}
         self._parametrised_prepared_statements = {}
         self._prepared_statement_engine = None
 
@@ -102,14 +103,13 @@ class OnlineStoreSqlClient:
 
     def fetch_prepared_statements(
         self,
-        entity: Union[feature_view.FeatureView, training_dataset.TrainingDataset],
+        entity: feature_view.FeatureView | training_dataset.TrainingDataset,
         inference_helper_columns: bool,
         with_logging_meta_data: bool = False,
     ) -> None:
-        """
-        Fetch prepared statement for feature vector retrival from the backend.
+        """Fetch prepared statement for feature vector retrival from the backend.
 
-        # Arguments:
+        Parameters:
             entity : FeatureView or TrainingDataset object to fetch prepared statements for.
             inference_helper_columns : Fetch prepared statements for inference helper columns.
             with_logging_meta_data : Fetch prepared statements to include logging meta data.
@@ -170,7 +170,7 @@ class OnlineStoreSqlClient:
 
     def init_prepared_statements(
         self,
-        entity: Union[feature_view.FeatureView, training_dataset.TrainingDataset],
+        entity: feature_view.FeatureView | training_dataset.TrainingDataset,
         inference_helper_columns: bool,
         with_logging_meta_data: bool = False,
     ) -> None:
@@ -201,7 +201,7 @@ class OnlineStoreSqlClient:
 
     def init_parametrize_and_serving_utils(
         self,
-        prepared_statements: List[ServingPreparedStatement],
+        prepared_statements: list[ServingPreparedStatement],
     ) -> None:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
@@ -213,12 +213,10 @@ class OnlineStoreSqlClient:
             for statement in prepared_statements
         }
         self._feature_name_order_by_psp = {
-            statement.prepared_statement_index: dict(
-                [
-                    (param.name, param.index)
-                    for param in statement.prepared_statement_parameters
-                ]
-            )
+            statement.prepared_statement_index: {
+                param.name: param.index
+                for param in statement.prepared_statement_parameters
+            }
             for statement in prepared_statements
         }
         if _logger.isEnabledFor(logging.DEBUG):
@@ -245,9 +243,9 @@ class OnlineStoreSqlClient:
 
     def _parametrize_prepared_statements(
         self,
-        prepared_statements: List[ServingPreparedStatement],
+        prepared_statements: list[ServingPreparedStatement],
         batch: bool,
-    ) -> Dict[int, sql.text]:
+    ) -> dict[int, sql.text]:
         prepared_statements_dict = {}
         for prepared_statement in prepared_statements:
             if prepared_statement.feature_group_id in self._skip_fg_ids:
@@ -302,10 +300,9 @@ class OnlineStoreSqlClient:
             self._async_task_thread.start()
 
     def get_single_feature_vector(
-        self, entry: Dict[str, Any], logging_data: bool = False
-    ) -> Dict[str, Any]:
-        """
-        Retrieve single vector with parallel queries using aiomysql engine.
+        self, entry: dict[str, Any], logging_data: bool = False
+    ) -> dict[str, Any]:
+        """Retrieve single vector with parallel queries using aiomysql engine.
 
         If `logging_data` is True, it will use the prepared statement that includes logging metadata.
         i.e. The fetched feature vector will also include inference helper columns.
@@ -318,10 +315,9 @@ class OnlineStoreSqlClient:
         )
 
     def get_batch_feature_vectors(
-        self, entries: List[Dict[str, Any]], logging_data: bool = False
-    ) -> List[Dict[str, Any]]:
-        """
-        Retrieve batch vector with parallel queries using aiomysql engine.
+        self, entries: list[dict[str, Any]], logging_data: bool = False
+    ) -> list[dict[str, Any]]:
+        """Retrieve batch vector with parallel queries using aiomysql engine.
 
         If `logging_data` is True, it will use the prepared statement that includes logging metadata.
         i.e. The fetched feature vector will also include inference helper columns.
@@ -333,26 +329,25 @@ class OnlineStoreSqlClient:
             else self.parametrised_prepared_statements[self.BATCH_LOGGING_VECTOR_KEY],
         )
 
-    def get_inference_helper_vector(self, entry: Dict[str, Any]) -> Dict[str, Any]:
+    def get_inference_helper_vector(self, entry: dict[str, Any]) -> dict[str, Any]:
         """Retrieve single vector with parallel queries using aiomysql engine."""
         return self._single_vector_result(
             entry, self.parametrised_prepared_statements[self.SINGLE_HELPER_KEY]
         )
 
     def get_batch_inference_helper_vectors(
-        self, entries: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+        self, entries: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """Retrieve batch vector with parallel queries using aiomysql engine."""
         return self._batch_vector_results(
             entries, self.parametrised_prepared_statements[self.BATCH_HELPER_KEY]
         )
 
     def _single_vector_result(
-        self, entry: Dict[str, Any], prepared_statement_objects: Dict[int, sql.text]
-    ) -> Dict[str, Any]:
+        self, entry: dict[str, Any], prepared_statement_objects: dict[int, sql.text]
+    ) -> dict[str, Any]:
         """Retrieve single vector with parallel queries using aiomysql engine."""
-
-        if all([isinstance(val, list) for val in entry.values()]):
+        if all(isinstance(val, list) for val in entry.values()):
             raise ValueError(
                 "Entry is expected to be single value per primary key. "
                 "If you have already initialised prepared statements for single vector and now want to retrieve "
@@ -368,9 +363,9 @@ class OnlineStoreSqlClient:
             pk_entry = {}
             next_statement = False
             for sk in self.serving_key_by_serving_index[prepared_statement_index]:
-                if sk.required_serving_key not in entry.keys():
+                if sk.required_serving_key not in entry:
                     # Check if there is any entry matched with feature name.
-                    if sk.feature_name in entry.keys():
+                    if sk.feature_name in entry:
                         pk_entry[sk.feature_name] = entry[sk.feature_name]
                     else:
                         # User did not provide the necessary serving keys, we expect they have
@@ -416,8 +411,8 @@ class OnlineStoreSqlClient:
 
     def _batch_vector_results(
         self,
-        entries: List[Dict[str, Any]],
-        prepared_statement_objects: Dict[int, sql.text],
+        entries: list[dict[str, Any]],
+        prepared_statement_objects: dict[int, sql.text],
     ):
         """Execute prepared statements in parallel using aiomysql engine."""
         if _logger.isEnabledFor(logging.DEBUG):
@@ -586,8 +581,8 @@ class OnlineStoreSqlClient:
 
     @staticmethod
     def _get_result_key(
-        primary_keys: List[str], result_dict: Dict[str, str]
-    ) -> Tuple[str]:
+        primary_keys: list[str], result_dict: dict[str, str]
+    ) -> tuple[str]:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
                 f"Get result key {primary_keys} from result dict {result_dict}"
@@ -599,8 +594,8 @@ class OnlineStoreSqlClient:
 
     @staticmethod
     def _get_result_key_serving_key(
-        serving_keys: List[ServingKey], result_dict: Dict[str, Dict[str, Any]]
-    ) -> Tuple[str]:
+        serving_keys: list[ServingKey], result_dict: dict[str, dict[str, Any]]
+    ) -> tuple[str]:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
                 f"Get result key serving key {serving_keys} from result dict {result_dict}"
@@ -623,7 +618,7 @@ class OnlineStoreSqlClient:
     def get_prepared_statement_labels(
         with_inference_helper_column: bool = False,
         with_logging_meta_data: bool = False,
-    ) -> List[str]:
+    ) -> list[str]:
         if with_inference_helper_column:
             prepared_statements_list = [
                 OnlineStoreSqlClient.SINGLE_VECTOR_KEY,
@@ -644,14 +639,13 @@ class OnlineStoreSqlClient:
         return prepared_statements_list
 
     async def _get_connection_pool(self, default_min_size: int) -> None:
-        connection_pool = await util_sql.create_async_engine(
+        return await util_sql.create_async_engine(
             self._online_connector,
             self._external,
             default_min_size,
             options=self._connection_options,
             hostname=self._hostname,
         )
-        return connection_pool
 
     async def _test_connection(
         self, connection_pool: aiomysql.utils._ConnectionContextManager
@@ -670,7 +664,7 @@ class OnlineStoreSqlClient:
         bind_params,
         connection_pool: aiomysql.utils._ConnectionContextManager,
     ):
-        """Query prepared statement together with bind params using aiomysql connection pool"""
+        """Query prepared statement together with bind params using aiomysql connection pool."""
         # create connection pool
         async with connection_pool.acquire() as conn:
             # Execute the prepared statement
@@ -691,13 +685,11 @@ class OnlineStoreSqlClient:
 
     async def _execute_prep_statements(
         self,
-        prepared_statements: Dict[int, str],
-        entries: Union[List[Dict[str, Any]], Dict[str, Any]],
+        prepared_statements: dict[int, str],
+        entries: list[dict[str, Any]] | dict[str, Any],
         connection_pool: aiomysql.utils._ConnectionContextManager,  # The connection pool required is passed as a parameter from the AsyncTaskThread.
     ):
-        """Iterate over prepared statements to create async tasks
-        and gather all tasks results for a given list of entries."""
-
+        """Iterate over prepared statements to create async tasks and gather all tasks results for a given list of entries."""
         # validate if prepared_statements and entries have the same keys
         if prepared_statements.keys() != entries.keys():
             # iterate over prepared_statements and entries to find the missing key
@@ -744,7 +736,7 @@ class OnlineStoreSqlClient:
         return self._feature_store_id
 
     @property
-    def prepared_statement_engine(self) -> Optional[Any]:
+    def prepared_statement_engine(self) -> Any | None:
         """JDBC connection engine to retrieve connections to online features store from."""
         return self._prepared_statement_engine
 
@@ -755,7 +747,7 @@ class OnlineStoreSqlClient:
     @property
     def prepared_statements(
         self,
-    ) -> Dict[str, List[ServingPreparedStatement]]:
+    ) -> dict[str, list[ServingPreparedStatement]]:
         """Contains up to 4 prepared statements for single and batch vector retrieval, and single or batch inference helpers.
 
         The keys are the labels for the prepared statements, and the values are dictionaries of prepared statements
@@ -766,35 +758,31 @@ class OnlineStoreSqlClient:
     @prepared_statements.setter
     def prepared_statements(
         self,
-        prepared_statements: Dict[str, List[ServingPreparedStatement]],
+        prepared_statements: dict[str, list[ServingPreparedStatement]],
     ) -> None:
         self._prepared_statements = prepared_statements
 
     @property
     def parametrised_prepared_statements(
         self,
-    ) -> Dict[str, Dict[int, sql.text]]:
-        """The dict object of prepared_statements as values and keys as indices of positions in the query for
-        selecting features from feature groups of the training dataset. Used for batch retrieval.
-        """
+    ) -> dict[str, dict[int, sql.text]]:
+        """The dict object of prepared_statements as values and keys as indices of positions in the query for selecting features from feature groups of the training dataset, used for batch retrieval."""
         return self._parametrised_prepared_statements
 
     @parametrised_prepared_statements.setter
     def parametrised_prepared_statements(
         self,
-        parametrised_prepared_statements: Dict[str, Dict[int, sql.text]],
+        parametrised_prepared_statements: dict[str, dict[int, sql.text]],
     ) -> None:
         self._parametrised_prepared_statements = parametrised_prepared_statements
 
     @property
-    def prefix_by_serving_index(self) -> Dict[int, str]:
-        """The dict object of prefixes as values and keys as indices of positions in the query for
-        selecting features from feature groups of the training dataset.
-        """
+    def prefix_by_serving_index(self) -> dict[int, str]:
+        """The dict object of prefixes as values and keys as indices of positions in the query for selecting features from feature groups of the training dataset."""
         return self._prefix_by_serving_index
 
     @prefix_by_serving_index.setter
-    def prefix_by_serving_index(self, prefix_by_serving_index: Dict[int, str]) -> None:
+    def prefix_by_serving_index(self, prefix_by_serving_index: dict[int, str]) -> None:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(f"Setting prefix by serving index {prefix_by_serving_index}.")
         self._prefix_by_serving_index = prefix_by_serving_index
@@ -802,21 +790,17 @@ class OnlineStoreSqlClient:
     @property
     def serving_key_by_serving_index(
         self,
-    ) -> Dict[int, List[ServingKey]]:
-        """The dict object of serving keys as values and keys as indices of positions in the query for
-        selecting features from feature groups of the training dataset.
-        """
+    ) -> dict[int, list[ServingKey]]:
+        """The dict object of serving keys as values and keys as indices of positions in the query for selecting features from feature groups of the training dataset."""
         return self._serving_key_by_serving_index
 
     @property
-    def feature_name_order_by_psp(self) -> Dict[int, Dict[str, int]]:
-        """The dict object of feature names as values and keys as indices of positions in the query for
-        selecting features from feature groups of the training dataset.
-        """
+    def feature_name_order_by_psp(self) -> dict[int, dict[str, int]]:
+        """The dict object of feature names as values and keys as indices of positions in the query for selecting features from feature groups of the training dataset."""
         return self._feature_name_order_by_psp
 
     @property
-    def skip_fg_ids(self) -> Set[int]:
+    def skip_fg_ids(self) -> set[int]:
         """The list of feature group ids to skip when retrieving feature vectors.
 
         The retrieval of Feature values stored in Feature Group with embedding is handled via a separate client
@@ -825,7 +809,7 @@ class OnlineStoreSqlClient:
         return self._skip_fg_ids
 
     @property
-    def serving_keys(self) -> Set[ServingKey]:
+    def serving_keys(self) -> set[ServingKey]:
         if len(self._serving_keys) > 0:
             return self._serving_keys
 
@@ -833,17 +817,16 @@ class OnlineStoreSqlClient:
             raise ValueError(
                 "Prepared statements are not initialized. Please call `init_prepared_statement` method first."
             )
-        else:
-            if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug(
-                    "Build serving keys from prepared statements ignoring prefix to ensure compatibility with older version."
-                )
-            self._serving_keys = util.build_serving_keys_from_prepared_statements(
-                self.prepared_statements[
-                    self.BATCH_VECTOR_KEY
-                ],  # use batch to avoid issue with label_fg
-                ignore_prefix=True,  # if serving_keys are not set it is because the feature view is anterior to 3.3, this ensures compatibility
+        if _logger.isEnabledFor(logging.DEBUG):
+            _logger.debug(
+                "Build serving keys from prepared statements ignoring prefix to ensure compatibility with older version."
             )
+        self._serving_keys = util.build_serving_keys_from_prepared_statements(
+            self.prepared_statements[
+                self.BATCH_VECTOR_KEY
+            ],  # use batch to avoid issue with label_fg
+            ignore_prefix=True,  # if serving_keys are not set it is because the feature view is anterior to 3.3, this ensures compatibility
+        )
         return self._serving_keys
 
     @property
@@ -863,7 +846,7 @@ class OnlineStoreSqlClient:
         return self._hostname
 
     @property
-    def connection_options(self) -> Dict[str, Any]:
+    def connection_options(self) -> dict[str, Any]:
         return self._connection_options
 
     @property

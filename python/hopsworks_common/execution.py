@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import json
-from typing import Optional
 
 import humps
 from hopsworks_common import client, constants, usage, util
@@ -72,12 +71,9 @@ class Execution:
         json_decamelized = humps.decamelize(json_dict)
         if "count" not in json_decamelized:
             return cls(**json_decamelized, job=job)
-        elif json_decamelized["count"] == 0:
+        if json_decamelized["count"] == 0:
             return []
-        else:
-            return [
-                cls(**execution, job=job) for execution in json_decamelized["items"]
-            ]
+        return [cls(**execution, job=job) for execution in json_decamelized["items"]]
 
     def update_from_response_json(self, json_dict):
         json_decamelized = humps.decamelize(json_dict)
@@ -86,17 +82,17 @@ class Execution:
 
     @property
     def id(self):
-        """Id of the execution"""
+        """Id of the execution."""
         return self._id
 
     @property
     def job_name(self):
-        """Name of the job the execution belongs to"""
+        """Name of the job the execution belongs to."""
         return self._job.name
 
     @property
     def job_type(self):
-        """Type of the job the execution belongs to"""
+        """Type of the job the execution belongs to."""
         return self._job.job_type
 
     @property
@@ -117,22 +113,22 @@ class Execution:
 
     @property
     def submission_time(self):
-        """Timestamp when the execution was submitted"""
+        """Timestamp when the execution was submitted."""
         return self._submission_time
 
     @property
     def stdout_path(self):
-        """Path in Hopsworks Filesystem to stdout log file"""
+        """Path in Hopsworks Filesystem to stdout log file."""
         return self._stdout_path
 
     @property
     def stderr_path(self):
-        """Path in Hopsworks Filesystem to stderr log file"""
+        """Path in Hopsworks Filesystem to stderr log file."""
         return self._stderr_path
 
     @property
     def app_id(self):
-        """Application id for the execution"""
+        """Application id for the execution."""
         return self._app_id
 
     @property
@@ -162,12 +158,11 @@ class Execution:
 
     @property
     def success(self):
-        """Boolean to indicate if execution ran successfully or failed
+        """Boolean to indicate if execution ran successfully or failed.
 
-        # Returns
+        Returns:
             `bool`. True if execution ran successfully. False if execution failed or was killed.
         """
-
         is_yarn_job = (
             self.job_type.lower() == "spark"
             or self.job_type.lower() == "pyspark"
@@ -177,77 +172,82 @@ class Execution:
         if not is_yarn_job:
             if self.state in constants.JOBS.ERROR_STATES:
                 return False
-            elif self.state in constants.JOBS.SUCCESS_STATES:
+            if self.state in constants.JOBS.SUCCESS_STATES:
                 return True
         if self.final_status in constants.JOBS.ERROR_STATES:
             return False
-        elif self.final_status in constants.JOBS.SUCCESS_STATES:
+        if self.final_status in constants.JOBS.SUCCESS_STATES:
             return True
         return None
 
-    def download_logs(self, path=None):
-        """Download stdout and stderr logs for the execution
-        Example for downloading and printing the logs
+    def download_logs(self, path: str | None = None) -> tuple[str | None, str | None]:
+        """Download stdout and stderr logs for the execution.
 
-        ```python
+        Example: Downloading and printing the logs
+            ```python
+            # Download logs
+            out_log_path, err_log_path = execution.download_logs()
 
-        # Download logs
-        out_log_path, err_log_path = execution.download_logs()
+            out_fd = open(out_log_path, "r")
+            print(out_fd.read())
 
-        out_fd = open(out_log_path, "r")
-        print(out_fd.read())
+            err_fd = open(err_log_path, "r")
+            print(err_fd.read())
+            ```
 
-        err_fd = open(err_log_path, "r")
-        print(err_fd.read())
+        Parameters:
+            path: path to download the logs.
 
-        ```
-
-        # Arguments
-            path: path to download the logs. must be `str`
-        # Returns
-            `str`. Path to downloaded log for stdout.
-            `str`. Path to downloaded log for stderr.
+        Returns:
+            stdout: Path to downloaded log for stdout.
+            stderr: Path to downloaded log for stderr.
         """
         return self._execution_engine.download_logs(self, path)
 
     @usage.method_logger
     def delete(self):
-        """Delete the execution
-        !!! danger "Potentially dangerous operation"
+        """Delete the execution.
+
+        Danger: Potentially dangerous operation
             This operation deletes the execution.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._execution_api._delete(self._job.name, self.id)
 
     @usage.method_logger
     def stop(self):
-        """Stop the execution
-        !!! danger "Potentially dangerous operation"
+        """Stop the execution.
+
+        Danger: Potentially dangerous operation
             This operation stops the execution.
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._execution_api._stop(self.job_name, self.id)
 
-    def await_termination(self, timeout: Optional[float] = None):
+    def await_termination(self, timeout: float | None = None):
         """Wait until execution terminates.
 
+        Parameters:
+            timeout:
+                The maximum waiting time in seconds.
+                If `None` the waiting time is unbounded.
+                **Note**: the actual waiting time may be bigger by approximately 3 seconds.
 
-        # Arguments
-            timeout: the maximum waiting time in seconds, if `None` the waiting time is unbounded; defaults to `None`. Note: the actual waiting time may be bigger by approximately 3 seconds.
-
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         x = self._execution_engine.wait_until_finished(self._job, self, timeout)
         if x.final_status == "KILLED":
             raise JobExecutionException("The Hopsworks Job was stopped")
-        elif x.final_status == "FAILED":
+        if x.final_status == "FAILED":
             raise JobExecutionException(
                 "The Hopsworks Job failed, use the Hopsworks UI to access the job logs"
             )
-        elif x.final_status == "FRAMEWORK_FAILURE":
+        if x.final_status == "FRAMEWORK_FAILURE":
             raise JobExecutionException(
                 "The Hopsworks Job monitoring failed, could not determine the final status"
             )
@@ -262,7 +262,7 @@ class Execution:
         return f"Execution({self._final_status!r}, {self._state!r}, {self._submission_time!r}, {self._args!r})"
 
     def get_url(self):
-        """Get url to view execution details in Hopsworks UI"""
+        """Get url to view execution details in Hopsworks UI."""
         _client = client.get_instance()
         path = (
             "/p/"

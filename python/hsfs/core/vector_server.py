@@ -26,13 +26,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Dict,
-    List,
     Literal,
-    Optional,
-    Set,
-    Tuple,
-    Union,
 )
 
 import pandas as pd
@@ -47,15 +41,6 @@ from hopsworks_common.core.constants import (
     polars_not_installed_message,
 )
 from hopsworks_common.core.type_systems import create_extended_type
-from hsfs import (
-    feature_view,
-    training_dataset,
-    transformation_function,
-)
-from hsfs import (
-    serving_key as sk_mod,
-)
-from hsfs import training_dataset_feature as tdf_mod
 from hsfs.client import exceptions, online_store_rest_client
 from hsfs.core import (
     online_store_rest_client_engine,
@@ -82,6 +67,15 @@ if HAS_POLARS:
     import polars as pl
 
 if TYPE_CHECKING:
+    from hsfs import (
+        feature_view,
+        training_dataset,
+        transformation_function,
+    )
+    from hsfs import (
+        serving_key as sk_mod,
+    )
+    from hsfs import training_dataset_feature as tdf_mod
     from hsfs.feature_group import FeatureGroup
 
 _logger = logging.getLogger(__name__)
@@ -99,13 +93,13 @@ class VectorServer:
     def __init__(
         self,
         feature_store_id: int,
-        features: Optional[List[tdf_mod.TrainingDatasetFeature]] = None,
-        serving_keys: Optional[List[sk_mod.ServingKey]] = None,
-        skip_fg_ids: Optional[Set[int]] = None,
-        skip_feature_decoding_fg_ids: Optional[Set[int]] = None,
-        feature_store_name: Optional[str] = None,
-        feature_view_name: Optional[str] = None,
-        feature_view_version: Optional[int] = None,
+        features: list[tdf_mod.TrainingDatasetFeature] | None = None,
+        serving_keys: list[sk_mod.ServingKey] | None = None,
+        skip_fg_ids: set[int] | None = None,
+        skip_feature_decoding_fg_ids: set[int] | None = None,
+        feature_store_name: str | None = None,
+        feature_view_name: str | None = None,
+        feature_view_version: int | None = None,
     ):
         self._training_dataset_version = None
         self._feature_store_id = feature_store_id
@@ -150,7 +144,7 @@ class VectorServer:
         self._inference_helper_col_name = [
             feat.name for feat in features if feat.inference_helper_column
         ]
-        self._transformed_feature_vector_col_name: List[str] = None
+        self._transformed_feature_vector_col_name: list[str] = None
         self._skip_fg_ids = skip_fg_ids or set()
         self._serving_keys = serving_keys or []
         self._required_serving_keys = []
@@ -158,26 +152,26 @@ class VectorServer:
         self._transformation_function_engine = (
             tf_engine_mod.TransformationFunctionEngine(feature_store_id)
         )
-        self._model_dependent_transformation_functions: List[
+        self._model_dependent_transformation_functions: list[
             transformation_function.TransformationFunction
         ] = []
-        self._on_demand_transformation_functions: List[
+        self._on_demand_transformation_functions: list[
             transformation_function.TransformationFunction
         ] = []
         self._sql_client = None
 
         self._rest_client_engine = None
-        self._init_rest_client: Optional[bool] = None
-        self._init_sql_client: Optional[bool] = None
-        self._default_client: Optional[Literal["rest", "sql"]] = None
-        self._return_feature_value_handlers: Dict[str, Callable] = {}
-        self._feature_to_handle_if_rest: Optional[Set[str]] = None
-        self._feature_to_handle_if_sql: Optional[Set[str]] = None
-        self._valid_serving_keys: Set[str] = set()
+        self._init_rest_client: bool | None = None
+        self._init_sql_client: bool | None = None
+        self._default_client: Literal["rest", "sql"] | None = None
+        self._return_feature_value_handlers: dict[str, Callable] = {}
+        self._feature_to_handle_if_rest: set[str] | None = None
+        self._feature_to_handle_if_sql: set[str] | None = None
+        self._valid_serving_keys: set[str] = set()
         self._serving_initialized: bool = False
-        self._parent_feature_groups: List[FeatureGroup] = []
-        self.__all_features_on_demand: Optional[bool] = None
-        self.__all_feature_groups_online: Optional[bool] = None
+        self._parent_feature_groups: list[FeatureGroup] = []
+        self.__all_features_on_demand: bool | None = None
+        self.__all_feature_groups_online: bool | None = None
         self._feature_view_logging_enabled: bool = False
         self._skip_feature_decoding_fg_ids = skip_feature_decoding_fg_ids or set()
 
@@ -185,14 +179,14 @@ class VectorServer:
         self,
         entity: feature_view.FeatureView,
         training_dataset_version: int,
-        external: Optional[bool] = None,
+        external: bool | None = None,
         inference_helper_columns: bool = False,
-        options: Optional[Dict[str, Any]] = None,
-        init_sql_client: Optional[bool] = None,
+        options: dict[str, Any] | None = None,
+        init_sql_client: bool | None = None,
         init_rest_client: bool = False,
         reset_rest_client: bool = False,
-        config_rest_client: Optional[Dict[str, Any]] = None,
-        default_client: Optional[Literal["rest", "sql"]] = None,
+        config_rest_client: dict[str, Any] | None = None,
+        default_client: Literal["rest", "sql"] | None = None,
     ):
         self._training_dataset_version = training_dataset_version
 
@@ -203,7 +197,7 @@ class VectorServer:
                 "Feature vector retrieval is only available for feature view generated by online enabled feature groups or for feature views that contain only on-demand features. "
                 f"Feature group(s) {[f'{fg.name} version : {fg.version}' for fg in self._parent_feature_groups if not fg.online_enabled]} are not online enabled."
             )
-        elif not self._all_feature_groups_online and self._all_features_on_demand:
+        if not self._all_feature_groups_online and self._all_features_on_demand:
             warnings.warn(
                 "Features will be computed on-demand during vector retrieval because the feature view includes only offline feature groups.",
                 stacklevel=1,
@@ -258,7 +252,7 @@ class VectorServer:
 
     def init_batch_scoring(
         self,
-        entity: Union[feature_view.FeatureView, training_dataset.TrainingDataset],
+        entity: feature_view.FeatureView | training_dataset.TrainingDataset,
         training_dataset_version: int,
     ):
         self._training_dataset_version = training_dataset_version
@@ -267,7 +261,7 @@ class VectorServer:
 
     def init_transformation(
         self,
-        entity: Union[feature_view.FeatureView],
+        entity: feature_view.FeatureView,
     ):
         # attach transformation functions
         model_dependent_transformations = tf_engine_mod.TransformationFunctionEngine.get_ready_to_use_transformation_fns(
@@ -302,10 +296,10 @@ class VectorServer:
 
     def setup_sql_client(
         self,
-        entity: Union[feature_view.FeatureView, training_dataset.TrainingDataset],
+        entity: feature_view.FeatureView | training_dataset.TrainingDataset,
         external: bool,
         inference_helper_columns: bool,
-        options: Optional[Dict[str, Any]] = None,
+        options: dict[str, Any] | None = None,
     ) -> None:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Initialising Online Store SQL client")
@@ -324,8 +318,8 @@ class VectorServer:
 
     def setup_rest_client_and_engine(
         self,
-        entity: Union[feature_view.FeatureView, training_dataset.TrainingDataset],
-        config_rest_client: Optional[Dict[str, Any]] = None,
+        entity: feature_view.FeatureView | training_dataset.TrainingDataset,
+        config_rest_client: dict[str, Any] | None = None,
         reset_rest_client: bool = False,
     ):
         # naming is off here, but it avoids confusion with the argument init_rest_client
@@ -346,15 +340,15 @@ class VectorServer:
         )
 
     def check_missing_request_parameters(
-        self, features: Dict[str, Any], request_parameters: Dict[str, Any]
+        self, features: dict[str, Any], request_parameters: dict[str, Any]
     ):
-        """
-        Check if any request parameters required for computing on-demand features are missing.
-        # Arguments
+        """Check if any request parameters required for computing on-demand features are missing.
+
+        Parameters:
             feature_vector: `Dict[str, Any]`. The feature vector used to compute on-demand features.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
         """
-        request_parameters = {} if not request_parameters else request_parameters
+        request_parameters = request_parameters if request_parameters else {}
         available_parameters = set((features | request_parameters).keys())
         missing_request_parameters_features = {}
 
@@ -407,25 +401,25 @@ class VectorServer:
                 " Please check if the entry exists in the online feature store"
                 " or provide the feature as passed_feature. "
                 f"2. Required entries [{', '.join(self.required_serving_keys)}] or "
-                f"[{', '.join(set(sk.feature_name for sk in self._serving_keys))}] are not provided."
+                f"[{', '.join({sk.feature_name for sk in self._serving_keys})}] are not provided."
             )
             raise exceptions.FeatureStoreException(error)
 
     def get_feature_vector(
         self,
-        entry: Dict[str, Any],
-        return_type: Union[Literal["list", "numpy", "pandas", "polars"]],
-        passed_features: Optional[Dict[str, Any]] = None,
-        vector_db_features: Optional[Dict[str, Any]] = None,
+        entry: dict[str, Any],
+        return_type: Literal["list", "numpy", "pandas", "polars"],
+        passed_features: dict[str, Any] | None = None,
+        vector_db_features: dict[str, Any] | None = None,
         allow_missing: bool = False,
         force_rest_client: bool = False,
         force_sql_client: bool = False,
         transform: bool = True,
-        on_demand_features: Optional[bool] = True,
-        request_parameters: Optional[Dict[str, Any]] = None,
-        transformation_context: Dict[str, Any] = None,
+        on_demand_features: bool | None = True,
+        request_parameters: dict[str, Any] | None = None,
+        transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
-    ) -> Union[pd.DataFrame, pl.DataFrame, np.ndarray, List[Any], Dict[str, Any]]:
+    ) -> pd.DataFrame | pl.DataFrame | np.ndarray | list[Any] | dict[str, Any]:
         """Assembles serving vector from online feature store."""
         online_client_choice = self.which_client_and_ensure_initialised(
             force_rest_client=force_rest_client, force_sql_client=force_sql_client
@@ -518,21 +512,19 @@ class VectorServer:
 
     def get_feature_vectors(
         self,
-        entries: List[Dict[str, Any]],
-        return_type: Optional[
-            Union[Literal["list", "numpy", "pandas", "polars"]]
-        ] = None,
-        passed_features: Optional[List[Dict[str, Any]]] = None,
-        vector_db_features: Optional[List[Dict[str, Any]]] = None,
-        request_parameters: Optional[List[Dict[str, Any]]] = None,
+        entries: list[dict[str, Any]],
+        return_type: Literal["list", "numpy", "pandas", "polars"] | None = None,
+        passed_features: list[dict[str, Any]] | None = None,
+        vector_db_features: list[dict[str, Any]] | None = None,
+        request_parameters: list[dict[str, Any]] | None = None,
         allow_missing: bool = False,
         force_rest_client: bool = False,
         force_sql_client: bool = False,
         transform: bool = True,
-        on_demand_features: Optional[bool] = True,
-        transformation_context: Dict[str, Any] = None,
+        on_demand_features: bool | None = True,
+        transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
-    ) -> Union[pd.DataFrame, pl.DataFrame, np.ndarray, List[Any], List[Dict[str, Any]]]:
+    ) -> pd.DataFrame | pl.DataFrame | np.ndarray | list[Any] | list[dict[str, Any]]:
         """Assembles serving vector from online feature store."""
         if passed_features is None:
             passed_features = []
@@ -725,17 +717,17 @@ class VectorServer:
 
     def assemble_feature_vector(
         self,
-        result_dict: Dict[str, Any],
-        passed_values: Optional[Dict[str, Any]],
-        vector_db_result: Optional[Dict[str, Any]],
+        result_dict: dict[str, Any],
+        passed_values: dict[str, Any] | None,
+        vector_db_result: dict[str, Any] | None,
         allow_missing: bool,
         client: Literal["rest", "sql"],
         transform: bool,
         on_demand_features: bool,
-        request_parameters: Optional[Dict[str, Any]] = None,
-        transformation_context: Dict[str, Any] = None,
+        request_parameters: dict[str, Any] | None = None,
+        transformation_context: dict[str, Any] = None,
         logging_meta_data: LoggingMetaData = None,
-    ) -> Optional[List[Any]]:
+    ) -> list[Any] | None:
         """Assembles serving vector from online feature store."""
         # Errors in batch requests are returned as None values
         if _logger.isEnabledFor(logging.DEBUG):
@@ -802,31 +794,28 @@ class VectorServer:
                 encoded_feature_dict.get(fname, None)
                 for fname in self.transformed_feature_vector_col_name
             ]
-        elif on_demand_features:
+        if on_demand_features:
             return [
                 feature_dict.get(fname, None)
                 for fname in self._on_demand_feature_vector_col_name
             ]
-        else:
-            return [
-                result_dict.get(fname, None)
-                for fname in self._untransformed_feature_vector_col_name
-            ]
+        return [
+            result_dict.get(fname)
+            for fname in self._untransformed_feature_vector_col_name
+        ]
 
     def _validate_input_features(
         self,
-        feature_vectors: Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame],
+        feature_vectors: list[Any] | list[list[Any]] | pd.DataFrame | pl.DataFrame,
         on_demand_features: bool = False,
     ) -> None:
-        """
-        Validate if an feature-vector provided contain all required features.
+        """Validate if an feature-vector provided contain all required features.
 
-        # Arguments
+        Parameters:
             feature_vectors: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vectors to be converted.
             on_demand_features : `bool`. Specify if on-demand features provided in the input feature vector.
 
         """
-
         required_features = (
             set(self._untransformed_feature_vector_col_name)
             if not on_demand_features
@@ -862,21 +851,19 @@ class VectorServer:
 
     def _check_feature_vectors_type_and_convert_to_dict(
         self,
-        feature_vectors: Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame],
+        feature_vectors: list[Any] | list[list[Any]] | pd.DataFrame | pl.DataFrame,
         on_demand_features: bool = False,
-    ) -> Tuple[Dict[str, Any], Literal["pandas", "polars", "list"]]:
-        """
-        Function that converts an input feature vector into a list of dictionaries.
+    ) -> tuple[dict[str, Any], Literal["pandas", "polars", "list"]]:
+        """Function that converts an input feature vector into a list of dictionaries.
 
-        # Arguments
+        Parameters:
             feature_vectors: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vectors to be converted.
             on_demand_features : `bool`. Specify if on-demand features provided in the input feature vector.
 
-        # Returns
+        Returns:
             `Tuple[Dict[str, Any], Literal["pandas", "polars", "list"]]`: A tuple that contains the feature vector as a dictionary and a string denoting the data type of the input feature vector.
 
         """
-
         if isinstance(feature_vectors, pd.DataFrame):
             return_type = "pandas"
             feature_vectors = feature_vectors.to_dict(orient="records")
@@ -913,19 +900,19 @@ class VectorServer:
 
     def transform(
         self,
-        feature_vectors: Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame],
-        transformation_context: Dict[str, Any] = None,
-        return_type: Union[Literal["list", "numpy", "pandas", "polars"]] = None,
-    ) -> Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]:
-        """
-        Applies model dependent transformation on the provided feature vector.
+        feature_vectors: list[Any] | list[list[Any]] | pd.DataFrame | pl.DataFrame,
+        transformation_context: dict[str, Any] = None,
+        return_type: Literal["list", "numpy", "pandas", "polars"] = None,
+    ) -> list[Any] | list[list[Any]] | pd.DataFrame | pl.DataFrame:
+        """Applies model dependent transformation on the provided feature vector.
 
-        # Arguments
+        Parameters:
             feature_vectors: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vectors to be transformed using attached model-dependent transformations.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
             return_type: `"list"`, `"pandas"`, `"polars"` or `"numpy"`. Defaults to the same type as the input feature vector.
-        # Returns
+
+        Returns:
             `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The transformed feature vector.
         """
         if not self._model_dependent_transformation_functions:
@@ -971,23 +958,25 @@ class VectorServer:
 
     def compute_on_demand_features(
         self,
-        feature_vectors: Optional[
-            Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]
-        ] = None,
-        request_parameters: Union[List[Dict[str, Any]], Dict[str, Any]] = None,
-        transformation_context: Dict[str, Any] = None,
-        return_type: Union[Literal["list", "numpy", "pandas", "polars"]] = None,
+        feature_vectors: list[Any]
+        | list[list[Any]]
+        | pd.DataFrame
+        | pl.DataFrame
+        | None = None,
+        request_parameters: list[dict[str, Any]] | dict[str, Any] = None,
+        transformation_context: dict[str, Any] = None,
+        return_type: Literal["list", "numpy", "pandas", "polars"] = None,
     ):
-        """
-        Function computes on-demand features present in the feature view.
+        """Function computes on-demand features present in the feature view.
 
-        # Arguments
+        Parameters:
             feature_vector: `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`. The feature vector to be transformed.
             request_parameters: Request parameters required by on-demand transformation functions to compute on-demand features present in the feature view.
             transformation_context: `Dict[str, Any]` A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 These variables must be explicitly defined as parameters in the transformation function to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
             return_type: `"list"`, `"pandas"`, `"polars"` or `"numpy"`. Defaults to the same type as the input feature vector.
-        # Returns
+
+        Returns:
             `Union[List[Any], List[List[Any]], pd.DataFrame, pl.DataFrame]`: The feature vector that contains all on-demand features in the feature view.
         """
         if not self._on_demand_transformation_functions:
@@ -999,7 +988,7 @@ class VectorServer:
 
         feature_vectors = [] if feature_vectors is None else feature_vectors
 
-        request_parameters = {} if not request_parameters else request_parameters
+        request_parameters = request_parameters if request_parameters else {}
         # Convert feature vectors to dictionary
         feature_vectors, default_return_type = (
             self._check_feature_vectors_type_and_convert_to_dict(feature_vectors)
@@ -1049,58 +1038,42 @@ class VectorServer:
         )
 
     def get_untransformed_features_map(
-        self, features: List[Any], on_demand_features: bool = False
-    ) -> Dict[str, Any]:
-        """
-        Function that accepts a feature vectors as a list and returns the untransformed features as a dict that maps
-        feature names to their values
+        self, features: list[Any], on_demand_features: bool = False
+    ) -> dict[str, Any]:
+        """Function that accepts a feature vectors as a list and returns the untransformed features as a dict that maps feature names to their values.
 
-        # Arguments
+        Parameters:
             features : `List[Any]`. List of feature vectors.
             on_demand_features : `bool`. Specify if on-demand features provided in the input feature vector.
 
-        # Returns
+        Returns:
             `Dict[str, Any]` : Dictionary mapping features name to values.
         """
         if on_demand_features:
-            return dict(
-                [
-                    (fname, fvalue)
-                    for fname, fvalue in zip(
-                        self._on_demand_feature_vector_col_name, features
-                    )
-                ]
-            )
-        else:
-            return dict(
-                [
-                    (fname, fvalue)
-                    for fname, fvalue in zip(
-                        self._untransformed_feature_vector_col_name, features
-                    )
-                ]
-            )
+            return dict(zip(self._on_demand_feature_vector_col_name, features))
+        return dict(zip(self._untransformed_feature_vector_col_name, features))
 
     def handle_feature_vector_return_type(
         self,
-        feature_vectorz: Union[
-            List[Any], List[List[Any]], Dict[str, Any], List[Dict[str, Any]]
-        ],
+        feature_vectorz: list[Any]
+        | list[list[Any]]
+        | dict[str, Any]
+        | list[dict[str, Any]],
         batch: bool,
         inference_helper: bool,
-        return_type: Union[Literal["list", "dict", "numpy", "pandas", "polars"]],
+        return_type: Literal["list", "dict", "numpy", "pandas", "polars"],
         transform: bool = False,
         on_demand_feature: bool = False,
-        logging_meta_data: Optional[Dict[str, Any]] = None,
-    ) -> Union[
-        pd.DataFrame,
-        pl.DataFrame,
-        np.ndarray,
-        List[Any],
-        List[List[Any]],
-        Dict[str, Any],
-        List[Dict[str, Any]],
-    ]:
+        logging_meta_data: dict[str, Any] | None = None,
+    ) -> (
+        pd.DataFrame
+        | pl.DataFrame
+        | np.ndarray
+        | list[Any]
+        | list[list[Any]]
+        | dict[str, Any]
+        | list[dict[str, Any]]
+    ):
         if transform:
             column_names = self.transformed_feature_vector_col_name
         else:
@@ -1159,11 +1132,11 @@ class VectorServer:
 
     def get_inference_helper(
         self,
-        entry: Dict[str, Any],
-        return_type: Union[Literal["dict", "pandas", "polars"]],
+        entry: dict[str, Any],
+        return_type: Literal["dict", "pandas", "polars"],
         force_rest_client: bool,
         force_sql_client: bool,
-    ) -> Union[pd.DataFrame, pl.DataFrame, Dict[str, Any]]:
+    ) -> pd.DataFrame | pl.DataFrame | dict[str, Any]:
         """Assembles serving vector from online feature store."""
         default_client = self.which_client_and_ensure_initialised(
             force_rest_client, force_sql_client
@@ -1197,11 +1170,11 @@ class VectorServer:
 
     def get_inference_helpers(
         self,
-        entries: List[Dict[str, Any]],
-        return_type: Union[Literal["dict", "pandas", "polars"]],
+        entries: list[dict[str, Any]],
+        return_type: Literal["dict", "pandas", "polars"],
         force_rest_client: bool,
         force_sql_client: bool,
-    ) -> Union[pd.DataFrame, pl.DataFrame, List[Dict[str, Any]]]:
+    ) -> pd.DataFrame | pl.DataFrame | list[dict[str, Any]]:
         """Assembles serving vector from online feature store."""
         default_client = self.which_client_and_ensure_initialised(
             force_rest_client, force_sql_client
@@ -1243,11 +1216,11 @@ class VectorServer:
     ) -> str:
         """Check if the requested client is initialised as well as deciding which client to use based on default.
 
-        # Arguments:
+        Parameters:
             force_rest_client: bool. user specified override to use rest_client.
             force_sql_client: bool. user specified override to use sql_client.
 
-        # Returns:
+        Returns:
             An enum specifying the client to be used.
         """
         if force_rest_client and force_sql_client:
@@ -1267,21 +1240,22 @@ class VectorServer:
             raise ValueError(
                 "SQL Client is not initialised. Call `init_serving` with init_sql_client set to True before using it."
             )
-        elif force_sql_client:
+        if force_sql_client:
             return self.DEFAULT_SQL_CLIENT
 
         if force_rest_client and (self._init_rest_client is False):
             raise ValueError(
                 "RonDB Rest Client is not initialised. Call `init_serving` with init_rest_client set to True before using it."
             )
-        elif force_rest_client:
+        if force_rest_client:
             return self.DEFAULT_REST_CLIENT
+        return None
 
     def _set_default_client(
         self,
         init_rest_client: bool,
         init_sql_client: bool,
-        default_client: Optional[str] = None,
+        default_client: str | None = None,
     ):
         if init_rest_client is False and init_sql_client is False:
             raise ValueError(
@@ -1301,9 +1275,9 @@ class VectorServer:
 
     def apply_on_demand_transformations(
         self,
-        rows: Union[dict, pd.DataFrame],
-        request_parameter: Dict[str, Any],
-        transformation_context: Dict[str, Any] = None,
+        rows: dict | pd.DataFrame,
+        request_parameter: dict[str, Any],
+        transformation_context: dict[str, Any] = None,
     ) -> dict:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Applying On-Demand transformation functions.")
@@ -1356,8 +1330,8 @@ class VectorServer:
 
     def apply_model_dependent_transformations(
         self,
-        rows: Union[dict, pd.DataFrame],
-        transformation_context: Dict[str, Any] = None,
+        rows: dict | pd.DataFrame,
+        transformation_context: dict[str, Any] = None,
     ):
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Applying Model-Dependent transformation functions.")
@@ -1402,9 +1376,7 @@ class VectorServer:
                 for col in transformed_results:
                     rows[col] = transformed_results[col].values[0]
         else:
-            if isinstance(transformed_results, tuple) or isinstance(
-                transformed_results, list
-            ):
+            if isinstance(transformed_results, (tuple, list)):
                 for index, result in enumerate(transformed_results):
                     rows[transformation_function.output_column_names[index]] = result
             else:
@@ -1414,10 +1386,9 @@ class VectorServer:
         return rows
 
     def _raise_transformation_warnings(self, transform: bool, on_demand_features: bool):
-        """
-        Function that raises warnings based on the values of `transform` and `on_demand_features` parameters to let users know about the behavior of the function.
+        """Function that raises warnings based on the values of `transform` and `on_demand_features` parameters to let users know about the behavior of the function.
 
-        # Arguments
+        Parameters:
             transform : `bool`. Specify if model-dependent transformations should be applied.
             on_demand_features : `bool`. Specify if on-demand features should be computed.
         """
@@ -1444,23 +1415,21 @@ class VectorServer:
                 _logger.info(
                     "On-demand features are not computed when `on_demand_features=False`. Returning feature vector without on-demand features."
                 )
-        elif warn_model_dependent_features:
-            if _logger.isEnabledFor(logging.INFO):
-                _logger.info(
-                    "Model-dependent transformation functions are not applied when `transform=False`. Returning feature vector without model-dependent transformations."
-                )
+        elif warn_model_dependent_features and _logger.isEnabledFor(logging.INFO):
+            _logger.info(
+                "Model-dependent transformation functions are not applied when `transform=False`. Returning feature vector without model-dependent transformations."
+            )
 
     def apply_transformation(
         self,
-        row_dict: Union[dict, pd.DataFrame],
-        request_parameter: Dict[str, Any],
-        transformation_context: Dict[str, Any] = None,
+        row_dict: dict | pd.DataFrame,
+        request_parameter: dict[str, Any],
+        transformation_context: dict[str, Any] = None,
         transform: bool = True,
         on_demand_features: bool = True,
         logging_meta_data: LoggingMetaData = None,
     ):
-        """
-        Function that applies both on-demand and model dependent transformation to the input dictonary
+        """Function that applies both on-demand and model dependent transformation to the input dictonary.
 
         Returns:
             feature_vector: The untransformed feature vector with untransformed features.
@@ -1503,7 +1472,7 @@ class VectorServer:
         return feature_dict, encoded_feature_dict
 
     def apply_return_value_handlers(
-        self, row_dict: Dict[str, Any], client: Literal["rest", "sql"]
+        self, row_dict: dict[str, Any], client: Literal["rest", "sql"]
     ):
         if client == self.DEFAULT_REST_CLIENT:
             matching_keys = self.feature_to_handle_if_rest.intersection(row_dict.keys())
@@ -1519,14 +1488,13 @@ class VectorServer:
             row_dict[fname] = self.return_feature_value_handlers[fname](row_dict[fname])
         return row_dict
 
-    def build_complex_feature_decoders(self) -> Dict[str, Callable]:
+    def build_complex_feature_decoders(self) -> dict[str, Callable]:
         """Build decoders for complex features.
 
-        Decodes feature values for features marked as complex (e.g., structs, arrays, maps)
-        that are stored in the online store as Avro-encoded payloads (bytes or base64 strings).
-        Values already provided as native Python objects (e.g., via passed_features or REST)
-        are returned unchanged. Embedding vectors are already deserialized, but complex features
-        stored in OpenSearch must be deserialized here. Timestamp conversion is handled separately.
+        Decodes feature values for features marked as complex (e.g., structs, arrays, maps) that are stored in the online store as Avro-encoded payloads (bytes or base64 strings).
+        Values already provided as native Python objects (e.g., via passed_features or REST) are returned unchanged.
+        Embedding vectors are already deserialized, but complex features stored in OpenSearch must be deserialized here.
+        Timestamp conversion is handled separately.
         """
         if not HAS_AVRO:
             raise ModuleNotFoundError(avro_not_installed_message)
@@ -1545,11 +1513,10 @@ class VectorServer:
 
         if len(complex_feature_schemas) == 0:
             return {}
-        else:
-            if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug(
-                    f"Building complex feature decoders corresponding to {complex_feature_schemas}."
-                )
+        if _logger.isEnabledFor(logging.DEBUG):
+            _logger.debug(
+                f"Building complex feature decoders corresponding to {complex_feature_schemas}."
+            )
         if HAS_FAST_AVRO:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("Using fastavro for deserialization.")
@@ -1565,41 +1532,34 @@ class VectorServer:
                             avro_schema.writers_schema.to_json(),
                         )
                         # embedded features are deserialized already but not complex features stored in Opensearch
-                        if (
-                            isinstance(feature_value, bytes)
-                            or isinstance(feature_value, str)
-                        )
+                        if (isinstance(feature_value, (bytes, str)))
                         else feature_value
                     )
                 )
                 for (f_name, schema) in complex_feature_schemas.items()
             }
-        else:
-            if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug("Fast Avro not found, using avro for deserialization.")
-            return {
-                f_name: (
-                    lambda feature_value, avro_schema=schema: avro_schema.read(
-                        BinaryDecoder(
-                            BytesIO(
-                                feature_value
-                                if isinstance(feature_value, bytes)
-                                else b64decode(feature_value)
-                            )
+        if _logger.isEnabledFor(logging.DEBUG):
+            _logger.debug("Fast Avro not found, using avro for deserialization.")
+        return {
+            f_name: (
+                lambda feature_value, avro_schema=schema: avro_schema.read(
+                    BinaryDecoder(
+                        BytesIO(
+                            feature_value
+                            if isinstance(feature_value, bytes)
+                            else b64decode(feature_value)
                         )
                     )
-                    # embedded features are deserialized already but not complex features stored in Opensearch
-                    if (
-                        isinstance(feature_value, str)
-                        or isinstance(feature_value, bytes)
-                    )
-                    else feature_value
                 )
-                for (f_name, schema) in complex_feature_schemas.items()
-            }
+                # embedded features are deserialized already but not complex features stored in Opensearch
+                if (isinstance(feature_value, (str, bytes)))
+                else feature_value
+            )
+            for (f_name, schema) in complex_feature_schemas.items()
+        }
 
     def set_return_feature_value_handlers(
-        self, features: List[tdf_mod.TrainingDatasetFeature]
+        self, features: list[tdf_mod.TrainingDatasetFeature]
     ):
         """Build a dictionary of functions to convert/deserialize/transform the feature values returned from RonDB Server.
 
@@ -1628,41 +1588,40 @@ class VectorServer:
                 )
 
     def _handle_timestamp_based_on_dtype(
-        self, timestamp_value: Union[str, int]
-    ) -> Optional[datetime]:
+        self, timestamp_value: str | int
+    ) -> datetime | None:
         """Handle the timestamp based on the dtype which is returned.
 
         Currently timestamp which are in the database are returned as string. Whereas
         passed features which were given as datetime are returned as integer timestamp.
 
-        # Arguments:
+        Parameters:
             timestamp_value: The timestamp value to be handled, either as int or str.
         """
         if timestamp_value is None:
             return None
-        elif isinstance(timestamp_value, int):
+        if isinstance(timestamp_value, int):
             # in case of passed features, an event time could be passed as int timestamp
             return datetime.fromtimestamp(
                 timestamp_value / 1000, tz=timezone.utc
             ).replace(tzinfo=None)
-        elif isinstance(timestamp_value, str):
+        if isinstance(timestamp_value, str):
             # rest client returns timestamp as string
             return datetime.strptime(timestamp_value, self.SQL_TIMESTAMP_STRING_FORMAT)
-        elif isinstance(timestamp_value, datetime):
+        if isinstance(timestamp_value, datetime):
             # sql client returns already datetime object
             return timestamp_value
-        else:
-            raise ValueError(
-                f"Timestamp value {timestamp_value} was expected to be of type int, str or datetime."
-            )
+        raise ValueError(
+            f"Timestamp value {timestamp_value} was expected to be of type int, str or datetime."
+        )
 
     def validate_entry(
         self,
-        entry: Dict[str, Any],
+        entry: dict[str, Any],
         allow_missing: bool,
-        passed_features: Dict[str, Any],
-        vector_db_features: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        passed_features: dict[str, Any],
+        vector_db_features: dict[str, Any],
+    ) -> dict[str, Any]:
         """Validate the provided key, value pair in the entry.
 
         The following checks are performed:
@@ -1682,11 +1641,10 @@ class VectorServer:
         if not entry:
             if self._all_features_on_demand:
                 return {}
-            else:
-                raise exceptions.FeatureStoreException(
-                    "The required argument `entries` is missing. If the feature view includes only on-demand features, entries may be left empty or set to None."
-                )
-        elif not self._all_feature_groups_online and self._all_features_on_demand:
+            raise exceptions.FeatureStoreException(
+                "The required argument `entries` is missing. If the feature view includes only on-demand features, entries may be left empty or set to None."
+            )
+        if not self._all_feature_groups_online and self._all_features_on_demand:
             warnings.warn(
                 "Ignoring passed entries as all parent feature groups of feature view are not online and all features will be computed on-demand.",
                 stacklevel=1,
@@ -1694,7 +1652,7 @@ class VectorServer:
             return {}
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Checking keys in entry are valid serving keys.")
-        for key in entry.keys():
+        for key in entry:
             if key not in self.valid_serving_keys:
                 raise exceptions.FeatureStoreException(
                     f"Provided key {key} is not a serving key. Required serving keys: {self.required_serving_keys}."
@@ -1705,9 +1663,7 @@ class VectorServer:
             )
         for composite_group in self.groups_of_composite_serving_keys.values():
             present_keys = [
-                True
-                if (sk_required in entry.keys() or sk_name in entry.keys())
-                else False
+                bool(sk_required in entry or sk_name in entry)
                 for (sk_required, sk_name) in composite_group
             ]
             if not all(present_keys) and any(present_keys):
@@ -1729,9 +1685,9 @@ class VectorServer:
 
     def identify_missing_features_pre_fetch(
         self,
-        entry: Dict[str, Any],
-        passed_features: Dict[str, Any],
-        vector_db_features: Dict[str, Any],
+        entry: dict[str, Any],
+        passed_features: dict[str, Any],
+        vector_db_features: dict[str, Any],
     ):
         """Identify feature which will be missing in the fetched feature vector and which are not passed.
 
@@ -1782,7 +1738,7 @@ class VectorServer:
             # if not present and all corresponding features are not passed via passed_features
             # or vector_db_features
             if (
-                sk_name not in entry.keys() and sk_no_prefix not in entry.keys()
+                sk_name not in entry and sk_no_prefix not in entry
             ) and not fetched_features.issubset(passed_feature_names):
                 if _logger.isEnabledFor(logging.DEBUG):
                     _logger.debug(
@@ -1802,49 +1758,47 @@ class VectorServer:
 
     def build_per_serving_key_features(
         self,
-        serving_keys: List[sk_mod.ServingKey],
-        features: List[tdf_mod.TrainingDatasetFeature],
-    ) -> Dict[str, Tuple[str, Set[str]]]:
+        serving_keys: list[sk_mod.ServingKey],
+        features: list[tdf_mod.TrainingDatasetFeature],
+    ) -> dict[str, tuple[str, set[str]]]:
         """Build a dictionary of feature names which will be fetched per serving key."""
         per_serving_key_features = {}
         for serving_key in serving_keys:
             per_serving_key_features[serving_key.required_serving_key] = (
                 serving_key.feature_name,
-                set(
-                    [
-                        f.name
-                        for f in features
-                        if (
-                            f.feature_group.name == serving_key.feature_group.name
-                            and not f.label
-                        )
-                    ]
-                ),
+                {
+                    f.name
+                    for f in features
+                    if (
+                        f.feature_group.name == serving_key.feature_group.name
+                        and not f.label
+                    )
+                },
             )
         return per_serving_key_features
 
     @property
     def sql_client(
         self,
-    ) -> Optional[online_store_sql_engine.OnlineStoreSqlClient]:
+    ) -> online_store_sql_engine.OnlineStoreSqlClient | None:
         return self._sql_client
 
     @property
     def rest_client_engine(
         self,
-    ) -> Optional[online_store_rest_client_engine.OnlineStoreRestClientEngine]:
+    ) -> online_store_rest_client_engine.OnlineStoreRestClientEngine | None:
         return self._rest_client_engine
 
     @property
-    def serving_keys(self) -> List[sk_mod.ServingKey]:
+    def serving_keys(self) -> list[sk_mod.ServingKey]:
         return self._serving_keys
 
     @serving_keys.setter
-    def serving_keys(self, serving_vector_keys: List[sk_mod.ServingKey]):
+    def serving_keys(self, serving_vector_keys: list[sk_mod.ServingKey]):
         self._serving_keys = serving_vector_keys
 
     @property
-    def required_serving_keys(self) -> List[str]:
+    def required_serving_keys(self) -> list[str]:
         if len(self._required_serving_keys) == 0:
             self._required_serving_keys = [
                 sk.required_serving_key for sk in self.serving_keys
@@ -1852,7 +1806,7 @@ class VectorServer:
         return self._required_serving_keys
 
     @property
-    def groups_of_composite_serving_keys(self) -> Dict[int, List[str]]:
+    def groups_of_composite_serving_keys(self) -> dict[int, list[str]]:
         if not hasattr(self, "_groups_of_composite_serving_keys"):
             self._groups_of_composite_serving_keys = {
                 sk.feature_group.id: (
@@ -1871,7 +1825,7 @@ class VectorServer:
         return self._groups_of_composite_serving_keys
 
     @property
-    def rondb_serving_keys(self) -> List[str]:
+    def rondb_serving_keys(self) -> list[str]:
         if not hasattr(self, "_rondb_serving_keys"):
             self._rondb_serving_keys = [
                 sk.required_serving_key
@@ -1883,19 +1837,19 @@ class VectorServer:
         return self._rondb_serving_keys
 
     @property
-    def training_dataset_version(self) -> Optional[int]:
+    def training_dataset_version(self) -> int | None:
         return self._training_dataset_version
 
     @training_dataset_version.setter
-    def training_dataset_version(self, training_dataset_version: Optional[int]):
+    def training_dataset_version(self, training_dataset_version: int | None):
         self._training_dataset_version = training_dataset_version
 
     @property
-    def feature_vector_col_name(self) -> List[str]:
+    def feature_vector_col_name(self) -> list[str]:
         return self._feature_vector_col_name
 
     @property
-    def per_serving_key_features(self) -> Dict[str, set[str]]:
+    def per_serving_key_features(self) -> dict[str, set[str]]:
         if (
             not hasattr(self, "_per_serving_key_features")
             or self._per_serving_key_features is None
@@ -1909,17 +1863,17 @@ class VectorServer:
     @property
     def model_dependent_transformation_functions(
         self,
-    ) -> Optional[List[transformation_function.TransformationFunction]]:
+    ) -> list[transformation_function.TransformationFunction] | None:
         return self._model_dependent_transformation_functions
 
     @property
     def on_demand_transformation_functions(
         self,
-    ) -> Optional[List[transformation_function.TransformationFunction]]:
+    ) -> list[transformation_function.TransformationFunction] | None:
         return self._on_demand_transformation_functions
 
     @property
-    def return_feature_value_handlers(self) -> Dict[str, Callable]:
+    def return_feature_value_handlers(self) -> dict[str, Callable]:
         """A dictionary of functions to the feature values returned from RonDB Server."""
         return self._return_feature_value_handlers
 
@@ -1930,7 +1884,7 @@ class VectorServer:
         return self._transformation_function_engine
 
     @property
-    def feature_to_handle_if_rest(self) -> Set[str]:
+    def feature_to_handle_if_rest(self) -> set[str]:
         # RonDB REST client already deserialize complex features
         # Only timestamp need converting to datetime obj and
         # complex features retrieved via opensearch need to be deserialized
@@ -1951,7 +1905,7 @@ class VectorServer:
         return self._feature_to_handle_if_rest
 
     @property
-    def feature_to_handle_if_sql(self) -> Set[str]:
+    def feature_to_handle_if_sql(self) -> set[str]:
         # Unlike REST client, SQL client does not deserialize complex features
         # however, it does convert timestamp to datetime obj
         if self._feature_to_handle_if_sql is None:
@@ -1970,9 +1924,9 @@ class VectorServer:
     @property
     def valid_serving_keys(self):
         if not self._valid_serving_keys or len(self._valid_serving_keys) == 0:
-            self._valid_serving_keys = set(
-                [sk.required_serving_key for sk in self.serving_keys]
-            )
+            self._valid_serving_keys = {
+                sk.required_serving_key for sk in self.serving_keys
+            }
         return self._valid_serving_keys
 
     @property
@@ -1995,14 +1949,12 @@ class VectorServer:
         ):
             raise ValueError(
                 f"Default Online Store Cient is set to {self.DEFAULT_REST_CLIENT} but REST client"
-                + " is not initialised. Call `init_serving` with init_rest_client set to True before using it."
+                " is not initialised. Call `init_serving` with init_rest_client set to True before using it."
             )
-        elif (
-            default_client == self.DEFAULT_SQL_CLIENT and self._init_sql_client is False
-        ):
+        if default_client == self.DEFAULT_SQL_CLIENT and self._init_sql_client is False:
             raise ValueError(
                 f"Default Online Store client is set to {self.DEFAULT_SQL_CLIENT} but Online Store SQL client"
-                + " is not initialised. Call `init_serving` with init_sql_client set to True before using it."
+                " is not initialised. Call `init_serving` with init_sql_client set to True before using it."
             )
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(f"Default Online Store Client is set to {default_client}.")

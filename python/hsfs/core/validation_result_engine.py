@@ -15,11 +15,12 @@
 #
 from __future__ import annotations
 
-from datetime import date, datetime
-from typing import TYPE_CHECKING, Dict, List, Union
+from typing import TYPE_CHECKING
 
 
 if TYPE_CHECKING:
+    from datetime import date, datetime
+
     import great_expectations
 
 
@@ -44,14 +45,14 @@ class ValidationResultEngine:
     def get_validation_history(
         self,
         expectation_id: int,
-        start_validation_time: Union[str, int, datetime, date, None] = None,
-        end_validation_time: Union[str, int, datetime, date, None] = None,
-        filter_by: List[str] = None,
+        start_validation_time: str | int | datetime | date | None = None,
+        end_validation_time: str | int | datetime | date | None = None,
+        filter_by: list[str] = None,
         ge_type: bool = True,
-    ) -> Union[
-        List[ValidationResult],
-        List[great_expectations.core.ExpectationValidationResult],
-    ]:
+    ) -> (
+        list[ValidationResult]
+        | list[great_expectations.core.ExpectationValidationResult]
+    ):
         """Get Validation Results relevant to an Expectation specified by expectation_id.
 
         :param expectation_id: id of the expectation for which to fetch the validation history
@@ -84,15 +85,14 @@ class ValidationResultEngine:
 
         if ge_type:
             return [result.to_ge_type() for result in history]
-        else:
-            return history
+        return history
 
     def _build_query_params(
         self,
-        filter_by: List[str] = None,
-        start_validation_time: Union[str, int, datetime, date, None] = None,
-        end_validation_time: Union[str, int, datetime, date, None] = None,
-    ) -> Dict[str, str]:
+        filter_by: list[str] = None,
+        start_validation_time: str | int | datetime | date | None = None,
+        end_validation_time: str | int | datetime | date | None = None,
+    ) -> dict[str, str]:
         query_params = {"filter_by": [], "sort_by": "validation_time:desc"}
         allowed_ingestion_filters = [
             "INGESTED",
@@ -111,18 +111,20 @@ class ValidationResultEngine:
                 else:
                     raise ValueError(
                         f"Illegal Value {ingestion_filter} in filter_by."
-                        + f"Allowed values are {', '.join(allowed_ingestion_filters)}"
+                        f"Allowed values are {', '.join(allowed_ingestion_filters)}"
                     )
 
         query_params["filter_by"].extend(ingestion_filters)
 
-        if start_validation_time and end_validation_time:
-            if util.convert_event_time_to_timestamp(
-                start_validation_time
-            ) > util.convert_event_time_to_timestamp(end_validation_time):
-                raise ValueError(
-                    f"start_validation_time : {start_validation_time} is posterior to end_validation_time : {end_validation_time}"
-                )
+        if (
+            start_validation_time
+            and end_validation_time
+            and util.convert_event_time_to_timestamp(start_validation_time)
+            > util.convert_event_time_to_timestamp(end_validation_time)
+        ):
+            raise ValueError(
+                f"start_validation_time : {start_validation_time} is posterior to end_validation_time : {end_validation_time}"
+            )
 
         if start_validation_time:
             query_params["filter_by"].append(

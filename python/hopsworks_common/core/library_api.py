@@ -20,19 +20,22 @@ from hopsworks_common import client, library
 
 
 class LibraryApi:
-    def _install(self, library_name: str, name: str, library_spec: dict):
-        """Install a library in the environment
+    def _install(
+        self, library_name: str, name: str, library_spec: dict
+    ) -> library.Library:
+        """Install a library in the environment.
 
-        # Arguments
+        Parameters:
             library_name: Name of the library.
             name: Name of the environment.
-            library_spec: installation payload
-        # Returns
-            `Library`: The library object
-        # Raises
-            `hopsworks.client.exceptions.RestAPIError`: If the backend encounters an error when handling the request
-        """
+            library_spec: Installation payload.
 
+        Returns:
+            The library object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
         _client = client.get_instance()
 
         path_params = [
@@ -46,10 +49,9 @@ class LibraryApi:
         ]
 
         headers = {"content-type": "application/json"}
-        library_rest = library.Library.from_response_json(
+        return library.Library.from_response_json(
             _client._send_request(
                 "POST", path_params, headers=headers, data=json.dumps(library_spec)
             ),
             environment=self,
         )
-        return library_rest

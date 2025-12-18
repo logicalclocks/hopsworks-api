@@ -31,7 +31,7 @@ jobs:
               - '!python/tests/test_helpers/transformation_test_helper.py'
 
       - name: install deps
-        run: pip install ruff==0.4.2
+        run: pip install ruff==0.14.8
 
       - name: ruff on python files
         if: steps.get-changed-files.outputs.src_any_changed == 'true'
