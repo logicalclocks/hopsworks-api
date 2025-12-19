@@ -449,10 +449,10 @@ class FeatureStore:
             data_source = fs.get_data_source("test_data_source")
             ```
 
-        Arguments
+        Arguments:
             name: Name of the data source to retrieve.
 
-        Returns
+        Returns:
             `DataSource`. Data source object.
         """
         return ds.DataSource(storage_connector=self._storage_connector_api.get(self._id, name))
@@ -528,7 +528,7 @@ class FeatureStore:
 
         The returned data source depends on the project that you are connected to.
 
-        !!! example
+        Example
             ```python
             # connect to the Feature Store
             fs = ...
@@ -536,7 +536,7 @@ class FeatureStore:
             online_data_source = fs.get_online_data_source()
             ```
 
-        # Returns
+        Returns
             `DataSource`. JDBC data source to the Online Feature Store.
         """
         return ds.DataSource(storage_connector=self._storage_connector_api.get_online_connector(self._id))
@@ -1411,7 +1411,7 @@ class FeatureStore:
                 Dict[str, Any],
             ]
         ] = None,
-    ) -> "training_dataset.TrainingDataset":
+    ) -> training_dataset.TrainingDataset:
         """Create a training dataset metadata object.
 
         Warning: Deprecated

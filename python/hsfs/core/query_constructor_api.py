@@ -20,12 +20,21 @@ from hsfs.constructor import fs_query
 
 
 class QueryConstructorApi:
-    def construct_query(self, query):
+    def construct_query(self, query, hqs=False):
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "featurestores", "query"]
+
+        query_params = {
+            "hqs": hqs,
+        }
+
         headers = {"content-type": "application/json"}
         return fs_query.FsQuery.from_response_json(
             _client._send_request(
-                "PUT", path_params, headers=headers, data=query.json()
+                "PUT",
+                path_params,
+                headers=headers,
+                query_params=query_params,
+                data=query.json(),
             )
         )

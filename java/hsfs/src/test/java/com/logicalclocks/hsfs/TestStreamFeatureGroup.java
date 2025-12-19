@@ -76,4 +76,21 @@ class TestStreamFeatureGroup {
     Assert.assertEquals("Feature Group `test_fg`, version `1` is deprecated", argument.getValue().getMessage());
     Assert.assertEquals("com.logicalclocks.hsfs.FeatureGroupBase", argument.getValue().getLoggerName());
   }
+
+  @Test
+  void testDataSourceUpdateStorageConnector() throws JsonProcessingException {
+    // Arrange
+    RdsConnector sc = new RdsConnector();
+
+    DataSource ds = Mockito.mock(DataSource.class);
+
+    StreamFeatureGroup fg = new StreamFeatureGroup();
+    fg.setStorageConnector(sc);
+
+    // Act
+    fg.setDataSource(ds);
+
+    // Assert
+    Mockito.verify(ds, Mockito.times(1)).updateStorageConnector(sc);
+  }
 }
