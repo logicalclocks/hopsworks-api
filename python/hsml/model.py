@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import warnings
 from typing import TYPE_CHECKING, Any
 
@@ -174,8 +175,14 @@ class Model:
     def download(self, local_path=None) -> str:
         """Download the model files.
 
+        If local_path is not provided, the model is downloaded to a cache directory
+        in /tmp/hopsworks/models/{project_name}/{model_name}/{version}/ and reused
+        across subsequent downloads. Cached models persist beyond program exit.
+
         Parameters:
-            local_path: path where to download the model files in the local filesystem
+            local_path: path where to download the model files in the local filesystem.
+                If None, downloads to cache directory (recommended for idempotent reuse).
+
         Returns:
             `str`: Absolute path to local folder containing the model files.
 
@@ -196,6 +203,106 @@ class Model:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
         self._model_engine.delete(model_instance=self)
+
+    @staticmethod
+    def clear_cache(project_name=None, model_name=None, version=None):
+        """Clear cached downloaded models.
+
+        Utility method to clear model cache from /tmp directory. Use this to free
+        disk space when cached models are no longer needed.
+
+        Parameters:
+            project_name: If specified, only clear cache for this project.
+                If None, clears all cached models.
+            model_name: If specified (requires project_name), only clear cache
+                for this specific model. If None, clears all models in project.
+            version: If specified (requires project_name and model_name), only clear
+                cache for this specific model version. If None, clears all versions.
+
+        Returns:
+            int: Number of model versions removed from cache.
+
+        Example:
+            ```python
+            # Clear all cached models
+            Model.clear_cache()
+
+            # Clear all models for a specific project
+            Model.clear_cache(project_name="my_project")
+
+            # Clear all versions of a specific model
+            Model.clear_cache(project_name="my_project", model_name="my_model")
+
+            # Clear a specific model version
+            Model.clear_cache(project_name="my_project", model_name="my_model", version=1)
+            ```
+        """
+        cache_base = MODEL_REGISTRY.MODEL_CACHE_DIR_DEFAULT
+        removed_count = 0
+
+        if not os.path.exists(cache_base):
+            return 0
+
+        if project_name is None:
+            # Clear entire cache - count before removing
+            for project_dir in os.listdir(cache_base):
+                project_path = os.path.join(cache_base, project_dir)
+                if os.path.isdir(project_path):
+                    for model_dir in os.listdir(project_path):
+                        model_path = os.path.join(project_path, model_dir)
+                        if os.path.isdir(model_path):
+                            removed_count += len(
+                                [
+                                    d
+                                    for d in os.listdir(model_path)
+                                    if os.path.isdir(os.path.join(model_path, d))
+                                ]
+                            )
+            shutil.rmtree(cache_base)
+            return removed_count
+
+        project_path = os.path.join(cache_base, project_name)
+        if not os.path.exists(project_path):
+            return 0
+
+        if model_name is None:
+            # Clear all models in project
+            for model_dir in os.listdir(project_path):
+                model_path = os.path.join(project_path, model_dir)
+                if os.path.isdir(model_path):
+                    removed_count += len(
+                        [
+                            d
+                            for d in os.listdir(model_path)
+                            if os.path.isdir(os.path.join(model_path, d))
+                        ]
+                    )
+            shutil.rmtree(project_path)
+            return removed_count
+
+        model_path = os.path.join(project_path, model_name)
+        if not os.path.exists(model_path):
+            return 0
+
+        if version is None:
+            # Clear all versions of the model
+            removed_count = len(
+                [
+                    d
+                    for d in os.listdir(model_path)
+                    if os.path.isdir(os.path.join(model_path, d))
+                ]
+            )
+            shutil.rmtree(model_path)
+            return removed_count
+
+        # Clear specific version
+        version_path = os.path.join(model_path, str(version))
+        if os.path.exists(version_path):
+            shutil.rmtree(version_path)
+            removed_count = 1
+
+        return removed_count
 
     @usage.method_logger
     def deploy(
